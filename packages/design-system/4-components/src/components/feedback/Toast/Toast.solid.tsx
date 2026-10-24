@@ -6,24 +6,25 @@ import { toastService } from './toast.service';
 import type { ToastContainerProps } from './Toast.types';
 import type { ToastItem } from './Toast.types';
 
-const VARIANT_ICONS: Record<string, string> = {
-  info: 'info',
+const TONE_ICONS: Record<string, string> = {
+  neutral: 'info',
   success: 'check-circle',
   // Phosphor's name is `warning`. `alert-triangle` is Lucide's, so every warning toast asked the
   // icon set for something it does not have and rendered nothing where the icon should be.
   warning: 'warning',
-  error: 'x-circle',
+  danger: 'x-circle',
 };
 
-const VARIANT_COLORS: Record<string, string> = {
-  info: 'neutral-500',
-  success: 'success-500',
-  warning: 'warning-500',
-  error: 'danger-500',
+// Roles, not scale positions: the contrast corrections at apply time measure a role and skip a step.
+const TONE_COLORS: Record<string, string> = {
+  neutral: 'text-muted',
+  success: 'success-text',
+  warning: 'warning-text',
+  danger: 'danger-text',
 };
 
 function ToastItem(props: { toast: ToastItem }) {
-  const variant = () => props.toast.variant || 'info';
+  const tone = () => props.toast.tone || 'neutral';
 
   return (
     /*
@@ -40,26 +41,32 @@ function ToastItem(props: { toast: ToastItem }) {
     */
     <div
       role="status"
-      class={`we-toast we-toast--${variant()}`}
+      class={`we-toast we-toast--${tone()}`}
       onMouseEnter={() => toastService.pause(props.toast.id)}
       onMouseLeave={() => toastService.resume(props.toast.id)}
       onFocusIn={() => toastService.pause(props.toast.id)}
       onFocusOut={() => toastService.resume(props.toast.id)}
     >
-      <we-icon name={VARIANT_ICONS[variant()]} color={VARIANT_COLORS[variant()]} size="20px" />
-      <span class="we-toast__message">{props.toast.message}</span>
-      {props.toast.action && (
-        <button
-          class="we-toast__action"
-          onClick={() => {
-            const action = props.toast.action;
-            toastService.remove(props.toast.id);
-            action?.run();
-          }}
-        >
-          {props.toast.action.label}
-        </button>
-      )}
+      <we-icon name={TONE_ICONS[tone()]} color={TONE_COLORS[tone()]} size="20px" />
+      {/*
+        The action sits under the message rather than beside it. Beside it, a label longer than
+        "Undo" took the width the message needed and squeezed it into a narrow column.
+      */}
+      <div class="we-toast__body">
+        <span class="we-toast__message">{props.toast.message}</span>
+        {props.toast.action && (
+          <button
+            class="we-toast__action"
+            onClick={() => {
+              const action = props.toast.action;
+              toastService.remove(props.toast.id);
+              action?.run();
+            }}
+          >
+            {props.toast.action.label}
+          </button>
+        )}
+      </div>
       <button onClick={() => toastService.remove(props.toast.id)} aria-label="Dismiss" class="we-toast__dismiss">
         <we-icon name="x" size="16px" />
       </button>

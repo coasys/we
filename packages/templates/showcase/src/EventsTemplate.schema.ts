@@ -32,7 +32,7 @@ const rsvpButton = (as: string): SchemaNode => ({
     then: {
       type: 'we-button',
       props: {
-        variant: 'secondary',
+        variant: 'soft',
         size: 'sm',
         // Removes this agent's own entry and nothing else — see the note on add-only rosters.
         onClick: { $action: 'spaceStore.setAttending', args: [{ $: `${as}.id` }, false] },
@@ -42,7 +42,7 @@ const rsvpButton = (as: string): SchemaNode => ({
     else: {
       type: 'we-button',
       props: {
-        variant: 'primary',
+        variant: 'solid',
         size: 'sm',
         onClick: { $action: 'spaceStore.setAttending', args: [{ $: `${as}.id` }, true] },
       },
@@ -119,7 +119,7 @@ export const eventsTemplate: TemplateSchema = {
             { type: 'we-text', props: { variant: 'heading-lg' }, children: ['Events'] },
             {
               type: 'we-button',
-              props: { variant: 'primary', size: 'sm', onClick: { $setLocal: 'composeOpen', value: true } },
+              props: { variant: 'solid', size: 'sm', onClick: { $setLocal: 'composeOpen', value: true } },
               children: [{ type: 'we-icon', props: { name: 'plus' } }, 'New event'],
             },
           ],

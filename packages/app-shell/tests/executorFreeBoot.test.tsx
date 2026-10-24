@@ -608,6 +608,25 @@ describe('dataset lifecycle through the real stores', () => {
     expect(stores.datasets.getDatasetOrder()).toContain(created.id);
   }, 10000);
 
+  /*
+    `$each` keys by reference, so a row rebuilt as a new object remounts everything under it — in the
+    space-settings page that was the scroll position, thrown back to the top by setting a default.
+  */
+  it('keeps a space’s row the same object when one of its settings changes', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace('Row Space', '', 'personal', 'hidden');
+    const uuid = (await lifecycle.list()).find((d) => d.name === 'Row Space')!.id;
+    const rowOf = () => stores.spaces.spaceList().find((r) => r.uuid === uuid);
+    await vi.waitFor(() => expect(rowOf()?.isWeSpace).toBe(true));
+    const before = rowOf();
+
+    await stores.spaces.setSpaceDefaultTheme('retro', uuid);
+
+    expect(rowOf()?.defaultThemeId).toBe('retro');
+    expect(rowOf()).toBe(before);
+  }, 10000);
+
   it('creates a shared space through publish', async () => {
     const stores = mountShell();
     await ready(stores);

@@ -17,18 +17,19 @@ import {
   modelToThemeData,
   Theme,
 } from '@we/entities';
-import type { BundleTheme, ThemeOverrides } from '@we/schema-shared';
+import type { BundleTheme, DisplayPreferences, ThemeOverrides } from '@we/schema-shared';
 import {
   applyThemeVars,
   parseOverrides,
+  readThemeSettings,
   reconcileSurfaces,
+  registerNamedThemes,
+  setDisplayPreferences,
   // Aliased: the store has a `templateThemeId` of its own, the id the template surface is asking for.
   templateThemeId as themeOfTemplate,
   THEME_SCHEMA_VERSION,
   themeParametersToStyle,
-  type ThemeSideName,
   themeSides,
-  withThemeSide,
 } from '@we/schema-shared';
 import type { SanitiseCssOptions } from '@we/themes/sanitiseCss';
 import { sanitiseCss } from '@we/themes/sanitiseCss';
@@ -38,6 +39,7 @@ import {
   createEffect,
   createMemo,
   createSignal,
+  onCleanup,
   ParentProps,
   untrack,
   useContext,
@@ -60,14 +62,25 @@ const THEME_KEY = 'we.theme';
 const SYSTEM_LIGHT_KEY = 'we.system-light';
 const SYSTEM_DARK_KEY = 'we.system-dark';
 const EDITING_THEME_KEY = 'we.editing-theme';
-/** Which side of a two-sided theme to wear, cached for the first paint like the theme itself. */
-const THEME_MODE_KEY = 'we.theme-mode';
+/** The person's display needs, cached for the first paint like the theme itself. */
+const DISPLAY_KEY = 'we.display';
 
-/** `light`, `dark`, or `system` to follow the machine. See `AgentSettings.themeMode`. */
+/** `light`, `dark`, or `system` to follow the machine — the colour-scheme axis of the display needs. */
 export type ThemeMode = 'light' | 'dark' | 'system';
 
 function asThemeMode(value: string | null | undefined): ThemeMode {
   return value === 'light' || value === 'dark' ? value : 'system';
+}
+
+/** Stored display preferences, or none for anything that does not parse. */
+function parseDisplay(raw: string | null | undefined): DisplayPreferences {
+  if (!raw) return {};
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? (parsed as DisplayPreferences) : {};
+  } catch {
+    return {};
+  }
 }
 
 export type ThemeManagementItem = {
@@ -145,6 +158,16 @@ export interface ThemeStore {
   currentThemeSides: Accessor<('light' | 'dark')[]>;
   /** Choose the side, for this agent everywhere. */
   setThemeMode: (mode: ThemeMode) => Promise<boolean>;
+  /**
+   * The person's display needs — colour scheme, contrast, text size, density, motion — applied over
+   * every theme on screen, a space's included. See `DisplayPreferences` in @we/themes.
+   */
+  displayPreferences: Accessor<DisplayPreferences>;
+  /** Set one display need for this agent everywhere; `system` or null returns it to the default. */
+  setDisplayPreference: <K extends keyof DisplayPreferences>(
+    key: K,
+    value: DisplayPreferences[K] | null,
+  ) => Promise<boolean>;
   /** Options for either side, with a "Built-in" entry a schema could not prepend itself. */
   systemThemeOptions: Accessor<{ label: string; value: string }[]>;
   /**
@@ -418,8 +441,14 @@ function injectCssString(id: string, css: string, options: SanitiseCssOptions = 
  */
 let lastAppliedThemeId: string | null = null;
 
-function applyThemeToDOM(theme: ThemeData, side?: ThemeSideName) {
-  const overrides: ThemeOverrides = withThemeSide(parseOverrides(theme.overrides), side);
+function applyThemeToDOM(theme: ThemeData) {
+  /*
+    The whole theme, both sides included: `applyThemeVars` picks the side from the person's display
+    preferences, and from the theme editor's preview of the side being edited. Folding it to one side
+    here first, from the preference alone, left the editor's preview nothing to choose between — the
+    panel switched sides and the app stayed where it was.
+  */
+  const overrides: ThemeOverrides = parseOverrides(theme.overrides);
   // Normalize legacy fontFamily: 'base' sentinel saved before the font-family fix
   if (overrides.fontFamily === 'base') delete overrides.fontFamily;
 
@@ -448,37 +477,6 @@ function applyThemeToDOM(theme: ThemeData, side?: ThemeSideName) {
   injectCssString('we-custom-theme-css', theme.css ?? '', { namespace: cssNamespace(theme) });
 }
 
-const OVERRIDE_CSS_VARS: Partial<Record<keyof ThemeOverrides, string>> = {
-  // Color — only independent inputs, not derived tokens (ringColor derives from primary)
-  primaryHue: '--we-color-primary-hue',
-  successHue: '--we-color-success-hue',
-  warningHue: '--we-color-warning-hue',
-  dangerHue: '--we-color-danger-hue',
-  neutralHue: '--we-color-neutral-hue',
-  saturation: '--we-color-saturation',
-  neutralSaturation: '--we-color-neutral-saturation',
-  lightnessFloor: '--we-color-lightness-floor',
-  lightnessCeiling: '--we-color-lightness-ceiling',
-  // Typography — fontFamily intentionally omitted: the base theme CSS may set it directly,
-  // causing populateMissingOverrides to store a font string the user never explicitly chose.
-  letterSpacing: '--we-theme-letter-spacing',
-  lineHeight: '--we-theme-line-height',
-  // Shape
-  controlRadius: '--we-theme-control-radius',
-  surfaceRadius: '--we-theme-surface-radius',
-  inputRadius: '--we-theme-input-radius',
-  avatarRadius: '--we-theme-avatar-radius',
-  // Density
-  controlPaddingX: '--we-theme-control-padding-x',
-  controlGap: '--we-theme-control-gap',
-  controlHeightOffset: '--we-theme-control-height-offset',
-  surfacePadding: '--we-theme-surface-padding',
-  surfaceGap: '--we-theme-surface-gap',
-  inputPadding: '--we-theme-input-padding',
-  // Effects
-  surfaceOpacity: '--we-theme-surface-opacity',
-};
-
 /**
  * For any override keys missing from `overrides`, reads their actual computed CSS values so
  * sliders initialise at the position matching what the user sees, not hardcoded defaults.
@@ -498,35 +496,11 @@ function populateMissingOverrides(
   from: HTMLElement = document.documentElement,
 ): ThemeOverrides {
   const result = { ...overrides };
-  // Every override is read back out of CSS as a string, then narrowed to a number for the
-  // numeric ones. Naming that shape once keeps the writes below typed.
-  const writable = result as Record<keyof ThemeOverrides, string | number>;
   // Normalize legacy fontFamily: 'base' sentinel saved before the font-family fix
   if (result.fontFamily === 'base') delete result.fontFamily;
-  const styles = getComputedStyle(from);
-
-  for (const [key, cssVar] of Object.entries(OVERRIDE_CSS_VARS) as [keyof ThemeOverrides, string][]) {
-    if (result[key] !== undefined) continue;
-    let raw = styles.getPropertyValue(cssVar).trim();
-    // --we-color-neutral-hue is defined as var(--we-color-primary-hue) in the token CSS —
-    // getComputedStyle returns the var() reference, not the resolved number.
-    // Only apply this fallback for neutralHue; other undefined vars (e.g. radius) must not
-    // inherit the primary hue value, which would produce invalid CSS when used as a length.
-    if (key === 'neutralHue' && (!raw || raw.startsWith('var('))) {
-      raw = styles.getPropertyValue('--we-color-primary-hue').trim();
-    }
-    if (!raw || raw.startsWith('var(')) continue;
-
-    // Hues and saturations are plain numbers; a lightness bound is a percentage string.
-    if ((key as string).endsWith('Hue') || (key as string).toLowerCase().includes('saturation')) {
-      const n = Number(raw);
-      if (!isNaN(n)) writable[key] = n;
-    } else {
-      writable[key] = raw;
-    }
-  }
-
-  return result;
+  // Read through the settings registry, which says for each setting where it lives and how its value
+  // comes back — the second, drifted copy of that map this used to keep is gone.
+  return readThemeSettings(result, getComputedStyle(from));
 }
 
 export function ThemeStoreProvider(props: ParentProps) {
@@ -618,19 +592,36 @@ export function ThemeStoreProvider(props: ParentProps) {
     The side a two-sided theme is worn on. The agent's own setting once it has loaded; before that,
     what this device last wore, so the first paint does not flip sides when the settings land.
   */
-  const themeMode = createMemo<ThemeMode>(() => {
-    const own = datasetStore.agentSettings()?.themeMode;
-    if (own !== undefined) return asThemeMode(own);
-    return asThemeMode(typeof window !== 'undefined' ? localStorage.getItem(THEME_MODE_KEY) : null);
+  const displayPreferences = createMemo<DisplayPreferences>(() => {
+    const own = datasetStore.agentSettings()?.displayPreferences;
+    if (own !== undefined) return parseDisplay(own);
+    return parseDisplay(typeof window !== 'undefined' ? localStorage.getItem(DISPLAY_KEY) : null);
   });
+  /*
+    Handed to @we/themes, which lays them over every theme it applies and redoes every theme on
+    screen when they change — a space's and a node's as well as this store's. Set once now, from the
+    cache, so the first paint already has them.
+  */
+  setDisplayPreferences(displayPreferences());
+  createEffect(() => setDisplayPreferences(displayPreferences()));
+  function setDisplayPreference<K extends keyof DisplayPreferences>(
+    key: K,
+    value: DisplayPreferences[K] | null,
+  ): Promise<boolean> {
+    const next: DisplayPreferences = { ...displayPreferences() };
+    if (value === null || value === undefined || value === 'system') delete next[key];
+    else next[key] = value;
+    const stored = Object.keys(next).length ? JSON.stringify(next) : '';
+    localStorage.setItem(DISPLAY_KEY, stored);
+    return datasetStore.updateAgentSettings({ displayPreferences: stored });
+  }
+  const themeMode = createMemo<ThemeMode>(() => asThemeMode(displayPreferences().colorScheme));
   const themeSide = createMemo<'light' | 'dark'>(() => {
     const mode = themeMode();
     return mode === 'system' ? systemScheme() : mode;
   });
   function setThemeMode(mode: ThemeMode): Promise<boolean> {
-    const next = asThemeMode(mode);
-    localStorage.setItem(THEME_MODE_KEY, next);
-    return datasetStore.updateAgentSettings({ themeMode: next === 'system' ? '' : next });
+    return setDisplayPreference('colorScheme', asThemeMode(mode));
   }
 
   /*
@@ -762,6 +753,18 @@ export function ThemeStoreProvider(props: ParentProps) {
     const visible = ids.size > 0 ? installedThemes().filter((t) => ids.has(t.id)) : installedThemes();
     return [...builtInThemes(), ...visible, ...spaceThemes()];
   };
+
+  /*
+    A theme named on a schema node (`theme: { themeName }`) finds its settings here, whichever kind of
+    theme it is. Built-ins resolve inside the theme package; installed and space themes only this store
+    knows. Reading `allThemes` from inside the renderer's effect makes a node's theme re-apply when the
+    theme it names finishes loading.
+  */
+  registerNamedThemes((name) => {
+    const named = allThemes().find((theme) => theme.id === name || theme.slug === name);
+    return named ? parseOverrides(named.overrides) : undefined;
+  });
+  onCleanup(() => registerNamedThemes(undefined));
 
   /**
    * What either half of the pair may be set to, ready for a `we-select`.
@@ -918,10 +921,10 @@ export function ThemeStoreProvider(props: ParentProps) {
   /** The sides the theme on screen carries. See `ThemeStore.currentThemeSides`. */
   const currentThemeSides = createMemo(() => themeSides(parseOverrides((editingTheme() ?? currentTheme()).overrides)));
 
-  // The side, cached for the next first paint.
+  // The display needs, cached for the next first paint.
   createEffect(() => {
     if (!datasetStore.agentSettings()) return;
-    localStorage.setItem(THEME_MODE_KEY, themeMode());
+    localStorage.setItem(DISPLAY_KEY, datasetStore.agentSettings()?.displayPreferences ?? '');
   });
 
   /** What the scoped wrapper renders. Null in global mode — the template inherits documentElement. */
@@ -962,7 +965,7 @@ export function ThemeStoreProvider(props: ParentProps) {
   createEffect(() => {
     const theme = documentTheme();
     if (!themesLoaded() && !canResolveTheme(documentThemeId())) return;
-    applyThemeToDOM(theme, themeSide());
+    applyThemeToDOM(theme);
   });
 
   /*
@@ -1037,7 +1040,6 @@ export function ThemeStoreProvider(props: ParentProps) {
     isValidThemeKey(initialId)
       ? registryToThemeData(initialId)
       : (rememberedThemes.find((t) => t.id === initialId) ?? registryToThemeData('light')),
-    untrack(themeSide),
   );
 
   function resolveThemeData(themeId: string): ThemeData {
@@ -1300,7 +1302,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     const newCss = presetEntry ? (presetEntry.css ?? '') : (current.css ?? '');
 
     // Apply to DOM so getComputedStyle reflects the new preset for remaining vars.
-    applyThemeToDOM({ ...current, css: newCss, overrides: JSON.stringify(updated) }, untrack(themeSide));
+    applyThemeToDOM({ ...current, css: newCss, overrides: JSON.stringify(updated) });
 
     // Repopulate any still-missing vars (radius, spacing, etc.) from computed style.
     const repopulated = populateMissingOverrides(updated);
@@ -1385,10 +1387,17 @@ export function ThemeStoreProvider(props: ParentProps) {
         overrides: overridesJson,
         css: source?.css ?? null,
       };
-      setInstalledThemes((prev) => [...prev, data]);
-      setVisibleThemeIds((prev) => new Set([...prev, model.id]));
-      const prefs = datasetStore.agentSettings();
-      if (prefs) await prefs.addInstalledThemes(model).catch(() => {});
+      if (destination === 'space') {
+        // It lives in the space, so it joins the space's list, as a reload would put it. Added to
+        // this agent's installed list instead, it showed under "My themes" and was missing from
+        // the space's own pickers until the next load.
+        setSpaceThemes((prev) => [...prev, data]);
+      } else {
+        setInstalledThemes((prev) => [...prev, data]);
+        setVisibleThemeIds((prev) => new Set([...prev, model.id]));
+        const prefs = datasetStore.agentSettings();
+        if (prefs) await prefs.addInstalledThemes(model).catch(() => {});
+      }
       setCurrentTheme(data.id);
       setEditingTheme({ ...data, isDirty: false });
       sessionStorage.setItem(EDITING_THEME_KEY, data.id);
@@ -1442,6 +1451,9 @@ export function ThemeStoreProvider(props: ParentProps) {
           ? asFileField(encodeToFileData(editing.overrides, 'overrides.json', 'application/json'))
           : null;
         existing.css = editing.css ? asFileField(encodeToFileData(editing.css, 'theme.css', 'text/css')) : null;
+        // Moved on every save, as a template's is: the theme tools an agent edits with refuse a write
+        // against a version that has moved, and a save here that left it alone was invisible to them.
+        existing.version = (existing.version || 1) + 1;
         await existing.save();
         // Use the current signal state (not the captured `editing`) to avoid overwriting
         // changes made while this async save was in flight.
@@ -1883,6 +1895,10 @@ export function ThemeStoreProvider(props: ParentProps) {
           : null,
         css: editing.css ? asFileField(encodeToFileData(editing.css, 'theme.css', 'text/css')) : null,
       });
+      // Space themes are read on entering a space, not watched, so the open space's list is read
+      // again here — or the theme just shared is missing from its pickers until the next visit.
+      // Another space reads its own when it is next opened.
+      if (datasetStore.currentDataset()?.id === perspectiveUuid) await loadSpaceThemes();
       toastService.success(`Theme "${editing.name}" shared to space "${spaceName}"`);
       return true;
     } catch (e) {
@@ -1923,6 +1939,8 @@ export function ThemeStoreProvider(props: ParentProps) {
     focusRole,
     setSystemTheme,
     themeMode,
+    displayPreferences,
+    setDisplayPreference,
     themeSide,
     currentThemeSides,
     setThemeMode,

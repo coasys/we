@@ -43,7 +43,7 @@ const boardsRoute: RouteSchema = {
             { type: 'we-text', props: { variant: 'heading-lg' }, children: ['Boards'] },
             {
               type: 'we-button',
-              props: { variant: 'primary', size: 'sm', onClick: { $setLocal: 'newBoardOpen', value: true } },
+              props: { variant: 'solid', size: 'sm', onClick: { $setLocal: 'newBoardOpen', value: true } },
               children: [{ type: 'we-icon', props: { name: 'plus' } }, 'New board'],
             },
           ],

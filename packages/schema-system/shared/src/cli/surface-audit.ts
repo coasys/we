@@ -127,7 +127,8 @@ const MODULE_PANEL = /\/module-system\/[^/]+\/src\/.*Panel\.schema\.ts$/;
  * which is exactly what a board column is, and 31 of those were being reported as bugs.
  *
  * The grounds that are genuinely wrong are the two nobody was looking at. Lightness in L points,
- * from the dark pins in `surfacesForPolarity` and the parametric defaults in `role.ts`:
+ * from the parametric defaults in `role.ts`, measured when the dark pins a flip to dark once wrote
+ * still existed:
  *
  * | ground           | dark          | light         |
  * | ---------------- | ------------- | ------------- |

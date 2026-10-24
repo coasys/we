@@ -203,7 +203,7 @@ export function MissingMarker(props: {
       flexShrink={0}
       r="control"
       border="1px dashed warning-text"
-      bg="warning-surface"
+      bg="warning-soft"
     >
       <we-icon name="puzzle-piece" size="xs" color="warning-text" />
     </Row>

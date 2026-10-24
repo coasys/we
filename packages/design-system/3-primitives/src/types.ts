@@ -1,4 +1,4 @@
-export type { SizeValue, ComponentSize, ComponentVariant } from '@we/tokens';
+export type { SizeValue, ComponentSize, ToneName } from '@we/tokens';
 
 export type { DesignSystemProps } from '@we/design-types';
 
@@ -8,35 +8,24 @@ import type { ComponentSize } from '@we/tokens';
 const allowedTextTags = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'small', 'b', 'i', 'span', 'label', 'div'] as const;
 
 export type TextTag = (typeof allowedTextTags)[number];
-// 'bare' is the appearance-free member of the scale (elsewhere called "unstyled") — button
-// semantics with no chrome of its own, for wrapping arbitrary content in a real <button>.
-// 'success' is the confirming half of a yes/no pair — the counterpart of 'danger', not a louder
-// 'primary'. See VARIANT_DEFAULTS in button.ts for when it earns its place and when it does not.
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'success' | 'danger' | 'outline' | 'bare';
-export type MenuItemVariant = 'default' | 'danger';
 /*
-  How loud a badge is, orthogonal to what it means.
+  How a component is painted — one vocabulary for every component that has a choice, independent of
+  its colour. Colour is `tone`, a DS prop every element takes; `variant` is only ever the style, so
+  any tone combines with any style. Radix's model, and the reason `primary` and `secondary` left:
+  they were emphasis levels mixed into a list of styles, with `success` and `danger` colours mixed in
+  as well.
 
-  `variant` says which meaning — neutral, success, danger — and this says how much of the screen it
-  takes: `soft` is the tinted panel pair (`success-surface` on `success-text`), `solid` is the fill
-  and its measured label (`success` on `on-success`). Every design system with a badge ends up with
-  both axes, because "the connection is degraded" and "WE ARE RECORDING" are the same meaning at
-  different volumes, and one appearance cannot serve both.
-
-  Two values rather than the three most libraries offer: `outline` has no caller here yet, and the
-  bar for a third is a real use, not symmetry with somebody else's table.
+  - `solid`: the fill and its label — the main action, a loud badge.
+  - `soft`: the tinted fill and the family's text — a secondary action, a quiet badge, an alert.
+  - `outline`: a border in the family on no fill.
+  - `ghost`: no fill until hovered — a toolbar button.
+  - `bare`: no appearance at all — a real `<button>` around arbitrary content.
+  - `edge`: an alert's family as a thick left edge on a plain surface; alerts only.
 */
-export type BadgeAppearance = 'soft' | 'solid';
-/*
-  The same axis on an alert, and deliberately not the same two values.
-
-  A badge is small enough that a fill is the loud option; an alert is a panel, so its fill would be
-  the loudest thing on the page and there is no caller for one. What an alert needs instead is a
-  *quieter* option than the tint — a column of pending items where eight tinted panels compete with
-  each other and with everything around them. `accent` is that: the status as a thick left edge on
-  an ordinary surface, which is Chakra's `left-accent` and Material's list-leading rule.
-*/
-export type AlertAppearance = 'soft' | 'accent';
+export type ButtonVariant = 'solid' | 'soft' | 'outline' | 'ghost' | 'bare';
+export type BadgeVariant = 'soft' | 'solid';
+export type TagVariant = 'soft' | 'solid';
+export type AlertVariant = 'soft' | 'edge';
 export type IconSize = '' | ComponentSize | (string & {}); // '' = inherit from parent context, semantic sizes, or raw CSS values
 export type IconWeight = 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone';
 /*
@@ -60,7 +49,8 @@ export type TextVariant =
   | 'ingress'
   | 'body'
   | 'label'
-  | 'footnote';
+  | 'footnote'
+  | 'overline';
 export type TooltipStrategy = 'absolute' | 'fixed';
 export type ImageFit = '' | 'cover' | 'contain' | 'fill' | 'none' | 'scale-down';
 export type ImageLoading = 'eager' | 'lazy';

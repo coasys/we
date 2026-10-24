@@ -96,9 +96,7 @@
                             {
                               "type": "we-button",
                               "props": {
-                                "variant": {
-                                  "$": "contains(routeStore.currentPath, view.segment) ? 'secondary' : 'ghost'"
-                                },
+                                "variant": { "$": "contains(routeStore.currentPath, view.segment) ? 'soft' : 'ghost'" },
                                 "size": "sm",
                                 "onClick": { "$action": "routeStore.navigate", "args": [{ "$": "view.path" }] }
                               },
@@ -162,7 +160,7 @@
                     {
                       "type": "we-button",
                       "props": {
-                        "variant": { "$": "local.group == '' ? 'secondary' : 'ghost'" },
+                        "variant": { "$": "local.group == '' ? 'soft' : 'ghost'" },
                         "size": "sm",
                         "onClick": { "$setLocal": "group", "value": "" }
                       },
@@ -175,7 +173,7 @@
                         {
                           "type": "we-button",
                           "props": {
-                            "variant": { "$": "local.group == g ? 'secondary' : 'ghost'" },
+                            "variant": { "$": "local.group == g ? 'soft' : 'ghost'" },
                             "size": "sm",
                             "onClick": { "$setLocal": "group", "value": { "$": "g" } }
                           },
@@ -202,7 +200,7 @@
                 {
                   "type": "we-button",
                   "props": {
-                    "variant": "primary",
+                    "variant": "solid",
                     "size": "sm",
                     "flexShrink": "0",
                     "onClick": { "$action": "recordStore.openRecordForm", "args": ["Species"] }
@@ -292,9 +290,7 @@
                                   "type": "we-badge",
                                   "props": {
                                     "size": "sm",
-                                    "variant": {
-                                      "$": "sp.status == 'rare' || sp.status == 'protected' ? 'warning' : 'neutral'"
-                                    }
+                                    "tone": { "$": "sp.status == 'rare' || sp.status == 'protected' ? 'warning' : ''" }
                                   },
                                   "children": [{ "$": "sp.status" }]
                                 }
@@ -947,7 +943,7 @@
                                                             {
                                                               "type": "we-button",
                                                               "props": {
-                                                                "variant": "secondary",
+                                                                "variant": "soft",
                                                                 "size": "xs",
                                                                 "square": true,
                                                                 "label": { "$": "`Remove ${entry.label}`" },
@@ -1138,7 +1134,7 @@
                                                         "then": {
                                                           "type": "we-button",
                                                           "props": {
-                                                            "variant": "secondary",
+                                                            "variant": "soft",
                                                             "size": "sm",
                                                             "onClick": {
                                                               "$action": "recordStore.openRelationForm",
@@ -1201,7 +1197,7 @@
                     {
                       "type": "we-button",
                       "props": {
-                        "variant": "secondary",
+                        "variant": "soft",
                         "onClick": {
                           "$if": {
                             "condition": { "$": "recordStore.recordDraftDirty" },
@@ -1215,7 +1211,7 @@
                     {
                       "type": "we-button",
                       "props": {
-                        "variant": "primary",
+                        "variant": "solid",
                         "loading": { "$": "recordStore.savingRecord" },
                         "disabled": { "$": "recordStore.savingRecord" },
                         "onClick": { "$action": "recordStore.saveRecord" }
@@ -1587,17 +1583,14 @@
                             {
                               "type": "we-button",
                               "props": {
-                                "variant": "secondary",
+                                "variant": "soft",
                                 "onClick": { "$action": "recordStore.cancelRelationForm" }
                               },
                               "children": ["Cancel"]
                             },
                             {
                               "type": "we-button",
-                              "props": {
-                                "variant": "primary",
-                                "onClick": { "$action": "recordStore.saveRelationForm" }
-                              },
+                              "props": { "variant": "solid", "onClick": { "$action": "recordStore.saveRelationForm" } },
                               "children": ["Add"]
                             }
                           ]
@@ -1647,7 +1640,7 @@
                             {
                               "type": "we-button",
                               "props": {
-                                "variant": "secondary",
+                                "variant": "soft",
                                 "onClick": { "$setLocal": "confirmDiscardOpen", "value": false }
                               },
                               "children": ["Keep editing"]
@@ -1655,7 +1648,8 @@
                             {
                               "type": "we-button",
                               "props": {
-                                "variant": "danger",
+                                "variant": "solid",
+                                "tone": "danger",
                                 "onClick": {
                                   "$action": "recordStore.cancelRecordForm",
                                   "onSuccess": [{ "$setLocal": "confirmDiscardOpen", "value": false }]
@@ -1706,7 +1700,7 @@
                 {
                   "type": "we-button",
                   "props": {
-                    "variant": "primary",
+                    "variant": "solid",
                     "size": "sm",
                     "flexShrink": "0",
                     "onClick": { "$action": "recordStore.openRecordForm", "args": ["Sighting"] }
@@ -1786,8 +1780,8 @@
                               "type": "we-badge",
                               "props": {
                                 "size": "sm",
-                                "variant": {
-                                  "$": "s.certainty == 'certain' ? 'success' : s.certainty == 'likely' ? 'neutral' : 'warning'"
+                                "tone": {
+                                  "$": "s.certainty == 'certain' ? 'success' : s.certainty == 'likely' ? '' : 'warning'"
                                 }
                               },
                               "children": [{ "$": "s.certainty" }]
@@ -2468,7 +2462,7 @@
                                                             {
                                                               "type": "we-button",
                                                               "props": {
-                                                                "variant": "secondary",
+                                                                "variant": "soft",
                                                                 "size": "xs",
                                                                 "square": true,
                                                                 "label": { "$": "`Remove ${entry.label}`" },
@@ -2659,7 +2653,7 @@
                                                         "then": {
                                                           "type": "we-button",
                                                           "props": {
-                                                            "variant": "secondary",
+                                                            "variant": "soft",
                                                             "size": "sm",
                                                             "onClick": {
                                                               "$action": "recordStore.openRelationForm",
@@ -2722,7 +2716,7 @@
                     {
                       "type": "we-button",
                       "props": {
-                        "variant": "secondary",
+                        "variant": "soft",
                         "onClick": {
                           "$if": {
                             "condition": { "$": "recordStore.recordDraftDirty" },
@@ -2736,7 +2730,7 @@
                     {
                       "type": "we-button",
                       "props": {
-                        "variant": "primary",
+                        "variant": "solid",
                         "loading": { "$": "recordStore.savingRecord" },
                         "disabled": { "$": "recordStore.savingRecord" },
                         "onClick": { "$action": "recordStore.saveRecord" }
@@ -3108,17 +3102,14 @@
                             {
                               "type": "we-button",
                               "props": {
-                                "variant": "secondary",
+                                "variant": "soft",
                                 "onClick": { "$action": "recordStore.cancelRelationForm" }
                               },
                               "children": ["Cancel"]
                             },
                             {
                               "type": "we-button",
-                              "props": {
-                                "variant": "primary",
-                                "onClick": { "$action": "recordStore.saveRelationForm" }
-                              },
+                              "props": { "variant": "solid", "onClick": { "$action": "recordStore.saveRelationForm" } },
                               "children": ["Add"]
                             }
                           ]
@@ -3168,7 +3159,7 @@
                             {
                               "type": "we-button",
                               "props": {
-                                "variant": "secondary",
+                                "variant": "soft",
                                 "onClick": { "$setLocal": "confirmDiscardOpen", "value": false }
                               },
                               "children": ["Keep editing"]
@@ -3176,7 +3167,8 @@
                             {
                               "type": "we-button",
                               "props": {
-                                "variant": "danger",
+                                "variant": "solid",
+                                "tone": "danger",
                                 "onClick": {
                                   "$action": "recordStore.cancelRecordForm",
                                   "onSuccess": [{ "$setLocal": "confirmDiscardOpen", "value": false }]
@@ -3228,7 +3220,7 @@
             {
               "type": "we-button",
               "props": {
-                "variant": "primary",
+                "variant": "solid",
                 "size": "sm",
                 "flexShrink": "0",
                 "onClick": { "$action": "recordStore.openRecordForm", "args": ["Sighting"] }
@@ -3894,7 +3886,7 @@
                                                             {
                                                               "type": "we-button",
                                                               "props": {
-                                                                "variant": "secondary",
+                                                                "variant": "soft",
                                                                 "size": "xs",
                                                                 "square": true,
                                                                 "label": { "$": "`Remove ${entry.label}`" },
@@ -4085,7 +4077,7 @@
                                                         "then": {
                                                           "type": "we-button",
                                                           "props": {
-                                                            "variant": "secondary",
+                                                            "variant": "soft",
                                                             "size": "sm",
                                                             "onClick": {
                                                               "$action": "recordStore.openRelationForm",
@@ -4148,7 +4140,7 @@
                     {
                       "type": "we-button",
                       "props": {
-                        "variant": "secondary",
+                        "variant": "soft",
                         "onClick": {
                           "$if": {
                             "condition": { "$": "recordStore.recordDraftDirty" },
@@ -4162,7 +4154,7 @@
                     {
                       "type": "we-button",
                       "props": {
-                        "variant": "primary",
+                        "variant": "solid",
                         "loading": { "$": "recordStore.savingRecord" },
                         "disabled": { "$": "recordStore.savingRecord" },
                         "onClick": { "$action": "recordStore.saveRecord" }
@@ -4534,17 +4526,14 @@
                             {
                               "type": "we-button",
                               "props": {
-                                "variant": "secondary",
+                                "variant": "soft",
                                 "onClick": { "$action": "recordStore.cancelRelationForm" }
                               },
                               "children": ["Cancel"]
                             },
                             {
                               "type": "we-button",
-                              "props": {
-                                "variant": "primary",
-                                "onClick": { "$action": "recordStore.saveRelationForm" }
-                              },
+                              "props": { "variant": "solid", "onClick": { "$action": "recordStore.saveRelationForm" } },
                               "children": ["Add"]
                             }
                           ]
@@ -4594,7 +4583,7 @@
                             {
                               "type": "we-button",
                               "props": {
-                                "variant": "secondary",
+                                "variant": "soft",
                                 "onClick": { "$setLocal": "confirmDiscardOpen", "value": false }
                               },
                               "children": ["Keep editing"]
@@ -4602,7 +4591,8 @@
                             {
                               "type": "we-button",
                               "props": {
-                                "variant": "danger",
+                                "variant": "solid",
+                                "tone": "danger",
                                 "onClick": {
                                   "$action": "recordStore.cancelRecordForm",
                                   "onSuccess": [{ "$setLocal": "confirmDiscardOpen", "value": false }]
@@ -4631,7 +4621,7 @@
       "polarity": "light",
       "lightnessFloor": "10%",
       "lightnessCeiling": "100%",
-      "primaryHue": 150,
+      "accentHue": 150,
       "saturation": 55,
       "neutralSaturation": 18,
       "surfaceRadius": "10px"

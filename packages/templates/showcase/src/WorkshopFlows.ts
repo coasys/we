@@ -402,7 +402,7 @@ function exceptions(source: string, editing: boolean): SchemaNode {
                   type: 'we-button',
                   props: {
                     size: 'sm',
-                    variant: 'secondary',
+                    variant: 'soft',
                     disabled: { $: '!local.excFrom || !local.excTo' },
                     onClick: [
                       { $action: 'flowStore.addException', args: [{ $: 'local.excFrom' }, { $: 'local.excTo' }] },
@@ -603,7 +603,7 @@ const recordRow: SchemaNode = {
           type: '$if',
           props: {
             condition: { $: 'rec.stalled' },
-            then: chip('Stuck between two moves — one has to be withdrawn', 'warning-surface'),
+            then: chip('Stuck between two moves — one has to be withdrawn', 'warning-soft'),
           },
         },
         { type: 'Row', props: { flex: '1' } },
@@ -650,7 +650,7 @@ const recordRow: SchemaNode = {
                       type: 'we-button',
                       props: {
                         size: 'sm',
-                        variant: 'secondary',
+                        variant: 'soft',
                         onClick: {
                           $action: 'flowStore.moveRecord',
                           args: [{ $: `${OPEN}.name` }, { $: 'rec.subject' }, { $: 'move.to' }],
@@ -722,7 +722,7 @@ const openHeader: SchemaNode = {
               type: 'we-button',
               props: {
                 size: 'sm',
-                variant: 'secondary',
+                variant: 'soft',
                 onClick: { $action: 'shellStore.openSpaceSettings', args: ['vocabulary'] },
               },
               children: [text('Edit in Task states')],
@@ -743,7 +743,7 @@ const openHeader: SchemaNode = {
                     condition: { $: `${OPEN}.editable` },
                     then: {
                       type: 'we-button',
-                      props: { size: 'sm', variant: 'secondary', onClick: { $action: 'flowStore.editFlow' } },
+                      props: { size: 'sm', variant: 'soft', onClick: { $action: 'flowStore.editFlow' } },
                       children: [text('Edit')],
                     },
                   },
@@ -866,7 +866,7 @@ const openFlow: SchemaNode = {
           type: 'we-button',
           props: {
             size: 'sm',
-            variant: { $: "local.flowAsGraph ? 'ghost' : 'secondary'" },
+            variant: { $: "local.flowAsGraph ? 'ghost' : 'soft'" },
             onClick: { $setLocal: 'flowAsGraph', value: false },
           },
           children: [text('Lanes')],
@@ -875,7 +875,7 @@ const openFlow: SchemaNode = {
           type: 'we-button',
           props: {
             size: 'sm',
-            variant: { $: "local.flowAsGraph ? 'secondary' : 'ghost'" },
+            variant: { $: "local.flowAsGraph ? 'soft' : 'ghost'" },
             onClick: { $setLocal: 'flowAsGraph', value: true },
           },
           children: [text('Graph')],
@@ -968,7 +968,7 @@ const draftHeader: SchemaNode = {
         {
           type: 'we-button',
           props: {
-            variant: 'primary',
+            variant: 'solid',
             disabled: { $: `count(${DRAFT}.problems) > 0 || !${DRAFT}.dirty` },
             onClick: { $action: 'flowStore.saveDraft' },
           },
@@ -1276,7 +1276,7 @@ const guardStepModal: SchemaNode = guardModal({
 const flowButton: SchemaNode = {
   type: 'we-button',
   props: {
-    variant: { $: `${OPEN}.name == flow.name && !${DRAFT} ? 'secondary' : 'ghost'` },
+    variant: { $: `${OPEN}.name == flow.name && !${DRAFT} ? 'soft' : 'ghost'` },
     width: '100%',
     onClick: [{ $action: 'flowStore.cancelDraft' }, { $action: 'flowStore.openFlow', args: [{ $: 'flow.name' }] }],
   },
@@ -1474,7 +1474,7 @@ const inspectorMoves: SchemaNode = {
                   type: 'we-button',
                   props: {
                     size: 'xs',
-                    variant: 'secondary',
+                    variant: 'soft',
                     onClick: {
                       $action: 'flowStore.moveRecord',
                       args: [{ $: 'inFlow.flow' }, { $: 'row.id' }, { $: 'ask.to' }],
@@ -1595,12 +1595,12 @@ export function flowsSection(opts: { type: string; open: { field: string }; flow
                                 type: '$if',
                                 props: {
                                   condition: { $: 'inFlow.waiting' },
-                                  then: chip({ $: '`${inFlow.waiting} waiting`' }, 'warning-surface'),
+                                  then: chip({ $: '`${inFlow.waiting} waiting`' }, 'warning-soft'),
                                 },
                               },
                               {
                                 type: '$if',
-                                props: { condition: { $: 'inFlow.stalled' }, then: chip('Stuck', 'warning-surface') },
+                                props: { condition: { $: 'inFlow.stalled' }, then: chip('Stuck', 'warning-soft') },
                               },
                               { type: 'Row', props: { flex: '1' } },
                               {

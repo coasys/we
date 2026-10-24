@@ -1,6 +1,6 @@
 import type { DesignSystemProps } from '@we/design-types';
 import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
-import { scrollbarRules } from '@we/tokens';
+import { motionIsReduced, scrollbarRules } from '@we/tokens';
 import { css, html, nothing, type PropertyValues, unsafeCSS } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
@@ -153,12 +153,6 @@ interface EdgeWatch {
   last: number | null;
   /** Whether this edge has been reported for their current stay within reach of it. */
   told: boolean;
-}
-
-/** Whether the reader has asked for less movement. Absent in a non-browser environment. */
-function prefersReducedMotion(): boolean {
-  const query = globalThis.matchMedia;
-  return typeof query === 'function' && query('(prefers-reduced-motion: reduce)').matches;
 }
 
 @customElement('we-scroll-area')
@@ -396,7 +390,7 @@ export default class ScrollArea extends DesignSystemElement {
   #scrollTo(top: number): void {
     const base = this.#base;
     if (!base) return;
-    if (typeof base.scrollTo === 'function' && !prefersReducedMotion()) {
+    if (typeof base.scrollTo === 'function' && !motionIsReduced()) {
       base.scrollTo({ top, behavior: 'smooth' });
       return;
     }
@@ -543,7 +537,7 @@ export default class ScrollArea extends DesignSystemElement {
           ? html`
               <div part="jump-start">
                 <we-button
-                  variant="secondary"
+                  variant="soft"
                   size="sm"
                   square
                   r="pill"
@@ -562,7 +556,7 @@ export default class ScrollArea extends DesignSystemElement {
           ? html`
               <div part="jump-end">
                 <we-button
-                  variant="secondary"
+                  variant="soft"
                   size="sm"
                   square
                   r="pill"

@@ -379,7 +379,7 @@ const stateRow: SchemaNode = {
                 condition: { $: 'count(state.guards ?? [])' },
                 then: {
                   type: 'we-badge',
-                  props: { size: 'xs', variant: 'warning' },
+                  props: { size: 'xs', tone: 'warning' },
                   children: [{ $: "join((state.guards ?? []).map(g, g.label), ' · ')" }],
                 },
               },
@@ -392,7 +392,7 @@ const stateRow: SchemaNode = {
                 condition: { $: 'state.approvals > 1 || state.approverKind' },
                 then: {
                   type: 'we-badge',
-                  props: { size: 'xs', variant: 'warning' },
+                  props: { size: 'xs', tone: 'warning' },
                   children: [
                     {
                       $: "`needs ${state.approvals}${state.approverKind ? ' · ' + (find(spaceStore.involvementTypes, { slug: state.approverKind }).name ?? state.approverKind) : ''}`",
@@ -471,7 +471,7 @@ export const taskStatesSection: SchemaNode = sectionCard({
     'The stages work moves through here — "To do", "Blocked", "Shipped". Each becomes a column on the tasks board, and each says what it counts as so the rest of the app can still tell finished work from outstanding. A state can also ask for agreement, or for something to be there first: then a card dragged into it waits until enough people have approved, or is refused until it is.',
   aside: {
     type: 'we-button',
-    props: { variant: 'secondary', size: 'sm', onClick: { $setLocal: 'createTaskStateOpen', value: true } },
+    props: { variant: 'soft', size: 'sm', onClick: { $setLocal: 'createTaskStateOpen', value: true } },
     children: [
       { type: 'we-icon', props: { name: 'plus' } },
       { type: 'we-text', children: ['Add State'] },

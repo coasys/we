@@ -282,6 +282,7 @@ export const storeEntries: StoreEntry[] = [
       themeScopeGlobal: { type: 'boolean' },
       themeScopePreviewing: { type: 'boolean' },
       themeMode: { type: 'string' },
+      displayPreferences: { type: 'object' },
       themeSide: { type: 'string' },
       currentThemeSides: { type: 'array' },
       themeManagementList: {
@@ -293,6 +294,7 @@ export const storeEntries: StoreEntry[] = [
       'setCurrentTheme',
       'setDefaultTheme',
       'setThemeMode',
+      'setDisplayPreference',
       'setThemeScopeGlobal',
       'previewThemeScope',
       'setThemeInstalled',
@@ -388,6 +390,7 @@ export const storeEntries: StoreEntry[] = [
       templateOverrideOptions: { type: 'array', properties: ['label', 'value'] },
       themeOverrideOptions: { type: 'array', properties: ['label', 'value'] },
       spaceThemePinned: { type: 'boolean' },
+      spaceThemeHiddenBy: { type: 'string' },
       canAdministerCurrentSpace: { type: 'boolean' },
       moduleInstallSettings: {
         type: 'array',
@@ -1023,6 +1026,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         themeMode:
           "'light' | 'dark' | 'system' — which side of a two-sided theme the agent wears. A theme can carry a light and a dark side of one look (its overrides' `light`/`dark`), so an app ships one theme rather than a pair; this picks between them for every such theme, and a theme with one look ignores it",
         themeSide: "'light' | 'dark' — the side worn right now: themeMode, with 'system' answered by the machine",
+        displayPreferences:
+          "{ colorScheme?, contrast?, textSize?, density?, motion? } — the agent's display needs, applied over every theme on screen, a space's included: colorScheme 'light' | 'dark' | 'system' (themeMode is this axis), contrast 'standard' | 'more' | 'system', textSize a multiplier (1 = the theme's own), density 'compact' | 'normal' | 'roomy', motion 'full' | 'reduced' | 'system'. An axis left out follows the system where it has a signal, and changes nothing otherwise",
         currentThemeSides:
           "('light' | 'dark')[] — the sides the theme on screen carries. Offer a Light / Dark / System choice only when it is not empty",
         templateThemePending:
@@ -1038,6 +1043,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(role: string): asks the theme editor to reveal a role, kebab-case as a schema spells it. Pair with editorStore.openThemePanel so there is a panel to scroll',
         setSystemTheme:
           "(polarity: 'light' | 'dark', themeId: string): sets one side of the Follow-system pair. An empty id returns that side to the built-in",
+        setDisplayPreference:
+          "(key: 'colorScheme' | 'contrast' | 'textSize' | 'density' | 'motion', value): sets one display need for this agent everywhere. 'system' or null returns it to the default. A we-select can pass its value as event.detail",
         setThemeMode:
           "(mode: 'light' | 'dark' | 'system'): chooses which side of a two-sided theme to wear, for this agent everywhere. A we-select or a segmented control can pass its value bare",
         setUseTemplateTheme:
@@ -1250,6 +1257,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           'string — the option publishing uses when none is chosen: the backend’s default, empty until it answers. Show it as the picker’s value while nothing is chosen — { $: "local.sharing ? local.sharing : spaceStore.defaultSharing" } — and pass the bare choice to createSpace, rather than copying it into local state, which freezes whatever it was at that moment',
         canAdministerCurrentSpace:
           'boolean — whether this agent may change what every member of the space on screen sees. The readable form of canAdministerSpace, which an expression cannot call. Gate an admin-only control on this rather than on `x.author == me.did`, which asks who made the row and not who runs the space',
+        spaceThemeHiddenBy:
+          "string — what keeps this agent from seeing the space on screen's own theme: 'pin' (they chose a theme for this space), 'agent-default' (they chose to follow their own default here), 'template' (a template other than the space's default brings its own theme), or '' when nothing does. Show it beside the space's default-theme picker, so an administrator who sets one and sees nothing change knows why. clearSpaceThemePin undoes the first two",
         spaceThemePinned:
           'boolean — this agent has pinned a theme for the space on screen that differs from what would otherwise apply, so there is something for a reset to undo. False outside a space, and false for a pin that happens to name what the space resolves to anyway. Gate a "pinned here / reset" affordance on it rather than on the pin merely existing',
         requiredModules:

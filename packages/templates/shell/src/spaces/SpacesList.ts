@@ -21,7 +21,7 @@ const kindBadge: SchemaNode = {
       type: 'we-badge',
       props: {
         size: 'sm',
-        variant: { $: "space.kind == 'shared' ? 'primary' : 'neutral'" },
+        tone: { $: "space.kind == 'shared' ? 'accent' : ''" },
       },
       children: [{ $: "space.kind == 'shared' ? 'Shared' : 'Personal'" }],
     },
@@ -29,7 +29,7 @@ const kindBadge: SchemaNode = {
     // and opening it is what surfaces that gate.
     else: {
       type: 'we-badge',
-      props: { size: 'sm', variant: 'warning' },
+      props: { size: 'sm', tone: 'warning' },
       children: [{ $: '`Not a ${templateStore.brand.name} space`' }],
     },
   },

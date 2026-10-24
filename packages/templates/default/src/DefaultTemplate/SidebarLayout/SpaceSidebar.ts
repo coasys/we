@@ -83,7 +83,7 @@ export const spaceSidebar: SchemaNode = {
             {
               type: 'we-button',
               props: {
-                variant: { $: "routeStore.segments[2] == view.segment ? 'primary' : 'ghost'" },
+                variant: { $: "routeStore.segments[2] == view.segment ? 'solid' : 'ghost'" },
                 onClick: { $action: 'routeStore.navigate', args: [{ $: 'view.path' }] },
               },
               children: [

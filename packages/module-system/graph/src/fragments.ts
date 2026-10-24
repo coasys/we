@@ -31,8 +31,8 @@ export const schemaMap: SchemaNode = {
     layout: { type: 'force', options: { distance: 140 } },
     expansion: { defaultDepth: 0 },
     nodeStyle: [
-      { style: { size: 20, color: 'primary-500', shape: 'rect' } },
-      { when: { 'data.relations': { gt: 3 } }, style: { size: 28, color: 'primary-700' } },
+      { style: { size: 20, color: 'accent-500', shape: 'rect' } },
+      { when: { 'data.relations': { gt: 3 } }, style: { size: 28, color: 'accent-700' } },
     ],
     edgeStyle: [{ style: { showLabel: true, curve: 'arc' } }],
     height: '100%',
@@ -59,7 +59,7 @@ export const knowledgeMap = (opts: KnowledgeMapOptions): SchemaNode => ({
     layout: { type: 'force' },
     nodeStyle: [
       { style: { size: 14, color: 'neutral-400' } },
-      { when: { type: opts.entity }, style: { size: 20, color: 'primary-500' } },
+      { when: { type: opts.entity }, style: { size: 20, color: 'accent-500' } },
       { when: { unresolved: true }, style: { color: 'neutral-200' } },
     ],
     edgeStyle: [{ style: { curve: 'arc', arrow: 'target' } }],
@@ -83,7 +83,7 @@ export const contentTree: SchemaNode = {
     layout: { type: 'tree', options: { direction: 'right', levelGap: 200 } },
     nodeStyle: [
       { style: { size: 12, color: 'neutral-400', shape: 'rect' } },
-      { when: { type: 'CollectionBlock' }, style: { size: 18, color: 'primary-500' } },
+      { when: { type: 'CollectionBlock' }, style: { size: 18, color: 'accent-500' } },
       { when: { 'data.kind': 'call' }, style: { color: 'success-500', icon: 'phone' } },
     ],
     edgeStyle: [{ style: { curve: 'step', arrow: 'target', color: 'neutral-200' } }],
@@ -113,7 +113,7 @@ export const staticDiagram: SchemaNode = {
       ],
     },
     layout: { type: 'tree', options: { direction: 'right' } },
-    nodeStyle: [{ style: { shape: 'rect', size: 22, color: 'primary-500' } }],
+    nodeStyle: [{ style: { shape: 'rect', size: 22, color: 'accent-500' } }],
     behaviours: ['pan-zoom', 'select'],
     height: '100%',
   },

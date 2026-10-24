@@ -1,5 +1,20 @@
 import type { DesignSystemProps, FlexDirection } from '@we/design-types';
-import { color, font, radius, role, semanticValues, shadow, space, type Tier, TIERS } from '@we/tokens';
+import {
+  color,
+  font,
+  GLOW_SHADOW,
+  radius,
+  role,
+  semanticValues,
+  shadow,
+  space,
+  surfaceImageFixed,
+  surfaceImageRoleOf,
+  surfaceImageVar,
+  type Tier,
+  TIERS,
+  toneVariables,
+} from '@we/tokens';
 
 import { dataUriToBlob } from './saveFile';
 import { tierQuery } from './surface';
@@ -66,6 +81,9 @@ export const layoutKeys = [
 
 /** Visual layer: appearance & decoration. Most components. */
 export const visualKeys = [
+  // The colour family the element draws with: re-points the accent's roles inside it. See
+  // `toneVariables` in @we/tokens. Declares nothing in the generated stylesheet; it sets variables.
+  'tone',
   'bg',
   'bgImage',
   'bgFit',
@@ -416,6 +434,10 @@ export function tokenVar(prefix: string, token?: string, fallback = '0', axis?: 
   // A colour prop may name a semantic role instead of a scale position.
   if (prefix === 'color' && ROLE_NAMES.has(token)) return `var(--we-role-${token})`;
 
+  // The glow is written out in place, so it resolves against the accent where it is drawn and a
+  // `tone` colours it — see GLOW_SHADOW in @we/tokens.
+  if (prefix === 'shadow' && token === 'glow') return GLOW_SHADOW;
+
   // `white` and `black` are the colour scale's two named positions. Every other one is
   // `<hue>-<step>`, whose digit keeps it clear of the typo check below; these two are not, and were
   // reported as variables nothing declares while `--we-color-black` is declared and paints.
@@ -566,27 +588,48 @@ export function zIndexVar(value?: string | number): string | undefined {
 }
 
 /**
- * Parse border shorthand value and convert color tokens to CSS variables
- * Example: "1px solid ui-200" -> "1px solid var(--we-color-neutral-200)"
+ * Split CSS at top-level whitespace, keeping anything inside parentheses together:
+ * `var(--a) solid color-mix(in srgb, red, blue)` is three parts, not seven.
+ */
+function topLevelParts(value: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let current = '';
+  for (const char of value.trim()) {
+    if (char === '(') depth++;
+    if (char === ')') depth--;
+    if (/\s/.test(char) && depth === 0) {
+      if (current) parts.push(current);
+      current = '';
+    } else current += char;
+  }
+  if (current) parts.push(current);
+  return parts;
+}
+
+/**
+ * A border shorthand as CSS: its colour resolved from a token or role, and its width from the theme.
+ *
+ * "1px solid border" → "var(--we-border-width, 1px) solid var(--we-role-border)".
+ *
+ * **`1px` is the theme's hairline.** A theme's `borderWidth` moves `--we-border-width`, which is 1px
+ * until it does, and a border written `1px` follows it — the same width a theme sets for every
+ * component it draws. So a template's dividers and outlines thicken with the theme's rather than
+ * staying behind as the only thin lines on the screen. A border that must not follow writes some
+ * other width; `2px` and `0.5px` are their own.
+ *
+ * Parts are split at the top level, so a colour written as `var(…)`, `color-mix(…)` or `rgb(…)`
+ * passes through whole while the width and the style are still read.
  */
 export function parseBorder(value: string | undefined, defaultValue = ''): string {
   const val = value ?? defaultValue;
   if (!val) return '';
-
-  // If it contains var(, #, or rgb, assume it's already processed
-  if (val.includes('var(') || val.includes('#') || val.includes('rgb')) {
-    return val;
-  }
-
-  // Parse border shorthand: "1px solid ui-200" — all 3 parts required
-  const parts = val.split(' ');
-  if (parts.length >= 3) {
-    const [width, style, ...colorParts] = parts;
-    const color = colorParts.join(' ');
-    return `${width} ${style} ${tokenVar('color', color, '')}`;
-  }
-
-  return val;
+  const parts = topLevelParts(val);
+  if (parts.length < 3) return val;
+  const [width, style, ...colorParts] = parts;
+  const color = colorParts.join(' ');
+  const resolvedColor = /[(#]/.test(color) ? color : tokenVar('color', color, '');
+  return `${width === '1px' ? 'var(--we-border-width, 1px)' : width} ${style} ${resolvedColor}`;
 }
 
 export function getMarginValues(props: DesignSystemProps) {
@@ -1041,6 +1084,17 @@ export function mapFlexAxes(props: DesignSystemProps, direction: FlexDirection) 
 /** Framework-neutral CSS style object: CSS-canonical kebab-case keys → value. */
 export type CSSStyleObject = Record<string, string | number | undefined>;
 
+/**
+ * A state bag that adds a ring and says nothing about the shadow keeps the element's resting shadow
+ * as a second layer, rather than replacing it — a raised card stays raised while it has focus.
+ */
+export function withRestingShadow<T extends { ring?: string; shadow?: string }>(
+  state: T,
+  resting: { shadow?: string },
+): T {
+  return state.ring && !state.shadow && resting.shadow ? { ...state, shadow: resting.shadow } : state;
+}
+
 /** Props accepted by buildLayoutStyles — DS props plus a `reverse` flag and a `styles` escape hatch. */
 export type LayoutStyleProps = DesignSystemProps & {
   reverse?: boolean;
@@ -1054,6 +1108,9 @@ export function buildLayoutStyles(props: LayoutStyleProps, direction: 'row' | 'c
     'flex-direction': props.reverse ? `${direction}-reverse` : direction,
     'flex-wrap': props.wrap ? 'wrap' : 'nowrap',
   };
+
+  // The tone first: it re-points the accent roles that `bg`, `color` and borders may name below.
+  if (props.tone) Object.assign(style, toneVariables(props.tone));
 
   // Colors & backgrounds
   if (props.bg) {
@@ -1076,6 +1133,13 @@ export function buildLayoutStyles(props: LayoutStyleProps, direction: 'row' | 'c
       style['background-image'] = `var(--we-gradient-${props.bg.slice(9)})`;
     } else {
       style['background-color'] = tokenVar('color', props.bg);
+      // A surface role paints the theme's image for that surface over its colour — see
+      // SURFACE_IMAGE_ROLES in @we/tokens. An element's own bgImage, below, replaces it.
+      const surface = surfaceImageRoleOf(props.bg);
+      if (surface && !props.bgImage) {
+        style['background-image'] = `var(${surfaceImageVar(surface)}, none)`;
+        if (surfaceImageFixed(surface)) style['background-attachment'] = 'fixed';
+      }
     }
   }
   if (props.bgImage) {
@@ -1119,7 +1183,9 @@ export function buildLayoutStyles(props: LayoutStyleProps, direction: 'row' | 'c
   if (props.borderLeft) style['border-left'] = parseBorder(props.borderLeft);
   if (props.borderWidth) style['border-width'] = props.borderWidth;
   if (props.shadow || props.ring) {
-    const parts = [props.ring, props.shadow].filter(Boolean).join(', ');
+    // Resolved as a token: it was passed through as written, so `shadow: 'md'` on a Column became
+    // `box-shadow: md`, which is invalid, and the elevation every template asked for was never drawn.
+    const parts = [props.ring, props.shadow ? tokenVar('shadow', props.shadow) : undefined].filter(Boolean).join(', ');
     style['box-shadow'] = parts;
   }
   // `x`/`y`/`rotate` compose into this, in front of whatever the caller wrote — see composeTransform.
@@ -1137,7 +1203,9 @@ export function buildLayoutStyles(props: LayoutStyleProps, direction: 'row' | 'c
   // spelled it in full, which is why `we-text` was unaffected and a `Column` was not.
   if (props.fontSize) style['font-size'] = tokenVar('font-size', props.fontSize);
   if (props.lineHeight) style['line-height'] = resolveLineHeight(props.lineHeight);
-  if (props.letterSpacing) style['letter-spacing'] = props.letterSpacing;
+  // A token, as the Lit path resolves it: `wide` written as itself is not a length, so the
+  // declaration was dropped and a layout component's tracking silently did nothing.
+  if (props.letterSpacing) style['letter-spacing'] = tokenVar('letter-spacing', props.letterSpacing);
   if (props.textDecoration) style['text-decoration'] = props.textDecoration;
   if (props.textTransform) style['text-transform'] = props.textTransform;
   if (props.whiteSpace) style['white-space'] = props.whiteSpace;

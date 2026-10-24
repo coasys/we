@@ -13,6 +13,7 @@ import {
   tierKeys,
   toInteractiveVars,
   warnIfUnsurfaced,
+  withRestingShadow,
 } from '../index';
 
 // Re-export neutral pieces consumed unchanged elsewhere (e.g. app-framework's dsInterop
@@ -22,6 +23,20 @@ export { INTERACTIVE_SPECS, TIER_PROP_KEYS, tierKeys, tierRulesCSS } from '../in
 export type { CSSStyleObject } from '../index';
 
 export type MaybeAccessor<T> = T | Accessor<T>;
+
+/**
+ * A set of props to spread onto a `we-*` element, each delivered as a property.
+ *
+ * Solid assigns a computed prop on a custom element as a LOWERCASED property, and a spread is
+ * computed by nature: `{...{ textTransform: 'uppercase' }}` sets `el.texttransform`, which the
+ * element never reads, and the value is dropped without a trace. Only keys whose name is already
+ * lowercase — `variant`, `color` — survived, which is how the shared label styles lost their
+ * capitals and tracking in every hand-written panel. A `prop:` key is assigned as written, so
+ * `{...weProps(SECTION_LABEL_PROPS)}` delivers every key. `check:we-props` refuses any other spread.
+ */
+export function weProps<T extends Record<string, unknown>>(props: T): { [K in keyof T as `prop:${K & string}`]: T[K] } {
+  return Object.fromEntries(Object.entries(props).map(([key, value]) => [`prop:${key}`, value])) as never;
+}
 
 export function toValue<T>(v: MaybeAccessor<T>): T {
   return typeof v === 'function' ? (v as Accessor<T>)() : v;
@@ -120,18 +135,21 @@ export function useStateProps(
     // here reproduces the same active-over-hover-over-focus precedence the old
     // JS-merge order (focus, then hover, then active) produced.
     const focusVars = hasFocus()
-      ? toInteractiveVars('focus-', buildStateFragmentStyles(props.focusProps!, direction))
+      ? toInteractiveVars('focus-', buildStateFragmentStyles(withRestingShadow(props.focusProps!, props), direction))
       : {};
     const hoverVars = hasHover()
-      ? toInteractiveVars('hover-', buildStateFragmentStyles(props.hoverProps!, direction))
+      ? toInteractiveVars('hover-', buildStateFragmentStyles(withRestingShadow(props.hoverProps!, props), direction))
       : {};
     const activeVars = hasActive()
-      ? toInteractiveVars('active-', buildStateFragmentStyles(props.activeProps!, direction))
+      ? toInteractiveVars('active-', buildStateFragmentStyles(withRestingShadow(props.activeProps!, props), direction))
       : {};
     // Layout elements have no native :disabled — the stylesheet keys the disabled
     // state off aria-disabled="true", which the consumer sets alongside disabledProps.
     const disabledVars = hasDisabled()
-      ? toInteractiveVars('disabled-', buildStateFragmentStyles(props.disabledProps!, direction))
+      ? toInteractiveVars(
+          'disabled-',
+          buildStateFragmentStyles(withRestingShadow(props.disabledProps!, props), direction),
+        )
       : {};
 
     /*

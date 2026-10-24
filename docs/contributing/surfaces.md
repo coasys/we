@@ -126,8 +126,8 @@ Token overrides plus optional CSS, layered over any template. The parametric voc
 `ThemeOverrides`; a theme needing hand-written CSS is a theme the parametric system could not
 express, and two of the built-ins (`channels`, `timeline`) exist to find out how far it stretches.
 
-- **Lives in** `packages/design-system/2-themes/src/<name>/`
-- **Conventions** [2-themes/CONVENTIONS.md](../../packages/design-system/2-themes/CONVENTIONS.md) — "Adding a New Theme"
+- **Lives in** `THEME_PRESETS` in `packages/design-system/2-themes/src/presets.ts`, with `src/<name>/` for any CSS
+- **Conventions** [THEME_AUTHORING.md](../../packages/design-system/2-themes/THEME_AUTHORING.md) — how to write one, built-ins at the end; [theming.md](../architecture/theming.md) for how the system works
 - **Copy** `packages/design-system/2-themes/src/cyberpunk/` (CSS + parameters) or `THEME_PRESETS.channels` (parameters only)
 - **Register** add to `themeRegistry` in `packages/app-shell/src/shared/registries/themeRegistry.ts`
 - **Verify** `pnpm --filter @we/themes test` — the contrast and sanitise suites are the real check

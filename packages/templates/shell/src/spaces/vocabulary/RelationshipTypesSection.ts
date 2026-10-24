@@ -215,7 +215,7 @@ export const relationshipTypesSection: SchemaNode = sectionCard({
   aside: {
     type: 'we-button',
     props: {
-      variant: 'secondary',
+      variant: 'soft',
       size: 'sm',
       onClick: { $setLocal: 'createRelationshipTypeOpen', value: true },
     },

@@ -49,7 +49,7 @@ const mutationButtons = buttonRow(undefined, [
   ['addRouteChild', 'plus', 'Add route child'],
 ]);
 
-const mutationButtons2 = buttonRow('secondary', [
+const mutationButtons2 = buttonRow('soft', [
   ['removeFromMiddle', 'arrows-in-line-vertical', 'Remove middle'],
   ['reorderChildren', 'arrows-down-up', 'Reorder'],
   ['deepNestedProp', 'tree-structure', 'Deep prop'],

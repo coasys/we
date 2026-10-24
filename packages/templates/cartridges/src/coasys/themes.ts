@@ -46,7 +46,7 @@ export const coasysTheme: FixtureTheme = {
   icon: 'hexagon',
   overrides: {
     schemaVersion: 6,
-    primaryHue: 160,
+    accentHue: 160,
     saturation: 60,
     neutralHue: 278,
     neutralSaturation: 22,

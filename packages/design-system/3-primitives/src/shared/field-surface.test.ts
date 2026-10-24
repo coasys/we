@@ -1,3 +1,4 @@
+import { FOCUS_RING_BEYOND_BORDER } from '@we/tokens';
 import { describe, expect, it } from 'vitest';
 
 import DatePicker from '../primitives/date-picker';
@@ -74,7 +75,7 @@ describe('fieldSurface is the one definition', () => {
   });
 
   it.each(PART_PAINTED)('%s answers focus with the ring rather than an inset halo', (_name, ctor) => {
-    // The old spelling: `2px solid accent-muted` inset by -1px, which read as a halo inside the edge
+    // The old spelling: `2px solid accent-soft` inset by -1px, which read as a halo inside the edge
     // rather than as the edge thickening — and made these the controls answering focus differently.
     expect(cssTextOf(ctor)).not.toContain('outline-offset: -1px');
     expect(cssTextOf(ctor)).toContain('--we-ring-color');
@@ -89,7 +90,8 @@ describe('the host-painted fields say the same thing in DS props', () => {
   it.each(HOST_PAINTED)('%s marks keyboard focus', (_name, ctor) => {
     // we-number-input had no focus state at all, and its inner input is `all: unset` — so tabbing
     // into it put the caret somewhere with nothing on screen saying where. WCAG 2.4.7.
-    expect(defaultsOf(ctor).focusProps).toMatchObject({ ring: '0 0 0 1px var(--we-ring-color)' });
+    // Border recoloured to the ring, and the ring the rest of the theme's ring width beyond it.
+    expect(defaultsOf(ctor).focusProps).toMatchObject({ ring: FOCUS_RING_BEYOND_BORDER });
   });
 
   it.each(HOST_PAINTED)('%s answers the pointer with the fill, not the edge alone', (_name, ctor) => {

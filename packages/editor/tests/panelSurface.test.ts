@@ -16,14 +16,17 @@ import { describe, expect, it } from 'vitest';
  * and its symptom is a comparison against a *neighbouring* panel — there is nothing a single
  * panel's own render can be checked against.
  */
-const PANELS = ['InspectorPanel', 'ThemePanel', 'CodePanel'];
+const PANELS = ['InspectorPanel', 'ThemePanel', 'CodePanel', 'PanelShell'];
 
 describe('editor panels defer to the dock frame for their surface', () => {
   it.each(PANELS)('%s paints no background on its root', (name) => {
-    const source = readFileSync(join(__dirname, `../src/components/${name}.tsx`), 'utf8');
-    // The root is the first element of the component's top-level return.
-    const root = /return \(\s*<Column([\s\S]*?)>/.exec(source.slice(source.indexOf(`export function ${name}`)))?.[1];
-    expect(root, `${name} root <Column> not found`).toBeTruthy();
+    const file = name === 'PanelShell' ? 'panelKit' : name;
+    const source = readFileSync(join(__dirname, `../src/components/${file}.tsx`), 'utf8');
+    // The root is the first element of the component's top-level return — a Column, or the kit's
+    // PanelShell, which is held to the same rule below. Comments before it are skipped.
+    const body = source.slice(source.indexOf(`export function ${name}`)).replace(/\/\*[\s\S]*?\*\//g, '');
+    const root = /return \(\s*<(?:Column|PanelShell)([\s\S]*?)>/.exec(body)?.[1];
+    expect(root, `${name} root not found`).toBeTruthy();
     expect(root, `${name} paints its own background — the dock frame already paints one`).not.toMatch(/\bbg=["'{]/);
   });
 });

@@ -27,13 +27,37 @@ exports[`token CSS generation > color.css — hues, lightness ramp, palettes, ro
   --we-state-active: -0.09;
   --we-color-saturation: 60;
   --we-color-neutral-saturation: 10;
+  --we-color-accent-saturation: var(--we-color-saturation);
+  --we-color-success-saturation: var(--we-color-saturation);
+  --we-color-warning-saturation: var(--we-color-saturation);
+  --we-color-danger-saturation: var(--we-color-saturation);
+  --we-color-red-saturation: var(--we-color-palette-saturation, var(--we-color-saturation));
+  --we-color-orange-saturation: var(--we-color-palette-saturation, var(--we-color-saturation));
+  --we-color-yellow-saturation: var(--we-color-palette-saturation, var(--we-color-saturation));
+  --we-color-lime-saturation: var(--we-color-palette-saturation, var(--we-color-saturation));
+  --we-color-green-saturation: var(--we-color-palette-saturation, var(--we-color-saturation));
+  --we-color-teal-saturation: var(--we-color-palette-saturation, var(--we-color-saturation));
+  --we-color-cyan-saturation: var(--we-color-palette-saturation, var(--we-color-saturation));
+  --we-color-blue-saturation: var(--we-color-palette-saturation, var(--we-color-saturation));
+  --we-color-purple-saturation: var(--we-color-palette-saturation, var(--we-color-saturation));
+  --we-color-pink-saturation: var(--we-color-palette-saturation, var(--we-color-saturation));
 
   /* Color Hues */
-  --we-color-neutral-hue: var(--we-color-primary-hue);
-  --we-color-primary-hue: 288;
+  --we-color-neutral-hue: var(--we-color-accent-hue);
+  --we-color-accent-hue: 288;
   --we-color-success-hue: 145;
   --we-color-warning-hue: 90;
   --we-color-danger-hue: 17;
+  --we-color-red-hue: 25;
+  --we-color-orange-hue: 55;
+  --we-color-yellow-hue: 95;
+  --we-color-lime-hue: 125;
+  --we-color-green-hue: 150;
+  --we-color-teal-hue: 185;
+  --we-color-cyan-hue: 215;
+  --we-color-blue-hue: 255;
+  --we-color-purple-hue: 300;
+  --we-color-pink-hue: 345;
 
   /* Lightness Scale */
   --we-color-lightness-0: calc(var(--we-color-lightness-floor) + (1 - var(--we-color-ramp-offset)) * var(--we-color-ramp-direction) * (var(--we-color-lightness-ceiling) - var(--we-color-lightness-floor)));
@@ -67,69 +91,229 @@ exports[`token CSS generation > color.css — hues, lightness ramp, palettes, ro
   --we-color-neutral-900: oklch(var(--we-color-lightness-900) calc(var(--we-color-neutral-saturation) / 100 * var(--we-color-neutral-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-900), 1 - var(--we-color-lightness-900)))) var(--we-color-neutral-hue));
   --we-color-neutral-1000: oklch(var(--we-color-lightness-1000) calc(var(--we-color-neutral-saturation) / 100 * var(--we-color-neutral-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-1000), 1 - var(--we-color-lightness-1000)))) var(--we-color-neutral-hue));
 
-  /* Primary Colors */
-  --we-color-primary-0: oklch(var(--we-color-lightness-0) calc(var(--we-color-saturation) / 100 * var(--we-color-primary-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-0), 1 - var(--we-color-lightness-0)))) var(--we-color-primary-hue));
-  --we-color-primary-25: oklch(var(--we-color-lightness-25) calc(var(--we-color-saturation) / 100 * var(--we-color-primary-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-25), 1 - var(--we-color-lightness-25)))) var(--we-color-primary-hue));
-  --we-color-primary-50: oklch(var(--we-color-lightness-50) calc(var(--we-color-saturation) / 100 * var(--we-color-primary-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-50), 1 - var(--we-color-lightness-50)))) var(--we-color-primary-hue));
-  --we-color-primary-75: oklch(var(--we-color-lightness-75) calc(var(--we-color-saturation) / 100 * var(--we-color-primary-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-75), 1 - var(--we-color-lightness-75)))) var(--we-color-primary-hue));
-  --we-color-primary-100: oklch(var(--we-color-lightness-100) calc(var(--we-color-saturation) / 100 * var(--we-color-primary-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-100), 1 - var(--we-color-lightness-100)))) var(--we-color-primary-hue));
-  --we-color-primary-200: oklch(var(--we-color-lightness-200) calc(var(--we-color-saturation) / 100 * var(--we-color-primary-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-200), 1 - var(--we-color-lightness-200)))) var(--we-color-primary-hue));
-  --we-color-primary-300: oklch(var(--we-color-lightness-300) calc(var(--we-color-saturation) / 100 * var(--we-color-primary-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-300), 1 - var(--we-color-lightness-300)))) var(--we-color-primary-hue));
-  --we-color-primary-400: oklch(var(--we-color-lightness-400) calc(var(--we-color-saturation) / 100 * var(--we-color-primary-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-400), 1 - var(--we-color-lightness-400)))) var(--we-color-primary-hue));
-  --we-color-primary-500: oklch(var(--we-color-lightness-500) calc(var(--we-color-saturation) / 100 * var(--we-color-primary-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-500), 1 - var(--we-color-lightness-500)))) var(--we-color-primary-hue));
-  --we-color-primary-600: oklch(var(--we-color-lightness-600) calc(var(--we-color-saturation) / 100 * var(--we-color-primary-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-600), 1 - var(--we-color-lightness-600)))) var(--we-color-primary-hue));
-  --we-color-primary-700: oklch(var(--we-color-lightness-700) calc(var(--we-color-saturation) / 100 * var(--we-color-primary-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-700), 1 - var(--we-color-lightness-700)))) var(--we-color-primary-hue));
-  --we-color-primary-800: oklch(var(--we-color-lightness-800) calc(var(--we-color-saturation) / 100 * var(--we-color-primary-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-800), 1 - var(--we-color-lightness-800)))) var(--we-color-primary-hue));
-  --we-color-primary-900: oklch(var(--we-color-lightness-900) calc(var(--we-color-saturation) / 100 * var(--we-color-primary-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-900), 1 - var(--we-color-lightness-900)))) var(--we-color-primary-hue));
-  --we-color-primary-1000: oklch(var(--we-color-lightness-1000) calc(var(--we-color-saturation) / 100 * var(--we-color-primary-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-1000), 1 - var(--we-color-lightness-1000)))) var(--we-color-primary-hue));
+  /* Accent Colors */
+  --we-color-accent-0: oklch(var(--we-color-lightness-0) calc(var(--we-color-accent-saturation) / 100 * var(--we-color-accent-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-0), 1 - var(--we-color-lightness-0)))) var(--we-color-accent-hue));
+  --we-color-accent-25: oklch(var(--we-color-lightness-25) calc(var(--we-color-accent-saturation) / 100 * var(--we-color-accent-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-25), 1 - var(--we-color-lightness-25)))) var(--we-color-accent-hue));
+  --we-color-accent-50: oklch(var(--we-color-lightness-50) calc(var(--we-color-accent-saturation) / 100 * var(--we-color-accent-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-50), 1 - var(--we-color-lightness-50)))) var(--we-color-accent-hue));
+  --we-color-accent-75: oklch(var(--we-color-lightness-75) calc(var(--we-color-accent-saturation) / 100 * var(--we-color-accent-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-75), 1 - var(--we-color-lightness-75)))) var(--we-color-accent-hue));
+  --we-color-accent-100: oklch(var(--we-color-lightness-100) calc(var(--we-color-accent-saturation) / 100 * var(--we-color-accent-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-100), 1 - var(--we-color-lightness-100)))) var(--we-color-accent-hue));
+  --we-color-accent-200: oklch(var(--we-color-lightness-200) calc(var(--we-color-accent-saturation) / 100 * var(--we-color-accent-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-200), 1 - var(--we-color-lightness-200)))) var(--we-color-accent-hue));
+  --we-color-accent-300: oklch(var(--we-color-lightness-300) calc(var(--we-color-accent-saturation) / 100 * var(--we-color-accent-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-300), 1 - var(--we-color-lightness-300)))) var(--we-color-accent-hue));
+  --we-color-accent-400: oklch(var(--we-color-lightness-400) calc(var(--we-color-accent-saturation) / 100 * var(--we-color-accent-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-400), 1 - var(--we-color-lightness-400)))) var(--we-color-accent-hue));
+  --we-color-accent-500: oklch(var(--we-color-lightness-500) calc(var(--we-color-accent-saturation) / 100 * var(--we-color-accent-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-500), 1 - var(--we-color-lightness-500)))) var(--we-color-accent-hue));
+  --we-color-accent-600: oklch(var(--we-color-lightness-600) calc(var(--we-color-accent-saturation) / 100 * var(--we-color-accent-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-600), 1 - var(--we-color-lightness-600)))) var(--we-color-accent-hue));
+  --we-color-accent-700: oklch(var(--we-color-lightness-700) calc(var(--we-color-accent-saturation) / 100 * var(--we-color-accent-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-700), 1 - var(--we-color-lightness-700)))) var(--we-color-accent-hue));
+  --we-color-accent-800: oklch(var(--we-color-lightness-800) calc(var(--we-color-accent-saturation) / 100 * var(--we-color-accent-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-800), 1 - var(--we-color-lightness-800)))) var(--we-color-accent-hue));
+  --we-color-accent-900: oklch(var(--we-color-lightness-900) calc(var(--we-color-accent-saturation) / 100 * var(--we-color-accent-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-900), 1 - var(--we-color-lightness-900)))) var(--we-color-accent-hue));
+  --we-color-accent-1000: oklch(var(--we-color-lightness-1000) calc(var(--we-color-accent-saturation) / 100 * var(--we-color-accent-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-1000), 1 - var(--we-color-lightness-1000)))) var(--we-color-accent-hue));
 
   /* Success Colors */
-  --we-color-success-0: oklch(var(--we-color-lightness-0) calc(var(--we-color-saturation) / 100 * var(--we-color-success-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-0), 1 - var(--we-color-lightness-0)))) var(--we-color-success-hue));
-  --we-color-success-25: oklch(var(--we-color-lightness-25) calc(var(--we-color-saturation) / 100 * var(--we-color-success-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-25), 1 - var(--we-color-lightness-25)))) var(--we-color-success-hue));
-  --we-color-success-50: oklch(var(--we-color-lightness-50) calc(var(--we-color-saturation) / 100 * var(--we-color-success-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-50), 1 - var(--we-color-lightness-50)))) var(--we-color-success-hue));
-  --we-color-success-75: oklch(var(--we-color-lightness-75) calc(var(--we-color-saturation) / 100 * var(--we-color-success-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-75), 1 - var(--we-color-lightness-75)))) var(--we-color-success-hue));
-  --we-color-success-100: oklch(var(--we-color-lightness-100) calc(var(--we-color-saturation) / 100 * var(--we-color-success-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-100), 1 - var(--we-color-lightness-100)))) var(--we-color-success-hue));
-  --we-color-success-200: oklch(var(--we-color-lightness-200) calc(var(--we-color-saturation) / 100 * var(--we-color-success-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-200), 1 - var(--we-color-lightness-200)))) var(--we-color-success-hue));
-  --we-color-success-300: oklch(var(--we-color-lightness-300) calc(var(--we-color-saturation) / 100 * var(--we-color-success-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-300), 1 - var(--we-color-lightness-300)))) var(--we-color-success-hue));
-  --we-color-success-400: oklch(var(--we-color-lightness-400) calc(var(--we-color-saturation) / 100 * var(--we-color-success-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-400), 1 - var(--we-color-lightness-400)))) var(--we-color-success-hue));
-  --we-color-success-500: oklch(var(--we-color-lightness-500) calc(var(--we-color-saturation) / 100 * var(--we-color-success-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-500), 1 - var(--we-color-lightness-500)))) var(--we-color-success-hue));
-  --we-color-success-600: oklch(var(--we-color-lightness-600) calc(var(--we-color-saturation) / 100 * var(--we-color-success-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-600), 1 - var(--we-color-lightness-600)))) var(--we-color-success-hue));
-  --we-color-success-700: oklch(var(--we-color-lightness-700) calc(var(--we-color-saturation) / 100 * var(--we-color-success-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-700), 1 - var(--we-color-lightness-700)))) var(--we-color-success-hue));
-  --we-color-success-800: oklch(var(--we-color-lightness-800) calc(var(--we-color-saturation) / 100 * var(--we-color-success-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-800), 1 - var(--we-color-lightness-800)))) var(--we-color-success-hue));
-  --we-color-success-900: oklch(var(--we-color-lightness-900) calc(var(--we-color-saturation) / 100 * var(--we-color-success-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-900), 1 - var(--we-color-lightness-900)))) var(--we-color-success-hue));
-  --we-color-success-1000: oklch(var(--we-color-lightness-1000) calc(var(--we-color-saturation) / 100 * var(--we-color-success-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-1000), 1 - var(--we-color-lightness-1000)))) var(--we-color-success-hue));
+  --we-color-success-0: oklch(var(--we-color-lightness-0) calc(var(--we-color-success-saturation) / 100 * var(--we-color-success-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-0), 1 - var(--we-color-lightness-0)))) var(--we-color-success-hue));
+  --we-color-success-25: oklch(var(--we-color-lightness-25) calc(var(--we-color-success-saturation) / 100 * var(--we-color-success-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-25), 1 - var(--we-color-lightness-25)))) var(--we-color-success-hue));
+  --we-color-success-50: oklch(var(--we-color-lightness-50) calc(var(--we-color-success-saturation) / 100 * var(--we-color-success-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-50), 1 - var(--we-color-lightness-50)))) var(--we-color-success-hue));
+  --we-color-success-75: oklch(var(--we-color-lightness-75) calc(var(--we-color-success-saturation) / 100 * var(--we-color-success-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-75), 1 - var(--we-color-lightness-75)))) var(--we-color-success-hue));
+  --we-color-success-100: oklch(var(--we-color-lightness-100) calc(var(--we-color-success-saturation) / 100 * var(--we-color-success-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-100), 1 - var(--we-color-lightness-100)))) var(--we-color-success-hue));
+  --we-color-success-200: oklch(var(--we-color-lightness-200) calc(var(--we-color-success-saturation) / 100 * var(--we-color-success-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-200), 1 - var(--we-color-lightness-200)))) var(--we-color-success-hue));
+  --we-color-success-300: oklch(var(--we-color-lightness-300) calc(var(--we-color-success-saturation) / 100 * var(--we-color-success-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-300), 1 - var(--we-color-lightness-300)))) var(--we-color-success-hue));
+  --we-color-success-400: oklch(var(--we-color-lightness-400) calc(var(--we-color-success-saturation) / 100 * var(--we-color-success-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-400), 1 - var(--we-color-lightness-400)))) var(--we-color-success-hue));
+  --we-color-success-500: oklch(var(--we-color-lightness-500) calc(var(--we-color-success-saturation) / 100 * var(--we-color-success-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-500), 1 - var(--we-color-lightness-500)))) var(--we-color-success-hue));
+  --we-color-success-600: oklch(var(--we-color-lightness-600) calc(var(--we-color-success-saturation) / 100 * var(--we-color-success-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-600), 1 - var(--we-color-lightness-600)))) var(--we-color-success-hue));
+  --we-color-success-700: oklch(var(--we-color-lightness-700) calc(var(--we-color-success-saturation) / 100 * var(--we-color-success-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-700), 1 - var(--we-color-lightness-700)))) var(--we-color-success-hue));
+  --we-color-success-800: oklch(var(--we-color-lightness-800) calc(var(--we-color-success-saturation) / 100 * var(--we-color-success-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-800), 1 - var(--we-color-lightness-800)))) var(--we-color-success-hue));
+  --we-color-success-900: oklch(var(--we-color-lightness-900) calc(var(--we-color-success-saturation) / 100 * var(--we-color-success-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-900), 1 - var(--we-color-lightness-900)))) var(--we-color-success-hue));
+  --we-color-success-1000: oklch(var(--we-color-lightness-1000) calc(var(--we-color-success-saturation) / 100 * var(--we-color-success-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-1000), 1 - var(--we-color-lightness-1000)))) var(--we-color-success-hue));
 
   /* Warning Colors */
-  --we-color-warning-0: oklch(var(--we-color-lightness-0) calc(var(--we-color-saturation) / 100 * var(--we-color-warning-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-0), 1 - var(--we-color-lightness-0)))) var(--we-color-warning-hue));
-  --we-color-warning-25: oklch(var(--we-color-lightness-25) calc(var(--we-color-saturation) / 100 * var(--we-color-warning-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-25), 1 - var(--we-color-lightness-25)))) var(--we-color-warning-hue));
-  --we-color-warning-50: oklch(var(--we-color-lightness-50) calc(var(--we-color-saturation) / 100 * var(--we-color-warning-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-50), 1 - var(--we-color-lightness-50)))) var(--we-color-warning-hue));
-  --we-color-warning-75: oklch(var(--we-color-lightness-75) calc(var(--we-color-saturation) / 100 * var(--we-color-warning-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-75), 1 - var(--we-color-lightness-75)))) var(--we-color-warning-hue));
-  --we-color-warning-100: oklch(var(--we-color-lightness-100) calc(var(--we-color-saturation) / 100 * var(--we-color-warning-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-100), 1 - var(--we-color-lightness-100)))) var(--we-color-warning-hue));
-  --we-color-warning-200: oklch(var(--we-color-lightness-200) calc(var(--we-color-saturation) / 100 * var(--we-color-warning-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-200), 1 - var(--we-color-lightness-200)))) var(--we-color-warning-hue));
-  --we-color-warning-300: oklch(var(--we-color-lightness-300) calc(var(--we-color-saturation) / 100 * var(--we-color-warning-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-300), 1 - var(--we-color-lightness-300)))) var(--we-color-warning-hue));
-  --we-color-warning-400: oklch(var(--we-color-lightness-400) calc(var(--we-color-saturation) / 100 * var(--we-color-warning-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-400), 1 - var(--we-color-lightness-400)))) var(--we-color-warning-hue));
-  --we-color-warning-500: oklch(var(--we-color-lightness-500) calc(var(--we-color-saturation) / 100 * var(--we-color-warning-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-500), 1 - var(--we-color-lightness-500)))) var(--we-color-warning-hue));
-  --we-color-warning-600: oklch(var(--we-color-lightness-600) calc(var(--we-color-saturation) / 100 * var(--we-color-warning-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-600), 1 - var(--we-color-lightness-600)))) var(--we-color-warning-hue));
-  --we-color-warning-700: oklch(var(--we-color-lightness-700) calc(var(--we-color-saturation) / 100 * var(--we-color-warning-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-700), 1 - var(--we-color-lightness-700)))) var(--we-color-warning-hue));
-  --we-color-warning-800: oklch(var(--we-color-lightness-800) calc(var(--we-color-saturation) / 100 * var(--we-color-warning-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-800), 1 - var(--we-color-lightness-800)))) var(--we-color-warning-hue));
-  --we-color-warning-900: oklch(var(--we-color-lightness-900) calc(var(--we-color-saturation) / 100 * var(--we-color-warning-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-900), 1 - var(--we-color-lightness-900)))) var(--we-color-warning-hue));
-  --we-color-warning-1000: oklch(var(--we-color-lightness-1000) calc(var(--we-color-saturation) / 100 * var(--we-color-warning-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-1000), 1 - var(--we-color-lightness-1000)))) var(--we-color-warning-hue));
+  --we-color-warning-0: oklch(var(--we-color-lightness-0) calc(var(--we-color-warning-saturation) / 100 * var(--we-color-warning-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-0), 1 - var(--we-color-lightness-0)))) var(--we-color-warning-hue));
+  --we-color-warning-25: oklch(var(--we-color-lightness-25) calc(var(--we-color-warning-saturation) / 100 * var(--we-color-warning-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-25), 1 - var(--we-color-lightness-25)))) var(--we-color-warning-hue));
+  --we-color-warning-50: oklch(var(--we-color-lightness-50) calc(var(--we-color-warning-saturation) / 100 * var(--we-color-warning-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-50), 1 - var(--we-color-lightness-50)))) var(--we-color-warning-hue));
+  --we-color-warning-75: oklch(var(--we-color-lightness-75) calc(var(--we-color-warning-saturation) / 100 * var(--we-color-warning-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-75), 1 - var(--we-color-lightness-75)))) var(--we-color-warning-hue));
+  --we-color-warning-100: oklch(var(--we-color-lightness-100) calc(var(--we-color-warning-saturation) / 100 * var(--we-color-warning-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-100), 1 - var(--we-color-lightness-100)))) var(--we-color-warning-hue));
+  --we-color-warning-200: oklch(var(--we-color-lightness-200) calc(var(--we-color-warning-saturation) / 100 * var(--we-color-warning-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-200), 1 - var(--we-color-lightness-200)))) var(--we-color-warning-hue));
+  --we-color-warning-300: oklch(var(--we-color-lightness-300) calc(var(--we-color-warning-saturation) / 100 * var(--we-color-warning-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-300), 1 - var(--we-color-lightness-300)))) var(--we-color-warning-hue));
+  --we-color-warning-400: oklch(var(--we-color-lightness-400) calc(var(--we-color-warning-saturation) / 100 * var(--we-color-warning-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-400), 1 - var(--we-color-lightness-400)))) var(--we-color-warning-hue));
+  --we-color-warning-500: oklch(var(--we-color-lightness-500) calc(var(--we-color-warning-saturation) / 100 * var(--we-color-warning-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-500), 1 - var(--we-color-lightness-500)))) var(--we-color-warning-hue));
+  --we-color-warning-600: oklch(var(--we-color-lightness-600) calc(var(--we-color-warning-saturation) / 100 * var(--we-color-warning-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-600), 1 - var(--we-color-lightness-600)))) var(--we-color-warning-hue));
+  --we-color-warning-700: oklch(var(--we-color-lightness-700) calc(var(--we-color-warning-saturation) / 100 * var(--we-color-warning-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-700), 1 - var(--we-color-lightness-700)))) var(--we-color-warning-hue));
+  --we-color-warning-800: oklch(var(--we-color-lightness-800) calc(var(--we-color-warning-saturation) / 100 * var(--we-color-warning-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-800), 1 - var(--we-color-lightness-800)))) var(--we-color-warning-hue));
+  --we-color-warning-900: oklch(var(--we-color-lightness-900) calc(var(--we-color-warning-saturation) / 100 * var(--we-color-warning-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-900), 1 - var(--we-color-lightness-900)))) var(--we-color-warning-hue));
+  --we-color-warning-1000: oklch(var(--we-color-lightness-1000) calc(var(--we-color-warning-saturation) / 100 * var(--we-color-warning-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-1000), 1 - var(--we-color-lightness-1000)))) var(--we-color-warning-hue));
 
   /* Danger Colors */
-  --we-color-danger-0: oklch(var(--we-color-lightness-0) calc(var(--we-color-saturation) / 100 * var(--we-color-danger-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-0), 1 - var(--we-color-lightness-0)))) var(--we-color-danger-hue));
-  --we-color-danger-25: oklch(var(--we-color-lightness-25) calc(var(--we-color-saturation) / 100 * var(--we-color-danger-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-25), 1 - var(--we-color-lightness-25)))) var(--we-color-danger-hue));
-  --we-color-danger-50: oklch(var(--we-color-lightness-50) calc(var(--we-color-saturation) / 100 * var(--we-color-danger-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-50), 1 - var(--we-color-lightness-50)))) var(--we-color-danger-hue));
-  --we-color-danger-75: oklch(var(--we-color-lightness-75) calc(var(--we-color-saturation) / 100 * var(--we-color-danger-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-75), 1 - var(--we-color-lightness-75)))) var(--we-color-danger-hue));
-  --we-color-danger-100: oklch(var(--we-color-lightness-100) calc(var(--we-color-saturation) / 100 * var(--we-color-danger-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-100), 1 - var(--we-color-lightness-100)))) var(--we-color-danger-hue));
-  --we-color-danger-200: oklch(var(--we-color-lightness-200) calc(var(--we-color-saturation) / 100 * var(--we-color-danger-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-200), 1 - var(--we-color-lightness-200)))) var(--we-color-danger-hue));
-  --we-color-danger-300: oklch(var(--we-color-lightness-300) calc(var(--we-color-saturation) / 100 * var(--we-color-danger-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-300), 1 - var(--we-color-lightness-300)))) var(--we-color-danger-hue));
-  --we-color-danger-400: oklch(var(--we-color-lightness-400) calc(var(--we-color-saturation) / 100 * var(--we-color-danger-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-400), 1 - var(--we-color-lightness-400)))) var(--we-color-danger-hue));
-  --we-color-danger-500: oklch(var(--we-color-lightness-500) calc(var(--we-color-saturation) / 100 * var(--we-color-danger-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-500), 1 - var(--we-color-lightness-500)))) var(--we-color-danger-hue));
-  --we-color-danger-600: oklch(var(--we-color-lightness-600) calc(var(--we-color-saturation) / 100 * var(--we-color-danger-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-600), 1 - var(--we-color-lightness-600)))) var(--we-color-danger-hue));
-  --we-color-danger-700: oklch(var(--we-color-lightness-700) calc(var(--we-color-saturation) / 100 * var(--we-color-danger-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-700), 1 - var(--we-color-lightness-700)))) var(--we-color-danger-hue));
-  --we-color-danger-800: oklch(var(--we-color-lightness-800) calc(var(--we-color-saturation) / 100 * var(--we-color-danger-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-800), 1 - var(--we-color-lightness-800)))) var(--we-color-danger-hue));
-  --we-color-danger-900: oklch(var(--we-color-lightness-900) calc(var(--we-color-saturation) / 100 * var(--we-color-danger-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-900), 1 - var(--we-color-lightness-900)))) var(--we-color-danger-hue));
-  --we-color-danger-1000: oklch(var(--we-color-lightness-1000) calc(var(--we-color-saturation) / 100 * var(--we-color-danger-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-1000), 1 - var(--we-color-lightness-1000)))) var(--we-color-danger-hue));
+  --we-color-danger-0: oklch(var(--we-color-lightness-0) calc(var(--we-color-danger-saturation) / 100 * var(--we-color-danger-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-0), 1 - var(--we-color-lightness-0)))) var(--we-color-danger-hue));
+  --we-color-danger-25: oklch(var(--we-color-lightness-25) calc(var(--we-color-danger-saturation) / 100 * var(--we-color-danger-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-25), 1 - var(--we-color-lightness-25)))) var(--we-color-danger-hue));
+  --we-color-danger-50: oklch(var(--we-color-lightness-50) calc(var(--we-color-danger-saturation) / 100 * var(--we-color-danger-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-50), 1 - var(--we-color-lightness-50)))) var(--we-color-danger-hue));
+  --we-color-danger-75: oklch(var(--we-color-lightness-75) calc(var(--we-color-danger-saturation) / 100 * var(--we-color-danger-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-75), 1 - var(--we-color-lightness-75)))) var(--we-color-danger-hue));
+  --we-color-danger-100: oklch(var(--we-color-lightness-100) calc(var(--we-color-danger-saturation) / 100 * var(--we-color-danger-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-100), 1 - var(--we-color-lightness-100)))) var(--we-color-danger-hue));
+  --we-color-danger-200: oklch(var(--we-color-lightness-200) calc(var(--we-color-danger-saturation) / 100 * var(--we-color-danger-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-200), 1 - var(--we-color-lightness-200)))) var(--we-color-danger-hue));
+  --we-color-danger-300: oklch(var(--we-color-lightness-300) calc(var(--we-color-danger-saturation) / 100 * var(--we-color-danger-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-300), 1 - var(--we-color-lightness-300)))) var(--we-color-danger-hue));
+  --we-color-danger-400: oklch(var(--we-color-lightness-400) calc(var(--we-color-danger-saturation) / 100 * var(--we-color-danger-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-400), 1 - var(--we-color-lightness-400)))) var(--we-color-danger-hue));
+  --we-color-danger-500: oklch(var(--we-color-lightness-500) calc(var(--we-color-danger-saturation) / 100 * var(--we-color-danger-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-500), 1 - var(--we-color-lightness-500)))) var(--we-color-danger-hue));
+  --we-color-danger-600: oklch(var(--we-color-lightness-600) calc(var(--we-color-danger-saturation) / 100 * var(--we-color-danger-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-600), 1 - var(--we-color-lightness-600)))) var(--we-color-danger-hue));
+  --we-color-danger-700: oklch(var(--we-color-lightness-700) calc(var(--we-color-danger-saturation) / 100 * var(--we-color-danger-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-700), 1 - var(--we-color-lightness-700)))) var(--we-color-danger-hue));
+  --we-color-danger-800: oklch(var(--we-color-lightness-800) calc(var(--we-color-danger-saturation) / 100 * var(--we-color-danger-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-800), 1 - var(--we-color-lightness-800)))) var(--we-color-danger-hue));
+  --we-color-danger-900: oklch(var(--we-color-lightness-900) calc(var(--we-color-danger-saturation) / 100 * var(--we-color-danger-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-900), 1 - var(--we-color-lightness-900)))) var(--we-color-danger-hue));
+  --we-color-danger-1000: oklch(var(--we-color-lightness-1000) calc(var(--we-color-danger-saturation) / 100 * var(--we-color-danger-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-1000), 1 - var(--we-color-lightness-1000)))) var(--we-color-danger-hue));
+
+  /* Red Colors */
+  --we-color-red-0: oklch(var(--we-color-lightness-0) calc(var(--we-color-red-saturation) / 100 * var(--we-color-red-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-0), 1 - var(--we-color-lightness-0)))) var(--we-color-red-hue));
+  --we-color-red-25: oklch(var(--we-color-lightness-25) calc(var(--we-color-red-saturation) / 100 * var(--we-color-red-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-25), 1 - var(--we-color-lightness-25)))) var(--we-color-red-hue));
+  --we-color-red-50: oklch(var(--we-color-lightness-50) calc(var(--we-color-red-saturation) / 100 * var(--we-color-red-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-50), 1 - var(--we-color-lightness-50)))) var(--we-color-red-hue));
+  --we-color-red-75: oklch(var(--we-color-lightness-75) calc(var(--we-color-red-saturation) / 100 * var(--we-color-red-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-75), 1 - var(--we-color-lightness-75)))) var(--we-color-red-hue));
+  --we-color-red-100: oklch(var(--we-color-lightness-100) calc(var(--we-color-red-saturation) / 100 * var(--we-color-red-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-100), 1 - var(--we-color-lightness-100)))) var(--we-color-red-hue));
+  --we-color-red-200: oklch(var(--we-color-lightness-200) calc(var(--we-color-red-saturation) / 100 * var(--we-color-red-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-200), 1 - var(--we-color-lightness-200)))) var(--we-color-red-hue));
+  --we-color-red-300: oklch(var(--we-color-lightness-300) calc(var(--we-color-red-saturation) / 100 * var(--we-color-red-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-300), 1 - var(--we-color-lightness-300)))) var(--we-color-red-hue));
+  --we-color-red-400: oklch(var(--we-color-lightness-400) calc(var(--we-color-red-saturation) / 100 * var(--we-color-red-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-400), 1 - var(--we-color-lightness-400)))) var(--we-color-red-hue));
+  --we-color-red-500: oklch(var(--we-color-lightness-500) calc(var(--we-color-red-saturation) / 100 * var(--we-color-red-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-500), 1 - var(--we-color-lightness-500)))) var(--we-color-red-hue));
+  --we-color-red-600: oklch(var(--we-color-lightness-600) calc(var(--we-color-red-saturation) / 100 * var(--we-color-red-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-600), 1 - var(--we-color-lightness-600)))) var(--we-color-red-hue));
+  --we-color-red-700: oklch(var(--we-color-lightness-700) calc(var(--we-color-red-saturation) / 100 * var(--we-color-red-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-700), 1 - var(--we-color-lightness-700)))) var(--we-color-red-hue));
+  --we-color-red-800: oklch(var(--we-color-lightness-800) calc(var(--we-color-red-saturation) / 100 * var(--we-color-red-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-800), 1 - var(--we-color-lightness-800)))) var(--we-color-red-hue));
+  --we-color-red-900: oklch(var(--we-color-lightness-900) calc(var(--we-color-red-saturation) / 100 * var(--we-color-red-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-900), 1 - var(--we-color-lightness-900)))) var(--we-color-red-hue));
+  --we-color-red-1000: oklch(var(--we-color-lightness-1000) calc(var(--we-color-red-saturation) / 100 * var(--we-color-red-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-1000), 1 - var(--we-color-lightness-1000)))) var(--we-color-red-hue));
+
+  /* Orange Colors */
+  --we-color-orange-0: oklch(var(--we-color-lightness-0) calc(var(--we-color-orange-saturation) / 100 * var(--we-color-orange-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-0), 1 - var(--we-color-lightness-0)))) var(--we-color-orange-hue));
+  --we-color-orange-25: oklch(var(--we-color-lightness-25) calc(var(--we-color-orange-saturation) / 100 * var(--we-color-orange-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-25), 1 - var(--we-color-lightness-25)))) var(--we-color-orange-hue));
+  --we-color-orange-50: oklch(var(--we-color-lightness-50) calc(var(--we-color-orange-saturation) / 100 * var(--we-color-orange-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-50), 1 - var(--we-color-lightness-50)))) var(--we-color-orange-hue));
+  --we-color-orange-75: oklch(var(--we-color-lightness-75) calc(var(--we-color-orange-saturation) / 100 * var(--we-color-orange-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-75), 1 - var(--we-color-lightness-75)))) var(--we-color-orange-hue));
+  --we-color-orange-100: oklch(var(--we-color-lightness-100) calc(var(--we-color-orange-saturation) / 100 * var(--we-color-orange-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-100), 1 - var(--we-color-lightness-100)))) var(--we-color-orange-hue));
+  --we-color-orange-200: oklch(var(--we-color-lightness-200) calc(var(--we-color-orange-saturation) / 100 * var(--we-color-orange-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-200), 1 - var(--we-color-lightness-200)))) var(--we-color-orange-hue));
+  --we-color-orange-300: oklch(var(--we-color-lightness-300) calc(var(--we-color-orange-saturation) / 100 * var(--we-color-orange-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-300), 1 - var(--we-color-lightness-300)))) var(--we-color-orange-hue));
+  --we-color-orange-400: oklch(var(--we-color-lightness-400) calc(var(--we-color-orange-saturation) / 100 * var(--we-color-orange-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-400), 1 - var(--we-color-lightness-400)))) var(--we-color-orange-hue));
+  --we-color-orange-500: oklch(var(--we-color-lightness-500) calc(var(--we-color-orange-saturation) / 100 * var(--we-color-orange-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-500), 1 - var(--we-color-lightness-500)))) var(--we-color-orange-hue));
+  --we-color-orange-600: oklch(var(--we-color-lightness-600) calc(var(--we-color-orange-saturation) / 100 * var(--we-color-orange-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-600), 1 - var(--we-color-lightness-600)))) var(--we-color-orange-hue));
+  --we-color-orange-700: oklch(var(--we-color-lightness-700) calc(var(--we-color-orange-saturation) / 100 * var(--we-color-orange-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-700), 1 - var(--we-color-lightness-700)))) var(--we-color-orange-hue));
+  --we-color-orange-800: oklch(var(--we-color-lightness-800) calc(var(--we-color-orange-saturation) / 100 * var(--we-color-orange-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-800), 1 - var(--we-color-lightness-800)))) var(--we-color-orange-hue));
+  --we-color-orange-900: oklch(var(--we-color-lightness-900) calc(var(--we-color-orange-saturation) / 100 * var(--we-color-orange-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-900), 1 - var(--we-color-lightness-900)))) var(--we-color-orange-hue));
+  --we-color-orange-1000: oklch(var(--we-color-lightness-1000) calc(var(--we-color-orange-saturation) / 100 * var(--we-color-orange-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-1000), 1 - var(--we-color-lightness-1000)))) var(--we-color-orange-hue));
+
+  /* Yellow Colors */
+  --we-color-yellow-0: oklch(var(--we-color-lightness-0) calc(var(--we-color-yellow-saturation) / 100 * var(--we-color-yellow-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-0), 1 - var(--we-color-lightness-0)))) var(--we-color-yellow-hue));
+  --we-color-yellow-25: oklch(var(--we-color-lightness-25) calc(var(--we-color-yellow-saturation) / 100 * var(--we-color-yellow-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-25), 1 - var(--we-color-lightness-25)))) var(--we-color-yellow-hue));
+  --we-color-yellow-50: oklch(var(--we-color-lightness-50) calc(var(--we-color-yellow-saturation) / 100 * var(--we-color-yellow-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-50), 1 - var(--we-color-lightness-50)))) var(--we-color-yellow-hue));
+  --we-color-yellow-75: oklch(var(--we-color-lightness-75) calc(var(--we-color-yellow-saturation) / 100 * var(--we-color-yellow-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-75), 1 - var(--we-color-lightness-75)))) var(--we-color-yellow-hue));
+  --we-color-yellow-100: oklch(var(--we-color-lightness-100) calc(var(--we-color-yellow-saturation) / 100 * var(--we-color-yellow-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-100), 1 - var(--we-color-lightness-100)))) var(--we-color-yellow-hue));
+  --we-color-yellow-200: oklch(var(--we-color-lightness-200) calc(var(--we-color-yellow-saturation) / 100 * var(--we-color-yellow-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-200), 1 - var(--we-color-lightness-200)))) var(--we-color-yellow-hue));
+  --we-color-yellow-300: oklch(var(--we-color-lightness-300) calc(var(--we-color-yellow-saturation) / 100 * var(--we-color-yellow-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-300), 1 - var(--we-color-lightness-300)))) var(--we-color-yellow-hue));
+  --we-color-yellow-400: oklch(var(--we-color-lightness-400) calc(var(--we-color-yellow-saturation) / 100 * var(--we-color-yellow-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-400), 1 - var(--we-color-lightness-400)))) var(--we-color-yellow-hue));
+  --we-color-yellow-500: oklch(var(--we-color-lightness-500) calc(var(--we-color-yellow-saturation) / 100 * var(--we-color-yellow-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-500), 1 - var(--we-color-lightness-500)))) var(--we-color-yellow-hue));
+  --we-color-yellow-600: oklch(var(--we-color-lightness-600) calc(var(--we-color-yellow-saturation) / 100 * var(--we-color-yellow-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-600), 1 - var(--we-color-lightness-600)))) var(--we-color-yellow-hue));
+  --we-color-yellow-700: oklch(var(--we-color-lightness-700) calc(var(--we-color-yellow-saturation) / 100 * var(--we-color-yellow-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-700), 1 - var(--we-color-lightness-700)))) var(--we-color-yellow-hue));
+  --we-color-yellow-800: oklch(var(--we-color-lightness-800) calc(var(--we-color-yellow-saturation) / 100 * var(--we-color-yellow-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-800), 1 - var(--we-color-lightness-800)))) var(--we-color-yellow-hue));
+  --we-color-yellow-900: oklch(var(--we-color-lightness-900) calc(var(--we-color-yellow-saturation) / 100 * var(--we-color-yellow-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-900), 1 - var(--we-color-lightness-900)))) var(--we-color-yellow-hue));
+  --we-color-yellow-1000: oklch(var(--we-color-lightness-1000) calc(var(--we-color-yellow-saturation) / 100 * var(--we-color-yellow-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-1000), 1 - var(--we-color-lightness-1000)))) var(--we-color-yellow-hue));
+
+  /* Lime Colors */
+  --we-color-lime-0: oklch(var(--we-color-lightness-0) calc(var(--we-color-lime-saturation) / 100 * var(--we-color-lime-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-0), 1 - var(--we-color-lightness-0)))) var(--we-color-lime-hue));
+  --we-color-lime-25: oklch(var(--we-color-lightness-25) calc(var(--we-color-lime-saturation) / 100 * var(--we-color-lime-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-25), 1 - var(--we-color-lightness-25)))) var(--we-color-lime-hue));
+  --we-color-lime-50: oklch(var(--we-color-lightness-50) calc(var(--we-color-lime-saturation) / 100 * var(--we-color-lime-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-50), 1 - var(--we-color-lightness-50)))) var(--we-color-lime-hue));
+  --we-color-lime-75: oklch(var(--we-color-lightness-75) calc(var(--we-color-lime-saturation) / 100 * var(--we-color-lime-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-75), 1 - var(--we-color-lightness-75)))) var(--we-color-lime-hue));
+  --we-color-lime-100: oklch(var(--we-color-lightness-100) calc(var(--we-color-lime-saturation) / 100 * var(--we-color-lime-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-100), 1 - var(--we-color-lightness-100)))) var(--we-color-lime-hue));
+  --we-color-lime-200: oklch(var(--we-color-lightness-200) calc(var(--we-color-lime-saturation) / 100 * var(--we-color-lime-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-200), 1 - var(--we-color-lightness-200)))) var(--we-color-lime-hue));
+  --we-color-lime-300: oklch(var(--we-color-lightness-300) calc(var(--we-color-lime-saturation) / 100 * var(--we-color-lime-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-300), 1 - var(--we-color-lightness-300)))) var(--we-color-lime-hue));
+  --we-color-lime-400: oklch(var(--we-color-lightness-400) calc(var(--we-color-lime-saturation) / 100 * var(--we-color-lime-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-400), 1 - var(--we-color-lightness-400)))) var(--we-color-lime-hue));
+  --we-color-lime-500: oklch(var(--we-color-lightness-500) calc(var(--we-color-lime-saturation) / 100 * var(--we-color-lime-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-500), 1 - var(--we-color-lightness-500)))) var(--we-color-lime-hue));
+  --we-color-lime-600: oklch(var(--we-color-lightness-600) calc(var(--we-color-lime-saturation) / 100 * var(--we-color-lime-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-600), 1 - var(--we-color-lightness-600)))) var(--we-color-lime-hue));
+  --we-color-lime-700: oklch(var(--we-color-lightness-700) calc(var(--we-color-lime-saturation) / 100 * var(--we-color-lime-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-700), 1 - var(--we-color-lightness-700)))) var(--we-color-lime-hue));
+  --we-color-lime-800: oklch(var(--we-color-lightness-800) calc(var(--we-color-lime-saturation) / 100 * var(--we-color-lime-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-800), 1 - var(--we-color-lightness-800)))) var(--we-color-lime-hue));
+  --we-color-lime-900: oklch(var(--we-color-lightness-900) calc(var(--we-color-lime-saturation) / 100 * var(--we-color-lime-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-900), 1 - var(--we-color-lightness-900)))) var(--we-color-lime-hue));
+  --we-color-lime-1000: oklch(var(--we-color-lightness-1000) calc(var(--we-color-lime-saturation) / 100 * var(--we-color-lime-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-1000), 1 - var(--we-color-lightness-1000)))) var(--we-color-lime-hue));
+
+  /* Green Colors */
+  --we-color-green-0: oklch(var(--we-color-lightness-0) calc(var(--we-color-green-saturation) / 100 * var(--we-color-green-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-0), 1 - var(--we-color-lightness-0)))) var(--we-color-green-hue));
+  --we-color-green-25: oklch(var(--we-color-lightness-25) calc(var(--we-color-green-saturation) / 100 * var(--we-color-green-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-25), 1 - var(--we-color-lightness-25)))) var(--we-color-green-hue));
+  --we-color-green-50: oklch(var(--we-color-lightness-50) calc(var(--we-color-green-saturation) / 100 * var(--we-color-green-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-50), 1 - var(--we-color-lightness-50)))) var(--we-color-green-hue));
+  --we-color-green-75: oklch(var(--we-color-lightness-75) calc(var(--we-color-green-saturation) / 100 * var(--we-color-green-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-75), 1 - var(--we-color-lightness-75)))) var(--we-color-green-hue));
+  --we-color-green-100: oklch(var(--we-color-lightness-100) calc(var(--we-color-green-saturation) / 100 * var(--we-color-green-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-100), 1 - var(--we-color-lightness-100)))) var(--we-color-green-hue));
+  --we-color-green-200: oklch(var(--we-color-lightness-200) calc(var(--we-color-green-saturation) / 100 * var(--we-color-green-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-200), 1 - var(--we-color-lightness-200)))) var(--we-color-green-hue));
+  --we-color-green-300: oklch(var(--we-color-lightness-300) calc(var(--we-color-green-saturation) / 100 * var(--we-color-green-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-300), 1 - var(--we-color-lightness-300)))) var(--we-color-green-hue));
+  --we-color-green-400: oklch(var(--we-color-lightness-400) calc(var(--we-color-green-saturation) / 100 * var(--we-color-green-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-400), 1 - var(--we-color-lightness-400)))) var(--we-color-green-hue));
+  --we-color-green-500: oklch(var(--we-color-lightness-500) calc(var(--we-color-green-saturation) / 100 * var(--we-color-green-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-500), 1 - var(--we-color-lightness-500)))) var(--we-color-green-hue));
+  --we-color-green-600: oklch(var(--we-color-lightness-600) calc(var(--we-color-green-saturation) / 100 * var(--we-color-green-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-600), 1 - var(--we-color-lightness-600)))) var(--we-color-green-hue));
+  --we-color-green-700: oklch(var(--we-color-lightness-700) calc(var(--we-color-green-saturation) / 100 * var(--we-color-green-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-700), 1 - var(--we-color-lightness-700)))) var(--we-color-green-hue));
+  --we-color-green-800: oklch(var(--we-color-lightness-800) calc(var(--we-color-green-saturation) / 100 * var(--we-color-green-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-800), 1 - var(--we-color-lightness-800)))) var(--we-color-green-hue));
+  --we-color-green-900: oklch(var(--we-color-lightness-900) calc(var(--we-color-green-saturation) / 100 * var(--we-color-green-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-900), 1 - var(--we-color-lightness-900)))) var(--we-color-green-hue));
+  --we-color-green-1000: oklch(var(--we-color-lightness-1000) calc(var(--we-color-green-saturation) / 100 * var(--we-color-green-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-1000), 1 - var(--we-color-lightness-1000)))) var(--we-color-green-hue));
+
+  /* Teal Colors */
+  --we-color-teal-0: oklch(var(--we-color-lightness-0) calc(var(--we-color-teal-saturation) / 100 * var(--we-color-teal-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-0), 1 - var(--we-color-lightness-0)))) var(--we-color-teal-hue));
+  --we-color-teal-25: oklch(var(--we-color-lightness-25) calc(var(--we-color-teal-saturation) / 100 * var(--we-color-teal-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-25), 1 - var(--we-color-lightness-25)))) var(--we-color-teal-hue));
+  --we-color-teal-50: oklch(var(--we-color-lightness-50) calc(var(--we-color-teal-saturation) / 100 * var(--we-color-teal-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-50), 1 - var(--we-color-lightness-50)))) var(--we-color-teal-hue));
+  --we-color-teal-75: oklch(var(--we-color-lightness-75) calc(var(--we-color-teal-saturation) / 100 * var(--we-color-teal-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-75), 1 - var(--we-color-lightness-75)))) var(--we-color-teal-hue));
+  --we-color-teal-100: oklch(var(--we-color-lightness-100) calc(var(--we-color-teal-saturation) / 100 * var(--we-color-teal-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-100), 1 - var(--we-color-lightness-100)))) var(--we-color-teal-hue));
+  --we-color-teal-200: oklch(var(--we-color-lightness-200) calc(var(--we-color-teal-saturation) / 100 * var(--we-color-teal-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-200), 1 - var(--we-color-lightness-200)))) var(--we-color-teal-hue));
+  --we-color-teal-300: oklch(var(--we-color-lightness-300) calc(var(--we-color-teal-saturation) / 100 * var(--we-color-teal-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-300), 1 - var(--we-color-lightness-300)))) var(--we-color-teal-hue));
+  --we-color-teal-400: oklch(var(--we-color-lightness-400) calc(var(--we-color-teal-saturation) / 100 * var(--we-color-teal-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-400), 1 - var(--we-color-lightness-400)))) var(--we-color-teal-hue));
+  --we-color-teal-500: oklch(var(--we-color-lightness-500) calc(var(--we-color-teal-saturation) / 100 * var(--we-color-teal-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-500), 1 - var(--we-color-lightness-500)))) var(--we-color-teal-hue));
+  --we-color-teal-600: oklch(var(--we-color-lightness-600) calc(var(--we-color-teal-saturation) / 100 * var(--we-color-teal-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-600), 1 - var(--we-color-lightness-600)))) var(--we-color-teal-hue));
+  --we-color-teal-700: oklch(var(--we-color-lightness-700) calc(var(--we-color-teal-saturation) / 100 * var(--we-color-teal-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-700), 1 - var(--we-color-lightness-700)))) var(--we-color-teal-hue));
+  --we-color-teal-800: oklch(var(--we-color-lightness-800) calc(var(--we-color-teal-saturation) / 100 * var(--we-color-teal-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-800), 1 - var(--we-color-lightness-800)))) var(--we-color-teal-hue));
+  --we-color-teal-900: oklch(var(--we-color-lightness-900) calc(var(--we-color-teal-saturation) / 100 * var(--we-color-teal-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-900), 1 - var(--we-color-lightness-900)))) var(--we-color-teal-hue));
+  --we-color-teal-1000: oklch(var(--we-color-lightness-1000) calc(var(--we-color-teal-saturation) / 100 * var(--we-color-teal-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-1000), 1 - var(--we-color-lightness-1000)))) var(--we-color-teal-hue));
+
+  /* Cyan Colors */
+  --we-color-cyan-0: oklch(var(--we-color-lightness-0) calc(var(--we-color-cyan-saturation) / 100 * var(--we-color-cyan-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-0), 1 - var(--we-color-lightness-0)))) var(--we-color-cyan-hue));
+  --we-color-cyan-25: oklch(var(--we-color-lightness-25) calc(var(--we-color-cyan-saturation) / 100 * var(--we-color-cyan-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-25), 1 - var(--we-color-lightness-25)))) var(--we-color-cyan-hue));
+  --we-color-cyan-50: oklch(var(--we-color-lightness-50) calc(var(--we-color-cyan-saturation) / 100 * var(--we-color-cyan-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-50), 1 - var(--we-color-lightness-50)))) var(--we-color-cyan-hue));
+  --we-color-cyan-75: oklch(var(--we-color-lightness-75) calc(var(--we-color-cyan-saturation) / 100 * var(--we-color-cyan-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-75), 1 - var(--we-color-lightness-75)))) var(--we-color-cyan-hue));
+  --we-color-cyan-100: oklch(var(--we-color-lightness-100) calc(var(--we-color-cyan-saturation) / 100 * var(--we-color-cyan-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-100), 1 - var(--we-color-lightness-100)))) var(--we-color-cyan-hue));
+  --we-color-cyan-200: oklch(var(--we-color-lightness-200) calc(var(--we-color-cyan-saturation) / 100 * var(--we-color-cyan-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-200), 1 - var(--we-color-lightness-200)))) var(--we-color-cyan-hue));
+  --we-color-cyan-300: oklch(var(--we-color-lightness-300) calc(var(--we-color-cyan-saturation) / 100 * var(--we-color-cyan-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-300), 1 - var(--we-color-lightness-300)))) var(--we-color-cyan-hue));
+  --we-color-cyan-400: oklch(var(--we-color-lightness-400) calc(var(--we-color-cyan-saturation) / 100 * var(--we-color-cyan-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-400), 1 - var(--we-color-lightness-400)))) var(--we-color-cyan-hue));
+  --we-color-cyan-500: oklch(var(--we-color-lightness-500) calc(var(--we-color-cyan-saturation) / 100 * var(--we-color-cyan-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-500), 1 - var(--we-color-lightness-500)))) var(--we-color-cyan-hue));
+  --we-color-cyan-600: oklch(var(--we-color-lightness-600) calc(var(--we-color-cyan-saturation) / 100 * var(--we-color-cyan-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-600), 1 - var(--we-color-lightness-600)))) var(--we-color-cyan-hue));
+  --we-color-cyan-700: oklch(var(--we-color-lightness-700) calc(var(--we-color-cyan-saturation) / 100 * var(--we-color-cyan-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-700), 1 - var(--we-color-lightness-700)))) var(--we-color-cyan-hue));
+  --we-color-cyan-800: oklch(var(--we-color-lightness-800) calc(var(--we-color-cyan-saturation) / 100 * var(--we-color-cyan-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-800), 1 - var(--we-color-lightness-800)))) var(--we-color-cyan-hue));
+  --we-color-cyan-900: oklch(var(--we-color-lightness-900) calc(var(--we-color-cyan-saturation) / 100 * var(--we-color-cyan-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-900), 1 - var(--we-color-lightness-900)))) var(--we-color-cyan-hue));
+  --we-color-cyan-1000: oklch(var(--we-color-lightness-1000) calc(var(--we-color-cyan-saturation) / 100 * var(--we-color-cyan-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-1000), 1 - var(--we-color-lightness-1000)))) var(--we-color-cyan-hue));
+
+  /* Blue Colors */
+  --we-color-blue-0: oklch(var(--we-color-lightness-0) calc(var(--we-color-blue-saturation) / 100 * var(--we-color-blue-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-0), 1 - var(--we-color-lightness-0)))) var(--we-color-blue-hue));
+  --we-color-blue-25: oklch(var(--we-color-lightness-25) calc(var(--we-color-blue-saturation) / 100 * var(--we-color-blue-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-25), 1 - var(--we-color-lightness-25)))) var(--we-color-blue-hue));
+  --we-color-blue-50: oklch(var(--we-color-lightness-50) calc(var(--we-color-blue-saturation) / 100 * var(--we-color-blue-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-50), 1 - var(--we-color-lightness-50)))) var(--we-color-blue-hue));
+  --we-color-blue-75: oklch(var(--we-color-lightness-75) calc(var(--we-color-blue-saturation) / 100 * var(--we-color-blue-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-75), 1 - var(--we-color-lightness-75)))) var(--we-color-blue-hue));
+  --we-color-blue-100: oklch(var(--we-color-lightness-100) calc(var(--we-color-blue-saturation) / 100 * var(--we-color-blue-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-100), 1 - var(--we-color-lightness-100)))) var(--we-color-blue-hue));
+  --we-color-blue-200: oklch(var(--we-color-lightness-200) calc(var(--we-color-blue-saturation) / 100 * var(--we-color-blue-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-200), 1 - var(--we-color-lightness-200)))) var(--we-color-blue-hue));
+  --we-color-blue-300: oklch(var(--we-color-lightness-300) calc(var(--we-color-blue-saturation) / 100 * var(--we-color-blue-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-300), 1 - var(--we-color-lightness-300)))) var(--we-color-blue-hue));
+  --we-color-blue-400: oklch(var(--we-color-lightness-400) calc(var(--we-color-blue-saturation) / 100 * var(--we-color-blue-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-400), 1 - var(--we-color-lightness-400)))) var(--we-color-blue-hue));
+  --we-color-blue-500: oklch(var(--we-color-lightness-500) calc(var(--we-color-blue-saturation) / 100 * var(--we-color-blue-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-500), 1 - var(--we-color-lightness-500)))) var(--we-color-blue-hue));
+  --we-color-blue-600: oklch(var(--we-color-lightness-600) calc(var(--we-color-blue-saturation) / 100 * var(--we-color-blue-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-600), 1 - var(--we-color-lightness-600)))) var(--we-color-blue-hue));
+  --we-color-blue-700: oklch(var(--we-color-lightness-700) calc(var(--we-color-blue-saturation) / 100 * var(--we-color-blue-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-700), 1 - var(--we-color-lightness-700)))) var(--we-color-blue-hue));
+  --we-color-blue-800: oklch(var(--we-color-lightness-800) calc(var(--we-color-blue-saturation) / 100 * var(--we-color-blue-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-800), 1 - var(--we-color-lightness-800)))) var(--we-color-blue-hue));
+  --we-color-blue-900: oklch(var(--we-color-lightness-900) calc(var(--we-color-blue-saturation) / 100 * var(--we-color-blue-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-900), 1 - var(--we-color-lightness-900)))) var(--we-color-blue-hue));
+  --we-color-blue-1000: oklch(var(--we-color-lightness-1000) calc(var(--we-color-blue-saturation) / 100 * var(--we-color-blue-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-1000), 1 - var(--we-color-lightness-1000)))) var(--we-color-blue-hue));
+
+  /* Purple Colors */
+  --we-color-purple-0: oklch(var(--we-color-lightness-0) calc(var(--we-color-purple-saturation) / 100 * var(--we-color-purple-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-0), 1 - var(--we-color-lightness-0)))) var(--we-color-purple-hue));
+  --we-color-purple-25: oklch(var(--we-color-lightness-25) calc(var(--we-color-purple-saturation) / 100 * var(--we-color-purple-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-25), 1 - var(--we-color-lightness-25)))) var(--we-color-purple-hue));
+  --we-color-purple-50: oklch(var(--we-color-lightness-50) calc(var(--we-color-purple-saturation) / 100 * var(--we-color-purple-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-50), 1 - var(--we-color-lightness-50)))) var(--we-color-purple-hue));
+  --we-color-purple-75: oklch(var(--we-color-lightness-75) calc(var(--we-color-purple-saturation) / 100 * var(--we-color-purple-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-75), 1 - var(--we-color-lightness-75)))) var(--we-color-purple-hue));
+  --we-color-purple-100: oklch(var(--we-color-lightness-100) calc(var(--we-color-purple-saturation) / 100 * var(--we-color-purple-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-100), 1 - var(--we-color-lightness-100)))) var(--we-color-purple-hue));
+  --we-color-purple-200: oklch(var(--we-color-lightness-200) calc(var(--we-color-purple-saturation) / 100 * var(--we-color-purple-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-200), 1 - var(--we-color-lightness-200)))) var(--we-color-purple-hue));
+  --we-color-purple-300: oklch(var(--we-color-lightness-300) calc(var(--we-color-purple-saturation) / 100 * var(--we-color-purple-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-300), 1 - var(--we-color-lightness-300)))) var(--we-color-purple-hue));
+  --we-color-purple-400: oklch(var(--we-color-lightness-400) calc(var(--we-color-purple-saturation) / 100 * var(--we-color-purple-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-400), 1 - var(--we-color-lightness-400)))) var(--we-color-purple-hue));
+  --we-color-purple-500: oklch(var(--we-color-lightness-500) calc(var(--we-color-purple-saturation) / 100 * var(--we-color-purple-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-500), 1 - var(--we-color-lightness-500)))) var(--we-color-purple-hue));
+  --we-color-purple-600: oklch(var(--we-color-lightness-600) calc(var(--we-color-purple-saturation) / 100 * var(--we-color-purple-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-600), 1 - var(--we-color-lightness-600)))) var(--we-color-purple-hue));
+  --we-color-purple-700: oklch(var(--we-color-lightness-700) calc(var(--we-color-purple-saturation) / 100 * var(--we-color-purple-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-700), 1 - var(--we-color-lightness-700)))) var(--we-color-purple-hue));
+  --we-color-purple-800: oklch(var(--we-color-lightness-800) calc(var(--we-color-purple-saturation) / 100 * var(--we-color-purple-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-800), 1 - var(--we-color-lightness-800)))) var(--we-color-purple-hue));
+  --we-color-purple-900: oklch(var(--we-color-lightness-900) calc(var(--we-color-purple-saturation) / 100 * var(--we-color-purple-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-900), 1 - var(--we-color-lightness-900)))) var(--we-color-purple-hue));
+  --we-color-purple-1000: oklch(var(--we-color-lightness-1000) calc(var(--we-color-purple-saturation) / 100 * var(--we-color-purple-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-1000), 1 - var(--we-color-lightness-1000)))) var(--we-color-purple-hue));
+
+  /* Pink Colors */
+  --we-color-pink-0: oklch(var(--we-color-lightness-0) calc(var(--we-color-pink-saturation) / 100 * var(--we-color-pink-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-0), 1 - var(--we-color-lightness-0)))) var(--we-color-pink-hue));
+  --we-color-pink-25: oklch(var(--we-color-lightness-25) calc(var(--we-color-pink-saturation) / 100 * var(--we-color-pink-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-25), 1 - var(--we-color-lightness-25)))) var(--we-color-pink-hue));
+  --we-color-pink-50: oklch(var(--we-color-lightness-50) calc(var(--we-color-pink-saturation) / 100 * var(--we-color-pink-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-50), 1 - var(--we-color-lightness-50)))) var(--we-color-pink-hue));
+  --we-color-pink-75: oklch(var(--we-color-lightness-75) calc(var(--we-color-pink-saturation) / 100 * var(--we-color-pink-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-75), 1 - var(--we-color-lightness-75)))) var(--we-color-pink-hue));
+  --we-color-pink-100: oklch(var(--we-color-lightness-100) calc(var(--we-color-pink-saturation) / 100 * var(--we-color-pink-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-100), 1 - var(--we-color-lightness-100)))) var(--we-color-pink-hue));
+  --we-color-pink-200: oklch(var(--we-color-lightness-200) calc(var(--we-color-pink-saturation) / 100 * var(--we-color-pink-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-200), 1 - var(--we-color-lightness-200)))) var(--we-color-pink-hue));
+  --we-color-pink-300: oklch(var(--we-color-lightness-300) calc(var(--we-color-pink-saturation) / 100 * var(--we-color-pink-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-300), 1 - var(--we-color-lightness-300)))) var(--we-color-pink-hue));
+  --we-color-pink-400: oklch(var(--we-color-lightness-400) calc(var(--we-color-pink-saturation) / 100 * var(--we-color-pink-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-400), 1 - var(--we-color-lightness-400)))) var(--we-color-pink-hue));
+  --we-color-pink-500: oklch(var(--we-color-lightness-500) calc(var(--we-color-pink-saturation) / 100 * var(--we-color-pink-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-500), 1 - var(--we-color-lightness-500)))) var(--we-color-pink-hue));
+  --we-color-pink-600: oklch(var(--we-color-lightness-600) calc(var(--we-color-pink-saturation) / 100 * var(--we-color-pink-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-600), 1 - var(--we-color-lightness-600)))) var(--we-color-pink-hue));
+  --we-color-pink-700: oklch(var(--we-color-lightness-700) calc(var(--we-color-pink-saturation) / 100 * var(--we-color-pink-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-700), 1 - var(--we-color-lightness-700)))) var(--we-color-pink-hue));
+  --we-color-pink-800: oklch(var(--we-color-lightness-800) calc(var(--we-color-pink-saturation) / 100 * var(--we-color-pink-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-800), 1 - var(--we-color-lightness-800)))) var(--we-color-pink-hue));
+  --we-color-pink-900: oklch(var(--we-color-lightness-900) calc(var(--we-color-pink-saturation) / 100 * var(--we-color-pink-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-900), 1 - var(--we-color-lightness-900)))) var(--we-color-pink-hue));
+  --we-color-pink-1000: oklch(var(--we-color-lightness-1000) calc(var(--we-color-pink-saturation) / 100 * var(--we-color-pink-chroma-max, 0.18) * 2 * max(0, min(var(--we-color-lightness-1000), 1 - var(--we-color-lightness-1000)))) var(--we-color-pink-hue));
 
   /* Base Colors */
   --we-color-white: oklch(var(--we-color-lightness-0) 0 var(--we-color-neutral-hue));
@@ -151,38 +335,123 @@ exports[`token CSS generation > color.css — hues, lightness ramp, palettes, ro
   --we-role-border: var(--we-color-neutral-200);
   --we-role-border-strong: var(--we-color-neutral-500);
   --we-role-border-hover: color-mix(in oklab, var(--we-role-border) 60%, var(--we-role-border-strong));
-  --we-role-accent: oklch(calc(var(--we-accent-lightness, 55) * 1%) calc(var(--we-color-saturation) / 100 * var(--we-color-primary-fill-chroma-max, 0.2663)) var(--we-color-primary-hue));
-  --we-role-on-accent: oklch(100% 0 var(--we-color-neutral-hue));
   --we-role-on-accent-muted: oklch(from var(--we-role-on-accent) l c h / 0.8);
-  --we-role-accent-muted: var(--we-color-primary-100);
-  --we-role-accent-text: var(--we-color-primary-700);
-  --we-role-accent-hover: oklch(from var(--we-role-accent) calc(l + var(--we-state-hover-accent, var(--we-state-hover))) c h);
-  --we-role-accent-active: oklch(from var(--we-role-accent) calc(l + var(--we-state-active-accent, var(--we-state-active))) c h);
-  --we-role-surface-hover: var(--we-color-neutral-100);
-  --we-role-surface-active: var(--we-color-neutral-200);
+  --we-role-surface-hover: color-mix(in oklab, var(--we-role-surface) 91%, var(--we-role-text));
+  --we-role-surface-active: color-mix(in oklab, var(--we-role-surface) 82%, var(--we-role-text));
+  --we-role-item-hover: var(--we-role-surface-hover);
+  --we-role-selected: var(--we-role-accent-soft);
+  --we-role-on-selected: var(--we-role-text);
+  --we-role-text-selection: color-mix(in srgb, var(--we-role-accent) 30%, transparent);
   --we-role-surface-sunken-hover: color-mix(in oklab, var(--we-role-surface-sunken) 65%, var(--we-role-surface));
   --we-role-control-surface: var(--we-color-neutral-200);
   --we-role-overlay: oklch(14.6% calc(var(--we-color-neutral-saturation) / 100 * var(--we-color-neutral-chroma-max, 0.18) * 0.2920) var(--we-color-neutral-hue) / 60%);
   --we-role-shadow-color: oklch(14.6% calc(var(--we-color-neutral-saturation) / 100 * var(--we-color-neutral-chroma-max, 0.18) * 0.2920) var(--we-color-neutral-hue));
   --we-role-focus: var(--we-role-accent);
-  --we-role-danger: oklch(calc(var(--we-danger-lightness, 62) * 1%) calc(var(--we-color-saturation) / 100 * var(--we-color-danger-fill-chroma-max, 0.2491)) var(--we-color-danger-hue));
-  --we-role-success: oklch(calc(var(--we-success-lightness, 75) * 1%) calc(var(--we-color-saturation) / 100 * var(--we-color-success-fill-chroma-max, 0.2365)) var(--we-color-success-hue));
-  --we-role-warning: oklch(calc(var(--we-warning-lightness, 76) * 1%) calc(var(--we-color-saturation) / 100 * var(--we-color-warning-fill-chroma-max, 0.1558)) var(--we-color-warning-hue));
-  --we-role-danger-hover: oklch(from var(--we-role-danger) calc(l + var(--we-state-hover-danger, var(--we-state-hover))) c h);
-  --we-role-danger-active: oklch(from var(--we-role-danger) calc(l + var(--we-state-active-danger, var(--we-state-active))) c h);
+  --we-role-accent: oklch(calc(var(--we-accent-lightness, 55) * 1%) calc(var(--we-color-accent-saturation) / 100 * var(--we-color-accent-fill-chroma-max, 0.2663)) var(--we-color-accent-hue));
+  --we-role-on-accent: oklch(100% 0 var(--we-color-neutral-hue));
+  --we-role-accent-soft: var(--we-color-accent-100);
+  --we-role-accent-text: var(--we-color-accent-700);
+  --we-role-accent-border: var(--we-color-accent-300);
+  --we-role-accent-hover: oklch(from var(--we-role-accent) calc(l + var(--we-state-hover-accent, var(--we-state-hover))) c h);
+  --we-role-accent-active: oklch(from var(--we-role-accent) calc(l + var(--we-state-active-accent, var(--we-state-active))) c h);
+  --we-role-success: oklch(calc(var(--we-success-lightness, 75) * 1%) calc(var(--we-color-success-saturation) / 100 * var(--we-color-success-fill-chroma-max, 0.2365)) var(--we-color-success-hue));
+  --we-role-on-success: oklch(100% 0 var(--we-color-neutral-hue));
+  --we-role-success-soft: var(--we-color-success-50);
+  --we-role-success-text: var(--we-color-success-700);
+  --we-role-success-border: var(--we-color-success-300);
   --we-role-success-hover: oklch(from var(--we-role-success) calc(l + var(--we-state-hover-success, var(--we-state-hover))) c h);
   --we-role-success-active: oklch(from var(--we-role-success) calc(l + var(--we-state-active-success, var(--we-state-active))) c h);
+  --we-role-warning: oklch(calc(var(--we-warning-lightness, 76) * 1%) calc(var(--we-color-warning-saturation) / 100 * var(--we-color-warning-fill-chroma-max, 0.1558)) var(--we-color-warning-hue));
+  --we-role-on-warning: oklch(100% 0 var(--we-color-neutral-hue));
+  --we-role-warning-soft: var(--we-color-warning-50);
+  --we-role-warning-text: var(--we-color-warning-700);
+  --we-role-warning-border: var(--we-color-warning-300);
   --we-role-warning-hover: oklch(from var(--we-role-warning) calc(l + var(--we-state-hover-warning, var(--we-state-hover))) c h);
   --we-role-warning-active: oklch(from var(--we-role-warning) calc(l + var(--we-state-active-warning, var(--we-state-active))) c h);
+  --we-role-danger: oklch(calc(var(--we-danger-lightness, 62) * 1%) calc(var(--we-color-danger-saturation) / 100 * var(--we-color-danger-fill-chroma-max, 0.2491)) var(--we-color-danger-hue));
   --we-role-on-danger: oklch(100% 0 var(--we-color-neutral-hue));
-  --we-role-on-success: oklch(100% 0 var(--we-color-neutral-hue));
-  --we-role-on-warning: oklch(100% 0 var(--we-color-neutral-hue));
-  --we-role-danger-surface: var(--we-color-danger-50);
-  --we-role-success-surface: var(--we-color-success-50);
-  --we-role-warning-surface: var(--we-color-warning-50);
+  --we-role-danger-soft: var(--we-color-danger-50);
   --we-role-danger-text: var(--we-color-danger-700);
-  --we-role-success-text: var(--we-color-success-700);
-  --we-role-warning-text: var(--we-color-warning-700);
+  --we-role-danger-border: var(--we-color-danger-300);
+  --we-role-danger-hover: oklch(from var(--we-role-danger) calc(l + var(--we-state-hover-danger, var(--we-state-hover))) c h);
+  --we-role-danger-active: oklch(from var(--we-role-danger) calc(l + var(--we-state-active-danger, var(--we-state-active))) c h);
+  --we-role-red: oklch(calc(var(--we-red-lightness, calc(60 + var(--we-color-palette-lightness, 0))) * 1%) calc(var(--we-color-red-saturation) / 100 * var(--we-color-red-fill-chroma-max, 0.2)) var(--we-color-red-hue));
+  --we-role-on-red: oklch(100% 0 var(--we-color-neutral-hue));
+  --we-role-red-soft: var(--we-color-red-100);
+  --we-role-red-text: var(--we-color-red-700);
+  --we-role-red-border: var(--we-color-red-300);
+  --we-role-red-hover: oklch(from var(--we-role-red) calc(l + var(--we-state-hover-red, var(--we-state-hover))) c h);
+  --we-role-red-active: oklch(from var(--we-role-red) calc(l + var(--we-state-active-red, var(--we-state-active))) c h);
+  --we-role-orange: oklch(calc(var(--we-orange-lightness, calc(70 + var(--we-color-palette-lightness, 0))) * 1%) calc(var(--we-color-orange-saturation) / 100 * var(--we-color-orange-fill-chroma-max, 0.2)) var(--we-color-orange-hue));
+  --we-role-on-orange: oklch(100% 0 var(--we-color-neutral-hue));
+  --we-role-orange-soft: var(--we-color-orange-100);
+  --we-role-orange-text: var(--we-color-orange-700);
+  --we-role-orange-border: var(--we-color-orange-300);
+  --we-role-orange-hover: oklch(from var(--we-role-orange) calc(l + var(--we-state-hover-orange, var(--we-state-hover))) c h);
+  --we-role-orange-active: oklch(from var(--we-role-orange) calc(l + var(--we-state-active-orange, var(--we-state-active))) c h);
+  --we-role-yellow: oklch(calc(var(--we-yellow-lightness, calc(84 + var(--we-color-palette-lightness, 0))) * 1%) calc(var(--we-color-yellow-saturation) / 100 * var(--we-color-yellow-fill-chroma-max, 0.2)) var(--we-color-yellow-hue));
+  --we-role-on-yellow: oklch(100% 0 var(--we-color-neutral-hue));
+  --we-role-yellow-soft: var(--we-color-yellow-100);
+  --we-role-yellow-text: var(--we-color-yellow-700);
+  --we-role-yellow-border: var(--we-color-yellow-300);
+  --we-role-yellow-hover: oklch(from var(--we-role-yellow) calc(l + var(--we-state-hover-yellow, var(--we-state-hover))) c h);
+  --we-role-yellow-active: oklch(from var(--we-role-yellow) calc(l + var(--we-state-active-yellow, var(--we-state-active))) c h);
+  --we-role-lime: oklch(calc(var(--we-lime-lightness, calc(80 + var(--we-color-palette-lightness, 0))) * 1%) calc(var(--we-color-lime-saturation) / 100 * var(--we-color-lime-fill-chroma-max, 0.2)) var(--we-color-lime-hue));
+  --we-role-on-lime: oklch(100% 0 var(--we-color-neutral-hue));
+  --we-role-lime-soft: var(--we-color-lime-100);
+  --we-role-lime-text: var(--we-color-lime-700);
+  --we-role-lime-border: var(--we-color-lime-300);
+  --we-role-lime-hover: oklch(from var(--we-role-lime) calc(l + var(--we-state-hover-lime, var(--we-state-hover))) c h);
+  --we-role-lime-active: oklch(from var(--we-role-lime) calc(l + var(--we-state-active-lime, var(--we-state-active))) c h);
+  --we-role-green: oklch(calc(var(--we-green-lightness, calc(68 + var(--we-color-palette-lightness, 0))) * 1%) calc(var(--we-color-green-saturation) / 100 * var(--we-color-green-fill-chroma-max, 0.2)) var(--we-color-green-hue));
+  --we-role-on-green: oklch(100% 0 var(--we-color-neutral-hue));
+  --we-role-green-soft: var(--we-color-green-100);
+  --we-role-green-text: var(--we-color-green-700);
+  --we-role-green-border: var(--we-color-green-300);
+  --we-role-green-hover: oklch(from var(--we-role-green) calc(l + var(--we-state-hover-green, var(--we-state-hover))) c h);
+  --we-role-green-active: oklch(from var(--we-role-green) calc(l + var(--we-state-active-green, var(--we-state-active))) c h);
+  --we-role-teal: oklch(calc(var(--we-teal-lightness, calc(66 + var(--we-color-palette-lightness, 0))) * 1%) calc(var(--we-color-teal-saturation) / 100 * var(--we-color-teal-fill-chroma-max, 0.2)) var(--we-color-teal-hue));
+  --we-role-on-teal: oklch(100% 0 var(--we-color-neutral-hue));
+  --we-role-teal-soft: var(--we-color-teal-100);
+  --we-role-teal-text: var(--we-color-teal-700);
+  --we-role-teal-border: var(--we-color-teal-300);
+  --we-role-teal-hover: oklch(from var(--we-role-teal) calc(l + var(--we-state-hover-teal, var(--we-state-hover))) c h);
+  --we-role-teal-active: oklch(from var(--we-role-teal) calc(l + var(--we-state-active-teal, var(--we-state-active))) c h);
+  --we-role-cyan: oklch(calc(var(--we-cyan-lightness, calc(70 + var(--we-color-palette-lightness, 0))) * 1%) calc(var(--we-color-cyan-saturation) / 100 * var(--we-color-cyan-fill-chroma-max, 0.2)) var(--we-color-cyan-hue));
+  --we-role-on-cyan: oklch(100% 0 var(--we-color-neutral-hue));
+  --we-role-cyan-soft: var(--we-color-cyan-100);
+  --we-role-cyan-text: var(--we-color-cyan-700);
+  --we-role-cyan-border: var(--we-color-cyan-300);
+  --we-role-cyan-hover: oklch(from var(--we-role-cyan) calc(l + var(--we-state-hover-cyan, var(--we-state-hover))) c h);
+  --we-role-cyan-active: oklch(from var(--we-role-cyan) calc(l + var(--we-state-active-cyan, var(--we-state-active))) c h);
+  --we-role-blue: oklch(calc(var(--we-blue-lightness, calc(58 + var(--we-color-palette-lightness, 0))) * 1%) calc(var(--we-color-blue-saturation) / 100 * var(--we-color-blue-fill-chroma-max, 0.2)) var(--we-color-blue-hue));
+  --we-role-on-blue: oklch(100% 0 var(--we-color-neutral-hue));
+  --we-role-blue-soft: var(--we-color-blue-100);
+  --we-role-blue-text: var(--we-color-blue-700);
+  --we-role-blue-border: var(--we-color-blue-300);
+  --we-role-blue-hover: oklch(from var(--we-role-blue) calc(l + var(--we-state-hover-blue, var(--we-state-hover))) c h);
+  --we-role-blue-active: oklch(from var(--we-role-blue) calc(l + var(--we-state-active-blue, var(--we-state-active))) c h);
+  --we-role-purple: oklch(calc(var(--we-purple-lightness, calc(58 + var(--we-color-palette-lightness, 0))) * 1%) calc(var(--we-color-purple-saturation) / 100 * var(--we-color-purple-fill-chroma-max, 0.2)) var(--we-color-purple-hue));
+  --we-role-on-purple: oklch(100% 0 var(--we-color-neutral-hue));
+  --we-role-purple-soft: var(--we-color-purple-100);
+  --we-role-purple-text: var(--we-color-purple-700);
+  --we-role-purple-border: var(--we-color-purple-300);
+  --we-role-purple-hover: oklch(from var(--we-role-purple) calc(l + var(--we-state-hover-purple, var(--we-state-hover))) c h);
+  --we-role-purple-active: oklch(from var(--we-role-purple) calc(l + var(--we-state-active-purple, var(--we-state-active))) c h);
+  --we-role-pink: oklch(calc(var(--we-pink-lightness, calc(66 + var(--we-color-palette-lightness, 0))) * 1%) calc(var(--we-color-pink-saturation) / 100 * var(--we-color-pink-fill-chroma-max, 0.2)) var(--we-color-pink-hue));
+  --we-role-on-pink: oklch(100% 0 var(--we-color-neutral-hue));
+  --we-role-pink-soft: var(--we-color-pink-100);
+  --we-role-pink-text: var(--we-color-pink-700);
+  --we-role-pink-border: var(--we-color-pink-300);
+  --we-role-pink-hover: oklch(from var(--we-role-pink) calc(l + var(--we-state-hover-pink, var(--we-state-hover))) c h);
+  --we-role-pink-active: oklch(from var(--we-role-pink) calc(l + var(--we-state-active-pink, var(--we-state-active))) c h);
+  --we-role-neutral: var(--we-role-surface-inverse);
+  --we-role-on-neutral: var(--we-role-on-inverse);
+  --we-role-neutral-soft: var(--we-role-control-surface);
+  --we-role-neutral-text: var(--we-role-text-muted);
+  --we-role-neutral-border: var(--we-role-border-strong);
+  --we-role-neutral-hover: oklch(from var(--we-role-neutral) calc(l + var(--we-state-hover-neutral, var(--we-state-hover))) c h);
+  --we-role-neutral-active: oklch(from var(--we-role-neutral) calc(l + var(--we-state-active-neutral, var(--we-state-active))) c h);
 
   /* Focus Colors */
   --we-color-focus: var(--we-role-focus);
@@ -192,7 +461,7 @@ exports[`token CSS generation > color.css — hues, lightness ramp, palettes, ro
   --we-focus-outline: 0 0 0 var(--we-focus-ring-width) var(--we-color-focus);
 
   /* Gradient */
-  --we-gradient-primary: linear-gradient(135deg, oklch(var(--we-color-lightness-500) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.8) calc(var(--we-color-primary-hue) - 25)) 0%, oklch(var(--we-color-lightness-500) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.8) calc(var(--we-color-primary-hue) + 25)) 100%);
+  --we-gradient-accent: linear-gradient(135deg, oklch(var(--we-color-lightness-500) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.8) calc(var(--we-color-accent-hue) - 25)) 0%, oklch(var(--we-color-lightness-500) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.8) calc(var(--we-color-accent-hue) + 25)) 100%);
 }
 
 @supports not (color: oklch(from red calc(l + 0.1) c h)) {
@@ -204,12 +473,34 @@ exports[`token CSS generation > color.css — hues, lightness ramp, palettes, ro
     --we-role-on-accent-muted: var(--we-role-on-accent);
     --we-role-accent-hover: var(--we-role-accent);
     --we-role-accent-active: var(--we-role-accent);
-    --we-role-danger-hover: var(--we-role-danger);
-    --we-role-danger-active: var(--we-role-danger);
     --we-role-success-hover: var(--we-role-success);
     --we-role-success-active: var(--we-role-success);
     --we-role-warning-hover: var(--we-role-warning);
     --we-role-warning-active: var(--we-role-warning);
+    --we-role-danger-hover: var(--we-role-danger);
+    --we-role-danger-active: var(--we-role-danger);
+    --we-role-red-hover: var(--we-role-red);
+    --we-role-red-active: var(--we-role-red);
+    --we-role-orange-hover: var(--we-role-orange);
+    --we-role-orange-active: var(--we-role-orange);
+    --we-role-yellow-hover: var(--we-role-yellow);
+    --we-role-yellow-active: var(--we-role-yellow);
+    --we-role-lime-hover: var(--we-role-lime);
+    --we-role-lime-active: var(--we-role-lime);
+    --we-role-green-hover: var(--we-role-green);
+    --we-role-green-active: var(--we-role-green);
+    --we-role-teal-hover: var(--we-role-teal);
+    --we-role-teal-active: var(--we-role-teal);
+    --we-role-cyan-hover: var(--we-role-cyan);
+    --we-role-cyan-active: var(--we-role-cyan);
+    --we-role-blue-hover: var(--we-role-blue);
+    --we-role-blue-active: var(--we-role-blue);
+    --we-role-purple-hover: var(--we-role-purple);
+    --we-role-purple-active: var(--we-role-purple);
+    --we-role-pink-hover: var(--we-role-pink);
+    --we-role-pink-active: var(--we-role-pink);
+    --we-role-neutral-hover: var(--we-role-neutral);
+    --we-role-neutral-active: var(--we-role-neutral);
   }
 }
 
@@ -291,16 +582,16 @@ exports[`token CSS generation > font.css — families, sizes, weights, line heig
 
   /* Font Sizes */
   --we-font-base-size: 16px;
-  --we-font-size-100: 0.75rem;
-  --we-font-size-200: 0.875rem;
-  --we-font-size-300: 1rem;
-  --we-font-size-400: 1.125rem;
-  --we-font-size-500: 1.25rem;
-  --we-font-size-600: 1.5rem;
-  --we-font-size-700: 2rem;
-  --we-font-size-800: 2.5rem;
-  --we-font-size-900: 3.5rem;
-  --we-font-size-1000: 4.5rem;
+  --we-font-size-100: calc(0.75rem * var(--we-theme-scoped-font-scale, 1));
+  --we-font-size-200: calc(0.875rem * var(--we-theme-scoped-font-scale, 1));
+  --we-font-size-300: calc(1rem * var(--we-theme-scoped-font-scale, 1));
+  --we-font-size-400: calc(1.125rem * var(--we-theme-scoped-font-scale, 1));
+  --we-font-size-500: calc(1.25rem * var(--we-theme-scoped-font-scale, 1));
+  --we-font-size-600: calc(1.5rem * var(--we-theme-scoped-font-scale, 1));
+  --we-font-size-700: calc(2rem * var(--we-theme-scoped-font-scale, 1));
+  --we-font-size-800: calc(2.5rem * var(--we-theme-scoped-font-scale, 1));
+  --we-font-size-900: calc(3.5rem * var(--we-theme-scoped-font-scale, 1));
+  --we-font-size-1000: calc(4.5rem * var(--we-theme-scoped-font-scale, 1));
 
   /* Font Weights */
   --we-font-weight-100: 100;
@@ -386,16 +677,16 @@ exports[`token CSS generation > space.css 1`] = `
 :root {
   /* Spacing Values */
   --we-space-0: 0rem;
-  --we-space-100: calc(0.25rem * var(--we-theme-spacing-scale, 1));
-  --we-space-200: calc(0.5rem * var(--we-theme-spacing-scale, 1));
-  --we-space-300: calc(0.75rem * var(--we-theme-spacing-scale, 1));
-  --we-space-400: calc(1rem * var(--we-theme-spacing-scale, 1));
-  --we-space-500: calc(1.5rem * var(--we-theme-spacing-scale, 1));
-  --we-space-600: calc(2rem * var(--we-theme-spacing-scale, 1));
-  --we-space-700: calc(2.5rem * var(--we-theme-spacing-scale, 1));
-  --we-space-800: calc(3rem * var(--we-theme-spacing-scale, 1));
-  --we-space-900: calc(4rem * var(--we-theme-spacing-scale, 1));
-  --we-space-1000: calc(6rem * var(--we-theme-spacing-scale, 1));
+  --we-space-100: calc(0.25rem * var(--we-theme-spacing-scale, 1) * var(--we-theme-scoped-font-scale, 1));
+  --we-space-200: calc(0.5rem * var(--we-theme-spacing-scale, 1) * var(--we-theme-scoped-font-scale, 1));
+  --we-space-300: calc(0.75rem * var(--we-theme-spacing-scale, 1) * var(--we-theme-scoped-font-scale, 1));
+  --we-space-400: calc(1rem * var(--we-theme-spacing-scale, 1) * var(--we-theme-scoped-font-scale, 1));
+  --we-space-500: calc(1.5rem * var(--we-theme-spacing-scale, 1) * var(--we-theme-scoped-font-scale, 1));
+  --we-space-600: calc(2rem * var(--we-theme-spacing-scale, 1) * var(--we-theme-scoped-font-scale, 1));
+  --we-space-700: calc(2.5rem * var(--we-theme-spacing-scale, 1) * var(--we-theme-scoped-font-scale, 1));
+  --we-space-800: calc(3rem * var(--we-theme-spacing-scale, 1) * var(--we-theme-scoped-font-scale, 1));
+  --we-space-900: calc(4rem * var(--we-theme-spacing-scale, 1) * var(--we-theme-scoped-font-scale, 1));
+  --we-space-1000: calc(6rem * var(--we-theme-spacing-scale, 1) * var(--we-theme-scoped-font-scale, 1));
 }"
 `;
 

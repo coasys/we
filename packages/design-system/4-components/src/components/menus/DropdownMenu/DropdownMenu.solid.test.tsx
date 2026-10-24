@@ -222,16 +222,12 @@ describe('a menu about people', () => {
       menu
         .rows()
         .find((row) => row.textContent?.trim() === label)!
-        .querySelector('we-text') as HTMLElement & {
-        uppercase?: boolean;
-        fontSize?: string;
-      };
-    const uppercase = (el: ReturnType<typeof text>) => el.uppercase === true || el.hasAttribute('uppercase');
-    const fontSize = (el: ReturnType<typeof text>) => el.fontSize ?? el.getAttribute('fontSize');
-    // Small capitals for "Assigned"; a name under it stays a name.
-    expect(uppercase(text('Assigned'))).toBe(true);
-    expect(fontSize(text('Assigned'))).toBe('100');
-    expect(uppercase(text('Ana Ruiz'))).toBe(false);
+        .querySelector('we-text') as HTMLElement & { variant?: string };
+    const variant = (el: ReturnType<typeof text>) => el.variant ?? el.getAttribute('variant');
+    // The overline variant for "Assigned" — small capitals a theme's overline role reaches — and a
+    // name under it stays a name.
+    expect(variant(text('Assigned'))).toBe('overline');
+    expect(variant(text('Ana Ruiz'))).not.toBe('overline');
   });
 });
 

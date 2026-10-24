@@ -243,7 +243,7 @@ const spread: SchemaNode = {
             {
               type: 'we-button',
               props: {
-                variant: 'secondary',
+                variant: 'soft',
                 size: 'sm',
                 alignSelf: 'start',
                 onClick: { $action: 'routeStore.navigate', args: ['./wall'] },
@@ -320,7 +320,7 @@ const header: SchemaNode = {
         },
         {
           type: 'we-button',
-          props: { variant: 'primary', size: 'sm', onClick: { $setLocal: 'composeOpen', value: true } },
+          props: { variant: 'solid', size: 'sm', onClick: { $setLocal: 'composeOpen', value: true } },
           children: [{ type: 'we-icon', props: { name: 'plus' } }, 'Add'],
         },
         composerModal({ openLocal: 'composeOpen', title: 'Add to the scrapbook', kind: KIND.post }),

@@ -14,7 +14,7 @@ Most @we/primitives inherit **all** layers below. Props use design token values 
 | Token Type | Valid Values |
 |---|---|
 | SpaceValue | "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000" (or CSS length e.g. "16px") |
-| ColorValue | A **role** — see the table below — or a scale position "{hue}-{shade}" where hue = neutral, primary, success, warning, danger and shade = 0, 25, 50, 75, 100, 200–900, 1000. Also "white", "black". (or CSS color). **Prefer a role.** |
+| ColorValue | A **role** — see the table below — or a scale position "{hue}-{shade}" where hue = neutral, accent, success, warning, danger or a palette hue (red, orange, yellow, lime, green, teal, cyan, blue, purple, pink) and shade = 0, 25, 50, 75, 100, 200–900, 1000. Also "white", "black". (or CSS color). **Prefer a role.** |
 | RadiusValue | "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "pill", "full" (or CSS length). Also five *theme-family* names that follow the theme instead of naming a size — see "Theme families" below. Prefer them on an \`EditableImage\`, a \`Card\`, or a raw element standing in for one: a pinned "full" or "pill" cannot follow a theme's shape settings. Note "full" is 50%, so it is an ellipse on any box that is not square; reach for "pill" on wide boxes. |
 | ShadowValue | "sm", "md", "lg", "xl" |
 | FontSizeValue | "base", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000" (or CSS length) |
@@ -94,12 +94,12 @@ a user-chosen swatch.
 | \`accent\` | An accent *fill* — a primary button, a selected disc. |
 | \`accent-hover\` / \`accent-active\` | Hover and pressed states of an accent fill. |
 | \`on-accent\` | Text or an icon **on top of** an accent fill. |
-| \`on-accent-muted\` | Secondary text on an accent fill — a caption under a heading on an accent panel, or on \`gradient-primary\`. The \`text-muted\` of fills, and the **only** correct choice there: \`text-muted\` and \`text-faint\` are measured against the *page*, so on a fill they are measured against the wrong thing and can vanish entirely. |
+| \`on-accent-muted\` | Secondary text on an accent fill — a caption under a heading on an accent panel, or on \`gradient-accent\`. The \`text-muted\` of fills, and the **only** correct choice there: \`text-muted\` and \`text-faint\` are measured against the *page*, so on a fill they are measured against the wrong thing and can vanish entirely. |
 | \`accent-text\` | The accent used **as text** — an accented heading or icon on an ordinary surface, where \`accent\` is often too light to read. |
-| \`accent-muted\` | An accent-tinted fill — a selected row, a subtle highlight. |
+| \`accent-soft\` | An accent-tinted fill — a selected row, a subtle highlight. |
 | \`focus\` | The focus ring. Rarely set directly; \`--we-ring-color\` already resolves to it. |
 | \`danger-text\` / \`success-text\` / \`warning-text\` | Status as a **foreground** — an error message, a warning icon, a "connected" tick. |
-| \`danger-surface\` / \`success-surface\` / \`warning-surface\` | The tinted **panel** behind status content. |
+| \`danger-soft\` / \`success-soft\` / \`warning-soft\` | The tinted **panel** behind status content. |
 | \`overlay\` | The scrim behind a modal or drawer. Carries its own alpha. |
 | \`shadow-color\` | The colour shadows are built from. |
 
@@ -112,7 +112,7 @@ a user-chosen swatch.
 
 Roles work anywhere a colour token does, including inside a border shorthand
 (\`"1px solid border"\`) and behind a ternary
-(\`{ "$": "row.selected ? 'accent-muted' : 'surface-sunken'" }\`).
+(\`{ "$": "row.selected ? 'accent-soft' : 'surface-sunken'" }\`).
 
 **Not \`$if\` in a prop.** \`$if\` is a *node* type and, in a value position, resolves to a handler —
 so the colour resolver is handed a function, paints nothing, and warns about nothing at runtime. A
@@ -126,6 +126,32 @@ starts with \`on\`, so a handler prop that is not an event — \`we-modal\`'s \`
 TypeScript key of a \`ThemeRole\`; a schema writes the CSS spelling. Getting it wrong fails silently —
 the value resolves to a variable that does not exist and the element paints nothing at all — so the
 validator rejects it with the right spelling rather than letting it through.
+
+### \`tone\` — which colour family an element is in
+
+Colour is **\`tone\`**, a prop every element takes, and never \`variant\`. \`variant\` says only how a
+component is drawn — \`solid\`, \`soft\`, \`outline\`, \`ghost\`, \`bare\` on a button; \`soft\` or \`solid\`
+on a badge or a tag; \`soft\` or \`edge\` on an alert — so any tone combines with any style.
+
+| Tone | For |
+|---|---|
+| \`accent\` | The theme's own colour. What an untoned \`solid\` button, alert or progress bar already is. |
+| \`neutral\` | Grey. What an untoned \`soft\`, \`outline\` or \`ghost\` button, badge or tag already is. |
+| \`success\` / \`warning\` / \`danger\` | A status. A destructive button is \`variant: 'solid', tone: 'danger'\`. |
+| \`red\` \`orange\` \`yellow\` \`lime\` \`green\` \`teal\` \`cyan\` \`blue\` \`purple\` \`pink\` | The theme's palette, for categories a community names — a label, a lane, a kind of thing. |
+
+A tone re-points the accent's roles inside the element, so **everything in it follows**: a toned
+Card's buttons, selected rows and focus rings are drawn in its family without being told.
+
+\`\`\`json
+{ "type": "we-button", "props": { "variant": "solid", "tone": "danger" }, "children": ["Delete"] }
+{ "type": "we-badge", "props": { "tone": "warning" }, "children": ["Pending"] }
+{ "type": "Card", "props": { "tone": "teal", "bg": "accent-soft" }, "children": ["…drawn in teal…"] }
+\`\`\`
+
+A palette name is also a colour role — \`"bg": "teal-soft"\`, \`"color": "teal-text"\` — with the same
+seven roles every family has. So \`"red"\` as a colour is the theme's red, not CSS red; write \`#f00\`
+for that.
 
 **Layout-only primitives** — these accept only Layout props (not Visual, Flex, Typography, or State):
 we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
@@ -195,7 +221,7 @@ the item is never asked to be narrower than its content in the first place.
 | Prop | Type | Description |
 |------|------|-------------|
 | bg | ColorValue | Background color (token) |
-| bgImage | string | Background image — a URL, or a CSS gradient (linear-, radial- or conic-gradient, including several comma-separated for a mesh). Sets background-image, defaults background-size to cover, background-position to center, background-repeat to no-repeat. Composes with bg, which paints beneath it |
+| bgImage | string | Background image — a URL, or a CSS gradient (linear-, radial- or conic-gradient, including several comma-separated for a mesh). Sets background-image, defaults background-size to cover, background-position to center, background-repeat to no-repeat. Composes with bg, which paints beneath it — one element's own picture. A surface role in \`bg\` (\`page\`, \`surface\`, \`surface-raised\`, …) already wears the theme's image for that kind of surface, if its theme sets one; bgImage replaces it there |
 | bgFit | "cover" \\| "contain" | Background image sizing (default: "cover") — only meaningful with bgImage |
 | bgPosition | string | Background image position (default: "center", e.g. "top", "50% 20%") — only meaningful with bgImage |
 | bgImageOpacity | number | Fades bgImage only (0–1), independent of the element's own content/opacity — only meaningful with bgImage |
@@ -209,7 +235,7 @@ the item is never asked to be narrower than its content in the first place.
 | borderBottom | string | Bottom border shorthand (color tokens resolved) |
 | borderLeft | string | Left border shorthand (color tokens resolved) |
 | borderWidth | string | Border width (raw CSS, e.g. "1px", "2px 0") |
-| shadow | "sm" \\| "md" \\| "lg" \\| "xl" | Shadow token |
+| shadow | "sm" \\| "md" \\| "lg" \\| "xl" \\| "glow" | Elevation, built from the theme's shadow colour and strength. "glow" is the accent as light — a thin ring and a soft halo — and follows the element's \`tone\` |
 | cursor | "pointer" \\| "default" \\| "text" \\| "not-allowed" | Cursor style |
 | pointerEvents | "none" \\| "auto" | Pointer events |
 | transform | string | CSS transform |
@@ -293,7 +319,7 @@ min-content — so under it the long string still pushes its container wider tha
 **Typography defaults:** fontSize and fontWeight have **no built-in defaults** — omitting them inherits from parent elements (browser default is ~16px / normal weight). Do not set fontSize or fontWeight unless you need a non-default value. For example, \`fontSize: '300'\` (16px) and \`fontWeight: '500'\` (normal) are the inherited defaults — omit them.
 
 \`we-text\` variants (set via the \`variant\` prop) bundle typography presets. Always pair with a semantic \`tag\` prop for correct HTML structure:
-body (300, tag: p/span), label (200 + medium, tag: span), footnote (100, tag: span), subheading (400 + medium, tag: h5/p), ingress (400 + lineHeight 1.6, tag: p), heading-sm (500 + bold, tag: h4), heading-md (600 + bold, tag: h3), heading-lg (700 + bold, tag: h2), heading-xl (800 + bold, tag: h1).
+body (300, tag: p/span), label (200 + medium, tag: span), footnote (100, tag: span), subheading (400 + medium, tag: h5/p), ingress (400 + lineHeight 1.6, tag: p), heading-sm (500 + bold, tag: h4), heading-md (600 + bold, tag: h3), heading-lg (700 + bold, tag: h2), heading-xl (800 + bold, tag: h1), overline (100, wide tracking, capitals — the name of a group or an eyebrow above a heading, tag: span).
 Variants set size and weight only — color is always inherited or set explicitly. For muted footnote text add \`color="text-muted"\` explicitly.
 
 ### State

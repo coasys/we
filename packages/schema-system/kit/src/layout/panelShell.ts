@@ -324,21 +324,30 @@ export interface PanelScrollOptions {
  */
 const THUMB_EDGE_GAP = '3px';
 
-export function panelScroll(opts: PanelScrollOptions): SchemaNode {
-  const pad = `var(--we-space-${opts.inset ?? '300'})`;
+/**
+ * The scroll area's own geometry, for `panelScroll` and for a hand-written panel drawing the same
+ * thing — the editor's panels are Solid, and take these as props rather than restating them.
+ */
+export function panelScrollProps(inset = '300') {
+  const pad = `var(--we-space-${inset})`;
   // How far the bar's *track* is held off the edge, the thumb's own clearance already counted.
   // Clamped, because a theme whose thumb inset exceeds the gap would otherwise pull the scroller
   // out past the panel and straight into its `overflow: hidden`.
   const track = `max(0px, calc(${THUMB_EDGE_GAP} - var(--we-scrollbar-thumb-inset)))`;
+  return {
+    flex: '1',
+    minHeight: '0',
+    mr: `calc(${track} - ${pad})`,
+    pr: `max(0px, calc(${pad} - ${track} - var(--we-scrollbar-width)))`,
+    scrollbarGutter: 'stable',
+  } as const;
+}
 
+export function panelScroll(opts: PanelScrollOptions): SchemaNode {
   return {
     type: 'we-scroll-area',
     props: {
-      flex: '1',
-      minHeight: '0',
-      mr: `calc(${track} - ${pad})`,
-      pr: `max(0px, calc(${pad} - ${track} - var(--we-scrollbar-width)))`,
-      scrollbarGutter: 'stable',
+      ...panelScrollProps(opts.inset),
       ...(opts.pin ? { pin: opts.pin } : {}),
       ...(opts.jump ? { jump: opts.jump } : {}),
       ...(opts.nearStart ? { nearStart: opts.nearStart } : {}),

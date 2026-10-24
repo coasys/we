@@ -1,4 +1,5 @@
 import type { TransitionConfig, TransitionEffect } from '@we/schema-shared';
+import { motionIsReduced } from '@we/schema-shared';
 
 function toEffects(config: TransitionConfig): TransitionEffect[] {
   return Array.isArray(config) ? config : [config];
@@ -118,7 +119,8 @@ export function transitionSpan(config: TransitionConfig): number {
  * in a non-browser test environment, where "no preference" is the right answer.
  */
 export function prefersReducedMotion(): boolean {
-  return typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  // The person's own Motion setting as well as their system's — see MOTION_ATTRIBUTE in @we/tokens.
+  return motionIsReduced();
 }
 
 /**

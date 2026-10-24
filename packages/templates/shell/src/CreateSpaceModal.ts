@@ -432,7 +432,7 @@ export const createSpaceModal = {
         {
           type: 'we-button',
           // Guarded like the backdrop — one way out of the modal, not two that disagree.
-          props: { variant: 'secondary', text: 'Cancel', onClick: guard.close },
+          props: { variant: 'soft', text: 'Cancel', onClick: guard.close },
         },
         {
           type: 'we-button',

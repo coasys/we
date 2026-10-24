@@ -78,7 +78,7 @@ const datasetCard: SchemaNode = {
         {
           type: 'we-button',
           props: {
-            variant: 'secondary',
+            variant: 'soft',
             size: 'sm',
             onClick: {
               $action: 'datasetStore.cleanupSpaceSdna',
@@ -94,7 +94,8 @@ const datasetCard: SchemaNode = {
         {
           type: 'we-button',
           props: {
-            variant: 'danger',
+            variant: 'solid',
+            tone: 'danger',
             size: 'sm',
             onClick: { $setLocal: 'confirmDeleteOpen', value: true },
           },
