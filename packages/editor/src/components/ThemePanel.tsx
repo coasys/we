@@ -12,16 +12,16 @@ import {
   tokenVar,
 } from '@we/design-utils';
 import { PANEL_TITLE_PROPS, SECTION_LABEL_PROPS } from '@we/schema-kit';
-import type { FontFaceSetting, ThemeOverrides, ThemeRole } from '@we/schema-shared';
+import type { FontFaceSetting, ThemeOverrides, ThemeRole, ThemeSideName } from '@we/schema-shared';
 import {
   applyThemeVars,
+  basePolarity,
   fontFaceProblem,
-  rangeForPolarity,
+  previewDisplay,
   roleVar,
   setThemeLive,
-  surfacesForPolarity,
   themeParametersToStyle,
-  themeSides,
+  withThemeSide,
 } from '@we/schema-shared';
 import {
   capitalise,
@@ -40,6 +40,7 @@ import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'so
 
 import { useEditorHost } from '../host';
 import { nextRoles, roleTierLabel } from '../themeRoles';
+import { type SidesChoice, sidesOf, sidesPatch, writePatch } from '../themeSides';
 
 const SAVE_DEBOUNCE_MS = 600;
 
@@ -669,10 +670,28 @@ export function ThemePanel() {
   const themeStore = useEditorHost().theme;
 
   const editing = () => themeStore.editingTheme();
-  const overrides = createMemo<ThemeOverrides>(() => {
+  /** The theme as stored: its base, and a `light` or `dark` block when it has two sides. */
+  const stored = createMemo<ThemeOverrides>(() => {
     const raw = editing()?.overrides;
     return raw ? JSON.parse(raw) : {};
   });
+
+  /*
+    Sides. A theme is light, dark, or both — a base, and a block holding what differs on the other
+    side. The base's polarity is its own or its preset's; the other side exists when its block does.
+    With both, the panel edits one side at a time: every control shows that side and writes to it,
+    and the app previews it (see the effect below), so what is on screen is what is being changed.
+  */
+  const basePol = () => basePolarity(stored());
+  const otherSide = (): ThemeSideName => (basePol() === 'dark' ? 'light' : 'dark');
+  const hasBoth = () => sidesOf(stored()) === 'both';
+  const [chosenSide, setChosenSide] = createSignal<ThemeSideName | null>(null);
+  /** The side block being edited, or null for the base. */
+  const editedBlock = (): ThemeSideName | null => (hasBoth() && chosenSide() === otherSide() ? otherSide() : null);
+  const editedSide = (): ThemeSideName => editedBlock() ?? basePol();
+
+  /** What every control reads: the theme as worn on the side being edited. */
+  const overrides = createMemo<ThemeOverrides>(() => withThemeSide(stored(), editedBlock() ?? undefined));
 
   const [cssEditing, setCssEditing] = createSignal(false);
   const [cssValue, setCssValue] = createSignal('');
@@ -697,18 +716,44 @@ export function ThemePanel() {
     }
   });
 
+  /** Write settings to whichever side is being edited — see `writePatch`. */
+  function write(partial: Partial<ThemeOverrides>) {
+    themeStore.updateEditingOverrides(writePatch(stored(), editedBlock(), partial));
+  }
+
   function setOverride<K extends keyof ThemeOverrides>(key: K, value: ThemeOverrides[K] | undefined) {
-    // Pass undefined explicitly — updateEditingOverrides spreads it into the existing overrides,
-    // and JSON.stringify strips undefined values, which correctly deletes the key.
-    themeStore.updateEditingOverrides({ [key]: value } as Partial<ThemeOverrides>);
+    write({ [key]: value } as Partial<ThemeOverrides>);
   }
 
   function setOverrides(partial: Partial<ThemeOverrides>) {
-    // Pass the partial directly with undefined values intact. The spread in updateEditingOverrides
-    // will shadow existing keys with undefined, and JSON.stringify will strip them.
-    themeStore.updateEditingOverrides(partial);
+    write(partial);
     saveTheme();
   }
+
+  // ── Sides ───────────────────────────────────────────────────────────────────
+
+  /** Make the theme one side only, or give it both — see `sidesPatch`. */
+  function chooseSides(choice: SidesChoice) {
+    const patch = sidesPatch(stored(), choice);
+    if (!patch) return;
+    themeStore.updateEditingOverrides(patch);
+    // Adding a side opens it for editing; going back to one leaves nothing to choose between.
+    setChosenSide(choice === 'both' ? otherSide() : null);
+    saveTheme();
+  }
+
+  /*
+    The person's own display, previewed while they edit: the side being edited when the theme has
+    two, and the contrast chosen in Modes. A preview rather than a change to their settings, so
+    closing the panel puts everything back.
+  */
+  const [contrastPreview, setContrastPreview] = createSignal<'standard' | 'more' | null>(null);
+  createEffect(() => {
+    const scheme = hasBoth() ? { colorScheme: editedSide() } : {};
+    const contrast = contrastPreview() ? { contrast: contrastPreview()! } : {};
+    previewDisplay({ ...scheme, ...contrast });
+  });
+  onCleanup(() => previewDisplay(null));
 
   // ── Slider helpers ──────────────────────────────────────────────────────────
 
@@ -1279,7 +1324,7 @@ export function ThemePanel() {
   });
 
   function setRole(role: ThemeRole, value: string | undefined) {
-    themeStore.updateEditingOverrides({ roles: nextRoles(overrides().roles, role, value) });
+    write({ roles: nextRoles(overrides().roles, role, value) });
     saveTheme();
   }
 
@@ -1809,38 +1854,61 @@ export function ThemePanel() {
                   saveTheme();
                 }}
               />
+            </CollapsibleSection>
+
+            {/* ── Sides ── */}
+            {/*
+              One control for light and dark: what the theme is (light, dark), or that it carries
+              both. With both, which side the panel is editing — and previewing, since a person's own
+              light/dark setting is what decides which side they see.
+            */}
+            <CollapsibleSection title="Sides">
               <Row gap="200">
-                <we-button
-                  size="sm"
-                  variant={(overrides().polarity ?? 'light') === 'light' ? 'soft' : 'ghost'}
-                  flex="1"
-                  onClick={() => {
-                    setOverrides({
-                      polarity: 'light',
-                      ...rangeForPolarity('light', overrides().themeName),
-                      roles: surfacesForPolarity('light', overrides().roles),
-                    });
-                  }}
-                >
-                  <we-icon name="sun" />
-                  Light
-                </we-button>
-                <we-button
-                  size="sm"
-                  variant={overrides().polarity === 'dark' ? 'soft' : 'ghost'}
-                  flex="1"
-                  onClick={() => {
-                    setOverrides({
-                      polarity: 'dark',
-                      ...rangeForPolarity('dark', overrides().themeName),
-                      roles: surfacesForPolarity('dark', overrides().roles),
-                    });
-                  }}
-                >
-                  <we-icon name="moon" />
-                  Dark
-                </we-button>
+                <For each={['light', 'dark', 'both'] as const}>
+                  {(choice) => (
+                    <we-button
+                      size="sm"
+                      flex="1"
+                      variant={sidesOf(stored()) === choice ? 'soft' : 'ghost'}
+                      onClick={() => chooseSides(choice)}
+                    >
+                      <we-icon name={choice === 'light' ? 'sun' : choice === 'dark' ? 'moon' : 'circle-half'} />
+                      {choice === 'both' ? 'Both' : capitalise(choice)}
+                    </we-button>
+                  )}
+                </For>
               </Row>
+              <Show
+                when={hasBoth()}
+                fallback={
+                  <we-text fontSize="100" color="text-faint" lineHeight="1.4">
+                    One look, worn whatever somebody's light or dark setting is. Choose the other side to turn it, or
+                    Both to give it a second side.
+                  </we-text>
+                }
+              >
+                <Row ay="center" gap="300">
+                  <we-text minWidth="80px" fontSize="300" color="text-muted">
+                    Editing
+                  </we-text>
+                  <For each={['light', 'dark'] as const}>
+                    {(side) => (
+                      <we-button
+                        size="sm"
+                        flex="1"
+                        variant={editedSide() === side ? 'soft' : 'ghost'}
+                        onClick={() => setChosenSide(side)}
+                      >
+                        {capitalise(side)} side
+                      </we-button>
+                    )}
+                  </For>
+                </Row>
+                <we-text fontSize="100" color="text-faint" lineHeight="1.4">
+                  People see the side their light or dark setting asks for. Every control below shows and changes the{' '}
+                  {editedSide()} side, and the app is previewing it.
+                </we-text>
+              </Show>
             </CollapsibleSection>
 
             {/* ── Colour ── */}
@@ -1961,34 +2029,28 @@ export function ThemePanel() {
             */}
             <CollapsibleSection title="Modes">
               <we-text fontSize="200" color="text-muted" lineHeight="1.5">
-                People choose light or dark and more contrast for themselves, over any theme. See this theme the way
-                they will:
+                People choose more contrast for themselves, over any theme. Preview this theme the way they will see it
+                — your own setting is left as it is:
               </we-text>
-              {choiceRow(
-                'Colour scheme',
-                () => themeStore.themeMode(),
-                [
-                  { value: 'system', label: 'Follow system' },
-                  { value: 'light', label: 'Light' },
-                  { value: 'dark', label: 'Dark' },
-                ],
-                (v) => void themeStore.setThemeMode((v as 'light' | 'dark' | 'system') ?? 'system'),
-              )}
-              {choiceRow(
-                'Contrast',
-                () => themeStore.displayPreferences().contrast ?? 'system',
-                [
-                  { value: 'system', label: 'Follow system' },
-                  { value: 'standard', label: 'Standard' },
-                  { value: 'more', label: 'More' },
-                ],
-                (v) => void themeStore.setDisplayPreference('contrast', (v as 'standard' | 'more') ?? null),
-              )}
-              <we-text fontSize="100" color="text-faint" lineHeight="1.4">
-                {themeSides(overrides()).length
-                  ? 'This theme has a light and a dark side.'
-                  : 'This theme has one look, worn in either scheme.'}
-              </we-text>
+              <Row ay="center" gap="300">
+                <we-text minWidth="100px" fontSize="300" color="text-muted">
+                  Contrast
+                </we-text>
+                {/* Not `choiceRow`, which saves the theme: this changes nothing in it. */}
+                <we-select
+                  flex="1"
+                  size="sm"
+                  value={contrastPreview() ?? ''}
+                  options={[
+                    { value: '', label: 'As I have it' },
+                    { value: 'standard', label: 'Standard' },
+                    { value: 'more', label: 'More' },
+                  ]}
+                  on:change={(e: CustomEvent) =>
+                    setContrastPreview(((e.detail as string) || null) as 'standard' | 'more' | null)
+                  }
+                />
+              </Row>
             </CollapsibleSection>
 
             {/* ── Shape ── */}

@@ -137,7 +137,9 @@ it and be unreadable.
 
 A theme can carry both sides of itself, so an app ships one theme rather than a pair. Write the base
 as one side and add a `light` or `dark` block holding only what differs — usually `polarity`, the
-range, and the role pins that only hold there:
+range, and the role pins that only hold there. In the theme panel this is the **Sides** control:
+Light or Dark turns the theme, Both adds the other side, and with both every control edits the side
+chosen under it while the app previews that side.
 
 ```ts
 {

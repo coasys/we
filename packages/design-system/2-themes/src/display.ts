@@ -135,6 +135,12 @@ export function withDisplay(theme: ThemeOverrides, display: ResolvedDisplay): Th
 // ── The current preferences, and the system's answers ──────────────────────
 
 let preferences: DisplayPreferences = {};
+/*
+  A preview laid over the person's preferences without replacing them — the theme editor showing a
+  theme's light side, or the theme in more contrast, while somebody works on it. Never stored: the
+  preferences are theirs, and closing the editor puts them back exactly as they were.
+*/
+let preview: DisplayPreferences = {};
 
 function systemSignals(): SystemDisplaySignals {
   const query = (q: string) => typeof matchMedia === 'function' && matchMedia(q).matches;
@@ -147,7 +153,7 @@ function systemSignals(): SystemDisplaySignals {
 
 /** The display every theme is applied with right now. */
 export function currentDisplay(): ResolvedDisplay {
-  return resolveDisplay(preferences, systemSignals());
+  return resolveDisplay({ ...preferences, ...preview }, systemSignals());
 }
 
 const listeners = new Set<() => void>();
@@ -161,6 +167,17 @@ export function onDisplayChange(listener: () => void): () => void {
 /** Set the person's preferences, and redo every theme on screen under them. */
 export function setDisplayPreferences(next: DisplayPreferences): void {
   preferences = { ...next };
+  for (const listener of listeners) listener();
+}
+
+/**
+ * Lay a preview over the person's preferences — or take it off again with `null` — and redo every
+ * theme on screen. The preferences themselves are untouched; see `preview` above.
+ */
+export function previewDisplay(next: DisplayPreferences | null): void {
+  const was = JSON.stringify(preview);
+  preview = { ...(next ?? {}) };
+  if (JSON.stringify(preview) === was) return;
   for (const listener of listeners) listener();
 }
 

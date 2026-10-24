@@ -7,7 +7,14 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { resolveDisplay, setDisplayPreferences, withDisplay } from './display';
+import {
+  currentDisplay,
+  getDisplayPreferences,
+  previewDisplay,
+  resolveDisplay,
+  setDisplayPreferences,
+  withDisplay,
+} from './display';
 import type { ThemeOverrides } from './overrides';
 import { applyThemeVars } from './themeStyles';
 
@@ -91,5 +98,22 @@ describe('the chokepoint', () => {
     setDisplayPreferences({ textSize: 1.25, motion: 'reduced' });
     expect(root.style.getPropertyValue('font-size')).toBe('20px');
     expect(root.style.getPropertyValue('--we-transition-300')).toBe('0ms');
+  });
+});
+
+describe('a preview over the preferences', () => {
+  afterEach(() => {
+    previewDisplay(null);
+    setDisplayPreferences({});
+  });
+
+  it('is what themes are applied with while it lasts, and leaves the preferences as they were', () => {
+    setDisplayPreferences({ colorScheme: 'dark', textSize: 1.25 });
+    previewDisplay({ colorScheme: 'light', contrast: 'more' });
+    expect(currentDisplay()).toMatchObject({ side: 'light', contrast: 'more', textSize: 1.25 });
+    expect(getDisplayPreferences()).toEqual({ colorScheme: 'dark', textSize: 1.25 });
+
+    previewDisplay(null);
+    expect(currentDisplay()).toMatchObject({ side: 'dark', textSize: 1.25 });
   });
 });

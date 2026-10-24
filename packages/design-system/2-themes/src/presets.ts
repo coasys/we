@@ -456,6 +456,19 @@ export function isThemeName(value: string): value is ThemeName {
 }
 
 /**
+ * The side a theme is on before any light or dark block: its own polarity, else its base preset's,
+ * else light — which is what the ramp does with neither.
+ */
+export function basePolarity(theme: ThemeOverrides): 'light' | 'dark' {
+  if (theme.polarity) return theme.polarity;
+  const preset =
+    theme.themeName && isThemeName(theme.themeName)
+      ? (THEME_PRESETS[theme.themeName].parameters as ThemeOverrides)
+      : undefined;
+  return preset?.polarity === 'dark' ? 'dark' : 'light';
+}
+
+/**
  * The lightness range a theme takes when it turns light or dark: its own base preset's, when that
  * preset is already on that side, else the built-in light or dark one's.
  *
@@ -488,6 +501,7 @@ export {
   type DisplayPreferences,
   getDisplayPreferences,
   onDisplayChange,
+  previewDisplay,
   type ResolvedDisplay,
   resolveDisplay,
   setDisplayPreferences,
