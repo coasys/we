@@ -9,6 +9,15 @@
  *
  * Drives the browser already on the machine rather than downloading one, so `playwright-core` is
  * the whole dependency.
+ *
+ * Environment:
+ * - `WE_BROWSER_ONLY=<text>` — run only the cases whose file name contains it.
+ * - `WE_BROWSER_SHOTS=<dir>` — let a case photograph the page (`screenshot(label)`); off otherwise.
+ * - `WE_BROWSER_CPU=1` — profile each case and print where the time went.
+ * - `WE_BROWSER_CHAIN`, `WE_BROWSER_MEASURE`, `WE_BROWSER_DUMP` — layout diagnostics; see below.
+ * - `WE_CHROME`, `WE_BROWSER_PORT` — which browser, and where to serve.
+ *
+ * Headless Chrome draws no scrollbars, so nothing here can show a layout moving as one appears.
  */
 import { createServer } from 'node:http';
 import { readdir, readFile } from 'node:fs/promises';

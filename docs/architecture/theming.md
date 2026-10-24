@@ -107,7 +107,20 @@ the document, a space's content and any node carrying a `theme`:
 5. **Everything is written inline on the root**, including every role's default, so an unpinned role
    resolves against the theme it belongs to rather than an ancestor's.
 
-A role the theme pins is the theme's to keep legible; the derivation does not overrule it.
+A role the theme pins is the theme's to keep legible; the derivation does not overrule it. Pins
+merge key by key with the base preset's, so leaving a role out keeps the preset's pin; stating it as
+`''` takes it back, for the theme and its preset alike (`withoutUnpinned`). The theme editor does
+this for a family's fill and label when a colour is picked for it, so the fill is the one picked and
+the label is chosen against it.
+
+**What it costs, and the held slider.** Measuring is the expensive part: the chroma ceilings read
+the hues the theme resolved to, and the derivation reads the roles, and each read after a write to
+the root is a whole-document style recalculation. Both read everything they need in one pass, so an
+apply costs two recalculations however many families and roles there are. While a slider is held —
+`setThemeLive(true)`, which the theme editor drives from its drag — an apply writes the theme and
+skips measuring, keeping what the root was last measured to (a colour family's own roles excepted,
+since the slider may be moving them); letting go measures once, in full. `perfThemeDrag` in the
+browser harness reports both against a large page.
 
 ## Where a theme reaches
 
@@ -140,6 +153,10 @@ Five axes, each independent of the others:
 A theme may say how it looks in a mode — its `light` and `dark` sides, its `contrast.more` block — but
 **which mode is worn is the person's**, and it applies over every theme, a space's included. Somebody
 who needs more contrast or larger text needs it in the space they are visiting as much as at home.
+
+The theme editor previews a theme in a mode — the side being edited, more contrast — through
+`previewDisplay`, which lays a display over the person's preferences without changing them, and is
+taken off when the panel closes.
 
 That is enforced at the chokepoint rather than asked of callers: `applyThemeVars` lays the current
 preferences over every theme it applies, and `setDisplayPreferences` re-applies every root on screen.
