@@ -313,6 +313,21 @@ function isGradientList(value: string): boolean {
   return /^\s*(repeating-)?(linear|radial|conic)-gradient\(/i.test(value);
 }
 
+/**
+ * A theme with its unpinned roles taken out: a role a theme states as `''` is not pinned by it, and
+ * not by its base preset either.
+ *
+ * The one way to undo a preset's pin. Roles merge key by key, so leaving a role out of a theme keeps
+ * the preset's — right almost always, and wrong when somebody has just picked a new accent on a fork
+ * of `dark`, whose own accent is a formula of the accent settings scaled to its identity colour. An
+ * empty value drops the pin, so the role is the parametric one and the corrections reach it.
+ */
+export function withoutUnpinned(theme: ThemeOverrides): ThemeOverrides {
+  if (!theme.roles || !Object.values(theme.roles).includes('')) return theme;
+  const roles = Object.fromEntries(Object.entries(theme.roles).filter(([, value]) => value !== ''));
+  return { ...theme, roles };
+}
+
 export function themeParametersToStyle(overrides: ThemeOverrides): Record<string, string> {
   /*
     A named theme brings its own parameters.
@@ -343,13 +358,14 @@ export function themeParametersToStyle(overrides: ThemeOverrides): Record<string
     which is what "override" means everywhere else in this object.
   */
   const explicit = stripUndefined(overrides);
-  const theme: ThemeOverrides = preset
+  const merged: ThemeOverrides = preset
     ? {
         ...preset,
         ...explicit,
         ...(preset.roles || explicit.roles ? { roles: { ...preset.roles, ...explicit.roles } } : {}),
       }
     : overrides;
+  const theme = withoutUnpinned(merged);
 
   // Role defaults first, so an explicit pin below overwrites its own default rather than sitting
   // beside it. See ROLE_DEFAULT_VARS for why they are re-declared at all.
@@ -434,9 +450,14 @@ export function themeParametersToStyle(overrides: ThemeOverrides): Record<string
     const { saturation, lightness, hues } = theme.palette;
     if (saturation !== undefined) style['--we-color-palette-saturation'] = String(saturation);
     if (lightness !== undefined) style['--we-color-palette-lightness'] = String(lightness);
-    for (const [hue, own] of Object.entries(hues ?? {}) as [PaletteHue, { hue?: number; lightness?: number }][]) {
+    for (const [hue, own] of Object.entries(hues ?? {}) as [
+      PaletteHue,
+      { hue?: number; lightness?: number; saturation?: number },
+    ][]) {
       if (own?.hue !== undefined) style[`--we-color-${hue}-hue`] = String(own.hue);
       if (own?.lightness !== undefined) style[`--we-${hue}-lightness`] = String(own.lightness);
+      // Ahead of the palette's own saturation, which the hue otherwise falls back to.
+      if (own?.saturation !== undefined) style[familySaturationVar(hue)] = String(own.saturation);
     }
   }
 
@@ -745,7 +766,7 @@ export function applyThemeVars(root: HTMLElement, asked: ThemeOverrides, options
   }
 
   const { colours: resolved, neutralHue: hue } = readRoles(root, ROLES_TO_RESOLVE);
-  const derivedVars = deriveRoleVars(resolved, theme, hue);
+  const derivedVars = deriveRoleVars(resolved, withoutUnpinned(theme), hue);
   for (const [prop, value] of Object.entries(derivedVars)) root.style.setProperty(prop, value);
 
   const derived = [...Object.keys(derivedVars), ...ceilings];

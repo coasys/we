@@ -59,8 +59,9 @@ becomes "and now nobody can read it".
 
 The ten palette hues are the colours a community picks for its categories — a task state, a topic, a
 lane. `palette` tunes them as a set, because a palette is designed as one: `saturation` for how vivid,
-`lightness` for points lighter (pastel) or deeper, and `hues.<hue>` to move one hue's angle or
-lightness alone. Text on a palette fill is corrected for contrast wherever its lightness lands.
+`lightness` for points lighter (pastel) or deeper, and `hues.<hue>` to set one hue's own angle,
+lightness or saturation. In the panel each hue is a swatch: a picked colour is written as those three
+numbers, and held within 20° of the colour the hue is named for. Text on a palette fill is corrected for contrast wherever its lightness lands.
 
 ## 4. Type roles
 
@@ -100,6 +101,10 @@ scale produces is not the one you want.
 | `oklch(from var(--we-role-page) calc(l + 0.045) c h)` | the role it names, in both polarities | "one step above the page"            |
 | `var(--we-color-accent-700)`                          | the parameters, but not the decisions | a palette, not a meaning — see below |
 | `oklch(53% 0.18 266)`                                 | nothing                               | a brand colour that must not move    |
+
+A role stated as `''` is not pinned — by the theme or by its base preset — which is how a theme takes
+back a role its preset pins. Picking a family's colour in the panel does this for the fill and its
+label, so the colour is the one picked and the label is chosen against it.
 
 Prefer the highest rung that expresses the intent. A literal is the only form that stops following
 the theme entirely, and a theme made of literals is a stylesheet with extra steps.

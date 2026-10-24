@@ -5637,8 +5637,8 @@ but which mode is worn is the person's, and it applies over every theme, a space
 - `glowIntensity` — How bright and wide `shadow: 'glow'` is: none, subtle, medium, strong.
 - `animationSpeed` — Every transition at once: none, fast, normal, slow.
 - `fontScale` — Multiplies the root font size, and with it every rem-based token.
-- `roles` — Pin one colour role to a value — see "Pinning a role".
-- `palette` — The ten palette hues as a set: `saturation`, `lightness` (points lighter or deeper), and `hues.<hue>` to move one.
+- `roles` — Pin one colour role to a value — see "Pinning a role". `''` unpins a role the base preset pins.
+- `palette` — The ten palette hues as a set: `saturation`, `lightness` (points lighter or deeper), and `hues.<hue>` to set one hue's own angle, lightness or saturation.
 - `surfaceImages` — A gradient laid over every surface of a kind, by surface role. Gradients only.
 - `fontFaces` — Typefaces the theme carries, as data: URLs, so a family it names can be one nobody has installed.
 - `typeStyles` — How each kind of text looks, by type role.

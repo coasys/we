@@ -80,7 +80,9 @@ const themeParameterShape = {
       hues: z
         .partialRecord(
           z.enum(PALETTE_HUES),
-          z.object({ hue: z.number().optional(), lightness: z.number().optional() }).strict(),
+          z
+            .object({ hue: z.number().optional(), lightness: z.number().optional(), saturation: z.number().optional() })
+            .strict(),
         )
         .optional(),
     })

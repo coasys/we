@@ -39,8 +39,8 @@ export interface PaletteSettings {
    * way, and the tints sit a step off the page, so this mostly moves the solid fills.
    */
   lightness?: number;
-  /** One hue's own angle or fill lightness (0–100). */
-  hues?: Partial<Record<PaletteHue, { hue?: number; lightness?: number }>>;
+  /** One hue's own angle, fill lightness (0–100) or saturation (0–100, ahead of the palette's). */
+  hues?: Partial<Record<PaletteHue, { hue?: number; lightness?: number; saturation?: number }>>;
 }
 
 /**

@@ -1,4 +1,4 @@
-import { CodeEditor, Column, Row } from '@we/components/solid';
+import { CodeEditor, Column, Grid, Row } from '@we/components/solid';
 import {
   APCA_MINIMUM,
   apcaContrast,
@@ -26,6 +26,8 @@ import {
 } from '@we/schema-shared';
 import {
   capitalise,
+  CHROMATIC_FAMILIES,
+  type ChromaticFamily,
   COLOR_FAMILIES,
   PALETTE_HUES,
   type PaletteHue,
@@ -38,6 +40,7 @@ import {
 } from '@we/tokens';
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
 
+import { colourToFamily, familyPatch, familyResetPatch, visiblyDifferent } from '../familyColour';
 import { useEditorHost } from '../host';
 import { nextRoles, roleTierLabel } from '../themeRoles';
 import { type SidesChoice, sidesOf, sidesPatch, writePatch } from '../themeSides';
@@ -621,6 +624,15 @@ function persistedFlag(key: string, fallback: boolean) {
   ] as const;
 }
 
+/** A family's roles as the edited theme draws them. */
+interface FamilySample {
+  fill: string;
+  on: string;
+  soft: string;
+  text: string;
+  border: string;
+}
+
 // ─── ThemePanel ───────────────────────────────────────────────────────────────
 
 export function ThemePanel() {
@@ -685,6 +697,115 @@ export function ThemePanel() {
   function setOverrides(partial: Partial<ThemeOverrides>) {
     write(partial);
     saveTheme();
+  }
+
+  // ── Colour families ─────────────────────────────────────────────────────────
+
+  /** The colour last picked for each family, to say when the theme drew something else. */
+  const [picked, setPicked] = createSignal<Record<string, string>>({});
+
+  /** Whether the theme says anything of its own about a family — what a reset would undo. */
+  function familyIsSet(family: ChromaticFamily): boolean {
+    const theme = overrides();
+    const pinned = theme.roles?.[family as ThemeRole] !== undefined;
+    if (COLOR_FAMILIES[family].kind === 'palette') return pinned || !!theme.palette?.hues?.[family as PaletteHue];
+    return (
+      pinned ||
+      ['Hue', 'Saturation', 'Lightness'].some((k) => theme[`${family}${k}` as keyof ThemeOverrides] !== undefined)
+    );
+  }
+
+  /** A colour picked for a family, written as its settings — see `familyPatch`. */
+  function pickFamily(family: ChromaticFamily, colour: string, commit: boolean) {
+    const current =
+      COLOR_FAMILIES[family].kind === 'palette'
+        ? overrides().palette?.hues?.[family as PaletteHue]?.hue
+        : (overrides()[`${family}Hue` as keyof ThemeOverrides] as number | undefined);
+    const settings = colourToFamily(colour, family, current);
+    if (!settings) return;
+    write(familyPatch(overrides(), family, settings));
+    setPicked((all) => ({ ...all, [family]: colour }));
+    if (commit) saveTheme();
+  }
+
+  function resetFamily(family: ChromaticFamily) {
+    write(familyResetPatch(overrides(), family));
+    setPicked((all) => ({ ...all, [family]: '' }));
+    saveTheme();
+  }
+
+  /** Pin the fill to exactly what was picked, past the correction — the label may then not read. */
+  function keepPicked(family: ChromaticFamily) {
+    write({ roles: { ...overrides().roles, [family]: picked()[family] } as ThemeOverrides['roles'] });
+    saveTheme();
+  }
+
+  /**
+   * One family as a colour: a swatch that opens the picker, what the family produces beside it —
+   * the fill with its label, the tint with its text, the border — and, when the theme drew
+   * something other than what was picked, why, and a way to keep the pick.
+   */
+  function familyRow(family: ChromaticFamily, compact = false) {
+    const sample = () => familyColors()[family];
+    const used = () => sample()?.fill ?? '';
+    const adjusted = () => {
+      const pick = picked()[family];
+      return !!pick && !!used() && !dragging() && visiblyDifferent(pick, used());
+    };
+    return (
+      <Column gap="100" width="100%">
+        <Row ay="center" gap="300" width="100%">
+          {/*
+            No named swatches: the picker's palette offers the theme's own colours by name, and a
+            family set to "teal" would be a family set to another family.
+          */}
+          <we-color-picker
+            palette={[]}
+            value={used()}
+            on:preview={(e: CustomEvent) => pickFamily(family, e.detail as string, false)}
+            on:change={(e: CustomEvent) => pickFamily(family, e.detail as string, true)}
+          />
+          <we-text flex="1" minWidth="0" fontSize="300" color="text-muted" truncate>
+            {capitalise(family)}
+          </we-text>
+          <Show when={!compact}>
+            <Row gap="100" ay="center">
+              <we-text fontSize="100" px="200" py="100" r="200" bg={sample()?.fill} color={sample()?.on}>
+                Aa
+              </we-text>
+              <we-text fontSize="100" px="200" py="100" r="200" bg={sample()?.soft} color={sample()?.text}>
+                Aa
+              </we-text>
+              <we-text
+                fontSize="100"
+                px="200"
+                py="100"
+                r="200"
+                border={`1px solid ${sample()?.border ?? 'transparent'}`}
+                color={sample()?.text}
+              >
+                Aa
+              </we-text>
+            </Row>
+          </Show>
+          <Show when={familyIsSet(family)}>
+            <we-button size="xs" variant="ghost" square label={`Reset ${family}`} onClick={() => resetFamily(family)}>
+              <we-icon name="arrow-counter-clockwise" />
+            </we-button>
+          </Show>
+        </Row>
+        <Show when={adjusted()}>
+          <Row ay="center" gap="200" wrap>
+            <we-text fontSize="100" color="text-faint" lineHeight="1.4" flex="1" minWidth="0">
+              Adjusted so its label stays readable.
+            </we-text>
+            <we-button size="xs" variant="ghost" onClick={() => keepPicked(family)}>
+              Keep as picked
+            </we-button>
+          </Row>
+        </Show>
+      </Column>
+    );
   }
 
   // ── Sides ───────────────────────────────────────────────────────────────────
@@ -883,11 +1004,6 @@ export function ThemePanel() {
     setOverride('palette', pruned({ ...overrides().palette, ...change }));
   }
 
-  function setPaletteHue(hue: PaletteHue, angle: number) {
-    const hues = { ...overrides().palette?.hues, [hue]: { ...overrides().palette?.hues?.[hue], hue: angle } };
-    setPalette({ hues });
-  }
-
   function setTypeStyle(role: TypeRole, key: keyof TypeStyle, value: string | undefined) {
     const current = overrides().typeStyles ?? {};
     const next = pruned({ ...current, [role]: pruned({ ...current[role], [key]: value }) });
@@ -1064,6 +1180,7 @@ export function ThemePanel() {
   */
   let roleProbe: HTMLDivElement | undefined;
   const [roleColors, setRoleColors] = createSignal<Record<string, string>>({});
+  const [familyColors, setFamilyColors] = createSignal<Record<string, FamilySample>>({});
   const probeStyle = createMemo(() => themeParametersToStyle(overrides()) as Record<string, string>);
 
   /**
@@ -1148,6 +1265,23 @@ export function ThemePanel() {
         next[role] = resolveColor(roleProbe, computed.getPropertyValue(roleVar(role)).trim());
       }
     }
+    /*
+      Each family's roles as drawn, corrections included: the fill a picked colour is compared with,
+      and the chips beside it. Read here because the chips sit outside anything wearing the edited
+      theme — painted from the role names they would show the app's colours, not this theme's.
+    */
+    const fills: Record<string, FamilySample> = {};
+    const read = (role: string) => resolveColor(roleProbe!, computed.getPropertyValue(`--we-role-${role}`).trim());
+    for (const family of CHROMATIC_FAMILIES) {
+      fills[family] = {
+        fill: read(family),
+        on: read(`on-${family}`),
+        soft: read(`${family}-soft`),
+        text: read(`${family}-text`),
+        border: read(`${family}-border`),
+      };
+    }
+    setFamilyColors(fills);
     roleProbe.style.color = '';
     setRoleColors(next);
 
@@ -1855,42 +1989,31 @@ export function ThemePanel() {
               one family's three settings in three places and called the accent "Brand".
             */}
             <FoldingSection title="Colour">
-              <For each={[...SEMANTIC_FAMILIES]}>
-                {(family) => (
-                  <Column gap="200">
-                    <we-text fontSize="200" color="text-faint">
-                      {capitalise(family)}
-                    </we-text>
-                    {hueSlider('Hue', `${family}Hue` as keyof ThemeOverrides, COLOR_FAMILIES[family].hue)}
-                    {percentSlider('Saturation', `${family}Saturation` as keyof ThemeOverrides, 0, 100, 50, '')}
-                    {percentSlider(
-                      'Fill lightness',
-                      `${family}Lightness` as keyof ThemeOverrides,
-                      20,
-                      95,
-                      Math.round(COLOR_FAMILIES[family].fill * 100),
-                      '',
-                    )}
-                  </Column>
-                )}
-              </For>
+              {/*
+                A colour per family, picked rather than dialled in three sliders: the picker writes
+                the hue, saturation and fill lightness that make it (see familyColour.ts), so the
+                family still turns with the theme and keeps its label readable.
+              */}
+              <Column gap="200">
+                <For each={[...SEMANTIC_FAMILIES]}>{(family) => familyRow(family)}</For>
+              </Column>
               <Column gap="200">
                 <we-text fontSize="200" color="text-faint">
                   Neutral
                 </we-text>
-                {hueSlider('Hue', 'neutralHue', COLOR_FAMILIES.accent.hue)}
-                {percentSlider('Saturation', 'neutralSaturation', 0, 100, 20, '')}
+                {hueSlider('Tint', 'neutralHue', COLOR_FAMILIES.accent.hue)}
+                {percentSlider('Amount', 'neutralSaturation', 0, 100, 20, '')}
               </Column>
               <Column gap="200">
                 <we-text fontSize="200" color="text-faint">
                   Palette
                 </we-text>
                 <we-text fontSize="100" color="text-faint" lineHeight="1.4">
-                  The ten hues communities colour categories with. Set as one: how vivid and how light the whole set is,
-                  then any one hue moved.
+                  The ten colours communities give their categories. Set how vivid and how light they are as a set, then
+                  pick any one — it stays near the colour it is named for.
                 </we-text>
                 {sliderRow(
-                  'Saturation',
+                  'Vividness',
                   () => overrides().palette?.saturation ?? 50,
                   (v) => setPalette({ saturation: v }),
                   {
@@ -1909,16 +2032,9 @@ export function ThemePanel() {
                     format: (v) => (v > 0 ? `+${v}` : `${v}`),
                   },
                 )}
-                <For each={[...PALETTE_HUES]}>
-                  {(hue) =>
-                    sliderRow(
-                      capitalise(hue),
-                      () => overrides().palette?.hues?.[hue]?.hue ?? COLOR_FAMILIES[hue].hue,
-                      (v) => setPaletteHue(hue, v),
-                      { min: 0, max: 359, format: (v) => `${v}°` },
-                    )
-                  }
-                </For>
+                <Grid minChildWidth="120px" gap="200">
+                  <For each={[...PALETTE_HUES]}>{(hue) => familyRow(hue, true)}</For>
+                </Grid>
               </Column>
               <Column gap="200">
                 <we-text fontSize="200" color="text-faint">
