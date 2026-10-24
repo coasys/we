@@ -65,7 +65,7 @@ const TEMPLATES: Record<EvalTemplate, SchemaNode> = {
         props: { ax: 'between', ay: 'center' },
         children: [
           { type: 'we-text', props: { variant: 'heading-lg', tag: 'h1' }, children: ['Posts'] },
-          { type: 'we-button', props: { variant: 'primary' }, children: ['New post'] },
+          { type: 'we-button', props: { variant: 'solid' }, children: ['New post'] },
         ],
       },
       {
@@ -267,7 +267,7 @@ export const EVAL_CASES: EvalCase[] = [
       edited(s, (r) =>
         r.children!.push({
           type: 'we-button',
-          props: { variant: 'primary', onClick: { $action: 'routeStore.navigate', args: ['/start'] } },
+          props: { variant: 'solid', onClick: { $action: 'routeStore.navigate', args: ['/start'] } },
           children: ['Get started'],
         }),
       ),
@@ -599,7 +599,7 @@ export const EVAL_CASES: EvalCase[] = [
         card.children!.push(
           {
             type: 'we-button',
-            props: { variant: 'danger', onClick: { $setLocal: 'confirmOpen', value: true } },
+            props: { variant: 'solid', tone: 'danger', onClick: { $setLocal: 'confirmOpen', value: true } },
             children: ['Delete'],
           },
           {
@@ -614,7 +614,8 @@ export const EVAL_CASES: EvalCase[] = [
                   {
                     type: 'we-button',
                     props: {
-                      variant: 'danger',
+                      variant: 'solid',
+                      tone: 'danger',
                       onClick: {
                         $action: 'spaceStore.deleteCollection',
                         args: [{ $: 'post.id' }],
@@ -706,7 +707,7 @@ export const EVAL_CASES: EvalCase[] = [
   {
     id: 'workshop-unfold-variant',
     template: 'workshop',
-    request: "Make the 'Unfold all' button a secondary button instead of a ghost one.",
+    request: "Make the 'Unfold all' button a soft button instead of a ghost one.",
     /*
       A PROP change on a node found by its text, which is the case bounding is most exposed on:
       an outline carries no props at all, so the model either fetches the node or patches it
@@ -719,7 +720,7 @@ export const EVAL_CASES: EvalCase[] = [
       const button = matching(s, (n) => (n.children ?? []).includes('Unfold all'));
       return all(
         expect(button.length === 1, `expected one 'Unfold all' button, found ${button.length}`),
-        expect(button[0]?.props?.variant === 'secondary', `variant is ${String(button[0]?.props?.variant)}`),
+        expect(button[0]?.props?.variant === 'soft', `variant is ${String(button[0]?.props?.variant)}`),
         expect(Boolean(button[0]?.props?.onClick), 'the button lost its onClick'),
       );
     },
@@ -728,7 +729,7 @@ export const EVAL_CASES: EvalCase[] = [
         const button = only(r as unknown as SchemaNode, "'Unfold all' button", (n) =>
           (n.children ?? []).includes('Unfold all'),
         );
-        button.props!.variant = 'secondary';
+        button.props!.variant = 'soft';
       }),
   },
   {

@@ -478,6 +478,9 @@ importers:
       '@we/schema-shared':
         specifier: workspace:*
         version: link:../schema-system/shared
+      '@we/themes':
+        specifier: workspace:*
+        version: link:../design-system/2-themes
     devDependencies:
       '@types/node':
         specifier: ^26.6.5
@@ -512,6 +515,9 @@ importers:
       '@we/schema-shared':
         specifier: workspace:*
         version: link:../schema-system/shared
+      '@we/themes':
+        specifier: workspace:*
+        version: link:../design-system/2-themes
     devDependencies:
       '@types/node':
         specifier: ^26.6.5
@@ -1345,6 +1351,9 @@ importers:
       '@we/schema-shared':
         specifier: workspace:*
         version: link:../schema-system/shared
+      '@we/tokens':
+        specifier: workspace:*
+        version: link:../design-system/1-tokens
     devDependencies:
       '@types/node':
         specifier: ^26.6.5
@@ -1398,6 +1407,9 @@ importers:
       '@we/graph-protocol':
         specifier: workspace:*
         version: link:../protocol
+      '@we/tokens':
+        specifier: workspace:*
+        version: link:../../design-system/1-tokens
       tsup:
         specifier: ^9.0.0
         version: 9.0.0(jiti@2.7.0)(postcss@8.5.31)(tsx@4.23.15)(typescript@6.0.3)(yaml@2.9.1)
@@ -2203,6 +2215,9 @@ importers:
       '@we/template-kit':
         specifier: workspace:*
         version: link:../kit
+      '@we/tokens':
+        specifier: workspace:*
+        version: link:../../design-system/1-tokens
     devDependencies:
       '@types/node':
         specifier: ^26.6.5

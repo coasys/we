@@ -9,13 +9,7 @@ export const contextData: ContextData = {
       className: 'Alert',
       superclass: 'DesignSystemElement',
       ownProps: [
-        {
-          name: 'variant',
-          type: "'neutral' | 'primary' | 'success' | 'warning' | 'danger'",
-          optional: false,
-          default: "'primary'",
-        },
-        { name: 'appearance', type: "'soft' | 'accent'", optional: false, default: "'soft'" },
+        { name: 'variant', type: "'soft' | 'edge'", optional: false, default: "'soft'" },
         { name: 'dismissible', type: 'boolean', optional: false, default: 'false' },
       ],
     },
@@ -58,13 +52,7 @@ export const contextData: ContextData = {
       className: 'Badge',
       superclass: 'DesignSystemElement',
       ownProps: [
-        {
-          name: 'variant',
-          type: "'neutral' | 'primary' | 'success' | 'warning' | 'danger'",
-          optional: false,
-          default: "'neutral'",
-        },
-        { name: 'appearance', type: "'soft' | 'solid'", optional: false, default: "'soft'" },
+        { name: 'variant', type: "'soft' | 'solid'", optional: false, default: "'soft'" },
         { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl'", optional: false, default: "'md'" },
       ],
     },
@@ -76,9 +64,9 @@ export const contextData: ContextData = {
       ownProps: [
         {
           name: 'variant',
-          type: "'primary' | 'secondary' | 'ghost' | 'success' | 'danger' | 'outline' | 'bare'",
+          type: "'solid' | 'soft' | 'outline' | 'ghost' | 'bare'",
           optional: false,
-          default: "'primary'",
+          default: "'solid'",
         },
         { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl'", optional: false, default: "'md'" },
         { name: 'text', type: 'string | undefined', optional: true },
@@ -119,13 +107,7 @@ export const contextData: ContextData = {
         { name: 'value', type: 'string', optional: false, default: "'#000000'" },
         { name: 'disabled', type: 'boolean', optional: false, default: 'false' },
         { name: 'name', type: 'string', optional: false, default: "''" },
-        {
-          name: 'palette',
-          type: 'array',
-          optional: false,
-          default:
-            "[ '#000000', '#434343', '#666666', '#999999', '#b7b7b7', '#cccccc', '#d9d9d9', '#ffffff', '#980000', '#ff0000', '#ff9900', '#ffff00', '#00ff00', '#00ffff', '#4a86e8', '#0000ff', '#9900ff', '#ff00ff', '#e6b8af', '#f4cccc', '#fce5cd', '#fff2cc', '#d9ead3', '#d0e0e3', '#c9daf8', '#cfe2f3', '#d9d2e9', '#ead1dc', ]",
-        },
+        { name: 'palette', type: 'string[]', optional: false, default: '[...PALETTE_NAMES]' },
         { name: 'tokens', type: 'boolean', optional: false, default: 'false' },
         { name: 'alpha', type: 'boolean', optional: false, default: 'false' },
         { name: 'clearable', type: 'boolean', optional: false, default: 'false' },
@@ -245,9 +227,9 @@ export const contextData: ContextData = {
         { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl' | '{css-length}'", optional: false, default: "''" },
         {
           name: 'weight',
-          type: "'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone'",
+          type: "'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone' | ''",
           optional: false,
-          default: "'regular'",
+          default: "''",
         },
         { name: 'gradient', type: 'string', optional: false, default: "''" },
       ],
@@ -384,12 +366,13 @@ export const contextData: ContextData = {
     {
       tagName: 'we-menu-item',
       className: 'MenuItem',
-      description: 'Single actionable item inside a we-menu.\nSupports selected, active, and danger states.',
+      description:
+        "Single actionable item inside a we-menu.\nSupports selected and active states; `tone: 'danger'` marks a destructive item.",
       superclass: 'DesignSystemElement',
       ownProps: [
         { name: 'selected', type: 'boolean', optional: false, default: 'false' },
         { name: 'active', type: 'boolean', optional: false, default: 'false' },
-        { name: 'variant', type: "'default' | 'danger'", optional: false, default: "'default'" },
+        { name: 'disabled', type: 'boolean', optional: false, default: 'false' },
         { name: 'label', type: 'unknown', optional: false },
         { name: 'value', type: 'unknown', optional: false },
       ],
@@ -479,12 +462,6 @@ export const contextData: ContextData = {
       ownProps: [
         { name: 'value', type: 'number', optional: false, default: '0' },
         { name: 'max', type: 'number', optional: false, default: '100' },
-        {
-          name: 'variant',
-          type: "'neutral' | 'primary' | 'success' | 'warning' | 'danger'",
-          optional: false,
-          default: "'primary'",
-        },
         { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl'", optional: false, default: "'md'" },
         { name: 'label', type: 'string', optional: false, default: "''" },
       ],
@@ -621,6 +598,7 @@ export const contextData: ContextData = {
       ownProps: [
         { name: 'key', type: 'string', optional: false, default: "''" },
         { name: 'selected', type: 'boolean', optional: false, default: 'false' },
+        { name: 'disabled', type: 'boolean', optional: false, default: 'false' },
         { name: 'label', type: 'string | undefined', optional: true },
         { name: 'selectedProps', type: 'Partial<DesignSystemProps> | undefined', optional: true },
       ],
@@ -636,12 +614,7 @@ export const contextData: ContextData = {
       className: 'Tag',
       superclass: 'DesignSystemElement',
       ownProps: [
-        {
-          name: 'variant',
-          type: "'neutral' | 'primary' | 'success' | 'warning' | 'danger'",
-          optional: false,
-          default: "'neutral'",
-        },
+        { name: 'variant', type: "'soft' | 'solid'", optional: false, default: "'soft'" },
         { name: 'dismissible', type: 'boolean', optional: false, default: 'false' },
       ],
     },
@@ -653,7 +626,7 @@ export const contextData: ContextData = {
         { name: 'text', type: 'string | undefined', optional: true },
         {
           name: 'variant',
-          type: "'' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading-md' | 'heading-lg' | 'heading-xl'",
+          type: "'' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading-md' | 'heading-lg' | 'heading-xl' | 'overline'",
           optional: false,
           default: "''",
         },
@@ -1069,11 +1042,8 @@ export const contextData: ContextData = {
         { name: 'placement', type: 'Placement', optional: true },
         { name: 'triggerLabel', type: 'string', optional: true },
         { name: 'triggerIcon', type: 'string', optional: true },
-        {
-          name: 'triggerVariant',
-          type: '"primary" | "danger" | "secondary" | "ghost" | "outline" | "bare"',
-          optional: true,
-        },
+        { name: 'triggerVariant', type: '"solid" | "soft" | "outline" | "ghost" | "bare"', optional: true },
+        { name: 'triggerTone', type: 'ToneName', optional: true },
         { name: 'triggerTitle', type: 'string', optional: true },
         { name: 'size', type: '"xs" | "sm" | "md" | "lg" | "xl"', optional: true },
         { name: 'itemSize', type: '"xs" | "sm" | "md" | "lg" | "xl"', optional: true },
@@ -1195,7 +1165,7 @@ export const contextData: ContextData = {
     {
       name: 'GraphView',
       description:
-        "A general-purpose graph view: knowledge maps, schema maps, hierarchies, cluster maps and\nfree-positioned canvases, all from the same engine.\n\nThe shape of a graph is set by four independent choices: where it starts (`seeds`), how much of it\nopens (`expansion`), how it is arranged (`layout`), and how it looks (`nodeStyle` / `edgeStyle`).\n\nCommon recipes:\n- **Knowledge map** — `seeds: { source: 'query', options: { entity: 'Belief' } }` with\n`expansion: { defaultDepth: 1 }` and `layout: { type: 'force' }`.\n- **Schema map** — `seeds: { source: 'schema' }`, which draws the dataset's own entity types and\nthe relations between them. Picks up model types added later with no template change.\n- **Hierarchy** — `layout: { type: 'tree' }` with a `collection` expansion for nested content.\n- **Static diagram** — `seeds: { literal: true, nodes: [...], edges: [...] }` and no expansion at all.",
+        "A general-purpose graph view: knowledge maps, schema maps, hierarchies, cluster maps and\nfree-positioned canvases, all from the same engine.\n\nThe shape of a graph is set by four independent choices: where it starts (`seeds`), how much of it\nopens (`expansion`), how it is arranged (`layout`), and how it looks (`nodeStyle` / `edgeStyle`).\n\nCommon recipes:\n- **Knowledge map** — `seeds: { source: 'query', options: { entity: 'Belief' } }` with\n`expansion: { defaultDepth: 1 }` and `layout: { type: 'force' }`.\n- **Schema map** — `seeds: { source: 'schema' }`, which draws the dataset's own entity types and\nthe relations between them. Picks up model types added later with no template change.\n- **Hierarchy** — `layout: { type: 'tree' }` with a `collection` expansion for nested content.\n- **Static diagram** — `seeds: { literal: true, nodes: [...], edges: [...] }` and no expansion at all.\n- **A canvas with a grid** — `backdrop: { pattern: 'dots', gap: 24 }`, or `'lines'`; it pans and\nzooms with the canvas and is coloured from a role (`border` unless `color` says otherwise).",
       props: [
         { name: 'seeds', type: 'SeedSpec | SeedSpec[]', optional: true },
         { name: 'expansion', type: 'ExpansionSpec', optional: true },
@@ -1213,6 +1183,7 @@ export const contextData: ContextData = {
         { name: 'width', type: 'string', optional: true },
         { name: 'height', type: 'string', optional: true },
         { name: 'bg', type: 'string', optional: true },
+        { name: 'backdrop', type: 'GraphBackdrop', optional: true },
         { name: 'showStatus', type: 'boolean', optional: true },
         { name: 'empty', type: 'string', optional: true },
         { name: 'emptyIcon', type: 'string', optional: true },
@@ -1368,7 +1339,7 @@ export const contextData: ContextData = {
         },
         { name: 'systemLightThemeId', type: 'string', predicate: 'we://system_light_theme', required: false },
         { name: 'systemDarkThemeId', type: 'string', predicate: 'we://system_dark_theme', required: false },
-        { name: 'themeMode', type: 'string', predicate: 'we://theme_mode', required: false },
+        { name: 'displayPreferences', type: 'string', predicate: 'we://display_preferences', required: false },
         { name: 'claudeApiKey', type: 'string', predicate: 'we://claude_api_key', required: false },
         { name: 'datasetOrder', type: 'string', predicate: 'we://dataset_order', required: false },
         {
@@ -2025,6 +1996,11 @@ export const contextData: ContextData = {
   ],
   tokens: [
     {
+      name: 'animation.easing',
+      type: 'Record<AnimationEasingToken, string>',
+      values: { standard: 'ease', out: 'ease-out', in: 'ease-in' },
+    },
+    {
       name: 'animation.transition',
       type: 'Record<AnimationTransitionToken, string>',
       values: { '0': '0ms', '100': '50ms', '200': '150ms', '300': '250ms', '400': '500ms', '500': '1000ms' },
@@ -2033,11 +2009,6 @@ export const contextData: ContextData = {
       name: 'avatarSize',
       type: 'Record<SizeToken, string>',
       values: { xxs: '1rem', xs: '1.5rem', sm: '2rem', md: '2.5rem', lg: '3rem', xl: '4rem', xxl: '5rem' },
-    },
-    {
-      name: 'border.color',
-      type: 'Record<BorderColorToken, string>',
-      values: { base: "color.neutral['100']", strong: "color.neutral['200']" },
     },
     { name: 'breakpoint', type: 'Record<BreakpointToken, string>', values: { sm: '640px', md: '900px', lg: '1200px' } },
     { name: 'color.base', type: 'Record<ColorBaseToken, HexColor>', values: { white: '#ffffff', black: '#000000' } },
@@ -2051,11 +2022,6 @@ export const contextData: ContextData = {
         saturation: '60',
         neutralSaturation: '10',
       },
-    },
-    {
-      name: 'color.hues',
-      type: 'Record<ColorHueToken, number>',
-      values: { neutral: '288', primary: '288', success: '145', warning: '90', danger: '17' },
     },
     {
       name: 'color.lightness',
@@ -2182,12 +2148,12 @@ export const contextData: ContextData = {
     },
     {
       name: 'shadow',
-      type: 'Record<ShadowToken, string>',
+      type: "Record<Exclude<ShadowToken, 'glow'>, string>",
       values: {
-        sm: '0 1px 2px rgba(0, 0, 0, 0.05)',
-        md: '0 4px 6px rgba(0, 0, 0, 0.1)',
-        lg: '0 10px 15px rgba(0, 0, 0, 0.1)',
-        xl: '0 20px 25px rgba(0, 0, 0, 0.15)',
+        sm: '`0 1px 2px ${tint(0.05)}`',
+        md: '`0 4px 6px ${tint(0.1)}`',
+        lg: '`0 10px 15px ${tint(0.1)}`',
+        xl: '`0 20px 25px ${tint(0.15)}`',
       },
     },
     {
@@ -3103,6 +3069,7 @@ export const contextData: ContextData = {
         templateOverrideOptions: { type: 'array', properties: ['label', 'value'] },
         themeOverrideOptions: { type: 'array', properties: ['label', 'value'] },
         spaceThemePinned: { type: 'boolean' },
+        spaceThemeHiddenBy: { type: 'string' },
         installedModules: { type: 'array' },
         requiredModules: { type: 'array' },
         missingModules: { type: 'array' },
@@ -3289,6 +3256,7 @@ export const contextData: ContextData = {
         themeMode: { type: 'string' },
         themeSide: { type: 'string' },
         currentThemeSides: { type: 'array' },
+        displayPreferences: { type: 'object' },
         systemThemeOptions: { type: 'array' },
         themeScope: { type: 'string' },
         themeScopePreference: { type: 'string' },
@@ -3304,6 +3272,7 @@ export const contextData: ContextData = {
         'focusRole',
         'setSystemTheme',
         'setThemeMode',
+        'setDisplayPreference',
         'setThemeInstalled',
         'previewThemeScope',
         'setThemeScopeGlobal',

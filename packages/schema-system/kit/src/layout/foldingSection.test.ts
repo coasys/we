@@ -90,7 +90,8 @@ describe('a count is a chip, and only where there is one', () => {
       (n) => n.type === 'we-badge',
     );
     expect(badge?.props?.minWidth).toContain('var(--we-component-height-xs)');
-    expect(badge?.props?.variant).toBe('neutral');
+    expect(badge?.props?.variant).toBe('solid');
+    expect(badge?.props?.tone).toBeUndefined();
   });
 
   it('draws the caret with no chip when there is no number worth showing', () => {
@@ -103,7 +104,7 @@ describe('a count is a chip, and only where there is one', () => {
     const badge = walk(
       foldingSectionLabel({ label: 'Pending', count: '2', tone: 'warning', open: { field: 'x' } }),
     ).find((n) => n.type === 'we-badge');
-    expect(badge?.props?.variant).toBe('warning');
+    expect(badge?.props?.tone).toBe('warning');
   });
 });
 

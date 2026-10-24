@@ -6,7 +6,7 @@ import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
-import type { ComponentVariant } from '../types';
+import type { TagVariant } from '../types';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'inline-flex',
@@ -18,12 +18,23 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   fontSize: '100',
 };
 
-const VARIANT_DEFAULTS: Record<ComponentVariant, Partial<DesignSystemProps>> = {
-  neutral: { bg: 'surface-sunken', color: 'text' },
-  primary: { bg: 'accent-muted', color: 'accent-text' },
-  success: { bg: 'success-surface', color: 'success-text' },
-  warning: { bg: 'warning-surface', color: 'warning-text' },
-  danger: { bg: 'danger-surface', color: 'danger-text' },
+/*
+  The family is the tone; `variant` is only how loud. Untoned (or `neutral`) is the quiet chip this
+  has always painted; a toned tag draws with the accent's roles, which its `tone` has re-pointed, so
+  one table serves every family, the palette included.
+*/
+export const TAG_VARIANT_DEFAULTS: Record<
+  TagVariant,
+  { neutral: Partial<DesignSystemProps>; toned: Partial<DesignSystemProps> }
+> = {
+  soft: {
+    neutral: { bg: 'surface-sunken', color: 'text' },
+    toned: { bg: 'accent-soft', color: 'accent-text' },
+  },
+  solid: {
+    neutral: { bg: 'control-surface', color: 'text' },
+    toned: { bg: 'accent', color: 'on-accent' },
+  },
 };
 
 const styles = css`
@@ -58,7 +69,7 @@ const styles = css`
 export default class Tag extends DesignSystemElement {
   static styles = [sharedStyles, styles];
 
-  @property({ type: String, reflect: true }) variant: ComponentVariant = 'neutral';
+  @property({ type: String, reflect: true }) variant: TagVariant = 'soft';
   @property({ type: Boolean }) dismissible = false;
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
@@ -70,7 +81,8 @@ export default class Tag extends DesignSystemElement {
     const ctor = this.constructor as typeof Tag & { __dsLayers: readonly DSLayer[] };
     const activeKeys = getKeysForLayers([...ctor.__dsLayers]);
     const usedProps = filterProps(this as unknown as Record<string, unknown>, activeKeys);
-    const variantDefaults = VARIANT_DEFAULTS[this.variant] ?? {};
+    const table = TAG_VARIANT_DEFAULTS[this.variant] ?? TAG_VARIANT_DEFAULTS.soft;
+    const variantDefaults = this.tone && this.tone !== 'neutral' ? table.toned : table.neutral;
     return mergeProps(usedProps, mergeProps(variantDefaults, DEFAULT_PROPS)) as Partial<DesignSystemProps>;
   }
 

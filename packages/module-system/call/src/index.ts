@@ -442,7 +442,7 @@ const tile: SchemaNode = {
             styles: { $: 'modules.call.pictureStyle' },
             // A ring on whoever has the stage, so clicking a tile has a visible result even in the moment
             // before the layout settles. On the picture rather than the cell, so it frames the video.
-            border: expr`${stateOf('focused')} ? '2px solid primary-500' : '2px solid transparent'`,
+            border: expr`${stateOf('focused')} ? '2px solid accent-500' : '2px solid transparent'`,
           },
           children: [
             {
@@ -687,7 +687,7 @@ const tile: SchemaNode = {
                         {
                           type: 'we-button',
                           props: {
-                            variant: 'secondary',
+                            variant: 'soft',
                             size: 'xs',
                             square: true,
                             position: 'absolute',
@@ -733,7 +733,6 @@ const tile: SchemaNode = {
                    */
                   type: 'we-badge',
                   props: {
-                    variant: 'neutral',
                     size: 'xs',
                     maxWidth: '150px',
                     /*
@@ -807,7 +806,7 @@ const tile: SchemaNode = {
                     condition: expr`!${stateOf('audioEnabled')}`,
                     then: {
                       type: 'we-badge',
-                      props: { variant: 'neutral', size: 'xs' },
+                      props: { size: 'xs' },
                       children: [{ type: 'we-icon', props: { name: 'microphone-slash' } }],
                     },
                   },
@@ -818,7 +817,7 @@ const tile: SchemaNode = {
                     condition: stateOf('isScreen'),
                     then: {
                       type: 'we-badge',
-                      props: { variant: 'primary', size: 'xs' },
+                      props: { tone: 'accent', size: 'xs' },
                       children: [{ type: 'we-icon', props: { name: 'monitor' } }],
                     },
                   },
@@ -838,7 +837,7 @@ const tile: SchemaNode = {
                       children: [
                         {
                           type: 'we-badge',
-                          props: { variant: 'warning', size: 'xs', px: '100' },
+                          props: { tone: 'warning', size: 'xs', px: '100' },
                           children: [stateOf('connection')],
                         },
                       ],
@@ -1086,7 +1085,7 @@ function mediaToggle(opts: {
         type: 'we-button',
         props: {
           square: true,
-          variant: toggled('secondary', 'ghost'),
+          variant: toggled('soft', 'ghost'),
           onClick: { $action: opts.action },
         },
         children: [{ type: 'we-icon', props: { name: toggled(opts.on, opts.off) } }],
@@ -1425,7 +1424,7 @@ const topologyIndicator: SchemaNode = {
  * which simulcast layer the relay forwards — a mesh call has no simulcast layers to select.
  *
  * The icon changes with the preference: a full signal for high, two bars for medium, one for low.
- * The variant flips to `secondary` on non-high settings so the user sees that quality has been
+ * The variant flips to `soft` on non-high settings so the user sees that quality has been
  * reduced, same visual language as the other toggles.
  */
 const qualitySelector: SchemaNode = {
@@ -1443,7 +1442,7 @@ const qualitySelector: SchemaNode = {
           type: 'we-button',
           props: {
             square: true,
-            variant: expr`${{ $: 'modules.call.qualityPreference' }} == "high" ? "ghost" : "secondary"`,
+            variant: expr`${{ $: 'modules.call.qualityPreference' }} == "high" ? "ghost" : "soft"`,
             onClick: { $action: 'modules.call.cycleQuality' },
           },
           children: [
@@ -1511,7 +1510,7 @@ const topologySwitch: SchemaNode = {
                   type: 'we-button',
                   props: {
                     size: 'sm',
-                    variant: 'primary',
+                    variant: 'solid',
                     onClick: [
                       { $setLocal: 'confirmSwitch', value: false },
                       {
@@ -1528,7 +1527,7 @@ const topologySwitch: SchemaNode = {
         },
         else: {
           type: 'we-button',
-          props: { size: 'sm', variant: 'secondary', onClick: { $setLocal: 'confirmSwitch', value: true } },
+          props: { size: 'sm', variant: 'soft', onClick: { $setLocal: 'confirmSwitch', value: true } },
           children: [{ $: "modules.call.topology == 'sfu' ? 'Switch to mesh…' : 'Switch to SFU relay…'" }],
         },
       },
@@ -1681,7 +1680,7 @@ const callSettingsPopover: SchemaNode = {
                           props: {
                             size: 'sm',
                             flex: '1',
-                            variant: expr`${{ $: 'modules.call.qualityPreference' }} == "high" ? "primary" : "ghost"`,
+                            variant: expr`${{ $: 'modules.call.qualityPreference' }} == "high" ? "solid" : "ghost"`,
                             onClick: { $action: 'modules.call.setQualityPreference', args: ['high'] },
                           },
                           children: ['High'],
@@ -1691,7 +1690,7 @@ const callSettingsPopover: SchemaNode = {
                           props: {
                             size: 'sm',
                             flex: '1',
-                            variant: expr`${{ $: 'modules.call.qualityPreference' }} == "medium" ? "primary" : "ghost"`,
+                            variant: expr`${{ $: 'modules.call.qualityPreference' }} == "medium" ? "solid" : "ghost"`,
                             onClick: { $action: 'modules.call.setQualityPreference', args: ['medium'] },
                           },
                           children: ['Medium'],
@@ -1701,7 +1700,7 @@ const callSettingsPopover: SchemaNode = {
                           props: {
                             size: 'sm',
                             flex: '1',
-                            variant: expr`${{ $: 'modules.call.qualityPreference' }} == "low" ? "primary" : "ghost"`,
+                            variant: expr`${{ $: 'modules.call.qualityPreference' }} == "low" ? "solid" : "ghost"`,
                             onClick: { $action: 'modules.call.setQualityPreference', args: ['low'] },
                           },
                           children: ['Low'],
@@ -1782,7 +1781,7 @@ const returnToCall: SchemaNode = {
       children: [
         {
           type: 'we-button',
-          props: { variant: 'secondary', gap: '200', onClick: { $action: 'modules.call.returnToCall' } },
+          props: { variant: 'soft', gap: '200', onClick: { $action: 'modules.call.returnToCall' } },
           children: [
             { type: 'we-icon', props: { name: 'arrow-bend-up-left' } },
             {
@@ -2092,7 +2091,7 @@ const bar: SchemaNode = {
                 {
                   // Square like the toggles at the other end, being an icon and nothing else.
                   type: 'we-button',
-                  props: { square: true, variant: 'danger', onClick: { $action: 'modules.call.leave' } },
+                  props: { square: true, variant: 'solid', tone: 'danger', onClick: { $action: 'modules.call.leave' } },
                   children: [{ type: 'we-icon', props: { name: 'phone-x' } }],
                 },
               ],
@@ -2174,7 +2173,7 @@ const problem: SchemaNode = {
       children: [
         {
           type: 'we-alert',
-          props: { variant: 'warning', dismissible: true, onClose: { $action: 'modules.call.dismissProblem' } },
+          props: { tone: 'warning', dismissible: true, onClose: { $action: 'modules.call.dismissProblem' } },
           children: [{ $: 'modules.call.problem' }],
         },
       ],

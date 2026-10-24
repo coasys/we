@@ -84,7 +84,7 @@ const signIn: SchemaNode = {
         {
           type: 'we-button',
           props: {
-            variant: 'primary',
+            variant: 'solid',
             disabled: { $: '!sessionStore.credentialEntered' },
             loading: { $: 'sessionStore.loginLoading' },
             onClick: { $action: 'sessionStore.unlock' },
@@ -123,7 +123,7 @@ const createAccount: SchemaNode = {
         {
           type: 'we-button',
           props: {
-            variant: 'primary',
+            variant: 'solid',
             loading: { $: 'sessionStore.createAgentLoading' },
             onClick: [
               { $touch: '$all' },
@@ -160,7 +160,7 @@ const failed: SchemaNode = {
       children: [
         {
           type: 'we-button',
-          props: { variant: 'primary', onClick: { $action: 'sessionStore.retryBoot' } },
+          props: { variant: 'solid', onClick: { $action: 'sessionStore.retryBoot' } },
           children: ['Try again'],
         },
       ],
@@ -184,7 +184,7 @@ const otherAccounts: SchemaNode = {
       type: '$if',
       props: {
         condition: { $: 'accountStore.error' },
-        then: { type: 'we-alert', props: { variant: 'danger' }, children: [{ $: 'accountStore.error' }] },
+        then: { type: 'we-alert', props: { tone: 'danger' }, children: [{ $: 'accountStore.error' }] },
       },
     },
     {

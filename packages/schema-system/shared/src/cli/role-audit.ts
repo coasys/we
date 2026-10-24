@@ -30,6 +30,7 @@ import { join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { ROLE_NAMES } from '@we/design-utils';
+import { RAMP_FAMILIES } from '@we/tokens';
 
 register('./assetHooks.mjs', import.meta.url);
 
@@ -45,7 +46,8 @@ interface Node {
 const isNode = (v: unknown): v is Node => !!v && typeof v === 'object' && !Array.isArray(v);
 
 /** A scale position: `<family>-<step>`, the shape `--we-color-*` is built from. */
-const SCALE = /^(neutral|primary|success|warning|danger)-(0|25|50|75|100|200|300|400|500|600|700|800|900|1000)$/;
+const FAMILIES = RAMP_FAMILIES.join('|');
+const SCALE = new RegExp(`^(${FAMILIES})-(0|25|50|75|100|200|300|400|500|600|700|800|900|1000)$`);
 
 /**
  * Files whose colours are palettes rather than meanings.
@@ -87,20 +89,24 @@ const CODE_FILE = /\.(ts|tsx|scss|css)$/;
  * passed to it is exactly as invisible to the contrast layer as the raw variable, while looking more
  * correct at the call site than the thing it expands to.
  */
-const CODE_SCALE =
-  /(?:var\(--we-color-|tokenVar\(\s*['"]color['"]\s*,\s*['"])(neutral|primary|success|warning|danger)-(?:0|25|50|75|100|[2-9]00|1000)/g;
+const CODE_SCALE = new RegExp(
+  `(?:var\\(--we-color-|tokenVar\\(\\s*['"]color['"]\\s*,\\s*['"])(${FAMILIES})-(?:0|25|50|75|100|[2-9]00|1000)`,
+  'g',
+);
 
 /**
  * A design-system colour prop, written in TSX, holding a scale position: `color="neutral-800"`,
- * `<Column bg={x ? 'primary-100' : 'surface'}>`.
+ * `<Column bg={x ? 'accent-100' : 'surface'}>`.
  *
  * The third spelling, and the one that looks most like a template — which is the point. The same
  * value in a `.schema.ts` is a finding the other half of this script reports; written in TSX it was
  * reaching the identical prop resolver with nothing watching. Both branches of a conditional are
  * read, for the reason `colorValues` reads both: the eye checks the branch, not the value.
  */
-const CODE_DS_PROP =
-  /\b(?:bg|color|borderColor|fadeColor|bgImageTint|ring)\s*=\s*[{"']?[^>\n]*?['"](neutral|primary|success|warning|danger)-(?:0|25|50|75|100|[2-9]00|1000)['"]/g;
+const CODE_DS_PROP = new RegExp(
+  `\\b(?:bg|color|borderColor|fadeColor|bgImageTint|ring)\\s*=\\s*[{"']?[^>\\n]*?['"](${FAMILIES})-(?:0|25|50|75|100|[2-9]00|1000)['"]`,
+  'g',
+);
 
 /**
  * A colour that is not even a token — a hex literal or an `rgb()`/`hsl()` call in a style position.
@@ -168,7 +174,7 @@ const TOKEN_VAR = /tokenVar\(\s*['"]color['"]\s*,\s*['"]([^'"]+)['"]/g;
  *
  * Four dividers in the editor were `ui-200`. There is no `ui` ramp; there never has been.
  */
-const HUES = ['neutral', 'primary', 'success', 'warning', 'danger'];
+const HUES: readonly string[] = RAMP_FAMILIES;
 const isKnownColour = (name: string) =>
   ROLE_NAMES.has(name) ||
   name === 'white' ||

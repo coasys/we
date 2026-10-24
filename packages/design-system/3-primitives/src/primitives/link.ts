@@ -1,6 +1,7 @@
 import type { DesignSystemProps } from '@we/design-types';
 import { safeHref } from '@we/design-utils';
-import { css, html, nothing } from 'lit';
+import { FOCUS_OUTLINE } from '@we/tokens';
+import { css, html, nothing, unsafeCSS } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
@@ -24,9 +25,12 @@ const styles = css`
     text-decoration-thickness: 2px;
   }
 
+  [part='base']:focus-visible {
+    ${unsafeCSS(FOCUS_OUTLINE)}
+    border-radius: var(--we-radius-100);
+  }
+
   :host([disabled]) {
-    opacity: 0.5;
-    cursor: default;
     pointer-events: none;
   }
 `;

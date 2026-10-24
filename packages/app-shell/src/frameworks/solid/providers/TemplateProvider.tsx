@@ -1134,7 +1134,7 @@ export default function TemplateProvider() {
           {
             type: 'we-button',
             props: {
-              variant: 'primary',
+              variant: 'solid',
               // The dataset id, never the route segment: for a shared space the segment is the
               // neighbourhood CID, and the settings page keys off the dataset id.
               onClick: {
@@ -1180,7 +1180,7 @@ export default function TemplateProvider() {
           {
             type: 'we-button',
             props: {
-              variant: 'primary',
+              variant: 'solid',
               onClick: { $action: 'routeStore.navigate', args: [{ $: 'first(spaceStore.viewNav).path' }] },
             },
             children: [{ $: '`Go to ${first(spaceStore.viewNav).label}`' }],

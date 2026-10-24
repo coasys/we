@@ -80,8 +80,8 @@ const canvasCards: SchemaNode = {
         style: {
           shape: 'card',
           width: 180,
-          color: 'primary-100',
-          labelColor: 'primary-900',
+          color: 'accent-100',
+          labelColor: 'accent-900',
           content: 'block',
           contentMinZoom: 0.5,
         },
@@ -91,7 +91,7 @@ const canvasCards: SchemaNode = {
       // Anything that is not a composed card — a task somebody put here, a model instance the
       // community defined — reads as its own kind of thing rather than as a note that lost its text.
       { when: { type: { not: 'CollectionBlock' } }, style: { color: 'neutral-100', labelColor: 'neutral-800' } },
-      { when: { type: 'TaskBlock' }, style: { color: 'primary-50', labelColor: 'primary-800' } },
+      { when: { type: 'TaskBlock' }, style: { color: 'accent-50', labelColor: 'accent-800' } },
       { when: { type: 'EventBlock' }, style: { color: 'warning-50', labelColor: 'warning-800' } },
       /*
         The canvas's key: a colour per kind of thing, decided once and applied to every card of that
@@ -153,7 +153,7 @@ const canvasCards: SchemaNode = {
       'pan-zoom',
     ],
     edgeStyle: [
-      { style: { curve: 'smooth', arrow: 'target', color: 'primary-500', width: 2, showLabel: true } },
+      { style: { curve: 'smooth', arrow: 'target', color: 'accent-500', width: 2, showLabel: true } },
       // One rule per kind the community has named, exactly as the knowledge map does — a canvas's
       // connections mean the same things and should look the same way.
       {
@@ -389,7 +389,7 @@ export const canvasBar: SchemaNode = {
               type: 'we-button',
               props: {
                 size: 'sm',
-                variant: { $: "local.connecting ? 'primary' : 'ghost'" },
+                variant: { $: "local.connecting ? 'solid' : 'ghost'" },
                 onClick: { $toggleLocal: 'connecting' },
               },
               children: [{ type: 'we-icon', props: { name: 'flow-arrow' } }, 'Connect'],
@@ -407,7 +407,7 @@ export const canvasBar: SchemaNode = {
               type: 'we-button',
               props: {
                 size: 'sm',
-                variant: { $: "local.selecting ? 'primary' : 'ghost'" },
+                variant: { $: "local.selecting ? 'solid' : 'ghost'" },
                 onClick: { $toggleLocal: 'selecting' },
               },
               children: [{ type: 'we-icon', props: { name: 'selection' } }, 'Select'],
@@ -478,14 +478,14 @@ export const canvasBar: SchemaNode = {
               type: 'we-button',
               props: {
                 size: 'sm',
-                variant: { $: "local.legendOpen ? 'secondary' : 'ghost'" },
+                variant: { $: "local.legendOpen ? 'soft' : 'ghost'" },
                 onClick: { $toggleLocal: 'legendOpen' },
               },
               children: [{ type: 'we-icon', props: { name: 'palette' } }, 'Key'],
             },
             {
               type: 'we-button',
-              props: { size: 'sm', variant: 'secondary', onClick: { $setLocal: 'newCardOpen', value: true } },
+              props: { size: 'sm', variant: 'soft', onClick: { $setLocal: 'newCardOpen', value: true } },
               children: [{ type: 'we-icon', props: { name: 'note' } }, 'Card'],
             },
             /*

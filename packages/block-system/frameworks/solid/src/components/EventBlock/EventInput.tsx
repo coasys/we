@@ -106,10 +106,10 @@ export function EventInput(props: EventInputProps) {
                 />
               </we-form-field>
               <Row ax="end" gap="200">
-                <we-button variant="secondary" onClick={closeModal}>
+                <we-button variant="soft" onClick={closeModal}>
                   Cancel
                 </we-button>
-                <we-button variant="primary" onClick={handleSubmit}>
+                <we-button variant="solid" onClick={handleSubmit}>
                   Add
                 </we-button>
               </Row>

@@ -280,10 +280,10 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
                     type: 'we-badge',
                     props: {
                       size: 'xs',
-                      variant: 'warning',
+                      variant: 'solid',
+                      tone: 'warning',
                       // Solid, as the recording badges are: a soft warning reads as decoration, and
                       // this is the one thing on the card that asks for a decision.
-                      appearance: 'solid',
                     },
                     children: ['suggested'],
                   },
@@ -316,7 +316,7 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
               condition: { $: `${as}.priority != 'medium'` },
               then: {
                 type: 'we-badge',
-                props: { size: 'xs', variant: { $: `${as}.priority == 'high' ? 'danger' : 'neutral'` } },
+                props: { size: 'xs', tone: { $: `${as}.priority == 'high' ? 'danger' : ''` } },
                 children: [{ $: `${as}.priority` }],
               },
             },
@@ -416,7 +416,7 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
                 children: [
                   {
                     type: 'we-badge',
-                    props: { size: 'xs', variant: 'neutral' },
+                    props: { size: 'xs' },
                     children: [
                       {
                         $: `find(spaceStore.taskStates, { slug: ${as}.status }).name ?? ${as}.status`,
@@ -942,7 +942,7 @@ function flowChips(flows: string): SchemaNode {
                 type: 'we-badge',
                 props: {
                   size: 'sm',
-                  variant: { $: "inFlow.waiting || inFlow.stalled ? 'warning' : 'neutral'" },
+                  tone: { $: "inFlow.waiting || inFlow.stalled ? 'warning' : ''" },
                 },
                 children: [
                   {
@@ -983,7 +983,7 @@ function waitingLine(waiting: string, as: string): SchemaNode {
     children: [
       {
         type: 'Row',
-        props: { gap: '200', ay: 'center', wrap: true, bg: 'warning-surface', r: 'control', px: '200', py: '100' },
+        props: { gap: '200', ay: 'center', wrap: true, bg: 'warning-soft', r: 'control', px: '200', py: '100' },
         children: [
           { type: 'we-icon', props: { name: 'hourglass', size: 'xs', color: 'warning-text' } },
           {
@@ -1011,7 +1011,7 @@ function waitingLine(waiting: string, as: string): SchemaNode {
                 type: 'we-button',
                 props: {
                   size: 'xs',
-                  variant: 'primary',
+                  variant: 'solid',
                   onClick: { $action: 'spaceStore.approveTaskMove', args: [{ $: `${as}.id` }] },
                 },
                 children: ['Approve'],
@@ -1183,7 +1183,6 @@ function columnHeading(opts: TaskBoardOptions): SchemaNode {
                       type: 'we-badge',
                       props: {
                         size: 'xs',
-                        variant: 'neutral',
                       },
                       children: ['lane'],
                     },
@@ -1226,7 +1225,7 @@ function columnHeading(opts: TaskBoardOptions): SchemaNode {
           size: 'xs',
           items: [
             { id: 'rename', label: 'Rename' },
-            { id: 'remove', label: 'Remove column', variant: 'danger' },
+            { id: 'remove', label: 'Remove column', tone: 'danger' },
           ],
           onSelect: [
             {
@@ -1355,7 +1354,7 @@ function unplacedColumn(opts: TaskBoardOptions): SchemaNode {
               {
                 type: 'we-button',
                 props: {
-                  variant: 'secondary',
+                  variant: 'soft',
                   size: 'xs',
                   width: '100%',
                   onClick: {
@@ -1447,7 +1446,7 @@ function addColumnButton(pt: string): SchemaNode {
           {
             type: 'we-button',
             props: {
-              variant: 'secondary',
+              variant: 'soft',
               size: 'xs',
               square: true,
               label: 'Add column',
@@ -1643,7 +1642,7 @@ function awaitingToggle(): SchemaNode {
             type: 'we-button',
             props: {
               size: 'sm',
-              variant: { $: "local.boardAwaiting ? 'secondary' : 'ghost'" },
+              variant: { $: "local.boardAwaiting ? 'soft' : 'ghost'" },
               onClick: { $toggleLocal: 'boardAwaiting' },
             },
             children: [
@@ -1957,7 +1956,7 @@ export function taskBoard(opts: TaskBoardOptions): SchemaNode {
                   opts.empty,
                   {
                     type: 'we-button',
-                    props: { variant: 'secondary', size: 'sm', onClick: { $setLocal: 'addColumnOpen', value: true } },
+                    props: { variant: 'soft', size: 'sm', onClick: { $setLocal: 'addColumnOpen', value: true } },
                     children: [{ type: 'we-icon', props: { name: 'plus' } }, 'Add column'],
                   },
                 ],

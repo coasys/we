@@ -29,7 +29,7 @@ import {
   rgbToOklch,
   simulateVision,
 } from '@we/design-utils';
-import { chromaTaper, color, FILL_LIGHTNESS, RAMP, role } from '@we/tokens';
+import { capitalise, chromaTaper, color, FILL_LIGHTNESS, PALETTE_HUES, type PaletteHue, RAMP, role } from '@we/tokens';
 import { describe, expect, it } from 'vitest';
 
 import type { ThemeOverrides, ThemeRole } from './overrides';
@@ -70,9 +70,9 @@ const PAIRS: { fg: ThemeRole; bg: ThemeRole; level: ContrastLevel; what: string 
   { fg: 'onDanger', bg: 'danger', level: 'ui', what: 'a destructive button label' },
   { fg: 'onSuccess', bg: 'success', level: 'ui', what: 'a success fill label' },
   { fg: 'onWarning', bg: 'warning', level: 'ui', what: 'a warning fill label' },
-  { fg: 'dangerText', bg: 'dangerSurface', level: 'body', what: 'danger text on its tint' },
-  { fg: 'successText', bg: 'successSurface', level: 'body', what: 'success text on its tint' },
-  { fg: 'warningText', bg: 'warningSurface', level: 'body', what: 'warning text on its tint' },
+  { fg: 'dangerText', bg: 'dangerSoft', level: 'body', what: 'danger text on its tint' },
+  { fg: 'successText', bg: 'successSoft', level: 'body', what: 'success text on its tint' },
+  { fg: 'warningText', bg: 'warningSoft', level: 'body', what: 'warning text on its tint' },
   /*
     And on an ordinary card, which is where a status message usually is — an error under a form
     field, a tick in a settings row. Only the tint was asserted, and in a dark theme the card is the
@@ -82,6 +82,28 @@ const PAIRS: { fg: ThemeRole; bg: ThemeRole; level: ContrastLevel; what: string 
   { fg: 'dangerText', bg: 'surface', level: 'body', what: 'danger text on a card' },
   { fg: 'successText', bg: 'surface', level: 'body', what: 'success text on a card' },
   { fg: 'warningText', bg: 'surface', level: 'body', what: 'warning text on a card' },
+  // The palette, from the family registry: each hue's label on its fill, and its text on its tint
+  // and on a card — the same three a status family is held to.
+  ...PALETTE_HUES.flatMap((hue) => [
+    {
+      fg: `on${capitalise(hue)}` as ThemeRole,
+      bg: hue as ThemeRole,
+      level: 'ui' as const,
+      what: `a ${hue} fill label`,
+    },
+    {
+      fg: `${hue}Text` as ThemeRole,
+      bg: `${hue}Soft` as ThemeRole,
+      level: 'body' as const,
+      what: `${hue} text on its tint`,
+    },
+    {
+      fg: `${hue}Text` as ThemeRole,
+      bg: 'surface' as ThemeRole,
+      level: 'body' as const,
+      what: `${hue} text on a card`,
+    },
+  ]),
 ];
 
 /*
@@ -132,21 +154,35 @@ function lightness(step: string, theme: ThemeOverrides): number {
   return Math.min(100, Math.max(0, floor + t * (ceiling - floor)));
 }
 
+const isPalette = (family: string): family is PaletteHue => (PALETTE_HUES as readonly string[]).includes(family);
+
 function hueOf(family: string, theme: ThemeOverrides): number {
+  if (isPalette(family)) return theme.palette?.hues?.[family]?.hue ?? HUE_DEFAULTS[family];
   const key = family === 'neutral' ? 'neutralHue' : (`${family}Hue` as const);
   // Neutral follows primary unless a theme separates them — the same linkage the tokens CSS has.
   return (
     (theme[key as keyof ThemeOverrides] as number | undefined) ??
-    (family === 'neutral' ? (theme.primaryHue ?? HUE_DEFAULTS.neutral) : HUE_DEFAULTS[family])
+    (family === 'neutral' ? (theme.accentHue ?? HUE_DEFAULTS.neutral) : HUE_DEFAULTS[family])
   );
 }
 
+/** Mirrors the family saturation variables: a family's own, then the palette's, then the theme's. */
 function saturationOf(family: string, theme: ThemeOverrides): number {
-  return (family === 'neutral' ? theme.neutralSaturation : theme.saturation) ?? 50;
+  if (family === 'neutral') return theme.neutralSaturation ?? 50;
+  if (isPalette(family)) return theme.palette?.saturation ?? theme.saturation ?? 50;
+  return (theme[`${family}Saturation` as keyof ThemeOverrides] as number | undefined) ?? theme.saturation ?? 50;
+}
+
+/** A palette fill's default lightness, with the theme's palette shift applied, as the CSS computes it. */
+function withPaletteShift(value: string, theme: ThemeOverrides): string {
+  return value.replace(/calc\(([\d.]+) \+ var\(--we-color-palette-lightness, 0\)\)/, (_, base: string) =>
+    String(parseFloat(base) + (theme.palette?.lightness ?? 0)),
+  );
 }
 
 /** Resolve a role's value — a token reference, a pinned lightness, or a literal — to RGB. */
 function resolve(value: string, theme: ThemeOverrides): Rgba | null {
+  value = withPaletteShift(value, theme);
   const token = /^var\(--we-color-([a-z]+)-(\d+)\)$/.exec(value.trim());
   if (token) {
     const [, family, step] = token;
@@ -189,9 +225,11 @@ function resolve(value: string, theme: ThemeOverrides): Rgba | null {
     );
   if (pinned) {
     const [, literalL, lightnessVar, fallbackL, chromaExpr, hueFamily, alpha] = pinned;
-    const declaredL = lightnessVar
-      ? (theme[`${lightnessVar}Lightness` as keyof ThemeOverrides] as number | undefined)
-      : undefined;
+    const declaredL = !lightnessVar
+      ? undefined
+      : isPalette(lightnessVar)
+        ? theme.palette?.hues?.[lightnessVar]?.lightness
+        : (theme[`${lightnessVar}Lightness` as keyof ThemeOverrides] as number | undefined);
     const l = literalL ?? String(declaredL ?? parseFloat(fallbackL));
     const lightnessFraction = parseFloat(l) / 100;
     const hue = hueOf(hueFamily, theme);
@@ -225,7 +263,10 @@ function resolve(value: string, theme: ThemeOverrides): Rgba | null {
           maxChromaFor(
             declaredL !== undefined
               ? declaredL / 100
-              : (FILL_LIGHTNESS[hueFamily as keyof typeof FILL_LIGHTNESS] ?? lightnessFraction),
+              : FILL_LIGHTNESS[hueFamily as keyof typeof FILL_LIGHTNESS] !== undefined
+                ? FILL_LIGHTNESS[hueFamily as keyof typeof FILL_LIGHTNESS] +
+                  (isPalette(hueFamily) ? (theme.palette?.lightness ?? 0) / 100 : 0)
+                : lightnessFraction,
             hue,
           ) *
           factor
@@ -616,11 +657,11 @@ describe.each(bundleThemeCases)('$label', ({ label, theme }) => {
  * divergence is not 1 unit, it is 12.
  */
 const MEASURED: Record<string, Record<string, [number, number, number]>> = {
-  light: { 'neutral-200': [203, 203, 211], 'neutral-700': [76, 75, 94], 'primary-500': [126, 104, 228] },
-  dark: { 'neutral-200': [59, 57, 82], 'neutral-700': [184, 183, 201], 'primary-500': [127, 114, 206] },
-  black: { 'neutral-200': [37, 35, 56], 'neutral-700': [162, 160, 188], 'primary-500': [106, 83, 198] },
-  cyberpunk: { 'neutral-200': [67, 66, 81], 'neutral-700': [187, 187, 197], 'primary-500': [132, 114, 225] },
-  channels: { 'neutral-200': [54, 58, 66], 'neutral-700': [182, 185, 191], 'primary-500': [79, 120, 230] },
+  light: { 'neutral-200': [203, 203, 211], 'neutral-700': [76, 75, 94], 'accent-500': [126, 104, 228] },
+  dark: { 'neutral-200': [59, 57, 82], 'neutral-700': [184, 183, 201], 'accent-500': [127, 114, 206] },
+  black: { 'neutral-200': [37, 35, 56], 'neutral-700': [162, 160, 188], 'accent-500': [106, 83, 198] },
+  cyberpunk: { 'neutral-200': [67, 66, 81], 'neutral-700': [187, 187, 197], 'accent-500': [132, 114, 225] },
+  channels: { 'neutral-200': [54, 58, 66], 'neutral-700': [182, 185, 191], 'accent-500': [79, 120, 230] },
 };
 
 describe('the resolver agrees with the browser', () => {

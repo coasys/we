@@ -91,7 +91,7 @@ export function anchorBanner(opts: AnchorBannerOptions): SchemaNode {
           ay: 'center',
           px: '300',
           py: '200',
-          bg: 'accent-muted',
+          bg: 'accent-soft',
           r: '300',
         },
         children: [

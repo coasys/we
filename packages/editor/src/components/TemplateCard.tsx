@@ -94,9 +94,7 @@ export function TemplateCard(props: Props) {
               <we-text fontWeight="600" truncate>
                 {props.template.name}
               </we-text>
-              <we-badge variant="neutral" size="xs">
-                v{props.template.version}
-              </we-badge>
+              <we-badge size="xs">v{props.template.version}</we-badge>
             </Row>
             <Show when={author()}>
               <Row ay="center" gap="200">
@@ -114,7 +112,7 @@ export function TemplateCard(props: Props) {
         <Show
           when={isInstalled()}
           fallback={
-            <we-button variant="primary" size="sm" loading={installLoading()} onClick={handleInstall}>
+            <we-button variant="solid" size="sm" loading={installLoading()} onClick={handleInstall}>
               {props.installLabel ?? 'Install'}
             </we-button>
           }
@@ -122,12 +120,12 @@ export function TemplateCard(props: Props) {
           <Show
             when={hasUpdate()}
             fallback={
-              <we-badge variant="success" size="sm">
+              <we-badge tone="success" size="sm">
                 Installed
               </we-badge>
             }
           >
-            <we-button variant="secondary" size="sm" loading={installLoading()} onClick={handleInstall}>
+            <we-button variant="soft" size="sm" loading={installLoading()} onClick={handleInstall}>
               Update
             </we-button>
           </Show>
@@ -175,7 +173,7 @@ export function TemplateCard(props: Props) {
 
       {/* Version + slug */}
       <Row gap="200" ay="center">
-        <we-badge variant="neutral" size="xs" px="200">
+        <we-badge size="xs" px="200">
           v{props.template.version}
         </we-badge>
         <Show when={props.template.slug}>
@@ -225,7 +223,7 @@ export function TemplateCard(props: Props) {
           <Show
             when={isInstalled()}
             fallback={
-              <we-button variant="primary" size="sm" loading={installLoading()} onClick={handleInstall}>
+              <we-button variant="solid" size="sm" loading={installLoading()} onClick={handleInstall}>
                 {props.installLabel ?? 'Install'}
               </we-button>
             }
@@ -233,12 +231,12 @@ export function TemplateCard(props: Props) {
             <Show
               when={hasUpdate()}
               fallback={
-                <we-badge variant="success" size="sm">
+                <we-badge tone="success" size="sm">
                   Installed
                 </we-badge>
               }
             >
-              <we-button variant="secondary" size="sm" loading={installLoading()} onClick={handleInstall}>
+              <we-button variant="soft" size="sm" loading={installLoading()} onClick={handleInstall}>
                 Update
               </we-button>
             </Show>

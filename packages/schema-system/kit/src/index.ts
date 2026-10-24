@@ -88,6 +88,7 @@ export {
   PANEL_TITLE_PROPS,
   panelHeader,
   panelScroll,
+  panelScrollProps,
   panelShell,
   SECTION_LABEL_PROPS,
   sectionLabel,

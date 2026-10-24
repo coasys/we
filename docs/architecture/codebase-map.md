@@ -14,6 +14,7 @@ detail that doesn't need to sit in every agent's context.
 - [AD4M runtime & data model](#ad4m-runtime--data-model)
 - [Schema render pipeline](#schema-render-pipeline)
 - [Framework-agnosticism strategy](#framework-agnosticism-strategy)
+- [Theming](#theming)
 - [Block & editor system](#block--editor-system) _(to expand)_
 - [Seed system & deployment](#seed-system--deployment) _(to expand)_
 - [Local dev, build & test loop](#local-dev-build--test-loop) _(to expand)_
@@ -105,6 +106,15 @@ The seam is drawn so framework choice is isolated to thin adapters:
 
 Mixed-framework templates cross the **web-component boundary** (a foreign component is rendered as a
 custom element, exactly like a primitive), kept as a deliberate island rather than the default.
+
+## Theming
+
+A theme is settings, not a stylesheet: `@we/tokens` turns them into ramps and roles, `@we/themes`
+(`applyThemeVars`) writes and corrects them on a root — the document, a space's content, a node — and
+the primitives read their family, their type role and their own component keys. Three registries
+generate the vocabulary: colour families, theme settings, and components. How it fits together,
+where a theme reaches, how to extend it and what it deliberately cannot do is
+[`theming.md`](theming.md); writing one is `packages/design-system/2-themes/THEME_AUTHORING.md`.
 
 ## Graph system
 

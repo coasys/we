@@ -136,7 +136,7 @@ export abstract class OverlayElement extends DesignSystemElement {
           max-width: var(${p}max-width);
           max-height: var(${p}max-height);
           margin: var(${p}margin);
-          background: color-mix(in srgb, var(${p}bg, transparent) calc(var(--we-theme-surface-opacity, 1) * 100%), transparent);
+          background-color: color-mix(in srgb, var(${p}bg, transparent) calc(var(--we-theme-surface-opacity, 1) * 100%), transparent);
           backdrop-filter: blur(var(--we-theme-surface-blur, 0px));
         }
 
@@ -147,20 +147,20 @@ export abstract class OverlayElement extends DesignSystemElement {
            cannot drift: if it matched a wider set of states than the rule it exists to override, an
            overlay would apply its focus background in situations where the DS applies nothing. */
         :host([data-we-overlay]) [part="base"]:hover:not(:disabled):not([aria-disabled='true']) {
-          background: color-mix(in srgb, var(${p}hover-bg, var(${p}bg, transparent)) calc(var(--we-theme-surface-opacity, 1) * 100%), transparent);
+          background-color: color-mix(in srgb, var(${p}hover-bg, var(${p}bg, transparent)) calc(var(--we-theme-surface-opacity, 1) * 100%), transparent);
           backdrop-filter: blur(var(--we-theme-surface-blur, 0px));
         }
         ${focusSelector(`:host([data-we-overlay]) [part="base"]`, `:not(:disabled):not([aria-disabled='true'])`)} {
-          background: color-mix(in srgb, var(${p}focus-bg, var(${p}bg, transparent)) calc(var(--we-theme-surface-opacity, 1) * 100%), transparent);
+          background-color: color-mix(in srgb, var(${p}focus-bg, var(${p}bg, transparent)) calc(var(--we-theme-surface-opacity, 1) * 100%), transparent);
           backdrop-filter: blur(var(--we-theme-surface-blur, 0px));
         }
         :host([data-we-overlay]) [part="base"]:active:not(:disabled):not([aria-disabled='true']) {
-          background: color-mix(in srgb, var(${p}active-bg, var(${p}bg, transparent)) calc(var(--we-theme-surface-opacity, 1) * 100%), transparent);
+          background-color: color-mix(in srgb, var(${p}active-bg, var(${p}bg, transparent)) calc(var(--we-theme-surface-opacity, 1) * 100%), transparent);
           backdrop-filter: blur(var(--we-theme-surface-blur, 0px));
         }
         :host([data-we-overlay]) [part="base"]:disabled,
         :host([data-we-overlay]) [part="base"][aria-disabled='true'] {
-          background: color-mix(in srgb, var(${p}disabled-bg, var(${p}bg, transparent)) calc(var(--we-theme-surface-opacity, 1) * 100%), transparent);
+          background-color: color-mix(in srgb, var(${p}disabled-bg, var(${p}bg, transparent)) calc(var(--we-theme-surface-opacity, 1) * 100%), transparent);
           backdrop-filter: blur(var(--we-theme-surface-blur, 0px));
         }
       }

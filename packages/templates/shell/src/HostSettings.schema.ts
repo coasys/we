@@ -131,7 +131,7 @@ const advertisedModels: SchemaNode = {
             {
               type: '$each',
               props: { items: { $: 'sessionStore.host.aiModels' }, as: 'model' },
-              children: [{ type: 'we-tag', props: { variant: 'neutral' }, children: [{ $: 'model' }] }],
+              children: [{ type: 'we-tag', props: {}, children: [{ $: 'model' }] }],
             },
           ],
         },

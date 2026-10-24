@@ -34,6 +34,12 @@ const VARIANT_DEFAULTS: Record<TextVariant, Partial<DesignSystemProps>> = {
   body: { fontSize: '300' },
   label: { fontSize: '200', fontWeight: 'medium' },
   footnote: { fontSize: '100' },
+  /*
+    The small capitals that name a group — a menu's sections, a select's groups, an eyebrow above a
+    heading. Its own variant, on the overline type role, so a theme sets every one of them at once.
+    No colour: it takes the colour of where it sits, which is usually a muted row.
+  */
+  overline: { fontSize: '100', letterSpacing: 'wide', textTransform: 'uppercase' },
 };
 
 const styles = css`

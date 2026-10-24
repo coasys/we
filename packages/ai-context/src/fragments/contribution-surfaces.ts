@@ -89,7 +89,7 @@ the seed's list is correct code that never appears.
 
 | Surface | Lives in | Rules | Register | Verify |
 |---|---|---|---|---|
-| Theme | \`design-system/2-themes/src/<name>/\` | its \`CONVENTIONS.md\` | \`themeRegistry.ts\` | \`--filter @we/themes test\` |
+| Theme | \`design-system/2-themes/src/presets.ts\` (+ \`src/<name>/\` for CSS) | \`THEME_AUTHORING.md\`, \`docs/architecture/theming.md\` | \`themeRegistry.ts\` | \`--filter @we/themes test\` |
 | Shell template | \`templates/showcase/src/\` | \`docs/architecture/views.md\` | seed \`templates\` + \`--filter @we/app-shell generate-templates\` | \`validate:schemas\`, \`role-audit\` |
 | View | \`templates/views/src/views/\` | \`docs/architecture/views.md\` | \`CATALOGUE\` in \`generateViewRegistry.mjs\` + seed \`views\` + \`generate-views\` | \`validate:schemas\` |
 | Portable fragment | \`schema-system/kit/src/\` | \`templates/kit/CONVENTIONS.md\` | export from \`index.ts\` | \`--filter @we/template-kit test\` |

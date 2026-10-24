@@ -106,7 +106,7 @@ export const screenSourcePrompt: SchemaNode = {
           type: 'Row',
           props: { ax: 'end', width: '100%' },
           slot: 'footer',
-          children: [{ type: 'we-button', props: { variant: 'secondary', onClick: cancel }, children: ['Cancel'] }],
+          children: [{ type: 'we-button', props: { variant: 'soft', onClick: cancel }, children: ['Cancel'] }],
         },
       ],
     },

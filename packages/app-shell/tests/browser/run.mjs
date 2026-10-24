@@ -9,6 +9,15 @@
  *
  * Drives the browser already on the machine rather than downloading one, so `playwright-core` is
  * the whole dependency.
+ *
+ * Environment:
+ * - `WE_BROWSER_ONLY=<text>` — run only the cases whose file name contains it.
+ * - `WE_BROWSER_SHOTS=<dir>` — let a case photograph the page (`screenshot(label)`); off otherwise.
+ * - `WE_BROWSER_CPU=1` — profile each case and print where the time went.
+ * - `WE_BROWSER_CHAIN`, `WE_BROWSER_MEASURE`, `WE_BROWSER_DUMP` — layout diagnostics; see below.
+ * - `WE_CHROME`, `WE_BROWSER_PORT` — which browser, and where to serve.
+ *
+ * Headless Chrome draws no scrollbars, so nothing here can show a layout moving as one appears.
  */
 import { createServer } from 'node:http';
 import { readdir, readFile } from 'node:fs/promises';
@@ -194,7 +203,9 @@ async function main() {
     process.exit(1);
   }
 
-  const files = (await readdir(join(HERE, 'cases'))).filter((f) => f.endsWith('.mjs'));
+  // `WE_BROWSER_ONLY=themeLab` runs the cases whose file name contains it, for iterating on one.
+  const only = process.env.WE_BROWSER_ONLY;
+  const files = (await readdir(join(HERE, 'cases'))).filter((f) => f.endsWith('.mjs') && (!only || f.includes(only)));
   let failures = 0;
   for (const file of files) {
     const mod = await import(join(HERE, 'cases', file));
@@ -233,7 +244,27 @@ async function main() {
         measureControl: (label, sel) => page.evaluate((a) => window.__harness.measureControl(...a), [label, sel]),
         measureText: (text, sel) => page.evaluate((a) => window.__harness.measureText(...a), [text, sel]),
         pageColor: () => page.evaluate(() => window.__harness.pageColor()),
+        partStyle: (sel, property, part, nth) =>
+          page.evaluate((a) => window.__harness.partStyle(...a), [sel, property, part, nth]),
+        roleColor: (role) => page.evaluate((r) => window.__harness.roleColor(r), role),
+        probeColor: (value) => page.evaluate((v) => window.__harness.probeColor(v), value),
         focused: () => page.evaluate(() => window.__harness.focused()),
+        /*
+          A picture of the page, for a case whose subject is how something looks — written only when
+          `WE_BROWSER_SHOTS` names a directory, so an ordinary run stays a check rather than a camera.
+        */
+        screenshot: async (label) => {
+          const dir = process.env.WE_BROWSER_SHOTS;
+          if (!dir) return;
+          // The app's base rules hold the document to the viewport, so a full-page shot stops at the
+          // fold. Grow the viewport to the mount for the shot, then put it back.
+          const before = page.viewportSize();
+          const height = await page.evaluate(() => document.getElementById('mount').scrollHeight);
+          await page.setViewportSize({ width: Math.max(before.width, width), height: Math.ceil(height) });
+          await page.waitForTimeout(150);
+          await page.screenshot({ path: join(dir, `${label}-${width}.png`) });
+          await page.setViewportSize(before);
+        },
         // A state a case can put the page into. `hoverProps` is a whole code path — the values move
         // out of the inline style into custom properties for a stylesheet to resolve — so a case
         // that never hovers is not testing it.
@@ -400,6 +431,13 @@ async function main() {
          * when it passes cannot be used to watch a number move.
          */
         note: (text) => notes.push(text),
+        /** Run a function in the page, for a probe no helper covers. */
+        evaluate: (fn, arg) => page.evaluate(fn, arg),
+        themePanel: async (overrides) => {
+          await page.evaluate((o) => window.__harness.themePanelProbe(o), overrides);
+          await page.waitForTimeout(300);
+        },
+        themeDrag: (steps, roots, live) => page.evaluate((a) => window.__harness.themeDrag(...a), [steps, roots, live]),
         /**
          * Collect an event's `detail` under `key`, listening at the document.
          *
@@ -416,7 +454,25 @@ async function main() {
             [type, key],
           ),
       };
+      const cdp = process.env.WE_BROWSER_CPU ? await page.context().newCDPSession(page) : undefined;
+      if (cdp) {
+        await cdp.send('Profiler.enable');
+        await cdp.send('Profiler.start');
+      }
       const problems = (await mod.check(api, width, scale)) ?? [];
+      if (cdp) {
+        const { profile } = await cdp.send('Profiler.stop');
+        const self = new Map();
+        const dt = profile.timeDeltas;
+        const byId = new Map(profile.nodes.map((n) => [n.id, n]));
+        profile.samples.forEach((id, i) => {
+          const n = byId.get(id);
+          const key = `${n.callFrame.functionName || '(anon)'} ${n.callFrame.url.split('/').pop()}:${n.callFrame.lineNumber}`;
+          self.set(key, (self.get(key) ?? 0) + (dt[i] ?? 0) / 1000);
+        });
+        const top = [...self.entries()].sort((a, b) => b[1] - a[1]).slice(0, 25);
+        for (const [k, ms] of top) console.log(`      ${Math.round(ms)} ms  ${k}`);
+      }
       const label = scale === undefined ? `${mod.name} @ ${width}px` : `${mod.name} @ ${width}px n=${scale}`;
       if (process.env.WE_BROWSER_CHAIN) {
         const rows = await page.evaluate((t) => window.__harness.chain(t), process.env.WE_BROWSER_CHAIN);

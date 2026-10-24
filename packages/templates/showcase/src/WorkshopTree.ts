@@ -259,7 +259,7 @@ const voicesControl: SchemaNode = {
           slot: 'trigger',
           props: {
             // Marked while anybody's voice is not in full, so a weighted order is never mistaken for a plain one.
-            variant: { $: "local.voices ? 'secondary' : 'ghost'" },
+            variant: { $: "local.voices ? 'soft' : 'ghost'" },
           },
           children: [
             { type: 'we-icon', props: { name: 'users-three' } },
@@ -632,7 +632,7 @@ export function treeStrip(opts: { below?: string; controls?: SchemaNode[] } = {}
           {
             type: 'we-button',
             props: {
-              variant: { $: `${TREE_ON} ? 'secondary' : 'ghost'` },
+              variant: { $: `${TREE_ON} ? 'soft' : 'ghost'` },
               onClick: { $toggleLocal: 'treeMode' },
             },
             children: [

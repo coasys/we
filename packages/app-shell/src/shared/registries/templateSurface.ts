@@ -657,6 +657,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       a reset, and that picker lives in the appearance tier.
     */
     spaceThemePinned: state('appearance'),
+    // Beside the space-default picker it explains, in Space settings.
+    spaceThemeHiddenBy: state('space-settings'),
     moduleInstallSettings: state('space-admin'),
     createSpace: action('space-admin'),
     shareSpace: action('space-admin'),
@@ -907,9 +909,11 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     provideAppTheme: WIRING,
     setSystemTheme: action('agent'),
     themeMode: state('appearance'),
+    displayPreferences: state('appearance'),
     themeSide: state('appearance'),
     currentThemeSides: state('appearance'),
     setThemeMode: action('agent'),
+    setDisplayPreference: action('agent'),
     setThemeInstalled: action('library'),
     previewThemeScope: ambient('editor'),
     setThemeScopeGlobal: action('agent'),

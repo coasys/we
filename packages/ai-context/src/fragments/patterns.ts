@@ -95,14 +95,14 @@ placeholder and the grid can never disagree about how many rows there are.
   "type": "Column",
   "props": { "flex": "1", "height": "100%", "ax": "center", "ay": "center", "gap": "400", "p": "600" },
   "children": [
-    { "type": "we-icon", "props": { "name": "lock", "size": "xl", "gradient": "primary" } },
+    { "type": "we-icon", "props": { "name": "lock", "size": "xl", "gradient": "accent" } },
     { "type": "we-text", "props": { "variant": "heading-md", "textAlign": "center" }, "children": ["Join this Space"] },
     {
       "type": "we-text",
       "props": { "variant": "body", "textAlign": "center", "maxWidth": "var(--we-layout-xs)" },
       "children": ["You haven't joined this space yet."]
     },
-    { "type": "we-button", "props": { "variant": "primary", "onClick": { "$action": "…" } }, "children": ["Join"] }
+    { "type": "we-button", "props": { "variant": "solid", "onClick": { "$action": "…" } }, "children": ["Join"] }
   ]
 }
 \`\`\`
@@ -163,7 +163,7 @@ Cancel, and the action's \`onSuccess\`.
   (\`{ $: 'shapeStore.confirmDiscard' }\`) or on a string id works the same way.
 - \`cancel\` for a cancel button that does more than close — "Keep editing" dismisses the question
   and leaves the wizard behind it open.
-- \`tone: 'primary'\` for a question with no casualty; the default \`danger\` picks a warning icon and
+- \`tone: 'accent'\` for a question with no casualty; the default \`danger\` picks a warning icon and
   a danger confirm button.
 - \`detail\` for a quieter second line, \`children\` for a \`we-alert\` naming a surprising consequence.
 - \`busyLocal\` if the action is not instant — a write that walks a board or a thread takes a while, and
@@ -284,7 +284,7 @@ through \`onReady\`. So the sequence is: \`onReady\` stores that function in a *
     {
       "type": "we-button",
       "props": {
-        "variant": "primary",
+        "variant": "solid",
         "loading": { "$": "local.submitting" },
         "disabled": { "$": "local.submitting" },
         "onClick": { "$callLocal": "savePost" }

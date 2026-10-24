@@ -31,7 +31,7 @@ const languageRow: SchemaNode = {
               type: '$if',
               props: {
                 condition: { $: 'language.system' },
-                then: { type: 'we-badge', props: { variant: 'neutral', size: 'xs' }, children: ['System'] },
+                then: { type: 'we-badge', props: { size: 'xs' }, children: ['System'] },
               },
             },
           ],
@@ -109,7 +109,7 @@ export const languagesSection: SchemaNode = {
               props: {
                 text: 'Install',
                 size: 'sm',
-                variant: 'secondary',
+                variant: 'soft',
                 // The backend fetches the bundle over the network, so this is the one runtime action
                 // that can take long enough to need a spinner rather than just finishing.
                 loading: { $: "'installLanguage' in runtimeStore.pending" },

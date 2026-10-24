@@ -19,6 +19,10 @@ body,
   // `neutral-50`, exactly what was hardcoded, so nothing moves for a theme that pins nothing.
   background-color: var(--we-role-page);
 
+  // The theme's page image, held still behind the content as a wallpaper is.
+  background-image: var(--we-surface-image-page, none);
+  background-attachment: fixed;
+
   // The role migration this was waiting for. Most text in the app sets no colour of its own and
   // inherits from here, so while this named a scale position, `text` was the one role a theme could
   // pin and watch do nothing — which is most of what "changing the colours does nothing" meant.
@@ -27,6 +31,14 @@ body,
   // text softens by one step off pure black in themes that pin nothing. That is the conventional
   // choice for body copy and the cost of having the role reach anything at all.
   color: var(--we-role-text);
+
+  // The body type, until a theme restates it inline here — see BODY_TYPE in @we/themes.
+  font-family: var(--we-type-body-family, var(--we-font-family));
+}
+
+// Selected text in the theme's colour rather than the operating system's (see textSelection).
+::selection {
+  background: var(--we-role-text-selection);
 }
 
 // Before the app has mounted anything, paint what the boot screen is about to paint.

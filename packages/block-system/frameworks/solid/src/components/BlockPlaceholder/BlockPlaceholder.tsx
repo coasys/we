@@ -70,7 +70,7 @@ export function BlockPlaceholder(props: BlockPlaceholderProps) {
   }
 
   const borderStyle = () => {
-    if (dragOver()) return '2px dashed var(--we-color-primary-500)';
+    if (dragOver()) return '2px dashed var(--we-color-accent-500)';
     if (droppable()) return '2px dashed var(--we-role-border)';
     return '2px solid var(--we-role-border)';
   };
@@ -85,7 +85,7 @@ export function BlockPlaceholder(props: BlockPlaceholderProps) {
       p="600"
       r="300"
       border={borderStyle()}
-      bg={dragOver() ? 'primary-50' : 'neutral-25'}
+      bg={dragOver() ? 'accent-50' : 'neutral-25'}
       cursor="pointer"
       minHeight="120px"
       transition="border-color 0.15s ease, background 0.15s ease"
@@ -95,11 +95,11 @@ export function BlockPlaceholder(props: BlockPlaceholderProps) {
       onClick={props.onClick}
       data-file-droppable={droppable() ? 'true' : undefined}
     >
-      <we-icon name={props.icon} color={dragOver() ? 'primary-500' : 'neutral-400'} size="lg" />
-      <we-text color={dragOver() ? 'primary-700' : 'neutral-600'} fontSize="400" fontWeight="500" textAlign="center">
+      <we-icon name={props.icon} color={dragOver() ? 'accent-500' : 'neutral-400'} size="lg" />
+      <we-text color={dragOver() ? 'accent-700' : 'neutral-600'} fontSize="400" fontWeight="500" textAlign="center">
         {props.label}
       </we-text>
-      <we-text color={dragOver() ? 'primary-500' : 'neutral-400'} fontSize="300" textAlign="center">
+      <we-text color={dragOver() ? 'accent-500' : 'neutral-400'} fontSize="300" textAlign="center">
         {props.hint ?? defaultHint()}
       </we-text>
     </Column>

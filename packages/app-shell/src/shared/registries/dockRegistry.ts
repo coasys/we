@@ -841,7 +841,7 @@ function tabStrip(id: string): SchemaNode {
                     eye finds it. A token duration, so a theme's animation speed and a reduced-motion
                     setting still decide.
 
-                    The accent fill itself rather than `accent-muted`: muted is
+                    The accent fill itself rather than `accent-soft`: muted is
                     a tint toward the ground, so in a dark theme it came out darker than the resting
                     tab's `control-surface` — a flash that dimmed the thing it was pointing at. The name
                     keeps its own colour throughout — see the text, below.
@@ -948,7 +948,7 @@ function collapseButton(id: string): SchemaNode {
         props: {
           size: 'xs',
           square: true,
-          variant: { $: `${place('collapsed')} ? 'secondary' : 'ghost'` },
+          variant: { $: `${place('collapsed')} ? 'soft' : 'ghost'` },
           disabled: { $: `!${place('canCollapse')}` },
           onClick: { $action: 'shellStore.toggleCollapseDock', args: [id] },
         },
@@ -992,7 +992,7 @@ function displaceControl(id: string, place: (field: string) => string): SchemaNo
         props: {
           size: 'xs',
           square: true,
-          variant: { $: `${place('displace')} ? 'secondary' : 'ghost'` },
+          variant: { $: `${place('displace')} ? 'soft' : 'ghost'` },
           disabled: { $: `!${place('canDisplace')}` },
           onClick: { $action: 'shellStore.toggleDockDisplace', args: [id] },
         },
@@ -1027,7 +1027,7 @@ function maximiseButton(id: string): SchemaNode {
         props: {
           size: 'xs',
           square: true,
-          variant: { $: `${maximised} ? 'secondary' : 'ghost'` },
+          variant: { $: `${maximised} ? 'soft' : 'ghost'` },
           onClick: { $action: 'shellStore.toggleMaximiseDock', args: [id] },
         },
         children: [
@@ -1115,7 +1115,7 @@ function positionMenu(entry: DockEntry): SchemaNode {
         The four controls beside it are `xs` ghost squares, and this drew `DropdownMenu`'s own
         trigger: a filled pill, because without `square` the size's horizontal padding still
         applies, and one that hovered to the accent, because the component overrode the fill of the
-        `primary` variant and not its hover. Asking for `ghost` is enough now — icon-only is
+        `solid` variant and not its hover. Asking for `ghost` is enough now — icon-only is
         inferred from an icon with no label, and brings the square with it.
       */
       triggerVariant: 'ghost',
@@ -1288,7 +1288,7 @@ function dragGhost(id: string): SchemaNode {
           zIndex: 'chrome',
           r: '500',
           border: '2px solid accent',
-          bg: 'accent-muted',
+          bg: 'accent-soft',
           opacity: 0.7,
           // No shadow: this is an outline of where a panel would go, not a panel. A shadow would
           // make it read as one — and `chromeLayering.test.ts` picks the frame's own box out of this
@@ -1355,8 +1355,8 @@ function snapTargets(id: string): SchemaNode {
                 than none, since the rule it is teaching looks intermittent.
               */
               zIndex: 'chrome',
-              border: { $: `${SNAP_IS_ACTIVE} ? '2px solid primary-500' : '2px dashed neutral-300'` },
-              bg: { $: `${SNAP_IS_ACTIVE} ? 'accent-muted' : 'transparent'` },
+              border: { $: `${SNAP_IS_ACTIVE} ? '2px solid accent-500' : '2px dashed neutral-300'` },
+              bg: { $: `${SNAP_IS_ACTIVE} ? 'accent-soft' : 'transparent'` },
               opacity: { $: `${SNAP_IS_ACTIVE} ? 0.9 : 0.5` },
             },
           },

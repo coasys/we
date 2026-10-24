@@ -29,7 +29,7 @@ export interface AgentSettingsRecord extends RecordInstance {
   defaultThemeId: string;
   systemLightThemeId: string;
   systemDarkThemeId: string;
-  themeMode: string;
+  displayPreferences: string;
   claudeApiKey: string;
   datasetOrder: string;
   globalSpaceJoined: boolean;

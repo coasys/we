@@ -54,7 +54,7 @@ const defaultPickerRow = (opts: {
             nothing to press on the row you are already using, and a greyed-out "Set as default"
             invites the press anyway.
           */
-          then: { type: 'we-badge', props: { variant: 'primary', size: 'sm' }, children: ['Default'] },
+          then: { type: 'we-badge', props: { tone: 'accent', size: 'sm' }, children: ['Default'] },
           else: {
             type: '$if',
             props: {
@@ -62,7 +62,7 @@ const defaultPickerRow = (opts: {
               then: {
                 type: 'we-button',
                 props: {
-                  variant: 'secondary',
+                  variant: 'soft',
                   size: 'sm',
                   // The space is named explicitly. On the route this replaced it could be omitted,
                   // because there was only ever one space in question; here the row being configured
@@ -96,6 +96,61 @@ const themeRow = defaultPickerRow({
   currentDefault: 'space.defaultThemeId',
   setDefault: 'spaceStore.setSpaceDefaultTheme',
 });
+
+/*
+  Why the default just set is not what you are looking at. Your own choice for this space outranks
+  the space's default, which is the point of making one — but an administrator setting the default
+  sees nothing change, and that reads as the setting not saving. Shown here rather than only as a
+  toast when it is set, because the same question comes back on the next visit.
+*/
+const hiddenThemeNote: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: "spaceStore.spaceThemeHiddenBy != ''" },
+    then: {
+      type: 'we-alert',
+      children: [
+        {
+          // Button under the text, as in a toast: beside it, it squeezes the sentence into a column.
+          type: 'Column',
+          props: { ax: 'start', gap: '200' },
+          children: [
+            {
+              type: 'we-text',
+              props: { variant: 'footnote' },
+              children: [
+                {
+                  $: [
+                    "spaceStore.spaceThemeHiddenBy == 'template'",
+                    "? `This template brings its own theme, ${themeStore.currentTheme.name}, so you won't see changes here until you switch to the space's default template. Members still get the default.`",
+                    ": spaceStore.spaceThemeHiddenBy == 'pin'",
+                    "? `You're overriding the space's default theme with ${themeStore.currentTheme.name}, so you won't see changes here while it's applied. Members still get the default.`",
+                    ": `You're using your own default theme, ${themeStore.currentTheme.name}, in this space, so you won't see changes here. Members still get the default.`",
+                  ].join(' '),
+                },
+              ],
+            },
+            {
+              type: '$if',
+              props: {
+                condition: { $: "spaceStore.spaceThemeHiddenBy != 'template'" },
+                then: {
+                  type: 'we-button',
+                  props: {
+                    variant: 'soft',
+                    size: 'sm',
+                    onClick: { $action: 'spaceStore.clearSpaceThemePin' },
+                  },
+                  children: ["Use the space's theme"],
+                },
+              },
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
 
 const sectionBox = (title: string, description: string, children: SchemaNode[]): SchemaNode => ({
   type: 'Column',
@@ -133,7 +188,7 @@ const browseToggle = (localFlag: string, browser: SchemaNode): SchemaNode => ({
       children: [
         {
           type: 'we-button',
-          props: { variant: 'secondary', size: 'sm', onClick: { $toggleLocal: localFlag } },
+          props: { variant: 'soft', size: 'sm', onClick: { $toggleLocal: localFlag } },
           children: [{ $: `local.${localFlag} ? 'Hide' : 'Browse the marketplace'` }],
         },
         { type: '$if', props: { condition: { $: `local.${localFlag}` }, then: browser } },
@@ -162,6 +217,7 @@ export const spaceDefaultsSection: SchemaNode = {
       browseToggle('showMarketplace', marketplaceBrowser),
     ]),
     sectionBox('Default theme', 'The look members get when they open this space.', [
+      hiddenThemeNote,
       group('Built-in', { $: 'themeStore.builtInThemes' }, 'theme', themeRow),
       /*
         "Follow system" is not a built-in theme — it resolves to one rather than being one, which is

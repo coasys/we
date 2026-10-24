@@ -7,11 +7,13 @@
  * everything.
  */
 import type { GraphNode, GraphValue, NodeVisual } from '@we/graph-protocol';
+import { PALETTE_HUES } from '@we/tokens';
 import { describe, expect, it } from 'vitest';
 
 import {
   blendColors,
   blendVisual,
+  CATEGORICAL_SCALE,
   edgeVisual,
   matches,
   nodeVisual,
@@ -65,11 +67,11 @@ describe('style resolution', () => {
   it('merges matching rules in order, last wins per property', () => {
     const style = resolveStyle(belief, [
       { style: { size: 10, color: 'neutral-400' } },
-      { when: { type: 'Belief' }, style: { color: 'primary-500' } },
+      { when: { type: 'Belief' }, style: { color: 'accent-500' } },
     ]);
 
     // size survives from the base rule; colour is overridden by the later one.
-    expect(style).toEqual({ size: 10, color: 'primary-500' });
+    expect(style).toEqual({ size: 10, color: 'accent-500' });
   });
 
   it('skips rules that do not match', () => {
@@ -194,7 +196,23 @@ describe('metric references', () => {
   });
 
   it('maps a metric onto a named colour scale', () => {
-    expect(resolveColor({ metric: 'degree', scale: 'heat' }, a, metrics, 'neutral-500')).toBe('primary-500');
+    expect(resolveColor({ metric: 'degree', scale: 'heat' }, a, metrics, 'neutral-500')).toBe(
+      'color-mix(in oklch, var(--we-role-accent) 55%, var(--we-role-page))',
+    );
+  });
+
+  it("draws the hottest card in the family's own fill, on either ground", () => {
+    // The scale was steps of a ramp, which turns over in a dark theme: the hottest card came out
+    // the faintest. A mix into the page is "more colour" whichever way round the page is.
+    const hot = new Map([['degree', new Map([['a', 1]])]]);
+    expect(resolveColor({ metric: 'degree', scale: 'heat' }, a, hot, 'neutral-500')).toBe('accent');
+    for (const scale of ['heat', 'cool']) {
+      expect(resolveColor({ metric: 'degree', scale }, a, hot, '')).not.toMatch(/-\d+$/);
+    }
+  });
+
+  it("colours communities from the theme's palette, every hue once", () => {
+    expect([...CATEGORICAL_SCALE].sort()).toEqual([...PALETTE_HUES].sort());
   });
 
   it('falls back when the metric has not been computed', () => {
@@ -232,20 +250,20 @@ describe('rule lists built from data', () => {
     const style = resolveStyle(belief, [
       { style: { size: 10 } },
       [
-        { when: { type: 'Belief' }, style: { color: 'primary-500' } },
+        { when: { type: 'Belief' }, style: { color: 'accent-500' } },
         { when: { type: 'Task' }, style: { color: 'danger-500' } },
       ],
     ]);
 
-    expect(style).toEqual({ size: 10, color: 'primary-500' });
+    expect(style).toEqual({ size: 10, color: 'accent-500' });
   });
 
   it('applies a nested group in the position it occupies, not last', () => {
     // Precedence has to read exactly as written, or a template author cannot reason about which
     // rule wins by looking at the list.
-    const style = resolveStyle(belief, [[{ style: { color: 'neutral-500' } }], { style: { color: 'primary-700' } }]);
+    const style = resolveStyle(belief, [[{ style: { color: 'neutral-500' } }], { style: { color: 'accent-700' } }]);
 
-    expect(style).toEqual({ color: 'primary-700' });
+    expect(style).toEqual({ color: 'accent-700' });
   });
 
   it('treats an empty group as no rules at all', () => {
@@ -452,9 +470,9 @@ describe('reversing a morph that is already in flight', () => {
 
 describe('a two-colour scale', () => {
   it('blends continuously between the stops, and paints exactly a stop at either end', () => {
-    expect(blendColors('primary-100', 'accent', 0)).toBe('primary-100');
-    expect(blendColors('primary-100', 'accent', 1)).toBe('accent');
-    expect(blendColors('primary-100', 'accent', 0.5)).toBe('color-mix(in oklch, accent 50%, primary-100)');
+    expect(blendColors('accent-100', 'accent', 0)).toBe('accent-100');
+    expect(blendColors('accent-100', 'accent', 1)).toBe('accent');
+    expect(blendColors('accent-100', 'accent', 0.5)).toBe('color-mix(in oklch, accent 50%, accent-100)');
     // Continuous: three cards at 0.1, 0.4 and 0.9 are three different colours, not two buckets.
     const shades = [0.1, 0.4, 0.9].map((t) => blendColors('a', 'b', t));
     expect(new Set(shades).size).toBe(3);

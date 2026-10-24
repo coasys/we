@@ -8,7 +8,7 @@ import type { SchemaNode } from '@we/schema-shared';
 export const addButton = (label: string, entity: string, icon: string): SchemaNode => ({
   type: 'we-button',
   props: {
-    variant: 'primary',
+    variant: 'solid',
     size: 'sm',
     flexShrink: '0',
     onClick: { $action: 'recordStore.openRecordForm', args: [entity] },

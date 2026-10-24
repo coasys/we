@@ -62,7 +62,7 @@ type SolidDropdownMenuProps = Omit<DropdownMenuProps, 'items'> & {
  *     { type: 'divider' },
  *     { type: 'toggle', id: 'pin', label: 'Pinned', icon: 'push-pin', checked: isPinned, onToggle: togglePin },
  *     { type: 'divider' },
- *     { id: 'delete', label: 'Delete', icon: 'trash', variant: 'danger', onAction: handleDelete },
+ *     { id: 'delete', label: 'Delete', icon: 'trash', tone: 'danger', onAction: handleDelete },
  *   ]}
  * />
  * ```
@@ -184,7 +184,7 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
       <we-menu-item
         on:select={() => handleAction(getItem())}
         selected={Boolean(getItem().selected)}
-        variant={getItem().variant || 'default'}
+        tone={getItem().tone}
         opacity={getItem().disabled ? 0.5 : 1}
         cursor={getItem().disabled ? 'not-allowed' : 'pointer'}
         px={metrics().px}
@@ -228,8 +228,8 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
    * A group's heading is set small, in capitals and spaced out, so it reads as the name of what
    * follows rather than as one more entry. Beside a list of people especially: "Reviewing" and
    * "Ana" are both a capitalised word in the same size, and only the caret told them apart.
-   * Written out on both headings rather than spread from one shared object: spread onto a custom
-   * element, `uppercase` arrived and `fontSize` did not.
+   * `we-text`'s `overline` variant, so a theme's overline type role reaches it with every other
+   * group name.
    */
   const renderGroup = (getGroup: () => DropdownMenuGroup & { items: SolidDropdownMenuEntry[] }) => {
     // Through the accessor throughout, for the reason spelled out above `renderActionItem`.
@@ -246,21 +246,17 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
             opacity={getGroup().disabled ? 0.5 : 1}
             cursor={getGroup().disabled ? 'not-allowed' : 'pointer'}
             color="text-faint"
-            prop:hoverProps={{ color: 'neutral-500' }}
+            prop:hoverProps={{ color: 'text-muted' }}
           >
             <we-icon name={collapsed() ? 'caret-right' : 'caret-down'} size="xs" />
-            <we-text fontSize="100" letterSpacing="wide" uppercase>
-              {getGroup().label}
-            </we-text>
+            <we-text variant="overline">{getGroup().label}</we-text>
           </we-menu-item>
         </Show>
 
         {/* Non-collapsible header */}
         <Show when={getGroup().collapsible === false}>
           <we-menu-item color="text-muted" cursor="default" pointerEvents="none">
-            <we-text fontSize="100" letterSpacing="wide" uppercase>
-              {getGroup().label}
-            </we-text>
+            <we-text variant="overline">{getGroup().label}</we-text>
           </we-menu-item>
         </Show>
 
@@ -386,7 +382,8 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
       */
       slot={slot}
       size={props.size}
-      variant={props.triggerVariant ?? 'secondary'}
+      variant={props.triggerVariant ?? 'soft'}
+      tone={props.triggerTone}
       square={iconOnly()}
       aria-label={iconOnly() ? (props.triggerTitle ?? 'Options') : undefined}
     >

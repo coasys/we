@@ -15,14 +15,14 @@ const VARIANT_ICONS: Record<string, string> = {
 };
 
 const VARIANT_COLORS: Record<string, string> = {
-  info: 'primary-100',
+  info: 'accent-100',
   warning: 'warning-100',
   error: 'error-100',
   success: 'success-100',
 };
 
 const VARIANT_BORDER_COLORS: Record<string, string> = {
-  info: 'primary-300',
+  info: 'accent-300',
   warning: 'warning-300',
   error: 'error-300',
   success: 'success-300',
