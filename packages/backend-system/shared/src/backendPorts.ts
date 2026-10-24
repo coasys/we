@@ -8,6 +8,7 @@
  * named, a complete backend is exactly: these ports plus the query adapter — and the boot suite
  * doubles as the conformance test.
  */
+import type { AgentPort } from './agents';
 import type { CallPort } from './call';
 import type { DatasetHandle, RendererDataBindings } from './dataSource';
 import type { EphemeralPort } from './ephemeral';
@@ -229,6 +230,12 @@ export interface BackendPorts {
    * node with no language model omits it, and anything that wanted to generate says so.
    */
   languageModel?: LanguageModelPort;
+  /**
+   * Agents the backend runs in a dataset, with its tools and WE's template tools. Optional: a backend that
+   * cannot run one omits it, and a surface that would have handed it a request does the work
+   * itself through {@link languageModel}.
+   */
+  agents?: AgentPort;
   /**
    * Turning what was said into typed records. Optional on the same terms as transcription — the two
    * are a pair, and a backend that can hear but not interpret is a normal thing to be.

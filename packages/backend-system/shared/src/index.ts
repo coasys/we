@@ -212,6 +212,8 @@ export type {
   LanguageModelPort,
   LanguageModelStatus,
 } from './languageModel';
+export type { AgentPort, AgentRunReply, AgentRunRequest, AgentTurn } from './agents';
+export { AgentUnavailableError } from './agents';
 export {
   allowedMoves,
   approvalsFor,
