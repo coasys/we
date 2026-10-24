@@ -119,3 +119,40 @@ export function visiblyDifferent(a: string, b: string): boolean {
   const [ya, yb] = ab(y);
   return Math.hypot(x.l - y.l, xa - ya, xb - yb) > 0.02;
 }
+
+/**
+ * A theme's saturations moved from `from` to `to` — the whole theme, or the palette alone — every
+ * family that has its own scaled by the same ratio.
+ *
+ * A family picked as a colour holds a saturation of its own, which outranks the theme's, so moving
+ * the theme's alone left every picked family where it was and the slider read as broken. Scaled from
+ * where each stood when the slider was taken (`start`), not from the last frame, so a drag there and
+ * back lands where it began. Neutral is left alone: it is the greys, with a control of its own.
+ */
+export function scaledSaturations(
+  start: ThemeOverrides,
+  from: number,
+  to: number,
+  scope: 'theme' | 'palette',
+): Partial<ThemeOverrides> {
+  const scale = (value: number) => Math.round(clamp(from > 0 ? (value * to) / from : to, 0, 100));
+  const hues = start.palette?.hues
+    ? Object.fromEntries(
+        Object.entries(start.palette.hues).map(([hue, own]) => [
+          hue,
+          own?.saturation === undefined ? own : { ...own, saturation: scale(own.saturation) },
+        ]),
+      )
+    : undefined;
+  if (scope === 'palette') return { palette: { ...start.palette, saturation: to, ...(hues && { hues }) } };
+  const patch: Record<string, unknown> = { saturation: to };
+  for (const family of ['accent', 'success', 'warning', 'danger'] as const) {
+    const own = start[`${family}Saturation`];
+    if (own !== undefined) patch[`${family}Saturation`] = scale(own);
+  }
+  if (start.palette) {
+    const own = start.palette.saturation;
+    patch.palette = { ...start.palette, ...(own !== undefined && { saturation: scale(own) }), ...(hues && { hues }) };
+  }
+  return patch as Partial<ThemeOverrides>;
+}

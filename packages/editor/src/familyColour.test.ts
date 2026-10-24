@@ -13,6 +13,7 @@ import {
   familyResetPatch,
   familyToColour,
   PALETTE_HUE_REACH,
+  scaledSaturations,
   visiblyDifferent,
 } from './familyColour';
 
@@ -62,5 +63,31 @@ describe('the patch a pick writes', () => {
     const theme = { roles: { page: '#fff', accent: '', onAccent: '' }, accentHue: 250 };
     const reset = familyResetPatch(theme, 'accent');
     expect(reset).toMatchObject({ accentHue: undefined, roles: { page: '#fff' } });
+  });
+});
+
+describe('moving the whole theme’s saturation', () => {
+  const start = {
+    saturation: 50,
+    accentSaturation: 80,
+    neutralSaturation: 20,
+    palette: { hues: { teal: { hue: 190, saturation: 40 } } },
+  };
+
+  it('moves every family that has its own by the same ratio, and leaves neutral alone', () => {
+    const patch = scaledSaturations(start, 50, 25, 'theme');
+    expect(patch).toMatchObject({ saturation: 25, accentSaturation: 40 });
+    expect(patch.palette?.hues?.teal).toEqual({ hue: 190, saturation: 20 });
+    expect('neutralSaturation' in patch).toBe(false);
+  });
+
+  it('lands back where it began when dragged there and back', () => {
+    expect(scaledSaturations(start, 50, 50, 'theme')).toMatchObject({ saturation: 50, accentSaturation: 80 });
+  });
+
+  it('moves only the palette from the palette’s own slider', () => {
+    const patch = scaledSaturations(start, 50, 100, 'palette');
+    expect(patch.palette).toEqual({ saturation: 100, hues: { teal: { hue: 190, saturation: 80 } } });
+    expect('accentSaturation' in patch).toBe(false);
   });
 });

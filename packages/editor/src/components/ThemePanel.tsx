@@ -40,7 +40,7 @@ import {
 } from '@we/tokens';
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
 
-import { colourToFamily, familyPatch, familyResetPatch, visiblyDifferent } from '../familyColour';
+import { colourToFamily, familyPatch, familyResetPatch, scaledSaturations, visiblyDifferent } from '../familyColour';
 import { useEditorHost } from '../host';
 import { nextRoles, roleTierLabel } from '../themeRoles';
 import { type SidesChoice, sidesOf, sidesPatch, writePatch } from '../themeSides';
@@ -699,6 +699,26 @@ export function ThemePanel() {
     saveTheme();
   }
 
+  // ── Saturation, as a set ────────────────────────────────────────────────────
+
+  /*
+    Where the theme stood when a saturation slider was taken, so a drag scales every family from
+    there rather than from the last frame — see `scaledSaturations`. Dropped when it is let go.
+  */
+  let saturationStart: { scope: 'theme' | 'palette'; theme: ThemeOverrides; from: number } | null = null;
+
+  function scaleSaturation(scope: 'theme' | 'palette', to: number) {
+    if (!saturationStart || saturationStart.scope !== scope) {
+      const theme = overrides();
+      const from =
+        scope === 'theme'
+          ? (theme.saturation ?? effectiveSaturation().theme)
+          : (theme.palette?.saturation ?? effectiveSaturation().palette);
+      saturationStart = { scope, theme, from };
+    }
+    write(scaledSaturations(saturationStart.theme, saturationStart.from, to, scope));
+  }
+
   // ── Colour families ─────────────────────────────────────────────────────────
 
   /** The colour last picked for each family, to say when the theme drew something else. */
@@ -947,7 +967,13 @@ export function ThemePanel() {
     label: string,
     value: () => number,
     onInput: (value: number) => void,
-    { min, max, step = 1, format }: { min: number; max: number; step?: number; format: (v: number) => string },
+    {
+      min,
+      max,
+      step = 1,
+      format,
+      onCommit,
+    }: { min: number; max: number; step?: number; format: (v: number) => string; onCommit?: () => void },
   ) {
     return (
       <Row ay="center" gap="300">
@@ -961,7 +987,10 @@ export function ThemePanel() {
           max={max}
           step={step}
           on:input={(e: CustomEvent) => onInput(Number(e.detail))}
-          on:change={() => saveTheme()}
+          on:change={() => {
+            onCommit?.();
+            saveTheme();
+          }}
         />
         <we-text minWidth="40px" fontSize="200" color="text-muted" textAlign="right">
           {format(value())}
@@ -1183,6 +1212,7 @@ export function ThemePanel() {
   let roleProbe: HTMLDivElement | undefined;
   const [roleColors, setRoleColors] = createSignal<Record<string, string>>({});
   const [familyColors, setFamilyColors] = createSignal<Record<string, FamilySample>>({});
+  const [effectiveSaturation, setEffectiveSaturation] = createSignal({ theme: 50, palette: 50 });
   const probeStyle = createMemo(() => themeParametersToStyle(overrides()) as Record<string, string>);
 
   /**
@@ -1296,6 +1326,15 @@ export function ThemePanel() {
     });
     setFamilyColors(fills);
     setRoleColors(next);
+    // What the theme's saturations are, preset included — what the sliders show when it sets none.
+    const declared = getComputedStyle(roleProbe);
+    const number = (prop: string) => parseFloat(declared.getPropertyValue(prop));
+    const theme = number('--we-color-saturation');
+    const palette = number('--we-color-palette-saturation');
+    setEffectiveSaturation({
+      theme: Number.isNaN(theme) ? 50 : theme,
+      palette: Number.isNaN(palette) ? theme : palette,
+    });
 
     const ceilings: Record<string, string> = {};
     for (const family of RAMP_FAMILIES) {
@@ -2028,12 +2067,13 @@ export function ThemePanel() {
                 </we-text>
                 {sliderRow(
                   'Vividness',
-                  () => overrides().palette?.saturation ?? 50,
-                  (v) => setPalette({ saturation: v }),
+                  () => overrides().palette?.saturation ?? effectiveSaturation().palette,
+                  (v) => scaleSaturation('palette', v),
                   {
                     min: 0,
                     max: 100,
-                    format: (v) => `${v}%`,
+                    format: (v) => `${Math.round(v)}%`,
+                    onCommit: () => (saturationStart = null),
                   },
                 )}
                 {sliderRow(
@@ -2056,7 +2096,20 @@ export function ThemePanel() {
                   The two ends of the ramp, stated rather than encoded — a narrow span is a soft
                   theme, a full one is stark — and the saturation every family starts from.
                 */}
-                {percentSlider('Saturation', 'saturation', 0, 100, 50, '')}
+                {sliderRow(
+                  'Saturation',
+                  () => overrides().saturation ?? effectiveSaturation().theme,
+                  (v) => scaleSaturation('theme', v),
+                  {
+                    min: 0,
+                    max: 100,
+                    format: (v) => `${Math.round(v)}%`,
+                    onCommit: () => (saturationStart = null),
+                  },
+                )}
+                <we-text fontSize="100" color="text-faint" lineHeight="1.4">
+                  Every colour follows, the ones you have picked included. Neutral has its own above.
+                </we-text>
                 {percentSlider('Darkest', 'lightnessFloor', 0, 100, 0)}
                 {percentSlider('Lightest', 'lightnessCeiling', 0, 120, 100)}
               </Column>

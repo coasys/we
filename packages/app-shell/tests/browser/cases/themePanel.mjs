@@ -51,6 +51,28 @@ export async function check({ themePanel, evaluate, screenshot }) {
     return { drawn, adjusted };
   });
   if (picked.adjusted) problems.push(`a plain blue accent was reported as adjusted (drawn ${picked.drawn})`);
+
+  // The whole theme's saturation still reaches a family that was picked — which holds a saturation
+  // of its own — by scaling it, rather than leaving it where the pick put it.
+  const scaled = await evaluate(async () => {
+    const chroma = () => {
+      const badge = [...document.querySelectorAll('we-badge')].find(
+        (b) => b.textContent.trim() === 'accent' && b.getAttribute('variant') === 'solid',
+      );
+      const colour = getComputedStyle(badge.shadowRoot.querySelector('[part=base]')).backgroundColor;
+      return parseFloat(/oklch\([\d.]+ ([\d.]+)/.exec(colour)?.[1] ?? 'NaN');
+    };
+    const before = chroma();
+    const label = [...document.querySelectorAll('we-text')].find((t) => t.textContent.trim() === 'Saturation');
+    const slider = label.parentElement.querySelector('we-slider');
+    slider.dispatchEvent(new CustomEvent('input', { detail: 10, bubbles: true, composed: true }));
+    slider.dispatchEvent(new CustomEvent('change', { detail: 10, bubbles: true, composed: true }));
+    await new Promise((r) => setTimeout(r, 300));
+    return { before, after: chroma() };
+  });
+  if (!(scaled.after < scaled.before / 2)) {
+    problems.push(`the whole theme's saturation left a picked accent at chroma ${scaled.after} (was ${scaled.before})`);
+  }
   await screenshot('theme-panel-picked');
   await evaluate(() => {
     const heading = [...document.querySelectorAll('we-text')].find((t) => t.textContent.trim() === 'Colour');
