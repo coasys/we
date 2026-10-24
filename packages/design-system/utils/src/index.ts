@@ -1203,7 +1203,9 @@ export function buildLayoutStyles(props: LayoutStyleProps, direction: 'row' | 'c
   // spelled it in full, which is why `we-text` was unaffected and a `Column` was not.
   if (props.fontSize) style['font-size'] = tokenVar('font-size', props.fontSize);
   if (props.lineHeight) style['line-height'] = resolveLineHeight(props.lineHeight);
-  if (props.letterSpacing) style['letter-spacing'] = props.letterSpacing;
+  // A token, as the Lit path resolves it: `wide` written as itself is not a length, so the
+  // declaration was dropped and a layout component's tracking silently did nothing.
+  if (props.letterSpacing) style['letter-spacing'] = tokenVar('letter-spacing', props.letterSpacing);
   if (props.textDecoration) style['text-decoration'] = props.textDecoration;
   if (props.textTransform) style['text-transform'] = props.textTransform;
   if (props.whiteSpace) style['white-space'] = props.whiteSpace;

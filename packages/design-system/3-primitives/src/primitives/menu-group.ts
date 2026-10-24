@@ -51,10 +51,12 @@ const styles = css`
   :host([open][collapsible]) [part='summary']:after {
     transform: rotate(45deg) translateX(-50%);
   }
+  /* An overline, as the text primitive's overline variant draws one: small, tracked, in capitals. */
   [part='title'] {
-    font-size: var(--we-font-size-400);
+    font-size: var(--we-font-size-100);
     ${unsafeCSS(
       typeRoleDeclarations('overline', {
+        letterSpacing: 'var(--we-letter-spacing-wide)',
         textTransform: 'uppercase',
         color: 'var(--we-role-text-faint)',
         weight: '500',
