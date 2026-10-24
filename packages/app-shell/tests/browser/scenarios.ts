@@ -10,7 +10,8 @@ import { cardShell, lineComposer, panelScroll, timeline, timelineMoreAt, timelin
 import type { SchemaNode } from '@we/schema-shared';
 import { discussionSection, foldingSectionLabel, signalDisplay } from '@we/template-kit';
 import { bundlePrompt, safeModeBanner } from '@we/template-shell';
-import { CALL_CHROME_BAND, TREE_LOCALS, TREE_QUERIES, treeStrip } from '@we/template-showcase';
+import { CALL_CHROME_BAND, themeLabTemplate, TREE_LOCALS, TREE_QUERIES, treeStrip } from '@we/template-showcase';
+import { THEME_PRESETS } from '@we/themes/presets';
 
 export interface Scenario {
   /** The schema to mount, exactly as the app would render it. */
@@ -398,6 +399,41 @@ const vocabulary = (): Scenario => {
 /**
  * Buttons and a card given a tone, beside untoned ones — what `tone` paints, read off real pixels.
  */
+/**
+ * The theme lab template under one built-in theme — the `scale` axis picks which, by its place in
+ * `THEME_LAB_THEMES`, so one case sweeps them all. Applied as a node theme, as a space's would be.
+ */
+/** The lab without its graphs, which need the graph module the harness does not register. */
+const withoutGraphs = (node: SchemaNode): SchemaNode => ({
+  ...node,
+  ...(Array.isArray(node.children)
+    ? {
+        children: (node.children as SchemaNode[])
+          .filter((child) => typeof child !== 'object' || child === null || (child as SchemaNode).type !== 'GraphView')
+          .map((child) => (typeof child === 'object' && child !== null ? withoutGraphs(child as SchemaNode) : child)),
+      }
+    : {}),
+});
+
+export const THEME_LAB_THEMES = ['light', 'dark', 'black', 'cyberpunk', 'retro', 'channels', 'timeline'] as const;
+const themeLab = (index = 0): Scenario => {
+  const { meta: _meta, ...page } = themeLabTemplate as SchemaNode & { meta?: unknown };
+  const preset = THEME_PRESETS[THEME_LAB_THEMES[index] ?? 'light'];
+  return {
+    node: { type: 'Column', theme: preset.parameters, children: [withoutGraphs(page as SchemaNode)] },
+    tables: {},
+  };
+};
+
+/** The theme lab, `copies` times over and unthemed, as a page large enough for a theme change to cost something. */
+const themeLabPage = (copies = 4): Scenario => {
+  const { meta: _meta, ...page } = themeLabTemplate as SchemaNode & { meta?: unknown };
+  return {
+    node: { type: 'Column', children: Array.from({ length: copies }, () => withoutGraphs(page as SchemaNode)) },
+    tables: {},
+  };
+};
+
 const toned = (): Scenario => ({
   node: {
     type: 'Column',
@@ -1647,6 +1683,8 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'inspector:provenance': provenanceLine,
   'ds:nested-interactive': nestedInteractive,
   'ds:tone': toned,
+  'theme:lab': themeLab,
+  'perf:theme-drag': themeLabPage,
   'ds:component-tier': componentTier,
   'ds:settings-reach': settingsReach,
   'ds:elevation': elevation,

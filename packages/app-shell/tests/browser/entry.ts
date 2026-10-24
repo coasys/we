@@ -47,8 +47,10 @@ import {
   VIEW_BOUNDARY_ATTR,
   VIEW_BOUNDARY_NAME_ATTR,
 } from '@we/schema-shared';
+import { applyThemeVars, setThemeLive } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import { VisualEditorProvider } from '@we/schema-solid';
+import { THEME_PRESETS } from '@we/themes/presets';
 import { createComponent, createEffect, createSignal } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import { render } from 'solid-js/web';
@@ -1136,7 +1138,39 @@ function composerFrame(): { border: string; height: number; button: number } | n
   };
 }
 
+/**
+ * What one frame of a theme-slider drag costs: the theme re-applied to each root the editor applies
+ * it to, with the hue moving each step, then the style and layout the browser owes for it. `roots`
+ * is how many — the document alone, or the document, the mount (standing in for a scoped space) and
+ * a preview box, as the theme panel does. `live` holds measuring until the drag ends, as the panel
+ * does while a slider is held. Medians, in milliseconds.
+ */
+async function themeDrag(steps: number, roots: number, live = false): Promise<{ median: number; max: number }> {
+  const preview = document.createElement('div');
+  preview.innerHTML = '<we-button>Preview</we-button><we-badge>badge</we-badge>'.repeat(10);
+  document.body.appendChild(preview);
+  const targets = [document.documentElement, document.getElementById('mount') as HTMLElement, preview].slice(0, roots);
+  const base = THEME_PRESETS.dark.parameters;
+  const times: number[] = [];
+  setThemeLive(live);
+  for (let i = 0; i < steps; i++) {
+    const t0 = performance.now();
+    for (const root of targets) applyThemeVars(root, { ...base, accentHue: 200 + i * 7 }, { crossFade: false });
+    document.body.getBoundingClientRect();
+    times.push(performance.now() - t0);
+    await new Promise((r) => requestAnimationFrame(r));
+  }
+  setThemeLive(false);
+  preview.remove();
+  times.sort((a, b) => a - b);
+  return {
+    median: Math.round(times[Math.floor(times.length / 2)] * 10) / 10,
+    max: Math.round(times[times.length - 1]),
+  };
+}
+
 (window as unknown as Record<string, unknown>).__harness = {
+  themeDrag,
   composerFrame,
   editorProbe,
   editorProbeCover,
