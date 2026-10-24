@@ -216,7 +216,7 @@ export function installedList(opts: InstalledListOptions): SchemaNode {
             children: [
               {
                 type: 'we-badge',
-                props: { variant: 'neutral' },
+                props: {},
                 children: [{ $: `'v' + ${opts.as}.version` }],
               },
               {
@@ -225,7 +225,7 @@ export function installedList(opts: InstalledListOptions): SchemaNode {
                   condition: expr`${opts.key} == ${{ $: `spaceStore.currentSpace.${opts.defaultField}` }}`,
                   then: {
                     type: 'we-badge',
-                    props: { variant: 'primary' },
+                    props: { tone: 'accent' },
                     children: ['Space default'],
                   },
                 },

@@ -169,7 +169,7 @@ const watchRoute: RouteSchema = {
             {
               type: 'we-button',
               props: {
-                variant: 'secondary',
+                variant: 'soft',
                 size: 'sm',
                 alignSelf: 'start',
                 onClick: { $setLocal: 'replyOpen', value: true },
@@ -227,7 +227,7 @@ const playlistsRoute: RouteSchema = {
             { type: 'we-text', props: { variant: 'heading-md' }, children: ['Playlists'] },
             {
               type: 'we-button',
-              props: { variant: 'primary', size: 'sm', onClick: { $setLocal: 'newPlaylistOpen', value: true } },
+              props: { variant: 'solid', size: 'sm', onClick: { $setLocal: 'newPlaylistOpen', value: true } },
               children: [{ type: 'we-icon', props: { name: 'plus' } }, 'New playlist'],
             },
           ],
@@ -325,7 +325,7 @@ export const youtubeTemplate: TemplateSchema = {
                   props: {
                     size: 'sm',
                     variant: {
-                      $: "(nav.segment ? nav.segment in routeStore.templateSegments : !count(routeStore.templateSegments)) ? 'secondary' : 'ghost'",
+                      $: "(nav.segment ? nav.segment in routeStore.templateSegments : !count(routeStore.templateSegments)) ? 'soft' : 'ghost'",
                     },
                     onClick: { $action: 'routeStore.navigate', args: [{ $: 'nav.path' }] },
                   },
@@ -337,7 +337,7 @@ export const youtubeTemplate: TemplateSchema = {
         },
         {
           type: 'we-button',
-          props: { variant: 'primary', size: 'sm', onClick: { $setLocal: 'composeOpen', value: true } },
+          props: { variant: 'solid', size: 'sm', onClick: { $setLocal: 'composeOpen', value: true } },
           children: [{ type: 'we-icon', props: { name: 'plus' } }, 'Post a video'],
         },
       ],

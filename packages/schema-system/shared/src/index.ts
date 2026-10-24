@@ -119,12 +119,21 @@ export {
 export {
   applyThemeVars,
   clearThemeVars,
-  DARK_SURFACES,
+  fontFaceProblem,
+  type FontFaceSetting,
+  type DisplayPreferences,
+  basePolarity,
   migrateOverrides,
   parseOverrides,
+  readThemeSettings,
   reconcileSurfaces,
+  registerNamedThemes,
   role,
   roleVar,
+  previewDisplay,
+  rangeForPolarity,
+  setDisplayPreferences,
+  setThemeLive,
   surfacesForPolarity,
   THEME_SCHEMA_VERSION,
   themeParametersToStyle,
@@ -227,3 +236,6 @@ export type {
   FormStateToken,
   ValueIf,
 } from './conditionModel';
+
+// Reduced motion, as the renderer's timers ask it — the system's preference or the person's.
+export { motionIsReduced } from '@we/tokens';

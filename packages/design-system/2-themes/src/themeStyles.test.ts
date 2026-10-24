@@ -40,12 +40,12 @@ describe('applyThemeVars', () => {
 
   it('clears variables the previous theme set and this one does not', () => {
     const { el, props } = fakeRoot();
-    applyThemeVars(el, { primaryHue: 230, polarity: 'dark' });
-    expect(props.has('--we-color-primary-hue')).toBe(true);
+    applyThemeVars(el, { accentHue: 230, polarity: 'dark' });
+    expect(props.has('--we-color-accent-hue')).toBe(true);
 
     applyThemeVars(el, { polarity: 'light' });
 
-    expect(props.has('--we-color-primary-hue')).toBe(false);
+    expect(props.has('--we-color-accent-hue')).toBe(false);
     expect(props.get('--we-color-ramp-direction')).toBe('1');
   });
 
@@ -65,11 +65,11 @@ describe('applyThemeVars', () => {
     // A page and a space-scoped subtree are both themed; neither may clear the other's variables.
     const a = fakeRoot();
     const b = fakeRoot();
-    applyThemeVars(a.el, { primaryHue: 230 });
+    applyThemeVars(a.el, { accentHue: 230 });
     applyThemeVars(b.el, { polarity: 'dark' as const });
     applyThemeVars(b.el, { polarity: 'light' as const });
 
-    expect(a.props.has('--we-color-primary-hue')).toBe(true);
+    expect(a.props.has('--we-color-accent-hue')).toBe(true);
   });
 });
 
@@ -128,7 +128,7 @@ describe('applyThemeVars cross-fade window', () => {
   it('does not open a window when the caller says this is an edit rather than a switch', () => {
     const { el, props } = fakeRoot();
     applyThemeVars(el, { polarity: 'dark' as const });
-    applyThemeVars(el, { polarity: 'dark' as const, primaryHue: 200 }, { crossFade: false });
+    applyThemeVars(el, { polarity: 'dark' as const, accentHue: 200 }, { crossFade: false });
 
     expect(props.has(DURATION)).toBe(false);
   });
@@ -187,10 +187,10 @@ describe('a named theme brings its own parameters', () => {
   });
 
   it('lets an explicit override win over the preset', () => {
-    // `{ themeName: 'cyberpunk', primaryHue: 320 }` should read as "cyberpunk, different accent".
-    const style = themeParametersToStyle({ themeName: 'cyberpunk', primaryHue: 320 });
+    // `{ themeName: 'cyberpunk', accentHue: 320 }` should read as "cyberpunk, different accent".
+    const style = themeParametersToStyle({ themeName: 'cyberpunk', accentHue: 320 });
 
-    expect(style['--we-color-primary-hue']).toBe('320');
+    expect(style['--we-color-accent-hue']).toBe('320');
     expect(style['--we-color-lightness-floor']).toBe(
       String(parseFloat(THEME_PRESETS.cyberpunk.parameters.lightnessFloor!) / 100),
     );
@@ -224,7 +224,7 @@ describe('color-scheme follows the lightness polarity', () => {
   });
 
   it('stays silent when the theme leaves the polarity alone, inheriting the ambient scheme', () => {
-    expect(themeParametersToStyle({ primaryHue: 320 })['color-scheme']).toBeUndefined();
+    expect(themeParametersToStyle({ accentHue: 320 })['color-scheme']).toBeUndefined();
   });
 });
 
@@ -369,7 +369,7 @@ describe('a preset and a theme both pinning roles', () => {
 
   it('leaves a theme with no roles of its own exactly as the preset had it', () => {
     const bare = themeParametersToStyle({ themeName: 'channels' });
-    const withOther = themeParametersToStyle({ themeName: 'channels', primaryHue: 100 });
+    const withOther = themeParametersToStyle({ themeName: 'channels', accentHue: 100 });
     expect(withOther['--we-role-surface-raised']).toBe(bare['--we-role-surface-raised']);
   });
 });

@@ -93,10 +93,10 @@ export function LinkInput(props: LinkInputProps) {
             </Column>
 
             <Row ax="center" gap="300">
-              <we-button variant="secondary" onClick={() => setShowModal(false)}>
+              <we-button variant="soft" onClick={() => setShowModal(false)}>
                 Cancel
               </we-button>
-              <we-button variant="primary" onClick={handleSubmit} disabled={!url().trim()}>
+              <we-button variant="solid" onClick={handleSubmit} disabled={!url().trim()}>
                 {props.url ? 'Save' : 'Add'}
               </we-button>
             </Row>

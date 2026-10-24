@@ -89,7 +89,7 @@ function editor(opts: { editorState?: SchemaProp; save: Record<string, SchemaPro
           {
             type: 'we-button',
             props: {
-              variant: 'primary',
+              variant: 'solid',
               size: 'sm',
               loading: { $: "modules.notes.saving != ''" },
               disabled: { $: "modules.notes.saving != ''" },
@@ -275,7 +275,7 @@ const noteCard: SchemaNode = {
 const confirmShare = confirmModal({
   open: { $: 'local.confirmShareId' },
   close: { $setLocal: 'confirmShareId', value: '' },
-  tone: 'primary',
+  tone: 'accent',
   icon: 'share-network',
   title: 'Share this note?',
   body: {
@@ -315,7 +315,7 @@ export const panel: SchemaNode = {
           type: 'we-button',
           props: {
             size: 'sm',
-            variant: 'secondary',
+            variant: 'soft',
             disabled: { $: 'local.composing' },
             onClick: { $setLocal: 'composing', value: true },
           },

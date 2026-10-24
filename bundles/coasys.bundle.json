@@ -229,7 +229,7 @@
                                                 }
                                               ],
                                               "bg": {
-                                                "$": "(space.spaceId == routeStore.segments[1] && !shellStore.activeShellView) ? 'accent-muted' : ''"
+                                                "$": "(space.spaceId == routeStore.segments[1] && !shellStore.activeShellView) ? 'accent-soft' : ''"
                                               },
                                               "color": {
                                                 "$": "(space.spaceId == routeStore.segments[1] && !shellStore.activeShellView) ? 'accent-text' : 'text-muted'"
@@ -366,7 +366,7 @@
                                 { "$action": "appStore.deactivateApp" },
                                 { "$action": "shellStore.openShellView", "args": ["settings"] }
                               ],
-                              "bg": { "$": "(shellStore.activeShellView == 'settings') ? 'accent-muted' : ''" },
+                              "bg": { "$": "(shellStore.activeShellView == 'settings') ? 'accent-soft' : ''" },
                               "color": {
                                 "$": "(shellStore.activeShellView == 'settings') ? 'accent-text' : 'text-muted'"
                               },
@@ -454,7 +454,7 @@
                                   "ay": "center",
                                   "gap": "300",
                                   "p": "300",
-                                  "bg": { "$": "(shellStore.activeShellView == 'profile') ? 'accent-muted' : ''" },
+                                  "bg": { "$": "(shellStore.activeShellView == 'profile') ? 'accent-soft' : ''" },
                                   "color": {
                                     "$": "(shellStore.activeShellView == 'profile') ? 'accent-text' : 'text-muted'"
                                   },
@@ -554,7 +554,7 @@
                                       {
                                         "type": "we-button",
                                         "props": {
-                                          "variant": "secondary",
+                                          "variant": "soft",
                                           "onClick": { "$setLocal": "confirmGuestLogout", "value": false }
                                         },
                                         "children": ["Stay signed in"]
@@ -562,7 +562,8 @@
                                       {
                                         "type": "we-button",
                                         "props": {
-                                          "variant": "danger",
+                                          "variant": "solid",
+                                          "tone": "danger",
                                           "onClick": {
                                             "$action": "sessionStore.logout",
                                             "onSuccess": [{ "$setLocal": "confirmGuestLogout", "value": false }]
@@ -1094,9 +1095,7 @@
                           "type": "we-button",
                           "props": {
                             "size": "xs",
-                            "variant": {
-                              "$": "modules.call.active && !modules.call.elsewhere ? 'secondary' : 'primary'"
-                            },
+                            "variant": { "$": "modules.call.active && !modules.call.elsewhere ? 'soft' : 'solid'" },
                             "onClick": [
                               {
                                 "$if": {
@@ -1363,7 +1362,7 @@
                                             "condition": { "$": "find(modules.call.liveCalls, { recordId: call.id })" },
                                             "then": {
                                               "type": "we-badge",
-                                              "props": { "variant": "success", "size": "xs" },
+                                              "props": { "tone": "success", "size": "xs" },
                                               "children": ["Live"]
                                             },
                                             "else": {
@@ -1610,7 +1609,7 @@
                       "children": [
                         {
                           "type": "we-button",
-                          "props": { "variant": "secondary", "onClick": { "$action": "modules.call.goToCall" } },
+                          "props": { "variant": "soft", "onClick": { "$action": "modules.call.goToCall" } },
                           "children": [{ "type": "we-icon", "props": { "name": "phone" } }, "Start a call"]
                         }
                       ]
@@ -1655,7 +1654,7 @@
                             {
                               "type": "we-button",
                               "props": {
-                                "variant": "secondary",
+                                "variant": "soft",
                                 "onClick": { "$setLocal": "newChannelOpen", "value": false }
                               },
                               "children": ["Cancel"]
@@ -1663,7 +1662,7 @@
                             {
                               "type": "we-button",
                               "props": {
-                                "variant": "primary",
+                                "variant": "solid",
                                 "disabled": { "$": "!trim(local.channelName)" },
                                 "onClick": {
                                   "$action": "record.create",
@@ -1762,7 +1761,7 @@
                     "type": "$if",
                     "props": {
                       "condition": { "$": "find(modules.call.liveCalls, { recordId: routeStore.params.id })" },
-                      "then": { "type": "we-badge", "props": { "variant": "success" }, "children": ["Live"] }
+                      "then": { "type": "we-badge", "props": { "tone": "success" }, "children": ["Live"] }
                     }
                   }
                 ]
@@ -1809,7 +1808,7 @@
                       {
                         "type": "we-button",
                         "props": {
-                          "variant": "primary",
+                          "variant": "solid",
                           "onClick": {
                             "$action": "modules.call.continueCall",
                             "args": [{ "$": "routeStore.params.id" }]
@@ -1938,7 +1937,7 @@
                       "props": {
                         "size": "sm",
                         "variant": {
-                          "$": "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == '' ? 'secondary' : 'ghost'"
+                          "$": "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == '' ? 'soft' : 'ghost'"
                         },
                         "onClick": {
                           "$action": "routeStore.navigate",
@@ -1956,7 +1955,7 @@
                       "props": {
                         "size": "sm",
                         "variant": {
-                          "$": "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'canvas' ? 'secondary' : 'ghost'"
+                          "$": "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'canvas' ? 'soft' : 'ghost'"
                         },
                         "onClick": {
                           "$action": "routeStore.navigate",
@@ -2164,7 +2163,7 @@
                           "props": {
                             "label": "Send",
                             "square": true,
-                            "variant": "secondary",
+                            "variant": "soft",
                             "disabled": { "$": "local.sending" },
                             "loading": { "$": "local.sending" },
                             "onClick": { "$callLocal": "sendLine" }
@@ -2253,7 +2252,7 @@
                       "props": {
                         "size": "sm",
                         "variant": {
-                          "$": "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == '' ? 'secondary' : 'ghost'"
+                          "$": "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == '' ? 'soft' : 'ghost'"
                         },
                         "onClick": {
                           "$action": "routeStore.navigate",
@@ -2271,7 +2270,7 @@
                       "props": {
                         "size": "sm",
                         "variant": {
-                          "$": "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'canvas' ? 'secondary' : 'ghost'"
+                          "$": "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'canvas' ? 'soft' : 'ghost'"
                         },
                         "onClick": {
                           "$action": "routeStore.navigate",
@@ -3028,7 +3027,7 @@
                                                                 {
                                                                   "type": "we-button",
                                                                   "props": {
-                                                                    "variant": "secondary",
+                                                                    "variant": "soft",
                                                                     "size": "xs",
                                                                     "square": true,
                                                                     "label": { "$": "`Remove ${entry.label}`" },
@@ -3228,7 +3227,7 @@
                                                             "then": {
                                                               "type": "we-button",
                                                               "props": {
-                                                                "variant": "secondary",
+                                                                "variant": "soft",
                                                                 "size": "sm",
                                                                 "onClick": {
                                                                   "$action": "recordStore.openRelationForm",
@@ -3291,7 +3290,7 @@
                         {
                           "type": "we-button",
                           "props": {
-                            "variant": "secondary",
+                            "variant": "soft",
                             "onClick": {
                               "$if": {
                                 "condition": { "$": "recordStore.recordDraftDirty" },
@@ -3305,7 +3304,7 @@
                         {
                           "type": "we-button",
                           "props": {
-                            "variant": "primary",
+                            "variant": "solid",
                             "loading": { "$": "recordStore.savingRecord" },
                             "disabled": { "$": "recordStore.savingRecord" },
                             "onClick": { "$action": "recordStore.saveRecord" }
@@ -3677,7 +3676,7 @@
                                 {
                                   "type": "we-button",
                                   "props": {
-                                    "variant": "secondary",
+                                    "variant": "soft",
                                     "onClick": { "$action": "recordStore.cancelRelationForm" }
                                   },
                                   "children": ["Cancel"]
@@ -3685,7 +3684,7 @@
                                 {
                                   "type": "we-button",
                                   "props": {
-                                    "variant": "primary",
+                                    "variant": "solid",
                                     "onClick": { "$action": "recordStore.saveRelationForm" }
                                   },
                                   "children": ["Add"]
@@ -3737,7 +3736,7 @@
                                 {
                                   "type": "we-button",
                                   "props": {
-                                    "variant": "secondary",
+                                    "variant": "soft",
                                     "onClick": { "$setLocal": "confirmDiscardOpen", "value": false }
                                   },
                                   "children": ["Keep editing"]
@@ -3745,7 +3744,8 @@
                                 {
                                   "type": "we-button",
                                   "props": {
-                                    "variant": "danger",
+                                    "variant": "solid",
+                                    "tone": "danger",
                                     "onClick": {
                                       "$action": "recordStore.cancelRecordForm",
                                       "onSuccess": [{ "$setLocal": "confirmDiscardOpen", "value": false }]
@@ -3902,7 +3902,7 @@
                                       "type": "we-button",
                                       "props": {
                                         "variant": {
-                                          "$": "flowStore.open.name == flow.name && !flowStore.draft ? 'secondary' : 'ghost'"
+                                          "$": "flowStore.open.name == flow.name && !flowStore.draft ? 'soft' : 'ghost'"
                                         },
                                         "width": "100%",
                                         "onClick": [
@@ -4005,7 +4005,7 @@
                                                       "type": "we-button",
                                                       "props": {
                                                         "variant": {
-                                                          "$": "flowStore.open.name == flow.name && !flowStore.draft ? 'secondary' : 'ghost'"
+                                                          "$": "flowStore.open.name == flow.name && !flowStore.draft ? 'soft' : 'ghost'"
                                                         },
                                                         "width": "100%",
                                                         "onClick": [
@@ -4112,7 +4112,7 @@
                                                 {
                                                   "type": "we-button",
                                                   "props": {
-                                                    "variant": "primary",
+                                                    "variant": "solid",
                                                     "disabled": {
                                                       "$": "count(flowStore.draft.problems) > 0 || !flowStore.draft.dirty"
                                                     },
@@ -4837,7 +4837,7 @@
                                                   "type": "we-button",
                                                   "props": {
                                                     "size": "sm",
-                                                    "variant": "secondary",
+                                                    "variant": "soft",
                                                     "disabled": { "$": "!local.excFrom || !local.excTo" },
                                                     "onClick": [
                                                       {
@@ -4914,7 +4914,7 @@
                                                           "type": "we-button",
                                                           "props": {
                                                             "size": "sm",
-                                                            "variant": "secondary",
+                                                            "variant": "soft",
                                                             "onClick": {
                                                               "$action": "shellStore.openSpaceSettings",
                                                               "args": ["vocabulary"]
@@ -4948,7 +4948,7 @@
                                                                   "type": "we-button",
                                                                   "props": {
                                                                     "size": "sm",
-                                                                    "variant": "secondary",
+                                                                    "variant": "soft",
                                                                     "onClick": { "$action": "flowStore.editFlow" }
                                                                   },
                                                                   "children": [
@@ -5061,7 +5061,7 @@
                                                   "type": "we-button",
                                                   "props": {
                                                     "size": "sm",
-                                                    "variant": { "$": "local.flowAsGraph ? 'ghost' : 'secondary'" },
+                                                    "variant": { "$": "local.flowAsGraph ? 'ghost' : 'soft'" },
                                                     "onClick": { "$setLocal": "flowAsGraph", "value": false }
                                                   },
                                                   "children": [
@@ -5072,7 +5072,7 @@
                                                   "type": "we-button",
                                                   "props": {
                                                     "size": "sm",
-                                                    "variant": { "$": "local.flowAsGraph ? 'secondary' : 'ghost'" },
+                                                    "variant": { "$": "local.flowAsGraph ? 'soft' : 'ghost'" },
                                                     "onClick": { "$setLocal": "flowAsGraph", "value": true }
                                                   },
                                                   "children": [
@@ -5564,7 +5564,7 @@
                                                                         "px": "200",
                                                                         "py": "100",
                                                                         "r": "full",
-                                                                        "bg": "warning-surface",
+                                                                        "bg": "warning-soft",
                                                                         "ay": "center",
                                                                         "gap": "100"
                                                                       },
@@ -5746,7 +5746,7 @@
                                                                               "type": "we-button",
                                                                               "props": {
                                                                                 "size": "sm",
-                                                                                "variant": "secondary",
+                                                                                "variant": "soft",
                                                                                 "onClick": {
                                                                                   "$action": "flowStore.moveRecord",
                                                                                   "args": [
@@ -6054,7 +6054,7 @@
                                 {
                                   "type": "we-button",
                                   "props": {
-                                    "variant": "secondary",
+                                    "variant": "soft",
                                     "onClick": {
                                       "$if": {
                                         "condition": { "$": "routeStore.params.new == '1'" },
@@ -6071,7 +6071,7 @@
                                 {
                                   "type": "we-button",
                                   "props": {
-                                    "variant": "primary",
+                                    "variant": "solid",
                                     "disabled": { "$": "!local.flowLabel" },
                                     "onClick": {
                                       "$action": "flowStore.newFlow",
@@ -6133,7 +6133,7 @@
                                 {
                                   "type": "we-button",
                                   "props": {
-                                    "variant": "secondary",
+                                    "variant": "soft",
                                     "onClick": { "$setLocal": "addStepLane", "value": -1 }
                                   },
                                   "children": ["Cancel"]
@@ -6141,7 +6141,7 @@
                                 {
                                   "type": "we-button",
                                   "props": {
-                                    "variant": "primary",
+                                    "variant": "solid",
                                     "disabled": { "$": "!local.stepLabel" },
                                     "onClick": {
                                       "$action": "flowStore.addStep",
@@ -6213,16 +6213,13 @@
                               "children": [
                                 {
                                   "type": "we-button",
-                                  "props": {
-                                    "variant": "secondary",
-                                    "onClick": { "$setLocal": "branchFrom", "value": "" }
-                                  },
+                                  "props": { "variant": "soft", "onClick": { "$setLocal": "branchFrom", "value": "" } },
                                   "children": ["Cancel"]
                                 },
                                 {
                                   "type": "we-button",
                                   "props": {
-                                    "variant": "primary",
+                                    "variant": "solid",
                                     "disabled": { "$": "!local.branchLabel" },
                                     "onClick": {
                                       "$action": "flowStore.addBranch",
@@ -6408,16 +6405,13 @@
                               "children": [
                                 {
                                   "type": "we-button",
-                                  "props": {
-                                    "variant": "secondary",
-                                    "onClick": { "$setLocal": "editStep", "value": "" }
-                                  },
+                                  "props": { "variant": "soft", "onClick": { "$setLocal": "editStep", "value": "" } },
                                   "children": ["Cancel"]
                                 },
                                 {
                                   "type": "we-button",
                                   "props": {
-                                    "variant": "primary",
+                                    "variant": "solid",
                                     "disabled": { "$": "!local.stepName" },
                                     "onClick": {
                                       "$action": "flowStore.updateStep",
@@ -6515,16 +6509,13 @@
                               "children": [
                                 {
                                   "type": "we-button",
-                                  "props": {
-                                    "variant": "secondary",
-                                    "onClick": { "$setLocal": "guardStep", "value": "" }
-                                  },
+                                  "props": { "variant": "soft", "onClick": { "$setLocal": "guardStep", "value": "" } },
                                   "children": ["Cancel"]
                                 },
                                 {
                                   "type": "we-button",
                                   "props": {
-                                    "variant": "primary",
+                                    "variant": "solid",
                                     "onClick": {
                                       "$action": "flowStore.addGuard",
                                       "args": [
@@ -6560,7 +6551,7 @@
     "icon": "hexagon",
     "overrides": {
       "schemaVersion": 6,
-      "primaryHue": 160,
+      "accentHue": 160,
       "saturation": 60,
       "neutralHue": 278,
       "neutralSaturation": 22,
@@ -6787,7 +6778,7 @@
                               {
                                 "type": "we-button",
                                 "props": {
-                                  "variant": "primary",
+                                  "variant": "solid",
                                   "disabled": { "$": "!sessionStore.credentialEntered" },
                                   "loading": { "$": "sessionStore.loginLoading" },
                                   "onClick": { "$action": "sessionStore.unlock" }
@@ -6867,7 +6858,7 @@
                               {
                                 "type": "we-button",
                                 "props": {
-                                  "variant": "primary",
+                                  "variant": "solid",
                                   "loading": { "$": "sessionStore.createAgentLoading" },
                                   "onClick": [
                                     { "$touch": "$all" },
@@ -6932,7 +6923,7 @@
                             "children": [
                               {
                                 "type": "we-button",
-                                "props": { "variant": "primary", "onClick": { "$action": "sessionStore.retryBoot" } },
+                                "props": { "variant": "solid", "onClick": { "$action": "sessionStore.retryBoot" } },
                                 "children": ["Try again"]
                               }
                             ]
@@ -6957,7 +6948,7 @@
                               "condition": { "$": "accountStore.error" },
                               "then": {
                                 "type": "we-alert",
-                                "props": { "variant": "danger" },
+                                "props": { "tone": "danger" },
                                 "children": [{ "$": "accountStore.error" }]
                               }
                             }

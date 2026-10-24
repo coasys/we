@@ -21,7 +21,7 @@ export function focusRow(as: string, row: SchemaNode, extra: Record<string, unkn
         props: {
           width: '100%',
           r: '300',
-          bg: { $: `shellStore.spaceSettingsFocus == ${as}.id ? 'accent-muted' : 'transparent'` },
+          bg: { $: `shellStore.spaceSettingsFocus == ${as}.id ? 'accent-soft' : 'transparent'` },
           transition: 'background-color 300 ease-in-out',
         },
         children: [row],

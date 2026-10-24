@@ -5,7 +5,12 @@
  * read style rules in one dialect, and a role, a scale position or a blend of two must mean the same
  * colour on a card and on a pin.
  */
+import { RAMP_FAMILIES } from '@we/tokens';
+
 import { ROLE_NAMES } from './index';
+
+/** A scale position in any family with a ramp — `accent-100`, `purple-500`. */
+const SCALE_POSITION = new RegExp(`^(${RAMP_FAMILIES.join('|')})-\\d+$`);
 
 /**
  * A **role** first, then a scale position, then raw CSS.
@@ -25,7 +30,7 @@ import { ROLE_NAMES } from './index';
 /** One colour inside a `color-mix`: a role or a scale position resolved, anything else left as CSS. */
 function mixStop(stop: string): string {
   if (ROLE_NAMES.has(stop)) return `var(--we-role-${stop})`;
-  if (/^(neutral|primary|success|warning|danger)-\d+$/.test(stop)) return `var(--we-color-${stop})`;
+  if (SCALE_POSITION.test(stop)) return `var(--we-color-${stop})`;
   // A nested mix gets the same treatment; a CSS colour, a function or a name is CSS already.
   return /^color-mix\(/i.test(stop) ? colorValueCss(stop, '') : stop;
 }
@@ -70,7 +75,7 @@ export function colorValueCss(value: string | undefined, fallback: string): stri
   /*
     A mix, with its colours resolved by these same rules — a heat scale blends between two stops a reader
     picked, and those may be tokens or roles that only mean anything here. Passed through whole, as it
-    used to be, `color-mix(in oklch, accent 40%, primary-100)` names two colours CSS has never heard of.
+    used to be, `color-mix(in oklch, accent 40%, accent-100)` names two colours CSS has never heard of.
     Each argument after the colour space is a colour with an optional share. Only a role or a scale
     position is resolved inside one: a bare word there may equally be a CSS colour name (`red`), and a
     mix written in plain CSS has to come out exactly as it went in.

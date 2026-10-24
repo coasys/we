@@ -235,3 +235,27 @@ describe('a picker that confirms', () => {
     expect(part('apply')).toBeNull();
   });
 });
+
+describe('the palette', () => {
+  it('offers the theme’s hues by name and stores the name, painted through its role', async () => {
+    const el = document.createElement('we-color-picker') as PickerEl & { tokens: boolean };
+    el.tokens = true;
+    el.value = 'teal';
+    document.body.appendChild(el);
+    await el.updateComplete;
+    const changes: string[] = [];
+    el.addEventListener('change', (e) => changes.push((e as CustomEvent<string>).detail));
+
+    const preview = el.shadowRoot!.querySelector<HTMLElement>('[part="preview"]')!;
+    expect(preview.getAttribute('style')).toContain('var(--we-role-teal)');
+
+    preview.click();
+    await el.updateComplete;
+    const purple = el.shadowRoot!.querySelector<HTMLElement>('[part="palette"] [aria-label="purple"]')!;
+    expect(el.shadowRoot!.querySelector('[part="palette"] [aria-label="teal"]')?.getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    purple.click();
+    expect(changes).toEqual(['purple']);
+  });
+});

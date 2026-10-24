@@ -113,7 +113,7 @@ const appSection: SchemaNode = {
                       type: '$if',
                       props: {
                         condition: { $: 'app.value == templateStore.appTemplateId' },
-                        then: { type: 'we-tag', props: { variant: 'primary' }, children: ['In use'] },
+                        then: { type: 'we-tag', props: { tone: 'accent' }, children: ['In use'] },
                       },
                     },
                     {
@@ -182,7 +182,7 @@ const setUpPicker: SchemaNode = {
             {
               type: 'we-button',
               props: {
-                variant: 'primary',
+                variant: 'solid',
                 disabled: { $: '!bundleStore.spaceChoices.exists(c, c.chosen)' },
                 loading: { $: 'bundleStore.busy' },
                 onClick: { $action: 'bundleStore.confirmSetUp' },
@@ -250,7 +250,7 @@ const appsSection: SchemaNode = {
                 then: {
                   type: 'we-button',
                   props: {
-                    variant: 'secondary',
+                    variant: 'soft',
                     size: 'sm',
                     disabled: { $: 'bundleStore.busy' },
                     onClick: { $action: 'bundleStore.openSetUp', args: [{ $: 'app.id' }] },
@@ -263,7 +263,7 @@ const appsSection: SchemaNode = {
               type: '$if',
               props: {
                 condition: { $: "app.setUp == 'done'" },
-                then: { type: 'we-tag', props: { variant: 'success' }, children: ['Set up in your spaces'] },
+                then: { type: 'we-tag', props: { tone: 'success' }, children: ['Set up in your spaces'] },
               },
             },
             {
@@ -335,7 +335,7 @@ const templatesSection: SchemaNode = {
                 ay: 'center',
                 p: '300',
                 r: '200',
-                bg: { $: "template.isDefault ? 'accent-muted' : 'transparent'" },
+                bg: { $: "template.isDefault ? 'accent-soft' : 'transparent'" },
               },
               children: [
                 // Template icon + name
@@ -375,7 +375,7 @@ const templatesSection: SchemaNode = {
                     condition: { $: 'template.isBuiltIn' },
                     then: {
                       type: 'we-tag',
-                      props: { variant: 'neutral' },
+                      props: {},
                       children: ['Built-in'],
                     },
                   },
@@ -449,7 +449,7 @@ const templatesSection: SchemaNode = {
                     condition: { $: 'template.fromApp' },
                     then: {
                       type: 'we-tag',
-                      props: { variant: 'neutral' },
+                      props: {},
                       children: [{ $: '`From ${template.fromApp}`' }],
                     },
                   },
@@ -746,6 +746,116 @@ const themeModeRow = (where: string): SchemaNode => ({
   },
 });
 
+/**
+ * One of the person's display needs: a label, what it does, and a choice. See `displayPreferences`.
+ *
+ * Every one applies over whatever theme is on screen, a space's included — which is the point of
+ * them, and why they sit apart from the themes rather than under one.
+ */
+const displayRow = (
+  key: 'contrast' | 'textSize' | 'density' | 'motion',
+  label: string,
+  hint: string,
+  options: { label: string; value: string }[],
+  fallback: string | number,
+): SchemaNode => ({
+  type: 'Row',
+  props: { gap: '300', ay: 'center', ax: 'between', wrap: true },
+  children: [
+    {
+      type: 'Column',
+      props: { gap: '100', flex: '1 1 16rem', minWidth: '0' },
+      children: [
+        { type: 'we-text', props: { fontWeight: 'medium' }, children: [label] },
+        { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: [hint] },
+      ],
+    },
+    {
+      type: 'we-select',
+      props: {
+        fit: true,
+        // A select's values are strings, so a number is read back as one; the action turns it back.
+        value: {
+          $:
+            typeof fallback === 'number'
+              ? `(themeStore.displayPreferences.${key} ?? ${fallback}) + ''`
+              : `themeStore.displayPreferences.${key} ?? '${fallback}'`,
+        },
+        options,
+        onChange: {
+          $action: 'themeStore.setDisplayPreference',
+          args: [key, key === 'textSize' ? { $: 'event.detail * 1' } : { $: 'event.detail' }],
+        },
+      },
+    },
+  ],
+});
+
+const displaySection: SchemaNode = {
+  type: 'Column',
+  props: { gap: '300' },
+  children: [
+    {
+      type: 'Column',
+      props: { gap: '100' },
+      children: [
+        { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Display'] },
+        {
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'text-muted' },
+          children: ['What you need to read comfortably. These apply in every space, whatever its theme.'],
+        },
+      ],
+    },
+    displayRow(
+      'contrast',
+      'Contrast',
+      'More separates text, borders and controls from what is behind them.',
+      [
+        { label: 'Follow system', value: 'system' },
+        { label: 'Standard', value: 'standard' },
+        { label: 'More', value: 'more' },
+      ],
+      'system',
+    ),
+    displayRow(
+      'textSize',
+      'Text size',
+      'Larger or smaller than the theme sets it.',
+      [
+        { label: '90%', value: '0.9' },
+        { label: '100%', value: '1' },
+        { label: '115%', value: '1.15' },
+        { label: '130%', value: '1.3' },
+        { label: '150%', value: '1.5' },
+      ],
+      1,
+    ),
+    displayRow(
+      'density',
+      'Density',
+      'How much room things take.',
+      [
+        { label: 'Compact', value: 'compact' },
+        { label: 'Normal', value: 'normal' },
+        { label: 'Roomy', value: 'roomy' },
+      ],
+      'normal',
+    ),
+    displayRow(
+      'motion',
+      'Motion',
+      'Reduced stops transitions and animations.',
+      [
+        { label: 'Follow system', value: 'system' },
+        { label: 'Full', value: 'full' },
+        { label: 'Reduced', value: 'reduced' },
+      ],
+      'system',
+    ),
+  ],
+};
+
 const themesSection: SchemaNode = {
   type: 'Column',
   props: { gap: '300' },
@@ -763,7 +873,7 @@ const themesSection: SchemaNode = {
             {
               // The fill is the block's, so the light-or-dark row under a theme sits inside its highlight.
               type: 'Column',
-              props: { r: '200', bg: { $: "theme.isDefault ? 'accent-muted' : 'transparent'" } },
+              props: { r: '200', bg: { $: "theme.isDefault ? 'accent-soft' : 'transparent'" } },
               children: [
                 {
                   type: 'Row',
@@ -790,7 +900,7 @@ const themesSection: SchemaNode = {
                         condition: { $: 'theme.isBuiltIn' },
                         then: {
                           type: 'we-tag',
-                          props: { variant: 'neutral' },
+                          props: {},
                           children: ['Built-in'],
                         },
                       },
@@ -1194,7 +1304,7 @@ const modulesSection: SchemaNode = {
       'Template components',
       'These supply pieces that templates build with, and have no chrome of their own. They stay on \u2014 a template that mounts one would break without it, and a template that has no use for one never loads it.',
       'capability',
-      { type: 'we-tag', props: { variant: 'neutral' }, children: ['Always on'] },
+      { type: 'we-tag', props: {}, children: ['Always on'] },
     ),
     agentModuleSettingsSection,
   ],
@@ -1219,7 +1329,7 @@ const spaceActions: SchemaNode = {
       type: 'we-button',
       props: {
         text: 'Create New Space',
-        variant: 'primary',
+        variant: 'solid',
         height: '40px',
         onClick: { $action: 'shellStore.setCreateSpaceOpen', args: [true] },
       },
@@ -1228,7 +1338,7 @@ const spaceActions: SchemaNode = {
       type: 'we-button',
       props: {
         text: 'Join a Space',
-        variant: 'secondary',
+        variant: 'soft',
         height: '40px',
         onClick: { $action: 'shellStore.setJoinSpaceOpen', args: [true] },
       },
@@ -1281,7 +1391,7 @@ function navItem(label: string, icon: string, path: string): SchemaNode {
   return {
     type: 'we-button',
     props: {
-      variant: expr`${selected} ? 'secondary' : 'ghost'`,
+      variant: expr`${selected} ? 'soft' : 'ghost'`,
       width: '100%',
       ax: 'start',
       onClick: { $action: 'routeStore.navigate', args: [path] },
@@ -1415,7 +1525,7 @@ export const settingsTemplate: TemplateSchema = {
     { path: '/connections', ...page([runtimeError, connectedApps]) },
     // This app — how it looks and what it does here.
     // How things look — and only that. What you run is its own page, below.
-    { path: '/appearance', ...page([themeScopeSection, themesSection]) },
+    { path: '/appearance', ...page([themeScopeSection, themesSection, displaySection]) },
     // What you run: the app around every space, the apps you installed, and the templates spaces
     // are drawn with. A question apart from how they look, and from the spaces themselves.
     { path: '/apps', ...page([appSection, appsSection, templatesSection, templateUpdatesSection]) },

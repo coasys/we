@@ -43,7 +43,7 @@ export const speciesSection: TemplateSchema & { id: string } = {
                 {
                   type: 'we-button',
                   props: {
-                    variant: { $: "local.group == '' ? 'secondary' : 'ghost'" },
+                    variant: { $: "local.group == '' ? 'soft' : 'ghost'" },
                     size: 'sm',
                     onClick: { $setLocal: 'group', value: '' },
                   },
@@ -56,7 +56,7 @@ export const speciesSection: TemplateSchema & { id: string } = {
                     {
                       type: 'we-button',
                       props: {
-                        variant: { $: "local.group == g ? 'secondary' : 'ghost'" },
+                        variant: { $: "local.group == g ? 'soft' : 'ghost'" },
                         size: 'sm',
                         onClick: { $setLocal: 'group', value: { $: 'g' } },
                       },
@@ -130,8 +130,8 @@ export const speciesSection: TemplateSchema & { id: string } = {
                               type: 'we-badge',
                               props: {
                                 size: 'sm',
-                                variant: {
-                                  $: "sp.status == 'rare' || sp.status == 'protected' ? 'warning' : 'neutral'",
+                                tone: {
+                                  $: "sp.status == 'rare' || sp.status == 'protected' ? 'warning' : ''",
                                 },
                               },
                               children: [{ $: 'sp.status' }],
@@ -229,8 +229,8 @@ export const sightingsSection: TemplateSchema & { id: string } = {
                           type: 'we-badge',
                           props: {
                             size: 'sm',
-                            variant: {
-                              $: "s.certainty == 'certain' ? 'success' : s.certainty == 'likely' ? 'neutral' : 'warning'",
+                            tone: {
+                              $: "s.certainty == 'certain' ? 'success' : s.certainty == 'likely' ? '' : 'warning'",
                             },
                           },
                           children: [{ $: 's.certainty' }],

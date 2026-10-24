@@ -8,4 +8,5 @@ export * from './templates/schemaPatches';
 export * from './templates/templateContext';
 export * from './templates/templateSession';
 export * from './templates/templateToolset';
+export * from './themes/themeToolset';
 export * from './toolsets';

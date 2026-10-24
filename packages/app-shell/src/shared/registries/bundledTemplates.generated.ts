@@ -16,6 +16,7 @@ import {
   instagramTemplate,
   kanbanTemplate,
   scrapbookTemplate,
+  themeLabTemplate,
   twitterTemplate,
   workshopTemplate,
   youtubeTemplate,
@@ -31,4 +32,5 @@ export const bundledTemplates: Record<string, TemplateSchema> = {
   kanban: kanbanTemplate,
   events: eventsTemplate,
   scrapbook: scrapbookTemplate,
+  'theme-lab': themeLabTemplate,
 };

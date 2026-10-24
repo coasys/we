@@ -169,7 +169,7 @@ export const postsList: SchemaNode = {
                         },
                         then: {
                           type: 'we-badge',
-                          props: { variant: 'warning', size: 'sm' },
+                          props: { tone: 'warning', size: 'sm' },
                           children: [
                             {
                               $: "`${presenceStore.online.filter(p, p.did != me.did && p.activities.exists(a, a.type == 'edit' && a.nodeId == post.id)).map(p, p.name).join(', ')} editing`",

@@ -8,7 +8,7 @@
  *
  * ## Why these are absolute colours and not roles
  *
- * The fills were `accent-muted`, `success-surface` and `warning-surface` — roles, which is normally
+ * The fills were `accent-soft`, `success-soft` and `warning-soft` — roles, which is normally
  * the right answer and is the wrong one here. Those roles are *tinted panels inset on a page*: they
  * are steps on a ramp that inverts with the theme's polarity, and they get their separation from a
  * border rather than from the ground. Measured against the built-in presets:
@@ -17,7 +17,7 @@
  *                                   light L%   dark L%
  * canvas ground (page)                 100       20
  * a plain card  (neutral-200)          84.5      35.7
- * "doing"       (primary-100)          92.5      27.6   ← darker than an uncoloured card
+ * "doing"       (accent-100)          92.5      27.6   ← darker than an uncoloured card
  * "done"        (success-50)           96.0      24.0   ← four points off the ground
  * ```
  *

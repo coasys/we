@@ -229,7 +229,7 @@ const starterTemplate: SchemaNode = {
   children: [
     {
       type: 'Column',
-      props: { p: '600', gap: '300', bg: 'accent-muted' },
+      props: { p: '600', gap: '300', bg: 'accent-soft' },
       children: [{ type: 'we-text', props: { fontSize: '700', fontWeight: 'bold' }, children: ['Welcome'] }],
     },
     {

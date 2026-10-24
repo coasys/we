@@ -166,7 +166,7 @@ export function Select(allProps: SelectProps) {
                   <>
                     <Show when={group.label !== null}>
                       <we-menu-item cursor="default" pointerEvents="none" color="text-faint" fontSize="100">
-                        <we-text>{group.label}</we-text>
+                        <we-text variant="overline">{group.label}</we-text>
                       </we-menu-item>
                     </Show>
                     <For each={group.items}>

@@ -189,13 +189,13 @@ export function formModal(opts: FormModalOptions): SchemaNode {
                 type: 'we-button',
                 // Guarded like the backdrop when there is a guard — one way out of the modal, not
                 // two that disagree about whether the draft matters.
-                props: { variant: 'secondary', onClick: guard?.close ?? opts.close },
+                props: { variant: 'soft', onClick: guard?.close ?? opts.close },
                 children: [opts.cancelLabel ?? 'Cancel'],
               },
               {
                 type: 'we-button',
                 props: {
-                  variant: 'primary',
+                  variant: 'solid',
                   ...(busy !== undefined && { loading: busy }),
                   ...(disabled !== undefined && { disabled }),
                   onClick,

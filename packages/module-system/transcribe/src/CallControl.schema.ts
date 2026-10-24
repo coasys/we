@@ -61,14 +61,14 @@ export const callControl: SchemaNode = {
             // label's worth of side padding around a lone glyph is what would give this one away.
             square: true,
             /*
-              Three states, not two, and the third is why this is no longer `secondary`.
+              Three states, not two, and the third is why this is no longer `soft`.
 
               Off is `ghost`, matching how the call's own mute and camera buttons read theirs, so
               the row behaves as one set of controls rather than one module's chrome beside
               another's. Armed but not yet producing — the seconds while a model loads — is
-              `secondary`, which is what this button used to be for both of the other states.
+              `soft`, which is what this button used to be for both of the other states.
 
-              Actually recording is `danger`, and that is the change recording-by-default
+              Actually recording is `solid` with `tone: 'danger'`, and that is the change recording-by-default
               requires. A state somebody chose can afford to be quiet; a state that arrives on
               its own has to be legible without being looked for, and a `secondary` square in a
               row of `ghost` squares is exactly the difference a person misses. It is also the
@@ -76,7 +76,10 @@ export const callControl: SchemaNode = {
               switched on. Red is the same colour the icon inside it already used for this.
             */
             variant: {
-              $: "modules.transcribe.recordingCall.listening ? 'danger' : modules.transcribe.recordingCall.enabled ? 'secondary' : 'ghost'",
+              $: "modules.transcribe.recordingCall.listening ? 'solid' : modules.transcribe.recordingCall.enabled ? 'soft' : 'ghost'",
+            },
+            tone: {
+              $: "modules.transcribe.recordingCall.listening ? 'danger' : modules.transcribe.recordingCall.enabled ? '' : ''",
             },
             onClick: { $action: 'modules.transcribe.toggle' },
           },

@@ -1026,7 +1026,7 @@
  * selected disappeared with the pointer and the inspector was left describing something the canvas
  * did not point at. The hover value is deliberately faint — it answers "is the pointer on it?",
  * which is a question that stops being asked the moment you let go — where this one has to hold on
- * its own beside cards ringed in `primary-500`.
+ * its own beside cards ringed in `accent-500`.
  *
  * The edge's own colour rather than the ring colour those cards use: a line has no fill to be
  * mistaken for, so widening it in its own colour reads as *that* line being picked out, where a

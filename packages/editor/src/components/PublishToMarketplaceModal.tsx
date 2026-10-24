@@ -182,7 +182,8 @@ export function PublishToMarketplaceModal(props: Props) {
                 <Column position="relative" width="120px" height="80px">
                   <we-image src={src} fit="cover" r="200" width="120px" height="80px" />
                   <we-button
-                    variant="danger"
+                    variant="solid"
+                    tone="danger"
                     size="xs"
                     square
                     position="absolute"
@@ -224,7 +225,7 @@ export function PublishToMarketplaceModal(props: Props) {
         <we-button variant="ghost" onClick={props.onClose} disabled={publishing()}>
           Cancel
         </we-button>
-        <we-button variant="primary" disabled={!canPublish()} loading={publishing()} onClick={handlePublish}>
+        <we-button variant="solid" disabled={!canPublish()} loading={publishing()} onClick={handlePublish}>
           Publish
         </we-button>
       </Row>

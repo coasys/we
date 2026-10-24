@@ -1,4 +1,5 @@
-import { css, html, nothing } from 'lit';
+import { typeRoleDeclarations } from '@we/tokens';
+import { css, html, nothing, unsafeCSS } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
@@ -43,18 +44,24 @@ const styles = css`
     border-bottom: 1px solid var(--we-role-border-strong);
     width: 4px;
     height: 4px;
-    transition: all var(--we-transition-300, 250ms) ease;
+    transition: transform var(--we-transition-300, 250ms) var(--we-ease-standard, ease);
     transform: rotate(-45deg) translateX(-50%);
     transform-origin: center;
   }
   :host([open][collapsible]) [part='summary']:after {
     transform: rotate(45deg) translateX(-50%);
   }
+  /* An overline, as the text primitive's overline variant draws one: small, tracked, in capitals. */
   [part='title'] {
-    text-transform: uppercase;
-    font-size: var(--we-font-size-400);
-    color: var(--we-role-text-faint);
-    font-weight: 500;
+    font-size: var(--we-font-size-100);
+    ${unsafeCSS(
+      typeRoleDeclarations('overline', {
+        letterSpacing: 'var(--we-letter-spacing-wide)',
+        textTransform: 'uppercase',
+        color: 'var(--we-role-text-faint)',
+        weight: '500',
+      }),
+    )}
     flex: 1;
     white-space: nowrap;
     overflow: hidden;

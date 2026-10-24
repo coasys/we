@@ -56,6 +56,7 @@ const DOCK_CSS = `
 @media (prefers-reduced-motion: reduce) {
   [data-we-dock-frame] { animation: none; }
 }
+:root[data-we-motion='reduced'] [data-we-dock-frame] { animation: none; }
 `;
 
 const BG_IMAGE_CSS = `

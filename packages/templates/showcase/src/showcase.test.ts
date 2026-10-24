@@ -1419,8 +1419,8 @@ describe('the workshop’s key', () => {
       so a default written as a bare token name would be the one value in the chain the picker's own
       swatch could not show.
 
-      The card fills are absolute rather than roles, which is the second half. `accent-muted` and
-      `success-surface` are tinted panels defined relative to the page, so they invert with it: in a
+      The card fills are absolute rather than roles, which is the second half. `accent-soft` and
+      `success-soft` are tinted panels defined relative to the page, so they invert with it: in a
       dark theme "doing" and "done" came out DARKER than an uncoloured card and a few points off the
       canvas's own ground. A card is an object rather than a panel — the post-it said so in a hex
       first — so these hold one lightness in both themes, and the graph inks each label from the

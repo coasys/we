@@ -63,7 +63,7 @@ All visual variation should flow through the **JS merge chain**, not CSS attribu
 const DEFAULT_PROPS: Partial<DesignSystemProps> = { bg: '...', r: '...', ... };
 
 const VARIANT_DEFAULTS: Record<string, Partial<DesignSystemProps>> = {
-  primary: { bg: '...', color: '...' },
+  solid: { bg: 'accent', color: 'on-accent' },
 };
 
 const SIZE_DEFAULTS: Record<string, Partial<DesignSystemProps>> = {
@@ -188,6 +188,50 @@ Safe to hardcode in a component's own `static styles` (not DS-covered, or not on
 
 **Never** use `:host([variant='...'])` or `:host([size='...'])` CSS selectors to directly set DS-covered properties (bg, color, padding, fontSize, etc.) — those belong in the JS maps. **Exception:** setting CSS custom properties (e.g. `--we-button-size-padding-x`) via host selectors is fine — that feeds the cascade rather than bypassing it.
 
+## Taking part in theming
+
+A theme reaches a primitive through what the primitive reads, so a primitive that reads the wrong
+thing is a primitive no theme can reach. The model is in `docs/architecture/theming.md`; these are
+the rules a component has to keep.
+
+**Register its cascade.** An entry in `COMPONENT_CASCADE` (`src/shared/helpers.ts`) — or
+`registerComponentCascade` from a module — names the family it takes shape and density from
+(`radiusGroup`, `paddingGroup`, `gapGroup`), its `typeRole`, and for a surface its `surfaceImage`.
+With that, the theme's component tier (`components.<name>`, variant first) is wired in for it by
+`applyComponentTheme`; nothing in the component reads a `--we-theme-*` variable by hand.
+
+**Never a literal where a family or a role says it.** A radius, a padding, a gap or a colour written
+as a number is one no theme can move. Defaults go in `DEFAULT_PROPS` as tokens and roles.
+
+**Colour from the accent roles, so `tone` works.** `accent`, `on-accent`, `accent-soft`,
+`accent-text`, `accent-border`, `accent-hover`, `accent-active`, and the focus ring. A `tone`
+re-points exactly those, so a component that draws its "danger" look from the danger roles directly
+cannot be toned, and one that draws from the accent can be every family. Neutral looks come from the
+surface and text roles.
+
+**`variant` is how it is drawn, never what colour.** `solid`, `soft`, `outline`, `ghost`, `bare` — and
+`tone` for the family. A variant called `danger` is two props folded into one, and the validator
+refuses the retired spellings.
+
+**States from the shared contract.** Hover is `itemHover` for a row in a list and `surface-hover` /
+`surface-active` for something on a surface; what is chosen is `selected` with `on-selected`; focus is
+`FOCUS_RING` (or `FOCUS_RING_INSET` / `FOCUS_RING_BEYOND_BORDER`, `src/../1-tokens/src/states.ts`);
+disabled is the shared host rule in `shared/styles.ts` and `DISABLED_OPACITY`. A component with its
+own idea of hover is one a theme's `stateDuration` and state roles do not reach.
+
+**Text drawn in CSS reads its type role.** Text the component styles in its stylesheet rather than
+through DS props — a field's label, a group's overline — uses `typeRoleDeclarations(role, fallbacks)`,
+so a theme's `typeStyles` reaches it.
+
+**Anything that floats uses the floating-panel style.** `floatingPanel()` and its constants in
+`shared/panel-style.ts`: the raised surface through the theme's opacity and blur, the surface radius,
+the large shadow. A popover that picks its own is the one that does not turn to glass with the rest.
+
+**Parts are API.** A `part` a theme may style is listed in `PUBLIC_PARTS` (`src/parts.ts`); one that
+is structural only goes in `INTERNAL_PARTS`. `parts.test.ts` holds both lists to the source, so a part
+cannot be added, renamed or removed without saying which it is — and renaming a public one breaks
+somebody's theme.
+
 ## Cascade Layers
 
 Every primitive's shadow root is arranged in cascade layers, lowest first:
@@ -238,7 +282,7 @@ This is read once at class registration to generate the static DS stylesheet (CS
 
 ## Naming
 
-- Unique variant/size type unions live in `types.ts` (e.g. `ButtonVariant`, `ModalSize`). Shared types (`ComponentSize`, `ComponentVariant`) come from `@we/tokens`.
+- Unique variant/size type unions live in `types.ts` (e.g. `ButtonVariant`, `ModalSize`). Shared types (`ComponentSize`, `ToneName`) come from `@we/tokens`. Colour is never a variant: it is `tone`, a DS prop every element takes.
 - Default props map: `DEFAULT_PROPS`
 - Variant map: `VARIANT_DEFAULTS`
 - Size map: `SIZE_DEFAULTS`

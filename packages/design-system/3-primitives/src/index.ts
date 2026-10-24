@@ -71,4 +71,5 @@ export { type ComponentCascade, componentCascadeFor, registerComponentCascade } 
 export { holdTopLayer, installTopLayerGuard, mayEnterTopLayer } from './shared/top-layer';
 
 /** One icon per status variant — the redundancy that carries status without colour. */
-export { ALERT_VARIANT_ICONS } from './primitives/alert';
+export { ALERT_TONE_ICONS } from './primitives/alert';
+export { INTERNAL_PARTS, PUBLIC_PARTS } from './parts';

@@ -598,6 +598,22 @@ once with SPARQL, and read a shape in full only when the answer needs it: \`read
 
 ---
 
+### Solid + Lit Web Component Props: \`prop:\` and \`weProps\`
+
+In Solid JSX, a camelCase prop with a **computed** value on a \`we-*\` element is assigned as a
+**lowercased property** — \`fontSize={x}\` becomes \`el.fontsize = x\` — which the Lit element
+never reads, so the value is dropped without a trace. A literal (\`fontSize="400"\`) compiles to an
+attribute and works, which is what makes this hard to see. A spread is computed by nature:
+\`{...SECTION_LABEL_PROPS}\` delivered \`variant\` and \`color\` and silently dropped
+\`textTransform\` and \`letterSpacing\`, so every editor panel title lost its capitals.
+
+- A computed camelCase prop: write \`prop:fontSize={x}\`. (\`styles\` is the exception: plain.)
+- A spread: write \`{...weProps(OBJ)}\` from \`@we/design-utils/solid\`, which prefixes every key.
+
+\`pnpm check:we-props\` gates CI on both.
+
+---
+
 ### Solid + Lit Web Component Event Handling
 
 **How the event type generator works** (\`packages/design-system/3-primitives/scripts/generate-framework-declarations.ts\`):

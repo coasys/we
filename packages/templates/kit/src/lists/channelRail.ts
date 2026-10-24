@@ -76,7 +76,7 @@ function channelRow(opts: ChannelRailOptions, as: string): SchemaNode {
   return {
     type: 'we-button',
     props: {
-      variant: { $: `routeStore.segments[${opts.activeSegment ?? 1}] == ${as}.id ? 'secondary' : 'ghost'` },
+      variant: { $: `routeStore.segments[${opts.activeSegment ?? 1}] == ${as}.id ? 'soft' : 'ghost'` },
       size: 'sm',
       width: '100%',
       ax: 'between',

@@ -62,7 +62,7 @@ export function lineComposer(opts: LineComposerOptions): SchemaNode {
             props: {
               label: opts.sendLabel,
               square: true,
-              variant: 'secondary',
+              variant: 'soft',
               disabled: { $: 'local.sending' },
               loading: { $: 'local.sending' },
               onClick: { $callLocal: 'sendLine' },

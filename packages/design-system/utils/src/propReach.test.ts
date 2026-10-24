@@ -109,3 +109,14 @@ describe('layout props reach CSS on both paths', () => {
     });
   }
 });
+
+describe('a typography token on a layout component', () => {
+  it('resolves to its variable, as the primitives do, rather than being written as a word', () => {
+    // `letterSpacing: 'wide'` was written as `letter-spacing: wide`, which is not a length, so the
+    // browser dropped it and every overline drawn with a Column or Row had no tracking.
+    expect(buildLayoutStyles({ letterSpacing: 'wide' }, 'column')['letter-spacing']).toBe(
+      'var(--we-letter-spacing-wide)',
+    );
+    expect(buildLayoutStyles({ letterSpacing: '0.05em' }, 'column')['letter-spacing']).toBe('0.05em');
+  });
+});

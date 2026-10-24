@@ -1,6 +1,7 @@
 import type { DesignSystemProps } from '@we/design-types';
-import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
-import { css, html, nothing } from 'lit';
+import { type DSLayer, familyVar, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
+import { FOCUS_OUTLINE } from '@we/tokens';
+import { css, html, nothing, unsafeCSS } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
@@ -57,12 +58,20 @@ const styles = css`
     width: 18px;
     height: 18px;
     border: 2px solid var(--we-role-border-strong);
-    border-radius: var(--we-radius-200);
+    /* The control family's corner, never rounder than the small one it always had: a theme that
+       squares its controls squares this, and one that rounds them to a pill does not turn a box
+       into a circle that reads as a radio. components.checkbox.radius says otherwise outright. */
+    border-radius: var(
+      --we-theme-checkbox-radius,
+      min(${unsafeCSS(familyVar('control', 'radius'))}, var(--we-radius-200))
+    );
     background: transparent;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all var(--we-transition-200, 150ms) ease;
+    transition:
+      background-color var(--we-transition-200, 150ms) ease,
+      border-color var(--we-transition-200, 150ms) ease;
     flex-shrink: 0;
   }
 
@@ -72,8 +81,6 @@ const styles = css`
   }
 
   :host([disabled]) {
-    opacity: 0.5;
-    cursor: default;
     pointer-events: none;
   }
 
@@ -81,7 +88,12 @@ const styles = css`
     display: none;
     width: 10px;
     height: 10px;
-    color: white;
+    color: var(--we-role-on-accent);
+  }
+
+  /* The ring on the box, since the input that takes focus is the hidden one — see FOCUS_OUTLINE. */
+  [part='input']:focus-visible ~ [part='control'] {
+    ${unsafeCSS(FOCUS_OUTLINE)}
   }
 
   :host([checked]) [part='check'] {

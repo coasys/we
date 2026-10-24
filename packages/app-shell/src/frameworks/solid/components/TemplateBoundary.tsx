@@ -73,7 +73,7 @@ export function TemplateBoundary(props: TemplateBoundaryProps) {
               {error instanceof Error ? error.message : String(error)}
             </we-text>
             <Row gap="300" ay="center" wrap>
-              <we-button variant="secondary" onClick={reset}>
+              <we-button variant="soft" onClick={reset}>
                 Try again
               </we-button>
               {props.action}

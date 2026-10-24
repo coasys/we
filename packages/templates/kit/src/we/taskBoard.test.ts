@@ -111,10 +111,10 @@ describe('a task card’s fill', () => {
     const keyed = taskBoard({
       boardId: { $: 'local.boardId' },
       empty: { type: 'Column' },
-      bg: { $: "card.done ? 'success-surface' : 'surface'" },
+      bg: { $: "card.done ? 'success-soft' : 'surface'" },
     });
     const text = JSON.stringify(keyed);
-    const rule = '"bg":{"$":"card.done ? \'success-surface\' : \'surface\'"}';
+    const rule = '"bg":{"$":"card.done ? \'success-soft\' : \'surface\'"}';
     // Every card the board draws — one per column kind, and the unplaced column's.
     expect(text.split(rule).length - 1).toBeGreaterThanOrEqual(2);
   });
