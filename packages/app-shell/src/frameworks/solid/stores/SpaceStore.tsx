@@ -91,7 +91,12 @@ import {
   type TaskStateRule,
 } from '@shared/taskFlow';
 import { taskFlowLive } from '@shared/taskFlowLive';
-import { resolveSpaceTheme, type ThemeResolutionInput } from '@shared/themeResolution';
+import {
+  resolveSpaceTheme,
+  type SpaceThemeHiddenBy,
+  spaceThemeHiddenBy as hiddenBy,
+  type ThemeResolutionInput,
+} from '@shared/themeResolution';
 import { uploadOf } from '@shared/uploadOf';
 import { copyText, deriveSlug } from '@shared/utils';
 import type { ViewSetting } from '@shared/viewResolution';
@@ -594,6 +599,11 @@ export interface SpaceStore {
    * apply — is there anything for a "reset" to undo? False outside a space.
    */
   spaceThemePinned: Accessor<boolean>;
+  /**
+   * What keeps this agent from seeing the space on screen's own theme: `'pin'`, `'agent-default'`,
+   * `'template'`, or `''` when nothing does.
+   */
+  spaceThemeHiddenBy: Accessor<SpaceThemeHiddenBy>;
   /** Feature modules this *agent* wants available anywhere. Personal; see AgentSettings.installedModules. */
   installedModules: Accessor<string[]>;
   /** Module ids the template on screen mounts components from — derived from the schema, not declared. */
@@ -4886,6 +4896,16 @@ export function SpaceStoreProvider(props: ParentProps) {
   });
 
   /**
+   * What keeps this agent from seeing the space on screen's own theme, if anything — so setting the
+   * space's default while one of these holds can say why nothing changed, rather than looking as
+   * though it did not save.
+   */
+  const spaceThemeHiddenBy = createMemo<SpaceThemeHiddenBy>(() => {
+    const uuid = datasetStore.currentDataset()?.id;
+    return uuid ? hiddenBy(themeResolutionInput(uuid)) : '';
+  });
+
+  /**
    * Override the template this agent sees in one space. {@link FOLLOW_SPACE} returns to its default.
    *
    * Applied immediately when the space is the one on screen, so the choice is visible where it was
@@ -5504,8 +5524,28 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (!ds) return;
     if (isCurrent(ds)) setSpaceDefaultThemeId(themeId);
     updateSpaceInCache(ds, { defaultThemeId: themeId } as never);
+    if (isCurrent(ds)) explainHiddenSpaceTheme();
     const [space] = await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) });
     if (space) await Space.update(ds.handle, space.id, { defaultThemeId: themeId });
+  }
+
+  /**
+   * Say why a space default just set is not what this agent sees. Members get it; the person who set
+   * it is the one looking at something else, and without this the setting reads as not having saved.
+   */
+  function explainHiddenSpaceTheme(): void {
+    const reason = spaceThemeHiddenBy();
+    if (!reason) return;
+    const useSpaceTheme = { label: "Use the space's theme", run: () => void clearSpaceThemePin() };
+    if (reason === 'template') {
+      toastService.info(
+        "Saved. You won't see it here while this template brings its own theme — the space's default template shows it.",
+        8000,
+      );
+    } else {
+      const yours = reason === 'pin' ? 'your own theme for this space' : 'your own default theme';
+      toastService.info(`Saved. You won't see it here while you're using ${yours}.`, 8000, useSpaceTheme);
+    }
   }
 
   // Load neighbourhood members whenever the current dataset changes
@@ -5702,6 +5742,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     templateOverrideOptions,
     themeOverrideOptions,
     spaceThemePinned,
+    spaceThemeHiddenBy,
     moduleInstallSettings,
     moduleLaunchers,
     spaceViews,

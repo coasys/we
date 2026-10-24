@@ -655,6 +655,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       a reset, and that picker lives in the appearance tier.
     */
     spaceThemePinned: state('appearance'),
+    // Beside the space-default picker it explains, in Space settings.
+    spaceThemeHiddenBy: state('space-settings'),
     moduleInstallSettings: state('space-admin'),
     createSpace: action('space-admin'),
     initializeAsWeSpace: action('space-settings'),

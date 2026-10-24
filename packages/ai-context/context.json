@@ -7431,6 +7431,9 @@
         "spaceThemePinned": {
           "type": "boolean"
         },
+        "spaceThemeHiddenBy": {
+          "type": "string"
+        },
         "installedModules": {
           "type": "array"
         },

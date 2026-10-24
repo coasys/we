@@ -3062,6 +3062,7 @@ export const contextData: ContextData = {
         templateOverrideOptions: { type: 'array', properties: ['label', 'value'] },
         themeOverrideOptions: { type: 'array', properties: ['label', 'value'] },
         spaceThemePinned: { type: 'boolean' },
+        spaceThemeHiddenBy: { type: 'string' },
         installedModules: { type: 'array' },
         requiredModules: { type: 'array' },
         missingModules: { type: 'array' },

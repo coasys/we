@@ -97,6 +97,54 @@ const themeRow = defaultPickerRow({
   setDefault: 'spaceStore.setSpaceDefaultTheme',
 });
 
+/*
+  Why the default just set is not what you are looking at. Your own choice for this space outranks
+  the space's default, which is the point of making one — but an administrator setting the default
+  sees nothing change, and that reads as the setting not saving. Shown here rather than only as a
+  toast when it is set, because the same question comes back on the next visit.
+*/
+const hiddenThemeNote: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: "spaceStore.spaceThemeHiddenBy != ''" },
+    then: {
+      type: 'we-alert',
+      children: [
+        {
+          type: 'Row',
+          props: { ay: 'center', ax: 'between', gap: '300', wrap: true },
+          children: [
+            {
+              type: 'we-text',
+              props: { variant: 'footnote' },
+              children: [
+                {
+                  $: "spaceStore.spaceThemeHiddenBy == 'template' ? 'You see this template’s own theme here instead — the space’s default template shows the space’s theme.' : spaceStore.spaceThemeHiddenBy == 'pin' ? 'You see your own theme for this space instead. Members still get this default.' : 'You see your own default theme here instead. Members still get this default.'",
+                },
+              ],
+            },
+            {
+              type: '$if',
+              props: {
+                condition: { $: "spaceStore.spaceThemeHiddenBy != 'template'" },
+                then: {
+                  type: 'we-button',
+                  props: {
+                    variant: 'soft',
+                    size: 'sm',
+                    onClick: { $action: 'spaceStore.clearSpaceThemePin' },
+                  },
+                  children: ["Use the space's theme"],
+                },
+              },
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
 const sectionBox = (title: string, description: string, children: SchemaNode[]): SchemaNode => ({
   type: 'Column',
   props: { gap: '300', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
@@ -162,6 +210,7 @@ export const spaceDefaultsSection: SchemaNode = {
       browseToggle('showMarketplace', marketplaceBrowser),
     ]),
     sectionBox('Default theme', 'The look members get when they open this space.', [
+      hiddenThemeNote,
       group('Built-in', { $: 'themeStore.builtInThemes' }, 'theme', themeRow),
       /*
         "Follow system" is not a built-in theme — it resolves to one rather than being one, which is

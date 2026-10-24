@@ -390,6 +390,7 @@ export const storeEntries: StoreEntry[] = [
       templateOverrideOptions: { type: 'array', properties: ['label', 'value'] },
       themeOverrideOptions: { type: 'array', properties: ['label', 'value'] },
       spaceThemePinned: { type: 'boolean' },
+      spaceThemeHiddenBy: { type: 'string' },
       canAdministerCurrentSpace: { type: 'boolean' },
       moduleInstallSettings: {
         type: 'array',
@@ -1256,6 +1257,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           'string — the option publishing uses when none is chosen: the backend’s default, empty until it answers. Show it as the picker’s value while nothing is chosen — { $: "local.sharing ? local.sharing : spaceStore.defaultSharing" } — and pass the bare choice to createSpace, rather than copying it into local state, which freezes whatever it was at that moment',
         canAdministerCurrentSpace:
           'boolean — whether this agent may change what every member of the space on screen sees. The readable form of canAdministerSpace, which an expression cannot call. Gate an admin-only control on this rather than on `x.author == me.did`, which asks who made the row and not who runs the space',
+        spaceThemeHiddenBy:
+          "string — what keeps this agent from seeing the space on screen's own theme: 'pin' (they chose a theme for this space), 'agent-default' (they chose to follow their own default here), 'template' (a template other than the space's default brings its own theme), or '' when nothing does. Show it beside the space's default-theme picker, so an administrator who sets one and sees nothing change knows why. clearSpaceThemePin undoes the first two",
         spaceThemePinned:
           'boolean — this agent has pinned a theme for the space on screen that differs from what would otherwise apply, so there is something for a reset to undo. False outside a space, and false for a pin that happens to name what the space resolves to anyway. Gate a "pinned here / reset" affordance on it rather than on the pin merely existing',
         requiredModules:
