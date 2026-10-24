@@ -11,7 +11,8 @@ import {
   simulateVision,
   tokenVar,
 } from '@we/design-utils';
-import { PANEL_TITLE_PROPS, SECTION_LABEL_PROPS } from '@we/schema-kit';
+import { weProps } from '@we/design-utils/solid';
+import { SECTION_LABEL_PROPS } from '@we/schema-kit';
 import type { FontFaceSetting, ThemeOverrides, ThemeRole, ThemeSideName } from '@we/schema-shared';
 import {
   applyThemeVars,
@@ -35,12 +36,12 @@ import {
   TYPE_ROLES,
   type TypeRole,
 } from '@we/tokens';
-import type { JSX } from 'solid-js';
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
 
 import { useEditorHost } from '../host';
 import { nextRoles, roleTierLabel } from '../themeRoles';
 import { type SidesChoice, sidesOf, sidesPatch, writePatch } from '../themeSides';
+import { FoldingSection, PanelScroll, PanelShell } from './panelKit';
 
 const SAVE_DEBOUNCE_MS = 600;
 
@@ -590,9 +591,6 @@ function HueSwatch(props: { family: string; palette: Record<string, string> }) {
  * (`0.05em`, against the inspector's `0.06em`, a `widest` twenty lines from that, and the kit's
  * `wide`). None of those was a decision anybody made twice.
  */
-function SectionLabel(props: { children: string }) {
-  return <we-text {...SECTION_LABEL_PROPS}>{props.children}</we-text>;
-}
 
 /**
  * A preference that outlives the session, kept out of the theme itself.
@@ -621,47 +619,6 @@ function persistedFlag(key: string, fallback: boolean) {
       }
     },
   ] as const;
-}
-
-function CollapsibleSection(props: {
-  title: string;
-  defaultOpen?: boolean;
-  /**
-   * Opens the section when it turns truthy — for arriving at a row inside a collapsed group.
-   *
-   * A section owns whether it is open, which is right for a click on its header and useless for
-   * being sent to something inside it: the inspector's "take me to this role" landed on a row that
-   * was not rendered, so the scroll had nothing to scroll to and the jump silently did nothing.
-   * Only ever opens; it never closes a section somebody opened themselves.
-   */
-  openOn?: () => unknown;
-  children: JSX.Element;
-}) {
-  const [open, setOpen] = createSignal(props.defaultOpen ?? false);
-  createEffect(() => {
-    if (props.openOn?.()) setOpen(true);
-  });
-  return (
-    <Column borderBottom={`1px solid ${tokenVar('color', 'border')}`} pb="0">
-      {/*
-        A real `<button>`, not a `Row` carrying an `onClick`: the row silently loses the keyboard
-        activation and the role, and there is nowhere to put `aria-expanded`. The caret is `xs`,
-        which is the size every other caret in the app is — punctuation, a size below the glyphs it
-        sits beside.
-      */}
-      <we-button variant="bare" width="100%" r="200" expanded={open()} onClick={() => setOpen(!open())}>
-        <Row ay="center" ax="between" py="300" width="100%">
-          <SectionLabel>{props.title}</SectionLabel>
-          <we-icon name={open() ? 'caret-up' : 'caret-down'} size="xs" color="text-faint" />
-        </Row>
-      </we-button>
-      <Show when={open()}>
-        <Column gap="300" pb="400">
-          {props.children}
-        </Column>
-      </Show>
-    </Column>
-  );
 }
 
 // ─── ThemePanel ───────────────────────────────────────────────────────────────
@@ -1596,33 +1553,16 @@ export function ThemePanel() {
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <Column
-      height="100%"
-      width="100%"
-      /*
-        No background of its own: the dock frame paints the panel's surface.
+    /*
+      No background of its own: the dock frame paints the panel's surface — every dock is wrapped in
+      a frame that sets `page` (see dockRegistry.ts).
 
-        Every dock is wrapped in a frame that sets `page`, precisely so a docked panel does
-        not have to decide what it is made of — see the note in dockRegistry.ts. The editor's panels
-        painted `surface-raised` over the top of it, ten lightness points above the page, so they read
-        as a different material from every module panel docked at the same edge.
-      */
-      overflow="hidden"
-      /*
-        Any press inside the panel starts a gesture, not just one on a slider.
-
-        Captured at the root rather than wired onto each control: the pickers, sliders and swatches
-        are a mix of Lit primitives and native inputs, and a drag that begins on any of them has the
-        same problem — see `dragging`. One listener here covers every present and future control,
-        and a press that turns out not to be a drag simply clears on the next pointerup.
-      */
-      onPointerDown={() => setDragging(true)}
-    >
-      {/* Header */}
-      <Row ax="between" ay="center" px="300" py="300" flexShrink="0">
-        <we-text {...PANEL_TITLE_PROPS}>Theme Editor</we-text>
-      </Row>
-
+      Any press inside the panel starts a gesture, not just one on a slider: the pickers, sliders and
+      swatches are a mix of Lit primitives and native inputs, and a drag that begins on any of them
+      has the same problem — see `dragging`. A press that turns out not to be a drag simply clears on
+      the next pointerup.
+    */
+    <PanelShell title="Theme Editor" onPointerDown={() => setDragging(true)}>
       <Show
         when={editing()}
         fallback={
@@ -1645,11 +1585,11 @@ export function ThemePanel() {
           style={{ position: 'absolute', width: '0', height: '0', visibility: 'hidden' }}
         />
 
-        <we-scroll-area flex="1">
-          <Column gap="0" p="400">
+        <PanelScroll>
+          <Column gap="400" pb="400">
             {/* ── Name + icon ── */}
-            <Column gap="200" borderBottom={`1px solid ${tokenVar('color', 'border')}`} pb="400" mb="0">
-              <SectionLabel>Theme name</SectionLabel>
+            <Column gap="200">
+              <we-text {...weProps(SECTION_LABEL_PROPS)}>Theme name</we-text>
               <Row gap="200" ay="center">
                 <we-icon-picker
                   value={editing()!.icon}
@@ -1718,16 +1658,12 @@ export function ThemePanel() {
                 state, which is the same import that is not available.
               */
               bg="page"
+              /* A rule under it, since the sections scroll beneath it: the one divider left here. */
               borderBottom={`1px solid ${tokenVar('color', 'border')}`}
               pb="300"
-              pt="300"
             >
-              <Row ay="center" ax="between" onClick={() => setPreviewOpen(!previewOpen())} cursor="pointer">
-                <SectionLabel>Preview</SectionLabel>
-                <we-icon name={previewOpen() ? 'caret-up' : 'caret-down'} size="sm" color="text-faint" />
-              </Row>
-              <Show when={previewOpen()}>
-                <Column pt="300" gap="300">
+              <FoldingSection title="Preview" open={previewOpen} onToggle={setPreviewOpen}>
+                <Column gap="300">
                   {previewStrip()}
 
                   {/*
@@ -1840,11 +1776,11 @@ export function ThemePanel() {
                     )}
                   </Show>
                 </Column>
-              </Show>
+              </FoldingSection>
             </Column>
 
             {/* ── Base preset ── */}
-            <CollapsibleSection title="Base preset">
+            <FoldingSection title="Base preset">
               <we-select
                 value={overrides().themeName ?? ''}
                 options={BASE_THEME_OPTIONS}
@@ -1854,7 +1790,7 @@ export function ThemePanel() {
                   saveTheme();
                 }}
               />
-            </CollapsibleSection>
+            </FoldingSection>
 
             {/* ── Sides ── */}
             {/*
@@ -1862,7 +1798,7 @@ export function ThemePanel() {
               both. With both, which side the panel is editing — and previewing, since a person's own
               light/dark setting is what decides which side they see.
             */}
-            <CollapsibleSection title="Sides">
+            <FoldingSection title="Sides">
               <Row gap="200">
                 <For each={['light', 'dark', 'both'] as const}>
                   {(choice) => (
@@ -1909,7 +1845,7 @@ export function ThemePanel() {
                   {editedSide()} side, and the app is previewing it.
                 </we-text>
               </Show>
-            </CollapsibleSection>
+            </FoldingSection>
 
             {/* ── Colour ── */}
             {/*
@@ -1918,7 +1854,7 @@ export function ThemePanel() {
               kind of control (every hue, then every saturation, then every lightness), which put
               one family's three settings in three places and called the accent "Brand".
             */}
-            <CollapsibleSection title="Colour">
+            <FoldingSection title="Colour">
               <For each={[...SEMANTIC_FAMILIES]}>
                 {(family) => (
                   <Column gap="200">
@@ -1996,10 +1932,10 @@ export function ThemePanel() {
                 {percentSlider('Darkest', 'lightnessFloor', 0, 100, 0)}
                 {percentSlider('Lightest', 'lightnessCeiling', 0, 120, 100)}
               </Column>
-            </CollapsibleSection>
+            </FoldingSection>
 
             {/* ── Roles ── */}
-            <CollapsibleSection title="Roles" openOn={requestedRole}>
+            <FoldingSection title="Roles" openOn={requestedRole}>
               <we-text fontSize="200" color="text-muted" lineHeight="1.5">
                 What a colour <i>means</i>, rather than where it sits on the scale. Left alone, each follows the hues
                 and lightness above — pin one to redesign a relationship the scale cannot express, such as raised
@@ -2019,7 +1955,7 @@ export function ThemePanel() {
                   </Column>
                 )}
               </For>
-            </CollapsibleSection>
+            </FoldingSection>
 
             {/* ── Modes ── */}
             {/*
@@ -2027,7 +1963,7 @@ export function ThemePanel() {
               over any theme. These change the editor's own display preferences so a theme can be seen
               the way somebody will see it.
             */}
-            <CollapsibleSection title="Modes">
+            <FoldingSection title="Modes">
               <we-text fontSize="200" color="text-muted" lineHeight="1.5">
                 People choose more contrast for themselves, over any theme. Preview this theme the way they will see it
                 — your own setting is left as it is:
@@ -2051,10 +1987,10 @@ export function ThemePanel() {
                   }
                 />
               </Row>
-            </CollapsibleSection>
+            </FoldingSection>
 
             {/* ── Shape ── */}
-            <CollapsibleSection title="Shape">
+            <FoldingSection title="Shape">
               <Column gap="200">
                 <we-text fontSize="200" color="text-faint">
                   Preset
@@ -2087,10 +2023,10 @@ export function ThemePanel() {
                 {selectControl('Borders', 'borderWidth', BORDER_WIDTH_OPTIONS)}
                 {selectControl('Focus ring', 'focusRingWidth', RING_WIDTH_OPTIONS)}
               </Column>
-            </CollapsibleSection>
+            </FoldingSection>
 
             {/* ── Type ── */}
-            <CollapsibleSection title="Type">
+            <FoldingSection title="Type">
               {selectControl('Font family', 'fontFamily', () => [...themeFaces(), ...FONT_OPTIONS], '100px', 'default')}
               {selectControl(
                 'Heading font',
@@ -2152,10 +2088,10 @@ export function ThemePanel() {
                   </Column>
                 )}
               </For>
-            </CollapsibleSection>
+            </FoldingSection>
 
             {/* ── Spacing & Density ── */}
-            <CollapsibleSection title="Spacing & Density">
+            <FoldingSection title="Spacing & Density">
               <Column gap="200">
                 <we-text fontSize="200" color="text-faint">
                   Preset
@@ -2189,10 +2125,10 @@ export function ThemePanel() {
                     "denser at the same text size". */}
                 {selectControl('Spacing', 'spacingScale', SPACING_SCALE_OPTIONS)}
               </Column>
-            </CollapsibleSection>
+            </FoldingSection>
 
             {/* ── Elevation ── */}
-            <CollapsibleSection title="Elevation">
+            <FoldingSection title="Elevation">
               <Column gap="200">
                 <we-text fontSize="200" color="text-faint">
                   Shadows
@@ -2226,10 +2162,10 @@ export function ThemePanel() {
                   },
                 )}
               </Column>
-            </CollapsibleSection>
+            </FoldingSection>
 
             {/* ── Surfaces ── */}
-            <CollapsibleSection title="Surfaces">
+            <FoldingSection title="Surfaces">
               {numericSlider('Surface opacity', 'surfaceOpacity', 1, {
                 min: 0,
                 max: 1,
@@ -2271,10 +2207,10 @@ export function ThemePanel() {
                   )}
                 </For>
               </Column>
-            </CollapsibleSection>
+            </FoldingSection>
 
             {/* ── Motion ── */}
-            <CollapsibleSection title="Motion">
+            <FoldingSection title="Motion">
               <Column gap="200">
                 <we-text fontSize="200" color="text-faint">
                   Animation speed
@@ -2308,14 +2244,14 @@ export function ThemePanel() {
                 ],
                 (v) => setOverride('iconWeight', v as ThemeOverrides['iconWeight']),
               )}
-            </CollapsibleSection>
+            </FoldingSection>
 
             {/* ── Components ── */}
             {/*
               The narrow tier: one component set apart from its family, with the family's own keys.
               Per variant is a level further and lives in the theme's JSON (components.<name>.variants).
             */}
-            <CollapsibleSection title="Components">
+            <FoldingSection title="Components">
               {choiceRow(
                 'Component',
                 () => component(),
@@ -2379,10 +2315,10 @@ export function ThemePanel() {
                 BORDER_ROLE_OPTIONS,
                 (v) => setComponentKey('border', v),
               )}
-            </CollapsibleSection>
+            </FoldingSection>
 
             {/* ── Fonts ── */}
-            <CollapsibleSection title="Fonts">
+            <FoldingSection title="Fonts">
               <we-text fontSize="200" color="text-muted" lineHeight="1.5">
                 Typefaces this theme carries, so its fonts work for everybody who opens it. Added faces appear in the
                 font choices under Type.
@@ -2409,10 +2345,10 @@ export function ThemePanel() {
                   {fontProblem()}
                 </we-text>
               </Show>
-            </CollapsibleSection>
+            </FoldingSection>
 
             {/* ── Custom CSS ── */}
-            <CollapsibleSection title="Custom CSS">
+            <FoldingSection title="Custom CSS">
               <Row ax="end">
                 <Show
                   when={cssEditing()}
@@ -2440,10 +2376,10 @@ export function ThemePanel() {
                 onChange={setCssValue}
                 styles={{ height: '200px' }}
               />
-            </CollapsibleSection>
+            </FoldingSection>
           </Column>
-        </we-scroll-area>
+        </PanelScroll>
       </Show>
-    </Column>
+    </PanelShell>
   );
 }

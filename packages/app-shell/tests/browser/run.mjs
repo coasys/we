@@ -422,6 +422,12 @@ async function main() {
          * when it passes cannot be used to watch a number move.
          */
         note: (text) => notes.push(text),
+        /** Run a function in the page, for a probe no helper covers. */
+        evaluate: (fn, arg) => page.evaluate(fn, arg),
+        themePanel: async (overrides) => {
+          await page.evaluate((o) => window.__harness.themePanelProbe(o), overrides);
+          await page.waitForTimeout(300);
+        },
         themeDrag: (steps, roots, live) => page.evaluate((a) => window.__harness.themeDrag(...a), [steps, roots, live]),
         /**
          * Collect an event's `detail` under `key`, listening at the document.

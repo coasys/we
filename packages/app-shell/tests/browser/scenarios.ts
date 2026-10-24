@@ -1684,6 +1684,8 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'ds:nested-interactive': nestedInteractive,
   'ds:tone': toned,
   'theme:lab': themeLab,
+  // Nothing of its own: for a case that mounts something else into the page, such as a panel.
+  blank: () => ({ node: { type: 'Column' }, tables: {} }),
   'perf:theme-drag': themeLabPage,
   'ds:component-tier': componentTier,
   'ds:settings-reach': settingsReach,

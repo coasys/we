@@ -35,6 +35,7 @@ import {
   PartsPalette,
   SectionOnItsOwnBar,
   SuppliedPanelNote,
+  ThemePanel,
 } from '@we/editor';
 import {
   EDIT_SURFACE_ATTR,
@@ -1169,8 +1170,41 @@ async function themeDrag(steps: number, roots: number, live = false): Promise<{ 
   };
 }
 
+/**
+ * The theme panel, mounted against a host editing one theme — a fork of `dark` unless told otherwise
+ * — so a case can photograph or measure the panel itself. Its writes land in the theme it shows.
+ */
+function themePanelProbe(overrides = '{"themeName":"dark"}'): void {
+  const [editing, setEditing] = createSignal({ id: 'probe', name: 'Probe', icon: 'palette', overrides, css: '' });
+  const theme = {
+    editingTheme: editing,
+    focusedRole: () => '',
+    saveEditingTheme: async () => null,
+    startEditing: () => {},
+    changeBasePreset: () => {},
+    updateEditingCss: (css: string) => setEditing((t) => ({ ...t, css })),
+    updateEditingMeta: (meta: Record<string, string>) => setEditing((t) => ({ ...t, ...meta })),
+    updateEditingOverrides: (patch: Record<string, unknown>) =>
+      setEditing((t) => ({ ...t, overrides: JSON.stringify({ ...JSON.parse(t.overrides), ...patch }) })),
+  };
+  const host = document.getElementById('mount') as HTMLElement;
+  host.innerHTML = '';
+  const dispose = render(
+    () =>
+      createComponent(EditorHostProvider, {
+        value: { theme } as never,
+        get children() {
+          return createComponent(ThemePanel, {});
+        },
+      }),
+    host,
+  );
+  probeDisposers.unshift(dispose);
+}
+
 (window as unknown as Record<string, unknown>).__harness = {
   themeDrag,
+  themePanelProbe,
   composerFrame,
   editorProbe,
   editorProbeCover,
