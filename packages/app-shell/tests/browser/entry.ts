@@ -24,6 +24,7 @@ import { injectDSInteropStyles } from '@solid/dsInterop';
 import { componentRegistry } from '@solid/registries/componentRegistry';
 import { createInMemoryBackend } from '@we/backend-inmemory';
 import { BlockHostProvider } from '@we/block-solid';
+import { ToastContainer, toastService } from '@we/components/solid';
 import {
   CopiedPartNote,
   EditingSectionBar,
@@ -1206,7 +1207,23 @@ function themePanelProbe(overrides = '{"themeName":"dark"}'): void {
   probeDisposers.unshift(dispose);
 }
 
+/**
+ * The app's toast stack, mounted with one toast raised, so a case can measure how a toast lays out.
+ * Returns the toast's id; the container stays until the next case clears the mount.
+ */
+function toastProbe(message: string, actionLabel = ''): string {
+  const host = document.getElementById('mount') as HTMLElement;
+  host.innerHTML = '';
+  const dispose = render(() => createComponent(ToastContainer, {}), host);
+  probeDisposers.unshift(dispose);
+  const id = toastService.info(message, 0, actionLabel ? { label: actionLabel, run: () => {} } : undefined);
+  // A toast with no timeout outlives the container; take it down with the case.
+  probeDisposers.unshift(() => toastService.remove(id));
+  return id;
+}
+
 (window as unknown as Record<string, unknown>).__harness = {
+  toastProbe,
   // The theme pipeline itself, for a probe of how an apply behaves.
   themeApi: { applyThemeVars, clearThemeVars, setDisplayPreferences, setThemeLive },
   themeDrag,

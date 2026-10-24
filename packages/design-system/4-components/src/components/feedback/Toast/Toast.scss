@@ -59,7 +59,10 @@
 
 .we-toast {
   display: flex;
-  align-items: center;
+
+  // Top, not centre: with an action under the message, a centred icon and close button sit halfway
+  // down a two-line toast instead of beside its first line.
+  align-items: flex-start;
   gap: var(--we-space-200);
   padding: var(--we-space-300) var(--we-space-400);
 
@@ -99,11 +102,17 @@
     border: var(--we-border-width) solid color-mix(in srgb, var(--we-role-danger) 30%, transparent);
   }
 
-  &__message {
+  &__body {
     flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--we-space-100);
   }
 
   &__action {
+    // Pulled out by its own padding, so its label lines up with the message above it.
+    margin-inline-start: calc(-1 * var(--we-space-200));
     background: none;
     border: none;
     cursor: pointer;

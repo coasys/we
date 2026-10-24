@@ -48,19 +48,25 @@ function ToastItem(props: { toast: ToastItem }) {
       onFocusOut={() => toastService.resume(props.toast.id)}
     >
       <we-icon name={TONE_ICONS[tone()]} color={TONE_COLORS[tone()]} size="20px" />
-      <span class="we-toast__message">{props.toast.message}</span>
-      {props.toast.action && (
-        <button
-          class="we-toast__action"
-          onClick={() => {
-            const action = props.toast.action;
-            toastService.remove(props.toast.id);
-            action?.run();
-          }}
-        >
-          {props.toast.action.label}
-        </button>
-      )}
+      {/*
+        The action sits under the message rather than beside it. Beside it, a label longer than
+        "Undo" took the width the message needed and squeezed it into a narrow column.
+      */}
+      <div class="we-toast__body">
+        <span class="we-toast__message">{props.toast.message}</span>
+        {props.toast.action && (
+          <button
+            class="we-toast__action"
+            onClick={() => {
+              const action = props.toast.action;
+              toastService.remove(props.toast.id);
+              action?.run();
+            }}
+          >
+            {props.toast.action.label}
+          </button>
+        )}
+      </div>
       <button onClick={() => toastService.remove(props.toast.id)} aria-label="Dismiss" class="we-toast__dismiss">
         <we-icon name="x" size="16px" />
       </button>
