@@ -312,7 +312,7 @@ describe('AI models', () => {
     name: 'GPT',
     kind: 'llm',
     isDefault: true,
-    source: { kind: 'api', protocol: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-x', model: 'gpt-4o' },
+    source: { kind: 'api', protocol: 'openai', baseUrl: 'https://api.openai.com/v1', hasApiKey: true, model: 'gpt-4o' },
   };
   const local: AiModel = {
     id: 'm2',
@@ -426,6 +426,47 @@ describe('AI models', () => {
     // The list answered for that key; a different key may see different models, or none.
     store.setAiFormField('apiKey', 'sk-other');
     expect(store.aiDiscoveredModelOptions()).toEqual([]);
+  });
+
+  it('edits a keyed model without seeing its key, and asks for it again only where it must', async () => {
+    // The backend answers whether a key is set and never the key. So the form opens empty, a save
+    // that touched nothing keeps the key, a move of the address needs it again, and listing models
+    // needs it typed — discovery is asked with what it is sent.
+    const saved: AiModelDraft[] = [];
+    const asked: unknown[] = [];
+    const { port } = aiPort({
+      async update(_id, draft) {
+        saved.push(draft);
+      },
+      async discover(query) {
+        asked.push(query);
+        return ['gpt-4o'];
+      },
+    });
+    ports = { models: port };
+    const store = mount();
+    await store.loadAiModels();
+
+    store.editAiModel('m1');
+    expect(store.aiForm()).toMatchObject({ apiKey: '', apiKeyStored: true });
+    expect(store.aiDiscoverNeedsKey()).toBe(true);
+    await store.discoverAiModels();
+    expect(asked).toEqual([]);
+
+    store.setAiFormField('apiBaseUrl', 'https://openrouter.ai/api/v1');
+    expect(store.aiApiKeyError()).not.toBe('');
+    expect(store.aiFormComplete()).toBe(false);
+    store.setAiFormField('apiBaseUrl', 'https://api.openai.com/v1');
+    expect(store.aiApiKeyError()).toBe('');
+
+    await store.saveAiModel();
+    expect(saved[0].source).not.toHaveProperty('apiKey');
+
+    store.editAiModel('m1');
+    store.setAiFormField('apiKey', 'sk-new');
+    expect(store.aiDiscoverNeedsKey()).toBe(false);
+    await store.discoverAiModels();
+    expect(asked).toEqual([{ protocol: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-new' }]);
   });
 
   it('says why a listing failed, and offers nothing to pick', async () => {

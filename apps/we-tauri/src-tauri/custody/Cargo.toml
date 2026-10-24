@@ -24,9 +24,9 @@ cheap-kdf = []
 # the two agree. For a local ad4m checkout, override with
 #   cargo test --config 'patch."https://github.com/coasys/ad4m".ad4m-identity-client.path="<ad4m>/ad4m-identity-client"' …
 # (and the same for ad4m-identity-core and ad4m-client), as `apps/we-tauri/DEVELOPMENT.md` says.
-ad4m-identity-client = { git = "https://github.com/coasys/ad4m", rev = "2b42c55cbe56a6ba777e9a9d45b3bd9a0efb97d8", features = ["ws"] }
-ad4m-identity-core = { git = "https://github.com/coasys/ad4m", rev = "2b42c55cbe56a6ba777e9a9d45b3bd9a0efb97d8", features = ["build", "words"] }
-ad4m-client = { git = "https://github.com/coasys/ad4m", rev = "2b42c55cbe56a6ba777e9a9d45b3bd9a0efb97d8" }
+ad4m-identity-client = { git = "https://github.com/coasys/ad4m", rev = "19ea894c0f63246cf6ab922d502a8c392db05caa", features = ["ws"] }
+ad4m-identity-core = { git = "https://github.com/coasys/ad4m", rev = "19ea894c0f63246cf6ab922d502a8c392db05caa", features = ["build", "words"] }
+ad4m-client = { git = "https://github.com/coasys/ad4m", rev = "19ea894c0f63246cf6ab922d502a8c392db05caa" }
 tokio = { version = "1", features = ["rt", "sync", "macros", "time"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

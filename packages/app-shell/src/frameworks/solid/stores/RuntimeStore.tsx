@@ -27,11 +27,13 @@ import {
   AI_API_PRESETS,
   type AiModelForm,
   type AiModelView,
+  apiKeyProblem,
   CUSTOM_SERVICE,
   describeModel,
   draftFrom,
   EMPTY_FORM,
   formComplete,
+  keepsStoredKey,
   maxContextProblem,
   toDraft,
 } from '@solid/stores/aiModelDraft';
@@ -108,6 +110,16 @@ export interface RuntimeStore {
   aiFormComplete: Accessor<boolean>;
   /** Why the open form's context limit cannot be saved, or empty — the words for a disabled Save. */
   aiMaxContextError: Accessor<string>;
+  /**
+   * Why the open form's key holds the save, or empty: the base URL moved away from the address the
+   * stored key was set for, and no new key was typed. The backend sends a key only there.
+   */
+  aiApiKeyError: Accessor<string>;
+  /**
+   * The open form keeps a key the backend holds, so listing models needs it typed again: the
+   * backend never hands a stored key back, and discovery asks with what it is sent.
+   */
+  aiDiscoverNeedsKey: Accessor<boolean>;
   /**
    * The remote services a model can be reached through, plus "Custom endpoint", for a we-select on
    * `aiForm.apiService`. A named service sets the protocol and base URL itself.
@@ -316,6 +328,16 @@ export function RuntimeStoreProvider(props: ParentProps) {
   const aiMaxContextError = createMemo(() => {
     const form = aiForm();
     return form ? maxContextProblem(form) : '';
+  });
+
+  const aiApiKeyError = createMemo(() => {
+    const form = aiForm();
+    return form ? apiKeyProblem(form) : '';
+  });
+
+  const aiDiscoverNeedsKey = createMemo(() => {
+    const form = aiForm();
+    return !!form && keepsStoredKey(form);
   });
 
   const aiServiceOptions = () => [
@@ -654,7 +676,9 @@ export function RuntimeStoreProvider(props: ParentProps) {
 
   async function discoverAiModels(): Promise<void> {
     const form = aiForm();
-    if (!form?.apiBaseUrl.trim()) return;
+    // Without the stored key the endpoint would answer for an anonymous caller — a refusal, or a
+    // list that is not this account's. The control is disabled then; this keeps the action honest.
+    if (!form?.apiBaseUrl.trim() || keepsStoredKey(form)) return;
     const endpoint = endpointOf(form);
     const found = await run('discoverAiModels', () =>
       modelAdmin()?.discover?.({
@@ -846,6 +870,8 @@ export function RuntimeStoreProvider(props: ParentProps) {
     aiPresetOptions,
     aiFormComplete,
     aiMaxContextError,
+    aiApiKeyError,
+    aiDiscoverNeedsKey,
     aiFormDirty,
     aiServiceOptions,
     canDiscoverAiModels,

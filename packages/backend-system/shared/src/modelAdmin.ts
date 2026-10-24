@@ -27,16 +27,36 @@ export type AiModelSource =
   /**
    * A remote endpoint, spoken to in the wire format `protocol` names.
    *
+   * `hasApiKey` says whether the backend holds a key for it — never the key. A key goes in and
+   * stays with the backend, which sends it to the provider and to nobody else, so a settings page
+   * can say "a key is set" and offer to replace or remove it, and cannot show it or reuse it.
+   *
    * `maxContext` is a ceiling on the context window the backend asks the provider for, in tokens —
    * an upper bound, never a request. It matters where the provider sizes memory from the window at
    * load: a local model advertising a long window otherwise reserves all of it for a short prompt.
    */
-  | { kind: 'api'; protocol: AiApiProtocol; baseUrl: string; apiKey: string; model: string; maxContext?: number }
+  | { kind: 'api'; protocol: AiApiProtocol; baseUrl: string; hasApiKey: boolean; model: string; maxContext?: number }
+  | AiLocalModelSource;
+
+/** The sources whose weights the backend runs itself. Read and written alike: nothing in them is secret. */
+export type AiLocalModelSource =
   /** A build the backend knows by name and fetches itself — see `aiModelPresets`. */
   | { kind: 'preset'; name: string }
   | { kind: 'huggingface'; repo: string; revision: string; fileName: string; tokenizer?: TokenizerSource }
   /** A file already on the machine running the backend. */
   | { kind: 'file'; fileName: string; tokenizer?: TokenizerSource };
+
+/**
+ * A source as it is written: the same as `AiModelSource`, except that a remote endpoint carries the
+ * key being sent rather than whether one is held.
+ *
+ * `apiKey` absent keeps the key the backend holds, `''` removes it, and a value replaces it. A key
+ * goes only to the address it was set for, so an update that moves `baseUrl` while a key is held and
+ * sends none is refused: a form asks for the key again before it saves such a change.
+ */
+export type AiModelSourceDraft =
+  | { kind: 'api'; protocol: AiApiProtocol; baseUrl: string; apiKey?: string; model: string; maxContext?: number }
+  | AiLocalModelSource;
 
 /**
  * The wire format a remote model is reached through.
@@ -49,7 +69,12 @@ export type AiModelSource =
  */
 export type AiApiProtocol = 'openai' | 'anthropic' | 'ollama';
 
-/** The endpoint details a model list is asked for, before any model exists to hold them. */
+/**
+ * The endpoint details a model list is asked for, before any model exists to hold them.
+ *
+ * `apiKey` is the key as typed. A key the backend already holds for a model cannot stand in: the
+ * backend never hands one back, and asks the endpoint with exactly what it is given.
+ */
 export interface AiModelDiscoveryQuery {
   protocol: AiApiProtocol;
   baseUrl: string;
@@ -72,8 +97,11 @@ export interface AiModel {
   isDefault: boolean;
 }
 
-/** What `AiModel` needs to be created or edited — everything but the identity the backend assigns. */
-export type AiModelDraft = Omit<AiModel, 'id' | 'isDefault'>;
+/**
+ * What `AiModel` needs to be created or edited — everything but the identity the backend assigns,
+ * with the source as it is written (see `AiModelSourceDraft`).
+ */
+export type AiModelDraft = Omit<AiModel, 'id' | 'isDefault' | 'source'> & { source: AiModelSourceDraft };
 
 /** Progress for a model the backend has to fetch before it can answer anything. */
 export interface AiModelStatus {

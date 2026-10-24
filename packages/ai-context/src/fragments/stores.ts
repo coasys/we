@@ -128,6 +128,9 @@ export const storeEntries: StoreEntry[] = [
           'apiProtocol',
           'apiBaseUrl',
           'apiKey',
+          'apiKeyStored',
+          'apiKeyBaseUrl',
+          'apiKeyRemoved',
           'apiModel',
           'apiMaxContext',
           'hfRepo',
@@ -143,6 +146,8 @@ export const storeEntries: StoreEntry[] = [
       aiPresetOptions: { type: 'array', properties: ['label', 'value'] },
       aiFormComplete: { type: 'boolean' },
       aiMaxContextError: { type: 'string' },
+      aiApiKeyError: { type: 'string' },
+      aiDiscoverNeedsKey: { type: 'boolean' },
       aiFormDirty: { type: 'boolean' },
       aiServiceOptions: { type: 'array', properties: ['label', 'value'] },
       canDiscoverAiModels: { type: 'boolean' },
@@ -357,6 +362,8 @@ export const storeEntries: StoreEntry[] = [
           'modules',
           'shareLink',
           'guestLink',
+          'sharing',
+          'shareError',
           'defaultTemplateId',
           'defaultThemeId',
           'templateOverride',
@@ -425,6 +432,7 @@ export const storeEntries: StoreEntry[] = [
     },
     actions: [
       'createSpace',
+      'shareSpace',
       'uploadFile',
       'joinSpace',
       'initializeAsWeSpace',
@@ -857,11 +865,15 @@ export function generateStoresText(entries: StoreEntry[]): string {
           'AiModelView[] — installed models, each carrying its display strings (kindLabel, sourceLabel, detail, statusText, ready) alongside id/name/kind/source/isDefault. Empty until loadAiModels() runs',
         aiTasks: 'AiTask[] — named prompts apps registered against a model (id, name, modelId, systemPrompt)',
         aiForm:
-          'AiModelForm | null — the model form while it is open, null when closed. One flat field per input; read with runtimeStore.aiForm.<field>',
+          'AiModelForm | null — the model form while it is open, null when closed. One flat field per input; read with runtimeStore.aiForm.<field>. The backend never returns a stored key: apiKey is only a key typed to send (empty keeps the stored one), apiKeyStored says one is held, and apiKeyRemoved set true removes it on save',
         aiPresetOptions: '{ label, value }[] — model names the backend can fetch itself, for the open form kind',
         aiFormComplete: 'boolean — the open form has every field its chosen source needs',
         aiMaxContextError:
           "string — why the open form's context limit (aiForm.apiMaxContext) cannot be saved, or empty. Bind it to that field's error: a limit that does not parse holds Save disabled, and nothing else says which field is doing it",
+        aiApiKeyError:
+          "string — why the open form's key holds Save, or empty: the base URL moved away from the address the stored key was set for and no new key was typed. Bind it to the key field's error",
+        aiDiscoverNeedsKey:
+          'boolean — the open form keeps a key the backend holds, so "List models" needs the key typed again: the backend never hands a stored key back. Disable that control on it and say why',
         aiFormDirty:
           "boolean — the open form has been edited since it opened. What a discard guard reads; compared against a snapshot taken on open, so looking at a model's settings and closing again asks nothing",
         aiServiceOptions:
@@ -908,7 +920,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         setAiService:
           "(id: string): chooses the open form's service. A named one sets the protocol and base URL; 'custom' keeps what the form holds for editing",
         discoverAiModels:
-          "(): asks the open form's endpoint which models it serves, through the node — also the check that the key works. A refusal lands in error; an empty model field takes the first model",
+          "(): asks the open form's endpoint which models it serves, through the node — also the check that the key works. A refusal lands in error; an empty model field takes the first model. Does nothing while aiDiscoverNeedsKey",
         closeAiForm: '(): closes the model form, discarding it',
         saveAiModel: '(): saves the open form — adds or updates depending on whether it has an id',
         removeAiModel: '(id: string): deletes a model',
@@ -1239,7 +1251,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         routeSpaceUnjoined:
           'boolean — the current route points at a space this agent has not joined, as a settled fact. What a join gate should read: `currentDataset` being null is also true for the first frames of a refresh, so gating on that flashes a join prompt at someone already inside. False while the answer is still unknown',
         spaceList:
-          "{ uuid, name, description, avatar, kind: 'shared' | 'personal' | 'foreign', isWeSpace, canAdminister }[] — one row per joined dataset the agent can act on, ordered like the sidebar and excluding the system datasets. Includes datasets that are not WE spaces (kind 'foreign', isWeSpace false), which are waiting to be initialized. `uuid` is the dataset id, so it keys navigation and settings whether or not a Space record exists",
+          "{ uuid, name, description, avatar, kind: 'shared' | 'personal' | 'foreign', isWeSpace, canAdminister }[] — one row per joined dataset the agent can act on, ordered like the sidebar and excluding the system datasets. Includes datasets that are not WE spaces (kind 'foreign', isWeSpace false), which are waiting to be initialized. `uuid` is the dataset id, so it keys navigation and settings whether or not a Space record exists. `sharing` is 'sharing' while a new shared space is still being shared (it is usable meanwhile), 'failed' when that did not work — `shareError` says why, and shareSpace tries again — and '' otherwise; a shared space has a `shareLink`",
         creatingSpace: 'boolean (true while a new space is being created)',
         joiningSpace:
           "string — the shared id of the space a join is running for, '' when none is. The id rather than a flag so a list can spin only the row being joined; a gate compares it against its own route segment. Stays set for the whole join, which outlives the network call that starts it",
@@ -1340,7 +1352,9 @@ export function generateStoresText(entries: StoreEntry[]): string {
         removeSpaceFromGlobal:
           "(spaceUuid: string): withdraws a space's listing from the global discovery space, leaving the space itself alone. Only its author may; removeSpace does this for you",
         createSpace:
-          "(name, description, access: 'personal' | 'shared', discovery: 'hidden' | 'listed', avatarFile?, coverImageFile?, location?, sharing?): creates a new space with full setup. sharing is a value from sharingOptions and only matters for a shared space; empty uses the backend's default",
+          "(name, description, access: 'personal' | 'shared', discovery: 'hidden' | 'listed', avatarFile?, coverImageFile?, location?, sharing?): creates a new space with full setup. sharing is a value from sharingOptions and only matters for a shared space; empty uses the backend's default. Resolves once the local space exists; sharing a shared one follows in the background, reported on `spaceList[].sharing`, and the space stays local if it fails",
+        shareSpace:
+          '(uuid: string): shares a space that is still local — what retries a share that failed, with the sharing option and listing it was asked for. Watch `spaceList[].sharing`',
         joinSpace:
           '(id: string, focus = true): joins a shared space by share link, neighbourhood URL or CID, or focuses it if already joined. Pass focus: false to join without navigating there — for a caller that needs the dataset present rather than open, which is how the marketplace reads its own dataset without moving you out of the space you are in. Rejects when the join could not be completed, so onSuccess means what it says; watch joiningSpace/joinSlow/joinError for what to show while it runs. A join whose network call times out keeps going: the backend usually finishes anyway, and this waits for that before believing the failure',
         initializeAsWeSpace:

@@ -6852,6 +6852,9 @@
             "apiProtocol",
             "apiBaseUrl",
             "apiKey",
+            "apiKeyStored",
+            "apiKeyBaseUrl",
+            "apiKeyRemoved",
             "apiModel",
             "apiMaxContext",
             "hfRepo",
@@ -6873,6 +6876,12 @@
         },
         "aiMaxContextError": {
           "type": "string"
+        },
+        "aiApiKeyError": {
+          "type": "string"
+        },
+        "aiDiscoverNeedsKey": {
+          "type": "boolean"
         },
         "aiServiceOptions": {
           "type": "array",
@@ -7453,6 +7462,8 @@
             "modules",
             "shareLink",
             "guestLink",
+            "sharing",
+            "shareError",
             "defaultTemplateId",
             "defaultThemeId",
             "templateOverride",
@@ -7612,6 +7623,7 @@
       },
       "actions": [
         "createSpace",
+        "shareSpace",
         "joinSpace",
         "initializeAsWeSpace",
         "removeSpace",
