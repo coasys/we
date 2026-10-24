@@ -801,6 +801,19 @@ export function themePicker(): SchemaNode {
           // Resolves `false` when the create failed rather than rejecting, so the close and the mode
           // switch are guarded on the result — otherwise a failed create closes over its own error.
           onSuccess: [
+            /*
+              In a space, the new theme becomes this agent's choice there, as picking it would make
+              it. The fork already wears it, but wearing writes nothing: the space kept the theme
+              chosen before, so the screen and the stored choice disagreed — a space default set next
+              was explained against the old theme, and leaving the space put that theme back. The new
+              id is already current, so this records it without ending the editing session.
+            */
+            {
+              $if: {
+                condition: { $: 'result && datasetStore.currentDataset' },
+                then: { $action: 'spaceStore.applyTheme', args: [{ $: 'themeStore.currentThemeId' }] },
+              },
+            },
             {
               $if: {
                 condition: { $: 'result' },
