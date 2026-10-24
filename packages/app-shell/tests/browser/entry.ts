@@ -48,7 +48,7 @@ import {
   VIEW_BOUNDARY_ATTR,
   VIEW_BOUNDARY_NAME_ATTR,
 } from '@we/schema-shared';
-import { applyThemeVars, setThemeLive } from '@we/schema-shared';
+import { applyThemeVars, clearThemeVars, setThemeLive } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import { VisualEditorProvider } from '@we/schema-solid';
 import { THEME_PRESETS } from '@we/themes/presets';
@@ -124,6 +124,8 @@ function mount(name: string, width: number, scale?: number): void {
 
   const host = document.getElementById('mount') as HTMLElement;
   host.innerHTML = '';
+  // A theme a previous case applied to the mount itself goes with its content.
+  clearThemeVars(host);
   // The panel the schema believes it is in. Everything about a crowded row is downstream of this.
   host.style.width = `${width}px`;
 
@@ -1162,6 +1164,8 @@ async function themeDrag(steps: number, roots: number, live = false): Promise<{ 
     await new Promise((r) => requestAnimationFrame(r));
   }
   setThemeLive(false);
+  // Taken off again, or every case after this one renders inside the theme the drag left behind.
+  for (const root of targets) clearThemeVars(root);
   preview.remove();
   times.sort((a, b) => a - b);
   return {
@@ -1204,7 +1208,7 @@ function themePanelProbe(overrides = '{"themeName":"dark"}'): void {
 
 (window as unknown as Record<string, unknown>).__harness = {
   // The theme pipeline itself, for a probe of how an apply behaves.
-  themeApi: { applyThemeVars, setThemeLive },
+  themeApi: { applyThemeVars, clearThemeVars, setThemeLive },
   themeDrag,
   themePanelProbe,
   composerFrame,

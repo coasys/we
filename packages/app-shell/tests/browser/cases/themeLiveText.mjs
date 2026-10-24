@@ -12,7 +12,7 @@ export const widths = [300];
 
 export async function check({ evaluate }) {
   const out = await evaluate(() => {
-    const { applyThemeVars, setThemeLive } = window.__harness.themeApi;
+    const { applyThemeVars, clearThemeVars, setThemeLive } = window.__harness.themeApi;
     const root = document.getElementById('mount');
     const read = (role) => {
       const probe = document.createElement('div');
@@ -29,6 +29,7 @@ export async function check({ evaluate }) {
     applyThemeVars(root, { themeName: 'dark', accentHue: 220 }, { crossFade: false });
     const held = roles.map(read);
     setThemeLive(false);
+    clearThemeVars(root);
     return roles.map((role, i) => ({ role, measured: measured[i], held: held[i] }));
   });
   // Lightness, which is what dimming is: the greys follow the accent's hue in `dark`, so the hue
