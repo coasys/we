@@ -117,3 +117,23 @@ describe('a preview over the preferences', () => {
     expect(currentDisplay()).toMatchObject({ side: 'dark', textSize: 1.25 });
   });
 });
+
+describe('a two-sided theme under a preview', () => {
+  afterEach(() => {
+    previewDisplay(null);
+    setDisplayPreferences({});
+  });
+
+  it('wears the side the preview asks for, over the person’s own', () => {
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    const theme = { polarity: 'dark' as const, accentHue: 160, light: { polarity: 'light' as const, accentHue: 30 } };
+    setDisplayPreferences({ colorScheme: 'light' });
+    applyThemeVars(root, theme);
+    expect(root.style.getPropertyValue('--we-color-accent-hue')).toBe('30');
+    // The theme editor previewing the dark side while the person's own setting stays light.
+    previewDisplay({ colorScheme: 'dark' });
+    expect(root.style.getPropertyValue('--we-color-accent-hue')).toBe('160');
+    root.remove();
+  });
+});

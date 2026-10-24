@@ -29,9 +29,7 @@ import {
   templateThemeId as themeOfTemplate,
   THEME_SCHEMA_VERSION,
   themeParametersToStyle,
-  type ThemeSideName,
   themeSides,
-  withThemeSide,
 } from '@we/schema-shared';
 import type { SanitiseCssOptions } from '@we/themes/sanitiseCss';
 import { sanitiseCss } from '@we/themes/sanitiseCss';
@@ -443,8 +441,14 @@ function injectCssString(id: string, css: string, options: SanitiseCssOptions = 
  */
 let lastAppliedThemeId: string | null = null;
 
-function applyThemeToDOM(theme: ThemeData, side?: ThemeSideName) {
-  const overrides: ThemeOverrides = withThemeSide(parseOverrides(theme.overrides), side);
+function applyThemeToDOM(theme: ThemeData) {
+  /*
+    The whole theme, both sides included: `applyThemeVars` picks the side from the person's display
+    preferences, and from the theme editor's preview of the side being edited. Folding it to one side
+    here first, from the preference alone, left the editor's preview nothing to choose between — the
+    panel switched sides and the app stayed where it was.
+  */
+  const overrides: ThemeOverrides = parseOverrides(theme.overrides);
   // Normalize legacy fontFamily: 'base' sentinel saved before the font-family fix
   if (overrides.fontFamily === 'base') delete overrides.fontFamily;
 
@@ -961,7 +965,7 @@ export function ThemeStoreProvider(props: ParentProps) {
   createEffect(() => {
     const theme = documentTheme();
     if (!themesLoaded() && !canResolveTheme(documentThemeId())) return;
-    applyThemeToDOM(theme, themeSide());
+    applyThemeToDOM(theme);
   });
 
   /*
@@ -1036,7 +1040,6 @@ export function ThemeStoreProvider(props: ParentProps) {
     isValidThemeKey(initialId)
       ? registryToThemeData(initialId)
       : (rememberedThemes.find((t) => t.id === initialId) ?? registryToThemeData('light')),
-    untrack(themeSide),
   );
 
   function resolveThemeData(themeId: string): ThemeData {
@@ -1299,7 +1302,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     const newCss = presetEntry ? (presetEntry.css ?? '') : (current.css ?? '');
 
     // Apply to DOM so getComputedStyle reflects the new preset for remaining vars.
-    applyThemeToDOM({ ...current, css: newCss, overrides: JSON.stringify(updated) }, untrack(themeSide));
+    applyThemeToDOM({ ...current, css: newCss, overrides: JSON.stringify(updated) });
 
     // Repopulate any still-missing vars (radius, spacing, etc.) from computed style.
     const repopulated = populateMissingOverrides(updated);
