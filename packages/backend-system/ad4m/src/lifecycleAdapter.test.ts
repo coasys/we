@@ -21,18 +21,19 @@ function mockClient(templates: Template[]) {
   const known = templates.map((t) => t.address);
   const client = {
     runtime: {
-      knownLinkLanguageTemplates: vi.fn(async () => [...known]),
+      // As the executor answers: each known template with its meta, leaving out one it cannot read.
+      knownLinkLanguageTemplates: vi.fn(async () =>
+        known.flatMap((address) => {
+          const t = templates.find((x) => x.address === address);
+          return t ? [{ address, name: t.name, possibleTemplateParams: t.params ?? undefined }] : [];
+        }),
+      ),
       addKnownLinkLanguageTemplates: vi.fn(async (addresses: string[]) => {
         known.push(...addresses);
         return known;
       }),
     },
     languages: {
-      meta: vi.fn(async (address: string) => {
-        const t = templates.find((x) => x.address === address);
-        if (!t) throw new Error('unknown language');
-        return { name: t.name, possibleTemplateParams: t.params ?? undefined };
-      }),
       publish: vi.fn(async (_path: string, meta: { possibleTemplateParams: string[] }) => {
         templates.push({ ...SERVER, address: 'Qm-dev-server' });
         return { address: 'Qm-dev-server', possibleTemplateParams: meta.possibleTemplateParams };
@@ -93,6 +94,14 @@ describe('sharingOptions', () => {
     const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
 
     expect(await lifecycle.sharingOptions?.()).toHaveLength(1);
+  });
+
+  it('reads every template and its meta in one call', async () => {
+    const client = mockClient([HOLOCHAIN, SERVER, UNDECLARED]);
+    const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
+
+    expect(await lifecycle.sharingOptions?.()).toHaveLength(3);
+    expect(client.runtime.knownLinkLanguageTemplates).toHaveBeenCalledTimes(1);
   });
 });
 

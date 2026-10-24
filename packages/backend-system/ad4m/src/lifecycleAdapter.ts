@@ -249,16 +249,18 @@ export function createAd4mDatasetLifecycle(
   }
 
   /**
-   * A template's name and declared parameters. `params` is null when it declares none or its meta
-   * cannot be read — it is then taken to want what every link language here has always been given.
+   * The known templates with their names and declared parameters, in one call: the executor
+   * returns each with its meta and leaves out one whose meta it cannot read. `params` is null when
+   * a template declares none — it is then taken to want what every link language here has always
+   * been given.
    */
-  async function templateMeta(address: string): Promise<{ name: string; params: string[] | null }> {
-    try {
-      const meta = await client.languages.meta(address);
-      return { name: meta.name || address, params: meta.possibleTemplateParams ?? null };
-    } catch {
-      return { name: address, params: null };
-    }
+  async function knownTemplates(): Promise<Array<{ address: string; name: string; params: string[] | null }>> {
+    const metas = (await client.runtime.knownLinkLanguageTemplates()) ?? [];
+    return metas.map((m) => ({
+      address: m.address,
+      name: m.name || m.address,
+      params: m.possibleTemplateParams ?? null,
+    }));
   }
 
   /** See `Ad4mLifecycleOptions.devLinkLanguageBundle`. Settles once; a failure is retried next list. */
@@ -268,9 +270,7 @@ export function createAd4mDatasetLifecycle(
     devRegistration ??= (async () => {
       const bundle = await options.devLinkLanguageBundle?.();
       if (!bundle) return;
-      const known = (await client.runtime.knownLinkLanguageTemplates()) ?? [];
-      const metas = await Promise.all(known.map(templateMeta));
-      if (metas.some((m) => m.params?.includes('SERVER_URL'))) return;
+      if ((await knownTemplates()).some((t) => t.params?.includes('SERVER_URL'))) return;
       const published = await client.languages.publish(bundle, SERVER_LINK_LANGUAGE_META);
       // The store keeps the first meta published under an address and hands it back for a repeat
       // publish of the same bytes. Registering a build whose stored meta names other parameters
@@ -306,17 +306,13 @@ export function createAd4mDatasetLifecycle(
    */
   async function publishableTemplates(): Promise<SharingOption[]> {
     await registerDevServerTemplate();
-    const addresses = (await client.runtime.knownLinkLanguageTemplates()) ?? [];
-    const templates = await Promise.all(
-      addresses.map(async (address) => {
-        const { name, params } = await templateMeta(address);
+    return (await knownTemplates())
+      .map(({ address, name, params }) => {
         if (params && unfillableParams(params).length) return null;
         return params?.includes('SERVER_URL')
           ? { id: address, name, kind: 'server' as const, serverUrl: options.linkServerUrl }
           : { id: address, name, kind: 'peer-to-peer' as const };
-      }),
-    );
-    return templates
+      })
       .filter((t) => t !== null)
       .sort((a, b) => Number(a.kind === 'server') - Number(b.kind === 'server'));
   }
@@ -376,7 +372,9 @@ export function createAd4mDatasetLifecycle(
       if (!p) throw new Error(`publish: no dataset with id ${id}`);
       const templateAddress = publishOptions?.sharing || (await publishableTemplates())[0]?.id;
       if (!templateAddress) throw new Error('No link language templates available to publish neighbourhood.');
-      const { params } = await templateMeta(templateAddress);
+      const template = (await knownTemplates()).find((t) => t.address === templateAddress);
+      if (!template) throw new Error(`publish: ${templateAddress} is not a known link language template.`);
+      const { params } = template;
       const missing = params ? unfillableParams(params) : [];
       if (missing.length) {
         throw new Error(`publish: the chosen link language needs ${missing.join(', ')}, which is not configured.`);
