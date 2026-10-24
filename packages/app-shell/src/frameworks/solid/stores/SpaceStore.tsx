@@ -148,6 +148,7 @@ import type { ResolvedView, TemplateSchema } from '@we/schema-shared';
 import { hasViewsMarker, templateThemeId } from '@we/schema-shared';
 import {
   Accessor,
+  createComputed,
   createContext,
   createEffect,
   createMemo,
@@ -157,6 +158,7 @@ import {
   untrack,
   useContext,
 } from 'solid-js';
+import { createStore, reconcile } from 'solid-js/store';
 
 import { oneAtATime } from '../../../shared/oneAtATime';
 import { signalOptimism } from '../../../shared/signalOptimism';
@@ -1411,31 +1413,6 @@ export function SpaceStoreProvider(props: ParentProps) {
   /** `installedModules` as a set — the shape both the list and the intersection want. */
   const installedSet = createMemo(() => new Set(installedModules()));
 
-  /*
-    Row identity, held stable while a row's *content* is unchanged.
-
-    `<For>` — which is what `$each` renders through — keys by reference, so handing it a fresh
-    object for every row on every recompute destroys and rebuilds the whole subtree. That is not a
-    render-cost point: everything below it loses its `$localState`, so toggling any one setting in
-    the space-settings panel reset the open tab and threw away a half-typed name and description.
-    The query path solved this long ago with `reconcile({ key: 'id' })`; a store-backed list has no
-    such protection, so it is done here.
-
-    `location` is compared by reference because `updateSpaceInCache` clones the space and carries it
-    through untouched; everything else is plain data and compares as JSON. A row whose content
-    genuinely changed still gets a new object, and still remounts — which is correct, and why the
-    settings panel also holds its open tab *above* the `$each`.
-  */
-  const rowCache = new Map<string, { signature: string; location: unknown; row: SpaceListEntry }>();
-  const stableRow = (row: SpaceListEntry): SpaceListEntry => {
-    const { location, ...rest } = row;
-    const signature = JSON.stringify(rest);
-    const cached = rowCache.get(row.uuid);
-    if (cached && cached.signature === signature && cached.location === location) return cached.row;
-    rowCache.set(row.uuid, { signature, location, row });
-    return row;
-  };
-
   /**
    * The spaces list: one row per joined dataset the agent can act on.
    *
@@ -1443,10 +1420,10 @@ export function SpaceStoreProvider(props: ParentProps) {
    * system datasets — those belong in the advanced section, where the subject is datasets rather
    * than spaces.
    */
-  const spaceList = createMemo<SpaceListEntry[]>(() =>
+  const spaceRows = createMemo<SpaceListEntry[]>(() =>
     datasetStore.orderedDatasets().map((ds) => {
       const space = mySpaces().find((s) => isSpaceSelf(s, ds));
-      return stableRow({
+      return {
         uuid: ds.id,
         // A foreign dataset has no Space record to name it, so the dataset's own name stands in.
         name: space?.name || ds.name,
@@ -1468,9 +1445,23 @@ export function SpaceStoreProvider(props: ParentProps) {
         themeOverride: themeOverrideFor(ds.id),
         shareLink: shareLinkFor(ds),
         guestLink: guestLinkFor(ds),
-      });
+      };
     }),
   );
+
+  /*
+    Each row stays the same object for as long as its space is listed; a change to the space changes
+    the row's fields in place.
+
+    `<For>`, which `$each` renders through, keys by reference, so a fresh object for a row destroys
+    and rebuilds everything under it. Under the space-settings panel that is every `$localState`, a
+    half-typed name, and the scroll position: setting a space's default theme threw the Appearance
+    tab back to its top. Holding a row only while nothing in it changed was not enough, because
+    changing something is exactly what a settings page does. Query results are kept the same way.
+  */
+  const [spaceListStore, setSpaceListStore] = createStore<SpaceListEntry[]>([]);
+  createComputed(() => setSpaceListStore(reconcile(spaceRows(), { key: 'uuid', merge: true })));
+  const spaceList: Accessor<SpaceListEntry[]> = () => spaceListStore;
 
   // TemplateStore mounts above this store and cannot read it directly — hand it the space lookup
   // it needs to resolve a space's default template (see TemplateStore.provideSpaceLookup).
@@ -5535,17 +5526,15 @@ export function SpaceStoreProvider(props: ParentProps) {
    */
   function explainHiddenSpaceTheme(): void {
     const reason = spaceThemeHiddenBy();
-    if (!reason) return;
-    const useSpaceTheme = { label: "Use the space's theme", run: () => void clearSpaceThemePin() };
+    const uuid = datasetStore.currentDataset()?.id;
+    if (!reason || !uuid) return;
+    const name = themeStore.allThemes().find((t) => t.id === resolveThemeFor(uuid))?.name ?? 'another theme';
     if (reason === 'template') {
-      toastService.info(
-        "Saved. You won't see it here while this template brings its own theme — the space's default template shows it.",
-        8000,
-      );
-    } else {
-      const yours = reason === 'pin' ? 'your own theme for this space' : 'your own default theme';
-      toastService.info(`Saved. You won't see it here while you're using ${yours}.`, 8000, useSpaceTheme);
+      toastService.info(`Saved. You won't see it while this template brings its own theme, ${name}.`, 8000);
+      return;
     }
+    const useSpaceTheme = { label: "Use the space's theme", run: () => void clearSpaceThemePin() };
+    toastService.info(`Saved. You won't see it while you're using ${name} in this space.`, 8000, useSpaceTheme);
   }
 
   // Load neighbourhood members whenever the current dataset changes

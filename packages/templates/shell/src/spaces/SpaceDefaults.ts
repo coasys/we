@@ -111,15 +111,22 @@ const hiddenThemeNote: SchemaNode = {
       type: 'we-alert',
       children: [
         {
-          type: 'Row',
-          props: { ay: 'center', ax: 'between', gap: '300', wrap: true },
+          // Button under the text, as in a toast: beside it, it squeezes the sentence into a column.
+          type: 'Column',
+          props: { ax: 'start', gap: '200' },
           children: [
             {
               type: 'we-text',
               props: { variant: 'footnote' },
               children: [
                 {
-                  $: "spaceStore.spaceThemeHiddenBy == 'template' ? 'You see this template’s own theme here instead — the space’s default template shows the space’s theme.' : spaceStore.spaceThemeHiddenBy == 'pin' ? 'You see your own theme for this space instead. Members still get this default.' : 'You see your own default theme here instead. Members still get this default.'",
+                  $: [
+                    "spaceStore.spaceThemeHiddenBy == 'template'",
+                    "? `This template brings its own theme, ${themeStore.currentTheme.name}, so you won't see changes here until you switch to the space's default template. Members still get the default.`",
+                    ": spaceStore.spaceThemeHiddenBy == 'pin'",
+                    "? `You're overriding the space's default theme with ${themeStore.currentTheme.name}, so you won't see changes here while it's applied. Members still get the default.`",
+                    ": `You're using your own default theme, ${themeStore.currentTheme.name}, in this space, so you won't see changes here. Members still get the default.`",
+                  ].join(' '),
                 },
               ],
             },
