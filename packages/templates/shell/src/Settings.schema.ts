@@ -20,6 +20,7 @@ import {
 } from './AccountSettingsPages.ts';
 import { aiSection } from './AiSettings.schema.ts';
 import { spaceChecklist } from './BundlePrompt.schema.ts';
+import { keyLogPage } from './IdentitySettingsPages.ts';
 import { languagesLocalState, languagesSection } from './LanguageSettings.schema.ts';
 import {
   backup,
@@ -1399,6 +1400,7 @@ export const settingsTemplate: TemplateSchema = {
     // Account — who you are and how you get in.
     { path: '/', ...page([profilePage]) },
     { path: '/security', ...page([securityPage]) },
+    { path: '/security/key-log', ...page([keyLogPage]) },
     { path: '/plan', ...page([planPage]) },
     // Devices and access — what acts as you.
     { path: '/devices', ...page([devicesPage]) },
