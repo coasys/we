@@ -90,3 +90,23 @@ export function resolveSpaceTheme(input: ThemeResolutionInput): string {
 
   return templateIsSpaceDefault ? spaceTheme || templateTheme || agentTheme : templateTheme || spaceTheme || agentTheme;
 }
+
+/**
+ * What keeps this agent from seeing the space's own theme, or `''` when nothing does.
+ *
+ * - `'pin'` — they chose a theme for this space themselves.
+ * - `'agent-default'` — they chose to follow their own default here.
+ * - `'template'` — the template on screen is not the space's default and brings a theme of its own.
+ *
+ * An administrator setting a space's default while one of these holds sees nothing change, which
+ * reads as the setting not saving. Asked of the rule rather than worked out beside it, so the answer
+ * stays right as the precedence grows; and a pin naming the space's theme hides nothing.
+ */
+export type SpaceThemeHiddenBy = '' | 'pin' | 'agent-default' | 'template';
+
+export function spaceThemeHiddenBy(input: ThemeResolutionInput): SpaceThemeHiddenBy {
+  if (!input.spaceTheme || resolveSpaceTheme(input) === input.spaceTheme) return '';
+  if (input.themeOverride === input.agentDefaultSentinel) return 'agent-default';
+  if (input.themeOverride && input.themeOverride !== input.followSpaceSentinel) return 'pin';
+  return 'template';
+}

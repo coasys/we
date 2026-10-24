@@ -26,7 +26,7 @@ export const fieldGuide: Cartridge = {
       polarity: 'light',
       lightnessFloor: '10%',
       lightnessCeiling: '100%',
-      primaryHue: 150,
+      accentHue: 150,
       saturation: 55,
       neutralSaturation: 18,
       surfaceRadius: '10px',

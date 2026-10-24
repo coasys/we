@@ -69,14 +69,15 @@ export class AgentSettings extends Ad4mModel {
   systemDarkThemeId: string = '';
 
   /**
-   * Which side of a two-sided theme to wear: `light`, `dark`, or `system` to follow the machine.
+   * The person's display needs, as JSON (`DisplayPreferences` in @we/themes): colour scheme,
+   * contrast, text size, density and motion. Applied over every theme on screen — a space's
+   * included — because they are this person's needs, not a matter of taste a theme may overrule.
+   * Empty means follow the system on every axis it has a signal for, and change nothing else.
    *
-   * A theme can carry a light and a dark side of one look (`ThemeOverrides.light`/`dark`), so an
-   * app ships one theme rather than a pair. This picks between them, for every such theme; a theme
-   * with one side ignores it. Empty means `system`.
+   * The colour scheme replaces `themeMode`, which held that one axis alone.
    */
-  @Property({ through: 'we://theme_mode' })
-  themeMode: string = '';
+  @Property({ through: 'we://display_preferences' })
+  displayPreferences: string = '';
 
   @Property({ through: 'we://claude_api_key' })
   claudeApiKey: string = '';

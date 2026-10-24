@@ -111,7 +111,7 @@ const CASES: { name: string; markup: string }[] = [
     name: 'we-progress-bar without one',
     markup: '<we-progress-bar value="40" max="100"></we-progress-bar>',
   },
-  { name: 'we-alert', markup: '<we-alert variant="warning">The executor is not running.</we-alert>' },
+  { name: 'we-alert', markup: '<we-alert tone="warning">The executor is not running.</we-alert>' },
   { name: 'we-tag', markup: '<we-tag>design</we-tag>' },
   { name: 'we-badge', markup: '<we-badge>3</we-badge>' },
   {
@@ -211,7 +211,7 @@ describe('we-button says whether it is open, when it opens something', () => {
       press that will do nothing of the kind. Silence is the correct answer for almost every button
       in the app.
     */
-    expect(await attribute('<we-button variant="primary">Save</we-button>')).toBeNull();
+    expect(await attribute('<we-button variant="solid">Save</we-button>')).toBeNull();
   });
 
   it('says it on a link-shaped button too', async () => {

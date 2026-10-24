@@ -19,8 +19,9 @@
   },
   "dependencies": {
     "@we/design-utils": "workspace:*",
+    "@we/entities": "workspace:*",
     "@we/schema-shared": "workspace:*",
-    "@we/entities": "workspace:*"
+    "@we/themes": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

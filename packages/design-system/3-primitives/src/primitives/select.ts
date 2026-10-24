@@ -1,5 +1,6 @@
 import type { DesignSystemProps } from '@we/design-types';
-import { type DSLayer, familyVar, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
+import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
+import { DISABLED_OPACITY, FOCUS_RING_INSET, typeRoleDeclarations } from '@we/tokens';
 import { css, html, nothing, type PropertyValues, unsafeCSS } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
@@ -7,6 +8,7 @@ import { styleMap } from 'lit/directives/style-map.js';
 import { DesignSystemElement } from '../shared/design-system-element';
 import { fieldSurface } from '../shared/field-surface';
 import { openFloatingPanel } from '../shared/floating-panel';
+import { floatingPanel } from '../shared/panel-style';
 import sharedStyles from '../shared/styles';
 import type { ComponentSize } from '../types';
 
@@ -192,12 +194,8 @@ const styles = css`
     z-index: var(--we-z-dropdown);
     max-height: 200px;
     overflow-y: auto;
-    background: var(--we-role-surface-raised);
-    border: 1px solid var(--we-role-border);
-    /* A surface, though the control that opens it is an input — the panel is its own kind of thing.
-       Through the table rather than by hand, so it cannot drift from every other surface. */
-    border-radius: ${unsafeCSS(familyVar('surface', 'radius'))};
-    box-shadow: 0 4px 12px color-mix(in srgb, var(--we-role-shadow-color) 10%, transparent);
+    /* A floating panel, though the control that opens it is an input — see panel-style.ts. */
+    ${floatingPanel()}
     margin-top: var(--we-space-100);
     padding: var(--we-space-100) 0;
   }
@@ -222,28 +220,33 @@ const styles = css`
   [part='group-heading'] {
     padding: var(--we-space-200) var(--we-space-300) var(--we-space-100);
     font-size: 0.75em;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--we-role-text-faint);
+    ${unsafeCSS(
+      typeRoleDeclarations('overline', {
+        textTransform: 'uppercase',
+        letterSpacing: '0.05em',
+        color: 'var(--we-role-text-faint)',
+      }),
+    )}
     pointer-events: none;
   }
 
   [part='group-heading']:not(:first-child) {
     margin-top: var(--we-space-100);
-    border-top: 1px solid var(--we-role-border);
+    border-top: var(--we-border-width, 1px) solid var(--we-role-border);
   }
 
   /*
-    Pointer feedback, and surfaceHover is the role for precisely that. This shared accentMuted
+    Pointer feedback, and surfaceHover is the role for precisely that. This shared accentSoft
     with the selected row below, so hovering anything looked like choosing it — three different
     questions (pointer here, keyboard here, this one is chosen) answered in one colour.
   */
   [part='option']:hover {
-    background: var(--we-role-surface-hover);
+    background: var(--we-role-item-hover);
   }
 
   [part='option'][aria-selected='true'] {
-    background: var(--we-role-accent-muted);
+    background: var(--we-role-selected);
+    color: var(--we-role-on-selected);
   }
 
   /*
@@ -251,7 +254,7 @@ const styles = css`
     highlight with the arrows must be visible before Enter commits it, or the keys appear to do
     nothing.
 
-    That was the stated intent and the rule then painted accentMuted, the identical value the
+    That was the stated intent and the rule then painted accentSoft, the identical value the
     selected row carries. Since the highlight *starts* on the current value, arrowing moved it from
     a tinted row to an identically tinted row: the arrows genuinely did appear to do nothing.
 
@@ -260,11 +263,11 @@ const styles = css`
     listbox's own edge would clip it.
   */
   [part='option'][data-active='true'] {
-    box-shadow: inset 0 0 0 2px var(--we-ring-color);
+    box-shadow: ${unsafeCSS(FOCUS_RING_INSET)};
   }
 
   [part='option'][aria-disabled='true'] {
-    opacity: 0.5;
+    opacity: ${unsafeCSS(DISABLED_OPACITY)};
     cursor: default;
   }
 
@@ -275,7 +278,6 @@ const styles = css`
   }
 
   :host([disabled]) {
-    opacity: 0.5;
     pointer-events: none;
   }
 `;

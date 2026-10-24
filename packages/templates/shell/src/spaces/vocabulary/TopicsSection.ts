@@ -170,7 +170,7 @@ export const topicsSection: SchemaNode = sectionCard({
       condition: { $: 'space.canAdminister' },
       then: {
         type: 'we-button',
-        props: { variant: 'secondary', size: 'sm', onClick: { $setLocal: 'createTopicOpen', value: true } },
+        props: { variant: 'soft', size: 'sm', onClick: { $setLocal: 'createTopicOpen', value: true } },
         children: [
           { type: 'we-icon', props: { name: 'plus' } },
           { type: 'we-text', children: ['Add topic'] },

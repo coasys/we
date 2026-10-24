@@ -1,5 +1,5 @@
 import type { Placement } from '@we/design-types';
-import type { AvatarTone } from '@we/tokens';
+import type { AvatarTone, ToneName } from '@we/tokens';
 
 /**
  * Base properties shared by actionable menu items.
@@ -33,7 +33,8 @@ interface MenuItemBase {
  */
 export interface DropdownMenuAction extends MenuItemBase {
   type?: 'action';
-  variant?: 'default' | 'danger';
+  /** The entry's colour family — `danger` for a destructive one. Absent is a plain row. */
+  tone?: ToneName;
   /**
    * Mark the entry as the one currently chosen — a tick beside it, and `we-menu-item`'s selected state.
    *
@@ -123,7 +124,7 @@ export interface DropdownMenuProps {
   triggerLabel?: string;
   triggerIcon?: string;
   /**
-   * How the trigger is drawn, from `we-button`'s own variants. Defaults to `secondary` — a filled
+   * How the trigger is drawn, from `we-button`'s own variants. Defaults to `soft` — a filled
    * neutral chip, which is what a menu standing on its own should look like.
    *
    * `ghost` is the one that matters, and the reason this exists: a menu that belongs to a *row* of
@@ -131,7 +132,9 @@ export interface DropdownMenuProps {
    * the call bar could not use this component at all — it hand-rolled a `we-popover` around a ghost
    * square instead — and the shell's panel titlebar put a filled pill among four ghost squares.
    */
-  triggerVariant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline' | 'bare';
+  triggerVariant?: 'solid' | 'soft' | 'outline' | 'ghost' | 'bare';
+  /** The trigger's colour family, as `tone` on a `we-button`. Absent is the button's own default. */
+  triggerTone?: ToneName;
   /**
    * Tooltip on the trigger, and its accessible name.
    *

@@ -6,7 +6,7 @@ import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
-import type { AlertAppearance, ComponentVariant } from '../types';
+import type { AlertVariant, ToneName } from '../types';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'flex',
@@ -19,95 +19,87 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
 };
 
 /*
-  Two appearances of the same five meanings — see `AlertAppearance` for why both exist.
+  Two styles of one family — see `AlertVariant` for why both exist — and the family is the tone.
 
-  `soft` is the tinted panel this has always painted. `accent` drops the tint and says the same
-  thing with a thick edge, for a run of alerts rather than one: a column of eight tinted panels is
-  eight competing rectangles, and in a dark theme the warning tint in particular reads as brown
-  before it reads as a warning.
+  `soft` is the tinted panel this has always painted. `edge` drops the tint and says the same thing
+  with a thick edge, for a run of alerts rather than one: a column of eight tinted panels is eight
+  competing rectangles, and in a dark theme the warning tint in particular reads as brown before it
+  reads as a warning.
+
+  A toned alert draws with the accent's roles, which its `tone` has re-pointed at the family, so one
+  table serves every family, the palette included. Untoned is the accent, as it always was; only
+  `neutral` has a table of its own, since a neutral alert is a sunken well rather than a tint.
 */
-export const ALERT_APPEARANCE_DEFAULTS: Record<
-  AlertAppearance,
-  Record<ComponentVariant, Partial<DesignSystemProps>>
+export const ALERT_VARIANT_DEFAULTS: Record<
+  AlertVariant,
+  { neutral: Partial<DesignSystemProps>; toned: Partial<DesignSystemProps> }
 > = {
   soft: {
-    // `surfaceSunken`, not `page`: an alert is a tinted panel, and the three status variants beside
-    // it are tints. `page` won this slot only because neutral-50 happened to be the value here.
+    // `surfaceSunken`, not `page`: an alert is a tinted panel, and the toned ones beside it are
+    // tints. `page` won this slot only because neutral-50 happened to be the value here.
     neutral: { bg: 'surface-sunken', color: 'text' },
-    primary: { bg: 'accent-muted', color: 'accent-text' },
-    success: { bg: 'success-surface', color: 'success-text' },
-    warning: { bg: 'warning-surface', color: 'warning-text' },
-    danger: { bg: 'danger-surface', color: 'danger-text' },
+    toned: { bg: 'accent-soft', color: 'accent-text' },
   },
   /*
-    `text`, not the status colour, for every one of these. The edge is what carries the status; the
-    words are ordinary words and want the contrast the body text has. Colouring them too would give
-    a paragraph of `warning-text` on a plain surface, which is the least legible arrangement of the
-    three and the one the tint was hiding.
+    `text`, not the family's colour. The edge is what carries the status; the words are ordinary
+    words and want the contrast the body text has. Colouring them too would give a paragraph of
+    `warning-text` on a plain surface, which is the least legible arrangement of the three and the
+    one the tint was hiding.
   */
-  accent: {
+  edge: {
     neutral: { bg: 'surface', color: 'text' },
-    primary: { bg: 'surface', color: 'text' },
-    success: { bg: 'surface', color: 'text' },
-    warning: { bg: 'surface', color: 'text' },
-    danger: { bg: 'surface', color: 'text' },
+    toned: { bg: 'surface', color: 'text' },
   },
 };
 
 /**
- * One icon per variant, exported so the theme suite can assert it.
+ * One icon per status tone, exported so the theme suite can assert it. A palette hue or the accent
+ * has no status to name, so it takes `info`.
  *
  * This is what makes a status readable to someone who cannot tell red from green: WCAG 1.4.1 asks
  * that colour never be the only visual means of conveying information, and for a palette built on
  * red and green that redundancy is the whole answer — the colours themselves cannot be pulled apart
  * without ceasing to be red and green.
  */
-export const ALERT_VARIANT_ICONS: Record<ComponentVariant, string> = {
+export const ALERT_TONE_ICONS: Record<'neutral' | 'accent' | 'success' | 'warning' | 'danger', string> = {
   neutral: 'info',
-  primary: 'info',
+  accent: 'info',
   success: 'check-circle',
   warning: 'warning',
   danger: 'x-circle',
 };
 
+const iconFor = (tone: ToneName | undefined): string =>
+  ALERT_TONE_ICONS[(tone ?? 'accent') as keyof typeof ALERT_TONE_ICONS] ?? 'info';
+
 /*
-  A tint of the status colour, mixed rather than pinned to a scale position.
+  A tint of the family, mixed rather than pinned to a scale position.
 
-  `neutral` already named a role and the other four did not, which is the tell. A `-200` is one
-  theme's idea of a light red: it follows the hue and polarity parameters and cannot follow a theme
-  that *pins* `danger`, and the contrast corrections at apply time skip it entirely. `color-mix`
-  against the role is how the rest of the system builds a step it has no role for — the same move
-  a control's hover and pressed states make.
+  A `-200` is one theme's idea of a light red: it follows the hue and polarity parameters and cannot
+  follow a theme that *pins* `danger`, and the contrast corrections at apply time skip it entirely.
+  `color-mix` against the role is how the rest of the system builds a step it has no role for — the
+  same move a control's hover and pressed states make.
 */
-const tinted = (role: string) => `1px solid color-mix(in srgb, var(--we-role-${role}) 30%, transparent)`;
+const TONED_BORDER = '1px solid color-mix(in srgb, var(--we-role-accent) 30%, transparent)';
+const NEUTRAL_BORDER = '1px solid var(--we-role-border)';
 
-const VARIANT_BORDER: Record<ComponentVariant, string> = {
-  neutral: '1px solid var(--we-role-border)',
-  primary: tinted('accent'),
-  success: tinted('success'),
-  warning: tinted('warning'),
-  danger: tinted('danger'),
-};
-
-/** The role whose FILL an `accent` edge is drawn in — the status at full strength, not its tint. */
-export const ALERT_VARIANT_FILL: Record<ComponentVariant, string> = {
-  neutral: 'border-strong',
-  primary: 'accent',
-  success: 'success',
-  warning: 'warning',
-  danger: 'danger',
-};
+/** The role an `edge` is drawn in — the family at full strength, never its tint or its text. */
+export const ALERT_EDGE_FILL = { neutral: 'border-strong', toned: 'accent' } as const;
 
 /**
- * The border for one variant in one appearance.
+ * The border for one tone in one variant.
  *
- * `accent` returns a `border-left` alone rather than a `border` plus an override, because the two
+ * `edge` returns a `border-left` alone rather than a `border` plus an override, because the two
  * spellings would both be in the same inline style object and the winner would be property order.
  */
-const borderStyle = (variant: ComponentVariant, appearance: AlertAppearance) =>
-  appearance === 'accent'
-    ? { borderLeft: `var(--we-alert-accent-width, 3px) solid var(--we-role-${ALERT_VARIANT_FILL[variant]})` }
-    : { border: VARIANT_BORDER[variant] };
+const borderStyle = (neutral: boolean, variant: AlertVariant) =>
+  variant === 'edge'
+    ? {
+        borderLeft: `var(--we-alert-accent-width, 3px) solid var(--we-role-${
+          ALERT_EDGE_FILL[neutral ? 'neutral' : 'toned']
+        })`,
+      }
+    : { border: neutral ? NEUTRAL_BORDER : TONED_BORDER };
 
 const styles = css`
   [part='dismiss'] {
@@ -132,8 +124,7 @@ const styles = css`
 export default class Alert extends DesignSystemElement {
   static styles = [sharedStyles, styles];
 
-  @property({ type: String, reflect: true }) variant: ComponentVariant = 'primary';
-  @property({ type: String, reflect: true }) appearance: AlertAppearance = 'soft';
+  @property({ type: String, reflect: true }) variant: AlertVariant = 'soft';
   @property({ type: Boolean }) dismissible = false;
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
@@ -145,8 +136,8 @@ export default class Alert extends DesignSystemElement {
     const ctor = this.constructor as typeof Alert & { __dsLayers: readonly DSLayer[] };
     const activeKeys = getKeysForLayers([...ctor.__dsLayers]);
     const usedProps = filterProps(this as unknown as Record<string, unknown>, activeKeys);
-    const appearance = ALERT_APPEARANCE_DEFAULTS[this.appearance] ?? ALERT_APPEARANCE_DEFAULTS.soft;
-    const variantDefaults = appearance[this.variant] ?? {};
+    const table = ALERT_VARIANT_DEFAULTS[this.variant] ?? ALERT_VARIANT_DEFAULTS.soft;
+    const variantDefaults = this.tone === 'neutral' ? table.neutral : table.toned;
     return mergeProps(usedProps, mergeProps(variantDefaults, DEFAULT_PROPS)) as Partial<DesignSystemProps>;
   }
 
@@ -155,18 +146,14 @@ export default class Alert extends DesignSystemElement {
   }
 
   render() {
-    const icon = ALERT_VARIANT_ICONS[this.variant];
-    const accent = this.appearance === 'accent';
-    // Under `accent` the words are `text`, so the icon is the only thing left carrying the status
-    // as colour. Empty means inherit, which is what `soft` wants — there the whole panel is tinted.
-    const iconColor = accent ? ALERT_VARIANT_FILL[this.variant] : '';
+    const neutral = this.tone === 'neutral';
+    const icon = iconFor(this.tone);
+    // Under `edge` the words are `text`, so the icon is the only thing left carrying the status as
+    // colour. Empty means inherit, which is what `soft` wants — there the whole panel is tinted.
+    const iconColor = this.variant === 'edge' ? ALERT_EDGE_FILL[neutral ? 'neutral' : 'toned'] : '';
 
     return html`
-      <div
-        part="base"
-        role="alert"
-        style=${styleMap({ ...borderStyle(this.variant, this.appearance), ...this.styles })}
-      >
+      <div part="base" role="alert" style=${styleMap({ ...borderStyle(neutral, this.variant), ...this.styles })}>
         <we-icon name=${icon} size="20px" color=${iconColor}></we-icon>
         <div part="content"><slot></slot></div>
         ${

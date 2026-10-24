@@ -1,6 +1,6 @@
 import { createSignal } from 'solid-js';
 
-import type { ToastAction, ToastItem, ToastVariant } from './Toast.types';
+import type { ToastAction, ToastItem, ToastTone } from './Toast.types';
 
 const [toasts, setToasts] = createSignal<ToastItem[]>([]);
 
@@ -18,7 +18,7 @@ function scheduleDismiss(id: string, duration: number) {
   }
 }
 
-function addToast(message: string, variant: ToastVariant = 'info', duration = 4000, action?: ToastAction): string {
+function addToast(message: string, tone: ToastTone = 'neutral', duration = 4000, action?: ToastAction): string {
   // Collapse a repeat of a toast that is still on screen: refresh its countdown and reuse it
   // rather than stacking an identical copy. One condition can legitimately report many times —
   // a reactive effect re-running, a retry loop — and N identical toasts is noise, not signal.
@@ -33,11 +33,11 @@ function addToast(message: string, variant: ToastVariant = 'info', duration = 40
   // transient however many times it is reported.
   // Not for a toast carrying an action: two "Moved to the space · Undo" toasts are two different
   // things to undo, and collapsing them would leave the first one with no way back.
-  const live = !action && toasts().find((t) => t.message === message && t.variant === variant && !t.action);
+  const live = !action && toasts().find((t) => t.message === message && t.tone === tone && !t.action);
   if (live) return live.id;
 
   const id = `toast-${++counter}`;
-  const toast: ToastItem = { id, message, variant, duration, ...(action && { action }) };
+  const toast: ToastItem = { id, message, tone, duration, ...(action && { action }) };
 
   setToasts((prev) => [...prev, toast]);
   scheduleDismiss(id, duration);
@@ -90,8 +90,8 @@ export const toastService = {
   pause: pauseDismiss,
   /** Start it again once attention moves on. */
   resume: resumeDismiss,
-  info: (message: string, duration?: number, action?: ToastAction) => addToast(message, 'info', duration, action),
+  info: (message: string, duration?: number, action?: ToastAction) => addToast(message, 'neutral', duration, action),
   success: (message: string, duration?: number, action?: ToastAction) => addToast(message, 'success', duration, action),
   warning: (message: string, duration?: number) => addToast(message, 'warning', duration),
-  error: (message: string, duration?: number) => addToast(message, 'error', duration),
+  error: (message: string, duration?: number) => addToast(message, 'danger', duration),
 };

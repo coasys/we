@@ -1,5 +1,6 @@
 import type { DesignSystemProps } from '@we/design-types';
 import type { DSLayer } from '@we/design-utils';
+import type { ToneName } from '@we/tokens';
 import { type CSSResultGroup, type CSSResultOrNative, LitElement, unsafeCSS } from 'lit';
 
 import { DesignSystemMixin } from './design-system-mixin';
@@ -99,7 +100,14 @@ function applyDSBehavior<T extends new (...args: any[]) => LitElement>(Base: T):
 }
 
 // Class form: default all layers, CEM-compatible (existing DS-aware components extend this)
-export abstract class DesignSystemElement extends applyDSBehavior(DesignSystemMixin(LitElement)) {}
+export abstract class DesignSystemElement extends applyDSBehavior(DesignSystemMixin(LitElement)) {
+  /**
+   * The colour family this element and everything in it draws in. Registered as a reactive property
+   * with the other DS props; declared here so a component can read it to choose its neutral or its
+   * toned look — see `toneVariables` in @we/tokens for what it sets.
+   */
+  declare tone?: ToneName;
+}
 
 // Factory form: returns a base class scoped to specific layers (for migrated components)
 export function DSElement(layers: DSLayer[]) {

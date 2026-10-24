@@ -7,13 +7,7 @@
       "ownProps": [
         {
           "name": "variant",
-          "type": "'neutral' | 'primary' | 'success' | 'warning' | 'danger'",
-          "optional": false,
-          "default": "'primary'"
-        },
-        {
-          "name": "appearance",
-          "type": "'soft' | 'accent'",
+          "type": "'soft' | 'edge'",
           "optional": false,
           "default": "'soft'"
         },
@@ -140,12 +134,6 @@
       "ownProps": [
         {
           "name": "variant",
-          "type": "'neutral' | 'primary' | 'success' | 'warning' | 'danger'",
-          "optional": false,
-          "default": "'neutral'"
-        },
-        {
-          "name": "appearance",
           "type": "'soft' | 'solid'",
           "optional": false,
           "default": "'soft'"
@@ -171,9 +159,9 @@
       "ownProps": [
         {
           "name": "variant",
-          "type": "'primary' | 'secondary' | 'ghost' | 'success' | 'danger' | 'outline' | 'bare'",
+          "type": "'solid' | 'soft' | 'outline' | 'ghost' | 'bare'",
           "optional": false,
-          "default": "'primary'"
+          "default": "'solid'"
         },
         {
           "name": "size",
@@ -310,9 +298,9 @@
         },
         {
           "name": "palette",
-          "type": "array",
+          "type": "string[]",
           "optional": false,
-          "default": "[ '#000000', '#434343', '#666666', '#999999', '#b7b7b7', '#cccccc', '#d9d9d9', '#ffffff', '#980000', '#ff0000', '#ff9900', '#ffff00', '#00ff00', '#00ffff', '#4a86e8', '#0000ff', '#9900ff', '#ff00ff', '#e6b8af', '#f4cccc', '#fce5cd', '#fff2cc', '#d9ead3', '#d0e0e3', '#c9daf8', '#cfe2f3', '#d9d2e9', '#ead1dc', ]"
+          "default": "[...PALETTE_NAMES]"
         },
         {
           "name": "tokens",
@@ -652,9 +640,9 @@
         },
         {
           "name": "weight",
-          "type": "'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone'",
+          "type": "'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone' | ''",
           "optional": false,
-          "default": "'regular'"
+          "default": "''"
         },
         {
           "name": "gradient",
@@ -1052,7 +1040,7 @@
     {
       "tagName": "we-menu-item",
       "className": "MenuItem",
-      "description": "Single actionable item inside a we-menu.\nSupports selected, active, and danger states.",
+      "description": "Single actionable item inside a we-menu.\nSupports selected and active states; `tone: 'danger'` marks a destructive item.",
       "superclass": "DesignSystemElement",
       "ownProps": [
         {
@@ -1068,10 +1056,10 @@
           "default": "false"
         },
         {
-          "name": "variant",
-          "type": "'default' | 'danger'",
+          "name": "disabled",
+          "type": "boolean",
           "optional": false,
-          "default": "'default'"
+          "default": "false"
         },
         {
           "name": "label",
@@ -1309,12 +1297,6 @@
           "type": "number",
           "optional": false,
           "default": "100"
-        },
-        {
-          "name": "variant",
-          "type": "'neutral' | 'primary' | 'success' | 'warning' | 'danger'",
-          "optional": false,
-          "default": "'primary'"
         },
         {
           "name": "size",
@@ -1750,6 +1732,12 @@
           "default": "false"
         },
         {
+          "name": "disabled",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
+        },
+        {
           "name": "label",
           "type": "string | undefined",
           "optional": true
@@ -1781,9 +1769,9 @@
       "ownProps": [
         {
           "name": "variant",
-          "type": "'neutral' | 'primary' | 'success' | 'warning' | 'danger'",
+          "type": "'soft' | 'solid'",
           "optional": false,
-          "default": "'neutral'"
+          "default": "'soft'"
         },
         {
           "name": "dismissible",
@@ -1805,7 +1793,7 @@
         },
         {
           "name": "variant",
-          "type": "'' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading-md' | 'heading-lg' | 'heading-xl'",
+          "type": "'' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading-md' | 'heading-lg' | 'heading-xl' | 'overline'",
           "optional": false,
           "default": "''"
         },
@@ -3018,7 +3006,12 @@
         },
         {
           "name": "triggerVariant",
-          "type": "\"primary\" | \"danger\" | \"secondary\" | \"ghost\" | \"outline\" | \"bare\"",
+          "type": "\"solid\" | \"soft\" | \"outline\" | \"ghost\" | \"bare\"",
+          "optional": true
+        },
+        {
+          "name": "triggerTone",
+          "type": "ToneName",
           "optional": true
         },
         {
@@ -3374,7 +3367,7 @@
     },
     {
       "name": "GraphView",
-      "description": "A general-purpose graph view: knowledge maps, schema maps, hierarchies, cluster maps and\nfree-positioned canvases, all from the same engine.\n\nThe shape of a graph is set by four independent choices: where it starts (`seeds`), how much of it\nopens (`expansion`), how it is arranged (`layout`), and how it looks (`nodeStyle` / `edgeStyle`).\n\nCommon recipes:\n- **Knowledge map** — `seeds: { source: 'query', options: { entity: 'Belief' } }` with\n`expansion: { defaultDepth: 1 }` and `layout: { type: 'force' }`.\n- **Schema map** — `seeds: { source: 'schema' }`, which draws the dataset's own entity types and\nthe relations between them. Picks up model types added later with no template change.\n- **Hierarchy** — `layout: { type: 'tree' }` with a `collection` expansion for nested content.\n- **Static diagram** — `seeds: { literal: true, nodes: [...], edges: [...] }` and no expansion at all.",
+      "description": "A general-purpose graph view: knowledge maps, schema maps, hierarchies, cluster maps and\nfree-positioned canvases, all from the same engine.\n\nThe shape of a graph is set by four independent choices: where it starts (`seeds`), how much of it\nopens (`expansion`), how it is arranged (`layout`), and how it looks (`nodeStyle` / `edgeStyle`).\n\nCommon recipes:\n- **Knowledge map** — `seeds: { source: 'query', options: { entity: 'Belief' } }` with\n`expansion: { defaultDepth: 1 }` and `layout: { type: 'force' }`.\n- **Schema map** — `seeds: { source: 'schema' }`, which draws the dataset's own entity types and\nthe relations between them. Picks up model types added later with no template change.\n- **Hierarchy** — `layout: { type: 'tree' }` with a `collection` expansion for nested content.\n- **Static diagram** — `seeds: { literal: true, nodes: [...], edges: [...] }` and no expansion at all.\n- **A canvas with a grid** — `backdrop: { pattern: 'dots', gap: 24 }`, or `'lines'`; it pans and\nzooms with the canvas and is coloured from a role (`border` unless `color` says otherwise).",
       "props": [
         {
           "name": "seeds",
@@ -3434,6 +3427,11 @@
         {
           "name": "bg",
           "type": "string",
+          "optional": true
+        },
+        {
+          "name": "backdrop",
+          "type": "GraphBackdrop",
           "optional": true
         },
         {
@@ -3704,9 +3702,9 @@
           "required": false
         },
         {
-          "name": "themeMode",
+          "name": "displayPreferences",
           "type": "string",
-          "predicate": "we://theme_mode",
+          "predicate": "we://display_preferences",
           "required": false
         },
         {
@@ -5782,6 +5780,15 @@
   ],
   "tokens": [
     {
+      "name": "animation.easing",
+      "type": "Record<AnimationEasingToken, string>",
+      "values": {
+        "standard": "ease",
+        "out": "ease-out",
+        "in": "ease-in"
+      }
+    },
+    {
       "name": "animation.transition",
       "type": "Record<AnimationTransitionToken, string>",
       "values": {
@@ -5804,14 +5811,6 @@
         "lg": "3rem",
         "xl": "4rem",
         "xxl": "5rem"
-      }
-    },
-    {
-      "name": "border.color",
-      "type": "Record<BorderColorToken, string>",
-      "values": {
-        "base": "color.neutral['100']",
-        "strong": "color.neutral['200']"
       }
     },
     {
@@ -5840,17 +5839,6 @@
         "lightnessCeiling": "100%",
         "saturation": "60",
         "neutralSaturation": "10"
-      }
-    },
-    {
-      "name": "color.hues",
-      "type": "Record<ColorHueToken, number>",
-      "values": {
-        "neutral": "288",
-        "primary": "288",
-        "success": "145",
-        "warning": "90",
-        "danger": "17"
       }
     },
     {
@@ -6006,12 +5994,12 @@
     },
     {
       "name": "shadow",
-      "type": "Record<ShadowToken, string>",
+      "type": "Record<Exclude<ShadowToken, 'glow'>, string>",
       "values": {
-        "sm": "0 1px 2px rgba(0, 0, 0, 0.05)",
-        "md": "0 4px 6px rgba(0, 0, 0, 0.1)",
-        "lg": "0 10px 15px rgba(0, 0, 0, 0.1)",
-        "xl": "0 20px 25px rgba(0, 0, 0, 0.15)"
+        "sm": "`0 1px 2px ${tint(0.05)}`",
+        "md": "`0 4px 6px ${tint(0.1)}`",
+        "lg": "`0 10px 15px ${tint(0.1)}`",
+        "xl": "`0 20px 25px ${tint(0.15)}`"
       }
     },
     {
@@ -7445,6 +7433,9 @@
         "spaceThemePinned": {
           "type": "boolean"
         },
+        "spaceThemeHiddenBy": {
+          "type": "string"
+        },
         "installedModules": {
           "type": "array"
         },
@@ -7769,6 +7760,9 @@
         "currentThemeSides": {
           "type": "array"
         },
+        "displayPreferences": {
+          "type": "object"
+        },
         "systemThemeOptions": {
           "type": "array"
         },
@@ -7800,6 +7794,7 @@
         "focusRole",
         "setSystemTheme",
         "setThemeMode",
+        "setDisplayPreference",
         "setThemeInstalled",
         "previewThemeScope",
         "setThemeScopeGlobal",

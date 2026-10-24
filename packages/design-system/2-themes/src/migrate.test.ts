@@ -47,7 +47,7 @@ describe('the 1 → 2 rename', () => {
   it('leaves everything that is not a role alone', () => {
     // The hue is not left alone — v3 converts it to an OKLCH angle — so this asserts it survived as
     // *a* hue rather than as the same number. What it must not do is drop it.
-    expect(typeof migrateOverrides(v1({ accentText: '#fff' })).primaryHue).toBe('number');
+    expect(typeof migrateOverrides(v1({ accentText: '#fff' })).accentHue).toBe('number');
   });
 });
 
@@ -104,7 +104,7 @@ describe('the 2 → 3 move to OKLCH', () => {
 
   it('converts a hue to the angle that names the same colour', () => {
     // Blue: HSL 220 is OKLCH 263, not 220.
-    expect(migrateOverrides(v2({ primaryHue: 220 })).primaryHue).toBe(263);
+    expect(migrateOverrides(v2({ primaryHue: 220 })).accentHue).toBe(263);
     // Amber moves furthest, which is why leaving it would be most visible.
     expect(migrateOverrides(v2({ warningHue: 45 })).warningHue).toBe(90);
   });
@@ -167,7 +167,7 @@ describe('the 3 → 4 move to an explicit lightness range', () => {
   it('leaves a theme that set neither alone', () => {
     const out = migrateOverrides(v3({ primaryHue: 263 }));
     expect(out.polarity).toBeUndefined();
-    expect(out.primaryHue).toBe(263);
+    expect(out.accentHue).toBe(263);
   });
 });
 
@@ -218,5 +218,22 @@ describe('the 5 → 6 rescale of saturation', () => {
 
   it('leaves a theme that never set one alone', () => {
     expect(migrateOverrides(v5({ primaryHue: 263 })).saturation).toBeUndefined();
+  });
+});
+
+describe('the 6 → 7 move to one name per family', () => {
+  const v6 = (o: Record<string, unknown>) => ({ schemaVersion: 6, ...o }) as unknown as ThemeOverrides;
+
+  it("calls the accent's hue the accent's hue", () => {
+    const out = migrateOverrides(v6({ primaryHue: 160 })) as Record<string, unknown>;
+    expect(out.accentHue).toBe(160);
+    expect(out.primaryHue).toBeUndefined();
+  });
+
+  it('renames every tint to -Soft, and leaves muted text on the accent alone', () => {
+    const out = migrateOverrides(
+      v6({ roles: { accentMuted: '#111', dangerSurface: '#222', onAccentMuted: '#333', page: '#444' } }),
+    );
+    expect(out.roles).toEqual({ accentSoft: '#111', dangerSoft: '#222', onAccentMuted: '#333', page: '#444' });
   });
 });

@@ -154,7 +154,7 @@ export function EditingBar() {
               <we-text variant="footnote" color="text-muted">
                 Changes are ready
               </we-text>
-              <we-button size="xs" variant="primary" onClick={() => session.startFork()}>
+              <we-button size="xs" variant="solid" onClick={() => session.startFork()}>
                 Fork to apply
               </we-button>
             </Row>
@@ -215,7 +215,7 @@ export function EditingBar() {
             >
               <we-tooltip content="Preview" placement="bottom">
                 <we-button
-                  variant={session.contentMode() === 'preview' ? 'secondary' : 'ghost'}
+                  variant={session.contentMode() === 'preview' ? 'soft' : 'ghost'}
                   square
                   onClick={() => session.setContentMode('preview')}
                 >
@@ -224,7 +224,7 @@ export function EditingBar() {
               </we-tooltip>
               <we-tooltip content="Visual editor" placement="bottom">
                 <we-button
-                  variant={session.contentMode() === 'visual' ? 'secondary' : 'ghost'}
+                  variant={session.contentMode() === 'visual' ? 'soft' : 'ghost'}
                   square
                   onClick={() => session.setContentMode('visual')}
                 >
@@ -255,7 +255,7 @@ export function EditingBar() {
               <Show when={session.contentMode() === 'visual'}>
                 <we-tooltip content="Properties" placement="bottom">
                   <we-button
-                    variant={session.visualPanelOpen() ? 'secondary' : 'ghost'}
+                    variant={session.visualPanelOpen() ? 'soft' : 'ghost'}
                     square
                     onClick={() => session.toggleVisualPanel()}
                   >
@@ -265,7 +265,7 @@ export function EditingBar() {
               </Show>
               <we-tooltip content="Code editor" placement="bottom">
                 <we-button
-                  variant={session.codePanelOpen() ? 'secondary' : 'ghost'}
+                  variant={session.codePanelOpen() ? 'soft' : 'ghost'}
                   square
                   onClick={() => session.toggleCodePanel()}
                 >
@@ -273,7 +273,7 @@ export function EditingBar() {
                 </we-button>
               </we-tooltip>
               <we-tooltip content="AI chat" placement="bottom">
-                <we-button variant={session.isOpen() ? 'secondary' : 'ghost'} square onClick={() => session.toggle()}>
+                <we-button variant={session.isOpen() ? 'soft' : 'ghost'} square onClick={() => session.toggle()}>
                   <we-icon name="chat-circle" />
                 </we-button>
               </we-tooltip>
@@ -281,7 +281,7 @@ export function EditingBar() {
             <Show when={session.isEditingTheme()}>
               <we-tooltip content="Theme editor" placement="bottom">
                 <we-button
-                  variant={session.themePanelOpen() ? 'secondary' : 'ghost'}
+                  variant={session.themePanelOpen() ? 'soft' : 'ghost'}
                   square
                   onClick={() => session.toggleThemePanel()}
                 >
@@ -303,7 +303,7 @@ export function EditingBar() {
             >
               <we-tooltip content="Share" placement="bottom">
                 <we-button
-                  variant={anyOpen() ? 'secondary' : 'ghost'}
+                  variant={anyOpen() ? 'soft' : 'ghost'}
                   square
                   onClick={() => toggleShare(session.isEditingTemplate() ? 'template' : 'theme')}
                 >

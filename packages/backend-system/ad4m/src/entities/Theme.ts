@@ -37,7 +37,7 @@ export class Theme extends WeNode {
   @Property({ through: 'we://stylesheet', resolveLanguage: FILE_STORAGE_LANGUAGE })
   css: string | null = null;
 
-  /** Structured token overrides (primaryHue, saturation, neutralSaturation, etc.) */
+  /** Structured token overrides (accentHue, saturation, neutralSaturation, etc.) */
   @Property({ through: 'we://token_overrides', resolveLanguage: FILE_STORAGE_LANGUAGE })
   overrides: string | null = null;
 

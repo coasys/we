@@ -27,6 +27,7 @@ export { instagramTemplate } from './InstagramTemplate.schema.ts';
 export { kanbanTemplate } from './KanbanTemplate.schema.ts';
 export { scrapbookTemplate } from './ScrapbookTemplate.schema.ts';
 export { twitterTemplate } from './TwitterTemplate.schema.ts';
+export { themeLabTemplate } from './ThemeLabTemplate.schema.ts';
 export { CALL_CHROME_BAND, workshopTemplate } from './WorkshopTemplate.schema.ts';
 export { youtubeTemplate } from './YoutubeTemplate.schema.ts';
 /*

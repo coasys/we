@@ -1,13 +1,16 @@
 import type { DesignSystemProps } from '@we/design-types';
 import { tokenVar } from '@we/design-utils';
 import DOMPurify from 'dompurify';
-import { css, html } from 'lit';
+import { css, html, unsafeCSS } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { Marked } from 'marked';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
+import { headingType } from '../shared/typeRoles';
+
+const HEADING_TYPE = headingType('600');
 
 const md = new Marked({ breaks: true });
 
@@ -45,7 +48,7 @@ const styles = css`
   [part='base'] h5,
   [part='base'] h6 {
     margin: var(--we-markdown-gap, 0.5em) 0 calc(var(--we-markdown-gap, 0.5em) / 2) 0;
-    font-weight: 600;
+    ${unsafeCSS(HEADING_TYPE)}
   }
   [part='base'] h1 {
     font-size: 1.2em;
@@ -122,7 +125,7 @@ const styles = css`
   /* Horizontal rule */
   [part='base'] hr {
     border: none;
-    border-top: 1px solid var(--we-role-border);
+    border-top: var(--we-border-width, 1px) solid var(--we-role-border);
     margin: var(--we-markdown-gap, 0.5em) 0;
   }
 
@@ -162,15 +165,15 @@ const styles = css`
   }
   [part='base'] .success {
     color: var(--we-role-success-text);
-    background: var(--we-role-success-surface);
+    background: var(--we-role-success-soft);
   }
   [part='base'] .warning {
     color: var(--we-role-warning-text);
-    background: var(--we-role-warning-surface);
+    background: var(--we-role-warning-soft);
   }
   [part='base'] .danger {
     color: var(--we-role-danger-text);
-    background: var(--we-role-danger-surface);
+    background: var(--we-role-danger-soft);
   }
   [part='base'] .shimmer {
     color: var(--we-role-text-muted);

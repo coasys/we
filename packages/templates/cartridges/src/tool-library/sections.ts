@@ -47,7 +47,7 @@ const loanCard = (actions: TemplateSchema['children']) => ({
   ],
 });
 
-const setStatus = (label: string, status: string, variant = 'secondary') => ({
+const setStatus = (label: string, status: string, variant = 'soft') => ({
   type: 'we-button',
   props: {
     size: 'sm',
@@ -90,7 +90,7 @@ export const catalogueSection: TemplateSchema & { id: string } = {
                   type: 'we-button',
                   props: {
                     size: 'sm',
-                    variant: { $: "local.category == '' ? 'primary' : 'outline'" },
+                    variant: { $: "local.category == '' ? 'solid' : 'outline'" },
                     onClick: { $setLocal: 'category', value: '' },
                   },
                   children: ['Everything'],
@@ -103,7 +103,7 @@ export const catalogueSection: TemplateSchema & { id: string } = {
                       type: 'we-button',
                       props: {
                         size: 'sm',
-                        variant: { $: "local.category == c ? 'primary' : 'outline'" },
+                        variant: { $: "local.category == c ? 'solid' : 'outline'" },
                         onClick: { $setLocal: 'category', value: { $: 'c' } },
                       },
                       children: [{ type: 'we-text', props: { textTransform: 'capitalize' }, children: [{ $: 'c' }] }],
@@ -173,7 +173,7 @@ export const catalogueSection: TemplateSchema & { id: string } = {
                               children: [
                                 {
                                   type: 'we-badge',
-                                  props: { size: 'sm', variant: 'warning' },
+                                  props: { size: 'sm', tone: 'warning' },
                                   children: [{ $: 'local.loans.find(l, l.item.id == it.id).status' }],
                                 },
                                 {
@@ -194,7 +194,7 @@ export const catalogueSection: TemplateSchema & { id: string } = {
                                   type: 'we-badge',
                                   props: {
                                     size: 'sm',
-                                    variant: { $: "it.condition == 'needs-repair' ? 'danger' : 'success'" },
+                                    tone: { $: "it.condition == 'needs-repair' ? 'danger' : 'success'" },
                                   },
                                   children: [{ $: "it.condition == 'needs-repair' ? 'in repair' : 'available'" }],
                                 },
@@ -298,7 +298,7 @@ export const deskSection: TemplateSchema & { id: string } = {
                         type: '$if',
                         props: {
                           condition: { $: "loan.status == 'requested'" },
-                          then: setStatus('Hand over', 'out', 'primary'),
+                          then: setStatus('Hand over', 'out', 'solid'),
                           else: setStatus('Returned', 'returned'),
                         },
                       },

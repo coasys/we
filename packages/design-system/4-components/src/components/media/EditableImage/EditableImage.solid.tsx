@@ -15,7 +15,7 @@ const DEFAULTS: Partial<EditableImageProps> = {
   height: '200px',
   overflow: 'hidden',
   cursor: 'pointer',
-  bg: 'neutral-200',
+  bg: 'control-surface',
   /*
     The hover label's size, since the label inherits it (see the overlay below).
 
@@ -263,7 +263,7 @@ export function EditableImage(allProps: EditableImageProps) {
             glyph already says — and at 24px it was *smaller* than the 32px placeholder icon it
             covers, so hovering an empty tile shrank the symbol under the pointer.
           */}
-          <we-icon name={props.src ? 'pencil' : 'upload-simple'} size="28px" color="#fff" />
+          <we-icon name={props.src ? 'pencil' : 'upload-simple'} size="28px" color="on-inverse" />
           {/*
             No `fontSize` here on purpose. Unset, the custom property resolves to `inherit` for an
             inherited property, so the label takes its size from this component's own `fontSize` DS
@@ -273,7 +273,7 @@ export function EditableImage(allProps: EditableImageProps) {
             `textAlign` because the label wraps on a narrow tile, and a wrapped line was left-
             aligned inside a centred box, which reads as a misalignment rather than as wrapping.
           */}
-          <we-text color="#fff" textAlign="center">
+          <we-text color="on-inverse" textAlign="center">
             {label()}
           </we-text>
         </Column>
@@ -285,7 +285,7 @@ export function EditableImage(allProps: EditableImageProps) {
         <Show when={props.src && props.onImageRemove}>
           <we-button
             class="editable-image__remove"
-            variant="secondary"
+            variant="soft"
             size="sm"
             square
             position="absolute"
@@ -316,7 +316,7 @@ export function EditableImage(allProps: EditableImageProps) {
               }}
             />
             <Row ax="end" gap="200">
-              <we-button variant="secondary" onClick={changePhoto}>
+              <we-button variant="soft" onClick={changePhoto}>
                 Change photo
               </we-button>
               <we-button onClick={confirm}>Save</we-button>

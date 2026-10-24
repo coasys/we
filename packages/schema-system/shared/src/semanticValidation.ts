@@ -1,5 +1,5 @@
 import { BASE_CLASS_LAYERS, CSS_PROP_TO_VAR_SUFFIX, getKeysForLayers, layerKeyMap, tierKeys } from '@we/design-utils';
-import { role, semanticValues, space } from '@we/tokens';
+import { role, semanticValues, space, TONES } from '@we/tokens';
 
 import type { ContextData, StateMemberMeta } from './contextTypes';
 import { expandDefinitions } from './definitions';
@@ -11,6 +11,24 @@ import { isTemplateElement } from './templateElements';
 import type { SchemaNode } from './types';
 import type { ValidationError, ValidationResult } from './validators';
 import { validateStructure } from './validators';
+
+/**
+ * What to say when a colour turns up where a style belongs.
+ *
+ * `variant` held both once — `primary`, `danger` and `success` beside `ghost` and `outline` — and
+ * the colour moved to `tone`, a prop every element takes. Somebody writing from memory, or a model
+ * trained on the old spelling, writes `variant: 'danger'`; the bare "allowed values" list would
+ * tell them `danger` is wrong without saying where it went.
+ */
+function retiredVariantHint(propName: string, value: string): string {
+  if (propName !== 'variant') return '';
+  if (value === 'primary') return ` — the main action is variant 'solid'; its colour is the accent`;
+  if (value === 'secondary') return ` — the quiet filled style is variant 'soft'`;
+  if (value === 'default') return ` — leave variant out, and give tone: 'danger' for a destructive item`;
+  if ((TONES as readonly string[]).includes(value)) return ` — a colour is tone: '${value}', not a variant`;
+  if (value === 'accent') return ` — the edge style is variant 'edge'`;
+  return '';
+}
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -1079,7 +1097,7 @@ const BORDER_PROPS = new Set(['border', 'borderTop', 'borderRight', 'borderBotto
 
 /** Flag a role named in camelCase, wherever a colour can appear — including behind `$if`. */
 function checkColourValue(propName: string, value: unknown, path: string, errors: ValidationError[]): void {
-  // A colour computed by an expression is one of its string literals — `open ? 'accentMuted' : 'surface'`.
+  // A colour computed by an expression is one of its string literals — `open ? 'accentSoft' : 'surface'`.
   if (isExpressionToken(value)) {
     for (const literal of value.$.matchAll(/'([^'\\]*)'|"([^"\\]*)"/g)) {
       checkColourValue(propName, literal[1] ?? literal[2], path, errors);
@@ -1514,7 +1532,8 @@ function checkProps(
           primitives, so `mdUpProps` is what they are called. A warning that only says the prop is
           unknown leaves the author to find that out from the docs.
         */
-        const suggestion = suggest(propName, [...knownProps, ...ctx.universalProps]);
+        const suggestion =
+          propName === 'appearance' ? 'variant' : suggest(propName, [...knownProps, ...ctx.universalProps]);
         errors.push({
           path: propPath,
           message: `Unknown prop "${propName}" on "${componentType}"${suggestion ? ` — did you mean "${suggestion}"?` : ''}`,
@@ -1548,6 +1567,18 @@ function checkProps(
       }
     }
 
+    // `tone` is a DS prop every element takes, so no component's own enum lists it.
+    if (propName === 'tone' && typeof propValue === 'string' && !(TONES as readonly string[]).includes(propValue)) {
+      const suggestion =
+        propValue === 'primary' ? 'accent' : propValue === 'error' ? 'danger' : suggest(propValue, [...TONES]);
+      errors.push({
+        path: propPath,
+        message: `Unknown tone "${propValue}" on "${componentType}"${suggestion ? ` — did you mean "${suggestion}"?` : ''}. Tones: ${TONES.join(', ')}`,
+        severity: 'warning',
+      });
+      continue;
+    }
+
     // Check allowed values for string enums
     if (typeof propValue === 'string') {
       const allowedMap = ctx.componentPropAllowedValues.get(componentType);
@@ -1559,7 +1590,7 @@ function checkProps(
         if (!acceptsCssLength) {
           errors.push({
             path: propPath,
-            message: `Invalid value "${propValue}" for prop "${propName}" on "${componentType}". Allowed: ${allowed.map((v) => `'${v}'`).join(' | ')}`,
+            message: `Invalid value "${propValue}" for prop "${propName}" on "${componentType}". Allowed: ${allowed.map((v) => `'${v}'`).join(' | ')}${retiredVariantHint(propName, propValue)}`,
             severity: 'warning',
           });
         }
@@ -1590,7 +1621,7 @@ function checkProps(
  * unconditionally returns a handler. So
  *
  * ```json
- * { "bg": { "$if": { "condition": …, "then": "primary-50", "else": "neutral-0" } } }
+ * { "bg": { "$if": { "condition": …, "then": "accent-50", "else": "neutral-0" } } }
  * ```
  *
  * hands a *function* to the colour resolver. Nothing is painted, nothing warns, nothing throws —

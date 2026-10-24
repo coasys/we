@@ -23,7 +23,7 @@ export interface Scenario {
  */
 const PALETTE: NodeStyleRules = [
   { style: { size: 12, color: 'neutral-400' } },
-  { when: { type: 'Belief' }, style: { size: 20, color: 'primary-500' } },
+  { when: { type: 'Belief' }, style: { size: 20, color: 'accent-500' } },
   { when: { type: 'Agent' }, style: { size: 18, color: 'success-500' } },
   { when: { type: 'Topic' }, style: { size: 22, color: 'warning-500', shape: 'rect' } },
   { when: { type: 'Task' }, style: { size: 18, color: 'danger-500' } },
@@ -56,7 +56,7 @@ export const SCENARIOS: Scenario[] = [
       },
       layout: { type: 'tree', options: { direction: 'right', levelGap: 190 } },
       nodeStyle: [
-        { style: { shape: 'rect', size: 22, color: 'primary-500' } },
+        { style: { shape: 'rect', size: 22, color: 'accent-500' } },
         { when: { label: 'Publish' }, style: { color: 'success-500' } },
       ],
       // review↔revise are mutual: they must bow apart, not draw as one line.
@@ -80,9 +80,9 @@ export const SCENARIOS: Scenario[] = [
       // the simulation arrange everything else around it.
       controls: ['zoom-in', 'zoom-out', 'fit', 'pin'],
       nodeStyle: [
-        { style: { shape: 'rect', size: 20, color: 'primary-500' } },
+        { style: { shape: 'rect', size: 20, color: 'accent-500' } },
         { when: { 'data.relations': 0 }, style: { color: 'neutral-400', size: 14 } },
-        { when: { 'data.relations': { gt: 2 } }, style: { size: 28, color: 'primary-700' } },
+        { when: { 'data.relations': { gt: 2 } }, style: { size: 28, color: 'accent-700' } },
         // Records opened out of a type node are round and small, so the two levels stay distinct.
         {
           when: { kind: 'entity', type: { not: '$schema' } },
@@ -132,7 +132,7 @@ export const SCENARIOS: Scenario[] = [
       layout: { type: 'tree', options: { direction: 'right', levelGap: 240, siblingGap: 70 } },
       nodeStyle: [
         { style: { size: 10, color: 'neutral-400', shape: 'rect' } },
-        { when: { type: 'CollectionBlock' }, style: { size: 20, color: 'primary-500' } },
+        { when: { type: 'CollectionBlock' }, style: { size: 20, color: 'accent-500' } },
         { when: { 'data.kind': 'call' }, style: { color: 'success-500' } },
         { when: { 'data.kind': 'notes' }, style: { color: 'warning-500' } },
       ],
@@ -151,7 +151,7 @@ export const SCENARIOS: Scenario[] = [
       layout: { type: 'force', options: { distance: 70, charge: -160, collide: 20 } },
       nodeStyle: [
         { style: { size: 8, color: 'neutral-400' } },
-        { when: { type: 'Task' }, style: { size: 20, color: 'primary-500' } },
+        { when: { type: 'Task' }, style: { size: 20, color: 'accent-500' } },
         { when: { kind: 'property' }, style: { size: 6, color: 'neutral-300' } },
         { when: { kind: 'literal' }, style: { shape: 'rect', size: 14, color: 'warning-500' } },
       ],
@@ -168,7 +168,7 @@ export const SCENARIOS: Scenario[] = [
       seeds: { source: 'schema' },
       expansion: { defaultDepth: 3, direction: 'both', maxNodes: 12 },
       layout: { type: 'grid', options: { columns: 4, gap: 130 } },
-      nodeStyle: [{ style: { shape: 'rect', size: 18, color: 'primary-500' } }],
+      nodeStyle: [{ style: { shape: 'rect', size: 18, color: 'accent-500' } }],
       behaviours: ['select', 'pan-zoom'],
     },
   },
@@ -187,8 +187,8 @@ export const SCENARIOS: Scenario[] = [
       nodeStyle: PALETTE,
       edgeStyle: [
         { style: { curve: 'bezier', arrow: 'target', color: 'neutral-300' } },
-        { when: { type: 'tagged' }, style: { showLabel: false, color: 'primary-400', width: 2 } },
-        { when: { 'data.relevance': { gt: 0.8 } }, style: { color: 'primary-600', width: 4 } },
+        { when: { type: 'tagged' }, style: { showLabel: false, color: 'accent-400', width: 2 } },
+        { when: { 'data.relevance': { gt: 0.8 } }, style: { color: 'accent-600', width: 4 } },
       ],
       behaviours: ['select', 'expand-on-double-click', 'pan-zoom'],
     },
@@ -224,7 +224,7 @@ export const SCENARIOS: Scenario[] = [
       expansion: { defaultDepth: 0, limit: 8, maxNodes: 400 },
       layout: { type: 'force', options: { distance: 90 } },
       nodeStyle: [
-        { style: { shape: 'rect', size: 22, color: 'primary-500' } },
+        { style: { shape: 'rect', size: 22, color: 'accent-500' } },
         { when: { type: { not: '$schema' } }, style: { shape: 'circle', size: 9, color: 'neutral-400' } },
       ],
       edgeStyle: [{ style: { color: 'neutral-200', arrow: 'none' } }],
@@ -243,7 +243,7 @@ export const SCENARIOS: Scenario[] = [
       nodeStyle: [
         // A card carries its text inside the box — the node *is* the content, rather than a mark with
         // a caption. `size` stops meaning radius here and the width/height take over.
-        { style: { shape: 'card', width: 170, color: 'primary-100', labelColor: 'primary-900' } },
+        { style: { shape: 'card', width: 170, color: 'accent-100', labelColor: 'accent-900' } },
         { when: { 'data.kind': 'call' }, style: { color: 'success-100', labelColor: 'success-900' } },
         { when: { 'data.kind': 'notes' }, style: { color: 'warning-100', labelColor: 'warning-900' } },
         { when: { 'data.kind': 'board' }, style: { color: 'danger-100', labelColor: 'danger-900' } },

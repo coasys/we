@@ -2,10 +2,10 @@ import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
 import type { Content } from '../types.ts';
 
-/** Tone decides the icon, the colour it is drawn in, and the confirm button's variant, together. */
+/** Tone decides the icon, the colour it is drawn in, and the confirm button's tone, together. */
 const TONES = {
-  danger: { icon: 'warning', color: 'danger-text', variant: 'danger' },
-  primary: { icon: 'question', color: 'accent-text', variant: 'primary' },
+  danger: { icon: 'warning', color: 'danger-text' },
+  accent: { icon: 'question', color: 'accent-text' },
 } as const;
 
 export interface ConfirmModalOptions {
@@ -201,13 +201,14 @@ export function confirmModal(opts: ConfirmModalOptions): SchemaNode {
                   Set here rather than at each call site because these fragments ARE the global
                   control: four of them own nearly every cancel button in the app.
                 */
-                props: { variant: 'secondary', onClick: opts.cancel ?? opts.close },
+                props: { variant: 'soft', onClick: opts.cancel ?? opts.close },
                 children: [opts.cancelLabel ?? 'Cancel'],
               },
               {
                 type: 'we-button',
                 props: {
-                  variant: tone.variant,
+                  variant: 'solid',
+                  tone: opts.tone ?? 'danger',
                   ...(busy !== undefined && { loading: busy, disabled: busy }),
                   onClick,
                 },

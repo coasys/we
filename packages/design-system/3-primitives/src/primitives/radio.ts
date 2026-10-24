@@ -1,6 +1,7 @@
 import type { DesignSystemProps } from '@we/design-types';
 import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
-import { css, html, nothing } from 'lit';
+import { FOCUS_OUTLINE } from '@we/tokens';
+import { css, html, nothing, unsafeCSS } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
@@ -62,7 +63,7 @@ const styles = css`
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all var(--we-transition-200, 150ms) ease;
+    transition: border-color var(--we-transition-200, 150ms) ease;
     flex-shrink: 0;
   }
 
@@ -82,9 +83,12 @@ const styles = css`
     display: block;
   }
 
+  /* The ring on the box, since the input that takes focus is the hidden one — see FOCUS_OUTLINE. */
+  [part='input']:focus-visible ~ [part='control'] {
+    ${unsafeCSS(FOCUS_OUTLINE)}
+  }
+
   :host([disabled]) {
-    opacity: 0.5;
-    cursor: default;
     pointer-events: none;
   }
 

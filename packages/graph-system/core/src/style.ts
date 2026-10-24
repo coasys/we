@@ -210,13 +210,31 @@ export function resolveText<T extends string>(
  * Colour scales, as data.
  *
  * Named rather than expression-based for the same reason everything else here is: a template must be
- * able to say "colour by community" without containing a function. Values are design tokens where a
- * token exists, so a scale still answers to the active theme.
+ * able to say "colour by community" without containing a function. Every value is a role, so a scale
+ * answers to the active theme.
+ *
+ * `categorical` is the theme's palette — the ten hues `@we/tokens` lists as `PALETTE_HUES`, as their
+ * fills — so a pastel theme draws pastel clusters and a dark one keeps them apart. Ordered so the
+ * first few communities, which are the big ones, sit far apart on the wheel rather than red beside
+ * orange. Written out rather than imported because this package depends on nothing but the protocol;
+ * a test holds the list to the registry.
+ *
+ * The sequential scales are a family's fill mixed into the page, a little at the cold end and all of
+ * it at the hot one. They were steps of a ramp, and a ramp turns over in a dark theme — `accent-100`
+ * is the faint end in light and the strong one in dark — so the hottest card was drawn as the coldest.
+ * "More of the colour" reads the same way round on either ground.
  */
+const sequential = (role: string): string[] =>
+  [15, 35, 55, 78]
+    .map((share) => `color-mix(in oklch, var(--we-role-${role}) ${share}%, var(--we-role-page))`)
+    .concat(role);
+
+export const CATEGORICAL_SCALE = ['blue', 'orange', 'green', 'pink', 'yellow', 'purple', 'teal', 'red', 'lime', 'cyan'];
+
 const SCALES: Record<string, string[]> = {
-  categorical: ['primary-500', 'success-500', 'warning-500', 'danger-500', 'neutral-500'],
-  heat: ['primary-100', 'primary-300', 'primary-500', 'primary-700', 'primary-900'],
-  cool: ['neutral-200', 'neutral-400', 'primary-400', 'primary-600', 'primary-800'],
+  categorical: CATEGORICAL_SCALE,
+  heat: sequential('accent'),
+  cool: sequential('blue'),
 };
 
 /**
@@ -268,7 +286,7 @@ export function resolveColor(
 const DEFAULT_NODE: Required<Pick<NodeVisual, 'shape' | 'size' | 'color' | 'labelSize'>> = {
   shape: 'circle',
   size: 14,
-  color: 'primary-500',
+  color: 'accent-500',
   labelSize: 12,
 };
 

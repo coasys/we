@@ -67,7 +67,7 @@ export const toolLibraryShell: TemplateSchema & { id: string } = {
                               type: 'we-button',
                               props: {
                                 variant: {
-                                  $: "contains(routeStore.currentPath, view.segment) ? 'secondary' : 'ghost'",
+                                  $: "contains(routeStore.currentPath, view.segment) ? 'soft' : 'ghost'",
                                 },
                                 width: '100%',
                                 ax: 'start',

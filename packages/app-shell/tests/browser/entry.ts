@@ -24,6 +24,7 @@ import { injectDSInteropStyles } from '@solid/dsInterop';
 import { componentRegistry } from '@solid/registries/componentRegistry';
 import { createInMemoryBackend } from '@we/backend-inmemory';
 import { BlockHostProvider } from '@we/block-solid';
+import { ToastContainer, toastService } from '@we/components/solid';
 import {
   CopiedPartNote,
   EditingSectionBar,
@@ -35,6 +36,7 @@ import {
   PartsPalette,
   SectionOnItsOwnBar,
   SuppliedPanelNote,
+  ThemePanel,
 } from '@we/editor';
 import {
   EDIT_SURFACE_ATTR,
@@ -47,8 +49,10 @@ import {
   VIEW_BOUNDARY_ATTR,
   VIEW_BOUNDARY_NAME_ATTR,
 } from '@we/schema-shared';
+import { applyThemeVars, clearThemeVars, setDisplayPreferences, setThemeLive } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import { VisualEditorProvider } from '@we/schema-solid';
+import { THEME_PRESETS } from '@we/themes/presets';
 import { createComponent, createEffect, createSignal } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import { render } from 'solid-js/web';
@@ -121,6 +125,8 @@ function mount(name: string, width: number, scale?: number): void {
 
   const host = document.getElementById('mount') as HTMLElement;
   host.innerHTML = '';
+  // A theme a previous case applied to the mount itself goes with its content.
+  clearThemeVars(host);
   // The panel the schema believes it is in. Everything about a crowded row is downstream of this.
   host.style.width = `${width}px`;
 
@@ -367,6 +373,36 @@ function focused(): string {
 /** What the page is painted on, for a case asking whether a colour stands out from it. */
 function pageColor(): string {
   return getComputedStyle(document.body).backgroundColor;
+}
+
+/**
+ * One computed style of the nth host's part — a colour read where it is painted.
+ *
+ * A primitive paints into its shadow root, so the host's own background is transparent; and a
+ * colour role is a chain of variables a jsdom test can only compare as text. This is the resolved
+ * colour, which is the only thing that says a re-pointed variable reached the thing it re-points.
+ */
+function partStyle(selector: string, property: string, part = 'base', nth = 0): string | null {
+  const host = document.querySelectorAll(selector)[nth];
+  // A part name, or a selector of its own when one part is not specific enough ("[aria-current]").
+  const inner = part.includes('[') ? part : `[part='${part}']`;
+  const el = host?.shadowRoot?.querySelector(inner) ?? host;
+  return el ? getComputedStyle(el).getPropertyValue(property) : null;
+}
+
+/** What a role resolves to at the document root, through a probe painted with it. */
+function roleColor(role: string): string {
+  return probeColor(`var(--we-role-${role})`);
+}
+
+/** What any CSS colour resolves to at the document root, through a probe painted with it. */
+function probeColor(value: string): string {
+  const probe = document.createElement('div');
+  probe.style.backgroundColor = value;
+  document.body.appendChild(probe);
+  const color = getComputedStyle(probe).backgroundColor;
+  probe.remove();
+  return color;
 }
 
 /** The mounted tree as markup — what a failing assertion is looked at through. */
@@ -1106,7 +1142,92 @@ function composerFrame(): { border: string; height: number; button: number } | n
   };
 }
 
+/**
+ * What one frame of a theme-slider drag costs: the theme re-applied to each root the editor applies
+ * it to, with the hue moving each step, then the style and layout the browser owes for it. `roots`
+ * is how many — the document alone, or the document, the mount (standing in for a scoped space) and
+ * a preview box, as the theme panel does. `live` holds measuring until the drag ends, as the panel
+ * does while a slider is held. Medians, in milliseconds.
+ */
+async function themeDrag(steps: number, roots: number, live = false): Promise<{ median: number; max: number }> {
+  const preview = document.createElement('div');
+  preview.innerHTML = '<we-button>Preview</we-button><we-badge>badge</we-badge>'.repeat(10);
+  document.body.appendChild(preview);
+  const targets = [document.documentElement, document.getElementById('mount') as HTMLElement, preview].slice(0, roots);
+  const base = THEME_PRESETS.dark.parameters;
+  const times: number[] = [];
+  setThemeLive(live);
+  for (let i = 0; i < steps; i++) {
+    const t0 = performance.now();
+    for (const root of targets) applyThemeVars(root, { ...base, accentHue: 200 + i * 7 }, { crossFade: false });
+    document.body.getBoundingClientRect();
+    times.push(performance.now() - t0);
+    await new Promise((r) => requestAnimationFrame(r));
+  }
+  setThemeLive(false);
+  // Taken off again, or every case after this one renders inside the theme the drag left behind.
+  for (const root of targets) clearThemeVars(root);
+  preview.remove();
+  times.sort((a, b) => a - b);
+  return {
+    median: Math.round(times[Math.floor(times.length / 2)] * 10) / 10,
+    max: Math.round(times[times.length - 1]),
+  };
+}
+
+/**
+ * The theme panel, mounted against a host editing one theme — a fork of `dark` unless told otherwise
+ * — so a case can photograph or measure the panel itself. Its writes land in the theme it shows.
+ */
+function themePanelProbe(overrides = '{"themeName":"dark"}'): void {
+  const [editing, setEditing] = createSignal({ id: 'probe', name: 'Probe', icon: 'palette', overrides, css: '' });
+  const theme = {
+    editingTheme: editing,
+    focusedRole: () => '',
+    saveEditingTheme: async () => null,
+    startEditing: () => {},
+    changeBasePreset: () => {},
+    updateEditingCss: (css: string) => setEditing((t) => ({ ...t, css })),
+    updateEditingMeta: (meta: Record<string, string>) => setEditing((t) => ({ ...t, ...meta })),
+    updateEditingOverrides: (patch: Record<string, unknown>) =>
+      setEditing((t) => ({ ...t, overrides: JSON.stringify({ ...JSON.parse(t.overrides), ...patch }) })),
+  };
+  const host = document.getElementById('mount') as HTMLElement;
+  host.innerHTML = '';
+  const dispose = render(
+    () =>
+      createComponent(EditorHostProvider, {
+        value: { theme } as never,
+        get children() {
+          return createComponent(ThemePanel, {});
+        },
+      }),
+    host,
+  );
+  probeDisposers.unshift(dispose);
+}
+
+/**
+ * The app's toast stack, mounted with one toast raised, so a case can measure how a toast lays out.
+ * Returns the toast's id; the container stays until the next case clears the mount.
+ */
+function toastProbe(message: string, actionLabel = ''): string {
+  const host = document.getElementById('mount') as HTMLElement;
+  host.innerHTML = '';
+  const dispose = render(() => createComponent(ToastContainer, {}), host);
+  probeDisposers.unshift(dispose);
+  const id = toastService.info(message, 0, actionLabel ? { label: actionLabel, run: () => {} } : undefined);
+  // A toast with no timeout outlives the container; take it down with the case.
+  probeDisposers.unshift(() => toastService.remove(id));
+  return id;
+}
+
 (window as unknown as Record<string, unknown>).__harness = {
+  toastProbe,
+  // The theme pipeline itself, for a probe of how an apply behaves.
+  themeApi: { applyThemeVars, clearThemeVars, setDisplayPreferences, setThemeLive },
+  themeDrag,
+  themePanelProbe,
   composerFrame,
   editorProbe,
   editorProbeCover,
@@ -1137,6 +1258,9 @@ function composerFrame(): { border: string; height: number; button: number } | n
   measureText,
   chain,
   pageColor,
+  partStyle,
+  roleColor,
+  probeColor,
   focused,
   html,
   scenarios: Object.keys(scenarios),

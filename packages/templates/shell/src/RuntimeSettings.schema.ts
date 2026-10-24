@@ -39,7 +39,7 @@ export const runtimeError: SchemaNode = {
     condition: { $: 'runtimeStore.error' },
     then: {
       type: 'we-alert',
-      props: { variant: 'danger' },
+      props: { tone: 'danger' },
       children: [{ $: 'runtimeStore.error' }],
     },
   },
@@ -100,7 +100,7 @@ export const connectedApps: SchemaNode = {
                                             condition: { $: 'app.revoked' },
                                             then: {
                                               type: 'we-badge',
-                                              props: { variant: 'neutral', size: 'xs' },
+                                              props: { size: 'xs' },
                                               children: ['Revoked'],
                                             },
                                           },
@@ -240,7 +240,7 @@ export const trustedAgents: SchemaNode = {
               props: {
                 text: 'Trust',
                 size: 'sm',
-                variant: 'secondary',
+                variant: 'soft',
                 disabled: { $: '!local.newTrustedAgent' },
                 onClick: {
                   $action: 'runtimeStore.trustAgent',
@@ -338,7 +338,7 @@ export const mcpServer: SchemaNode = {
                   props: {
                     text: 'Restart now',
                     size: 'sm',
-                    variant: 'secondary',
+                    variant: 'soft',
                     onClick: { $action: 'runtimeStore.restartExecutor' },
                   },
                 },
@@ -394,7 +394,7 @@ export const backup: SchemaNode = {
               props: {
                 text: 'Export',
                 size: 'sm',
-                variant: 'secondary',
+                variant: 'soft',
                 loading: { $: "'exportDatabase' in runtimeStore.pending" },
                 onClick: { $action: 'runtimeStore.exportDatabase' },
               },
@@ -537,7 +537,7 @@ export const logging: SchemaNode = {
               props: {
                 text: 'Set',
                 size: 'sm',
-                variant: 'secondary',
+                variant: 'soft',
                 disabled: { $: '!local.newLogCrate' },
                 onClick: {
                   $action: 'runtimeStore.setLogLevel',
@@ -614,7 +614,7 @@ const networkMetricsModal: SchemaNode = {
                 condition: { $: "runtimeStore.error && !('loadNetworkMetrics' in runtimeStore.pending)" },
                 then: {
                   type: 'we-alert',
-                  props: { variant: 'danger' },
+                  props: { tone: 'danger' },
                   children: [{ $: '`Could not get the network metrics: ${runtimeStore.error}`' }],
                 },
                 else: {
@@ -641,7 +641,7 @@ const networkMetricsModal: SchemaNode = {
             {
               type: 'we-button',
               props: {
-                variant: 'secondary',
+                variant: 'soft',
                 // Disabled rather than spinning: the body already shows the fetch in progress, and a
                 // second spinner in the button said the same thing twice.
                 disabled: { $: "'loadNetworkMetrics' in runtimeStore.pending" },
@@ -652,7 +652,7 @@ const networkMetricsModal: SchemaNode = {
             {
               type: 'we-button',
               props: {
-                variant: 'primary',
+                variant: 'solid',
                 disabled: { $: '!runtimeStore.networkMetrics' },
                 onClick: { $action: 'runtimeStore.copyNetworkMetrics' },
               },
@@ -710,7 +710,7 @@ const peerExchangeModal: SchemaNode = {
               type: '$if',
               props: {
                 condition: { $: 'runtimeStore.error && !count(runtimeStore.pending)' },
-                then: { type: 'we-alert', props: { variant: 'danger' }, children: [{ $: 'runtimeStore.error' }] },
+                then: { type: 'we-alert', props: { tone: 'danger' }, children: [{ $: 'runtimeStore.error' }] },
               },
             },
             {
@@ -737,7 +737,7 @@ const peerExchangeModal: SchemaNode = {
                       type: 'we-button',
                       props: {
                         size: 'sm',
-                        variant: 'secondary',
+                        variant: 'soft',
                         disabled: { $: '!count(runtimeStore.peerInfos)' },
                         onClick: { $action: 'runtimeStore.copyPeerInfos' },
                       },
@@ -821,7 +821,7 @@ const peerExchangeModal: SchemaNode = {
             {
               type: 'we-button',
               props: {
-                variant: 'primary',
+                variant: 'solid',
                 disabled: { $: "!trim(local.peerInfoText) || 'addPeerInfos' in runtimeStore.pending" },
                 loading: { $: "'addPeerInfos' in runtimeStore.pending" },
                 onClick: {
@@ -943,7 +943,7 @@ export const peerNetwork: SchemaNode = {
               type: 'we-button',
               props: {
                 size: 'sm',
-                variant: 'secondary',
+                variant: 'soft',
                 onClick: [
                   { $setLocal: 'showNetworkMetrics', value: true },
                   { $action: 'runtimeStore.loadNetworkMetrics' },
@@ -955,7 +955,7 @@ export const peerNetwork: SchemaNode = {
               type: 'we-button',
               props: {
                 size: 'sm',
-                variant: 'secondary',
+                variant: 'soft',
                 onClick: [
                   { $setLocal: 'peerInfoText', value: '' },
                   { $setLocal: 'showPeerExchange', value: true },
@@ -974,7 +974,7 @@ export const peerNetwork: SchemaNode = {
                   type: 'we-button',
                   props: {
                     size: 'sm',
-                    variant: 'secondary',
+                    variant: 'soft',
                     loading: { $: "'restartNetwork' in runtimeStore.pending" },
                     onClick: { $action: 'runtimeStore.restartNetwork' },
                   },

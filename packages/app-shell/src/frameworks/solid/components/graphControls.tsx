@@ -41,7 +41,7 @@ function Popup(props: { icon: string; title?: string; children: JSX.Element }) {
     <div ref={box} style={{ display: 'contents' }}>
       <we-tooltip content={props.title ?? ''}>
         <we-button
-          variant={open() ? 'secondary' : 'ghost'}
+          variant={open() ? 'soft' : 'ghost'}
           square
           size="md"
           color={open() ? 'text' : 'text-muted'}
@@ -111,7 +111,7 @@ export const ShapeControl: NodeControl = (props) => {
             <we-button
               size="sm"
               square
-              variant={current() === shape.value ? 'secondary' : 'ghost'}
+              variant={current() === shape.value ? 'soft' : 'ghost'}
               label={shape.label}
               onClick={() => props.onChange(shape.value)}
             >

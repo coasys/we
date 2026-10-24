@@ -11,23 +11,36 @@ import {
   type Rgba,
   rgbToOklch,
 } from '@we/design-utils';
-import type { ColorHueToken, ColorLightnessToken } from '@we/tokens';
+import type { ChromaticFamily, ColorHueToken, ColorLightnessToken, PaletteHue } from '@we/tokens';
 import {
+  capitalise,
   CHROMA_CEILING,
   CHROMA_PER_SATURATION,
+  CHROMATIC_FAMILIES,
   color,
+  COLOR_FAMILIES,
   component,
+  familySaturationVar,
   FILL_LIGHTNESS,
+  MOTION_ATTRIBUTE,
   RAMP,
   role,
   ROLE_ALIASES,
   ROLE_RELATIVE_FALLBACK,
+  SCOPED_FONT_SCALE_VAR,
   STATE_STEPS,
+  type SurfaceImageRole,
+  surfaceImageVar,
+  THEME_DERIVED_VARIABLES,
 } from '@we/tokens';
 
+import { writeComponentOverrides, writeTypeStyles } from './componentStyles';
+import { currentDisplay, onDisplayChange, withDisplay } from './display';
+import { applyFontFaces } from './fontFaces';
 import type { ThemeOverrides, ThemeRole } from './overrides';
 import { isThemeName, THEME_PRESETS } from './presets';
 import { fetchesRemotely } from './sanitiseCss';
+import { type DirectSetting, THEME_SETTING_VARIABLES, writeThemeSettings } from './themeSettings';
 
 /**
  * The chroma taper at step 500, as CSS rather than as a number computed here.
@@ -42,31 +55,6 @@ import { fetchesRemotely } from './sanitiseCss';
  * JS and CSS models of this came to disagree by 2.3× at step 200 without anyone noticing.
  */
 const TAPER_500 = '2 * max(0, min(var(--we-color-lightness-500), 1 - var(--we-color-lightness-500)))';
-
-/**
- * Parametric keys that map 1:1 to a CSS custom property.
- * Keys that need special multi-var handling (shadowIntensity, animationSpeed, roles) are excluded.
- */
-type ParametricKey = Exclude<
-  keyof ThemeOverrides,
-  // `schemaVersion` is bookkeeping rather than a value — it says which vocabulary the theme was
-  // written against and never becomes a custom property.
-  | 'themeName'
-  | 'polarity'
-  | 'lightnessFloor'
-  | 'lightnessCeiling'
-  | 'shadowIntensity'
-  | 'animationSpeed'
-  | 'surfaceBlur'
-  | 'fontScale'
-  | 'spacingScale'
-  | 'disabledOpacity'
-  | 'roles'
-  | 'schemaVersion'
-  // A theme's other sides, folded in by `withThemeSide` before anything is applied.
-  | 'light'
-  | 'dark'
->;
 
 /** camelCase role name → --we-role-<kebab-case> custom property. */
 export function roleVar(role: ThemeRole): string {
@@ -101,22 +89,40 @@ export function roleVar(role: ThemeRole): string {
  * would read the ambient theme when a scoped theme is what is being measured. It is inert: no size,
  * no paint, no pointer, and `position: absolute` keeps it out of layout.
  */
-function createRoleProbe(root: HTMLElement): { read: (role: ThemeRole) => Rgba | null; dispose: () => void } {
-  const probe = root.ownerDocument.createElement('div');
+function readRoles(
+  root: HTMLElement,
+  roles: readonly ThemeRole[],
+): { colours: Map<ThemeRole, Rgba>; neutralHue: string } {
+  /*
+    One child per role, every one written before anything is read.
+
+    Reading a role meant writing the probe's background and asking for its computed value, and that
+    write-then-read is a style recalculation each time round — not of the probe alone, but of every
+    element whose style could have depended on it, which with the theme's own writes still pending
+    is the whole document. Thirty-odd roles were thirty-odd recalculations: 900 ms a frame on a
+    5,700-element page, which is what made a colour slider crawl. Written first and read after, the
+    first read pays for one recalculation and the rest answer from it.
+  */
+  const doc = root.ownerDocument;
+  const probe = doc.createElement('div');
   probe.style.cssText = 'position:absolute;width:0;height:0;visibility:hidden;pointer-events:none';
+  const cells = roles.map((role) => {
+    const cell = doc.createElement('div');
+    cell.style.backgroundColor = `var(${roleVar(role)})`;
+    probe.appendChild(cell);
+    return cell;
+  });
   root.appendChild(probe);
-  const view = root.ownerDocument.defaultView;
-  return {
-    read(role) {
-      probe.style.backgroundColor = '';
-      probe.style.backgroundColor = `var(${roleVar(role)})`;
-      const painted = view?.getComputedStyle(probe).backgroundColor ?? '';
-      return parseColor(painted.trim());
-    },
-    dispose() {
-      probe.remove();
-    },
-  };
+  const view = doc.defaultView;
+  const colours = new Map<ThemeRole, Rgba>();
+  cells.forEach((cell, i) => {
+    const colour = parseColor((view?.getComputedStyle(cell).backgroundColor ?? '').trim());
+    if (colour) colours.set(roles[i], colour);
+  });
+  // Read before the probe goes: removing it is a mutation, and a read after it a second recalculation.
+  const neutralHue = view?.getComputedStyle(root).getPropertyValue('--we-color-neutral-hue').trim() || '264';
+  probe.remove();
+  return { colours, neutralHue };
 }
 
 /**
@@ -153,11 +159,25 @@ function supportsRelativeColor(): boolean {
 }
 
 /** Maps shadowIntensity preset to the CSS box-shadow value emitted as --we-theme-shadow. */
-const SHADOW_INTENSITY_VALUES: Record<NonNullable<ThemeOverrides['shadowIntensity']>, string> = {
-  flat: 'none',
-  subtle: 'var(--we-shadow-sm)',
-  elevated: 'var(--we-shadow-md)',
-  dramatic: 'var(--we-shadow-xl)',
+/**
+ * What `shadowIntensity` writes: how strong every shadow step is, and which step a surface rests at.
+ *
+ * The strength scales the alpha of all four steps (see shadow.ts in @we/tokens), so `shadow: 'md'`
+ * anywhere follows the setting; the resting step is what a Card wears by default.
+ */
+const SHADOW_INTENSITY_VALUES: Record<NonNullable<ThemeOverrides['shadowIntensity']>, Record<string, string>> = {
+  flat: { '--we-theme-shadow-strength': '0', '--we-theme-shadow': 'none' },
+  subtle: { '--we-theme-shadow-strength': '0.6', '--we-theme-shadow': 'var(--we-shadow-sm)' },
+  elevated: { '--we-theme-shadow-strength': '1', '--we-theme-shadow': 'var(--we-shadow-md)' },
+  dramatic: { '--we-theme-shadow-strength': '1.8', '--we-theme-shadow': 'var(--we-shadow-xl)' },
+};
+
+/** What `glowIntensity` writes: how bright and how wide `shadow: 'glow'` is. */
+const GLOW_INTENSITY_VALUES: Record<NonNullable<ThemeOverrides['glowIntensity']>, Record<string, string>> = {
+  none: { '--we-theme-glow-strength': '0', '--we-theme-glow-size': '0px' },
+  subtle: { '--we-theme-glow-strength': '0.2', '--we-theme-glow-size': '10px' },
+  medium: { '--we-theme-glow-strength': '0.35', '--we-theme-glow-size': '16px' },
+  strong: { '--we-theme-glow-strength': '0.55', '--we-theme-glow-size': '24px' },
 };
 
 /** Maps animationSpeed preset to the --we-transition-N overrides applied globally. */
@@ -170,6 +190,7 @@ const ANIMATION_SPEED_VARS: Record<NonNullable<ThemeOverrides['animationSpeed']>
     '--we-transition-500': '0ms',
   },
   fast: {
+    '--we-transition-100': '25ms',
     '--we-transition-200': '75ms',
     '--we-transition-300': '125ms',
     '--we-transition-400': '250ms',
@@ -185,61 +206,26 @@ const ANIMATION_SPEED_VARS: Record<NonNullable<ThemeOverrides['animationSpeed']>
   },
 };
 
-/** Map parametric ThemeOverrides keys to their CSS custom property equivalents. */
 /**
- * Exported so `themeFamily.test.ts` can cross-check it: every shape and density group declared here
- * has to be nameable from a call site, and the test fails when one is not.
+ * The variable each direct setting writes — from the settings registry (`themeSettings.ts`), kept under
+ * this name because `themeFamily.test.ts` cross-checks the shape and density groups against it.
  */
-export const THEME_CSS_MAP: Record<ParametricKey, string> = {
-  // Color
-  primaryHue: '--we-color-primary-hue',
-  successHue: '--we-color-success-hue',
-  warningHue: '--we-color-warning-hue',
-  dangerHue: '--we-color-danger-hue',
-  neutralHue: '--we-color-neutral-hue',
-  saturation: '--we-color-saturation',
-  neutralSaturation: '--we-color-neutral-saturation',
-  accentLightness: '--we-accent-lightness',
-  dangerLightness: '--we-danger-lightness',
-  successLightness: '--we-success-lightness',
-  warningLightness: '--we-warning-lightness',
+export const THEME_CSS_MAP: Record<DirectSetting, string> = THEME_SETTING_VARIABLES;
 
-  borderWidth: '--we-theme-border-width',
-  stateDuration: '--we-theme-state-duration',
-  focusRingWidth: '--we-theme-focus-ring-width',
-  // Typography
-  fontFamily: '--we-font-family',
-  headingFontFamily: '--we-theme-heading-font-family',
-  monoFontFamily: '--we-font-mono',
-  letterSpacing: '--we-theme-letter-spacing',
-  lineHeight: '--we-theme-line-height',
-  // Shape
-  controlRadius: '--we-theme-control-radius',
-  surfaceRadius: '--we-theme-surface-radius',
-  inputRadius: '--we-theme-input-radius',
-  avatarRadius: '--we-theme-avatar-radius',
-  // Density
-  controlPaddingX: '--we-theme-control-padding-x',
-  controlGap: '--we-theme-control-gap',
-  controlHeightOffset: '--we-theme-control-height-offset',
-  surfacePadding: '--we-theme-surface-padding',
-  surfaceGap: '--we-theme-surface-gap',
-  inputPadding: '--we-theme-input-padding',
-  // Effects
-  surfaceOpacity: '--we-theme-surface-opacity',
-};
-
-/** Saturation variable used by each color family. */
-const FAMILY_SAT_VAR: Record<ColorHueToken, string> = {
-  primary: '--we-color-saturation',
-  success: '--we-color-saturation',
-  warning: '--we-color-saturation',
-  danger: '--we-color-saturation',
-  neutral: '--we-color-neutral-saturation',
-};
+/** The saturation variable each family's ramp reads: neutral its own, every other family its own. */
+const familySatVar = (family: ColorHueToken): string =>
+  family === 'neutral' ? '--we-color-neutral-saturation' : familySaturationVar(family);
 
 const LIGHTNESS_STEPS = Object.keys(color.lightness) as ColorLightnessToken[];
-const COLOR_FAMILIES = Object.keys(color.hues) as ColorHueToken[];
+/** Every family with a ramp, neutral included. */
+const RAMP_FAMILIES = Object.keys(color.hues) as ColorHueToken[];
+
+/** Whether a theme sets anything that moves a colour family's ramp. */
+function movesColour(theme: ThemeOverrides): boolean {
+  return (Object.keys(theme) as (keyof ThemeOverrides)[]).some(
+    (key) => key === 'palette' || key === 'saturation' || /(Hue|Saturation)$/.test(key),
+  );
+}
 
 /**
  * A theme's **parameters** as CSS custom properties — its inputs and its role defaults, and nothing
@@ -269,18 +255,78 @@ const COLOR_FAMILIES = Object.keys(color.hues) as ColorHueToken[];
  *
  * CSS custom properties are resolved at the element where they are DEFINED,
  * not where they are inherited.  :root defines derived tokens like
- *   --we-color-primary-500: hsl(var(--we-color-primary-hue) ...)
+ *   --we-color-accent-500: hsl(var(--we-color-accent-hue) ...)
  * which are computed once using :root's values.  Children inherit the computed
- * color, so overriding --we-color-primary-hue on a descendant has no effect
+ * color, so overriding --we-color-accent-hue on a descendant has no effect
  * unless we ALSO re-declare the derived token formulas on that descendant.
  *
  * When a named theme is used (themeName), the CSS theme file sets the input
  * variables via [data-we-theme] selectors. We unconditionally re-declare ALL
  * derived formulas so they resolve locally against whatever inputs the theme sets.
  */
+/**
+ * Where a theme named on a node finds its settings, beyond the built-ins.
+ *
+ * `{ themeName: 'x' }` on a schema node resolved its parameters only when `x` was a built-in preset;
+ * a theme somebody installed or wrote got its stylesheet (the store injects that by name) and none
+ * of its settings, so it rendered as its CSS over whatever theme was ambient. The app knows its
+ * installed themes and this package does not, so the app registers how to look one up. Read inside
+ * the renderer's effect, so a lookup that reads reactive state re-applies the theme when it arrives.
+ */
+type NamedThemeLookup = (name: string) => ThemeOverrides | undefined;
+let lookupNamedTheme: NamedThemeLookup | undefined;
+
+export function registerNamedThemes(lookup: NamedThemeLookup | undefined): void {
+  lookupNamedTheme = lookup;
+}
+
+/** A named theme's settings: a built-in preset's, else whatever the app registered. */
+function namedThemeParameters(name: string): ThemeOverrides | undefined {
+  if (isThemeName(name)) return THEME_PRESETS[name].parameters;
+  return lookupNamedTheme?.(name);
+}
+
+/**
+ * The body type, declared where a theme applies — the document and every scoped wrapper.
+ *
+ * Text inherits it from here, which is what lets a type role set on a component reach the words
+ * inside it. Declared on the theme's element rather than once at `:root`, because a custom property
+ * is resolved where it is declared: a space theme's own `--we-font-family` has to be read on the
+ * space's wrapper, or its text would inherit a face resolved against the document's theme.
+ */
+export const BODY_TYPE: Record<string, string> = {
+  'font-family': 'var(--we-type-body-family, var(--we-font-family))',
+  'font-weight': 'var(--we-type-body-weight, normal)',
+  'letter-spacing': 'var(--we-type-body-letter-spacing, var(--we-theme-letter-spacing, normal))',
+  'line-height': 'var(--we-type-body-line-height, var(--we-theme-line-height, normal))',
+  'text-transform': 'var(--we-type-body-text-transform, none)',
+  color: 'var(--we-type-body-color, var(--we-role-text))',
+};
+
 /** Drop absent keys so a spread cannot blank a preset value with an explicit `undefined`. */
 function stripUndefined(theme: ThemeOverrides): ThemeOverrides {
   return Object.fromEntries(Object.entries(theme).filter(([, value]) => value !== undefined)) as ThemeOverrides;
+}
+
+/** A comma-separated list of CSS gradients and nothing else. */
+function isGradientList(value: string): boolean {
+  if (/url\s*\(/i.test(value)) return false;
+  return /^\s*(repeating-)?(linear|radial|conic)-gradient\(/i.test(value);
+}
+
+/**
+ * A theme with its unpinned roles taken out: a role a theme states as `''` is not pinned by it, and
+ * not by its base preset either.
+ *
+ * The one way to undo a preset's pin. Roles merge key by key, so leaving a role out of a theme keeps
+ * the preset's — right almost always, and wrong when somebody has just picked a new accent on a fork
+ * of `dark`, whose own accent is a formula of the accent settings scaled to its identity colour. An
+ * empty value drops the pin, so the role is the parametric one and the corrections reach it.
+ */
+export function withoutUnpinned(theme: ThemeOverrides): ThemeOverrides {
+  if (!theme.roles || !Object.values(theme.roles).includes('')) return theme;
+  const roles = Object.fromEntries(Object.entries(theme.roles).filter(([, value]) => value !== ''));
+  return { ...theme, roles };
 }
 
 export function themeParametersToStyle(overrides: ThemeOverrides): Record<string, string> {
@@ -295,13 +341,14 @@ export function themeParametersToStyle(overrides: ThemeOverrides): Record<string
 
     Resolving the preset here rather than duplicating the numbers into each theme's CSS keeps the
     design system owning theme parameters as data — and it means every built-in works immediately,
-    with no per-theme edit. Explicit overrides still win, so `{ themeName: 'cyberpunk', primaryHue:
+    with no per-theme edit. Explicit overrides still win, so `{ themeName: 'cyberpunk', accentHue:
     320 }` is cyberpunk with a different accent, which is what it reads as.
   */
   // Widened to the vocabulary: `THEME_PRESETS` is `as const`, so its inferred union only carries
   // `roles` on the members that happen to pin one, and reading it off the union does not typecheck.
-  const preset: ThemeOverrides | undefined =
-    overrides.themeName && isThemeName(overrides.themeName) ? THEME_PRESETS[overrides.themeName].parameters : undefined;
+  const preset: ThemeOverrides | undefined = overrides.themeName
+    ? namedThemeParameters(overrides.themeName)
+    : undefined;
   /*
     `roles` merges key by key; every other override replaces.
 
@@ -312,40 +359,34 @@ export function themeParametersToStyle(overrides: ThemeOverrides): Record<string
     which is what "override" means everywhere else in this object.
   */
   const explicit = stripUndefined(overrides);
-  const theme: ThemeOverrides = preset
+  const merged: ThemeOverrides = preset
     ? {
         ...preset,
         ...explicit,
         ...(preset.roles || explicit.roles ? { roles: { ...preset.roles, ...explicit.roles } } : {}),
       }
     : overrides;
+  const theme = withoutUnpinned(merged);
 
   // Role defaults first, so an explicit pin below overwrites its own default rather than sitting
   // beside it. See ROLE_DEFAULT_VARS for why they are re-declared at all.
   const style: Record<string, string> = { ...ROLE_DEFAULT_VARS };
   const hasNamedTheme = !!theme.themeName;
 
-  // 1. Set any explicit parametric overrides as custom properties
-  for (const [key, cssVar] of Object.entries(THEME_CSS_MAP)) {
-    const value = theme[key as ParametricKey];
-    if (value !== undefined) style[cssVar] = String(value);
-  }
-
   /*
-    The lightness bounds, authored as percentages and emitted as numbers.
-
-    A theme says `lightnessFloor: '19.5%'`, which is what somebody can picture. The ramp needs it
-    unitless, because the chroma taper is `2 × max(0, min(l, 1 − l))` and `calc()` cannot divide a
-    percentage into the number a chroma has to be. `oklch()` accepts either form for lightness, so
-    the conversion happens here and nothing downstream has to care.
+    The variables the token CSS works out on `:root` from a setting — border and ring width, every
+    spacing and font-size step — restated here, because a custom property is settled where it is
+    declared. Without them a theme applied anywhere but the document set its inputs on its own
+    element and changed nothing below it. Always written, like the aliases further down: cheap to
+    over-apply, and a theme that leaves them unset gets exactly the document's values.
   */
-  for (const [key, cssVar] of [
-    ['lightnessFloor', '--we-color-lightness-floor'],
-    ['lightnessCeiling', '--we-color-lightness-ceiling'],
-  ] as const) {
-    const value = theme[key];
-    if (value !== undefined) style[cssVar] = String(parseFloat(value) / 100);
-  }
+  Object.assign(style, THEME_DERIVED_VARIABLES);
+
+  // 1. Every direct setting, as the settings registry says to write it.
+  writeThemeSettings(theme, style);
+
+  // The lightness bounds are authored as percentages and written unitless — see the registry entry:
+  // the chroma taper divides by them, and `calc()` cannot divide a percentage into a chroma.
 
   // `polarity` is the one authored key that is a word rather than a value; it expands to the two
   // numbers the ramp formula multiplies by. See RAMP in @we/tokens for why those are not authored.
@@ -359,19 +400,23 @@ export function themeParametersToStyle(overrides: ThemeOverrides): Record<string
   }
 
   // shadowIntensity → --we-theme-shadow (used by Card and other surface components)
-  if (theme.shadowIntensity) {
-    style['--we-theme-shadow'] = SHADOW_INTENSITY_VALUES[theme.shadowIntensity];
-  }
-
-  // surfaceBlur → --we-theme-surface-blur (backdrop-filter blur for frosted glass)
-  // Only emitted when > 0 to avoid triggering GPU compositing on the default state.
-  if (theme.surfaceBlur && theme.surfaceBlur > 0) {
-    style['--we-theme-surface-blur'] = `${theme.surfaceBlur}px`;
-  }
+  if (theme.shadowIntensity) Object.assign(style, SHADOW_INTENSITY_VALUES[theme.shadowIntensity]);
+  if (theme.glowIntensity) Object.assign(style, GLOW_INTENSITY_VALUES[theme.glowIntensity]);
 
   // animationSpeed → override --we-transition-N tokens consumed by all primitives
   if (theme.animationSpeed) {
     Object.assign(style, ANIMATION_SPEED_VARS[theme.animationSpeed]);
+  }
+
+  // Type roles and component overrides: plain variables, read by chains where components draw.
+  Object.assign(style, BODY_TYPE);
+  writeTypeStyles(theme, style);
+  writeComponentOverrides(theme, style);
+
+  // Surface images: gradients only, since a theme comes from other people and a URL would report
+  // who opened it. Anything that is not a gradient list is dropped rather than written.
+  for (const [role, image] of Object.entries(theme.surfaceImages ?? {}) as [SurfaceImageRole, string][]) {
+    if (image && isGradientList(image)) style[surfaceImageVar(role)] = image;
   }
 
   // Semantic roles → pin individual --we-role-* variables. Roles not listed keep
@@ -396,9 +441,25 @@ export function themeParametersToStyle(overrides: ThemeOverrides): Record<string
     style['color-scheme'] = theme.polarity;
   }
 
-  // 2. Re-declare neutral-hue linkage when primaryHue is explicitly overridden
-  if (theme.primaryHue !== undefined && theme.neutralHue === undefined) {
-    style['--we-color-neutral-hue'] = 'var(--we-color-primary-hue)';
+  // 2. Re-declare neutral-hue linkage when the accent's hue is explicitly overridden
+  if (theme.accentHue !== undefined && theme.neutralHue === undefined) {
+    style['--we-color-neutral-hue'] = 'var(--we-color-accent-hue)';
+  }
+
+  // 2b. The palette, as a set and per hue.
+  if (theme.palette) {
+    const { saturation, lightness, hues } = theme.palette;
+    if (saturation !== undefined) style['--we-color-palette-saturation'] = String(saturation);
+    if (lightness !== undefined) style['--we-color-palette-lightness'] = String(lightness);
+    for (const [hue, own] of Object.entries(hues ?? {}) as [
+      PaletteHue,
+      { hue?: number; lightness?: number; saturation?: number },
+    ][]) {
+      if (own?.hue !== undefined) style[`--we-color-${hue}-hue`] = String(own.hue);
+      if (own?.lightness !== undefined) style[`--we-${hue}-lightness`] = String(own.lightness);
+      // Ahead of the palette's own saturation, which the hue otherwise falls back to.
+      if (own?.saturation !== undefined) style[familySaturationVar(hue)] = String(own.saturation);
+    }
   }
 
   // 3. Re-declare lightness scale
@@ -417,22 +478,12 @@ export function themeParametersToStyle(overrides: ThemeOverrides): Record<string
     }
   }
 
-  // 4. Re-declare derived color tokens for affected families
-  // Named themes: re-declare all families unconditionally (the CSS theme file
-  // may change any input variable, and we can't know which without duplicating
-  // the theme's values here).
-  const affectsAllSatFamilies = hasNamedTheme || theme.saturation !== undefined || affectsLightness;
-  for (const family of COLOR_FAMILIES) {
-    const hueKey = family === 'neutral' ? 'neutralHue' : (`${family}Hue` as ParametricKey);
-    const familyAffected =
-      hasNamedTheme ||
-      theme[hueKey] !== undefined ||
-      (family === 'neutral'
-        ? theme.primaryHue !== undefined || theme.neutralSaturation !== undefined || affectsLightness
-        : affectsAllSatFamilies);
-    if (!familyAffected) continue;
-
-    const satVar = FAMILY_SAT_VAR[family];
+  // 4. Re-declare every family's ramp when anything moving colour or lightness is set. Named themes:
+  // always (their CSS may change any input, and duplicating the theme's values here is not worth it).
+  const affectsRamps = hasNamedTheme || affectsLightness || movesColour(theme);
+  for (const family of RAMP_FAMILIES) {
+    if (!affectsRamps) break;
+    const satVar = familySatVar(family);
     for (const step of LIGHTNESS_STEPS) {
       // The taper reads the step's *rendered* lightness, exactly as the generated CSS does — baked
       // from the base lightness it inverts along the ramp. See the note in generate-css.ts.
@@ -466,24 +517,25 @@ export function themeParametersToStyle(overrides: ThemeOverrides): Record<string
   // Its own token rather than an alias entry — see the note on ROLE_ALIASES for why it is not there.
   style['--we-scrollbar-thumb-background'] = component.scrollbar.thumbBackground;
 
-  // 5. Re-declare gradient when primary hue or saturation may have changed
-  const affectsPrimaryGradient =
-    hasNamedTheme || theme.primaryHue !== undefined || theme.saturation !== undefined || affectsLightness;
-  if (affectsPrimaryGradient) {
-    style['--we-gradient-primary'] =
+  // 5. Re-declare the accent gradient when its hue, saturation or the ramp may have changed.
+  if (affectsRamps) {
+    style['--we-gradient-accent'] =
       `linear-gradient(135deg, ` +
-      `oklch(var(--we-color-lightness-500) calc(min(var(--we-color-saturation) * ${CHROMA_PER_SATURATION}, ${CHROMA_CEILING}) * ${TAPER_500}) calc(var(--we-color-primary-hue) - 30)) 0%, ` +
-      `oklch(var(--we-color-lightness-500) calc(min(var(--we-color-saturation) * ${CHROMA_PER_SATURATION}, ${CHROMA_CEILING}) * ${TAPER_500}) calc(var(--we-color-primary-hue) + 30)) 100%)`;
+      `oklch(var(--we-color-lightness-500) calc(min(var(--we-color-accent-saturation) * ${CHROMA_PER_SATURATION}, ${CHROMA_CEILING}) * ${TAPER_500}) calc(var(--we-color-accent-hue) - 30)) 0%, ` +
+      `oklch(var(--we-color-lightness-500) calc(min(var(--we-color-accent-saturation) * ${CHROMA_PER_SATURATION}, ${CHROMA_CEILING}) * ${TAPER_500}) calc(var(--we-color-accent-hue) + 30)) 100%)`;
   }
 
-  // fontScale: sets font-size on the root element, scaling all rem-based tokens
+  /*
+    The font scale, two ways at once, and `applyThemeVars` keeps whichever the element needs.
+
+    At the document it sets the root font size, which every `rem` follows. Below the document `rem`
+    cannot move — it is the root's — so the scoped variable carries it instead and the font-size and
+    spacing steps restated above multiply by it. Never both on one element: they would compound.
+  */
   if (theme.fontScale !== undefined) {
     style['font-size'] = `${theme.fontScale * 16}px`;
+    style[SCOPED_FONT_SCALE_VAR] = String(theme.fontScale);
   }
-
-  // Spacing scales on its own, so "denser" does not have to mean "smaller text".
-  if (theme.spacingScale !== undefined) style['--we-theme-spacing-scale'] = String(theme.spacingScale);
-  if (theme.disabledOpacity !== undefined) style['--we-theme-disabled-opacity'] = String(theme.disabledOpacity);
 
   /*
     No parameter may fetch.
@@ -533,6 +585,10 @@ export function clearThemeVars(root: HTMLElement): void {
   if (!previous) return;
   for (const prop of previous) root.style.removeProperty(prop);
   appliedThemeVars.delete(root);
+  // No longer a theme root, so a change of display preferences leaves it alone, and the faces its
+  // theme carried go unless another theme on screen carries them too.
+  appliedThemes.delete(root);
+  applyFontFaces(root, {});
 }
 
 /**
@@ -561,8 +617,71 @@ export interface ApplyThemeOptions {
   crossFade?: boolean;
 }
 
-export function applyThemeVars(root: HTMLElement, theme: ThemeOverrides, options?: ApplyThemeOptions): void {
+/*
+  Every root a theme is applied to, with what was asked for, so a change of display preferences can
+  redo them all. Held weakly: a wrapper that unmounts is collected, and is skipped when it no longer
+  answers.
+*/
+const appliedRoots = new Set<WeakRef<HTMLElement>>();
+const appliedThemes = new WeakMap<HTMLElement, { theme: ThemeOverrides; options?: ApplyThemeOptions }>();
+
+/*
+  A live edit — a slider being dragged — and the roots themed while it lasted.
+
+  Measuring a theme costs two whole-document style recalculations (the chroma ceilings read the hues
+  the theme resolved to; the contrast derivation reads the roles), and a drag re-applies the theme
+  every frame. While one is under way each apply writes the theme's settings and keeps the ceilings
+  and corrections the root already had, which are a frame stale at worst; when it ends, every root
+  themed during it is applied once in full.
+*/
+let liveEdit = false;
+const liveRoots = new Set<HTMLElement>();
+const appliedDerived = new WeakMap<HTMLElement, Map<string, string>>();
+
+/** A family's own role, which a held slider may be moving: `--we-role-teal-text`, `--we-role-on-accent`. */
+const FAMILY_ROLE_VAR = new RegExp(`^--we-role-(on-)?(${[...CHROMATIC_FAMILIES, 'neutral'].join('|')})(-|$)`);
+
+/**
+ * Say a theme is being changed continuously — while a slider is held — or that it has stopped. See
+ * above. Ending a live edit re-applies, measured, every root a theme reached while it lasted.
+ */
+export function setThemeLive(live: boolean): void {
+  if (liveEdit === live) return;
+  liveEdit = live;
+  if (live) return;
+  for (const root of [...liveRoots]) {
+    const applied = appliedThemes.get(root);
+    if (applied && root.isConnected) applyThemeVars(root, applied.theme, applied.options);
+  }
+  liveRoots.clear();
+}
+
+onDisplayChange(() => {
+  for (const ref of appliedRoots) {
+    const root = ref.deref();
+    const applied = root && appliedThemes.get(root);
+    if (!root || !applied || !root.isConnected) {
+      appliedRoots.delete(ref);
+      continue;
+    }
+    applyThemeVars(root, applied.theme, applied.options);
+  }
+});
+
+export function applyThemeVars(root: HTMLElement, asked: ThemeOverrides, options?: ApplyThemeOptions): void {
+  // The person's display needs over whatever was asked for — here, so no caller can leave them out.
+  // See display.ts.
+  if (!appliedThemes.has(root) && typeof WeakRef === 'function') appliedRoots.add(new WeakRef(root));
+  appliedThemes.set(root, { theme: asked, options });
+  const display = currentDisplay();
+  const theme = withDisplay(asked, display);
+  // The document says whether motion is reduced, for the rules and timers a theme's tokens do not
+  // reach — see MOTION_ATTRIBUTE in @we/tokens.
+  if (root === root.ownerDocument?.documentElement) root.setAttribute?.(MOTION_ATTRIBUTE, display.motion);
+  applyFontFaces(root, theme);
   const styles = themeParametersToStyle(theme);
+  // The font scale: the root font size at the document, the scoped variable anywhere below it.
+  if (root === root.ownerDocument?.documentElement) delete styles[SCOPED_FONT_SCALE_VAR];
   const previous = appliedThemeVars.get(root);
 
   /*
@@ -596,13 +715,34 @@ export function applyThemeVars(root: HTMLElement, theme: ThemeOverrides, options
     );
   }
 
+  // While a live edit lasts, the root keeps what was last measured for it; see `setThemeLive`.
+  const keep = liveEdit && previous ? appliedDerived.get(root) : undefined;
   if (previous) {
     for (const prop of previous) {
-      if (!(prop in styles)) root.style.removeProperty(prop);
+      if (!(prop in styles) && !keep?.has(prop)) root.style.removeProperty(prop);
     }
   }
   // Inline, so a theme beats any stylesheet — including a component's own defaults.
   for (const [prop, value] of Object.entries(styles)) root.style.setProperty(prop, value);
+  /*
+    The kept corrections, written back over the defaults just written — or the text dims for the
+    length of a drag: muted and faint text are corrected for contrast when measured, and their
+    defaults are what a drag would otherwise show. A family's own roles are left to their defaults
+    instead, since the slider may be moving that family and a kept value would hold it still.
+  */
+  if (keep) for (const [prop, value] of keep) if (!FAMILY_ROLE_VAR.test(prop)) root.style.setProperty(prop, value);
+  // For what a variable cannot reach by itself: an icon's weight picks which drawing it fetches, so
+  // the icons under this root have to be told to read it again (see we-icon).
+  const doc = root.ownerDocument;
+  if (typeof doc?.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
+    doc.dispatchEvent(new CustomEvent('we-theme-change', { detail: { root } }));
+  }
+
+  if (keep) {
+    liveRoots.add(root);
+    appliedThemeVars.set(root, new Set([...Object.keys(styles), ...keep.keys()]));
+    return;
+  }
 
   // Tracked alongside the rest, so the next theme clears them: a derived value from the old theme
   // outliving it would be worse than never deriving one.
@@ -612,7 +752,7 @@ export function applyThemeVars(root: HTMLElement, theme: ThemeOverrides, options
     One read of the browser, then all the maths, then one round of writes.
 
     Everything below needs to know what a role *renders as*, and only the browser can answer that
-    (see `createRoleProbe`). The catch is that a write to `root.style` invalidates the whole
+    (see `readRoles`). The catch is that a write to `root.style` invalidates the whole
     document, so the next `getComputedStyle` forces a synchronous recalculation of it — and reading
     a role, computing, writing it, then reading the next one pays that recalc every time round.
 
@@ -635,23 +775,17 @@ export function applyThemeVars(root: HTMLElement, theme: ThemeOverrides, options
   */
   const measurable = typeof getComputedStyle === 'function' && root?.nodeType === 1 && root.isConnected;
   if (!measurable) {
+    appliedDerived.set(root, new Map(ceilings.map((p) => [p, root.style.getPropertyValue(p)])));
     appliedThemeVars.set(root, new Set([...Object.keys(styles), ...ceilings]));
     return;
   }
 
-  const probe = createRoleProbe(root);
-  const resolved = new Map<ThemeRole, Rgba>();
-  for (const role of ROLES_TO_RESOLVE) {
-    const colour = probe.read(role);
-    if (colour) resolved.set(role, colour);
-  }
-  probe.dispose();
-
-  const hue = getComputedStyle(root).getPropertyValue('--we-color-neutral-hue').trim() || '264';
-  const derivedVars = deriveRoleVars(resolved, theme, hue);
+  const { colours: resolved, neutralHue: hue } = readRoles(root, ROLES_TO_RESOLVE);
+  const derivedVars = deriveRoleVars(resolved, withoutUnpinned(theme), hue);
   for (const [prop, value] of Object.entries(derivedVars)) root.style.setProperty(prop, value);
 
   const derived = [...Object.keys(derivedVars), ...ceilings];
+  appliedDerived.set(root, new Map(derived.map((p) => [p, root.style.getPropertyValue(p)])));
   appliedThemeVars.set(root, new Set([...Object.keys(styles), ...derived]));
 }
 
@@ -692,8 +826,17 @@ function applyChromaCeilings(root: HTMLElement, theme: ThemeOverrides): string[]
   */
   const gamut: Gamut = typeof matchMedia === 'function' && matchMedia('(color-gamut: p3)').matches ? 'p3' : 'srgb';
 
-  for (const family of COLOR_FAMILIES) {
-    const hue = parseFloat(computed.getPropertyValue(`--we-color-${family}-hue`));
+  /*
+    Every hue read before anything is written. `computed` is live: a read after a write to the root
+    is a whole-document style recalculation, and reading a hue, writing its ceiling and reading the
+    next paid that once per family — fifteen of them once the palette arrived, about 55 ms each on
+    a 5,700-element page, and the bulk of what a theme slider cost a frame.
+  */
+  const hues = new Map(
+    RAMP_FAMILIES.map((family) => [family, parseFloat(computed.getPropertyValue(`--we-color-${family}-hue`))]),
+  );
+  for (const family of RAMP_FAMILIES) {
+    const hue = hues.get(family)!;
     if (Number.isNaN(hue)) continue;
     const prop = `--we-color-${family}-chroma-max`;
     root.style.setProperty(prop, maxChromaFor(CHROMA_PEAK_LIGHTNESS, hue, gamut).toFixed(4));
@@ -717,11 +860,8 @@ function applyChromaCeilings(root: HTMLElement, theme: ThemeOverrides): string[]
       told it had less colour available than it does, and a bright green would come out muted at
       exactly the point somebody had asked for it to be bright.
     */
-    const declared = FILL_LIGHTNESS_KEY[family as keyof typeof FILL_LIGHTNESS_KEY]
-      ? theme[FILL_LIGHTNESS_KEY[family as keyof typeof FILL_LIGHTNESS_KEY]]
-      : undefined;
-    const fillLightness =
-      declared !== undefined ? declared / 100 : FILL_LIGHTNESS[family as keyof typeof FILL_LIGHTNESS];
+    if (family === 'neutral') continue;
+    const fillLightness = familyFillLightness(theme, family);
     if (fillLightness === undefined) continue;
     const fillProp = `--we-color-${family}-fill-chroma-max`;
     root.style.setProperty(fillProp, maxChromaFor(fillLightness, hue, gamut).toFixed(4));
@@ -731,17 +871,20 @@ function applyChromaCeilings(root: HTMLElement, theme: ThemeOverrides): string[]
 }
 
 /**
- * Which theme parameter moves each family's fill, when one is set.
- *
- * `primary` is spelt `accent` because that is what the role is called — the parameter names the
- * role, not the hue family it happens to be built from, and a theme author sets an accent.
+ * Where a family's fill sits for this theme, 0–1: the theme's own setting for it if there is one,
+ * else the family's default — a palette hue's shifted by the palette's lightness setting. The same
+ * answer the fill role's CSS gives, worked out here because the chroma ceiling has to be measured at
+ * it.
  */
-const FILL_LIGHTNESS_KEY = {
-  primary: 'accentLightness',
-  danger: 'dangerLightness',
-  success: 'successLightness',
-  warning: 'warningLightness',
-} as const satisfies Record<keyof typeof FILL_LIGHTNESS, keyof ThemeOverrides>;
+function familyFillLightness(theme: ThemeOverrides, family: ChromaticFamily): number {
+  if (COLOR_FAMILIES[family].kind === 'palette') {
+    const own = theme.palette?.hues?.[family as PaletteHue]?.lightness;
+    if (own !== undefined) return own / 100;
+    return FILL_LIGHTNESS[family] + (theme.palette?.lightness ?? 0) / 100;
+  }
+  const declared = theme[`${family}Lightness` as 'accentLightness'];
+  return declared !== undefined ? declared / 100 : FILL_LIGHTNESS[family];
+}
 
 /** Where chroma peaks on the ramp, and so where the family's ceiling is measured. */
 const CHROMA_PEAK_LIGHTNESS = 0.6;
@@ -777,7 +920,8 @@ export const fillStateDeltas = (polarity: 'light' | 'dark' = 'light') => [
   STATE_STEPS[polarity].active,
 ];
 
-export const DERIVED_FILLS: ThemeRole[] = ['accent', 'danger', 'success', 'warning'];
+/** Every family's fill, from the family registry. */
+export const DERIVED_FILLS: ThemeRole[] = [...CHROMATIC_FAMILIES];
 
 /**
  * Move a fill until some label can sit on it, or report that none can.
@@ -847,10 +991,10 @@ export function labelCandidates(hue: string): string[] {
  * stopped sharing one.
  */
 export const FILL_LABELS: { fill: ThemeRole; label: ThemeRole }[] = [
-  { fill: 'accent', label: 'onAccent' },
-  { fill: 'danger', label: 'onDanger' },
-  { fill: 'success', label: 'onSuccess' },
-  { fill: 'warning', label: 'onWarning' },
+  ...CHROMATIC_FAMILIES.map((family) => ({ fill: family, label: `on${capitalise(family)}` as ThemeRole })),
+  // Neutral's fill is the inverse surface, whose label is chosen below; this entry only decides which
+  // way a solid neutral's hover and pressed states move.
+  { fill: 'neutral', label: 'onNeutral' },
 ];
 
 /**
@@ -931,9 +1075,12 @@ export const LEGIBLE_FOREGROUNDS: { fg: ThemeRole; on: ThemeRole[]; level: Contr
     `textMuted` and the rest keep a single background because they have one: muted text on a tint is
     not a thing the vocabulary offers.
   */
-  { fg: 'dangerText', on: ['dangerSurface', 'surface'], level: 'body' },
-  { fg: 'successText', on: ['successSurface', 'surface'], level: 'body' },
-  { fg: 'warningText', on: ['warningSurface', 'surface'], level: 'body' },
+  // Every family other than the accent, from the registry: its text on its own tint and on a card.
+  ...CHROMATIC_FAMILIES.filter((family) => family !== 'accent').map((family) => ({
+    fg: `${family}Text` as ThemeRole,
+    on: [`${family}Soft` as ThemeRole, 'surface' as ThemeRole],
+    level: 'body' as ContrastLevel,
+  })),
 ];
 
 /**
@@ -960,12 +1107,12 @@ export const LEGIBLE_FOREGROUNDS: { fg: ThemeRole; on: ThemeRole[]; level: Contr
  * them, and the states follow from the label.
  */
 export const AUTO_CONTRAST: { fg: ThemeRole; against: ThemeRole[] }[] = [
-  { fg: 'onAccent', against: ['accent'] },
+  // One label per family, against the fill it actually sits on — see `familyRoles.ts` in @we/tokens.
+  ...CHROMATIC_FAMILIES.map((family) => ({
+    fg: `on${capitalise(family)}` as ThemeRole,
+    against: [family as ThemeRole],
+  })),
   { fg: 'onInverse', against: ['surfaceInverse'] },
-  // One each, against the fill it actually sits on — see the note on `onDanger` in @we/tokens.
-  { fg: 'onDanger', against: ['danger'] },
-  { fg: 'onSuccess', against: ['success'] },
-  { fg: 'onWarning', against: ['warning'] },
 ];
 
 /**
@@ -1018,77 +1165,23 @@ export function pickReadableForeground(candidates: string[], fills: Rgba[]): str
 }
 
 /**
- * The surface stack a polarity needs.
+ * The surfaces whose meaning depends on polarity, and so the pins a change of polarity drops.
  *
- * Flipping the multiplier inverts the whole scale, and the four surface roles do not survive that
- * intact: `page` is neutral-50 and `surface` is neutral-0, so in dark the card lands *below* the
- * page it sits on, and the sunken well lands above both. Every dark interface does the reverse —
- * depth is carried by light, because there is no darker left to go.
- *
- * So going dark pins the stack, matching what the `dark` preset does. Going light clears the pins
- * instead of writing its own: the parametric defaults are already right in that direction, and a
- * theme with no pins is one the hue and lightness sliders still fully control.
- *
- * It lives here rather than in the editor because two different things change a theme's polarity —
- * the Light/Dark buttons and the base-preset picker — and only one of them was in the editor. A
- * theme that went through the second path kept the stack from the polarity it had left, which is
- * how three clicks produced near-black cards under a light theme's near-black text: 1.12:1.
- *
- * Clobbering a hand-tuned stack is the intended behaviour rather than a regrettable side effect —
- * a stack tuned for one polarity is not merely stale after a flip, it is inverted, and silently
- * keeping it is what produces a "dark" theme with white cards.
+ * There was a stack of dark pins here (`DARK_SURFACES`) that a flip to dark wrote: page, surface,
+ * wells and chrome at fixed lightnesses of 7–14%. It predated the stack being stated as offsets
+ * from the chrome (`role.ts`), which is right in both polarities — the built-in dark preset pins
+ * none of them and is drawn from it. So a fork of `dark` turned light and back again was pinned to
+ * that older, much darker stack, and looked black beside the theme it was forked from. A flip now
+ * leaves the stack to the same formula every preset uses, in either direction.
  */
-const neutralAt = (lightness: number) => {
-  const taper = (2 * Math.min(lightness / 100, 1 - lightness / 100)).toFixed(4);
-  return (
-    `oklch(${lightness}% ` +
-    `calc(min(var(--we-color-neutral-saturation) * ${CHROMA_PER_SATURATION}, ${CHROMA_CEILING}) * ${taper}) ` +
-    `var(--we-color-neutral-hue))`
-  );
-};
-
-export const DARK_SURFACES: Partial<Record<ThemeRole, string>> = {
-  page: neutralAt(10),
-  /*
-    Two and a half points, then one and a half — the steps `role.ts` states, at the page pinned
-    above.
-
-    They were 4 and 9, set when the parametric steps were 0.045 and 0.06 and disagreeing with even
-    those. A theme flipped in the editor would have taken the old distances while every unflipped
-    theme took the new ones, so "make the cards a little closer" would have applied to some themes
-    and not others — with nothing on screen to say which kind you were looking at.
-
-    `surfaceSunken` is left where it is: its 1.5-point disagreement with the parametric `-0.035`
-    predates this and moving a well is not part of moving a card. It is the same fault, left for a
-    change of its own rather than fixed halfway here.
-  */
-  surface: neutralAt(12.5),
-  surfaceSunken: neutralAt(8),
-  surfaceRaised: neutralAt(14),
-  /*
-    Three points below the page, which is the same gap the parametric default takes above it.
-
-    `chrome` is the anchor `page` derives from, so a theme that pins one and not the other has no
-    relationship left between them — the pin would answer for the page while the chrome went off and
-    computed itself from the inverted scale. Pinned together, at the distance `role.ts` states, the
-    two mechanisms say the same thing instead of two things.
-
-    That agreement is the point. An earlier version of this role was pinned here and *only* here,
-    with a parametric default pointing the other way, on the assumption that a polarity change was
-    the only path into a dark theme. It is not — a built-in dark preset ships its own parameters and
-    never goes through `surfacesForPolarity` — so every dark theme took the default and drew the
-    app's furniture lighter than the content it frames.
-  */
-  chrome: neutralAt(7),
-};
+const POLARITY_SURFACES: ThemeRole[] = ['chrome', 'page', 'surface', 'surfaceRaised', 'surfaceSunken'];
 
 export function surfacesForPolarity(
-  polarity: 'light' | 'dark',
+  _polarity: 'light' | 'dark',
   current: Partial<Record<ThemeRole, string>> | undefined,
 ): Partial<Record<ThemeRole, string>> | undefined {
   const next = { ...(current ?? {}) };
-  if (polarity === 'dark') Object.assign(next, DARK_SURFACES);
-  else for (const role of Object.keys(DARK_SURFACES) as ThemeRole[]) delete next[role];
+  for (const role of POLARITY_SURFACES) delete next[role];
   return Object.keys(next).length ? next : undefined;
 }
 

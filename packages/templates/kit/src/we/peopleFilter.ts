@@ -101,7 +101,7 @@ export function peopleFilter(opts: PeopleFilterOptions): SchemaNode {
             props: {
               size: 'sm',
               avatars: {
-                $: `[{ image: ${profile(did)}.avatar, hash: ${did}, tone: ${did} in ${people} ? 'primary' : '' }]`,
+                $: `[{ image: ${profile(did)}.avatar, hash: ${did}, tone: ${did} in ${people} ? 'accent' : '' }]`,
               },
             },
           },
@@ -324,8 +324,8 @@ function showChoice(show: string): SchemaNode {
           variant: {
             $:
               value === 'hide'
-                ? `local.${show} == 'hide' ? 'secondary' : 'ghost'`
-                : `local.${show} != 'hide' ? 'secondary' : 'ghost'`,
+                ? `local.${show} == 'hide' ? 'soft' : 'ghost'`
+                : `local.${show} != 'hide' ? 'soft' : 'ghost'`,
           },
           onClick: { $setLocal: show, value },
         },

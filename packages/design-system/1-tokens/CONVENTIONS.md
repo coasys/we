@@ -104,7 +104,7 @@ The `scripts/generate-css.ts` script runs as a post-build hook (via tsup). It:
 **Naming rule:** CSS custom properties follow `--we-{category}-{key}`, e.g.:
 
 - `--we-space-300`
-- `--we-color-primary-500`
+- `--we-color-accent-500`
 - `--we-font-size-400`
 - `--we-radius-400`
 

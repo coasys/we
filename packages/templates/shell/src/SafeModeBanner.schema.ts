@@ -84,7 +84,7 @@ export const safeModeBanner: SchemaNode = {
         {
           type: 'we-button',
           props: {
-            variant: 'secondary',
+            variant: 'soft',
             size: 'sm',
             flexShrink: '0',
             onClick: {

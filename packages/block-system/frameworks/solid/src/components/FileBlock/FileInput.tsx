@@ -153,7 +153,7 @@ export function FileInput(props: FileInputProps) {
                 <we-button variant="ghost" onClick={closeModal}>
                   Cancel
                 </we-button>
-                <we-button variant="primary" onClick={() => saveFile().catch(console.error)}>
+                <we-button variant="solid" onClick={() => saveFile().catch(console.error)}>
                   Save
                 </we-button>
               </Row>

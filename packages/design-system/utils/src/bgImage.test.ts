@@ -77,14 +77,14 @@ describe('styles is a genuine override', () => {
   it('wins against a DS prop that sets the same property', () => {
     // Spread before the DS props, `styles` lost to anything assigned later — so `bg` silently beat
     // a background set here, despite the spread being commented as allowing custom overrides.
-    const style = buildLayoutStyles({ bg: 'primary-500', styles: { background: 'rebeccapurple' } }, 'column');
+    const style = buildLayoutStyles({ bg: 'accent-500', styles: { background: 'rebeccapurple' } }, 'column');
     expect(style['background']).toBe('rebeccapurple');
   });
 
   it('leaves DS props alone when it does not collide', () => {
-    const style = buildLayoutStyles({ bg: 'primary-500', styles: { cursor: 'pointer' } }, 'column');
+    const style = buildLayoutStyles({ bg: 'accent-500', styles: { cursor: 'pointer' } }, 'column');
     expect(style['cursor']).toBe('pointer');
-    expect(style['background-color']).toContain('primary');
+    expect(style['background-color']).toContain('accent');
   });
 });
 
@@ -94,23 +94,23 @@ describe('bg emits longhands, never the shorthand', () => {
     // silently reset `background-position` — which the base rule sets on every component — from
     // `50% 50%` to `0% 0%`, and with `transition: all` that difference *animated*: two pointless
     // transitions on every hover, repainting the background area and flickering.
-    const style = buildLayoutStyles({ bg: 'primary-500' }, 'column');
-    expect(style['background-color']).toContain('primary-500');
+    const style = buildLayoutStyles({ bg: 'accent-500' }, 'column');
+    expect(style['background-color']).toContain('accent-500');
     expect(style['background']).toBeUndefined();
   });
 
   it('sets background-image for a gradient', () => {
-    const style = buildLayoutStyles({ bg: 'gradient-primary' }, 'column');
-    expect(style['background-image']).toContain('--we-gradient-primary');
+    const style = buildLayoutStyles({ bg: 'gradient-accent' }, 'column');
+    expect(style['background-image']).toContain('--we-gradient-accent');
     expect(style['background']).toBeUndefined();
   });
 
   it('does not disturb a background image set alongside it', () => {
     // The correctness half of the same bug: a component with a bgImage *and* a hover bg had its
     // image cleared on hover, because the shorthand reset `background-image` too.
-    const style = buildLayoutStyles({ bg: 'primary-500', bgImage: 'https://example.test/x.png' }, 'column');
+    const style = buildLayoutStyles({ bg: 'accent-500', bgImage: 'https://example.test/x.png' }, 'column');
     expect(style['background-image']).toContain('example.test');
     expect(style['background-position']).toBeDefined();
-    expect(style['background-color']).toContain('primary-500');
+    expect(style['background-color']).toContain('accent-500');
   });
 });

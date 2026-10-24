@@ -81,7 +81,7 @@ const ROWS: Row[] = [
       el.setAttribute('variant', 'ghost');
       el.setAttribute('size', 'sm');
       el.textContent = label;
-      (el as unknown as { hoverProps: Record<string, string> }).hoverProps = { bg: 'primary-100' };
+      (el as unknown as { hoverProps: Record<string, string> }).hoverProps = { bg: 'accent-100' };
       return el;
     },
     painted: (host) => host.shadowRoot?.querySelector('[part="base"]') ?? null,

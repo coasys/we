@@ -130,7 +130,7 @@ function FlowBadges(props: { node: GraphNode }) {
       <Row gap="100" wrap pb="100">
         <For each={flows()}>
           {(inFlow) => (
-            <we-badge size="xs" variant={inFlow.waiting || inFlow.stalled ? 'warning' : 'neutral'}>
+            <we-badge size="xs" tone={inFlow.waiting || inFlow.stalled ? 'warning' : undefined}>
               <Row gap="100" ay="center">
                 <we-icon name="flow-arrow" size="xs" />
                 {inFlow.stateLabel ? `${inFlow.label} · ${inFlow.stateLabel}` : inFlow.label}

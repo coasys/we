@@ -49,6 +49,7 @@ import { rules } from './fragments/rules.js';
 import { schemaOperators } from './fragments/schema-operators.js';
 import { storePatterns } from './fragments/store-patterns.js';
 import { generateStoresText, storeEntries, undescribedMembers } from './fragments/stores.js';
+import { theming } from './fragments/theming.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // From src/generate.ts: up to ai-context/, up to packages/, up to repo root
@@ -369,9 +370,13 @@ async function main() {
   // Surfaces sits second because it answers the question that comes after "what is this codebase"
   // and before any of the lookup below: which of nineteen slots does the thing I am about to write
   // belong in. Read later it is useless — by then the file has already been created in the wrong one.
-  const ideReference = [architecture.trim(), contributionSurfaces.trim(), reference, devPatterns.trim()].join(
-    '\n\n---\n\n',
-  );
+  const ideReference = [
+    architecture.trim(),
+    contributionSurfaces.trim(),
+    reference,
+    theming.trim(),
+    devPatterns.trim(),
+  ].join('\n\n---\n\n');
 
   // 1. Write instruction file for GitHub Copilot
   const instructionContent = wrapWithFraming(ideReference);

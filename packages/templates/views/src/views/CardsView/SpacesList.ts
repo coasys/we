@@ -187,7 +187,7 @@ export const spacesList: SchemaNode = cardList({
                   props: {
                     alignSelf: 'start',
                     text: 'Enter Space',
-                    variant: 'primary',
+                    variant: 'solid',
                     size: 'sm',
                     onClick: { $action: 'spaceStore.navigateToSpace', args: [{ $: 'space.url' }] },
                   },
@@ -197,7 +197,7 @@ export const spacesList: SchemaNode = cardList({
                   $localState: { joining: { type: 'boolean', initial: false } },
                   props: {
                     text: 'Join Space',
-                    variant: 'primary',
+                    variant: 'solid',
                     size: 'sm',
                     alignSelf: 'start',
                     loading: { $: 'local.joining' },
