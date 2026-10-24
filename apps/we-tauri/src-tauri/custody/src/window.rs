@@ -1,4 +1,4 @@
-//! Which window may call which command (AR-03 4.4.3, AR-10 4.3.3).
+//! Which window may call which command.
 //!
 //! Two layers say the same thing, so a mistake in one fails closed: the capabilities in
 //! `capabilities/*.json` grant commands by window label, and every handler checks its caller's
@@ -39,7 +39,7 @@ pub fn require(command: &str, label: &str) -> Result<(), WrongWindow> {
     }
 }
 
-/// Whether the identity window may navigate to `url`: its own bundle only (AR-03 4.4.2).
+/// Whether the identity window may navigate to `url`: its own bundle only.
 pub fn identity_may_navigate(url: &str) -> bool {
     let Some((scheme, rest)) = url.split_once("://") else {
         return false;

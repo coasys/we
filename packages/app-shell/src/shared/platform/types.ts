@@ -231,7 +231,7 @@ export interface PlatformAdapter {
   screenSources?: ScreenSourceHost;
 
   /**
-   * The person's master key, kept by the host's custody service behind its own window (AR-03 4.4).
+   * The person's master key, kept by the host's custody service behind its own window.
    *
    * Present only on the desktop shell that has one (Tauri). The app never receives a word, a
    * passphrase or a key through it: it asks the host to open a step, the host's identity window
@@ -241,13 +241,13 @@ export interface PlatformAdapter {
   identity?: IdentityHost;
 }
 
-/** A change to the identity the host's identity window can run (identity slice 1). */
+/** A change to the identity the host's identity window can run. */
 export type IdentityStep = { kind: 'create' } | { kind: 'add-device' } | { kind: 'revoke'; keyId: string };
 
 /** How a step ended. */
 export type IdentityStepOutcome = 'done' | 'cancelled' | 'failed';
 
-/** What the custody service may tell the main window: public facts, never a secret (AR-03 4.4.3). */
+/** What the custody service may tell the main window: public facts, never a secret. */
 export interface CustodyPublic {
   /** The identity this computer's custody holds a master key for, or `null`. */
   did: string | null;

@@ -1,12 +1,11 @@
 import type { OperatorToken, SchemaNode, SchemaProp } from '@we/schema-shared';
 
 /**
- * The first run on a computer that keeps master keys: "Welcome to Coasys" (coasys-design
- * `account-create/app-first-run`; AR-10 4.12.1, AR-03 4.8.1).
+ * The first run on a computer that keeps master keys: "Welcome to Coasys".
  *
  * Whole window, over the rail and the space, while `identityStore.needsFirstRun`: the desktop
  * shell keeps master keys, this computer's key speaks for nobody, and "Start now" was not chosen
- * here. Identity slice 1 offers the two ways in that work on one computer:
+ * here. It offers the two ways in that work on one computer:
  *
  * - **Make my identity here** opens the identity window, which shows the 12 words, asks for two of
  *   them back and keeps master #0 on this computer. The question goes away by itself once the
@@ -14,9 +13,9 @@ import type { OperatorToken, SchemaNode, SchemaProp } from '@we/schema-shared';
  * - **Start now** uses the app with no identity, remembered on this computer; Settings → Security
  *   offers "Make my identity here" again.
  *
- * The design's three other doors — log in with a Coasys account, link to an identity from another
- * app, the 12 words — wait for slices 2 and 4, and are drawn as "Coming soon" rather than left out,
- * so the screen keeps the design's order.
+ * The three other doors — log in with a Coasys account, link to an identity from another app,
+ * restore from the 12 words — need flows that later changes add, and are drawn as "Coming soon"
+ * rather than left out, so the screen keeps its order when they arrive.
  */
 
 /** One row of the doors card. */

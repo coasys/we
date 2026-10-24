@@ -1,11 +1,11 @@
 /**
- * The key log and the device list, in the words Settings draws (identity slice 1;
- * `key-log/event-log` and `devices/device-list` in coasys-design).
+ * The key log and the device list, in the words Settings draws.
  *
  * Kept apart from the stores so the wording is tested without mounting anything, and because a
  * schema cannot format: what a row says is decided here, once, and the template draws strings.
  *
- * Slice 1 has no private record, so a device has no name and no kind: the log lists keys. This
+ * There is no private record of the person's devices yet, so a device has no name and no kind: the
+ * log lists keys. This
  * computer's own key is named "This computer"; every other one by its id in the log (`d2`), which is
  * what the person sees in the log too.
  */
@@ -125,7 +125,7 @@ export function deviceRows(devices: DeviceKeyView[]): DeviceRow[] {
         keyId: device.keyId,
         label: device.thisDevice ? THIS_COMPUTER : `Device ${device.keyId}`,
         subtitle: `${device.keyId} · added at #${device.addedSeq}`,
-        // What kind of device a key is on comes with the private record, which slice 1 lacks.
+        // What kind of device a key is on will come with a private record of devices, not made yet.
         icon: device.thisDevice ? 'laptop' : 'key',
         thisDevice: device.thisDevice,
         revoked,

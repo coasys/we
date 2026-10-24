@@ -1,5 +1,5 @@
 /**
- * The Electron credential fix (AR-10 7.3, AR10-PR11): the admin credential never on the executor's
+ * The Electron credential fix: the admin credential never on the executor's
  * command line, and no IPC answer to anything but the main window's own top frame.
  */
 import { readFileSync } from 'fs';

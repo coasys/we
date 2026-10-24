@@ -1,5 +1,5 @@
 /**
- * The identity port over AD4M's `identity.*` calls (identity slice 1, AR-01 4.10, AR-02 4.15).
+ * The identity port over AD4M's `identity.*` calls.
  *
  * Reads only. The executor holds this computer's device key and a cache of the person's key log,
  * which it has checked event by event (`fold`) before answering; it never holds the master key, so

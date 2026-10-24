@@ -1,5 +1,5 @@
 /**
- * The identity port reads what the executor's `identity.*` calls answer (identity slice 1), and
+ * The identity port reads what the executor's `identity.*` calls answer, and
  * degrades on an executor that predates them.
  */
 import type { DeviceView, IdentityLog, IdentityStatus, SignedHead } from '@coasys/ad4m';

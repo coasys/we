@@ -1,6 +1,6 @@
-//! The custody service's boundary with the executor (identity plan 3.6: "a test that custody imports
-//! nothing from `rust_executor`"): the executor runs language code fetched from the network, so the
-//! master key must never be in a crate that links it (AR-03 4.4.1). Custody reaches it over RPC.
+//! The custody service's boundary with the executor — custody imports nothing from
+//! `rust_executor`: the executor runs language code fetched from the network, so the
+//! master key must never be in a crate that links it. Custody reaches it over RPC.
 
 use std::path::{Path, PathBuf};
 

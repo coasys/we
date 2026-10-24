@@ -29,10 +29,10 @@ pnpm --filter @we/template-cartridges bundle
 ## What is drawn and what waits
 
 The identity pages in Settings (security, devices, bots, plan) are WE's own, drawn as "Coming soon"
-until a backend reports it can do them. Identity slice 1 lights up the key log (Security → Key log)
-and the device list, read from the executor's `identity.*` calls, and — on the desktop app, whose
-shell keeps the master key — Add a device and Revoke, which open the shell's identity window.
+until a backend reports it can do them. Lit up so far: the key log (Security → Key log) and the
+device list, read from the executor's `identity.*` calls, and — on the desktop app, whose shell
+keeps the master key — Add a device and Revoke, which open the shell's identity window.
 
 The first run is `firstRun.ts`, over the rail while `identityStore.needsFirstRun`. Its other doors
-(log in with a Coasys account, link to an identity, the 12 words) are drawn "Coming soon" until
-slices 2 and 4.
+(log in with a Coasys account, link to an identity, the 12 words) are drawn "Coming soon" until the
+flows behind them are added.

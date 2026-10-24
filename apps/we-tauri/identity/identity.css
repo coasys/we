@@ -1,6 +1,6 @@
 /*
-  The identity window (AR-03 4.4.2), in the Coasys identity designs' palette: a deep indigo page and
-  one mint accent for the primary action (coasys-design identity/MOCKS.md, "Design language").
+  The identity window, in the Coasys identity palette: a deep indigo page and one mint accent for
+  the primary action.
   Its own stylesheet, not the app's: this bundle loads nothing a template could influence.
 */
 :root {

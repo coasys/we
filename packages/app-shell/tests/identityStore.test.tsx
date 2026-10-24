@@ -1,5 +1,5 @@
 /**
- * identityStore and deviceStore (identity slice 1): what they read from the backend's identity port,
+ * identityStore and deviceStore: what they read from the backend's identity port,
  * what they ask of the host's custody service, and that they never hold anything but public state.
  */
 import type { CustodyPublic, IdentityHost, IdentityStep } from '@shared/platform/types';

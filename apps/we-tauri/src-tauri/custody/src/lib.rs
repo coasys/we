@@ -1,4 +1,4 @@
-//! `we-custody`: the desktop app's master-key custody (AR-03 4.4; identity plan PR 1.2).
+//! `we-custody`: the desktop app's master-key custody.
 //!
 //! - [`vault::DesktopVault`] keeps master keys in this computer's store ([`store`]): the macOS
 //!   keychain behind Touch ID, or on Linux sealed under a passphrase ([`seal`]) in the Secret
@@ -7,7 +7,8 @@
 //!   window, and reaches the executor only over its RPC with the admin credential.
 //! - [`window`] says which window may call which command.
 //!
-//! No Windows (decision 22.4). Nothing here links the executor; `tests/boundary.rs` keeps it so.
+//! No Windows: the desktop app does not ship there. Nothing here links the executor;
+//! `tests/boundary.rs` keeps it so.
 
 pub mod seal;
 pub mod service;

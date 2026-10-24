@@ -7,7 +7,8 @@
  * and the person confirms there, which signs the `add`; Revoke opens `revoke`, which signs the
  * `revoke`. The device list is read again when either step ends.
  *
- * Chrome tier only (`devices` in `templateSurface.ts`, AR-11 4.9.6).
+ * Chrome tier only (`devices` in `templateSurface.ts`): a space template never sees a person's
+ * devices.
  */
 import { type DeviceRow, deviceRows } from '@shared/identityRows';
 import type { IdentityStepOutcome } from '@shared/platform/types';

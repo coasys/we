@@ -1,4 +1,4 @@
-//! The identity window's commands (AR-03 4.4.3) over the custody service in `we-custody`.
+//! The identity window's commands over the custody service in `we-custody`.
 //!
 //! The main window may call `identity_open` and `identity_public_state` and nothing else here; the
 //! identity window calls the `identity_flow_*` commands and nothing else at all. The capabilities
@@ -74,7 +74,7 @@ pub async fn identity_open(
     .resizable(false)
     .focused(true)
     .center()
-    // Its own bundle only; nothing a template or a post can point it at (AR-03 4.4.2).
+    // Its own bundle only; nothing a template or a post can point it at.
     .on_navigation(|url| rule::identity_may_navigate(url.as_str()))
     .build()
     .map_err(|e| format!("could not open the identity window: {e}"))?;

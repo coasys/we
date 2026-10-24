@@ -1,5 +1,4 @@
-//! The capability is required (identity plan PR 1.2's Tauri command tests, AR-10 8.1 "Command
-//! table"): the app's manifest lists every command, so none is callable without a capability; the
+//! The capability is required: the app's manifest lists every command, so none is callable without a capability; the
 //! identity window's capability grants the flow commands and nothing of the core API; the main
 //! window's grants none of them. Each handler's own label check is `window::require`, tested in
 //! the crate; this checks the files the Tauri build reads agree with it.

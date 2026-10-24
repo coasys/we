@@ -2994,7 +2994,7 @@ DatasetStore:
 
 DeviceStore:
 - State:
-  - devices: { keyId, label, subtitle, icon, thisDevice, revoked, status, canRevoke }[] — the device keys of the person's key log, valid first and this computer on top. `label` is 'This computer' or 'Device d2' (slice 1 has no names); `status` 'Valid' or 'Revoked at #2'; `canRevoke` is a valid key that is not this computer's
+  - devices: { keyId, label, subtitle, icon, thisDevice, revoked, status, canRevoke }[] — the device keys of the person's key log, valid first and this computer on top. `label` is 'This computer' or 'Device d2' (devices have no names yet); `status` 'Valid' or 'Revoked at #2'; `canRevoke` is a valid key that is not this computer's
   - devicesLoaded: boolean — the list has been read once
   - validCount: number — how many keys are valid
   - canManage: boolean — Add a device and Revoke can be offered: this computer keeps the master key of the identity

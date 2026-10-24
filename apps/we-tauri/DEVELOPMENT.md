@@ -49,7 +49,7 @@ and lines marked `HOST` from `src/lib.rs`. A bare `println!` reaches the termina
 
 ## The identity: custody and the identity window
 
-The person's master key never rests in the executor (AR-03 4.4). The shell keeps it in
+The person's master key never rests in the executor or in a web view. The shell keeps it in
 `src-tauri/custody` (crate `we-custody`): `DesktopVault` over the macOS keychain, or on Linux sealed
 under a passphrase (Argon2id, XChaCha20-Poly1305) in the Secret Service, or in
 `$XDG_DATA_HOME/coasys/custody/<scid>.bin` (mode 0600) where there is none. It runs the identity

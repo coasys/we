@@ -1,4 +1,4 @@
-//! The custody item, and sealing it under a passphrase (AR-03 4.4.4, Linux).
+//! The custody item, and sealing it under a passphrase (Linux).
 //!
 //! On Linux the Secret Service opens with the login session, so it alone is no per-use unlock: the
 //! item is sealed with XChaCha20-Poly1305 under `Argon2id(passphrase, salt, m = 64 MiB, t = 3,
@@ -23,7 +23,7 @@ const SEALED_MAGIC: &[u8; 16] = b"coasys-custody/1";
 const SALT_LEN: usize = 16;
 const NONCE_LEN: usize = 24;
 
-/// The passphrase's shortest length, in Unicode scalars after NFKC (AR-03 4.7.1).
+/// The passphrase's shortest length, in Unicode scalars after NFKC.
 pub const PASSPHRASE_MIN_CHARS: usize = 15;
 /// And its longest.
 pub const PASSPHRASE_MAX_CHARS: usize = 256;
@@ -89,8 +89,8 @@ pub fn normalise(passphrase: &str) -> Zeroizing<String> {
     Zeroizing::new(passphrase.nfkc().collect())
 }
 
-/// The rules for a new passphrase (AR-03 4.7.1): length only, no composition rules. The breached
-/// list that section also asks for is not in slice 1.
+/// The rules for a new passphrase: length only, no composition rules. A check against a list of
+/// breached passwords is not made yet.
 pub fn check_new(passphrase: &str, confirm: &str) -> Result<(), PassphraseProblem> {
     let normal = normalise(passphrase);
     let chars = normal.chars().count();
@@ -115,7 +115,8 @@ pub struct Kdf {
 }
 
 impl Kdf {
-    /// AR-03 4.4.4: m = 64 MiB, t = 3, p = 4.
+    /// m = 64 MiB, t = 3, p = 4: slow enough on a desktop to make guessing costly, quick enough
+    /// to wait for once per flow.
     pub const DESKTOP: Kdf = Kdf {
         m_kib: 64 * 1024,
         t: 3,

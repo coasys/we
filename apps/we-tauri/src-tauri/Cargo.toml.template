@@ -31,7 +31,7 @@ ad4m-client = { path = "{{AD4M_CLIENT_PATH}}" }
 tokio = { version = "1", features = ["full"] }
 warp = "0.3"
 ad4m-executor = { path = "{{AD4M_EXECUTOR_PATH}}" }
-# The master-key custody service and its identity flows (AR-03 4.4). Its own crate, so nothing of it
+# The master-key custody service and its identity flows. Its own crate, so nothing of it
 # links the executor; see custody/Cargo.toml and the `[patch]` below.
 we-custody = { path = "custody" }
 uuid = { version = "0.8", features = ["v4"] }

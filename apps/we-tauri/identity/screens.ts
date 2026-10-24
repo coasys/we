@@ -1,7 +1,7 @@
 /**
  * The identity window's screens, as the custody service sends them (`we_custody::Screen`), and the
- * words each one says — from coasys-design's `recovery-phrase/*`, `account-create/identity-ready`,
- * `account-create/keychain-fallback`, `device-link/*` and `revoke/*`.
+ * words each one says: the recovery phrase, the identity being ready, the passphrase fallback where
+ * there is no keychain, linking a device, and revoking one.
  *
  * Pure, so the wording is tested without a window (`screens.test.ts`). `main.ts` draws them.
  */

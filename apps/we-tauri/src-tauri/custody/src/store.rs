@@ -1,6 +1,6 @@
-//! Where a custody item rests (AR-03 4.4.4): the macOS keychain, the Linux Secret Service, or a
+//! Where a custody item rests: the macOS keychain, the Linux Secret Service, or a
 //! file in the data folder where Linux has no Secret Service. One item per identity, named
-//! `coasys.identity/<scid>`. No Windows (decision 22.4).
+//! `coasys.identity/<scid>`. No Windows: the desktop app does not ship there.
 //!
 //! A store keeps bytes; it does not know what they are. On Linux they are already sealed under the
 //! passphrase ([`crate::seal`]); on macOS the keychain item's access control is the unlock, so the
@@ -270,7 +270,7 @@ mod keychain_store {
     /// A data-protection keychain item, generic password, service `org.coasys.app`, account the item
     /// name, readable only after the user is present (Touch ID or the login password).
     ///
-    /// Needs a signed app with a keychain access group entitlement (spike SP-2, AR-03 4.4.4). An
+    /// Needs a signed app with a keychain access group entitlement. An
     /// unsigned build gets `errSecMissingEntitlement` and the caller falls back to the file store.
     pub struct KeychainStore;
 

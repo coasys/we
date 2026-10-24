@@ -1,9 +1,9 @@
 /**
- * The identity's own pages in Settings (identity slice 1): the key log, the device list, and the way
- * to make an identity on a computer that started without one.
+ * The identity's own pages in Settings: the key log, the device list, and the way to make an
+ * identity on a computer that started without one.
  *
- * Drawn from coasys-design's `key-log/event-log` and `devices/device-list`. Every word on a row comes
- * worded from the stores (`identityStore.keyLog`, `deviceStore.devices`), so these nodes only arrange.
+ * Every word on a row comes worded from the stores (`identityStore.keyLog`, `deviceStore.devices`),
+ * so these nodes only arrange.
  * Nothing here changes the identity: the buttons open the host's identity window, which asks for the
  * unlock and signs, and the lists are read again when it closes.
  */

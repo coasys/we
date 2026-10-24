@@ -11,9 +11,9 @@
  *   store learns only how a step ended, and then reads the public half again.
  *
  * Chrome tier only (`keys` in `templateSurface.ts`): a space template never sees who the person is
- * beyond their profile, or that a key log exists (AR-11 4.9.6).
+ * beyond their profile, or that a key log exists.
  *
- * The first run (identity slice 1, AR-10 4.12.1): on a computer whose shell keeps master keys, a
+ * The first run: on a computer whose shell keeps master keys, a
  * session whose device key speaks for nobody is asked to make an identity here — or to start
  * without one, which `startWithoutIdentity` remembers on this computer.
  */
@@ -34,7 +34,7 @@ import {
 
 import { useSessionStore } from './SessionStore';
 
-/** Where "Start now" is remembered: per computer, like the choice it records (AR-10 4.12.1). */
+/** Where "Start now" is remembered: per computer, like the choice it records. */
 export const START_NOW_KEY = 'coasys.identity.startNow';
 
 export interface IdentityStore {

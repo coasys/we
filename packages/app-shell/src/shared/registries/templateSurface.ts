@@ -125,7 +125,7 @@ export const CHROME_TIER: readonly CapabilityGroup[] = [
   */
   'clipboard',
   /*
-    Chrome only, and decided so (AR-11 4.9.6, decision 23.20): a space template learns nothing of
+    Chrome only, and decided so: a space template learns nothing of
     who a person is beyond their profile — not their `did:scid`, not their devices, not that a key log
     exists. The actions here only open the host's identity window, which asks for itself.
   */

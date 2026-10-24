@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "identity",
-  "description": "Capability for the identity window (AR-03 4.4.3): the identity flows, and nothing of the core API — it reaches no event, no other window and no file.",
+  "description": "Capability for the identity window: the identity flows, and nothing of the core API — it reaches no event, no other window and no file.",
   "windows": ["identity"],
   "permissions": [
     "allow-identity-flow-start",

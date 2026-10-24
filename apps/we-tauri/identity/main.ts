@@ -1,5 +1,5 @@
 /**
- * The identity window (AR-03 4.4.2): its own bundle, its own Tauri capability, and the only page
+ * The identity window: its own bundle, its own Tauri capability, and the only page
  * that may run an identity flow. It draws the custody service's screens and sends back what the
  * person typed; the custody service, in the shell's main process, holds every secret and does
  * every signing and network call.

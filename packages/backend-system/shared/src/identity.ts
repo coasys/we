@@ -18,7 +18,7 @@
  * What a screen needs to decide is whether to offer a control, so the contract starts there. The
  * calls behind each control are added with the backend that answers them — a method nothing implements
  * is a guess at a shape, and the shape is the backend's to settle. The key log and the device list
- * arrived with AD4M's `identity.*` calls (identity slice 1): `status`, `log` and `devices` are reads.
+ * arrived with AD4M's `identity.*` calls: `status`, `log` and `devices` are reads.
  *
  * Nothing here changes the identity. Every change — making it, adding a device, revoking one — is
  * signed by the master key, which no backend and no web view holds: the desktop shell's custody
@@ -164,7 +164,7 @@ export interface DeviceKeyView {
 }
 
 /**
- * A KEL event as the backend serves it (`did:scid:coasys:1`, AR-01), read into {@link KeyLogEvent}.
+ * A KEL event as the backend serves it (`did:scid:coasys:1`), read into {@link KeyLogEvent}.
  * Tolerant of fields it does not know, and of a malformed event, which becomes `op: 'unknown'`
  * rather than a thrown error: a key log screen that shows five events of six is still a key log.
  */

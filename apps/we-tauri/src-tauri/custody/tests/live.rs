@@ -1,4 +1,4 @@
-//! The custody service end to end (identity plan PR 1.2, slice 1's demo steps 1, 2 and 4): a real
+//! The custody service end to end (make an identity, add a second device, revoke it): a real
 //! identity-store, executor A as this computer's (with an admin credential), executor B as a second
 //! one named as operated by the identity, and the custody service driving them the way the identity
 //! window does — screen by screen.

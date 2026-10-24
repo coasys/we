@@ -1,4 +1,7 @@
-/** The identity window's wording, and that its bundle and policy stay as narrow as AR-03 4.4.2 asks. */
+/**
+ * The identity window's wording, and that its bundle and policy stay narrow: the window shows the
+ * recovery words, so nothing a template or a post can influence may load or run in it.
+ */
 import { describe, expect, it } from 'vitest';
 
 // The policy as `vite.identity.config.ts` writes it into the built page.

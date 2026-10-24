@@ -1,7 +1,7 @@
 //! The app manifest: every command this app has, so that each one is granted to a window by a
 //! capability (`capabilities/*.json`) rather than to every window. Without a manifest, Tauri lets
 //! every window call every command — and the identity window's commands, which run the master-key
-//! flows, must answer that window only (AR-03 4.4.3, AR-10 4.3.3).
+//! flows, must answer that window only.
 //!
 //! `custody/tests/commands.rs` reads this list and the capabilities, and checks them against the
 //! custody crate's own table of which window may call what.

@@ -174,7 +174,7 @@ pub fn run() {
 
     // The identity store the executor's agent language uses, from the environment the executor's
     // own CLI reads (`AD4M_IDENTITY_STORE_URL`, `AD4M_IDENTITY_STORE_KEYS`): the staging store for
-    // slice 1's demo, a local one in development. Unset, the agent language keeps its own setting,
+    // a demo build, a local one in development. Unset, the agent language keeps its own setting,
     // and the custody service cannot make an offer link, which names the store.
     let identity_store_url = std::env::var("AD4M_IDENTITY_STORE_URL")
         .ok()

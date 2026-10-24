@@ -1,4 +1,4 @@
-/** The key log and device list in Settings' words (identity slice 1). */
+/** The key log and device list in Settings' words. */
 import { describe, expect, it } from 'vitest';
 
 import { deviceRows, keyLogRows, shortDid, shortHash } from '../src/shared/identityRows';

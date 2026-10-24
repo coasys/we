@@ -1,8 +1,8 @@
-# The desktop custody service (AR-03 4.4): the person's master key, kept by the shell's main
+# The desktop custody service: the person's master key, kept by the shell's main
 # process behind the OS unlock, and the identity flows that use it.
 #
 # Its own crate, and on purpose not a module of the `we` app: the app links `ad4m-executor` into its
-# process, and this crate must not (AR-03 4.4.1 — the master key never rests where language code
+# process, and this crate must not (the master key never rests where language code
 # runs). It reaches the executor only over its RPC, with the admin credential. `tests/boundary.rs`
 # fails if that changes.
 [package]

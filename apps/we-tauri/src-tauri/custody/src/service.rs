@@ -1,4 +1,4 @@
-//! The custody service (AR-03 4.4, 4.4.5): runs one identity step at a time for the identity window.
+//! The custody service: runs one identity step at a time for the identity window.
 //!
 //! The window sends a step and then inputs, and gets back [`Screen`]s; the service holds every
 //! secret of the flow — the words until two of them come back, the seed, the unlocked master key,
@@ -29,7 +29,8 @@ use crate::vault::DesktopVault;
 static CLOCK: SystemClock = SystemClock;
 static RANDOM: OsRandom = OsRandom;
 
-/// A change the main window may ask for (AR-03's `IdentityStep`, the slice 1 subset).
+/// A change the main window may ask for. Making an identity, adding a device and revoking one;
+/// a later change adds more.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum IdentityStep {
@@ -149,7 +150,7 @@ impl std::fmt::Debug for StepInput {
     }
 }
 
-/// What the main window may know (AR-03 4.4.3's `CustodyPublic`, slice 1 subset).
+/// What the main window may know: public facts about the identity, never a secret.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CustodyPublic {
@@ -326,7 +327,7 @@ async fn public_state(vault: &DesktopVault, address: &ExecutorAddress) -> Custod
         .and_then(ad4m_identity_core::scid_of)
         .and_then(|scid| vault.holds(scid).ok())
         .filter(|held| *held)
-        // The index sits inside the sealed item; slice 1 holds only master #0 (no rotation yet).
+        // The index sits inside the sealed item; only master #0 is held for now (no rotation yet).
         .map(|_| HoldsMaster { index: 0 });
     CustodyPublic {
         did,
@@ -376,7 +377,7 @@ fn passphrase_error(problem: PassphraseProblem) -> Option<String> {
     Some(problem.message())
 }
 
-// ─── create (AR-03 4.8.1) ───────────────────────────────────────────────────────
+// ─── create ─────────────────────────────────────────────────────────────────────
 
 async fn run_create(
     vault: &DesktopVault,
@@ -499,7 +500,7 @@ async fn run_create(
     answer(reply, Ok(screen));
 }
 
-// ─── link (AR-02 L2, the holder's side) ─────────────────────────────────────────
+// ─── link (the holder's side) ───────────────────────────────────────────────────
 
 async fn run_link(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, reply: &mut Reply) {
     let Some(store_url) = address.store_url.clone() else {
@@ -531,7 +532,8 @@ async fn run_link(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, 
         Err(e) => return answer(reply, Ok(failed(&ClientError::Rpc(e)))),
     };
 
-    // The one unlock of the flow (AR-03 4.2 rule 2): on Linux, after the passphrase.
+    // The one unlock of the flow — a flow asks the person to unlock once, not per signature: on
+    // Linux, after the passphrase.
     let mut passphrase: Option<Secret<String>> = None;
     if vault.needs_passphrase() {
         answer(reply, Ok(Screen::EnterPassphrase { error: None }));
@@ -657,7 +659,7 @@ pub fn qr_svg(link: &str) -> String {
     }
 }
 
-// ─── revoke (AR-02 4.12) ────────────────────────────────────────────────────────
+// ─── revoke ─────────────────────────────────────────────────────────────────────
 
 async fn run_revoke(
     vault: &DesktopVault,

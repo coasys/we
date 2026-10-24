@@ -1,5 +1,5 @@
 /**
- * The main window's side of the custody service (AR-03 4.4.5, AR-10 4.3.4's `AppHost.identity`).
+ * The main window's side of the custody service: the Tauri host's `identity`.
  *
  * The main window may do two things and the capability allows no more: open the identity window on
  * a step (`identity_open`), and read public custody state (`identity_public_state`). How the step

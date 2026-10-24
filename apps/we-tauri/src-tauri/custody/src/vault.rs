@@ -1,4 +1,4 @@
-//! `DesktopVault` (AR-03 4.4.4): the identity client's [`Vault`] over this computer's store.
+//! `DesktopVault`: the identity client's [`Vault`] over this computer's store.
 //!
 //! The client's flows call `Vault::unlock(scid, why, now)`, which has no passphrase in it: on macOS
 //! there is none (the keychain asks), and on Linux the identity window collects one for the flow.
