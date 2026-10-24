@@ -1,7 +1,8 @@
 import type { DesignSystemProps } from '@we/design-types';
 import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
+import { typeRoleDeclarations } from '@we/tokens';
 import type { PropertyValues } from 'lit';
-import { css, html, nothing } from 'lit';
+import { css, html, nothing, unsafeCSS } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
@@ -39,8 +40,7 @@ const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
 const styles = css`
   [part='label'] {
     font-size: var(--we-font-size-200);
-    font-weight: 500;
-    color: var(--we-role-text);
+    ${unsafeCSS(typeRoleDeclarations('label', { weight: '500', color: 'var(--we-role-text)' }))}
     cursor: default;
   }
 

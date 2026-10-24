@@ -118,6 +118,39 @@ const styles = css`
 
 // Todo: allow users to pass in their own icon set
 
+/*
+  A theme's icon weight — `iconWeight`, written as --we-theme-icon-weight.
+
+  The weight picks which drawing is fetched, so it cannot be a CSS value the glyph reads: the element
+  has to know it. An icon with no weight of its own takes the nearest theme's, which is what lets a
+  space's theme reach the icons in the space and not the app's.
+
+  Read from the inline style of the elements a theme is applied to (applyThemeVars writes its
+  variables there) by walking up through shadow roots, rather than from computed style: a style pass
+  per icon is the cost a large tree cannot pay, and an inline read is a property lookup. A weight set
+  in a stylesheet rather than through the setting is not seen. Read again whenever a theme is
+  applied anywhere (the we-theme-change event @we/themes raises).
+*/
+const THEME_WEIGHT_VAR = '--we-theme-icon-weight';
+const WEIGHTS = new Set<string>(['thin', 'light', 'regular', 'bold', 'fill', 'duotone']);
+const followingTheme = new Set<Icon>();
+
+function themeWeightAt(el: Element): IconWeight {
+  let node: Node | null = el;
+  while (node) {
+    const raw = node instanceof HTMLElement ? node.style.getPropertyValue(THEME_WEIGHT_VAR).trim() : '';
+    if (raw) return (WEIGHTS.has(raw) ? raw : 'regular') as IconWeight;
+    node = node.parentNode ?? (node instanceof ShadowRoot ? node.host : null);
+  }
+  return 'regular';
+}
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('we-theme-change', () => {
+    for (const icon of followingTheme) icon.readThemeWeight();
+  });
+}
+
 @customElement('we-icon')
 export default class Icon extends LayoutElement {
   static styles = [sharedStyles, styles];
@@ -125,18 +158,43 @@ export default class Icon extends LayoutElement {
   @property({ type: String, reflect: true }) name = '';
   @property({ type: String, reflect: true }) color = '';
   @property({ type: String, reflect: true }) size: IconSize = '';
-  @property({ type: String, reflect: true }) weight: IconWeight = 'regular';
+  /** The drawing's weight. Unset, it is the theme's icon weight, and `regular` where none is set. */
+  @property({ type: String, reflect: true }) weight: IconWeight | '' = '';
   @property({ type: String, reflect: true }) gradient = '';
 
   @state() private svg: string | undefined = undefined;
   @state() private error: boolean = false;
+  /** The theme's weight where this icon sits, once read; null until then. */
+  @state() private themeWeight: IconWeight | null = null;
+
+  private get drawnWeight(): IconWeight {
+    return this.weight || this.themeWeight || 'regular';
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    followingTheme.add(this);
+    this.readThemeWeight();
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    followingTheme.delete(this);
+  }
+
+  /** The nearest theme's weight, for an icon with none of its own — see themeWeightAt. */
+  readThemeWeight(): void {
+    if (this.weight || !this.isConnected) return;
+    const weight = themeWeightAt(this);
+    if (weight !== this.themeWeight) this.themeWeight = weight;
+  }
 
   private loadIcon() {
     if (!this.name) return;
     this.error = false;
     this.svg = undefined;
 
-    const cacheKey = `${this.name}:${this.weight}`;
+    const cacheKey = `${this.name}:${this.drawnWeight}`;
 
     if (!svgCache.has(cacheKey)) {
       const result = this.fetchIcon();
@@ -171,7 +229,7 @@ export default class Icon extends LayoutElement {
 
   private fetchIcon(): string | Promise<string> {
     if (iconResolver) {
-      const result = iconResolver(this.name, this.weight);
+      const result = iconResolver(this.name, this.drawnWeight);
       if (typeof result === 'string') {
         // Synchronous resolver return (bundled icon or URL)
         return result.trim().startsWith('<') ? sanitizeSvg(result) : this.fetchUrl(result);
@@ -179,7 +237,7 @@ export default class Icon extends LayoutElement {
       // Async resolver return
       return result.then((r) => (r.trim().startsWith('<') ? sanitizeSvg(r) : this.fetchUrl(r)));
     }
-    return this.fetchUrl(buildCdnUrl(this.name, this.weight));
+    return this.fetchUrl(buildCdnUrl(this.name, this.drawnWeight));
   }
 
   private async fetchUrl(url: string): Promise<string> {
@@ -189,7 +247,9 @@ export default class Icon extends LayoutElement {
   }
 
   willUpdate(props: Map<string, unknown>) {
-    if (props.has('name') || props.has('weight')) {
+    // Unset again after an explicit weight: take the theme's before drawing anything.
+    if (!this.weight && this.themeWeight === null) this.readThemeWeight();
+    if (props.has('name') || props.has('weight') || props.has('themeWeight')) {
       if (this.name && isPhosphorName(this.name)) {
         this.loadIcon();
       } else {

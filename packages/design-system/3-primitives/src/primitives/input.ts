@@ -1,5 +1,6 @@
 import type { DesignSystemProps } from '@we/design-types';
 import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
+import { FOCUS_RING_BEYOND_BORDER } from '@we/tokens';
 import { css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
@@ -76,7 +77,7 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   focusProps: {
     bg: 'surface-sunken-hover',
     border: '1px solid var(--we-ring-color)',
-    ring: '0 0 0 1px var(--we-ring-color)',
+    ring: FOCUS_RING_BEYOND_BORDER,
   },
   /*
     No `transition` of its own, deliberately — do not put one back.

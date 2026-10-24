@@ -2038,7 +2038,7 @@ function ResizeHandles(props: ResizeHandlesProps) {
           }}
           onPointerDown={(e) => e.stopPropagation()}
         >
-          <we-button variant={props.snapEnabled ? 'secondary' : 'ghost'} size="xs" onClick={() => props.onSnapToggle()}>
+          <we-button variant={props.snapEnabled ? 'soft' : 'ghost'} size="xs" onClick={() => props.onSnapToggle()}>
             <we-icon name={props.snapEnabled ? 'magnet' : 'cursor-click'} />
             <we-text>{props.snapEnabled ? 'Snap' : 'Free'}</we-text>
           </we-button>
@@ -2121,7 +2121,7 @@ function DeleteButton(props: { rect: HighlightRect; onDelete: () => void }) {
       }}
       onPointerDown={(e) => e.stopPropagation()}
     >
-      <we-button variant="danger" size="xs" onClick={() => props.onDelete()}>
+      <we-button variant="solid" tone="danger" size="xs" onClick={() => props.onDelete()}>
         <we-icon name="trash" />
       </we-button>
     </div>

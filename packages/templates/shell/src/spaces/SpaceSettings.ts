@@ -99,7 +99,7 @@ const pageHeader: SchemaNode = {
     {
       type: 'we-button',
       props: {
-        variant: 'secondary',
+        variant: 'soft',
         size: 'sm',
         onClick: { $action: 'spaceStore.navigateToSpace', args: [{ $: 'space.uuid' }] },
       },
@@ -215,7 +215,7 @@ const locationRow: SchemaNode = attributeRow({
     children: [
       {
         type: 'we-button',
-        props: { variant: 'secondary', size: 'sm', onClick: { $toggleLocal: 'editLocation' } },
+        props: { variant: 'soft', size: 'sm', onClick: { $toggleLocal: 'editLocation' } },
         children: [{ $: "local.editLocation ? 'Hide' : 'Edit'" }],
       },
       {
@@ -228,7 +228,8 @@ const locationRow: SchemaNode = attributeRow({
             type: 'we-button',
             props: {
               size: 'sm',
-              variant: 'danger',
+              variant: 'solid',
+              tone: 'danger',
               onClick: [
                 { $setLocal: 'location', value: null },
                 { $action: 'spaceStore.updateSpaceMeta', args: [{ location: null }, { $: 'space.uuid' }] },
@@ -500,7 +501,7 @@ const shareSection: SchemaNode = {
             {
               type: 'we-button',
               props: {
-                variant: 'secondary',
+                variant: 'soft',
                 size: 'sm',
                 onClick: { $action: 'spaceStore.copyShareLink', args: [{ $: 'space.uuid' }] },
               },
@@ -550,7 +551,7 @@ const shareSection: SchemaNode = {
                     {
                       type: 'we-button',
                       props: {
-                        variant: 'secondary',
+                        variant: 'soft',
                         size: 'sm',
                         onClick: { $action: 'spaceStore.copyGuestLink', args: [{ $: 'space.uuid' }] },
                       },
@@ -1338,14 +1339,12 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
     /*
       The wrapper exists for one reason: the open tab must outlive the row.
 
-      `spaceStore.spaceList` builds a fresh object per row on every recompute, and `$each` renders
-      through a reference-keyed `<For>` — so *any* write to the space rebuilds this whole subtree.
-      With the tab declared inside the loop, flicking a view or an extraction target destroyed the
-      `$localState` holding it and re-created it at `'about'`: the settings panel jumped back to the
-      first tab on every toggle.
-
-      Above the loop it survives, and it belongs there anyway — which tab is open is a fact about
-      the panel, not about the row the filter happens to return.
+      `$each` renders through a reference-keyed `<For>`, and `spaceStore.spaceList` once built a
+      fresh object per row whenever the space changed — so a write to the space rebuilt this whole
+      subtree. With the tab declared inside the loop, flicking a view or an extraction target
+      destroyed the `$localState` holding it and re-created it at `'about'`. The rows now change in
+      place and keep their identity, but the tab still belongs out here: which tab is open is a fact
+      about the panel, not about the row the filter happens to return.
     */
     type: 'Column',
     props: { width: '100%', ...fills },

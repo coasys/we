@@ -137,7 +137,7 @@ const leftRail: SchemaNode = {
           type: 'we-button',
           props: {
             variant: {
-              $: "(nav.segment ? nav.segment in routeStore.templateSegments : !count(routeStore.templateSegments)) ? 'secondary' : 'ghost'",
+              $: "(nav.segment ? nav.segment in routeStore.templateSegments : !count(routeStore.templateSegments)) ? 'soft' : 'ghost'",
             },
             width: '100%',
             ax: 'start',
@@ -154,7 +154,7 @@ const leftRail: SchemaNode = {
     {
       type: 'we-button',
       props: {
-        variant: 'primary',
+        variant: 'solid',
         width: '100%',
         r: 'pill',
         mt: '300',
@@ -259,7 +259,7 @@ const timeline: SchemaNode = {
               type: 'we-button',
               props: {
                 size: 'sm',
-                variant: { $: "local.sortField == tab.value ? 'secondary' : 'ghost'" },
+                variant: { $: "local.sortField == tab.value ? 'soft' : 'ghost'" },
                 onClick: { $setLocal: 'sortField', value: { $: 'tab.value' } },
               },
               children: [{ $: 'tab.label' }],
@@ -322,7 +322,7 @@ const postDetail: RouteSchema = {
           children: [
             {
               type: 'we-button',
-              props: { variant: 'secondary', size: 'sm', onClick: { $setLocal: 'replyOpen', value: true } },
+              props: { variant: 'soft', size: 'sm', onClick: { $setLocal: 'replyOpen', value: true } },
               children: [{ type: 'we-icon', props: { name: 'chat-circle' } }, 'Reply'],
             },
           ],

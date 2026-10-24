@@ -50,7 +50,7 @@ registers just that element (typed per framework via
    ```
 3. **Use components in your JSX/TSX:**
    ```tsx
-   <we-button variant="primary">Save</we-button>
+   <we-button variant="solid">Save</we-button>
    <we-icon name="user" />
    ```
 

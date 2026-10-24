@@ -42,7 +42,7 @@ export const cursorToggle: SchemaNode = {
           type: 'we-button',
           props: {
             square: true,
-            variant: expr`modules.live.cursorsOn ? 'secondary' : 'ghost'`,
+            variant: expr`modules.live.cursorsOn ? 'soft' : 'ghost'`,
             onClick: { $action: 'modules.live.toggleCursors' },
           },
           children: [{ type: 'we-icon', props: { name: 'cursor-click' } }],
@@ -74,7 +74,7 @@ export const wheelButton: SchemaNode = {
           type: 'we-button',
           props: {
             square: true,
-            variant: expr`modules.live.driving ? 'secondary' : 'ghost'`,
+            variant: expr`modules.live.driving ? 'soft' : 'ghost'`,
             /*
               One action for both states, because only the store can ask which state it is in at the
               moment of the click.
@@ -147,7 +147,7 @@ export const driverStrip: SchemaNode = {
             condition: { $: 'modules.live.driving' },
             then: {
               type: 'we-button',
-              props: { size: 'xs', variant: 'secondary', onClick: { $action: 'modules.live.releaseWheel' } },
+              props: { size: 'xs', variant: 'soft', onClick: { $action: 'modules.live.releaseWheel' } },
               children: [{ type: 'we-text', props: { variant: 'footnote' }, children: ['Give up'] }],
             },
             else: {
@@ -161,7 +161,7 @@ export const driverStrip: SchemaNode = {
                 },
                 else: {
                   type: 'we-button',
-                  props: { size: 'xs', variant: 'secondary', onClick: { $action: 'modules.live.follow' } },
+                  props: { size: 'xs', variant: 'soft', onClick: { $action: 'modules.live.follow' } },
                   children: [{ type: 'we-text', props: { variant: 'footnote' }, children: ['Follow'] }],
                 },
               },
@@ -181,7 +181,7 @@ export const problemStrip: SchemaNode = {
     then: {
       type: 'we-alert',
       props: {
-        variant: 'warning',
+        tone: 'warning',
         dismissible: true,
         pointerEvents: 'auto',
         onClose: { $action: 'modules.live.dismissProblem' },

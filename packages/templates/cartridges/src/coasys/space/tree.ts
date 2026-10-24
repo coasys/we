@@ -102,7 +102,7 @@ const calls = group(
             type: '$if',
             props: {
               condition: { $: LIVE },
-              then: { type: 'we-badge', props: { variant: 'success', size: 'xs' }, children: ['Live'] },
+              then: { type: 'we-badge', props: { tone: 'success', size: 'xs' }, children: ['Live'] },
               else: {
                 type: 'we-timestamp',
                 props: {
@@ -335,7 +335,7 @@ const callButton: SchemaNode = {
       children: [
         {
           type: 'we-button',
-          props: { variant: 'secondary', onClick: { $action: 'modules.call.goToCall' } },
+          props: { variant: 'soft', onClick: { $action: 'modules.call.goToCall' } },
           children: [{ type: 'we-icon', props: { name: 'phone' } }, 'Start a call'],
         },
       ],
@@ -369,7 +369,7 @@ const callRunning: SchemaNode = {
           type: 'we-button',
           props: {
             size: 'xs',
-            variant: { $: `${IN_IT} ? 'secondary' : 'primary'` },
+            variant: { $: `${IN_IT} ? 'soft' : 'solid'` },
             onClick: [
               {
                 $if: {

@@ -48,7 +48,7 @@ const marketplaceBrowser = {
               type: 'Row',
               props: { gap: '400', ay: 'center', mb: '300' },
               children: [
-                { type: 'we-icon', props: { name: 'storefront', size: 'lg', gradient: 'primary' } },
+                { type: 'we-icon', props: { name: 'storefront', size: 'lg', gradient: 'accent' } },
                 {
                   type: 'we-text',
                   props: { variant: 'heading-md' },

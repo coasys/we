@@ -1,12 +1,12 @@
 import type { DesignSystemProps } from '@we/design-types';
 import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
+import { FOCUS_RING_INSET } from '@we/tokens';
 import { css, html } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
-import type { MenuItemVariant } from '../types';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   cursor: 'pointer',
@@ -18,7 +18,7 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   ay: 'center',
   gap: '300',
   hoverProps: {
-    bg: 'page',
+    bg: 'item-hover',
     color: 'text',
   },
   /*
@@ -32,20 +32,25 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
     the list is long enough for it to matter.
   */
   focusProps: {
-    bg: 'page',
+    bg: 'item-hover',
     color: 'text',
-    ring: 'inset 0 0 0 2px var(--we-ring-color)',
+    ring: FOCUS_RING_INSET,
   },
 };
 
-const VARIANT_DEFAULTS: Partial<Record<MenuItemVariant, Partial<DesignSystemProps>>> = {
-  danger: {
-    color: 'danger-text',
-    hoverProps: { bg: 'danger-surface', color: 'danger-text' },
-    // Restated rather than inherited: a variant's own state props replace the defaults wholesale,
-    // so omitting this would land a destructive item on the neutral fill when tabbed to.
-    focusProps: { bg: 'danger-surface', color: 'danger-text', ring: 'inset 0 0 0 2px var(--we-ring-color)' },
-  },
+/** The chosen item, in the state contract's selected pair — see `selected` in @we/tokens. */
+const SELECTED_DEFAULTS: Partial<DesignSystemProps> = { bg: 'selected', color: 'on-selected' };
+
+/*
+  A toned item — `tone: 'danger'` for a destructive one — draws its words and its hover in the
+  accent's roles, which the tone has re-pointed at its family. An untoned item is the plain row.
+*/
+const TONED_DEFAULTS: Partial<DesignSystemProps> = {
+  color: 'accent-text',
+  hoverProps: { bg: 'accent-soft', color: 'accent-text' },
+  // Restated rather than inherited: these state props replace the defaults wholesale, so omitting
+  // this would land a destructive item on the neutral fill when tabbed to.
+  focusProps: { bg: 'accent-soft', color: 'accent-text', ring: FOCUS_RING_INSET },
 };
 
 const styles = css`
@@ -62,7 +67,7 @@ const styles = css`
 
 /**
  * Single actionable item inside a we-menu.
- * Supports selected, active, and danger states.
+ * Supports selected and active states; `tone: 'danger'` marks a destructive item.
  */
 @customElement('we-menu-item')
 export default class MenuItem extends DesignSystemElement {
@@ -70,7 +75,8 @@ export default class MenuItem extends DesignSystemElement {
 
   @property({ type: Boolean, reflect: true }) selected = false;
   @property({ type: Boolean, reflect: true }) active = false;
-  @property({ type: String, reflect: true }) variant: MenuItemVariant = 'default';
+  /** Shown but not choosable — faded by the shared disabled rule, skipped by the keyboard. */
+  @property({ type: Boolean, reflect: true }) disabled = false;
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   static getDefaultProps() {
@@ -81,7 +87,10 @@ export default class MenuItem extends DesignSystemElement {
     const ctor = this.constructor as typeof MenuItem & { __dsLayers: readonly DSLayer[] };
     const activeKeys = getKeysForLayers([...ctor.__dsLayers]);
     const usedProps = filterProps(this as unknown as Record<string, unknown>, activeKeys);
-    const variantDefaults = VARIANT_DEFAULTS[this.variant] ?? {};
+    const variantDefaults = {
+      ...(this.selected ? SELECTED_DEFAULTS : {}),
+      ...(this.tone && this.tone !== 'neutral' ? TONED_DEFAULTS : {}),
+    };
     return mergeProps(usedProps, mergeProps(variantDefaults, DEFAULT_PROPS)) as Partial<DesignSystemProps>;
   }
 
@@ -110,6 +119,7 @@ export default class MenuItem extends DesignSystemElement {
   }
 
   private _handleClick() {
+    if (this.disabled) return;
     this.dispatchEvent(
       new CustomEvent('select', { detail: { value: this.value, label: this.label }, bubbles: true, composed: true }),
     );
@@ -127,7 +137,8 @@ export default class MenuItem extends DesignSystemElement {
     return html`<div
       part="base"
       role="menuitem"
-      tabindex="0"
+      tabindex=${this.disabled ? '-1' : '0'}
+      aria-disabled=${this.disabled ? 'true' : 'false'}
       @click=${this._handleClick}
       @keydown=${this._handleKeyDown}
       style=${styleMap(inline)}

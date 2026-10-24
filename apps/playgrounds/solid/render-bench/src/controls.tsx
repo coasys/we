@@ -176,7 +176,7 @@ export function RealisticCards(): JSX.Element {
                 <we-text text={c.author} fontWeight="600" color="neutral-800" />
                 <we-text text={c.time} fontSize="200" color="neutral-400" />
               </Column>
-              <we-badge variant={c.badge as 'primary'} size="sm">
+              <we-badge tone={c.badge as 'accent'} size="sm">
                 {c.badgeLabel}
               </we-badge>
             </Row>
@@ -217,7 +217,7 @@ export function RealisticCardsPropBound(): JSX.Element {
                 <we-text prop:text={c.time} prop:fontSize="200" prop:color="neutral-400" />
               </Column>
               {/* @ts-expect-error `prop:` is not emitted for regular DS props. */}
-              <we-badge prop:variant={c.badge} prop:size="sm">
+              <we-badge prop:tone={c.badge as 'accent'} prop:size="sm">
                 {c.badgeLabel}
               </we-badge>
             </Row>

@@ -23,7 +23,7 @@ const channelModes: SchemaNode = {
     type: 'we-button',
     props: {
       size: 'sm',
-      variant: { $: `(${PAGE_EXPR}) == '${page}' ? 'secondary' : 'ghost'` },
+      variant: { $: `(${PAGE_EXPR}) == '${page}' ? 'soft' : 'ghost'` },
       onClick: {
         $action: 'routeStore.navigate',
         args: [
@@ -322,7 +322,7 @@ export const callPage: SchemaNode = {
         type: '$if',
         props: {
           condition: { $: `find(modules.call.liveCalls, { recordId: ${CALL_ID} })` },
-          then: { type: 'we-badge', props: { variant: 'success' }, children: ['Live'] },
+          then: { type: 'we-badge', props: { tone: 'success' }, children: ['Live'] },
         },
       },
     ]),
@@ -362,7 +362,7 @@ export const callPage: SchemaNode = {
             },
             {
               type: 'we-button',
-              props: { variant: 'primary', onClick: { $action: 'modules.call.continueCall', args: [{ $: CALL_ID }] } },
+              props: { variant: 'solid', onClick: { $action: 'modules.call.continueCall', args: [{ $: CALL_ID }] } },
               children: [
                 { type: 'we-icon', props: { name: 'phone' } },
                 { $: `find(modules.call.liveCalls, { recordId: ${CALL_ID} }) ? 'Join' : 'Pick it back up'` },

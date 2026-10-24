@@ -326,10 +326,10 @@ export function suggestionsToggle(opts: SuggestionsToggleOptions): SchemaNode {
                   condition: { $: SUGGESTIONS_HIDDEN },
                   then: {
                     type: 'we-badge',
-                    props: { size: 'xs', variant: 'warning' },
+                    props: { size: 'xs', tone: 'warning' },
                     children: [{ $: `\`\${${opts.count}} hidden\`` }],
                   },
-                  else: { type: 'we-badge', props: { size: 'xs', variant: 'neutral' }, children: [{ $: opts.count }] },
+                  else: { type: 'we-badge', props: { size: 'xs' }, children: [{ $: opts.count }] },
                 },
               },
               {

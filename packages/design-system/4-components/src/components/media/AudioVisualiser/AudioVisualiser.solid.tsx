@@ -23,7 +23,7 @@ export function AudioVisualiser(props: AudioVisualiserProps) {
   const numBars = () => props.bars ?? 80;
   const canvasHeight = () => props.height ?? 48;
   const color = () => props.color ?? 'var(--we-color-neutral-200)';
-  const activeColor = () => props.activeColor ?? 'var(--we-color-primary-500)';
+  const activeColor = () => props.activeColor ?? 'var(--we-color-accent-500)';
 
   // Canvas fillStyle does not resolve CSS variables — resolve them against the document root.
   function resolveColor(value: string): string {

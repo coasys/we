@@ -26,7 +26,7 @@ export const consentPrompt: SchemaNode = confirmModal({
   // The backend's own title, so a request type we don't specifically recognise still says
   // something true rather than nothing.
   title: { $: 'runtimeStore.pendingConsent.title' },
-  tone: 'primary',
+  tone: 'accent',
   icon: 'shield-check',
   children: [
     // Capability requests: who is asking, and for what.
@@ -166,7 +166,7 @@ export const consentSecret: SchemaNode = {
         },
         {
           type: 'we-button',
-          props: { variant: 'primary', onClick: { $action: 'runtimeStore.dismissConsentSecret' } },
+          props: { variant: 'solid', onClick: { $action: 'runtimeStore.dismissConsentSecret' } },
           children: ['Done'],
         },
       ],

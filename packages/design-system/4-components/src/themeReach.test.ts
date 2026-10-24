@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { RAMP_FAMILIES } from '@we/tokens';
 import { describe, expect, it } from 'vitest';
 
 /**
@@ -83,6 +84,12 @@ describe('no layer-4 component paints a meaning with a scale position', () => {
     it structurally cannot see component source, and the components every template is built from were
     the one place nothing was looking.
   */
+  // A scale position as a variable, as a DS prop value, or a raw colour handed to a colour prop.
+  const families = ['primary', ...RAMP_FAMILIES].join('|');
+  const SCALE_VAR = new RegExp(`var\\(--we-color-(${families})-\\d`);
+  const SCALE_TOKEN = new RegExp(`['"](${families})-\\d{2,4}['"]`);
+  const RAW_COLOUR_PROP = /\b(color|bg|borderColor)=["'{]*#[0-9a-f]{3,8}\b/i;
+
   const PALETTES = [
     // Syntax highlighting: a theme pinning `dangerText` means "my error messages", not "every
     // string literal in every code block".
@@ -97,7 +104,7 @@ describe('no layer-4 component paints a meaning with a scale position', () => {
       const lines = declarations(readFileSync(file, 'utf8')).split('\n');
       return lines
         .map((line, i) => ({ file: file.slice(SRC.length + 1), line: i + 1, text: line.trim() }))
-        .filter(({ text }) => /var\(--we-color-(neutral|primary|success|warning|danger)-\d/.test(text));
+        .filter(({ text }) => SCALE_VAR.test(text) || SCALE_TOKEN.test(text) || RAW_COLOUR_PROP.test(text));
     });
 
   it('so a theme can restyle them and the contrast layer can measure them', () => {

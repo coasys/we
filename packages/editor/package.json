@@ -24,7 +24,8 @@
   "dependencies": {
     "@we/design-utils": "workspace:*",
     "@we/schema-kit": "workspace:*",
-    "@we/schema-shared": "workspace:*"
+    "@we/schema-shared": "workspace:*",
+    "@we/tokens": "workspace:*"
   },
   "peerDependencies": {
     "@we/components": "workspace:*",

@@ -91,7 +91,12 @@ import {
   type TaskStateRule,
 } from '@shared/taskFlow';
 import { taskFlowLive } from '@shared/taskFlowLive';
-import { resolveSpaceTheme, type ThemeResolutionInput } from '@shared/themeResolution';
+import {
+  resolveSpaceTheme,
+  type SpaceThemeHiddenBy,
+  spaceThemeHiddenBy as hiddenBy,
+  type ThemeResolutionInput,
+} from '@shared/themeResolution';
 import { uploadOf } from '@shared/uploadOf';
 import { copyText, deriveSlug } from '@shared/utils';
 import type { ViewSetting } from '@shared/viewResolution';
@@ -143,6 +148,7 @@ import type { ResolvedView, TemplateSchema } from '@we/schema-shared';
 import { hasViewsMarker, templateThemeId } from '@we/schema-shared';
 import {
   Accessor,
+  createComputed,
   createContext,
   createEffect,
   createMemo,
@@ -152,6 +158,7 @@ import {
   untrack,
   useContext,
 } from 'solid-js';
+import { createStore, reconcile } from 'solid-js/store';
 
 import { oneAtATime } from '../../../shared/oneAtATime';
 import { signalOptimism } from '../../../shared/signalOptimism';
@@ -594,6 +601,11 @@ export interface SpaceStore {
    * apply — is there anything for a "reset" to undo? False outside a space.
    */
   spaceThemePinned: Accessor<boolean>;
+  /**
+   * What keeps this agent from seeing the space on screen's own theme: `'pin'`, `'agent-default'`,
+   * `'template'`, or `''` when nothing does.
+   */
+  spaceThemeHiddenBy: Accessor<SpaceThemeHiddenBy>;
   /** Feature modules this *agent* wants available anywhere. Personal; see AgentSettings.installedModules. */
   installedModules: Accessor<string[]>;
   /** Module ids the template on screen mounts components from — derived from the schema, not declared. */
@@ -1401,31 +1413,6 @@ export function SpaceStoreProvider(props: ParentProps) {
   /** `installedModules` as a set — the shape both the list and the intersection want. */
   const installedSet = createMemo(() => new Set(installedModules()));
 
-  /*
-    Row identity, held stable while a row's *content* is unchanged.
-
-    `<For>` — which is what `$each` renders through — keys by reference, so handing it a fresh
-    object for every row on every recompute destroys and rebuilds the whole subtree. That is not a
-    render-cost point: everything below it loses its `$localState`, so toggling any one setting in
-    the space-settings panel reset the open tab and threw away a half-typed name and description.
-    The query path solved this long ago with `reconcile({ key: 'id' })`; a store-backed list has no
-    such protection, so it is done here.
-
-    `location` is compared by reference because `updateSpaceInCache` clones the space and carries it
-    through untouched; everything else is plain data and compares as JSON. A row whose content
-    genuinely changed still gets a new object, and still remounts — which is correct, and why the
-    settings panel also holds its open tab *above* the `$each`.
-  */
-  const rowCache = new Map<string, { signature: string; location: unknown; row: SpaceListEntry }>();
-  const stableRow = (row: SpaceListEntry): SpaceListEntry => {
-    const { location, ...rest } = row;
-    const signature = JSON.stringify(rest);
-    const cached = rowCache.get(row.uuid);
-    if (cached && cached.signature === signature && cached.location === location) return cached.row;
-    rowCache.set(row.uuid, { signature, location, row });
-    return row;
-  };
-
   /**
    * The spaces list: one row per joined dataset the agent can act on.
    *
@@ -1433,10 +1420,10 @@ export function SpaceStoreProvider(props: ParentProps) {
    * system datasets — those belong in the advanced section, where the subject is datasets rather
    * than spaces.
    */
-  const spaceList = createMemo<SpaceListEntry[]>(() =>
+  const spaceRows = createMemo<SpaceListEntry[]>(() =>
     datasetStore.orderedDatasets().map((ds) => {
       const space = mySpaces().find((s) => isSpaceSelf(s, ds));
-      return stableRow({
+      return {
         uuid: ds.id,
         // A foreign dataset has no Space record to name it, so the dataset's own name stands in.
         name: space?.name || ds.name,
@@ -1458,9 +1445,23 @@ export function SpaceStoreProvider(props: ParentProps) {
         themeOverride: themeOverrideFor(ds.id),
         shareLink: shareLinkFor(ds),
         guestLink: guestLinkFor(ds),
-      });
+      };
     }),
   );
+
+  /*
+    Each row stays the same object for as long as its space is listed; a change to the space changes
+    the row's fields in place.
+
+    `<For>`, which `$each` renders through, keys by reference, so a fresh object for a row destroys
+    and rebuilds everything under it. Under the space-settings panel that is every `$localState`, a
+    half-typed name, and the scroll position: setting a space's default theme threw the Appearance
+    tab back to its top. Holding a row only while nothing in it changed was not enough, because
+    changing something is exactly what a settings page does. Query results are kept the same way.
+  */
+  const [spaceListStore, setSpaceListStore] = createStore<SpaceListEntry[]>([]);
+  createComputed(() => setSpaceListStore(reconcile(spaceRows(), { key: 'uuid', merge: true })));
+  const spaceList: Accessor<SpaceListEntry[]> = () => spaceListStore;
 
   // TemplateStore mounts above this store and cannot read it directly — hand it the space lookup
   // it needs to resolve a space's default template (see TemplateStore.provideSpaceLookup).
@@ -4886,6 +4887,16 @@ export function SpaceStoreProvider(props: ParentProps) {
   });
 
   /**
+   * What keeps this agent from seeing the space on screen's own theme, if anything — so setting the
+   * space's default while one of these holds can say why nothing changed, rather than looking as
+   * though it did not save.
+   */
+  const spaceThemeHiddenBy = createMemo<SpaceThemeHiddenBy>(() => {
+    const uuid = datasetStore.currentDataset()?.id;
+    return uuid ? hiddenBy(themeResolutionInput(uuid)) : '';
+  });
+
+  /**
    * Override the template this agent sees in one space. {@link FOLLOW_SPACE} returns to its default.
    *
    * Applied immediately when the space is the one on screen, so the choice is visible where it was
@@ -5504,8 +5515,26 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (!ds) return;
     if (isCurrent(ds)) setSpaceDefaultThemeId(themeId);
     updateSpaceInCache(ds, { defaultThemeId: themeId } as never);
+    if (isCurrent(ds)) explainHiddenSpaceTheme();
     const [space] = await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) });
     if (space) await Space.update(ds.handle, space.id, { defaultThemeId: themeId });
+  }
+
+  /**
+   * Say why a space default just set is not what this agent sees. Members get it; the person who set
+   * it is the one looking at something else, and without this the setting reads as not having saved.
+   */
+  function explainHiddenSpaceTheme(): void {
+    const reason = spaceThemeHiddenBy();
+    const uuid = datasetStore.currentDataset()?.id;
+    if (!reason || !uuid) return;
+    const name = themeStore.allThemes().find((t) => t.id === resolveThemeFor(uuid))?.name ?? 'another theme';
+    if (reason === 'template') {
+      toastService.info(`Saved. You won't see it while this template brings its own theme, ${name}.`, 8000);
+      return;
+    }
+    const useSpaceTheme = { label: "Use the space's theme", run: () => void clearSpaceThemePin() };
+    toastService.info(`Saved. You won't see it while you're using ${name} in this space.`, 8000, useSpaceTheme);
   }
 
   // Load neighbourhood members whenever the current dataset changes
@@ -5702,6 +5731,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     templateOverrideOptions,
     themeOverrideOptions,
     spaceThemePinned,
+    spaceThemeHiddenBy,
     moduleInstallSettings,
     moduleLaunchers,
     spaceViews,

@@ -7,6 +7,10 @@
  * mapping (`themeParametersToStyle`) that turns it into CSS; schema-shared re-exports it unchanged.
  */
 
+import type { PaletteHue, RoleToken, SurfaceImageRole, TypeRole } from '@we/tokens';
+
+import type { FontFaceSetting } from './fontFaces';
+
 /**
  * Semantic role slots a theme can override individually.
  *
@@ -17,50 +21,79 @@
  * theme needs: raised surfaces get *lighter* in dark rather than casting shadows, a relationship a
  * uniform lightness inversion cannot express.
  */
-export type ThemeRole =
-  | 'page'
-  | 'chrome'
-  | 'surface'
-  | 'surfaceRaised'
-  | 'surfaceSunken'
-  | 'surfaceHover'
-  | 'surfaceActive'
-  | 'controlSurface'
-  | 'text'
-  | 'textMuted'
-  | 'textFaint'
-  | 'onInverse'
-  | 'surfaceInverse'
-  | 'border'
-  | 'borderStrong'
-  | 'accent'
-  | 'onAccent'
-  | 'onAccentMuted'
-  | 'accentMuted'
-  | 'accentText'
-  | 'accentHover'
-  | 'accentActive'
-  | 'overlay'
-  | 'shadowColor'
-  | 'focus'
-  | 'danger'
-  | 'dangerHover'
-  | 'dangerActive'
-  | 'successHover'
-  | 'successActive'
-  | 'warningHover'
-  | 'warningActive'
-  | 'success'
-  | 'warning'
-  | 'onDanger'
-  | 'onSuccess'
-  | 'onWarning'
-  | 'dangerSurface'
-  | 'successSurface'
-  | 'warningSurface'
-  | 'dangerText'
-  | 'successText'
-  | 'warningText';
+export type ThemeRole = RoleToken;
+
+/**
+ * The palette's settings: how vivid and how light its ten hues are as a set, and any one hue moved.
+ *
+ * As a group rather than ten settings per hue, because a palette is designed as a set — pastel,
+ * neon, deep — and the hues are spaced to stay apart. `saturation` and `lightness` change the set's
+ * character; a hue's own entry moves that hue alone.
+ */
+export interface PaletteSettings {
+  /** 0–100, like `saturation`; falls back to the theme's `saturation`. */
+  saturation?: number;
+  /**
+   * Points to move every palette fill's lightness by, from where each hue is most itself — positive
+   * for lighter (pastel), negative for deeper. Text on the fills is corrected for contrast either
+   * way, and the tints sit a step off the page, so this mostly moves the solid fills.
+   */
+  lightness?: number;
+  /** One hue's own angle, fill lightness (0–100) or saturation (0–100, ahead of the palette's). */
+  hues?: Partial<Record<PaletteHue, { hue?: number; lightness?: number; saturation?: number }>>;
+}
+
+/**
+ * How one kind of text looks — see `TYPE_ROLES` in @we/tokens for the kinds and who draws each.
+ *
+ * Every key is optional and none has a default here: a component keeps the value it always had for
+ * a key the theme leaves unset. `color` is a role (`'accent-text'`), so it follows the theme's
+ * contrast corrections like any other foreground.
+ */
+export interface TypeStyle {
+  /** A font stack: `'Bricolage Grotesque', var(--we-font-family)`. */
+  family?: string;
+  /** `400`, `600`, or a token name: `'semibold'`. */
+  weight?: string | number;
+  /** `'-0.01em'`, or a token name: `'wide'`. */
+  letterSpacing?: string;
+  /** `'1.2'`, or a token name: `'snug'`. */
+  lineHeight?: string;
+  textTransform?: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
+  /** A colour role, kebab-case: `'accent-text'`. */
+  color?: string;
+}
+
+/**
+ * One component's values, apart from its family's — the narrow tier between the system settings and
+ * a theme's CSS. The keys are the family keys, so a component override is spelt the way the setting
+ * it overrides is.
+ */
+export interface ComponentOverride {
+  /** A radius: a length or a radius token (`'0'`, `'pill'`). */
+  radius?: string;
+  /** Padding: a length, a space token, or a shorthand of either. */
+  padding?: string;
+  /** The space between the component's children: a length or a space token. */
+  gap?: string;
+  /** The width of the component's border: `'1.5px'`. */
+  borderWidth?: string;
+  /** A shadow token (`'sm'`…`'xl'`, `'glow'`) or `'none'`. */
+  shadow?: string;
+  /** The type role the component's words are set in, in place of its own. */
+  type?: TypeRole;
+  /** A colour role for the component's fill. */
+  fill?: string;
+  /** A colour role for the component's words. */
+  text?: string;
+  /** A colour role for the component's border. */
+  border?: string;
+  /**
+   * The same keys for one variant — `button: { variants: { soft: { borderWidth: '1.5px' } } }` —
+   * read ahead of the component's own.
+   */
+  variants?: Record<string, Omit<ComponentOverride, 'variants'>>;
+}
 
 export type ThemeOverrides = {
   /**
@@ -73,8 +106,9 @@ export type ThemeOverrides = {
   // Named preset
   themeName?: string; // Named theme preset (e.g. 'dark', 'cyberpunk', 'retro') — sets data-we-theme attribute
 
-  // Color
-  primaryHue?: number; // --we-color-primary-hue
+  // Color. Each colour family takes a hue, a saturation and a fill lightness: `<family>Hue`,
+  // `<family>Saturation`, `<family>Lightness`. A family's saturation falls back to `saturation`.
+  accentHue?: number; // --we-color-accent-hue
   successHue?: number; // --we-color-success-hue
   warningHue?: number; // --we-color-warning-hue
   dangerHue?: number; // --we-color-danger-hue
@@ -88,6 +122,12 @@ export type ThemeOverrides = {
    */
   saturation?: number; // --we-color-saturation
   neutralSaturation?: number; // --we-color-neutral-saturation
+  accentSaturation?: number; // --we-color-accent-saturation
+  successSaturation?: number; // --we-color-success-saturation
+  warningSaturation?: number; // --we-color-warning-saturation
+  dangerSaturation?: number; // --we-color-danger-saturation
+  /** The ten palette hues as a set; see `PaletteSettings`. */
+  palette?: PaletteSettings;
   /**
    * How light the accent fill is, 0–100.
    *
@@ -103,8 +143,7 @@ export type ThemeOverrides = {
    * the accent was pinned at 55%.
    *
    * Unset means the theme's own default: whatever lightness its `accent` states, or the shared
-   * FILL_LIGHTNESS.primary if it states none. Only the accent takes this. `danger`, `success` and
-   * `warning` sit where their hues live and are not brand decisions to be dragged around.
+   * FILL_LIGHTNESS.accent if it states none. `danger`, `success` and `warning` have their own.
    */
   accentLightness?: number; // --we-accent-lightness
   dangerLightness?: number; // --we-danger-lightness
@@ -153,9 +192,26 @@ export type ThemeOverrides = {
    * what a code block looks like.
    */
   monoFontFamily?: string;
+  /**
+   * Typefaces the theme carries, as font files in data: URLs, so a family named above can be one
+   * nobody has installed. Registered when the theme is applied and withdrawn when it is not; nothing
+   * is fetched. See `fontFaces.ts`.
+   */
+  fontFaces?: FontFaceSetting[];
   letterSpacing?: string; // --we-theme-letter-spacing  (e.g. "0.05em" for airy headlines)
   lineHeight?: string; // --we-theme-line-height  (e.g. "1.5" or "relaxed")
   fontScale?: number; // scales root font-size (1 = 100%, 1.125 = 112.5%) — affects all rem-based tokens
+  /**
+   * How each kind of text looks: headings, body, labels, controls, badges and overlines. See
+   * `TypeStyle`. `headingFontFamily`, `letterSpacing` and `lineHeight` above stay as the broad
+   * settings a role falls back to.
+   */
+  typeStyles?: Partial<Record<TypeRole, TypeStyle>>;
+  /**
+   * Components set apart from their family, by name as the component registers it (`button`,
+   * `card`, `menu-item`). See `ComponentOverride`.
+   */
+  components?: Record<string, ComponentOverride>;
 
   // Shape — radius cascade: component r= prop → component theme → group theme → token default
   controlRadius?: string; // --we-theme-control-radius  (buttons, badges, tags)
@@ -237,9 +293,23 @@ export type ThemeOverrides = {
    * genuinely shared — and genuinely a design decision — is how far off "off" reads.
    */
   disabledOpacity?: number;
-  shadowIntensity?: 'flat' | 'subtle' | 'elevated' | 'dramatic'; // maps to --we-theme-shadow-preset
+  /**
+   * --we-theme-icon-weight — the weight every icon is drawn in unless it names its own: `thin`,
+   * `light`, `regular`, `bold`, `fill` or `duotone`. A light theme's thin strokes and a playful
+   * theme's filled glyphs are a decision about the whole set, not about each icon.
+   */
+  iconWeight?: 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone';
+  /** How strong every shadow is, and which one a surface rests at — see SHADOW_INTENSITY_VALUES. */
+  shadowIntensity?: 'flat' | 'subtle' | 'elevated' | 'dramatic';
+  /** How bright and wide `shadow: 'glow'` is: the accent as light, for a theme that glows. */
+  glowIntensity?: 'none' | 'subtle' | 'medium' | 'strong';
   surfaceOpacity?: number; // --we-theme-surface-opacity  (0–1, background alpha for surfaces)
-  surfaceBlur?: number; // --we-theme-surface-blur  (px, backdrop-filter blur for frosted glass)
+  surfaceBlur?: number;
+  /**
+   * A gradient laid over every surface of a kind, by surface role: `{ page: 'radial-gradient(…)' }`.
+   * Gradients only — anything else is dropped. See `SURFACE_IMAGE_ROLES` in @we/tokens.
+   */
+  surfaceImages?: Partial<Record<SurfaceImageRole, string>>; // --we-theme-surface-blur  (px, backdrop-filter blur for frosted glass)
 
   // Motion
   animationSpeed?: 'none' | 'fast' | 'normal' | 'slow'; // maps to --we-theme-animation-speed-preset
@@ -253,7 +323,13 @@ export type ThemeOverrides = {
    */
   light?: ThemeSide;
   dark?: ThemeSide;
+  /**
+   * How this theme looks when somebody asks for more contrast — a block like a side, laid over the
+   * general rule (`display.ts`) when their contrast preference is `more`. For a theme whose colours
+   * need saying differently rather than merely firmer.
+   */
+  contrast?: { more?: ThemeSide };
 };
 
 /** One side of a two-sided theme: any parameter of the base, except the sides and the bookkeeping. */
-export type ThemeSide = Omit<ThemeOverrides, 'light' | 'dark' | 'schemaVersion' | 'themeName'>;
+export type ThemeSide = Omit<ThemeOverrides, 'light' | 'dark' | 'contrast' | 'schemaVersion' | 'themeName'>;

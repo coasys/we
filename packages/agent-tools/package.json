@@ -30,7 +30,8 @@
     "@we/ai-context": "workspace:*",
     "@we/backend-shared": "workspace:*",
     "@we/entities": "workspace:*",
-    "@we/schema-shared": "workspace:*"
+    "@we/schema-shared": "workspace:*",
+    "@we/themes": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

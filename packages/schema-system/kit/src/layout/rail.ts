@@ -251,7 +251,7 @@ export interface RailButtonOptions {
  *
  * Extracted because it was written three times — the two module launchers in WE's chrome rail, and
  * again inside `pickerPopover` for the template and theme pickers that sit in the same rail — and
- * the three had already drifted: two lit up with `variant: 'secondary'` when active while the
+ * the three had already drifted: two lit up with `variant: 'soft'` when active while the
  * settings button had no active state to drift *to*, so it was the one row of that rail that could
  * never show you where you were. A rail whose buttons disagree about what "selected" looks like is
  * not a set of tabs, and that is the only thing the arrangement was for.
@@ -272,7 +272,7 @@ export function railButton(opts: RailButtonOptions): SchemaNode {
         type: 'we-button',
         props: {
           square: true,
-          variant: expr`${opts.active ?? false} ? 'secondary' : 'ghost'`,
+          variant: expr`${opts.active ?? false} ? 'soft' : 'ghost'`,
           ...(opts.onClick !== undefined && { onClick: opts.onClick }),
         },
         children: [
@@ -413,14 +413,14 @@ export function railItem(opts: RailItemOptions): SchemaNode {
       ...(opts.disabled !== undefined && { disabled: opts.disabled }),
       ...(opts.onClick !== undefined && { onClick: opts.onClick }),
       /*
-        Roles, not steps. `accent-muted` is the role for a selected row and `accent-text` the accent
+        Roles, not steps. `accent-soft` is the role for a selected row and `accent-text` the accent
         used as a foreground; the steps these replace could not follow a theme's decision about
         either, and a rail is the most-looked-at chrome in the app.
 
-        `accent-muted` is a small chroma shift from the `neutral-100` it replaces rather than a
+        `accent-soft` is a small chroma shift from the `neutral-100` it replaces rather than a
         redesign — same lightness, the theme's primary saturation instead of its neutral one.
       */
-      bg: expr`${active} ? 'accent-muted' : ''`,
+      bg: expr`${active} ? 'accent-soft' : ''`,
       color: expr`${active} ? 'accent-text' : 'text-muted'`,
       /*
         The current row deepens on hover rather than losing its colour.

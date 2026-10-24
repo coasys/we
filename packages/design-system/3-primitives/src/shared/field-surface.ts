@@ -1,3 +1,4 @@
+import { FOCUS_RING_BEYOND_BORDER } from '@we/tokens';
 import { css, type CSSResult, unsafeCSS } from 'lit';
 
 /**
@@ -15,7 +16,7 @@ import { css, type CSSResult, unsafeCSS } from 'lit';
  * site that wanted them to look like one row of controls restated the select's two values by hand."
  * The restatements went stale one at a time, and each was invisible on its own — `we-select` was
  * moved onto the recessed fill and the ring, and `we-location-picker`, `we-icon-picker` and
- * `we-date-picker` were left on `surface` with a `2px accent-muted` outline inset by `-1px`. The
+ * `we-date-picker` were left on `surface` with a `2px accent-soft` outline inset by `-1px`. The
  * create-space modal is where that finally showed: two inputs reading as fields above a location
  * picker painted the same colour as the sheet behind it.
  *
@@ -57,8 +58,9 @@ export function fieldSurface(
 
   return css`
     ${box} {
-      border: 1px solid var(--we-role-border);
-      border-radius: var(--we-theme-input-radius, var(--we-radius-400));
+      border: var(--we-border-width, 1px) solid var(--we-role-border);
+      /* The input family's radius, falling back to the input's own default — the same one we-input has. */
+      border-radius: var(--we-theme-input-radius, var(--we-radius-300));
       background: var(--we-role-surface-sunken);
     }
 
@@ -77,7 +79,7 @@ export function fieldSurface(
     ${focus} {
       background: var(--we-role-surface-sunken-hover);
       border-color: var(--we-ring-color);
-      box-shadow: 0 0 0 1px var(--we-ring-color);
+      box-shadow: ${unsafeCSS(FOCUS_RING_BEYOND_BORDER)};
       /* Both properties travel together or the ring pops in over an edge that is still moving. */
       transition:
         border-color ${stateTransition},

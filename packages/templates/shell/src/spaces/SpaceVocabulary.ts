@@ -50,7 +50,7 @@ const openSpaceFirst: SchemaNode = {
     {
       type: 'we-button',
       props: {
-        variant: 'secondary',
+        variant: 'soft',
         size: 'sm',
         alignSelf: 'start',
         onClick: { $action: 'spaceStore.navigateToSpace', args: [{ $: 'space.uuid' }] },
@@ -72,7 +72,7 @@ const signalTypesSection: SchemaNode = sectionCard({
       condition: { $: 'space.canAdminister' },
       then: {
         type: 'we-button',
-        props: { variant: 'secondary', size: 'sm', onClick: { $setLocal: 'createSignalTypeOpen', value: true } },
+        props: { variant: 'soft', size: 'sm', onClick: { $setLocal: 'createSignalTypeOpen', value: true } },
         children: [
           { type: 'we-icon', props: { name: 'plus' } },
           { type: 'we-text', children: ['Add signal type'] },

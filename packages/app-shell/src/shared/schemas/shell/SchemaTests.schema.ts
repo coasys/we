@@ -84,7 +84,7 @@ function sectionButton(section: (typeof sections)[number]): SchemaNode {
   return {
     type: 'we-button',
     props: {
-      variant: expr`routeStore.segments[0] == ${section.id} ? 'primary' : 'secondary'`,
+      variant: expr`routeStore.segments[0] == ${section.id} ? 'solid' : 'soft'`,
       onClick: { $action: 'routeStore.navigate', args: [section.path] },
     },
     children: [{ type: 'we-icon', props: { name: section.icon, size: 'sm' } }, section.label],

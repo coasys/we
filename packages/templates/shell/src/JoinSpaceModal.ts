@@ -116,7 +116,7 @@ const joinSpaceModal: SchemaNode = formModal({
         condition: { $: 'spaceStore.joinError' },
         then: {
           type: 'we-alert',
-          props: { variant: 'danger', appearance: 'soft' },
+          props: { variant: 'soft', tone: 'danger' },
           children: [{ $: 'spaceStore.joinError.message' }],
         },
       },

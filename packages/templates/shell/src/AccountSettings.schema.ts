@@ -34,7 +34,7 @@ const accountRow: SchemaNode = {
                 image: { $: 'account.avatar' },
                 initials: { $: 'account.name' },
                 size: 'sm',
-                bg: 'accent-muted',
+                bg: 'accent-soft',
               },
             },
             { type: 'we-text', props: { variant: 'label' }, children: [{ $: 'account.name' }] },
@@ -42,7 +42,7 @@ const accountRow: SchemaNode = {
               type: '$if',
               props: {
                 condition: { $: 'account.active' },
-                then: { type: 'we-badge', props: { variant: 'primary', size: 'xs' }, children: ['Signed in'] },
+                then: { type: 'we-badge', props: { tone: 'accent', size: 'xs' }, children: ['Signed in'] },
               },
             },
           ],
@@ -82,7 +82,7 @@ export const accountSettings: SchemaNode = {
           type: '$if',
           props: {
             condition: { $: 'accountStore.error' },
-            then: { type: 'we-alert', props: { variant: 'danger' }, children: [{ $: 'accountStore.error' }] },
+            then: { type: 'we-alert', props: { tone: 'danger' }, children: [{ $: 'accountStore.error' }] },
           },
         },
         {
@@ -136,7 +136,7 @@ export const removeAccountModal: SchemaNode = confirmModal({
         condition: { $: 'accountStore.pendingRemoval.sharedWithLauncher' },
         then: {
           type: 'we-alert',
-          props: { variant: 'warning' },
+          props: { tone: 'warning' },
           children: [
             "The ADAM launcher stores its list of agents inside this account, so removing it will also clear the launcher's record of your other agents.",
           ],

@@ -51,7 +51,7 @@ export {
   toastService,
   type ToastContainerProps,
   type ToastItem,
-  type ToastVariant,
+  type ToastTone,
 } from '../../components/feedback/Toast/Toast.solid';
 
 // Signals

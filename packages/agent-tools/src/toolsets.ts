@@ -4,7 +4,9 @@
  */
 import type { RecordToolset } from './core/toolset';
 import { templateToolset } from './templates/templateToolset';
+import { themeToolset } from './themes/themeToolset';
 
 export const toolsets: Record<string, RecordToolset> = {
   template: templateToolset,
+  theme: themeToolset,
 };

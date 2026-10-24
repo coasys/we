@@ -1345,7 +1345,7 @@ describe('data overlay', () => {
     await engine.start();
     const before = runs;
 
-    engine.setDataOverlay(new Map([['a', { canvasColor: 'primary-500' }]]));
+    engine.setDataOverlay(new Map([['a', { canvasColor: 'accent-500' }]]));
 
     expect(runs).toBe(before);
   });

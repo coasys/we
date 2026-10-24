@@ -7,6 +7,6 @@ export interface AudioVisualiserProps {
   height?: number;
   /** CSS color for unplayed bars. Default: var(--we-color-neutral-300) */
   color?: string;
-  /** CSS color for played bars and dynamic frequency bars. Default: var(--we-color-primary-400) */
+  /** CSS color for played bars and dynamic frequency bars. Default: var(--we-color-accent-400) */
   activeColor?: string;
 }

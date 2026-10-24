@@ -356,7 +356,7 @@ describe('mergeNode', () => {
   });
 
   it('deletes a top-level key when set to null', () => {
-    const existing: SchemaNode = { id: 'n1', type: 'Column', props: { gap: 'md' }, theme: { primaryHue: 200 } };
+    const existing: SchemaNode = { id: 'n1', type: 'Column', props: { gap: 'md' }, theme: { accentHue: 200 } };
     const result = mergeNode(existing, { theme: null });
     expect(result.theme).toBeUndefined();
     expect('theme' in result).toBe(false);

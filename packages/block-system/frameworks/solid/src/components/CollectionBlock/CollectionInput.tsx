@@ -40,7 +40,7 @@ export function CollectionInput(props: CollectionInputProps) {
           {(opt) => (
             <we-button
               square
-              variant={layout() === opt.value ? 'secondary' : 'ghost'}
+              variant={layout() === opt.value ? 'soft' : 'ghost'}
               title={opt.title}
               onClick={(e: MouseEvent) => {
                 stop(e);
@@ -58,7 +58,7 @@ export function CollectionInput(props: CollectionInputProps) {
             {(n) => (
               <we-button
                 square
-                variant={colCount() === n ? 'secondary' : 'ghost'}
+                variant={colCount() === n ? 'soft' : 'ghost'}
                 onClick={(e: MouseEvent) => {
                   stop(e);
                   props.onChange('columnCount', n);

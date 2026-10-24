@@ -59,7 +59,7 @@ const header: SchemaNode = {
         },
         {
           type: 'we-button',
-          props: { variant: 'primary', size: 'sm', onClick: { $setLocal: 'composeOpen', value: true } },
+          props: { variant: 'solid', size: 'sm', onClick: { $setLocal: 'composeOpen', value: true } },
           children: [{ type: 'we-icon', props: { name: 'plus' } }, 'New'],
         },
         composerModal({ openLocal: 'composeOpen', title: 'New post', kind: KIND.post }),
@@ -157,7 +157,7 @@ const photoDetail: RouteSchema = {
                 {
                   type: 'we-button',
                   props: {
-                    variant: 'secondary',
+                    variant: 'soft',
                     size: 'sm',
                     alignSelf: 'start',
                     onClick: { $setLocal: 'replyOpen', value: true },

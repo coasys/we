@@ -14,7 +14,7 @@ const notConfiguredPrompt: SchemaNode = gatePrompt({
 
 const joinPrompt: SchemaNode = gatePrompt({
   icon: 'storefront',
-  iconGradient: 'primary',
+  iconGradient: 'accent',
   title: 'Module Marketplace',
   body: {
     $: '`Browse and install templates, themes, blocks, and components shared by the ${templateStore.brand.name} community.`',
@@ -25,7 +25,7 @@ const joinPrompt: SchemaNode = gatePrompt({
       type: 'we-button',
       $localState: { joining: { type: 'boolean', initial: false } },
       props: {
-        variant: 'primary',
+        variant: 'solid',
         loading: { $: 'local.joining' },
         disabled: { $: 'local.joining' },
         onClick: [

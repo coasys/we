@@ -1,5 +1,6 @@
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
+import { PALETTE_HUES } from '@we/tokens';
 
 /**
  * The colours a board can be painted with, and the row that picks one.
@@ -8,9 +9,9 @@ import { expr } from '@we/schema-shared';
  * choice made about different things — and a palette that drifted between the two would let somebody
  * colour a card in a shade no type could ever be given, so the key could never account for it.
  *
- * ## Why tokens rather than a colour picker
+ * ## Why the palette rather than a colour picker
  *
- * A token keeps meaning the same thing when the theme changes; a hex chosen against a light theme is
+ * A palette role keeps meaning the same thing when the theme changes; a hex chosen against a light theme is
  * a hole in a dark one. A board is a shared artifact that outlives whichever theme it was made
  * under, and every other colour in WE already answers to the theme — a card that did not would be
  * the one thing on screen that ignores it.
@@ -21,13 +22,10 @@ import { expr } from '@we/schema-shared';
  */
 export const SWATCHES = [
   { token: '' },
-  { token: 'primary-100' },
-  { token: 'primary-300' },
-  { token: 'success-100' },
-  { token: 'warning-100' },
-  { token: 'danger-100' },
-  { token: 'neutral-100' },
-  { token: 'neutral-300' },
+  // The theme's palette, each hue as its tint: the set of colours a theme designs to stay apart as
+  // categories, at the strength a card's fill wants. Roles, so a pastel theme draws pastel cards.
+  ...PALETTE_HUES.map((hue) => ({ token: `${hue}-soft` })),
+  { token: 'neutral-soft' },
 ];
 
 /**

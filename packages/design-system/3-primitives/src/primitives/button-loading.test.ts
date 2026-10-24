@@ -73,7 +73,7 @@ describe('the spinner is coloured against the fill it sits on', () => {
   it('uses the accent on a variant with no fill of its own', async () => {
     // `accent-text`, not `accent`: the role for the accent used as a FOREGROUND on a surface, at a
     // lightness that stays readable. This is the case that read as a white wheel on a dark theme.
-    for (const variant of ['secondary', 'ghost', 'outline', 'bare']) {
+    for (const variant of ['soft', 'ghost', 'outline', 'bare']) {
       const el = await mount({ square: true, loading: true, variant });
       expect(spinner(el)?.getAttribute('color')).toBe('accent-text');
     }
@@ -83,8 +83,8 @@ describe('the spinner is coloured against the fill it sits on', () => {
     // `accent` on an accent fill is an invisible spinner — worse than a flat one. These variants
     // already carry a foreground chosen to contrast with their fill, so `currentColor` IS the
     // considered answer here rather than a default nobody looked at.
-    for (const variant of ['primary', 'success', 'danger']) {
-      const el = await mount({ square: true, loading: true, variant });
+    for (const tone of [undefined, 'success', 'danger']) {
+      const el = await mount({ square: true, loading: true, variant: 'solid', tone });
       expect(spinner(el)?.getAttribute('color')).toBe('currentColor');
     }
   });

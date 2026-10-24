@@ -1,6 +1,7 @@
 import type { DesignSystemProps } from '@we/design-types';
 import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
-import { css, html, nothing } from 'lit';
+import { FOCUS_OUTLINE_WIDTH } from '@we/tokens';
+import { css, html, nothing, unsafeCSS } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
@@ -63,7 +64,8 @@ const styles = css`
 
   [part='track'] {
     position: relative;
-    border-radius: var(--we-radius-pill);
+    /* A capsule by nature; a theme with square switches says so with components.switch.radius. */
+    border-radius: var(--we-theme-switch-radius, var(--we-radius-pill));
     background: var(--we-role-control-surface);
     transition: background var(--we-transition-200, 150ms) ease;
     flex-shrink: 0;
@@ -77,8 +79,9 @@ const styles = css`
     position: absolute;
     top: 2px;
     left: 2px;
-    border-radius: var(--we-radius-full);
-    background: white;
+    border-radius: var(--we-theme-switch-radius, var(--we-radius-full));
+    /* The label on the accent the track turns when on, so it is measured against that fill. */
+    background: var(--we-role-on-accent);
     transition: transform var(--we-transition-200, 150ms) ease;
     box-shadow: 0 1px 3px color-mix(in srgb, var(--we-role-shadow-color) 20%, transparent);
   }
@@ -88,8 +91,6 @@ const styles = css`
   }
 
   :host([disabled]) {
-    opacity: 0.5;
-    cursor: default;
     pointer-events: none;
   }
 
@@ -117,7 +118,7 @@ const styles = css`
     on :focus-visible so a click does not paint one.
   */
   input[part='native']:focus-visible ~ [part='track'] {
-    outline: var(--we-ring-width, 2px) solid var(--we-ring-color, var(--we-role-focus));
+    outline: ${unsafeCSS(FOCUS_OUTLINE_WIDTH)} solid var(--we-ring-color);
     outline-offset: 2px;
   }
 

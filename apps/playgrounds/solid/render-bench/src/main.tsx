@@ -178,7 +178,7 @@ function ResultRow(props: { fixtureKey: string; label: string }) {
         </button>
       </td>
       <td style={`${num};font-weight:600`}>{r() ? ms(r()!.median.total) : ''}</td>
-      <td style={`${num};font-weight:600;color:var(--we-color-primary-700)`}>{r() ? ms(r()!.jsWork) : ''}</td>
+      <td style={`${num};font-weight:600;color:var(--we-color-accent-700)`}>{r() ? ms(r()!.jsWork) : ''}</td>
       <td style={numMuted}>{r() ? ms(r()!.median.build) : ''}</td>
       <td style={numMuted}>{r() ? ms(r()!.median.flush) : ''}</td>
       <td style={numMuted}>{r() ? ms(r()!.median.paint) : ''}</td>

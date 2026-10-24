@@ -243,13 +243,13 @@ export function messageLine(opts: {
                                     `control-surface` is a step away from both `surface` and
                                     `surface-sunken` in either polarity, which is the whole reason
                                     the neutral badge is painted with it — see
-                                    BADGE_APPEARANCE_DEFAULTS, where this same transcript row is the
+                                    BADGE_VARIANT_DEFAULTS, where this same transcript row is the
                                     case that argued it. The row carried a sunken fill when that was
                                     written and carries none now, and the choice survives the change
                                     precisely because it was made against both grounds.
                                   */
                         type: 'we-badge',
-                        props: { size: 'xs', variant: 'neutral' },
+                        props: { size: 'xs' },
                         /*
                                     A keyboard, because this marks *how the line arrived* rather than
                                     that it is text — everything on this row is text.
@@ -476,7 +476,7 @@ export function messageLine(opts: {
                                       a proposal card is the case that earns success and danger,
                                       because there the colour IS the decision being offered.
                                     */
-                          variant: 'primary',
+                          variant: 'solid',
                           disabled: { $: '!trim(local.draft)' },
                           onClick: {
                             $action: 'modules.transcribe.editUtterance',
@@ -502,7 +502,7 @@ export function messageLine(opts: {
                           // hovered, so beside a filled Save it read as a word somebody
                           // had left next to a button rather than the other half of a
                           // pair.
-                          variant: 'secondary',
+                          variant: 'soft',
                           /*
                                       Both, and the second is what stops the pencil flashing.
 
