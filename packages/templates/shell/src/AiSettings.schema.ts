@@ -39,6 +39,76 @@ function field(label: string, name: string, placeholder = '', type = 'text'): Sc
   };
 }
 
+/**
+ * The API key: typed to send, never shown back.
+ *
+ * The backend holds the key and answers only whether one is set, so the field is empty whenever the
+ * form opens, and empty means "keep the one that is set". Removing it is a choice of its own rather
+ * than clearing the field, which would otherwise be indistinguishable from not touching it. Masked,
+ * which only stops it being read over a shoulder — the threat that applies to a settings page.
+ */
+function apiKeyField(): SchemaNode {
+  return {
+    type: 'we-form-field',
+    props: {
+      label: 'API key',
+      error: { $: 'runtimeStore.aiApiKeyError' },
+      description: {
+        $: "!runtimeStore.aiForm.apiKeyStored ? '' : runtimeStore.aiForm.apiKey ? 'Replaces the key that is set when you save.' : runtimeStore.aiForm.apiKeyRemoved ? 'The key that is set is removed when you save.' : 'A key is set. The node keeps it and never shows it — type a new one to replace it.'",
+      },
+    },
+    children: [
+      {
+        type: 'Row',
+        props: { gap: '200', ay: 'center' },
+        children: [
+          {
+            type: 'we-input',
+            props: {
+              flex: '1',
+              minWidth: '0',
+              type: 'password',
+              placeholder: {
+                $: "runtimeStore.aiForm.apiKeyStored ? 'Leave empty to keep the key that is set' : 'sk-…'",
+              },
+              value: { $: 'runtimeStore.aiForm.apiKey' },
+              onInput: { $action: 'runtimeStore.setAiFormField', args: ['apiKey', { $: 'event.detail' }] },
+            },
+          },
+          {
+            type: '$if',
+            props: {
+              condition: { $: 'runtimeStore.aiForm.apiKeyStored && !runtimeStore.aiForm.apiKey' },
+              then: {
+                type: '$if',
+                props: {
+                  condition: { $: 'runtimeStore.aiForm.apiKeyRemoved' },
+                  then: {
+                    type: 'we-button',
+                    props: {
+                      variant: 'ghost',
+                      text: 'Keep key',
+                      onClick: { $action: 'runtimeStore.setAiFormField', args: ['apiKeyRemoved', false] },
+                    },
+                  },
+                  else: {
+                    type: 'we-button',
+                    props: {
+                      variant: 'ghost',
+                      text: 'Remove key',
+                      onClick: { $action: 'runtimeStore.setAiFormField', args: ['apiKeyRemoved', true] },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        ],
+      },
+    ],
+  };
+}
+
 /** Shown only when the form's source is `kind`. */
 function whenSource(kind: string, children: SchemaNode[]): SchemaNode {
   return {
@@ -237,9 +307,7 @@ const modelForm: SchemaNode = {
               },
             },
           },
-          // The key is stored by the backend and sent to the provider; masking it here only stops
-          // it being read over a shoulder, which is the threat that applies to a settings page.
-          field('API key', 'apiKey', 'sk-…', 'password'),
+          apiKeyField(),
           {
             type: 'Row',
             props: { gap: '200', ay: 'end' },
@@ -283,7 +351,11 @@ const modelForm: SchemaNode = {
                   condition: { $: 'runtimeStore.canDiscoverAiModels' },
                   then: {
                     type: 'we-tooltip',
-                    props: { content: 'Ask the service which models it serves — which also checks the key' },
+                    props: {
+                      content: {
+                        $: "runtimeStore.aiDiscoverNeedsKey ? 'Type the key again to list models — the node keeps the key it holds and never hands it back' : 'Ask the service which models it serves — which also checks the key'",
+                      },
+                    },
                     children: [
                       {
                         type: 'we-button',
@@ -291,7 +363,7 @@ const modelForm: SchemaNode = {
                           text: 'List models',
                           variant: 'soft',
                           loading: { $: "'discoverAiModels' in runtimeStore.pending" },
-                          disabled: { $: '!runtimeStore.aiForm.apiBaseUrl' },
+                          disabled: { $: '!runtimeStore.aiForm.apiBaseUrl || runtimeStore.aiDiscoverNeedsKey' },
                           onClick: { $action: 'runtimeStore.discoverAiModels' },
                         },
                       },

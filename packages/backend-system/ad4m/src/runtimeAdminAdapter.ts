@@ -191,15 +191,15 @@ export function createAd4mRuntimeAdmin(backendClient: unknown, options: Ad4mRunt
   const nodeScoped: RuntimeAdminPort = {
     // ── External apps ─────────────────────────────────────────────────────────
     /**
-     * AD4M returns one record per issued token, so an app that reconnected several times appears
+     * AD4M returns one grant per issued token, so an app that reconnected several times appears
      * several times. Collapsing by URL matches how a user thinks about it — "Flux has access", not
      * "Flux has four tokens" — and `revoke`/`remove` below re-expand it, acting on every token the
-     * app holds rather than one arbitrary grant.
+     * app holds rather than one arbitrary grant. A revoke or removal ends the token at once and
+     * closes its open connections.
      *
-     * Node-scoped despite reading like an agent concern: `apps_map` is one process-global map behind
-     * a single `apps_data.json`, so on a multi-user node this is everyone's grants, not yours. It is
-     * also always empty there, because a hosted session is minted by `generate_user_jwt` and never
-     * recorded as an app at all — the section had nothing to show and no right to show it.
+     * The executor lists only the grants on the agent this connection acts as, and never a token.
+     * It stays with node administration here, as it was. A user session could now list and revoke
+     * its own logins and apps too; offering that is a separate change.
      */
     async authorizedApps() {
       const apps = await client.agent.getApps();

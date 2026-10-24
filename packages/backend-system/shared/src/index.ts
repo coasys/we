@@ -165,11 +165,13 @@ export type {
 } from './backendPorts';
 export type {
   AiApiProtocol,
+  AiLocalModelSource,
   AiModel,
   AiModelDiscoveryQuery,
   AiModelDraft,
   AiModelKind,
   AiModelSource,
+  AiModelSourceDraft,
   AiModelStatus,
   AiTask,
   ModelAdminPort,

@@ -44,11 +44,13 @@ describe('the AD4M language-model port', () => {
 });
 
 describe('the default model’s status', () => {
+  // Behind a gateway that takes no key: the one kind of remote model the app can check, since the
+  // node never hands a stored key back for discovery to use.
   const claude = {
     id: 'm1',
     name: 'Claude Sonnet 5',
     modelType: 'LLM',
-    api: { baseUrl: 'https://api.anthropic.com', apiKey: 'sk-ant', model: 'claude-sonnet-5', apiType: 'ANTHROPIC' },
+    api: { baseUrl: 'https://llm.corp.example', hasApiKey: false, model: 'claude-sonnet-5', apiType: 'ANTHROPIC' },
   };
 
   function statusClient(ai: Record<string, unknown>) {
@@ -75,10 +77,26 @@ describe('the default model’s status', () => {
     const port = statusClient({ getDefaultModel: vi.fn(async () => claude), discoverModels });
 
     await expect(port.status!()).resolves.toMatchObject({ state: 'ready' });
-    expect(discoverModels).toHaveBeenCalledWith('https://api.anthropic.com', 'sk-ant', 'ANTHROPIC');
+    expect(discoverModels).toHaveBeenCalledWith('https://llm.corp.example', undefined, 'ANTHROPIC');
   });
 
-  it('is an error, with the endpoint’s reason, when the key is refused', async () => {
+  it('is unchecked, and asks nothing, for a model the node holds a key for', async () => {
+    // Discovery is asked with what it is sent, and the node never returns the key: asking without
+    // it would read the endpoint refusing a missing key as the model being broken.
+    const discoverModels = vi.fn(async () => ['claude-sonnet-5']);
+    const keyed = { ...claude, api: { ...claude.api, baseUrl: 'https://api.anthropic.com', hasApiKey: true } };
+    const port = statusClient({ getDefaultModel: vi.fn(async () => keyed), discoverModels });
+
+    await expect(port.status!()).resolves.toEqual({
+      state: 'unchecked',
+      name: 'Claude Sonnet 5',
+      model: 'claude-sonnet-5',
+      detail: '',
+    });
+    expect(discoverModels).not.toHaveBeenCalled();
+  });
+
+  it('is an error, with the endpoint’s reason, when the endpoint refuses', async () => {
     const port = statusClient({
       getDefaultModel: vi.fn(async () => claude),
       discoverModels: vi.fn(async () => Promise.reject(new Error('Anthropic API error 401: invalid x-api-key'))),

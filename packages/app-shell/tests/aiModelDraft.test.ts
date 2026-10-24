@@ -7,18 +7,30 @@
  * that folds them back — disagree: a local file's tokenizer is written with empty repo/revision and
  * read back as a custom Hugging Face tokenizer.
  */
-import type { AiModel } from '@we/backend-shared';
+import type { AiModel, AiModelSource, AiModelSourceDraft } from '@we/backend-shared';
 import { describe, expect, it } from 'vitest';
 
 import {
   AI_API_PRESETS,
+  apiKeyProblem,
   describeModel,
   draftFrom,
   EMPTY_FORM,
   formComplete,
+  keepsStoredKey,
   matchingApiPreset,
   toDraft,
 } from '../src/frameworks/solid/stores/aiModelDraft';
+
+/**
+ * What an untouched form writes back for a source: the same, less `hasApiKey`. A save that sends no
+ * key keeps the one the backend holds, so a round trip that touched nothing leaves the key alone.
+ */
+function asWritten(source: AiModelSource): AiModelSourceDraft {
+  if (source.kind !== 'api') return source;
+  const { hasApiKey: _held, ...written } = source;
+  return written;
+}
 
 function model(overrides: Partial<AiModel>): AiModel {
   return {
@@ -39,7 +51,7 @@ describe('round-tripping a model through the form', () => {
         kind: 'api',
         protocol: 'openai',
         baseUrl: 'https://api.openai.com/v1',
-        apiKey: 'sk-x',
+        hasApiKey: true,
         model: 'gpt-4o',
       },
     }),
@@ -49,7 +61,7 @@ describe('round-tripping a model through the form', () => {
         kind: 'api',
         protocol: 'anthropic',
         baseUrl: 'https://api.anthropic.com',
-        apiKey: 'sk-ant',
+        hasApiKey: true,
         model: 'claude-sonnet-5',
       },
     }),
@@ -59,7 +71,7 @@ describe('round-tripping a model through the form', () => {
         kind: 'api',
         protocol: 'ollama',
         baseUrl: 'http://localhost:11434',
-        apiKey: '',
+        hasApiKey: false,
         model: 'qwen3:4b',
         maxContext: 40960,
       },
@@ -86,7 +98,7 @@ describe('round-tripping a model through the form', () => {
 
       expect(round.name).toBe(original.name);
       expect(round.kind).toBe(original.kind);
-      expect(round.source).toEqual(original.source);
+      expect(round.source).toEqual(asWritten(original.source));
     });
   }
 
@@ -140,10 +152,73 @@ describe('formComplete', () => {
   });
 });
 
+describe('the API key', () => {
+  // The backend answers whether a key is set and never the key, and keeps the stored key on an
+  // update that sends none. Everything here follows from those two facts.
+  const keyed = model({
+    source: {
+      kind: 'api',
+      protocol: 'anthropic',
+      baseUrl: 'https://api.anthropic.com',
+      hasApiKey: true,
+      model: 'claude-sonnet-5',
+    },
+  });
+
+  it('opens a keyed model with the field empty, knowing a key is set', () => {
+    const form = draftFrom(keyed);
+    expect(form).toMatchObject({ apiKey: '', apiKeyStored: true, apiKeyRemoved: false });
+    expect(keepsStoredKey(form)).toBe(true);
+    expect(toDraft(form).source).not.toHaveProperty('apiKey');
+  });
+
+  it('sends a typed key, trimmed, to replace the stored one', () => {
+    const form = { ...draftFrom(keyed), apiKey: '  sk-new ' };
+    expect(keepsStoredKey(form)).toBe(false);
+    expect(toDraft(form).source).toMatchObject({ apiKey: 'sk-new' });
+  });
+
+  it('sends an empty key to remove the stored one, and a typed key wins over removing', () => {
+    const removed = { ...draftFrom(keyed), apiKeyRemoved: true };
+    expect(toDraft(removed).source).toMatchObject({ apiKey: '' });
+    expect(toDraft({ ...removed, apiKey: 'sk-new' }).source).toMatchObject({ apiKey: 'sk-new' });
+  });
+
+  it('sends no key for a new model nobody typed one for', () => {
+    const form = { ...EMPTY_FORM, name: 'Local', sourceKind: 'api' as const, apiModel: 'llama' };
+    expect(toDraft(form).source).not.toHaveProperty('apiKey');
+    // "Removing" means nothing without a stored key, so it sends nothing either.
+    expect(toDraft({ ...form, apiKeyRemoved: true }).source).not.toHaveProperty('apiKey');
+  });
+
+  it('holds the save when the address moves away from the stored key, as the backend would', () => {
+    const moved = { ...draftFrom(keyed), apiBaseUrl: 'https://llm.corp.example' };
+    expect(apiKeyProblem(moved)).toContain('only to the address it was set for');
+    expect(formComplete(moved)).toBe(false);
+    // Typing the key again, or removing it, is what the backend accepts for a move.
+    expect(formComplete({ ...moved, apiKey: 'sk-ant' })).toBe(true);
+    expect(formComplete({ ...moved, apiKeyRemoved: true })).toBe(true);
+  });
+
+  it('compares addresses the way the backend does: as parsed URLs', () => {
+    const form = draftFrom(keyed);
+    expect(apiKeyProblem({ ...form, apiBaseUrl: 'https://api.anthropic.com/' })).toBe('');
+    const v1 = { ...form, apiKeyBaseUrl: 'https://api.openai.com/v1' };
+    expect(apiKeyProblem({ ...v1, apiBaseUrl: 'https://api.openai.com/v1' })).toBe('');
+    expect(apiKeyProblem({ ...v1, apiBaseUrl: 'https://api.openai.com/v1/' })).not.toBe('');
+  });
+
+  it('raises nothing for a model with no key, wherever it moves', () => {
+    const keyless = draftFrom(model({ source: { ...keyed.source, hasApiKey: false } as AiModelSource }));
+    expect(apiKeyProblem({ ...keyless, apiBaseUrl: 'https://llm.corp.example' })).toBe('');
+    expect(keepsStoredKey(keyless)).toBe(false);
+  });
+});
+
 describe('describeModel', () => {
   it('says nothing about progress for a remote model, which has nothing to download', () => {
     const view = describeModel(
-      model({ source: { kind: 'api', protocol: 'openai', baseUrl: 'u', apiKey: 'k', model: 'gpt-4o' } }),
+      model({ source: { kind: 'api', protocol: 'openai', baseUrl: 'u', hasApiKey: true, model: 'gpt-4o' } }),
     );
     expect(view.statusText).toBe('');
     expect(view.ready).toBe(true);
@@ -179,12 +254,24 @@ describe('remote API presets', () => {
   it('opens a model on the service its endpoint matches, or custom for one none describes', () => {
     const anthropic = draftFrom(
       model({
-        source: { kind: 'api', protocol: 'anthropic', baseUrl: 'https://api.anthropic.com', apiKey: 'k', model: 'm' },
+        source: {
+          kind: 'api',
+          protocol: 'anthropic',
+          baseUrl: 'https://api.anthropic.com',
+          hasApiKey: true,
+          model: 'm',
+        },
       }),
     );
     const gateway = draftFrom(
       model({
-        source: { kind: 'api', protocol: 'anthropic', baseUrl: 'https://llm.corp.example', apiKey: 'k', model: 'm' },
+        source: {
+          kind: 'api',
+          protocol: 'anthropic',
+          baseUrl: 'https://llm.corp.example',
+          hasApiKey: true,
+          model: 'm',
+        },
       }),
     );
     expect(anthropic.apiService).toBe('anthropic');
@@ -214,7 +301,9 @@ describe('remote API presets', () => {
 
   it('labels an Anthropic model as such in the list', () => {
     const view = describeModel(
-      model({ source: { kind: 'api', protocol: 'anthropic', baseUrl: 'u', apiKey: 'k', model: 'claude-sonnet-5' } }),
+      model({
+        source: { kind: 'api', protocol: 'anthropic', baseUrl: 'u', hasApiKey: true, model: 'claude-sonnet-5' },
+      }),
     );
     expect(view.sourceLabel).toBe('Anthropic API');
   });

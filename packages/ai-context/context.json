@@ -6761,6 +6761,9 @@
             "apiProtocol",
             "apiBaseUrl",
             "apiKey",
+            "apiKeyStored",
+            "apiKeyBaseUrl",
+            "apiKeyRemoved",
             "apiModel",
             "apiMaxContext",
             "hfRepo",
@@ -6782,6 +6785,12 @@
         },
         "aiMaxContextError": {
           "type": "string"
+        },
+        "aiApiKeyError": {
+          "type": "string"
+        },
+        "aiDiscoverNeedsKey": {
+          "type": "boolean"
         },
         "aiServiceOptions": {
           "type": "array",
