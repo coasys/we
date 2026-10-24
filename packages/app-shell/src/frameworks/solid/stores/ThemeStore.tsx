@@ -1387,10 +1387,17 @@ export function ThemeStoreProvider(props: ParentProps) {
         overrides: overridesJson,
         css: source?.css ?? null,
       };
-      setInstalledThemes((prev) => [...prev, data]);
-      setVisibleThemeIds((prev) => new Set([...prev, model.id]));
-      const prefs = datasetStore.agentSettings();
-      if (prefs) await prefs.addInstalledThemes(model).catch(() => {});
+      if (destination === 'space') {
+        // It lives in the space, so it joins the space's list, as a reload would put it. Added to
+        // this agent's installed list instead, it showed under "My themes" and was missing from
+        // the space's own pickers until the next load.
+        setSpaceThemes((prev) => [...prev, data]);
+      } else {
+        setInstalledThemes((prev) => [...prev, data]);
+        setVisibleThemeIds((prev) => new Set([...prev, model.id]));
+        const prefs = datasetStore.agentSettings();
+        if (prefs) await prefs.addInstalledThemes(model).catch(() => {});
+      }
       setCurrentTheme(data.id);
       setEditingTheme({ ...data, isDirty: false });
       sessionStorage.setItem(EDITING_THEME_KEY, data.id);
