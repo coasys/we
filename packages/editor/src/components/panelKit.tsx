@@ -100,3 +100,18 @@ export function FoldingSection(props: {
     </Column>
   );
 }
+
+/**
+ * A heading inside a section — "Palette", "Strokes" — as distinct from the section's own title.
+ *
+ * The section title is the kit's: small, faint and in capitals, a category. This is the label size
+ * in the text's own colour and sentence case, with a little room above, so the two read as
+ * different kinds of thing rather than as the same thing at two sizes.
+ */
+export function Subheading(props: { children: JSX.Element }) {
+  return (
+    <we-text variant="label" color="text" pt="200">
+      {props.children}
+    </we-text>
+  );
+}

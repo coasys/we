@@ -44,7 +44,7 @@ import { colourToFamily, familyPatch, familyResetPatch, visiblyDifferent } from 
 import { useEditorHost } from '../host';
 import { nextRoles, roleTierLabel } from '../themeRoles';
 import { type SidesChoice, sidesOf, sidesPatch, writePatch } from '../themeSides';
-import { FoldingSection, PanelScroll, PanelShell } from './panelKit';
+import { FoldingSection, PanelScroll, PanelShell, Subheading } from './panelKit';
 
 const SAVE_DEBOUNCE_MS = 600;
 
@@ -761,6 +761,8 @@ export function ThemePanel() {
           */}
           <we-color-picker
             palette={[]}
+            // The size the Roles section's swatches are.
+            styles={{ '--we-color-picker-swatch': '28px' }}
             value={used()}
             on:preview={(e: CustomEvent) => pickFamily(family, e.detail as string, false)}
             on:change={(e: CustomEvent) => pickFamily(family, e.detail as string, true)}
@@ -1217,19 +1219,6 @@ export function ThemePanel() {
   }
 
   /**
-   * Resolve any CSS colour — an hsl(), a var() chain, a hex — to what the browser paints.
-   *
-   * Returned as the computed string rather than a hex, so a role that carries transparency keeps
-   * it: the scrim is 60% alpha by default, and handing its picker an opaque hex would open it on a
-   * colour the role has never been.
-   */
-  function resolveColor(el: HTMLElement, value: string): string {
-    el.style.color = '';
-    el.style.color = value;
-    return getComputedStyle(el).color;
-  }
-
-  /**
    * The per-hue chroma ceilings this theme resolves to, measured rather than assumed.
    *
    * They are computed at apply time — how much chroma a hue can hold has no closed form worth
@@ -1242,11 +1231,26 @@ export function ThemePanel() {
    */
   const [measuredCeilings, setMeasuredCeilings] = createSignal<Record<string, string>>({});
 
+  /**
+   * The colours some role variables resolve to on the probe, read in one pass: a cell per variable,
+   * every one written before any is read, so the first read pays for the style pass and the rest
+   * answer from it. Reading them one at a time — write, read, write, read — was a pass each.
+   */
+  function sampleVars(vars: string[]): string[] {
+    const probe = roleProbe!;
+    const cells = vars.map((v) => {
+      const cell = document.createElement('div');
+      cell.style.color = `var(${v})`;
+      probe.appendChild(cell);
+      return cell;
+    });
+    const out = cells.map((cell) => getComputedStyle(cell).color);
+    for (const cell of cells) cell.remove();
+    return out;
+  }
+
   createEffect(() => {
     const parameters = overrides();
-    // Held still for the length of a drag — see `dragging`. Reading the signal here is what makes
-    // the effect re-run, and re-sample, the moment the pointer lifts.
-    if (dragging()) return;
     if (!roleProbe) return;
 
     /*
@@ -1255,34 +1259,42 @@ export function ThemePanel() {
       Sampling a probe that only carries `themeParametersToStyle` reports the theme's *declared* roles: muted
       text before it was corrected, a label before it was chosen, a fill before it was moved. The
       swatch beside each role would then show something the theme never renders.
+
+      Re-sampled on every frame of a drag too, so the family swatches and chips move with the slider
+      — this used to wait for the pointer to lift, from before a theme could be applied cheaply
+      while a slider is held (see `setThemeLive`). Mid-drag the samples are uncorrected; the pass on
+      release corrects them.
     */
     applyThemeVars(roleProbe, parameters, { crossFade: false });
 
-    const computed = getComputedStyle(roleProbe);
-    const next: Record<string, string> = {};
-    for (const group of ROLE_GROUPS) {
-      for (const { role } of group.roles) {
-        next[role] = resolveColor(roleProbe, computed.getPropertyValue(roleVar(role)).trim());
-      }
-    }
+    const roles = ROLE_GROUPS.flatMap((group) => group.roles.map(({ role }) => role));
     /*
       Each family's roles as drawn, corrections included: the fill a picked colour is compared with,
       and the chips beside it. Read here because the chips sit outside anything wearing the edited
       theme — painted from the role names they would show the app's colours, not this theme's.
     */
+    const parts = ['', 'on-', '-soft', '-text', '-border'];
+    const familyVar = (family: string, part: string) =>
+      part === 'on-' ? `--we-role-on-${family}` : `--we-role-${family}${part}`;
+    const sampled = sampleVars([
+      ...roles.map((role) => roleVar(role)),
+      ...CHROMATIC_FAMILIES.flatMap((family) => parts.map((part) => familyVar(family, part))),
+    ]);
+
+    const next: Record<string, string> = {};
+    roles.forEach((role, i) => (next[role] = sampled[i]));
     const fills: Record<string, FamilySample> = {};
-    const read = (role: string) => resolveColor(roleProbe!, computed.getPropertyValue(`--we-role-${role}`).trim());
-    for (const family of CHROMATIC_FAMILIES) {
+    CHROMATIC_FAMILIES.forEach((family, f) => {
+      const at = roles.length + f * parts.length;
       fills[family] = {
-        fill: read(family),
-        on: read(`on-${family}`),
-        soft: read(`${family}-soft`),
-        text: read(`${family}-text`),
-        border: read(`${family}-border`),
+        fill: sampled[at],
+        on: sampled[at + 1],
+        soft: sampled[at + 2],
+        text: sampled[at + 3],
+        border: sampled[at + 4],
       };
-    }
+    });
     setFamilyColors(fills);
-    roleProbe.style.color = '';
     setRoleColors(next);
 
     const ceilings: Record<string, string> = {};
@@ -1720,7 +1732,12 @@ export function ThemePanel() {
         />
 
         <PanelScroll>
-          <Column gap="400" pb="400">
+          {/*
+            Sections spaced as the extraction panel spaces its own — `500`, well clear of the `200`
+            between a heading and its rows: closer, and the end of one open section and the start
+            of the next read as one list.
+          */}
+          <Column gap="500" pb="400">
             {/* ── Name + icon ── */}
             <Column gap="200">
               <we-text {...weProps(SECTION_LABEL_PROPS)}>Theme name</we-text>
@@ -1995,19 +2012,16 @@ export function ThemePanel() {
                 family still turns with the theme and keeps its label readable.
               */}
               <Column gap="200">
+                <Subheading>Accent and status</Subheading>
                 <For each={[...SEMANTIC_FAMILIES]}>{(family) => familyRow(family)}</For>
               </Column>
               <Column gap="200">
-                <we-text fontSize="200" color="text-faint">
-                  Neutral
-                </we-text>
+                <Subheading>Neutral</Subheading>
                 {hueSlider('Tint', 'neutralHue', COLOR_FAMILIES.accent.hue)}
                 {percentSlider('Amount', 'neutralSaturation', 0, 100, 20, '')}
               </Column>
               <Column gap="200">
-                <we-text fontSize="200" color="text-faint">
-                  Palette
-                </we-text>
+                <Subheading>Palette</Subheading>
                 <we-text fontSize="100" color="text-faint" lineHeight="1.4">
                   The ten colours communities give their categories. Set how vivid and how light they are as a set, then
                   pick any one — it stays near the colour it is named for.
@@ -2037,9 +2051,7 @@ export function ThemePanel() {
                 </Grid>
               </Column>
               <Column gap="200">
-                <we-text fontSize="200" color="text-faint">
-                  Whole theme
-                </we-text>
+                <Subheading>Whole theme</Subheading>
                 {/*
                   The two ends of the ramp, stated rather than encoded — a narrow span is a soft
                   theme, a full one is stark — and the saturation every family starts from.
@@ -2060,9 +2072,7 @@ export function ThemePanel() {
               <For each={ROLE_GROUPS}>
                 {(group) => (
                   <Column gap="200">
-                    <we-text fontSize="200" color="text-faint">
-                      {group.label}
-                    </we-text>
+                    <Subheading>{group.label}</Subheading>
                     {/* What the group is *for*, once, rather than repeated on every row inside it. */}
                     <we-text fontSize="100" color="text-faint" lineHeight="1.4">
                       {group.hint}
@@ -2108,9 +2118,7 @@ export function ThemePanel() {
             {/* ── Shape ── */}
             <FoldingSection title="Shape">
               <Column gap="200">
-                <we-text fontSize="200" color="text-faint">
-                  Preset
-                </we-text>
+                <Subheading>Preset</Subheading>
                 {presetRow(
                   { sharp: 'Sharp', default: 'Default', rounded: 'Rounded', pill: 'Pill' } as Record<
                     ShapePreset,
@@ -2121,18 +2129,14 @@ export function ThemePanel() {
                 )}
               </Column>
               <Column gap="200">
-                <we-text fontSize="200" color="text-faint">
-                  Overrides
-                </we-text>
+                <Subheading>Overrides</Subheading>
                 {selectControl('Controls', 'controlRadius', RADIUS_OPTIONS, '80px')}
                 {selectControl('Surfaces', 'surfaceRadius', RADIUS_OPTIONS, '80px')}
                 {selectControl('Inputs', 'inputRadius', RADIUS_OPTIONS, '80px')}
                 {selectControl('Avatars', 'avatarRadius', AVATAR_RADIUS_OPTIONS, '80px')}
               </Column>
               <Column gap="200">
-                <we-text fontSize="200" color="text-faint">
-                  Strokes
-                </we-text>
+                <Subheading>Strokes</Subheading>
                 {/* Beside the radii, because "what shape is this" is one question and a stroke is
                     half the answer. A theme that rounds everything and cannot thicken a line is
                     only half-themed. */}
@@ -2155,9 +2159,7 @@ export function ThemePanel() {
               {selectControl('Letter spacing', 'letterSpacing', LETTER_SPACING_OPTIONS, '100px', 'default')}
               {selectControl('Line height', 'lineHeight', LINE_HEIGHT_OPTIONS, '100px', 'default')}
               <Column gap="200">
-                <we-text fontSize="200" color="text-faint">
-                  Scale
-                </we-text>
+                <Subheading>Scale</Subheading>
                 {presetRow(
                   { sm: 'Small', default: 'Default', lg: 'Large', xl: 'XL' } as Record<FontScalePreset, string>,
                   (p) => activeFontScalePreset() === p,
@@ -2174,9 +2176,7 @@ export function ThemePanel() {
               <For each={[...TYPE_ROLES]}>
                 {(role) => (
                   <Column gap="200">
-                    <we-text fontSize="200" color="text-faint">
-                      {TYPE_ROLE_LABELS[role]}
-                    </we-text>
+                    <Subheading>{TYPE_ROLE_LABELS[role]}</Subheading>
                     {choiceRow(
                       'Weight',
                       () => String(overrides().typeStyles?.[role]?.weight ?? ''),
@@ -2209,9 +2209,7 @@ export function ThemePanel() {
             {/* ── Spacing & Density ── */}
             <FoldingSection title="Spacing & Density">
               <Column gap="200">
-                <we-text fontSize="200" color="text-faint">
-                  Preset
-                </we-text>
+                <Subheading>Preset</Subheading>
                 {presetRow(
                   { compact: 'Compact', comfortable: 'Comfortable', spacious: 'Spacious' } as Record<
                     SpacingPreset,
@@ -2222,9 +2220,7 @@ export function ThemePanel() {
                 )}
               </Column>
               <Column gap="200">
-                <we-text fontSize="200" color="text-faint">
-                  Overrides
-                </we-text>
+                <Subheading>Overrides</Subheading>
                 {selectControl('Control padding', 'controlPaddingX', SPACING_OPTIONS, '120px')}
                 {selectControl('Control gap', 'controlGap', SPACING_OPTIONS, '120px')}
                 {selectControl('Control height', 'controlHeightOffset', HEIGHT_OPTIONS, '120px')}
@@ -2233,9 +2229,7 @@ export function ThemePanel() {
                 {selectControl('Input padding', 'inputPadding', INPUT_SPACING_OPTIONS, '120px')}
               </Column>
               <Column gap="200">
-                <we-text fontSize="200" color="text-faint">
-                  Overall scale
-                </we-text>
+                <Subheading>Overall scale</Subheading>
                 {/* Mirrors `fontScale` in Typography. It scales spacing *on top of* whatever the
                     type scale already did — the steps are in rem — so this is the control for
                     "denser at the same text size". */}
@@ -2246,9 +2240,7 @@ export function ThemePanel() {
             {/* ── Elevation ── */}
             <FoldingSection title="Elevation">
               <Column gap="200">
-                <we-text fontSize="200" color="text-faint">
-                  Shadows
-                </we-text>
+                <Subheading>Shadows</Subheading>
                 {presetRow(
                   { flat: 'Flat', subtle: 'Subtle', elevated: 'Elevated', dramatic: 'Dramatic' } as Record<
                     NonNullable<ThemeOverrides['shadowIntensity']>,
@@ -2262,9 +2254,7 @@ export function ThemePanel() {
                 )}
               </Column>
               <Column gap="200">
-                <we-text fontSize="200" color="text-faint">
-                  Glow
-                </we-text>
+                <Subheading>Glow</Subheading>
                 {/* What shadow: 'glow' draws — the accent as light, coloured by an element's tone. */}
                 {presetRow(
                   { none: 'None', subtle: 'Subtle', medium: 'Medium', strong: 'Strong' } as Record<
@@ -2296,9 +2286,7 @@ export function ThemePanel() {
                 clearOnZero: true,
               })}
               <Column gap="200">
-                <we-text fontSize="200" color="text-faint">
-                  Images
-                </we-text>
+                <Subheading>Images</Subheading>
                 <we-text fontSize="100" color="text-faint" lineHeight="1.4">
                   A gradient laid over every surface of a kind — radial-, linear- or conic-gradient. The page and the
                   chrome hold still behind scrolling content.
@@ -2328,9 +2316,7 @@ export function ThemePanel() {
             {/* ── Motion ── */}
             <FoldingSection title="Motion">
               <Column gap="200">
-                <we-text fontSize="200" color="text-faint">
-                  Animation speed
-                </we-text>
+                <Subheading>Animation speed</Subheading>
                 {presetRow(
                   { none: 'None', fast: 'Fast', normal: 'Normal', slow: 'Slow' } as Record<
                     NonNullable<ThemeOverrides['animationSpeed']>,

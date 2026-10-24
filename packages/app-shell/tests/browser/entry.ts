@@ -1203,6 +1203,8 @@ function themePanelProbe(overrides = '{"themeName":"dark"}'): void {
 }
 
 (window as unknown as Record<string, unknown>).__harness = {
+  // The theme pipeline itself, for a probe of how an apply behaves.
+  themeApi: { applyThemeVars, setThemeLive },
   themeDrag,
   themePanelProbe,
   composerFrame,
