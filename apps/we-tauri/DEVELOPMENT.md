@@ -47,6 +47,57 @@ holds everything logged through the `log` crate (the executor, Holochain, JS `co
 and lines marked `HOST` from `src/lib.rs`. A bare `println!` reaches the terminal only. See
 `src/executor_log.rs`.
 
+## The identity: custody and the identity window
+
+The person's master key never rests in the executor (AR-03 4.4). The shell keeps it in
+`src-tauri/custody` (crate `we-custody`): `DesktopVault` over the macOS keychain, or on Linux sealed
+under a passphrase (Argon2id, XChaCha20-Poly1305) in the Secret Service, or in
+`$XDG_DATA_HOME/coasys/custody/<scid>.bin` (mode 0600) where there is none. It runs the identity
+client's flows — make the identity, add a device, revoke one — and reaches the executor only over
+its RPC with the admin credential. It is its own crate so nothing of it links the executor;
+`custody/tests/boundary.rs` keeps it so.
+
+Only the **identity window** runs a flow. It is a separate bundle (`identity/`, built by
+`vite.identity.config.ts` into `dist/identity/`) under a strict CSP, with its own capability
+(`src-tauri/capabilities/identity.json`). The main window may only open it on a step and read public
+custody state (`identity_open`, `identity_public_state`); `build.rs` declares every command in an app
+manifest so none is callable without a capability.
+
+The executor's identity store comes from the environment the executor's own CLI reads:
+
+```sh
+AD4M_IDENTITY_STORE_URL=https://store-staging.coasys.org AD4M_IDENTITY_STORE_KEYS=<store key> pnpm tauri:dev
+```
+
+Unset, the agent language keeps its own store setting and Add a device cannot make an offer link.
+
+### Testing the custody crate
+
+```sh
+cd src-tauri/custody
+cargo test                       # vault, sealing, screens, command table, the executor boundary
+```
+
+It builds against the ad4m commit WE pins, by git (`custody/Cargo.toml`; `tests/boundary.rs` fails
+if that rev and `package.json`'s pin differ). Against a local ad4m checkout at that commit:
+
+```sh
+A=<ad4m>; P='patch."https://github.com/coasys/ad4m"'
+cargo test --config "$P.ad4m-identity-client.path=\"$A/ad4m-identity-client\"" \
+  --config "$P.ad4m-identity-core.path=\"$A/ad4m-identity-core\"" \
+  --config "$P.ad4m-client.path=\"$A/rust-client\""
+```
+
+The end-to-end test runs the three flows against a real identity-store and two real executors; see
+the header of `custody/tests/live.rs` for what it needs:
+
+```sh
+CUSTODY_LIVE=1 AD4M_REPO=<ad4m> cargo test --features cheap-kdf --test live -- --nocapture
+```
+
+In the app build the generated `Cargo.toml` patches the custody crate's ad4m crates to the seed's
+checkout (`Cargo.toml.template`), so there is one ad4m in the binary.
+
 ## Optional: Embedding External Apps
 
 The Tauri launcher can embed external apps via iframe. This section uses Flux as an example, but the pattern works for any app.

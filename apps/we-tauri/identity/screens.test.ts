@@ -1,0 +1,50 @@
+/** The identity window's wording, and that its bundle and policy stay as narrow as AR-03 4.4.2 asks. */
+import { describe, expect, it } from 'vitest';
+
+// The policy as `vite.identity.config.ts` writes it into the built page.
+import policy from './csp.txt?raw';
+import mainSource from './main.ts?raw';
+import { heading, isLast, remaining, wordNumber } from './screens';
+import screensSource from './screens.ts?raw';
+
+const IDENTITY_CSP = policy.trim();
+
+describe('the identity window', () => {
+  it('asks for the two words the custody service chose', () => {
+    expect(heading({ screen: 'confirm-words', positions: [3, 11], error: null }).lead).toContain('words 3 and 11');
+  });
+
+  it('counts an offer down and numbers the words', () => {
+    expect(remaining(1000 + 292, 1000)).toBe('4:52');
+    expect(remaining(1000, 2000)).toBe('0:00');
+    expect(wordNumber(0)).toBe('01');
+    expect(wordNumber(11)).toBe('12');
+  });
+
+  it('names the device on the approve card when it gave a hint', () => {
+    expect(heading({ screen: 'match', code: 'R7K Q2M', hint: 'server b' }).title).toBe('Add server b?');
+    expect(heading({ screen: 'match', code: 'R7K Q2M', hint: null }).title).toBe('Add this device?');
+  });
+
+  it('ends on the screens that end a step', () => {
+    expect(isLast({ screen: 'identity-ready', did: 'did:scid:coasys:1:Qm', keyId: 'd1' })).toBe(true);
+    expect(isLast({ screen: 'revoked', keyId: 'd2', seq: 2 })).toBe(true);
+    expect(isLast({ screen: 'show-words', words: [] })).toBe(false);
+    expect(isLast({ screen: 'offer', link: '', qrSvg: '', expires: 0 })).toBe(false);
+  });
+
+  it('runs under the strict policy: no remote content, no inline script, no string sinks', () => {
+    expect(IDENTITY_CSP).toContain("default-src 'none'");
+    expect(IDENTITY_CSP).toContain("script-src 'self'");
+    expect(IDENTITY_CSP).not.toMatch(/unsafe-(inline|eval)|https:/);
+    expect(IDENTITY_CSP).toContain("require-trusted-types-for 'script'");
+  });
+
+  it('imports nothing of WE: no template, store or module code reaches the window', () => {
+    for (const source of [mainSource, screensSource]) {
+      const imports = [...source.matchAll(/from '([^']+)'/g)].map((m) => m[1]);
+      for (const name of imports) expect(name === '@tauri-apps/api/core' || name.startsWith('./')).toBe(true);
+      expect(source).not.toMatch(/\.(innerHTML|outerHTML|insertAdjacentHTML)\b|document\.write\(/);
+    }
+  });
+});

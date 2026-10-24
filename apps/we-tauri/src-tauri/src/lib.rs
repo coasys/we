@@ -172,6 +172,32 @@ pub fn run() {
         .expect("Failed to initialize AD4M");
     }
 
+    // The identity store the executor's agent language uses, from the environment the executor's
+    // own CLI reads (`AD4M_IDENTITY_STORE_URL`, `AD4M_IDENTITY_STORE_KEYS`): the staging store for
+    // slice 1's demo, a local one in development. Unset, the agent language keeps its own setting,
+    // and the custody service cannot make an offer link, which names the store.
+    let identity_store_url = std::env::var("AD4M_IDENTITY_STORE_URL").ok().filter(|s| !s.is_empty());
+    let identity_store_keys = std::env::var("AD4M_IDENTITY_STORE_KEYS")
+        .ok()
+        .map(|keys| keys.split(',').map(|k| k.trim().to_string()).filter(|k| !k.is_empty()).collect::<Vec<_>>())
+        .filter(|keys| !keys.is_empty());
+
+    // The custody service: the person's master key, behind the OS unlock, in this process but never
+    // in the executor's code (it is its own crate, `custody/`, and reaches the executor over RPC with
+    // the admin credential only). The sealed file is the fallback for Linux without a Secret Service.
+    let custody_dir = dirs::data_dir()
+        .unwrap_or_else(|| home.join(".local/share"))
+        .join("coasys")
+        .join("custody");
+    let custody = we_custody::spawn(
+        we_custody::DesktopVault::new(we_custody::store::system_store(custody_dir)),
+        we_custody::ExecutorAddress {
+            url: format!("http://127.0.0.1:{graphql_port}"),
+            admin_credential: std::sync::Arc::from(req_credential.as_str()),
+            store_url: identity_store_url.clone(),
+        },
+    );
+
     let state = AppState {
         graphql_port,
         req_credential: req_credential.clone(),
@@ -183,6 +209,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(state)
+        .manage(commands::identity::IdentityState::new(custody))
         .invoke_handler(tauri::generate_handler![
             commands::state::get_port,
             commands::state::request_credential,
@@ -195,7 +222,13 @@ pub fn run() {
             commands::accounts::get_executor_settings,
             commands::accounts::set_executor_settings,
             commands::accounts::restart_executor,
-            commands::accounts::choose_file
+            commands::accounts::choose_file,
+            commands::identity::identity_open,
+            commands::identity::identity_public_state,
+            commands::identity::identity_flow_start,
+            commands::identity::identity_flow_step,
+            commands::identity::identity_flow_cancel,
+            commands::identity::identity_flow_finish
         ])
         .setup(move |app| {
             // Start embedded app HTTP servers (in production only)
@@ -211,7 +244,8 @@ pub fn run() {
             }
 
             let config = Ad4mConfig {
-                admin_credential: Some(req_credential.clone()),
+                // A `Secret` since ad4m's Plan 20: it never prints and never serialises.
+                admin_credential: Some(req_credential.clone().into()),
                 app_data_path: Some(app_data_path.to_str().unwrap().to_string()),
                 // `port` is the executor's GraphQL/REST port — the same one the electron host
                 // passes as `--port`. It was `gql_port` in an older Ad4mConfig.
@@ -223,6 +257,8 @@ pub fn run() {
                 // configuration once, at startup.
                 enable_mcp: Some(executor_settings.mcp_enabled),
                 mcp_port: Some(executor_settings.mcp_port),
+                identity_store_url: identity_store_url.clone(),
+                identity_store_keys: identity_store_keys.clone(),
                 ..Default::default()
             };
 

@@ -31,6 +31,9 @@ ad4m-client = { path = "{{AD4M_CLIENT_PATH}}" }
 tokio = { version = "1", features = ["full"] }
 warp = "0.3"
 ad4m-executor = { path = "{{AD4M_EXECUTOR_PATH}}" }
+# The master-key custody service and its identity flows (AR-03 4.4). Its own crate, so nothing of it
+# links the executor; see custody/Cargo.toml and the `[patch]` below.
+we-custody = { path = "custody" }
 uuid = { version = "0.8", features = ["v4"] }
 dirs = "5"
 
@@ -77,3 +80,11 @@ sqlx-macros-core = { git = "https://github.com/coasys/sqlx.git", branch = "sqlit
 sqlx-mysql = { git = "https://github.com/coasys/sqlx.git", branch = "sqlite-libsqlite3-sys-0.38-compat" }
 sqlx-postgres = { git = "https://github.com/coasys/sqlx.git", branch = "sqlite-libsqlite3-sys-0.38-compat" }
 sqlx-sqlite = { git = "https://github.com/coasys/sqlx.git", branch = "sqlite-libsqlite3-sys-0.38-compat" }
+
+# The custody crate names ad4m by git commit, so it builds and tests on its own (custody/Cargo.toml).
+# In the app the executor comes from the seed's ad4m checkout, so the custody crate's ad4m crates do
+# too: one ad4m in the binary, the checkout the seed names (it must be at the commit WE pins).
+[patch."https://github.com/coasys/ad4m"]
+ad4m-identity-client = { path = "{{AD4M_CLIENT_PATH}}/../ad4m-identity-client" }
+ad4m-identity-core = { path = "{{AD4M_CLIENT_PATH}}/../ad4m-identity-core" }
+ad4m-client = { path = "{{AD4M_CLIENT_PATH}}" }
