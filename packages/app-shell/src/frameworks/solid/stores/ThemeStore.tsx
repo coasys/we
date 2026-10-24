@@ -1888,6 +1888,10 @@ export function ThemeStoreProvider(props: ParentProps) {
           : null,
         css: editing.css ? asFileField(encodeToFileData(editing.css, 'theme.css', 'text/css')) : null,
       });
+      // Space themes are read on entering a space, not watched, so the open space's list is read
+      // again here — or the theme just shared is missing from its pickers until the next visit.
+      // Another space reads its own when it is next opened.
+      if (datasetStore.currentDataset()?.id === perspectiveUuid) await loadSpaceThemes();
       toastService.success(`Theme "${editing.name}" shared to space "${spaceName}"`);
       return true;
     } catch (e) {
