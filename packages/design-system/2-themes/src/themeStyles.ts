@@ -635,7 +635,10 @@ const appliedThemes = new WeakMap<HTMLElement, { theme: ThemeOverrides; options?
 */
 let liveEdit = false;
 const liveRoots = new Set<HTMLElement>();
-const appliedDerived = new WeakMap<HTMLElement, Set<string>>();
+const appliedDerived = new WeakMap<HTMLElement, Map<string, string>>();
+
+/** A family's own role, which a held slider may be moving: `--we-role-teal-text`, `--we-role-on-accent`. */
+const FAMILY_ROLE_VAR = new RegExp(`^--we-role-(on-)?(${[...CHROMATIC_FAMILIES, 'neutral'].join('|')})(-|$)`);
 
 /**
  * Say a theme is being changed continuously — while a slider is held — or that it has stopped. See
@@ -716,6 +719,13 @@ export function applyThemeVars(root: HTMLElement, asked: ThemeOverrides, options
   }
   // Inline, so a theme beats any stylesheet — including a component's own defaults.
   for (const [prop, value] of Object.entries(styles)) root.style.setProperty(prop, value);
+  /*
+    The kept corrections, written back over the defaults just written — or the text dims for the
+    length of a drag: muted and faint text are corrected for contrast when measured, and their
+    defaults are what a drag would otherwise show. A family's own roles are left to their defaults
+    instead, since the slider may be moving that family and a kept value would hold it still.
+  */
+  if (keep) for (const [prop, value] of keep) if (!FAMILY_ROLE_VAR.test(prop)) root.style.setProperty(prop, value);
   // For what a variable cannot reach by itself: an icon's weight picks which drawing it fetches, so
   // the icons under this root have to be told to read it again (see we-icon).
   const doc = root.ownerDocument;
@@ -725,7 +735,7 @@ export function applyThemeVars(root: HTMLElement, asked: ThemeOverrides, options
 
   if (keep) {
     liveRoots.add(root);
-    appliedThemeVars.set(root, new Set([...Object.keys(styles), ...keep]));
+    appliedThemeVars.set(root, new Set([...Object.keys(styles), ...keep.keys()]));
     return;
   }
 
@@ -760,7 +770,7 @@ export function applyThemeVars(root: HTMLElement, asked: ThemeOverrides, options
   */
   const measurable = typeof getComputedStyle === 'function' && root?.nodeType === 1 && root.isConnected;
   if (!measurable) {
-    appliedDerived.set(root, new Set(ceilings));
+    appliedDerived.set(root, new Map(ceilings.map((p) => [p, root.style.getPropertyValue(p)])));
     appliedThemeVars.set(root, new Set([...Object.keys(styles), ...ceilings]));
     return;
   }
@@ -770,7 +780,7 @@ export function applyThemeVars(root: HTMLElement, asked: ThemeOverrides, options
   for (const [prop, value] of Object.entries(derivedVars)) root.style.setProperty(prop, value);
 
   const derived = [...Object.keys(derivedVars), ...ceilings];
-  appliedDerived.set(root, new Set(derived));
+  appliedDerived.set(root, new Map(derived.map((p) => [p, root.style.getPropertyValue(p)])));
   appliedThemeVars.set(root, new Set([...Object.keys(styles), ...derived]));
 }
 
