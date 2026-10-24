@@ -13,6 +13,8 @@ export { type EditorStore, useEditorStore, EditorStoreProvider } from './EditorS
 export { type AppStore, useAppStore, AppStoreProvider } from './AppStore';
 export { type ClockStore, type ClockView, useClockStore, ClockStoreProvider } from './ClockStore';
 export { type FlowStore, useFlowStore, FlowStoreProvider } from './FlowStore';
+export { type IdentityStore, useIdentityStore, IdentityStoreProvider } from './IdentityStore';
+export { type DeviceStore, useDeviceStore, DeviceStoreProvider } from './DeviceStore';
 export {
   type InterpretationActivityView,
   type InterpretationStore,
