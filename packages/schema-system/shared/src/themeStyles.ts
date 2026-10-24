@@ -22,6 +22,8 @@ export {
   role,
   roleVar,
   setDisplayPreferences,
+  setThemeLive,
+  rangeForPolarity,
   surfacesForPolarity,
   THEME_SCHEMA_VERSION,
   themeParametersToStyle,

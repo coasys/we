@@ -16,7 +16,9 @@ import type { FontFaceSetting, ThemeOverrides, ThemeRole } from '@we/schema-shar
 import {
   applyThemeVars,
   fontFaceProblem,
+  rangeForPolarity,
   roleVar,
+  setThemeLive,
   surfacesForPolarity,
   themeParametersToStyle,
   themeSides,
@@ -1076,6 +1078,12 @@ export function ThemePanel() {
    * so what is left here is only the saving, which is worth keeping and is no longer load-bearing.
    */
   const [dragging, setDragging] = createSignal(false);
+  /*
+    And holds the theme's measurements still everywhere it is applied: a drag re-applies the theme
+    every frame, and measuring it is two whole-document style recalculations, which on a full page
+    is most of a frame. Everything is measured once, in full, when the pointer comes up.
+  */
+  createEffect(() => setThemeLive(dragging()));
   {
     const up = () => setDragging(false);
     // On `window`, not the panel: a drag very often ends with the pointer outside the control it
@@ -1085,6 +1093,7 @@ export function ThemePanel() {
     onCleanup(() => {
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', up);
+      setThemeLive(false);
     });
   }
 
@@ -1808,8 +1817,7 @@ export function ThemePanel() {
                   onClick={() => {
                     setOverrides({
                       polarity: 'light',
-                      lightnessFloor: '0%',
-                      lightnessCeiling: '100%',
+                      ...rangeForPolarity('light', overrides().themeName),
                       roles: surfacesForPolarity('light', overrides().roles),
                     });
                   }}
@@ -1824,8 +1832,7 @@ export function ThemePanel() {
                   onClick={() => {
                     setOverrides({
                       polarity: 'dark',
-                      lightnessFloor: '12%',
-                      lightnessCeiling: '112%',
+                      ...rangeForPolarity('dark', overrides().themeName),
                       roles: surfacesForPolarity('dark', overrides().roles),
                     });
                   }}

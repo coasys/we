@@ -88,22 +88,40 @@ export function roleVar(role: ThemeRole): string {
  * would read the ambient theme when a scoped theme is what is being measured. It is inert: no size,
  * no paint, no pointer, and `position: absolute` keeps it out of layout.
  */
-function createRoleProbe(root: HTMLElement): { read: (role: ThemeRole) => Rgba | null; dispose: () => void } {
-  const probe = root.ownerDocument.createElement('div');
+function readRoles(
+  root: HTMLElement,
+  roles: readonly ThemeRole[],
+): { colours: Map<ThemeRole, Rgba>; neutralHue: string } {
+  /*
+    One child per role, every one written before anything is read.
+
+    Reading a role meant writing the probe's background and asking for its computed value, and that
+    write-then-read is a style recalculation each time round — not of the probe alone, but of every
+    element whose style could have depended on it, which with the theme's own writes still pending
+    is the whole document. Thirty-odd roles were thirty-odd recalculations: 900 ms a frame on a
+    5,700-element page, which is what made a colour slider crawl. Written first and read after, the
+    first read pays for one recalculation and the rest answer from it.
+  */
+  const doc = root.ownerDocument;
+  const probe = doc.createElement('div');
   probe.style.cssText = 'position:absolute;width:0;height:0;visibility:hidden;pointer-events:none';
+  const cells = roles.map((role) => {
+    const cell = doc.createElement('div');
+    cell.style.backgroundColor = `var(${roleVar(role)})`;
+    probe.appendChild(cell);
+    return cell;
+  });
   root.appendChild(probe);
-  const view = root.ownerDocument.defaultView;
-  return {
-    read(role) {
-      probe.style.backgroundColor = '';
-      probe.style.backgroundColor = `var(${roleVar(role)})`;
-      const painted = view?.getComputedStyle(probe).backgroundColor ?? '';
-      return parseColor(painted.trim());
-    },
-    dispose() {
-      probe.remove();
-    },
-  };
+  const view = doc.defaultView;
+  const colours = new Map<ThemeRole, Rgba>();
+  cells.forEach((cell, i) => {
+    const colour = parseColor((view?.getComputedStyle(cell).backgroundColor ?? '').trim());
+    if (colour) colours.set(roles[i], colour);
+  });
+  // Read before the probe goes: removing it is a mutation, and a read after it a second recalculation.
+  const neutralHue = view?.getComputedStyle(root).getPropertyValue('--we-color-neutral-hue').trim() || '264';
+  probe.remove();
+  return { colours, neutralHue };
 }
 
 /**
@@ -585,6 +603,34 @@ export interface ApplyThemeOptions {
 const appliedRoots = new Set<WeakRef<HTMLElement>>();
 const appliedThemes = new WeakMap<HTMLElement, { theme: ThemeOverrides; options?: ApplyThemeOptions }>();
 
+/*
+  A live edit — a slider being dragged — and the roots themed while it lasted.
+
+  Measuring a theme costs two whole-document style recalculations (the chroma ceilings read the hues
+  the theme resolved to; the contrast derivation reads the roles), and a drag re-applies the theme
+  every frame. While one is under way each apply writes the theme's settings and keeps the ceilings
+  and corrections the root already had, which are a frame stale at worst; when it ends, every root
+  themed during it is applied once in full.
+*/
+let liveEdit = false;
+const liveRoots = new Set<HTMLElement>();
+const appliedDerived = new WeakMap<HTMLElement, Set<string>>();
+
+/**
+ * Say a theme is being changed continuously — while a slider is held — or that it has stopped. See
+ * above. Ending a live edit re-applies, measured, every root a theme reached while it lasted.
+ */
+export function setThemeLive(live: boolean): void {
+  if (liveEdit === live) return;
+  liveEdit = live;
+  if (live) return;
+  for (const root of [...liveRoots]) {
+    const applied = appliedThemes.get(root);
+    if (applied && root.isConnected) applyThemeVars(root, applied.theme, applied.options);
+  }
+  liveRoots.clear();
+}
+
 onDisplayChange(() => {
   for (const ref of appliedRoots) {
     const root = ref.deref();
@@ -640,9 +686,11 @@ export function applyThemeVars(root: HTMLElement, asked: ThemeOverrides, options
     );
   }
 
+  // While a live edit lasts, the root keeps what was last measured for it; see `setThemeLive`.
+  const keep = liveEdit && previous ? appliedDerived.get(root) : undefined;
   if (previous) {
     for (const prop of previous) {
-      if (!(prop in styles)) root.style.removeProperty(prop);
+      if (!(prop in styles) && !keep?.has(prop)) root.style.removeProperty(prop);
     }
   }
   // Inline, so a theme beats any stylesheet — including a component's own defaults.
@@ -654,6 +702,12 @@ export function applyThemeVars(root: HTMLElement, asked: ThemeOverrides, options
     doc.dispatchEvent(new CustomEvent('we-theme-change', { detail: { root } }));
   }
 
+  if (keep) {
+    liveRoots.add(root);
+    appliedThemeVars.set(root, new Set([...Object.keys(styles), ...keep]));
+    return;
+  }
+
   // Tracked alongside the rest, so the next theme clears them: a derived value from the old theme
   // outliving it would be worse than never deriving one.
   const ceilings = applyChromaCeilings(root, theme);
@@ -662,7 +716,7 @@ export function applyThemeVars(root: HTMLElement, asked: ThemeOverrides, options
     One read of the browser, then all the maths, then one round of writes.
 
     Everything below needs to know what a role *renders as*, and only the browser can answer that
-    (see `createRoleProbe`). The catch is that a write to `root.style` invalidates the whole
+    (see `readRoles`). The catch is that a write to `root.style` invalidates the whole
     document, so the next `getComputedStyle` forces a synchronous recalculation of it — and reading
     a role, computing, writing it, then reading the next one pays that recalc every time round.
 
@@ -685,23 +739,17 @@ export function applyThemeVars(root: HTMLElement, asked: ThemeOverrides, options
   */
   const measurable = typeof getComputedStyle === 'function' && root?.nodeType === 1 && root.isConnected;
   if (!measurable) {
+    appliedDerived.set(root, new Set(ceilings));
     appliedThemeVars.set(root, new Set([...Object.keys(styles), ...ceilings]));
     return;
   }
 
-  const probe = createRoleProbe(root);
-  const resolved = new Map<ThemeRole, Rgba>();
-  for (const role of ROLES_TO_RESOLVE) {
-    const colour = probe.read(role);
-    if (colour) resolved.set(role, colour);
-  }
-  probe.dispose();
-
-  const hue = getComputedStyle(root).getPropertyValue('--we-color-neutral-hue').trim() || '264';
+  const { colours: resolved, neutralHue: hue } = readRoles(root, ROLES_TO_RESOLVE);
   const derivedVars = deriveRoleVars(resolved, theme, hue);
   for (const [prop, value] of Object.entries(derivedVars)) root.style.setProperty(prop, value);
 
   const derived = [...Object.keys(derivedVars), ...ceilings];
+  appliedDerived.set(root, new Set(derived));
   appliedThemeVars.set(root, new Set([...Object.keys(styles), ...derived]));
 }
 
@@ -742,8 +790,17 @@ function applyChromaCeilings(root: HTMLElement, theme: ThemeOverrides): string[]
   */
   const gamut: Gamut = typeof matchMedia === 'function' && matchMedia('(color-gamut: p3)').matches ? 'p3' : 'srgb';
 
+  /*
+    Every hue read before anything is written. `computed` is live: a read after a write to the root
+    is a whole-document style recalculation, and reading a hue, writing its ceiling and reading the
+    next paid that once per family — fifteen of them once the palette arrived, about 55 ms each on
+    a 5,700-element page, and the bulk of what a theme slider cost a frame.
+  */
+  const hues = new Map(
+    RAMP_FAMILIES.map((family) => [family, parseFloat(computed.getPropertyValue(`--we-color-${family}-hue`))]),
+  );
   for (const family of RAMP_FAMILIES) {
-    const hue = parseFloat(computed.getPropertyValue(`--we-color-${family}-hue`));
+    const hue = hues.get(family)!;
     if (Number.isNaN(hue)) continue;
     const prop = `--we-color-${family}-chroma-max`;
     root.style.setProperty(prop, maxChromaFor(CHROMA_PEAK_LIGHTNESS, hue, gamut).toFixed(4));
