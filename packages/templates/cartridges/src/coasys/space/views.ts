@@ -2,6 +2,7 @@ import type { RouteSchema, SchemaNode, SchemaProp } from '@we/schema-shared';
 import { lineComposer, recordFormModal } from '@we/template-kit';
 import { FLOWS_LOCALS, flowsPage } from '@we/template-showcase';
 
+import { liveDot } from './marks.ts';
 import { CHANNEL, CHANNEL_EXPR, channelPath, IN_ROOT_EXPR, PAGE_EXPR } from './paths.ts';
 
 /**
@@ -71,7 +72,8 @@ const viewBar = (title: SchemaNode['children'], icon: string, aside: SchemaNode[
     { type: 'we-icon', props: { name: icon, color: 'text-muted' } },
     {
       type: 'we-text',
-      props: { variant: 'heading-sm', fontWeight: 'semibold', truncate: true, flex: '1', minWidth: '0' },
+      // No weight of its own, so a theme's heading weight reaches it — light in Glow.
+      props: { variant: 'heading-sm', truncate: true, flex: '1', minWidth: '0' },
       children: title,
     },
     ...aside,
@@ -100,10 +102,18 @@ const LIFT = 'padding-bottom 300 ease';
 /**
  * Where to start, in a space with nothing in it yet: a hint for each first thing worth doing. Shown in
  * the root channel until the space has a call or a channel of its own.
+ *
+ * The first is the one to do, so it is lit: an accent border and a glow, as a highlighted card is in
+ * Nico's design. How bright the glow is, is the theme's — strong in Glow, quiet elsewhere.
  */
-const hint = (icon: string, title: string, body: string): SchemaNode => ({
+const hint = (icon: string, title: string, body: string, lit = false): SchemaNode => ({
   type: 'Card',
-  props: { bg: 'surface', gap: '200', flex: '1 1 200px' },
+  props: {
+    bg: 'surface',
+    gap: '200',
+    flex: '1 1 200px',
+    ...(lit ? { border: '1px solid accent-border', shadow: 'glow' } : {}),
+  },
   children: [
     { type: 'we-icon', props: { name: icon, color: 'accent-text', size: 'md' } },
     { type: 'we-text', props: { fontWeight: 'semibold' }, children: [title] },
@@ -121,7 +131,24 @@ const firstSteps: SchemaNode = {
       type: 'Column',
       props: { gap: '300', px: '500', pt: '500' },
       children: [
-        { type: 'we-text', props: { variant: 'heading-sm' }, children: ['A space starts with a conversation'] },
+        { type: 'we-text', props: { variant: 'overline' }, children: ['Start here'] },
+        /*
+          The statement, then its payoff in the accent: Nico's weight contrast inside one line. The
+          payoff is a span with no size of its own, so it takes the heading's; the statement takes
+          the theme's heading weight.
+        */
+        {
+          type: 'we-text',
+          props: { variant: 'heading-md' },
+          children: [
+            'A space starts with ',
+            {
+              type: 'we-text',
+              props: { inline: true, fontWeight: 'semibold', color: 'accent-text' },
+              children: ['a conversation'],
+            },
+          ],
+        },
         {
           type: 'Row',
           props: { gap: '300', wrap: true },
@@ -130,6 +157,7 @@ const firstSteps: SchemaNode = {
               'phone',
               'Start a call',
               'Everyone here can join. What is said is written down, and what is decided becomes work you can see.',
+              true,
             ),
             hint('hash', 'Make a channel', 'A place for one subject, from the + beside Channels.'),
             hint('chat-circle', 'Say hello', 'Write below. Everyone in the space reads General.'),
@@ -247,6 +275,8 @@ const canvasRoute: RouteSchema = {
               options: { canvas: CHANNEL, members: { id: CHANNEL, via: 'children' }, connections: 'Relationship' },
             },
             layout: { type: 'manual', options: { size: { width: 200, height: 140 } } },
+            // A dot grid, as d12's canvas has: it moves with the canvas, so a pan reads as a pan.
+            backdrop: { pattern: 'dots', gap: 24 },
             nodeStyle: [{ style: { shape: 'card', width: 200, height: 140, content: 'record', contentMinZoom: 0.4 } }],
             behaviours: [
               'node-double-click',
@@ -322,7 +352,7 @@ export const callPage: SchemaNode = {
         type: '$if',
         props: {
           condition: { $: `find(modules.call.liveCalls, { recordId: ${CALL_ID} })` },
-          then: { type: 'we-badge', props: { tone: 'success' }, children: ['Live'] },
+          then: { type: 'we-badge', props: { tone: 'success' }, children: [liveDot, 'Live'] },
         },
       },
     ]),

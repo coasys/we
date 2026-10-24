@@ -74,8 +74,11 @@ describe('the Coasys cartridge', () => {
     expect(themes.map((t) => t.name)).toEqual(['Coasys', 'Coasys Glow']);
     expect(bundle.app?.meta.themeIds).toEqual(themes.map((t) => t.id));
     const glow = themes[1];
-    expect(glow.css).toContain("url('data:font/woff2;base64,");
-    expect(glow.css).not.toMatch(/url\((?!'data:)/);
+    const faces = (glow.overrides as { fontFaces?: { family: string; src: string }[] }).fontFaces ?? [];
+    expect(faces.map((f) => f.family)).toEqual(['Bricolage Grotesque']);
+    expect(faces.every((f) => f.src.startsWith('data:font/woff2;base64,'))).toBe(true);
+    // Nothing in it reaches out: no stylesheet carrying a url(), and no face that is not data.
+    expect(glow.css ?? '').not.toMatch(/url\(/);
   });
 });
 
