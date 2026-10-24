@@ -81,6 +81,13 @@ export interface DatasetLifecyclePort {
    * the adapter's dialect, not the caller's.
    */
   join?(idOrUri: string): Promise<DatasetRef>;
+  /**
+   * Resolves once a dataset holds what it shares — at once for one that has, or is not shared —
+   * and rejects when it never can. A join returns before the dataset has synced, so until this
+   * resolves it holds nothing of the shared data: read it, or write schema based on what it holds,
+   * only after. Absent on a backend whose datasets are complete as soon as they exist.
+   */
+  whenSynced?(id: string): Promise<void>;
   /** Other agents holding a shared dataset (member roster), by dataset id. */
   members?(id: string): Promise<string[]>;
   /**

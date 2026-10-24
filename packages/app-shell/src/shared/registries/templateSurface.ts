@@ -659,6 +659,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     spaceThemePinned: state('appearance'),
     moduleInstallSettings: state('space-admin'),
     createSpace: action('space-admin'),
+    shareSpace: action('space-admin'),
     initializeAsWeSpace: action('space-settings'),
     removeSpace: destructive('space-admin'),
     updateSpaceImage: hereOnly('space-settings', 2),
