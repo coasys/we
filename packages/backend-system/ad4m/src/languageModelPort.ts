@@ -103,10 +103,11 @@ export function createAd4mLanguageModelPort(
 /**
  * The default LLM, and whether it can answer — without prompting it.
  *
- * A local model reports its own download and load progress. A remote one is checked by asking its
- * endpoint which models it serves, through the node, which costs no tokens and fails the ways a
- * completion would: a refused key, an unreachable host, a model id the service does not offer.
- * Where the client predates model discovery a remote model is `unchecked` rather than assumed fine.
+ * A local model reports its own download and load progress. A remote one that needs no key is
+ * checked by asking its endpoint which models it serves, through the node, which costs no tokens and
+ * fails the ways a completion would: an unreachable host, a model id the service does not offer. One
+ * the node holds a key for is `unchecked`: the node never hands the key back, and discovery is asked
+ * with what the caller sends. So is a remote model where the client predates model discovery.
  */
 async function defaultModelStatus(client: Ad4mClient): Promise<LanguageModelStatus> {
   let model: AIModel | undefined;
@@ -132,14 +133,17 @@ async function defaultModelStatus(client: Ad4mClient): Promise<LanguageModelStat
     }
   }
 
-  const { baseUrl, apiKey, model: id, apiType } = model.api;
+  const { baseUrl, hasApiKey, model: id, apiType } = model.api;
   const ai = client.ai as unknown as {
     discoverModels?: (baseUrl: string, apiKey?: string, apiType?: string) => Promise<string[]>;
   };
   if (typeof ai.discoverModels !== 'function') return { state: 'unchecked', name, model: id, detail: '' };
+  // The executor holds the key and never returns it, and discovery asks the endpoint with only what
+  // it is sent. Asking without the key would read a refusal of the missing key as a broken model.
+  if (hasApiKey) return { state: 'unchecked', name, model: id, detail: '' };
 
   try {
-    const offered = await ai.discoverModels(baseUrl, apiKey || undefined, String(apiType));
+    const offered = await ai.discoverModels(baseUrl, undefined, String(apiType));
     // A listing names dated versions (`claude-x-20250929`) that an alias (`claude-x`) resolves to.
     const listed = offered.some((candidate) => candidate === id || candidate.startsWith(`${id}-`));
     if (offered.length && !listed) {

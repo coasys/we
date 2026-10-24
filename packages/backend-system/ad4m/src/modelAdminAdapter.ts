@@ -128,7 +128,7 @@ function toSource(model: AIModel): AiModelSource {
       kind: 'api',
       protocol: toProtocol(model.api.apiType),
       baseUrl: model.api.baseUrl,
-      apiKey: model.api.apiKey,
+      hasApiKey: model.api.hasApiKey,
       model: model.api.model,
       ...(model.api.maxNumCtx ? { maxContext: model.api.maxNumCtx } : {}),
     };
@@ -163,7 +163,9 @@ function toModelInput(draft: AiModelDraft): ModelInput {
     // Anthropic model silently turned it into an OpenAI one pointed at Anthropic's URL.
     input.api = {
       baseUrl: source.baseUrl,
-      apiKey: source.apiKey,
+      // Left out, the executor keeps the key it holds; `''` removes it. It never sends one back, so
+      // there is nothing to echo here — an edit that does not touch the key must not send one.
+      ...(source.apiKey !== undefined ? { apiKey: source.apiKey } : {}),
       model: source.model,
       apiType: PROTOCOL_TO_AD4M[source.protocol],
       // An update replaces the record, so a ceiling left out here is a ceiling removed.
