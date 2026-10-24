@@ -1129,77 +1129,23 @@ export function pickReadableForeground(candidates: string[], fills: Rgba[]): str
 }
 
 /**
- * The surface stack a polarity needs.
+ * The surfaces whose meaning depends on polarity, and so the pins a change of polarity drops.
  *
- * Flipping the multiplier inverts the whole scale, and the four surface roles do not survive that
- * intact: `page` is neutral-50 and `surface` is neutral-0, so in dark the card lands *below* the
- * page it sits on, and the sunken well lands above both. Every dark interface does the reverse —
- * depth is carried by light, because there is no darker left to go.
- *
- * So going dark pins the stack, matching what the `dark` preset does. Going light clears the pins
- * instead of writing its own: the parametric defaults are already right in that direction, and a
- * theme with no pins is one the hue and lightness sliders still fully control.
- *
- * It lives here rather than in the editor because two different things change a theme's polarity —
- * the Light/Dark buttons and the base-preset picker — and only one of them was in the editor. A
- * theme that went through the second path kept the stack from the polarity it had left, which is
- * how three clicks produced near-black cards under a light theme's near-black text: 1.12:1.
- *
- * Clobbering a hand-tuned stack is the intended behaviour rather than a regrettable side effect —
- * a stack tuned for one polarity is not merely stale after a flip, it is inverted, and silently
- * keeping it is what produces a "dark" theme with white cards.
+ * There was a stack of dark pins here (`DARK_SURFACES`) that a flip to dark wrote: page, surface,
+ * wells and chrome at fixed lightnesses of 7–14%. It predated the stack being stated as offsets
+ * from the chrome (`role.ts`), which is right in both polarities — the built-in dark preset pins
+ * none of them and is drawn from it. So a fork of `dark` turned light and back again was pinned to
+ * that older, much darker stack, and looked black beside the theme it was forked from. A flip now
+ * leaves the stack to the same formula every preset uses, in either direction.
  */
-const neutralAt = (lightness: number) => {
-  const taper = (2 * Math.min(lightness / 100, 1 - lightness / 100)).toFixed(4);
-  return (
-    `oklch(${lightness}% ` +
-    `calc(min(var(--we-color-neutral-saturation) * ${CHROMA_PER_SATURATION}, ${CHROMA_CEILING}) * ${taper}) ` +
-    `var(--we-color-neutral-hue))`
-  );
-};
-
-export const DARK_SURFACES: Partial<Record<ThemeRole, string>> = {
-  page: neutralAt(10),
-  /*
-    Two and a half points, then one and a half — the steps `role.ts` states, at the page pinned
-    above.
-
-    They were 4 and 9, set when the parametric steps were 0.045 and 0.06 and disagreeing with even
-    those. A theme flipped in the editor would have taken the old distances while every unflipped
-    theme took the new ones, so "make the cards a little closer" would have applied to some themes
-    and not others — with nothing on screen to say which kind you were looking at.
-
-    `surfaceSunken` is left where it is: its 1.5-point disagreement with the parametric `-0.035`
-    predates this and moving a well is not part of moving a card. It is the same fault, left for a
-    change of its own rather than fixed halfway here.
-  */
-  surface: neutralAt(12.5),
-  surfaceSunken: neutralAt(8),
-  surfaceRaised: neutralAt(14),
-  /*
-    Three points below the page, which is the same gap the parametric default takes above it.
-
-    `chrome` is the anchor `page` derives from, so a theme that pins one and not the other has no
-    relationship left between them — the pin would answer for the page while the chrome went off and
-    computed itself from the inverted scale. Pinned together, at the distance `role.ts` states, the
-    two mechanisms say the same thing instead of two things.
-
-    That agreement is the point. An earlier version of this role was pinned here and *only* here,
-    with a parametric default pointing the other way, on the assumption that a polarity change was
-    the only path into a dark theme. It is not — a built-in dark preset ships its own parameters and
-    never goes through `surfacesForPolarity` — so every dark theme took the default and drew the
-    app's furniture lighter than the content it frames.
-  */
-  chrome: neutralAt(7),
-};
+const POLARITY_SURFACES: ThemeRole[] = ['chrome', 'page', 'surface', 'surfaceRaised', 'surfaceSunken'];
 
 export function surfacesForPolarity(
-  polarity: 'light' | 'dark',
+  _polarity: 'light' | 'dark',
   current: Partial<Record<ThemeRole, string>> | undefined,
 ): Partial<Record<ThemeRole, string>> | undefined {
   const next = { ...(current ?? {}) };
-  if (polarity === 'dark') Object.assign(next, DARK_SURFACES);
-  else for (const role of Object.keys(DARK_SURFACES) as ThemeRole[]) delete next[role];
+  for (const role of POLARITY_SURFACES) delete next[role];
   return Object.keys(next).length ? next : undefined;
 }
 

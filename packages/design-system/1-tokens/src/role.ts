@@ -83,7 +83,7 @@ export const role = {
    * both ends, so it is an ordinary offset like the rest of the stack.
    *
    * It was written the other way first, as a step toward each polarity's *extreme*, which meant it
-   * had to invert and so needed a `DARK_SURFACES` pin to say so. That pin never fired: the pins are
+   * had to invert and so needed a dark pin to say so (since removed). That pin never fired: the pins were
    * applied by `surfacesForPolarity`, which runs when a theme *changes* polarity in the editor, and
    * a built-in dark preset ships its own parameters and never goes through it. So every dark theme
    * fell through to the parametric default and drew the chrome *lighter* than the content: two

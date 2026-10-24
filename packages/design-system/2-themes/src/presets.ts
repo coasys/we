@@ -505,7 +505,6 @@ export {
 export {
   applyThemeVars,
   clearThemeVars,
-  DARK_SURFACES,
   isDarkPolarity,
   reconcileSurfaces,
   registerNamedThemes,
