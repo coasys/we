@@ -1,6 +1,6 @@
 /**
  * A one-line message box: the block composer in its compact mode, framed as a field, with a send
- * button beside it — what the transcript and the Feed both write through.
+ * button beside it — what the transcript, the Feed and a channel's chat write through.
  *
  * ## The field is the composer's
  *
@@ -19,14 +19,16 @@
  */
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
-export function lineComposer(opts: {
+export interface LineComposerOptions {
   /** What the empty box says. */
   placeholder: string;
   /** What the button says when hovered, and to a screen reader. */
   sendLabel: string;
   /** Sends one line — `event.text` and `event.marks`. Guard it on `local.sending`. */
   onSubmit: SchemaProp;
-}): SchemaNode {
+}
+
+export function lineComposer(opts: LineComposerOptions): SchemaNode {
   return {
     type: 'Row',
     props: { gap: '200', ay: 'end', width: '100%' },
@@ -60,7 +62,7 @@ export function lineComposer(opts: {
             props: {
               label: opts.sendLabel,
               square: true,
-              variant: 'secondary',
+              variant: 'soft',
               disabled: { $: 'local.sending' },
               loading: { $: 'local.sending' },
               onClick: { $callLocal: 'sendLine' },

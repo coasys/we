@@ -340,7 +340,7 @@ export function OperandInput(props: {
       <Show when={props.allowText !== false}>
         <we-tooltip content="Use a fixed value">
           <we-button
-            variant={mode() === 'literal' ? 'secondary' : 'ghost'}
+            variant={mode() === 'literal' ? 'soft' : 'ghost'}
             size="xs"
             square
             onClick={() => {
@@ -356,7 +356,7 @@ export function OperandInput(props: {
       </Show>
       <we-tooltip content="Pick a value from data">
         <we-button
-          variant={mode() === 'literal' ? 'ghost' : 'secondary'}
+          variant={mode() === 'literal' ? 'ghost' : 'soft'}
           size="xs"
           square
           onClick={() => {

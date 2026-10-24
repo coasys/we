@@ -46,6 +46,7 @@ const CATALOGUE = {
   kanban: { module: '@we/template-showcase', export: 'kanbanTemplate' },
   events: { module: '@we/template-showcase', export: 'eventsTemplate' },
   scrapbook: { module: '@we/template-showcase', export: 'scrapbookTemplate' },
+  'theme-lab': { module: '@we/template-showcase', export: 'themeLabTemplate' },
   workshop: { module: '@we/template-showcase', export: 'workshopTemplate' },
 };
 

@@ -117,8 +117,8 @@ describe('scoping', () => {
     // A theme declares its variables on `:root`. Left alone they would paint the whole document,
     // which is the thing scoping exists to prevent — and `html` is outside any scoping root we could
     // name, so the rule would simply be lost.
-    const { css } = sanitiseCss(':root { --we-color-primary-hue: 200 }', { scope: SCOPE });
-    expect(css).toContain(':scope { --we-color-primary-hue: 200 }');
+    const { css } = sanitiseCss(':root { --we-color-accent-hue: 200 }', { scope: SCOPE });
+    expect(css).toContain(':scope { --we-color-accent-hue: 200 }');
   });
 
   it('collapses a leading run of root selectors rather than leaving one outside the scope', () => {

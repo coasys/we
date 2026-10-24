@@ -341,7 +341,7 @@ export const callsList: SchemaNode = {
                                     // want and this does not.
                                     then: {
                                       type: 'we-badge',
-                                      props: { variant: 'success', appearance: 'solid', size: 'xs' },
+                                      props: { variant: 'solid', tone: 'success', size: 'xs' },
                                       children: ['Live'],
                                     },
                                   },

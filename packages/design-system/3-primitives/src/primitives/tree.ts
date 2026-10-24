@@ -1,5 +1,6 @@
 import type { DesignSystemProps } from '@we/design-types';
-import { css, html } from 'lit';
+import { FOCUS_RING } from '@we/tokens';
+import { css, html, unsafeCSS } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { ifDefined } from 'lit/directives/if-defined.js';
 
@@ -33,8 +34,9 @@ const ITEM_STYLES = css`
     align-items: center;
     gap: var(--we-space-200);
     padding: var(--we-tree-row-padding, var(--we-space-100) var(--we-space-200));
+    /* A level indents by one caret and the gap after it — see the nested leaf below. */
     padding-inline-start: calc(
-      var(--we-tree-indent, var(--we-space-400)) * var(--we-tree-level, 0) + var(--we-space-200)
+      var(--we-tree-indent, calc(16px + var(--we-space-200))) * var(--we-tree-level, 0) + var(--we-space-200)
     );
     border-radius: var(--we-theme-tree-radius, var(--we-radius-300));
     color: var(--we-role-text-muted);
@@ -44,15 +46,15 @@ const ITEM_STYLES = css`
     box-sizing: border-box;
   }
   [part='row']:hover {
-    background: var(--we-role-surface-hover);
+    background: var(--we-role-item-hover);
     color: var(--we-role-text);
   }
   :host([selected]) [part='row'] {
-    background: var(--we-role-accent-muted);
-    color: var(--we-role-text);
+    background: var(--we-role-selected);
+    color: var(--we-role-on-selected);
   }
   [part='row']:focus-visible {
-    box-shadow: 0 0 0 var(--we-theme-focus-ring-width, 2px) var(--we-ring-color);
+    box-shadow: ${unsafeCSS(FOCUS_RING)};
   }
   [part='caret'] {
     all: unset;
@@ -69,13 +71,21 @@ const ITEM_STYLES = css`
     transform: rotate(90deg);
   }
   /*
-    A leaf keeps the caret's space with nothing in it, so its label lines up under its parent's
-    label rather than under its parent's caret. Not the hidden attribute: the shared sheet makes that
-    display: none !important, which takes the space away and pulls every leaf back by one indent.
+    A leaf at the top keeps the caret's space with nothing in it, so it lines up with the rows beside
+    it that have one. Not the hidden attribute: the shared sheet makes that display: none !important,
+    which takes the space away.
   */
   [part='caret'][data-leaf] {
     visibility: hidden;
     pointer-events: none;
+  }
+  /*
+    A nested leaf has no caret at all, and its level's indent is that caret's width: so its glyph
+    sits under its parent's glyph, and its label under its parent's label. A nested row with rows of
+    its own keeps its caret there instead, and its own rows line up under it the same way.
+  */
+  [part='caret'][data-nested-leaf] {
+    display: none;
   }
   [part='content'] {
     display: flex;
@@ -342,9 +352,16 @@ export class TreeItem extends DesignSystemElement {
   }
 
   private onRowClick = (event: MouseEvent) => {
-    // A press on a control the row holds (a pin button, a menu) is that control's.
-    const origin = event.composedPath()[0] as HTMLElement | undefined;
-    if (origin?.closest?.('button, a, we-button, we-icon-button, input')) return;
+    /*
+      A press on a control the row holds (a + , a menu) is that control's. Walked along the event's
+      path rather than asked with `closest`, which stops at a shadow root: a press lands on the
+      glyph inside a button's icon, two shadow roots below the button, and `closest` from there
+      never reaches it — so the row chose itself as well, after the control had acted.
+    */
+    for (const node of event.composedPath()) {
+      if (node === event.currentTarget) break;
+      if (node instanceof Element && node.matches('button, a, we-button, we-icon-button, input')) return;
+    }
     this.choose();
   };
 
@@ -377,7 +394,14 @@ export class TreeItem extends DesignSystemElement {
           @click=${this.onRowClick}
           @focus=${this.onRowFocus}
         >
-          <button part="caret" tabindex="-1" aria-hidden="true" ?data-leaf=${!expandable} @click=${this.onCaretClick}>
+          <button
+            part="caret"
+            tabindex="-1"
+            aria-hidden="true"
+            ?data-leaf=${!expandable}
+            ?data-nested-leaf=${!expandable && this.level > 0}
+            @click=${this.onCaretClick}
+          >
             <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
               <path
                 d="M3 1.5 L7 5 L3 8.5"

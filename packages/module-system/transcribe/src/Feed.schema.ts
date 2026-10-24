@@ -10,10 +10,9 @@
  * it scrolls, pages and re-anchors exactly as the transcript does, and follows the same per-viewer
  * orientation.
  */
-import { panelShell, timeline, timelineMoreAt, timelineOrder } from '@we/schema-kit';
+import { lineComposer, panelShell, timeline, timelineMoreAt, timelineOrder } from '@we/schema-kit';
 import type { SchemaNode } from '@we/schema-shared';
 
-import { lineComposer } from './lineComposer';
 import { messageLine } from './messageLine';
 import { TIMELINE_ORIENTATION, timelineOrderButton } from './Panel.schema';
 
@@ -67,7 +66,7 @@ const origin: SchemaNode = {
       type: '$if',
       props: {
         condition: { $: "row.source == ''" },
-        then: { type: 'we-badge', props: { size: 'sm', variant: 'neutral' }, children: ['bot'] },
+        then: { type: 'we-badge', props: { size: 'sm' }, children: ['bot'] },
       },
     },
   },
@@ -101,7 +100,7 @@ const activity: SchemaNode = {
         },
         {
           type: 'we-badge',
-          props: { size: 'sm', variant: { $: "row.suggested ? 'warning' : 'success'" } },
+          props: { size: 'sm', tone: { $: "row.suggested ? 'warning' : 'success'" } },
           children: [{ $: "row.suggested ? row.suggested + ' suggested' : 'kept'" }],
         },
         {
@@ -132,7 +131,7 @@ const activity: SchemaNode = {
                   type: 'Row',
                   props: { gap: '200', ay: 'center', opacity: { $: 'item.pending ? 0.6 : 1' } },
                   children: [
-                    { type: 'we-badge', props: { size: 'sm', variant: 'neutral' }, children: [{ $: 'item.entity' }] },
+                    { type: 'we-badge', props: { size: 'sm' }, children: [{ $: 'item.entity' }] },
                     { type: 'we-text', props: { variant: 'body', truncate: true }, children: [{ $: 'item.title' }] },
                   ],
                 },
@@ -222,7 +221,7 @@ export const feedPanel: SchemaNode = {
             type: 'we-button',
             props: {
               size: 'xs',
-              variant: { $: "local.feedActivity ? 'secondary' : 'ghost'" },
+              variant: { $: "local.feedActivity ? 'soft' : 'ghost'" },
               onClick: { $setLocal: 'feedActivity', value: { $: '!local.feedActivity' } },
             },
             children: [{ $: "local.feedActivity ? 'Messages and activity' : 'Messages only'" }],

@@ -153,6 +153,8 @@ that declares `backends: ['ad4m']` — nothing else. See `docs/architecture/pack
 
 ### Where to look
 
+- How a theme becomes CSS, where it reaches, and how to extend it → `docs/architecture/theming.md`;
+  writing one → `packages/design-system/2-themes/THEME_AUTHORING.md`.
 - Change how a token/operator resolves → `packages/schema-system/shared/src/propResolvers/`.
 - Change tree-walking / mounting / control flow → `packages/schema-system/frameworks/solid/src/`.
 - Add/adjust a primitive → `packages/design-system/3-primitives/src/` (Lit).
@@ -285,7 +287,7 @@ the seed's list is correct code that never appears.
 
 | Surface | Lives in | Rules | Register | Verify |
 |---|---|---|---|---|
-| Theme | `design-system/2-themes/src/<name>/` | its `CONVENTIONS.md` | `themeRegistry.ts` | `--filter @we/themes test` |
+| Theme | `design-system/2-themes/src/presets.ts` (+ `src/<name>/` for CSS) | `THEME_AUTHORING.md`, `docs/architecture/theming.md` | `themeRegistry.ts` | `--filter @we/themes test` |
 | Shell template | `templates/showcase/src/` | `docs/architecture/views.md` | seed `templates` + `--filter @we/app-shell generate-templates` | `validate:schemas`, `role-audit` |
 | View | `templates/views/src/views/` | `docs/architecture/views.md` | `CATALOGUE` in `generateViewRegistry.mjs` + seed `views` + `generate-views` | `validate:schemas` |
 | Portable fragment | `schema-system/kit/src/` | `templates/kit/CONVENTIONS.md` | export from `index.ts` | `--filter @we/template-kit test` |
@@ -1290,22 +1292,22 @@ Most @we/primitives also accept Design System Props (see next section for detail
 
 @we/primitives:
 - we-alert (DesignSystemElement)
-  Props: variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'primary', appearance: 'soft' | 'accent' = 'soft', dismissible: boolean = false
+  Props: variant: 'soft' | 'edge' = 'soft', dismissible: boolean = false
 - we-audio (LayoutVisualElement)
   Props: src: string = '', controls: boolean = false, preload: 'none' | 'metadata' | 'auto' = 'metadata', autoplay: boolean = false, loop: boolean = false, muted: boolean = false, stream?: MediaStream | null | undefined
 - we-avatar (LayoutVisualElement)
   Props: image: string = '', hash: string = '', initials: string = '', icon: string = '', size?: 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '{css-length}' | undefined, clickable: boolean = false, ringColor: string = '', ringWidth: string = '', edgeColor: string = ''
 - we-badge (DesignSystemElement)
-  Props: variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'neutral', appearance: 'soft' | 'solid' = 'soft', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
+  Props: variant: 'soft' | 'solid' = 'soft', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-blockquote (DesignSystemElement)
 - we-button (DesignSystemElement)
-  Props: variant: 'primary' | 'secondary' | 'ghost' | 'success' | 'danger' | 'outline' | 'bare' = 'primary', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', text?: string | undefined, label: string = '', expanded?: boolean | undefined, href?: string | undefined, disabled: boolean = false, loading: boolean = false, gradient: boolean = false, square: boolean = false
+  Props: variant: 'solid' | 'soft' | 'outline' | 'ghost' | 'bare' = 'solid', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', text?: string | undefined, label: string = '', expanded?: boolean | undefined, href?: string | undefined, disabled: boolean = false, loading: boolean = false, gradient: boolean = false, square: boolean = false
 - we-checkbox (DesignSystemElement)
   Props: checked: boolean = false, disabled: boolean = false, name: string = '', label: string = '', value: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-code (DesignSystemElement)
   Props: block: boolean = false
 - we-color-picker (DesignSystemElement) — A colour, chosen from the theme's tokens or picked by hand.
-  Props: value: string = '#000000', disabled: boolean = false, name: string = '', palette: array = [ '#000000', '#434343', '#666666', '#999999', '#b7b7b7', '#cccccc', '#d9d9d9', '#ffffff', '#980000', '#ff0000', '#ff9900', '#ffff00', '#00ff00', '#00ffff', '#4a86e8', '#0000ff', '#9900ff', '#ff00ff', '#e6b8af', '#f4cccc', '#fce5cd', '#fff2cc', '#d9ead3', '#d0e0e3', '#c9daf8', '#cfe2f3', '#d9d2e9', '#ead1dc', ], tokens: boolean = false, alpha: boolean = false, clearable: boolean = false, confirm: boolean = false
+  Props: value: string = '#000000', disabled: boolean = false, name: string = '', palette: string[] = [...PALETTE_NAMES], tokens: boolean = false, alpha: boolean = false, clearable: boolean = false, confirm: boolean = false
 - we-date-picker (DesignSystemElement)
   Props: value: string = '', showTime: boolean = false, placeholder: string = 'Select date', disabled: boolean = false, name: string = '', label: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-divider (LayoutElement)
@@ -1415,7 +1417,7 @@ is the diagnostic. It says what was dropped and what to write instead, once per 
 development only.
   Props: content: string = ''
 - we-icon (LayoutElement)
-  Props: name: string = '', color: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '{css-length}' = '', weight: 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone' = 'regular', gradient: string = ''
+  Props: name: string = '', color: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '{css-length}' = '', weight: 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone' | '' = '', gradient: string = ''
 - we-icon-picker (DesignSystemElement)
   Props: value: string = '', disabled: boolean = false, name: string = '', label: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', placeholder: string = 'Pick icon'
 - we-iframe (LayoutVisualElement)
@@ -1437,8 +1439,8 @@ Not a standalone selector — wrap in we-popover for dropdown behavior.
 - we-menu-group (LayoutElement)
   Props: collapsible: boolean = false, open: boolean = false, heading: string = ''
 - we-menu-item (DesignSystemElement) — Single actionable item inside a we-menu.
-Supports selected, active, and danger states.
-  Props: selected: boolean = false, active: boolean = false, variant: 'default' | 'danger' = 'default', label: unknown, value: unknown
+Supports selected and active states; `tone: 'danger'` marks a destructive item.
+  Props: selected: boolean = false, active: boolean = false, disabled: boolean = false, label: unknown, value: unknown
 - we-modal (OverlayElement)
   Props: size: 'sm' | 'md' | 'lg' | 'fullscreen' = 'md', hideclosebutton: boolean = false, close: () => void
 - we-move-handle (LayoutElement)
@@ -1453,7 +1455,7 @@ Supports selected, active, and danger states.
 Use DropdownMenu component for dropdown menus.
   Props: open: boolean = false, placement: 'top' | 'bottom' | 'left' | 'right' | 'top-start' | 'top-end' | 'bottom-start' | 'bottom-end' | 'left-start' | 'left-end' | 'right-start' | 'right-end' = 'bottom', popoverElement: HTMLElement, triggerElement: HTMLElement
 - we-progress-bar (DesignSystemElement)
-  Props: value: number = 0, max: number = 100, variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'primary', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', label: string = ''
+  Props: value: number = 0, max: number = 100, size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', label: string = ''
 - we-radio (DesignSystemElement)
   Props: checked: boolean = false, disabled: boolean = false, name: string = '', label: string = '', value: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-resize-handle (LayoutElement) — A drag target that reports how far it has moved, and nothing else.
@@ -1574,13 +1576,13 @@ item is considered.
 - we-switch (DesignSystemElement)
   Props: checked: boolean = false, disabled: boolean = false, name: string = '', label: string = '', value: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', labelOff: string = '', labelOn: string = ''
 - we-tab (DesignSystemElement)
-  Props: key: string = '', selected: boolean = false, label?: string | undefined, selectedProps?: Partial<DesignSystemProps> | undefined
+  Props: key: string = '', selected: boolean = false, disabled: boolean = false, label?: string | undefined, selectedProps?: Partial<DesignSystemProps> | undefined
 - we-tabs (DesignSystemElement)
   Props: selectedKey: string = ''
 - we-tag (DesignSystemElement)
-  Props: variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'neutral', dismissible: boolean = false
+  Props: variant: 'soft' | 'solid' = 'soft', dismissible: boolean = false
 - we-text (DesignSystemElement)
-  Props: text?: string | undefined, variant: '' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading-md' | 'heading-lg' | 'heading-xl' = '', tag: 'p' | 'span' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'small' | 'b' | 'i' | 'label' | 'div' = 'span', inline: boolean = false, uppercase: boolean = false, italic: boolean = false, truncate: boolean = false, gradient: string = '', loading: boolean = false, loadingWidth: string = '100%'
+  Props: text?: string | undefined, variant: '' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading-md' | 'heading-lg' | 'heading-xl' | 'overline' = '', tag: 'p' | 'span' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'small' | 'b' | 'i' | 'label' | 'div' = 'span', inline: boolean = false, uppercase: boolean = false, italic: boolean = false, truncate: boolean = false, gradient: string = '', loading: boolean = false, loadingWidth: string = '100%'
 - we-textarea (DesignSystemElement)
   Props: value: string = '', name: string = '', label: string = '', placeholder: string = '', rows: number = 3, maxlength: unknown = Infinity, minlength: number = 0, disabled: boolean = false, required: boolean = false, readonly: boolean = false, resize: 'none' | 'vertical' | 'horizontal' | 'both' = 'vertical', autoGrow: boolean = false, maxRows: number = 6, submitOnEnter: boolean = false, size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-timestamp (DesignSystemElement) — Displays a formatted or relative timestamp that self-updates each minute
@@ -1673,7 +1675,7 @@ state or anywhere else.
 - CountMark
   Props: icon: string, count?: number, mine?: boolean, size?: "xs" | "sm" | "md", countTone?: "text" | "glyph", countFirst?: boolean, emphasis?: "quiet" | "present", onPress?: (() => void), label?: string, disabled?: boolean, class?: string, styles?: Record<string, string | number>
 - DropdownMenu — Flexible dropdown menu for actions, toggles, and grouped items. Use for context menus, settings panels, layer controls, and command palettes.
-  Props: styles?: Record<string, string | number>, class?: string, onSelect?: ((item: DropdownMenuAction | DropdownMenuToggle) => void), searchable?: boolean, searchPlaceholder?: string, placement?: Placement, triggerLabel?: string, triggerIcon?: string, triggerVariant?: "primary" | "danger" | "secondary" | "ghost" | "outline" | "bare", triggerTitle?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", itemSize?: "xs" | "sm" | "md" | "lg" | "xl", items: SolidDropdownMenuEntry[], children?: JSX.Element
+  Props: styles?: Record<string, string | number>, class?: string, onSelect?: ((item: DropdownMenuAction | DropdownMenuToggle) => void), searchable?: boolean, searchPlaceholder?: string, placement?: Placement, triggerLabel?: string, triggerIcon?: string, triggerVariant?: "solid" | "soft" | "outline" | "ghost" | "bare", triggerTone?: ToneName, triggerTitle?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", itemSize?: "xs" | "sm" | "md" | "lg" | "xl", items: SolidDropdownMenuEntry[], children?: JSX.Element
 - EditableImage (DesignSystemElement)
   Props: src?: string, alt?: string, fit?: "cover" | "contain" | "none" | "fill" | "scale-down", placeholderIcon?: string, onImageChange?: ((file: File) => void), onImageRemove?: (() => void), uploadLabel?: string, editLabel?: string, class?: string, aspect?: number, maxSize?: number
 - FlipCard
@@ -1706,7 +1708,9 @@ Common recipes:
 the relations between them. Picks up model types added later with no template change.
 - **Hierarchy** — `layout: { type: 'tree' }` with a `collection` expansion for nested content.
 - **Static diagram** — `seeds: { literal: true, nodes: [...], edges: [...] }` and no expansion at all.
-  Props: seeds?: SeedSpec | SeedSpec[], expansion?: ExpansionSpec, revision?: string | number | boolean, live?: boolean, layout?: LayoutSpec, nodeStyle?: NodeStyleRules, edgeStyle?: EdgeStyleRules, behaviours?: BehaviourSpec[], reified?: Record<string, { source: string; target: string; type?: string; sourceType?: string; targetType?: string; }>, width?: string, height?: string, bg?: string, showStatus?: boolean, empty?: string, emptyIcon?: string, emptyGradient?: string, emptyAction?: JSX.Element, showControls?: boolean, controls?: string[], onNodeClick?: ((node: GraphNode & { recordId?: string; recordType?: string; fields: { name: string; value: string; }[]; }) => void), expandRequest?: { id: string; expanders?: string[]; direction?: "in" | "out" | "both"; } | null, onNodeDoubleClick?: ((node: GraphNode & { recordId?: string; recordType?: string; }) => void), onEdgeClick?: ((edge: GraphEdge & { recordId?: string; recordType?: string; }) => void), onEdgeRetarget?: ((payload: { id: string; end: "source" | "target"; nodeId: string; nodeType: string; recordId?: string; recordType?: string; }) => void), onEdgeReroute?: ((payload: { id: string; points: EdgeWaypoint[]; recordId?: string; recordType?: string; }) => void), onEdgeAnchor?: ((payload: { id: string; end: "source" | "target"; side: "" | "n" | "e" | "s" | "w"; recordId?: string; recordType?: string; }) => void), onEdgeCreate?: ((payload: { source: GraphNode; target: GraphNode; sourceId: string; sourceType: string; targetId: string; targetType: string; sourceLabel: string; targetLabel: string; }) => void), onCanvasDoubleClick?: ((payload: { x: number; y: number; }) => void), onSelectionChange?: ((ids: string[]) => void), onNodeDragEnd?: ((payload: { id: string; x: number; y: number; recordId?: string; recordType?: string; opened?: boolean; carried?: { recordId: string; recordType: string; x: number; y: number; }[]; }) => void), onSeedSummary?: ((payload: { source: string; } & Record<string, unknown>) => void), onNodeArrange?: ((payload: { id: string; into: "child" | "sibling" | "loose"; recordId: string; recordType: string; targetId?: string; targetType?: string; before?: boolean; order?: string[]; x: number; y: number; }) => void), resizable?: boolean, onNodeResize?: ((payload: { id: string; x: number; y: number; width: number; height: number; recordId?: string; recordType?: string; }) => void), onDrop?: ((payload: { entity: string; id: string; dataset?: string; label: string; x: number; y: number; within?: { entity: string; id: string; }; preview?: { thumbnail?: string; author?: string; source?: string; }; }) => void), nodeActions?: NodeAction[], onNodeAction?: ((payload: { action: string; id: string; recordId?: string; recordType?: string; value?: unknown; preview?: boolean; x: number; y: number; }) => void), focus?: string, folded?: string[], onNodeFold?: ((payload: { id: string; recordId?: string; recordType?: string; folded: boolean; count: number; }) => void), open?: string[], onNodeOpen?: ((payload: { id: string; recordId?: string; recordType?: string; open: boolean; }) => void), onDeleteSelection?: ((payload: { recordId?: string; recordType?: string; kind?: "node" | "edge"; count: number; records?: { recordId: string; recordType: string; }[]; }) => void), carry?: boolean, selectionActions?: NodeAction[], onSelectionAction?: ((payload: { action: string; records: { recordId: string; recordType: string; }[]; count: number; value?: unknown; preview?: boolean; }) => void), onUndo?: (() => void), onRedo?: (() => void), onPointerAt?: ((at: { x: number; y: number; } | null) => void), onViewport?: ((region: GraphRegion) => void), region?: GraphRegion | null, reframeOn?: string | number | boolean | null, host?: GraphHostBindings
+- **A canvas with a grid** — `backdrop: { pattern: 'dots', gap: 24 }`, or `'lines'`; it pans and
+zooms with the canvas and is coloured from a role (`border` unless `color` says otherwise).
+  Props: seeds?: SeedSpec | SeedSpec[], expansion?: ExpansionSpec, revision?: string | number | boolean, live?: boolean, layout?: LayoutSpec, nodeStyle?: NodeStyleRules, edgeStyle?: EdgeStyleRules, behaviours?: BehaviourSpec[], reified?: Record<string, { source: string; target: string; type?: string; sourceType?: string; targetType?: string; }>, width?: string, height?: string, bg?: string, backdrop?: GraphBackdrop, showStatus?: boolean, empty?: string, emptyIcon?: string, emptyGradient?: string, emptyAction?: JSX.Element, showControls?: boolean, controls?: string[], onNodeClick?: ((node: GraphNode & { recordId?: string; recordType?: string; fields: { name: string; value: string; }[]; }) => void), expandRequest?: { id: string; expanders?: string[]; direction?: "in" | "out" | "both"; } | null, onNodeDoubleClick?: ((node: GraphNode & { recordId?: string; recordType?: string; }) => void), onEdgeClick?: ((edge: GraphEdge & { recordId?: string; recordType?: string; }) => void), onEdgeRetarget?: ((payload: { id: string; end: "source" | "target"; nodeId: string; nodeType: string; recordId?: string; recordType?: string; }) => void), onEdgeReroute?: ((payload: { id: string; points: EdgeWaypoint[]; recordId?: string; recordType?: string; }) => void), onEdgeAnchor?: ((payload: { id: string; end: "source" | "target"; side: "" | "n" | "e" | "s" | "w"; recordId?: string; recordType?: string; }) => void), onEdgeCreate?: ((payload: { source: GraphNode; target: GraphNode; sourceId: string; sourceType: string; targetId: string; targetType: string; sourceLabel: string; targetLabel: string; }) => void), onCanvasDoubleClick?: ((payload: { x: number; y: number; }) => void), onSelectionChange?: ((ids: string[]) => void), onNodeDragEnd?: ((payload: { id: string; x: number; y: number; recordId?: string; recordType?: string; opened?: boolean; carried?: { recordId: string; recordType: string; x: number; y: number; }[]; }) => void), onSeedSummary?: ((payload: { source: string; } & Record<string, unknown>) => void), onNodeArrange?: ((payload: { id: string; into: "child" | "sibling" | "loose"; recordId: string; recordType: string; targetId?: string; targetType?: string; before?: boolean; order?: string[]; x: number; y: number; }) => void), resizable?: boolean, onNodeResize?: ((payload: { id: string; x: number; y: number; width: number; height: number; recordId?: string; recordType?: string; }) => void), onDrop?: ((payload: { entity: string; id: string; dataset?: string; label: string; x: number; y: number; within?: { entity: string; id: string; }; preview?: { thumbnail?: string; author?: string; source?: string; }; }) => void), nodeActions?: NodeAction[], onNodeAction?: ((payload: { action: string; id: string; recordId?: string; recordType?: string; value?: unknown; preview?: boolean; x: number; y: number; }) => void), focus?: string, folded?: string[], onNodeFold?: ((payload: { id: string; recordId?: string; recordType?: string; folded: boolean; count: number; }) => void), open?: string[], onNodeOpen?: ((payload: { id: string; recordId?: string; recordType?: string; open: boolean; }) => void), onDeleteSelection?: ((payload: { recordId?: string; recordType?: string; kind?: "node" | "edge"; count: number; records?: { recordId: string; recordType: string; }[]; }) => void), carry?: boolean, selectionActions?: NodeAction[], onSelectionAction?: ((payload: { action: string; records: { recordId: string; recordType: string; }[]; count: number; value?: unknown; preview?: boolean; }) => void), onUndo?: (() => void), onRedo?: (() => void), onPointerAt?: ((at: { x: number; y: number; } | null) => void), onViewport?: ((region: GraphRegion) => void), region?: GraphRegion | null, reframeOn?: string | number | boolean | null, host?: GraphHostBindings
 
 ---
 
@@ -1717,7 +1721,7 @@ a name not listed here does not exist, and the component will warn rather than r
 
 ### CesiumGlobe
 
-Layers are listed in two props: planetLayers (drawn on the earth) and backgroundLayers (the space around it). Each entry is { factory, id?, enabled?, zIndex?, options? }: factory names the kind below; id is required when one kind appears twice, or the two collide and one is not drawn; enabled takes an expression, so a layer can follow a toggle; zIndex is a planet layer's stacking order, which each kind interprets. Options take expressions and handlers like any prop, so a layer can draw what a $queries entry fetched: read it with { "$": "local.rows.map(…)" }. The imagery is the globe's own and is not a layer. A globe is drawn by one of two engines, which the deployment or the person chooses and a template never names: Cesium, the full 3D globe, or MapLibre, a lighter one for phones. Both draw every planet kind; only Cesium draws the background kinds. Read modules.globe.drawsSpace to leave the background kinds out of a menu where they would do nothing. A kind an engine does not draw is simply absent there, so place them as you would anyway. The data kinds (pointsLayer, pathsLayer, areasLayer, hexbinLayer) each take rows as `data`, field paths saying where in a row its geometry is (dotted for nested fields: "location.latitude"), and `style`: rules in the GraphView's dialect, [{ when?, style }], applied in order with later matches winning per property. A rule's `when` reads a row's fields as "data.<field>"; a style value is a literal, { "from": "data.<field>" } to read it off the row, or { "metric": "field", "options": { "from": "<field>" }, "range": [min, max] } (a number) or "scale": { "from": colour, "to": colour } (a colour) to scale it across all the rows. Colours are roles or tokens ("accent", "warning-500") or CSS. For a heat, use { "from": "success-500", "to": "danger-500" }, green to red, which reads the same way round in a light and a dark theme; the graph's named scales ("heat") follow the page's theme and turn around in a dark one, which is wrong over satellite imagery. Start a height range above 0 so the least still shows. Pressing a feature calls onSelect. A globe can follow a clock, to play its data through time: give it clock: "<name>" (or { id, duration, loop, autoplay }), and give a data kind time: "<field>" naming each row's moment. Rows from after the clock's moment are not drawn, and the clock's range is worked out from the rows. The controls are ordinary nodes beside the globe reading clockStore.clocks.<name> — playing, progress (0–1), atIso for a we-timestamp, canPlay — and calling clockStore.toggle and clockStore.seekProgress. Until somebody plays or scrubs, the clock has no moment and every row is drawn. Statistics a style scales across the rows (a heat, a height) are relative to the rows drawn at that moment; give the metric min and max to hold its scale still while it plays.
+Layers are listed in two props: planetLayers (drawn on the earth) and backgroundLayers (the space around it). Each entry is { factory, id?, enabled?, zIndex?, options? }: factory names the kind below; id is required when one kind appears twice, or the two collide and one is not drawn; enabled takes an expression, so a layer can follow a toggle; zIndex is a planet layer's stacking order, which each kind interprets. Options take expressions and handlers like any prop, so a layer can draw what a $queries entry fetched: read it with { "$": "local.rows.map(…)" }. The imagery is the globe's own and is not a layer. A globe is drawn by one of two engines, which the deployment or the person chooses and a template never names: Cesium, the full 3D globe, or MapLibre, a lighter one for phones. Both draw every planet kind; only Cesium draws the background kinds. Read modules.globe.drawsSpace to leave the background kinds out of a menu where they would do nothing. A kind an engine does not draw is simply absent there, so place them as you would anyway. The data kinds (pointsLayer, pathsLayer, areasLayer, hexbinLayer) each take rows as `data`, field paths saying where in a row its geometry is (dotted for nested fields: "location.latitude"), and `style`: rules in the GraphView's dialect, [{ when?, style }], applied in order with later matches winning per property. A rule's `when` reads a row's fields as "data.<field>"; a style value is a literal, { "from": "data.<field>" } to read it off the row, or { "metric": "field", "options": { "from": "<field>" }, "range": [min, max] } (a number) or "scale": { "from": colour, "to": colour } (a colour) to scale it across all the rows. Colours are roles or tokens ("accent", "warning-500") or CSS. For a heat, use { "from": "success-500", "to": "danger-500" }, green to red, which reads the same way round in a light and a dark theme; the graph's named scales ("heat") fade from the page's own colour, which over satellite imagery reads as nothing to do with the earth. Start a height range above 0 so the least still shows. Pressing a feature calls onSelect. A globe can follow a clock, to play its data through time: give it clock: "<name>" (or { id, duration, loop, autoplay }), and give a data kind time: "<field>" naming each row's moment. Rows from after the clock's moment are not drawn, and the clock's range is worked out from the rows. The controls are ordinary nodes beside the globe reading clockStore.clocks.<name> — playing, progress (0–1), atIso for a we-timestamp, canPlay — and calling clockStore.toggle and clockStore.seekProgress. Until somebody plays or scrubs, the clock has no moment and every row is drawn. Statistics a style scales across the rows (a heat, a height) are relative to the rows drawn at that moment; give the metric min and max to hold its scale still while it plays.
 
 **planet**
 
@@ -2049,7 +2053,7 @@ Most @we/primitives inherit **all** layers below. Props use design token values 
 | Token Type | Valid Values |
 |---|---|
 | SpaceValue | "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000" (or CSS length e.g. "16px") |
-| ColorValue | A **role** — see the table below — or a scale position "{hue}-{shade}" where hue = neutral, primary, success, warning, danger and shade = 0, 25, 50, 75, 100, 200–900, 1000. Also "white", "black". (or CSS color). **Prefer a role.** |
+| ColorValue | A **role** — see the table below — or a scale position "{hue}-{shade}" where hue = neutral, accent, success, warning, danger or a palette hue (red, orange, yellow, lime, green, teal, cyan, blue, purple, pink) and shade = 0, 25, 50, 75, 100, 200–900, 1000. Also "white", "black". (or CSS color). **Prefer a role.** |
 | RadiusValue | "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "pill", "full" (or CSS length). Also five *theme-family* names that follow the theme instead of naming a size — see "Theme families" below. Prefer them on an `EditableImage`, a `Card`, or a raw element standing in for one: a pinned "full" or "pill" cannot follow a theme's shape settings. Note "full" is 50%, so it is an ellipse on any box that is not square; reach for "pill" on wide boxes. |
 | ShadowValue | "sm", "md", "lg", "xl" |
 | FontSizeValue | "base", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000" (or CSS length) |
@@ -2129,12 +2133,12 @@ a user-chosen swatch.
 | `accent` | An accent *fill* — a primary button, a selected disc. |
 | `accent-hover` / `accent-active` | Hover and pressed states of an accent fill. |
 | `on-accent` | Text or an icon **on top of** an accent fill. |
-| `on-accent-muted` | Secondary text on an accent fill — a caption under a heading on an accent panel, or on `gradient-primary`. The `text-muted` of fills, and the **only** correct choice there: `text-muted` and `text-faint` are measured against the *page*, so on a fill they are measured against the wrong thing and can vanish entirely. |
+| `on-accent-muted` | Secondary text on an accent fill — a caption under a heading on an accent panel, or on `gradient-accent`. The `text-muted` of fills, and the **only** correct choice there: `text-muted` and `text-faint` are measured against the *page*, so on a fill they are measured against the wrong thing and can vanish entirely. |
 | `accent-text` | The accent used **as text** — an accented heading or icon on an ordinary surface, where `accent` is often too light to read. |
-| `accent-muted` | An accent-tinted fill — a selected row, a subtle highlight. |
+| `accent-soft` | An accent-tinted fill — a selected row, a subtle highlight. |
 | `focus` | The focus ring. Rarely set directly; `--we-ring-color` already resolves to it. |
 | `danger-text` / `success-text` / `warning-text` | Status as a **foreground** — an error message, a warning icon, a "connected" tick. |
-| `danger-surface` / `success-surface` / `warning-surface` | The tinted **panel** behind status content. |
+| `danger-soft` / `success-soft` / `warning-soft` | The tinted **panel** behind status content. |
 | `overlay` | The scrim behind a modal or drawer. Carries its own alpha. |
 | `shadow-color` | The colour shadows are built from. |
 
@@ -2147,7 +2151,7 @@ a user-chosen swatch.
 
 Roles work anywhere a colour token does, including inside a border shorthand
 (`"1px solid border"`) and behind a ternary
-(`{ "$": "row.selected ? 'accent-muted' : 'surface-sunken'" }`).
+(`{ "$": "row.selected ? 'accent-soft' : 'surface-sunken'" }`).
 
 **Not `$if` in a prop.** `$if` is a *node* type and, in a value position, resolves to a handler —
 so the colour resolver is handed a function, paints nothing, and warns about nothing at runtime. A
@@ -2161,6 +2165,32 @@ starts with `on`, so a handler prop that is not an event — `we-modal`'s `close
 TypeScript key of a `ThemeRole`; a schema writes the CSS spelling. Getting it wrong fails silently —
 the value resolves to a variable that does not exist and the element paints nothing at all — so the
 validator rejects it with the right spelling rather than letting it through.
+
+### `tone` — which colour family an element is in
+
+Colour is **`tone`**, a prop every element takes, and never `variant`. `variant` says only how a
+component is drawn — `solid`, `soft`, `outline`, `ghost`, `bare` on a button; `soft` or `solid`
+on a badge or a tag; `soft` or `edge` on an alert — so any tone combines with any style.
+
+| Tone | For |
+|---|---|
+| `accent` | The theme's own colour. What an untoned `solid` button, alert or progress bar already is. |
+| `neutral` | Grey. What an untoned `soft`, `outline` or `ghost` button, badge or tag already is. |
+| `success` / `warning` / `danger` | A status. A destructive button is `variant: 'solid', tone: 'danger'`. |
+| `red` `orange` `yellow` `lime` `green` `teal` `cyan` `blue` `purple` `pink` | The theme's palette, for categories a community names — a label, a lane, a kind of thing. |
+
+A tone re-points the accent's roles inside the element, so **everything in it follows**: a toned
+Card's buttons, selected rows and focus rings are drawn in its family without being told.
+
+```json
+{ "type": "we-button", "props": { "variant": "solid", "tone": "danger" }, "children": ["Delete"] }
+{ "type": "we-badge", "props": { "tone": "warning" }, "children": ["Pending"] }
+{ "type": "Card", "props": { "tone": "teal", "bg": "accent-soft" }, "children": ["…drawn in teal…"] }
+```
+
+A palette name is also a colour role — `"bg": "teal-soft"`, `"color": "teal-text"` — with the same
+seven roles every family has. So `"red"` as a colour is the theme's red, not CSS red; write `#f00`
+for that.
 
 **Layout-only primitives** — these accept only Layout props (not Visual, Flex, Typography, or State):
 we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
@@ -2230,7 +2260,7 @@ the item is never asked to be narrower than its content in the first place.
 | Prop | Type | Description |
 |------|------|-------------|
 | bg | ColorValue | Background color (token) |
-| bgImage | string | Background image — a URL, or a CSS gradient (linear-, radial- or conic-gradient, including several comma-separated for a mesh). Sets background-image, defaults background-size to cover, background-position to center, background-repeat to no-repeat. Composes with bg, which paints beneath it |
+| bgImage | string | Background image — a URL, or a CSS gradient (linear-, radial- or conic-gradient, including several comma-separated for a mesh). Sets background-image, defaults background-size to cover, background-position to center, background-repeat to no-repeat. Composes with bg, which paints beneath it — one element's own picture. A surface role in `bg` (`page`, `surface`, `surface-raised`, …) already wears the theme's image for that kind of surface, if its theme sets one; bgImage replaces it there |
 | bgFit | "cover" \| "contain" | Background image sizing (default: "cover") — only meaningful with bgImage |
 | bgPosition | string | Background image position (default: "center", e.g. "top", "50% 20%") — only meaningful with bgImage |
 | bgImageOpacity | number | Fades bgImage only (0–1), independent of the element's own content/opacity — only meaningful with bgImage |
@@ -2244,7 +2274,7 @@ the item is never asked to be narrower than its content in the first place.
 | borderBottom | string | Bottom border shorthand (color tokens resolved) |
 | borderLeft | string | Left border shorthand (color tokens resolved) |
 | borderWidth | string | Border width (raw CSS, e.g. "1px", "2px 0") |
-| shadow | "sm" \| "md" \| "lg" \| "xl" | Shadow token |
+| shadow | "sm" \| "md" \| "lg" \| "xl" \| "glow" | Elevation, built from the theme's shadow colour and strength. "glow" is the accent as light — a thin ring and a soft halo — and follows the element's `tone` |
 | cursor | "pointer" \| "default" \| "text" \| "not-allowed" | Cursor style |
 | pointerEvents | "none" \| "auto" | Pointer events |
 | transform | string | CSS transform |
@@ -2328,7 +2358,7 @@ min-content — so under it the long string still pushes its container wider tha
 **Typography defaults:** fontSize and fontWeight have **no built-in defaults** — omitting them inherits from parent elements (browser default is ~16px / normal weight). Do not set fontSize or fontWeight unless you need a non-default value. For example, `fontSize: '300'` (16px) and `fontWeight: '500'` (normal) are the inherited defaults — omit them.
 
 `we-text` variants (set via the `variant` prop) bundle typography presets. Always pair with a semantic `tag` prop for correct HTML structure:
-body (300, tag: p/span), label (200 + medium, tag: span), footnote (100, tag: span), subheading (400 + medium, tag: h5/p), ingress (400 + lineHeight 1.6, tag: p), heading-sm (500 + bold, tag: h4), heading-md (600 + bold, tag: h3), heading-lg (700 + bold, tag: h2), heading-xl (800 + bold, tag: h1).
+body (300, tag: p/span), label (200 + medium, tag: span), footnote (100, tag: span), subheading (400 + medium, tag: h5/p), ingress (400 + lineHeight 1.6, tag: p), heading-sm (500 + bold, tag: h4), heading-md (600 + bold, tag: h3), heading-lg (700 + bold, tag: h2), heading-xl (800 + bold, tag: h1), overline (100, wide tracking, capitals — the name of a group or an eyebrow above a heading, tag: span).
 Variants set size and weight only — color is always inherited or set explicitly. For muted footnote text add `color="text-muted"` explicitly.
 
 ### State
@@ -2404,19 +2434,17 @@ genuinely change its mind, not merely stretch.
 
 Use design tokens for spacing, color, radius, etc. Do not use raw CSS values unless using the styles prop.
 
+animation.easing: 'standard', 'out', 'in'
+
 animation.transition: '0', '100', '200', '300', '400', '500'
 
 avatarSize: 'xxs', 'xs', 'sm', 'md', 'lg', 'xl', 'xxl'
-
-border.color: 'base', 'strong'
 
 breakpoint: 'sm', 'md', 'lg'
 
 color.base: 'white', 'black'
 
 color.config: 'polarity', 'lightnessFloor', 'lightnessCeiling', 'saturation', 'neutralSaturation'
-
-color.hues: 'neutral', 'primary', 'success', 'warning', 'danger'
 
 color.lightness: '0', '25', '50', '75', '100', '200', '300', '400', '500', '600', '700', '800', '900', '1000'
 
@@ -2475,7 +2503,7 @@ AgentSettings extends Ad4mModel:
   - defaultThemeId: string = 'default' [we://default_theme]
   - systemLightThemeId: string [we://system_light_theme]
   - systemDarkThemeId: string [we://system_dark_theme]
-  - themeMode: string [we://theme_mode]
+  - displayPreferences: string [we://display_preferences]
   - claudeApiKey: string [we://claude_api_key]
   - datasetOrder: string [we://dataset_order]
   - globalSpaceJoined: boolean = false [we://global_space_joined]
@@ -3381,7 +3409,7 @@ ShellStore:
   - spaceSettingsFocus: string — the record the space-settings panel was opened about, by id, or ''. A vocabulary row for it marks itself, and the panel scrolls to it — give the row's element the DOM id `vocab-<record id>`. Set by openSpaceSettings' second argument; cleared when the panel closes
   - dockGeometry: Record<dockId, DockGeometry> — every registered panel's resolved box (top, left, width, height, edge, mode) and its state — hidden behind another tab, collapsed to its bar, stowed in a lane collapsed to its edge, and which of those its titlebar may offer (canCollapse, canStow). Read a field as { $: "shellStore.dockGeometry['<id>'].<field>" } — by index, since a dock id holds a colon; the frame a panel is wrapped in binds its geometry this way so a move rewrites props rather than remounting
   - contentInset: { top, right, bottom, left } in pixels — what the content viewport gives up to panels that displace it. Read it to keep your own fixed chrome clear of docked panels
-  - coveredInset: { top, right, bottom, left } in pixels — what FLOATING panels are covering. They take no room, so they leave contentInset at zero while still sitting over the content: this is the part of your own box the reader cannot see. Read it to keep something in the clear where contentInset would say there is nothing in the way
+  - coveredInset: { top, right, bottom, left } in pixels — what FLOATING panels and floating chrome (the call bar along the bottom) are covering. They take no room, so they leave contentInset at zero while still sitting over the content: this is the part of your own box the reader cannot see. Read it to keep something in the clear where contentInset would say there is nothing in the way. Chrome only; a space template reads the same numbers as CSS, `var(--we-covered-bottom, 0px)` and its three siblings — pad a composer pinned to the bottom of a view by it, and it rises above the call bar while one is up and settles when it goes
   - dockResizing: boolean — a panel is being dragged or resized right now. Suspend transitions while it is true so the edge tracks the cursor
   - panelMaximised: boolean — some panel covers the whole window. The app's own chrome — sidebar, module rail — hides while it is true; a template's fixed chrome should too
   - dockPlacement: Record<dockId, { snap, displace, canDisplace, … }> — where each panel is parked, for its frame to read: which of the eight snaps it is at, whether it displaces content, and whether it may. The state a position menu ticks; dockGeometry is the resulting box
@@ -3480,6 +3508,7 @@ SpaceStore:
   - templateOverrideOptions: { label, value }[] — options for the per-space template override picker: "Use the space’s default" (space-default), "Use my default" (agent-default), then every template. Each of the first two names what it resolves to. Pre-built because a schema can map a store array into options but cannot prepend one, and without those entries overriding would be one-way
   - themeOverrideOptions: { label, value }[] — the same, for themes
   - spaceThemePinned: boolean — this agent has pinned a theme for the space on screen that differs from what would otherwise apply, so there is something for a reset to undo. False outside a space, and false for a pin that happens to name what the space resolves to anyway. Gate a "pinned here / reset" affordance on it rather than on the pin merely existing
+  - spaceThemeHiddenBy: string — what keeps this agent from seeing the space on screen's own theme: 'pin' (they chose a theme for this space), 'agent-default' (they chose to follow their own default here), 'template' (a template other than the space's default brings its own theme), or '' when nothing does. Show it beside the space's default-theme picker, so an administrator who sets one and sees nothing change knows why. clearSpaceThemePin undoes the first two
   - installedModules: string[] — ids of the feature modules THIS AGENT wants available anywhere. Personal, held in the root dataset; unset means "not decided" and falls back to every registered module
   - requiredModules: string[] — module ids the template on screen mounts components from, derived by walking the schema rather than read from meta.components (which no template fills in). What makes uninstalling a capability module refusable
   - missingModules: string[] — of those, the ones this agent has not installed. Non-empty means the template is mounting a component nothing provides, so part of the page silently renders nothing. Empty in the ordinary case
@@ -3647,6 +3676,7 @@ ThemeStore:
   - themeMode: 'light' | 'dark' | 'system' — which side of a two-sided theme the agent wears. A theme can carry a light and a dark side of one look (its overrides' `light`/`dark`), so an app ships one theme rather than a pair; this picks between them for every such theme, and a theme with one look ignores it
   - themeSide: 'light' | 'dark' — the side worn right now: themeMode, with 'system' answered by the machine
   - currentThemeSides: ('light' | 'dark')[] — the sides the theme on screen carries. Offer a Light / Dark / System choice only when it is not empty
+  - displayPreferences: { colorScheme?, contrast?, textSize?, density?, motion? } — the agent's display needs, applied over every theme on screen, a space's included: colorScheme 'light' | 'dark' | 'system' (themeMode is this axis), contrast 'standard' | 'more' | 'system', textSize a multiplier (1 = the theme's own), density 'compact' | 'normal' | 'roomy', motion 'full' | 'reduced' | 'system'. An axis left out follows the system where it has a signal, and changes nothing otherwise
   - systemThemeOptions: { label, value }[] — options for either side of the Follow-system pair, with a "Built-in" entry a schema could not prepend itself
   - themeScope: 'global' | 'scoped' — what actually applies right now: the theme editor's session preview if one is active, else the agent's preference
   - themeScopePreference: 'global' | 'scoped' — the agent's persisted choice
@@ -3661,6 +3691,7 @@ ThemeStore:
   - focusRole(role: string): asks the theme editor to reveal a role, kebab-case as a schema spells it. Pair with editorStore.openThemePanel so there is a panel to scroll
   - setSystemTheme(polarity: 'light' | 'dark', themeId: string): sets one side of the Follow-system pair. An empty id returns that side to the built-in
   - setThemeMode(mode: 'light' | 'dark' | 'system'): chooses which side of a two-sided theme to wear, for this agent everywhere. A we-select or a segmented control can pass its value bare
+  - setDisplayPreference(key: 'colorScheme' | 'contrast' | 'textSize' | 'density' | 'motion', value): sets one display need for this agent everywhere. 'system' or null returns it to the default. A we-select can pass its value as event.detail
   - setThemeInstalled(themeId: string, visible: boolean): shows or hides a custom theme in the pickers; does not delete it. Takes the value rather than toggling, so a `we-switch` can pass `event.detail` straight through
   - previewThemeScope(scope: 'global' | 'scoped' | null): previews a scope for the current theme-editing session without writing the preference; null drops the preview. Cleared when editing ends
   - setThemeScopeGlobal(global: boolean): persists whether a space's theme covers the whole window (true) or only the space's own content (false, the default). Takes a boolean because a switch emits one; an expression over event in the args is evaluated when the switch fires, so pass `event.detail` bare
@@ -4229,10 +4260,10 @@ Use $query or a store read for dynamic data (more common in production):
 Per-item customization inside $each:
 To style or highlight specific items, add a data flag to those items and use $if on the flag inside the template. Do NOT use index == N comparisons — they are fragile, repetitive, and break when items are reordered.
 Example: add "highlighted": true to one item's data, then use $if on the flag in the template:
-{ "type": "$if", "props": { "condition": { "$": "post.highlighted" }, "then": { "type": "we-badge", "props": { "variant": "primary" }, "children": ["Featured"] } } }
+{ "type": "$if", "props": { "condition": { "$": "post.highlighted" }, "then": { "type": "we-badge", "props": { "tone": "accent" }, "children": ["Featured"] } } }
 For a conditional PROP, use a ternary in an expression — NOT a prop-level $if, which is a node type
 and resolves to a handler in a value position:
-{ "bg": { "$": "post.highlighted ? 'accent-muted' : 'surface'" } }
+{ "bg": { "$": "post.highlighted ? 'accent-soft' : 'surface'" } }
 
 Boolean toggle (show/hide, expand/collapse):
 {
@@ -4416,14 +4447,14 @@ placeholder and the grid can never disagree about how many rows there are.
   "type": "Column",
   "props": { "flex": "1", "height": "100%", "ax": "center", "ay": "center", "gap": "400", "p": "600" },
   "children": [
-    { "type": "we-icon", "props": { "name": "lock", "size": "xl", "gradient": "primary" } },
+    { "type": "we-icon", "props": { "name": "lock", "size": "xl", "gradient": "accent" } },
     { "type": "we-text", "props": { "variant": "heading-md", "textAlign": "center" }, "children": ["Join this Space"] },
     {
       "type": "we-text",
       "props": { "variant": "body", "textAlign": "center", "maxWidth": "var(--we-layout-xs)" },
       "children": ["You haven't joined this space yet."]
     },
-    { "type": "we-button", "props": { "variant": "primary", "onClick": { "$action": "…" } }, "children": ["Join"] }
+    { "type": "we-button", "props": { "variant": "solid", "onClick": { "$action": "…" } }, "children": ["Join"] }
   ]
 }
 ```
@@ -4484,7 +4515,7 @@ Cancel, and the action's `onSuccess`.
   (`{ $: 'shapeStore.confirmDiscard' }`) or on a string id works the same way.
 - `cancel` for a cancel button that does more than close — "Keep editing" dismisses the question
   and leaves the wizard behind it open.
-- `tone: 'primary'` for a question with no casualty; the default `danger` picks a warning icon and
+- `tone: 'accent'` for a question with no casualty; the default `danger` picks a warning icon and
   a danger confirm button.
 - `detail` for a quieter second line, `children` for a `we-alert` naming a surprising consequence.
 - `busyLocal` if the action is not instant — a write that walks a board or a thread takes a while, and
@@ -4605,7 +4636,7 @@ through `onReady`. So the sequence is: `onReady` stores that function in a **`fu
     {
       "type": "we-button",
       "props": {
-        "variant": "primary",
+        "variant": "solid",
         "loading": { "$": "local.submitting" },
         "disabled": { "$": "local.submitting" },
         "onClick": { "$callLocal": "savePost" }
@@ -5380,7 +5411,7 @@ otherwise shove a floating panel down the screen mid-read.
 - Each item in a children array must be either a valid schema node object or a string.
 - Use design tokens for spacing, color, radius, etc. (do not use raw CSS except in styles).
 - Use the styles prop for custom inline CSS (e.g., { "width": "100px" }).
-- Use hoverProps for hover state overrides, activeProps for pressed state, focusProps for keyboard-focus state. Supported on @we/primitives (we-text, we-button, etc.) and layout components (Column, Row). focusProps fires on `:focus-visible` (keyboard), not on mouse click. Do not add a focus ring by hand — `we-button` and `we-input` already have one, themeable via the `ringColor` theme key.
+- Use hoverProps for hover state overrides, activeProps for pressed state, focusProps for keyboard-focus state. Supported on @we/primitives (we-text, we-button, etc.) and layout components (Column, Row). focusProps fires on `:focus-visible` (keyboard), not on mouse click. Do not add a focus ring by hand — `we-button` and `we-input` already have one, in the `focus` role, which a `tone` re-points and a theme's `focusRingWidth` thickens.
 - Use expressions ({ "$": "…" }) for anything computed and handler tokens ($action, $setLocal, …) for anything that happens on an event; a plain string is always text.
 - Nest components using children or slots as needed.
 - For routes, use the routes array with path and child nodes.
@@ -5390,7 +5421,7 @@ otherwise shove a floating panel down the screen mid-read.
 - Do not use `as const` on schema node `type` fields — `SchemaNode.type` is `string`, so it is never needed.
 - For icon-only buttons, nest a `we-icon` child inside `we-button` rather than using a `text` prop with a Unicode character. **Omit the `size` prop on `we-icon` when nesting inside sized primitives** (`we-button`, `we-input`, `we-badge`, `we-textarea`) — these components auto-size nested icons via `--we-context-icon-size` (xs→12px, sm→16px, md→24px, lg→32px, xl→40px). Only set an explicit icon `size` if you need to override the automatic sizing. Example: `{ type: 'we-button', props: { variant: 'ghost', size: 'sm' }, children: [{ type: 'we-icon', props: { name: 'x' } }] }`.
 - NEVER pass a bare number like "16" as a size or dimension prop — it is not valid CSS. Always check the component's declared prop type: if it's a string union, use one of the listed values; if it accepts arbitrary strings, include a CSS unit (e.g. "16px", "2rem").
-- For interactive list items and selectable options, use `we-button` with variant switching (e.g., `secondary` when selected, `ghost` when not) instead of manually styling `Row` with cursor, bg, and onClick. Buttons provide hover, focus, and active states for free.
+- For interactive list items and selectable options, use `we-button` with variant switching (e.g., `soft` when selected, `ghost` when not) instead of manually styling `Row` with cursor, bg, and onClick. Buttons provide hover, focus, and active states for free.
 - To make a block of content clickable **without any button appearance**, use `we-button` with `variant: 'bare'` — never a `Column`/`Row` with an `onClick`. `bare` is the appearance-free variant: no background, no hover, no padding, no radius, inherited colour — but still a real `<button>`, so it keeps keyboard activation, the `disabled` prop, and the accessibility role that a clickable `Column` silently loses. Do not use `ghost` for this: ghost's hover background is deliberate, and it paints a rectangle over content that supplies its own affordance. Example: `{ type: 'we-button', props: { variant: 'bare', disabled: { $: 'someStore.busy' }, onClick }, children: [{ type: 'Column', props: { gap: '100', ax: 'center' }, children: [...] }] }`.
 - For card-like layouts, compose from `Column` with DS props (bg, r, border, p, gap). This gives full control over spacing and appearance.
 - When rendering lists of similar items (posts, cards, users, etc.), ALWAYS use `$each` with a single template child — never duplicate the same node structure multiple times. Use literal arrays in `items` for static data, or a store read/`$query` for dynamic data.
@@ -5468,6 +5499,170 @@ After creating or modifying a `.schema.ts` file, always run validation to catch:
 - `$routes` outlet without a `routes` array on an ancestor
 - Orphan `local.*` reads / `$setLocal` writes without a `$localState` ancestor, and references in the old string spelling (`'$item.name'`)
 - DS layer consistency (mixing props from layers the component doesn't support)
+
+---
+
+## Theming
+
+A theme is an object of settings, not a stylesheet: numbers and names the design system turns into
+every colour, shape and kind of text on screen. That is what lets a theme be shared as data, applied
+to a template it has never seen, and corrected for contrast wherever it lands.
+
+### Three tiers, broad to narrow
+
+1. **System settings** — colour families, the palette, type roles, shape and density families,
+   elevation, surface images. Most themes stop here.
+2. **Components** — one component, or one variant of it, apart from its family, with the same keys
+   the families use: `components: { button: { variants: { soft: { borderWidth: '1.5px' } } } }`.
+3. **CSS** — effects no setting should express: a clip-path, keyframes, scanlines. Sanitised and
+   confined to where the theme applies; it targets public `::part()` names only.
+
+Reach for the broadest tier that says it. A component override where a family setting would do
+leaves every other component in that family behind; CSS where a setting would do opts out of the
+contrast corrections and breaks when the component changes.
+
+### Colour
+
+Semantic families: `accent`, `success`, `warning`, `danger`, plus `neutral` for greys. The palette, for categories
+a community names: `red`, `orange`, `yellow`, `lime`, `green`, `teal`, `cyan`, `blue`, `purple`, `pink`. Status uses the semantic families; categories use the palette.
+
+Every family has the same roles, so one pattern names them all (kebab-case in a template):
+
+| Role | What it is |
+| --- | --- |
+| `<family>` | the solid fill |
+| `on-<family>` | text and icons on that fill |
+| `<family>-soft` | a tinted fill: a soft badge, a selected row |
+| `<family>-text` | the family as text on an ordinary surface |
+| `<family>-border` | a border in the family |
+| `<family>-hover`, `<family>-active` | the fill under the pointer and pressed |
+
+Surfaces and text have their own roles — `chrome`, `page`, `surface`, `surface-raised`,
+`surface-sunken`, `text`, `text-muted`, `text-faint`, `border`, `border-strong` and the rest —
+measured from the page, so they invert with the theme while a fill keeps its own lightness.
+
+Each family takes `<family>Hue` (an OKLCH angle — blue is 263, not 220), `<family>Saturation` (0–100,
+a share of what that hue can hold) and `<family>Lightness` (the fill's lightness). The palette is
+tuned as a set through `palette`.
+
+**`tone` on any element** re-points the accent roles inside it at one family, so everything in it —
+buttons, rings, selected rows, `shadow: 'glow'` — follows. `variant` is never a colour: it says how a
+component is drawn (`solid`, `soft`, `outline`, `ghost`, `bare`).
+
+**Pinning a role** (`roles: { surfaceRaised: … }`) overrules what the system derives. Prefer, in order:
+leave it unset; another role (`var(--we-role-page)`); a relative colour from one
+(`oklch(from var(--we-role-page) calc(l + 0.05) c h)`); a literal only for a brand colour that must not
+move. Foregrounds, fills on which no label reads, hover and pressed states and the elevation stack
+are corrected when the theme is applied — but only where they are left unset.
+
+### Type roles
+
+`typeStyles` sets how each kind of text looks: `heading`, `body`, `label`, `control`, `badge`, `overline`. Each role takes
+`family`, `weight`, `letterSpacing`, `lineHeight`, `textTransform`, `color` — `color` is a role name. A role holds no defaults:
+each component keeps the value it had for any key the theme leaves unset.
+
+### Components
+
+`components.<name>` and `components.<name>.variants.<variant>` take `radius`, `padding`, `gap`, `borderWidth`, `shadow`, `type`, `fill`, `text`, `border`.
+`<name>` is what the component registers: a primitive's tag without `we-` (`button`, `menu-item`),
+a component's own name (`card`). `type` names a type role; `fill`, `text` and `border` name colour
+roles. An explicit prop on an element still wins; then the variant, the component, the family, and
+the default.
+
+### Surfaces and elevation
+
+`surfaceImages` lays a gradient over every surface of a kind: `chrome`, `page`, `surface`, `surfaceRaised`, `surfaceSunken`.
+Gradients only — a picture would have to be fetched. `page` and `chrome` stay put while content
+scrolls. An element's own `bgImage` is its own picture and replaces the theme's on that element; use
+`surfaceImages` for the look of a whole kind of surface, `bgImage` for one thing.
+
+Shadows are built from the `shadow-color` role; `shadowIntensity` sets how strong they are and
+which one a surface rests at, `glowIntensity` how bright `shadow: 'glow'` is.
+
+### Modes — the person wins
+
+A theme may say how it looks in a mode — its `light` and `dark` sides, its `contrast.more` block —
+but which mode is worn is the person's, and it applies over every theme, a space's included.
+
+| Axis | Values | Follows the system | What it does |
+| --- | --- | --- | --- |
+| `colorScheme` | light, dark, system | yes | Which side of a two-sided theme is worn. |
+| `contrast` | standard, more, system | yes | More separation between text, borders and their ground — the theme's own `contrast.more` where it has one. |
+| `textSize` | a multiplier, 1 by default | no | On the theme's own text size. |
+| `density` | compact, normal, roomy | no | How much room things take. |
+| `motion` | full, reduced, system | yes | Reduced stops every transition and animation. |
+
+### Every setting
+
+- `accentHue` — The accent family's hue, an OKLCH angle (blue is 263, not 220).
+- `successHue` — The success family's hue.
+- `warningHue` — The warning family's hue.
+- `dangerHue` — The danger family's hue.
+- `neutralHue` — The greys' hue; follows the accent's when unset.
+- `saturation` — 0–100, a share of the chroma each hue can hold. The default every family starts from.
+- `neutralSaturation` — 0–100, how tinted the greys are.
+- `accentSaturation` — 0–100, the accent family alone.
+- `successSaturation` — 0–100, the success family alone.
+- `warningSaturation` — 0–100, the warning family alone.
+- `dangerSaturation` — 0–100, the danger family alone.
+- `accentLightness` — 0–100, how light the accent fill is. The alternative to pinning the role.
+- `dangerLightness` — 0–100, how light the danger fill is.
+- `successLightness` — 0–100, how light the success fill is.
+- `warningLightness` — 0–100, how light the warning fill is.
+- `lightnessFloor` — The darkest lightness the theme uses, as a percentage.
+- `lightnessCeiling` — The lightest, as a percentage. With the floor, the theme's contrast.
+- `borderWidth` — Every border's width: hairline or heavy.
+- `focusRingWidth` — The focus ring's thickness.
+- `stateDuration` — How long a hover, press or focus takes to arrive. Departures snap.
+- `disabledOpacity` — 0–1, how far a disabled control fades.
+- `fontFamily` — The body face, as a font stack.
+- `headingFontFamily` — A display face for headings; the body face when unset. `typeStyles.heading.family` is the finer setting.
+- `monoFontFamily` — The face code is set in.
+- `letterSpacing` — Tracking for all text; what a type role falls back to.
+- `lineHeight` — Leading for all text; what a type role falls back to.
+- `controlRadius` — Buttons, badges, tags — anything pressed.
+- `surfaceRadius` — Cards, modals, drawers, alerts, inset media.
+- `inputRadius` — Fields, selects, pickers.
+- `avatarRadius` — Avatars. `50%` (a circle) unless set.
+- `spacingScale` — Multiplies the spacing tokens, apart from type.
+- `controlPaddingX` — A control's horizontal padding.
+- `controlGap` — The gap between a control's icon and its words.
+- `controlHeightOffset` — Added to every fixed-height control: `4px` taller, `-4px` shorter.
+- `surfacePadding` — A card's, modal's or drawer's padding.
+- `surfaceGap` — The gap between a surface's children.
+- `inputPadding` — A field's padding, as a shorthand.
+- `iconWeight` — The weight every icon is drawn in unless it names its own: thin, light, regular, bold, fill, duotone.
+- `surfaceOpacity` — 0–1, how opaque surfaces are — below 1 for glass.
+- `surfaceBlur` — Pixels of backdrop blur behind a translucent surface.
+- `polarity` — `light` or `dark`: which end of the ramp the scale starts from.
+- `shadowIntensity` — How strong shadows are, and which one a surface rests at: flat, subtle, elevated, dramatic.
+- `glowIntensity` — How bright and wide `shadow: 'glow'` is: none, subtle, medium, strong.
+- `animationSpeed` — Every transition at once: none, fast, normal, slow.
+- `fontScale` — Multiplies the root font size, and with it every rem-based token.
+- `roles` — Pin one colour role to a value — see "Pinning a role". `''` unpins a role the base preset pins.
+- `palette` — The ten palette hues as a set: `saturation`, `lightness` (points lighter or deeper), and `hues.<hue>` to set one hue's own angle, lightness or saturation.
+- `surfaceImages` — A gradient laid over every surface of a kind, by surface role. Gradients only.
+- `fontFaces` — Typefaces the theme carries, as data: URLs, so a family it names can be one nobody has installed.
+- `typeStyles` — How each kind of text looks, by type role.
+- `components` — One component apart from its family, by its registered name, with the family keys.
+- `light` — What differs on the light side of a two-sided theme.
+- `dark` — What differs on the dark side.
+- `contrast` — `contrast.more`: how the theme looks when somebody asks for more contrast.
+
+### What a theme cannot do
+
+- **Fetch anything.** `url()` to a network address and `@import` are removed: a theme is installed
+  from strangers and a fetch tells a third party who opened the space. Carry a font in `fontFaces`.
+- **Reach the app's chrome from a space, unless the person lets it.** A space's theme is confined to
+  the space's content, and the sidebar and the app's own screens wear the person's theme — until they
+  choose to let a space theme the whole window.
+- **Set an exact size per control.** Sizes stay on the shared scale so a theme cannot break a layout;
+  `controlHeightOffset`, `spacingScale` and `fontScale` move the scale instead.
+- **Override a person's display needs.** Contrast, text size, density and motion are theirs.
+- **Invent a role or a component key.** The vocabulary is the registries; a new word is a code change.
+
+The long form — how a theme becomes CSS, where it reaches, how to extend the system — is
+`docs/architecture/theming.md`; writing one is `packages/design-system/2-themes/THEME_AUTHORING.md`.
 
 ---
 
@@ -5626,7 +5821,8 @@ with it rather than by hand.
 So a local `cd ad4m/core && pnpm run build` does NOT get picked up by WE — changes to `@coasys/ad4m`
 reach WE once they are pushed to an ad4m PR or `dev` and the pin moves to that commit. A bot keeps
 one PR open that moves it to ad4m `dev`'s head once a day (`.github/workflows/bump-ad4m.yaml`); a
-feature that needs a new ad4m pins it in its own PR. Run `pnpm verify:ad4m` before merging either.
+feature that needs a new ad4m pins it in its own PR. CI runs `pnpm verify:ad4m` on both (the `AD4M
+live` workflow); it is not a required check, so read its result before merging either.
 The whole policy is in `docs/contributing/ad4m-and-deploys.md`.
 
 For active local iteration you can temporarily switch the override to
@@ -6055,6 +6251,22 @@ per shape at 3 + P calls for P properties — and it rejects outright when one s
 property transform a newer SDK encoded. For a question about many shapes, ask the executor
 once with SPARQL, and read a shape in full only when the answer needs it: `readShapeProperties` and
 `getForeignShacl` in `perspectiveHelpers.ts` show how.
+
+---
+
+### Solid + Lit Web Component Props: `prop:` and `weProps`
+
+In Solid JSX, a camelCase prop with a **computed** value on a `we-*` element is assigned as a
+**lowercased property** — `fontSize={x}` becomes `el.fontsize = x` — which the Lit element
+never reads, so the value is dropped without a trace. A literal (`fontSize="400"`) compiles to an
+attribute and works, which is what makes this hard to see. A spread is computed by nature:
+`{...SECTION_LABEL_PROPS}` delivered `variant` and `color` and silently dropped
+`textTransform` and `letterSpacing`, so every editor panel title lost its capitals.
+
+- A computed camelCase prop: write `prop:fontSize={x}`. (`styles` is the exception: plain.)
+- A spread: write `{...weProps(OBJ)}` from `@we/design-utils/solid`, which prefixes every key.
+
+`pnpm check:we-props` gates CI on both.
 
 ---
 

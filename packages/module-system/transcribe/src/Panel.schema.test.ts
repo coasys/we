@@ -256,8 +256,14 @@ describe('a transcript with nothing in it', () => {
    * space to be told nothing changed — and reading one back is the commonest thing anybody does to
    * a long transcript.
    */
-  it('subscribes only while the call is live', () => {
-    expect(linesJson).toContain('"subscribe":{"$":"modules.transcribe.callOnScreenLive"}');
+  it('subscribes to a call only while it is live, and to anything else always', () => {
+    expect(linesJson).toContain(
+      `"subscribe":{"$":"modules.transcribe.callOnScreenLive || (local.subjectKindLoaded && first(local.subjectKind).kind != 'call')"}`,
+    );
+    // The kind is read through the subject token, so a placement's substitution reaches it.
+    expect(linesJson).toContain(
+      '"subjectKind":{"entity":"CollectionBlock","where":{"id":{"$":"modules.transcribe.collectionId"}}',
+    );
   });
 
   /**
@@ -820,10 +826,10 @@ describe('the feed', () => {
       row and becomes a thing sitting on it.
 
       The badge's own neutral fill is `control-surface` for exactly this: a step away from the row's
-      `surface-sunken` in either polarity. See BADGE_APPEARANCE_DEFAULTS, where this row is the case
+      `surface-sunken` in either polarity. See BADGE_VARIANT_DEFAULTS, where this row is the case
       that argued it.
     */
-    expect(linesJson).toContain('{"type":"we-badge","props":{"size":"xs","variant":"neutral"}');
+    expect(linesJson).toContain('{"type":"we-badge","props":{"size":"xs"},"children":[{"type":"we-icon"');
     /*
       A keyboard rather than the letterform it used to be. Everything on this row is text, so what
       the mark is about is how the line *arrived* — and the panel's own record button now spends
@@ -875,12 +881,13 @@ describe('the recording indicator', () => {
       There was a solid red REC chip beside this. Between them they made one point twice, and the
       split was forced: the button had two variants, so it could not look different while actually
       capturing and the chip was added to cover the third state. The call bar's copy has carried all
-      three for a while — off quiet, armed `secondary`, capturing `danger`, on the reasoning that a
+      three for a while — off quiet, armed `soft`, capturing solid `danger`, on the reasoning that a
       state which arrives on its own must be legible without being looked for.
     */
     expect(panelJson).toContain(
-      "modules.transcribe.listening ? 'danger' : modules.transcribe.enabled ? 'secondary' : 'ghost'",
+      "modules.transcribe.listening ? 'solid' : modules.transcribe.enabled ? 'soft' : 'ghost'",
     );
+    expect(panelJson).toContain("modules.transcribe.listening ? 'danger' : modules.transcribe.enabled ? '' : ''");
     expect(panelJson).not.toContain('"children":["REC"]');
   });
 
@@ -1175,7 +1182,7 @@ describe('the extraction panel', () => {
     // state. Left open at the end rather than closing the props object: what is being pinned is
     // that the badge is the count's, and it should not have to be rewritten when the count's chip
     // gains a size or a colour.
-    expect(json).toContain('"we-badge","props":{"size":"xs","variant":"warning","appearance":"solid"');
+    expect(json).toContain('"we-badge","props":{"size":"xs","variant":"solid","tone":"warning"');
   });
 
   it('lists only the fields a record actually has something in', () => {
@@ -1207,7 +1214,7 @@ describe('the extraction panel', () => {
     */
     // The card's own former shape. `we-alert` still draws the two genuine alerts in this panel — a
     // failed pass and a watch that cannot run — which is what it is for.
-    expect(json).not.toContain('"we-alert","props":{"variant":"warning","appearance":"accent"');
+    expect(json).not.toContain('"we-alert","props":{"variant":"edge","tone":"warning"');
     expect(json).not.toContain('"name":"warning"');
     // The edge the alert drew, written out, in the role each list means: one still awaiting an
     // answer, one already settled.
@@ -1299,7 +1306,7 @@ describe('the extraction panel', () => {
       that does anything on a press, and a button that fades because a setting elsewhere is on reads
       as unavailable rather than as unnecessary.
     */
-    expect(json).not.toContain("modules.transcribe.autoExtract ? 'ghost' : 'secondary'");
+    expect(json).not.toContain("modules.transcribe.autoExtract ? 'ghost' : 'soft'");
   });
 
   it('names the chips, then puts the press that acts on them underneath', () => {
@@ -2031,7 +2038,7 @@ describe('the things to extract fold like every other section', () => {
   it('gives running a pass the same weight as keeping them running', () => {
     // `secondary` read as the lesser of the two beside an "Auto extract: on" switch, when it is the
     // one that does something this instant.
-    expect(JSON.stringify(extractionPanel)).toContain('"variant":"primary"');
+    expect(JSON.stringify(extractionPanel)).toContain('"variant":"solid"');
   });
 });
 

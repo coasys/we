@@ -147,7 +147,7 @@ export function CodeViewer(props: CodeViewerProps) {
           gap="300"
           px="400"
           py="200"
-          bg="warning-surface"
+          bg="warning-soft"
           borderBottom={`1px solid ${tokenVar('color', 'border')}`}
           flexShrink="0"
         >

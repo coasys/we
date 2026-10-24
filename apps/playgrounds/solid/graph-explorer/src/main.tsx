@@ -186,18 +186,14 @@ function App() {
         <Column gap="100">
           <For each={SCENARIOS}>
             {(item) => (
-              <we-button
-                variant={scenarioId() === item.id ? 'primary' : 'ghost'}
-                size="sm"
-                onClick={() => pick(item.id)}
-              >
+              <we-button variant={scenarioId() === item.id ? 'solid' : 'ghost'} size="sm" onClick={() => pick(item.id)}>
                 {item.label}
               </we-button>
             )}
           </For>
         </Column>
 
-        <we-alert variant="neutral">{scenario().note}</we-alert>
+        <we-alert tone="neutral">{scenario().note}</we-alert>
 
         <Column gap="200">
           <we-text variant="label" color="neutral-500" uppercase>
@@ -205,7 +201,7 @@ function App() {
           </we-text>
           <Row gap="100" wrap>
             <we-button
-              variant={layoutOverride() === null ? 'primary' : 'outline'}
+              variant={layoutOverride() === null ? 'solid' : 'outline'}
               size="xs"
               onClick={() => setLayoutOverride(null)}
             >
@@ -214,7 +210,7 @@ function App() {
             <For each={LAYOUTS}>
               {(name) => (
                 <we-button
-                  variant={layoutOverride() === name ? 'primary' : 'outline'}
+                  variant={layoutOverride() === name ? 'solid' : 'outline'}
                   size="xs"
                   onClick={() => setLayoutOverride(name)}
                 >
@@ -294,7 +290,7 @@ function App() {
           </we-text>
           <Row gap="100" wrap>
             <we-button
-              variant={curveOverride() === null ? 'primary' : 'outline'}
+              variant={curveOverride() === null ? 'solid' : 'outline'}
               size="xs"
               onClick={() => setCurveOverride(null)}
             >
@@ -303,7 +299,7 @@ function App() {
             <For each={CURVES}>
               {(name) => (
                 <we-button
-                  variant={curveOverride() === name ? 'primary' : 'outline'}
+                  variant={curveOverride() === name ? 'solid' : 'outline'}
                   size="xs"
                   onClick={() => setCurveOverride(name)}
                 >
@@ -338,12 +334,12 @@ function App() {
               </Row>
 
               <Row gap="100" wrap>
-                <we-badge variant="primary" size="xs">
+                <we-badge tone="accent" size="xs">
                   {node().kind}
                 </we-badge>
                 <we-badge size="xs">{node().type}</we-badge>
                 <Show when={node().unresolved}>
-                  <we-badge variant="warning" size="xs">
+                  <we-badge tone="warning" size="xs">
                     not synced
                   </we-badge>
                 </Show>

@@ -1,4 +1,5 @@
-import { css, html } from 'lit';
+import { FOCUS_OUTLINE_WIDTH } from '@we/tokens';
+import { css, html, unsafeCSS } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 
 import { LayoutElement } from '../shared/design-system-element';
@@ -89,8 +90,8 @@ const CSS_STYLES = css`
      how a control becomes mouse-only without anyone deciding that it should.
   */
   :host([line='none']:focus-visible) {
-    outline: 2px solid var(--we-ring-color);
-    outline-offset: -2px;
+    outline: ${unsafeCSS(FOCUS_OUTLINE_WIDTH)} solid var(--we-ring-color);
+    outline-offset: calc(-1 * ${unsafeCSS(FOCUS_OUTLINE_WIDTH)});
   }
 `;
 

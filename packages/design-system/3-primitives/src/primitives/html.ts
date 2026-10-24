@@ -1,11 +1,12 @@
 import type { DesignSystemProps } from '@we/design-types';
 import DOMPurify from 'dompurify';
-import { css, html } from 'lit';
+import { css, html, unsafeCSS } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
+import { headingType } from '../shared/typeRoles';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'block',
@@ -41,6 +42,11 @@ const styles = css`
   /* Bold / italic */
   [part='base'] strong {
     font-weight: 600;
+  }
+
+  /* Headings keep the browser's sizes and take the theme's heading type. */
+  [part='base'] :is(h1, h2, h3, h4, h5, h6) {
+    ${unsafeCSS(headingType('bold'))}
   }
 
   /* Links */

@@ -67,6 +67,56 @@ function weTags(src) {
   return out;
 }
 
+/**
+ * The object spreads on one tag — `{...SECTION_LABEL_PROPS}` — other than through `weProps(…)`.
+ *
+ * A spread is computed by nature, so every camelCase key in it is assigned lowercased and dropped,
+ * exactly as a computed prop is; and unlike a prop it cannot be checked by name, since the keys are
+ * somewhere else. The shared label styles were spread this way across the editor's panels, and
+ * their `textTransform` and `letterSpacing` never arrived — the titles were never in capitals.
+ * `weProps` prefixes every key with `prop:`, which a spread honours.
+ */
+function spreadsOf(src, [start, end]) {
+  const found = [];
+  let depth = 0;
+  let quote = null;
+  for (let i = start + 1; i < end; i++) {
+    const c = src[i];
+    if (quote) {
+      if (c === '\\') i++;
+      else if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '/' && (src[i + 1] === '*' || src[i + 1] === '/')) {
+      i = src[i + 1] === '*' ? src.indexOf('*/', i + 2) + 1 : src.indexOf('\n', i + 2) - 1;
+      if (i < 1) break;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') {
+      quote = c;
+      continue;
+    }
+    if (c === '{') {
+      // Only at the tag's own level: a spread inside a value (`style={{ ...base }}`) is an object.
+      const spread = depth === 0 ? /^\{\s*\.\.\.\s*/.exec(src.slice(i, end)) : null;
+      if (spread) {
+        let d = 0;
+        let j = i;
+        for (; j < end; j++) {
+          if (src[j] === '{') d++;
+          else if (src[j] === '}' && --d === 0) break;
+        }
+        const expr = src.slice(i + spread[0].length, j).trim();
+        if (!/^weProps\(/.test(expr)) found.push({ expr, at: i });
+        i = j;
+        continue;
+      }
+      depth++;
+    } else if (c === '}') depth--;
+  }
+  return found;
+}
+
 /** The props declared directly on one tag — name, and whether its value is computed. */
 function propsOf(src, [start, end]) {
   const found = [];
@@ -117,6 +167,9 @@ for (const rel of files) {
   for (const tag of weTags(src)) {
     scanned++;
     const name = /^<(we-[a-z-]+)/.exec(src.slice(tag[0]))[1];
+    for (const spread of spreadsOf(src, tag)) {
+      failures.push({ rel, line: src.slice(0, spread.at).split('\n').length, tag: name, prop: `...${spread.expr}` });
+    }
     for (const prop of propsOf(src, tag)) {
       if (!prop.computed || EXEMPT.test(prop.name) || !/[a-z][A-Z]/.test(prop.name)) continue;
       failures.push({ rel, line: src.slice(0, prop.at).split('\n').length, tag: name, prop: prop.name });
@@ -130,7 +183,10 @@ if (failures.length) {
   console.error('\nSolid assigns these as a LOWERCASED property (`el.fontsize`), which Lit never reads,');
   console.error('so the value is silently dropped. Write the prefix:\n');
   console.error(`      prop:${failures[0].prop}={…}\n`);
-  console.error('(A literal value — fontSize="400" — compiles to an attribute and is fine as it is.)\n');
+  console.error('(A literal value — fontSize="400" — compiles to an attribute and is fine as it is.)');
+  console.error(
+    'A spread — {...SOME_PROPS} — is computed too: write {...weProps(SOME_PROPS)} from @we/design-utils/solid.\n',
+  );
   process.exit(1);
 }
 

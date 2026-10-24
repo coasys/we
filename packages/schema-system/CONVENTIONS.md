@@ -137,7 +137,7 @@ The renderer resolves `node.type` to a component using these rules (in order):
   children: [ ... ],        // Child nodes (SchemaNode[]) or text strings
   slots: { header: ... },   // Named slot content (SchemaNode per slot)
   slot: 'sidebar',          // Which parent slot this node fills
-  theme: { primaryHue: 200 },  // Scoped parametric theme overrides
+  theme: { accentHue: 200 },  // Scoped parametric theme overrides
   routes: [ ... ],          // Route definitions (for $routes)
   $localState: { ... },     // Scoped mutable local state (signals, writable)
   $queries: { ... },        // Hoisted reactive query subscriptions (read-only, injected into $local)

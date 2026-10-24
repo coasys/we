@@ -83,7 +83,7 @@ export function VideoInput(props: VideoInputProps) {
               {(preset) => (
                 <we-button
                   square
-                  variant={activeWidth() === preset.value ? 'secondary' : 'ghost'}
+                  variant={activeWidth() === preset.value ? 'soft' : 'ghost'}
                   onClick={() => props.onChange('width', preset.value)}
                 >
                   {preset.label}
@@ -127,7 +127,7 @@ export function VideoInput(props: VideoInputProps) {
               <we-button variant="ghost" onClick={closeModal}>
                 Cancel
               </we-button>
-              <we-button variant="primary" onClick={handleSave} disabled={!url().trim()}>
+              <we-button variant="solid" onClick={handleSave} disabled={!url().trim()}>
                 Save
               </we-button>
             </Row>

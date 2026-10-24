@@ -289,7 +289,7 @@ const modelForm: SchemaNode = {
                         type: 'we-button',
                         props: {
                           text: 'List models',
-                          variant: 'secondary',
+                          variant: 'soft',
                           loading: { $: "'discoverAiModels' in runtimeStore.pending" },
                           disabled: { $: '!runtimeStore.aiForm.apiBaseUrl' },
                           onClick: { $action: 'runtimeStore.discoverAiModels' },
@@ -359,7 +359,7 @@ const modelForm: SchemaNode = {
           type: '$if',
           props: {
             condition: { $: 'runtimeStore.error && !count(runtimeStore.pending)' },
-            then: { type: 'we-alert', props: { variant: 'danger' }, children: [{ $: 'runtimeStore.error' }] },
+            then: { type: 'we-alert', props: { tone: 'danger' }, children: [{ $: 'runtimeStore.error' }] },
           },
         },
 
@@ -370,7 +370,7 @@ const modelForm: SchemaNode = {
             {
               type: 'we-button',
               // Guarded like the backdrop — one way out of the modal.
-              props: { text: 'Cancel', variant: 'secondary', onClick: guard.close },
+              props: { text: 'Cancel', variant: 'soft', onClick: guard.close },
             },
             {
               type: 'we-button',
@@ -406,7 +406,7 @@ const modelCard: SchemaNode = {
               type: '$if',
               props: {
                 condition: { $: 'model.isDefault' },
-                then: { type: 'we-badge', props: { variant: 'primary', size: 'xs' }, children: ['Default'] },
+                then: { type: 'we-badge', props: { tone: 'accent', size: 'xs' }, children: ['Default'] },
               },
             },
           ],
@@ -586,7 +586,7 @@ export const aiSection: SchemaNode = {
                       props: {
                         text: 'Add a model',
                         size: 'sm',
-                        variant: 'secondary',
+                        variant: 'soft',
                         onClick: { $action: 'runtimeStore.newAiModel' },
                       },
                       children: [{ type: 'we-icon', props: { name: 'plus' } }],

@@ -208,7 +208,7 @@ const editing: SchemaNode = {
                   type: 'we-button',
                   props: {
                     size: 'sm',
-                    variant: 'primary',
+                    variant: 'solid',
                     // Nothing about a label is locally judgeable beyond its presence.
                     disabled: { $: '!local.draftLabel' },
                     onClick: {

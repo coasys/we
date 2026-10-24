@@ -166,8 +166,8 @@ function foldingCount(opts: FoldingSectionLabelOptions): SchemaNode {
               type: 'we-badge',
               props: {
                 size: 'xs',
-                variant: opts.tone ?? 'neutral',
-                appearance: 'solid',
+                variant: 'solid',
+                ...(opts.tone && opts.tone !== 'neutral' && { tone: opts.tone }),
                 /*
                   Square at its narrowest, and wider only when the number needs it.
 

@@ -41,7 +41,7 @@ Use in your CSS:
 
 ```css
 .button {
-  background: var(--we-color-primary-500);
+  background: var(--we-color-accent-500);
   color: var(--we-color-white);
   font-family: var(--we-font-family);
   font-size: var(--we-font-size-400);
@@ -150,13 +150,13 @@ All tokens are available as CSS custom properties with the `--we-` prefix:
 }
 
 .button--primary {
-  background: var(--we-color-primary-500);
+  background: var(--we-color-accent-500);
   color: var(--we-color-white);
   transition: all var(--we-transition-200);
 }
 
 .button--primary:hover {
-  background: var(--we-color-primary-600);
+  background: var(--we-color-accent-600);
 }
 ```
 
@@ -167,7 +167,7 @@ All tokens are available as CSS custom properties with the `--we-` prefix:
 ```css
 :root {
   /* Change brand colors */
-  --we-color-primary-hue: 210; /* Blue instead of default */
+  --we-color-accent-hue: 210; /* Blue instead of default */
 
   /* Adjust overall saturation */
   --we-color-saturation: 70%;

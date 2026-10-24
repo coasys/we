@@ -178,8 +178,8 @@ const baseThemeSpec: Record<string, Record<string, string>> = {
     borderRadius: '2px',
   },
   '.cm-searchMatch.cm-searchMatch-selected': {
-    backgroundColor: 'var(--we-color-primary-200)',
-    outline: '1px solid var(--we-color-primary-500)',
+    backgroundColor: 'var(--we-color-accent-200)',
+    outline: '1px solid var(--we-color-accent-500)',
   },
   '&.cm-focused': {
     outline: 'none',
@@ -201,7 +201,7 @@ const baseThemeSpec: Record<string, Record<string, string>> = {
   '.tok-string': { color: 'var(--we-color-success-600)' },
   '.tok-number, .tok-integer, .tok-float': { color: 'var(--we-color-warning-600)' },
   '.tok-bool, .tok-null, .tok-atom': { color: 'var(--we-color-danger-500)' },
-  '.tok-keyword, .tok-controlKeyword, .tok-moduleKeyword': { color: 'var(--we-color-primary-700)', fontWeight: 'bold' },
+  '.tok-keyword, .tok-controlKeyword, .tok-moduleKeyword': { color: 'var(--we-color-accent-700)', fontWeight: 'bold' },
   '.tok-comment, .tok-lineComment, .tok-blockComment': { color: 'var(--we-role-text-faint)', fontStyle: 'italic' },
   '.tok-tagName': { color: 'var(--we-role-accent)' },
   '.tok-className, .tok-labelName': { color: 'var(--we-color-success-700)' },

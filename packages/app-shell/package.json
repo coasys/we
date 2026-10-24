@@ -11,7 +11,7 @@
     "generate-elements": "node scripts/generateElementRegistry.mjs",
     "generate-bundles": "node scripts/generateBundleRegistry.mjs",
     "publish-templates": "tsx scripts/publishTemplates.mjs",
-    "build:steps": "node scripts/generateTemplateRegistry.mjs && node scripts/generateModuleRegistry.mjs && node scripts/generateElementRegistry.mjs && node scripts/generateBundleRegistry.mjs && tsup",
+    "build:steps": "node scripts/generateTemplateRegistry.mjs && node scripts/generateViewRegistry.mjs && node scripts/generateModuleRegistry.mjs && node scripts/generateElementRegistry.mjs && node scripts/generateBundleRegistry.mjs && tsup",
     "build": "we-build",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",

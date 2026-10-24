@@ -1,4 +1,5 @@
 import type { DesignSystemProps } from '@we/design-types';
+import { FOCUS_RING } from '@we/tokens';
 import { css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
@@ -12,11 +13,14 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   px: '300',
   cursor: 'pointer',
   borderBottom: '2px solid transparent',
-  hoverProps: { bg: 'surface-active' },
+  hoverProps: { bg: 'item-hover' },
+  // `all: unset` on the base drops the browser's outline, so the ring is drawn here.
+  focusProps: { ring: FOCUS_RING },
 };
 
 const DEFAULT_SELECTED_PROPS: Partial<DesignSystemProps> = {
-  bg: 'surface-sunken',
+  bg: 'selected',
+  color: 'on-selected',
   borderBottom: '2px solid accent',
 };
 
@@ -60,6 +64,8 @@ export class Tab extends DesignSystemElement {
 
   @property({ type: String, reflect: true }) key = '';
   @property({ type: Boolean, reflect: true }) selected = false;
+  /** Shown but not choosable — faded by the shared disabled rule. */
+  @property({ type: Boolean, reflect: true }) disabled = false;
   @property({ type: String }) label?: string;
   @property({ type: Object }) selectedProps?: Partial<DesignSystemProps>;
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
@@ -94,7 +100,8 @@ export class Tab extends DesignSystemElement {
         part="base"
         role="tab"
         aria-selected=${this.selected}
-        tabindex=${this.selected ? '0' : '-1'}
+        ?disabled=${this.disabled}
+        tabindex=${this.selected && !this.disabled ? '0' : '-1'}
         @click=${this.handleClick}
         style=${styleMap(inline)}
       >

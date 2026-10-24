@@ -74,7 +74,7 @@ const typeRow: SchemaNode = {
                 r: '100',
                 // Falls back to the neutral every unstyled card is drawn in, so the key never shows
                 // a colour the canvas is not using.
-                bg: expr`${colorOf} ? ${colorOf} : 'accent-muted'`,
+                bg: expr`${colorOf} ? ${colorOf} : 'accent-soft'`,
                 border: '1px solid border-strong',
               },
             },

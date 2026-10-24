@@ -56,7 +56,7 @@ export function comingSoon(opts: ComingSoonOptions): SchemaNode {
             type: '$if',
             props: {
               condition: notExpr(available),
-              then: { type: 'we-tag', props: { variant: 'neutral' }, children: ['Coming soon'] },
+              then: { type: 'we-tag', props: {}, children: ['Coming soon'] },
             },
           },
         ],

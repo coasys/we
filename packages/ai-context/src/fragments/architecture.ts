@@ -155,6 +155,8 @@ that declares \`backends: ['ad4m']\` — nothing else. See \`docs/architecture/p
 
 ### Where to look
 
+- How a theme becomes CSS, where it reaches, and how to extend it → \`docs/architecture/theming.md\`;
+  writing one → \`packages/design-system/2-themes/THEME_AUTHORING.md\`.
 - Change how a token/operator resolves → \`packages/schema-system/shared/src/propResolvers/\`.
 - Change tree-walking / mounting / control flow → \`packages/schema-system/frameworks/solid/src/\`.
 - Add/adjust a primitive → \`packages/design-system/3-primitives/src/\` (Lit).

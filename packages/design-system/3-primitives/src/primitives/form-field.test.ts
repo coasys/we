@@ -84,7 +84,8 @@ describe('type ramp', () => {
   */
   it('labels a field the way we-text labels anything — 200, medium', () => {
     expect(ruleFor('label')).toContain('--we-font-size-200');
-    expect(ruleFor('label')).toContain('font-weight: 500');
+    // Through the label type role, falling back to medium where a theme leaves the role unset.
+    expect(ruleFor('label')).toContain('font-weight: var(--we-type-label-weight, 500)');
   });
 
   it('drops both messages to footnote size, a clear step below the label', () => {

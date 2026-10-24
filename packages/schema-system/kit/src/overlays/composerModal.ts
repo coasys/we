@@ -222,13 +222,13 @@ export function composerModal(opts: ComposerModalOptions): SchemaNode {
                 // Guarded like the backdrop, so the modal has one way out rather than two that
                 // disagree — the house precedent is the model wizard, whose Cancel routes through
                 // the same `requestCloseWizard` its backdrop does.
-                props: { variant: 'secondary', onClick: guard?.close ?? close },
+                props: { variant: 'soft', onClick: guard?.close ?? close },
                 children: ['Cancel'],
               },
               {
                 type: 'we-button',
                 props: {
-                  variant: 'primary',
+                  variant: 'solid',
                   loading: { $: 'local.submitting' },
                   // Disabled only while in flight, never on "nothing typed yet" — the house rule.
                   // Nothing about a draft is locally judgeable anyway.

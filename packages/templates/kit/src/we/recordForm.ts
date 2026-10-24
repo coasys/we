@@ -191,7 +191,7 @@ const imageEditor: SchemaNode = {
                     {
                       type: 'we-button',
                       props: {
-                        variant: 'secondary',
+                        variant: 'soft',
                         size: 'xs',
                         square: true,
                         label: { $: '`Remove ${entry.label}`' },
@@ -354,7 +354,7 @@ const genericRelationEditor: SchemaNode = {
                 then: {
                   type: 'we-button',
                   props: {
-                    variant: 'secondary',
+                    variant: 'soft',
                     size: 'sm',
                     onClick: { $action: 'recordStore.openRelationForm', args: [{ $: 'field.name' }] },
                   },
@@ -455,12 +455,12 @@ const relationFormModal: SchemaNode = {
           children: [
             {
               type: 'we-button',
-              props: { variant: 'secondary', onClick: { $action: 'recordStore.cancelRelationForm' } },
+              props: { variant: 'soft', onClick: { $action: 'recordStore.cancelRelationForm' } },
               children: ['Cancel'],
             },
             {
               type: 'we-button',
-              props: { variant: 'primary', onClick: { $action: 'recordStore.saveRelationForm' } },
+              props: { variant: 'solid', onClick: { $action: 'recordStore.saveRelationForm' } },
               children: ['Add'],
             },
           ],
@@ -836,13 +836,13 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
               {
                 type: 'we-button',
                 // Guarded like the backdrop — one way out of the modal.
-                props: { variant: 'secondary', onClick: guard.close },
+                props: { variant: 'soft', onClick: guard.close },
                 children: ['Cancel'],
               },
               {
                 type: 'we-button',
                 props: {
-                  variant: 'primary',
+                  variant: 'solid',
                   // Disabled only while the write is in flight. Never on "the form is not valid
                   // yet" — that would make the button unclickable in exactly the state where
                   // clicking it is what reveals which field is missing.

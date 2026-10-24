@@ -5,6 +5,7 @@ import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import { fieldSurface } from '../shared/field-surface';
+import { floatingPanel } from '../shared/panel-style';
 import sharedStyles from '../shared/styles';
 import { leafletCss } from './leaflet-css';
 
@@ -71,10 +72,7 @@ const styles = css`
     inset: unset;
     /* Component styles */
     z-index: var(--we-z-dropdown, 9999);
-    background: var(--we-role-surface-raised);
-    border: 1px solid var(--we-role-border);
-    border-radius: var(--we-radius-500);
-    box-shadow: 0 8px 24px color-mix(in srgb, var(--we-role-shadow-color) 14%, transparent);
+    ${floatingPanel()}
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -91,7 +89,7 @@ const styles = css`
     align-items: center;
     justify-content: space-between;
     padding: var(--we-space-300) var(--we-space-400);
-    border-top: 1px solid var(--we-role-border);
+    border-top: var(--we-border-width, 1px) solid var(--we-role-border);
     gap: var(--we-space-300);
   }
 
@@ -124,7 +122,6 @@ const styles = css`
   }
 
   :host([disabled]) {
-    opacity: 0.5;
     pointer-events: none;
   }
 `;

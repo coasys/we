@@ -271,7 +271,7 @@ describe('unknown prop', () => {
   });
 
   it('passes for valid DS prop on DesignSystemElement', () => {
-    const result = validateSemantic({ type: 'we-button', props: { bg: 'primary-500', gap: '300' } }, ctx());
+    const result = validateSemantic({ type: 'we-button', props: { bg: 'accent-500', gap: '300' } }, ctx());
     expect(result.errors).toHaveLength(0);
   });
 
@@ -991,8 +991,8 @@ describe('a role named in its TypeScript spelling', () => {
   });
 
   it('is caught inside an expression, where a colour just as often lives', () => {
-    const errors = errorsFor({ bg: { $: "local.open ? 'accentMuted' : 'surface'" } });
-    expect(errors.some((e) => e.message.includes('"accent-muted"'))).toBe(true);
+    const errors = errorsFor({ bg: { $: "local.open ? 'accentSoft' : 'surface'" } });
+    expect(errors.some((e) => e.message.includes('"accent-soft"'))).toBe(true);
   });
 
   it('leaves the right spelling alone — including roles that read the same either way', () => {

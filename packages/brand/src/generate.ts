@@ -17,10 +17,10 @@
  * ## Why the colours are computed rather than written down
  *
  * The icon is the sidebar's header, standing on its own: the `page` role behind it and
- * `--we-gradient-primary` through the mark. Both are parametric — hue, saturation and a lightness
+ * `--we-gradient-accent` through the mark. Both are parametric — hue, saturation and a lightness
  * ramp — so hard-coding `#1f1e2a` would freeze today's theme into a file nothing recomputes, which
  * is the same mistake as naming a scale position where a role belongs. Here the preset is read and
- * the ramp arithmetic reused from `@we/tokens`, so moving `primaryHue` moves the icon.
+ * the ramp arithmetic reused from `@we/tokens`, so moving `accentHue` moves the icon.
  *
  * ## Why the Tauri CLI does the rasterising
  *
@@ -125,14 +125,14 @@ function rampLightness(step: keyof typeof colorLightness, floor: number, ceiling
 function resolvePalette() {
   /*
     Widened to the shared parameter type. Each preset's own type is narrowed to exactly the keys it
-    declares, so `primaryHue` is a type error on a preset that leaves it at the default — which is
+    declares, so `accentHue` is a type error on a preset that leaves it at the default — which is
     most of them, and would make this break on whichever theme was chosen rather than on all of them.
   */
   const p = THEME_PRESETS[ICON_THEME].parameters as ThemeParameters;
   const polarity = (p.polarity ?? 'light') as 'light' | 'dark';
   const floor = parseFloat(String(p.lightnessFloor ?? '0%'));
   const ceiling = parseFloat(String(p.lightnessCeiling ?? '100%'));
-  const hue = p.primaryHue ?? 288;
+  const hue = p.accentHue ?? 288;
   const saturation = p.saturation ?? 60;
   const neutralSaturation = p.neutralSaturation ?? 10;
   const neutralHue = p.neutralHue ?? hue;

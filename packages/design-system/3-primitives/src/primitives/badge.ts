@@ -6,7 +6,7 @@ import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
-import type { BadgeAppearance, ComponentSize, ComponentVariant } from '../types';
+import type { BadgeVariant, ComponentSize } from '../types';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   bg: 'surface-sunken',
@@ -20,53 +20,33 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
 };
 
 /*
-  Two appearances of the same five meanings — see `BadgeAppearance` for why both exist.
+  Two styles of one family — see `BadgeVariant` for why both exist — and the family is the tone.
 
-  `soft` is what the badge has always painted: the tinted panel and the status colour used *as
-  text*. It is right for an annotation on something else — "Retired", "Not a WE space", "Anna
-  editing" — and wrong for a badge that is itself the news. In a dark theme the tint is a very dark
-  green and the text a pale one, which reads as a label about a call rather than as "this call is
-  live".
+  `soft` is the tinted panel and the family used *as text*: right for an annotation on something
+  else — "Retired", "Not a WE space", "Anna editing". `solid` is the fill and its label measured
+  against it: right for a badge that is itself the news, "this call is live".
 
-  `solid` is the fill and the label measured against it. The labels are the `on<Fill>` roles rather
-  than white, and that is the whole reason this is safe to offer: `LABEL_FOR_FILL` corrects every
-  one of them at apply time against wherever the fill actually landed, so a `warning` fill at
-  lightness 76 gets a dark label and a `danger` fill at 62 keeps a light one, in any theme. Pinning
-  white here — which is what the role file's default value looks like in isolation — would fail on
-  the two light fills.
+  A toned badge draws with the accent's roles, which its `tone` has re-pointed at the family, so one
+  table serves every family, the palette included. The label is the family's own `on-<family>`,
+  corrected at apply time against wherever the fill landed — a yellow fill gets a dark label and a
+  red one a light one, in any theme. Pinning white here would fail on the light fills.
 
-  `neutral` solid is `control-surface`, the filled neutral a count chip already uses, not
-  `surface-sunken`: a well is a hole in a surface and a solid badge is a thing sitting on it.
+  Untoned (or `neutral`) is its own table, because a neutral badge is a quiet chip rather than an
+  inverse-surface fill: `control-surface`, not `surface-sunken`, since a sunken row is painted
+  `surface-sunken` and a badge in its own background colour disappears — the transcript's `typed`
+  mark is where that surfaced. `control-surface` is a step from both.
 */
-export const BADGE_APPEARANCE_DEFAULTS: Record<
-  BadgeAppearance,
-  Record<ComponentVariant, Partial<DesignSystemProps>>
+export const BADGE_VARIANT_DEFAULTS: Record<
+  BadgeVariant,
+  { neutral: Partial<DesignSystemProps>; toned: Partial<DesignSystemProps> }
 > = {
   soft: {
-    /*
-      `control-surface`, not `surface-sunken`, and the difference is whether the badge is visible.
-
-      `surface-sunken` is the fill of a *well* — an inset box, a code block, an input trough — and
-      it is also what a row inset into a card is painted with. So a neutral badge on any such row
-      was drawn in exactly its own background colour and disappeared: the transcript's `typed` mark
-      is where this surfaced, and it would have been true of every neutral badge on a sunken row.
-
-      `control-surface` is the role for precisely this — the vocabulary names "a count chip" among
-      its uses — and it is a step away from both `surface` and `surface-sunken`, so the badge reads
-      as a quiet chip on either rather than vanishing into one of them.
-    */
     neutral: { bg: 'control-surface', color: 'text-muted' },
-    primary: { bg: 'accent-muted', color: 'accent-text' },
-    success: { bg: 'success-surface', color: 'success-text' },
-    warning: { bg: 'warning-surface', color: 'warning-text' },
-    danger: { bg: 'danger-surface', color: 'danger-text' },
+    toned: { bg: 'accent-soft', color: 'accent-text' },
   },
   solid: {
     neutral: { bg: 'control-surface', color: 'text' },
-    primary: { bg: 'accent', color: 'on-accent' },
-    success: { bg: 'success', color: 'on-success' },
-    warning: { bg: 'warning', color: 'on-warning' },
-    danger: { bg: 'danger', color: 'on-danger' },
+    toned: { bg: 'accent', color: 'on-accent' },
   },
 };
 
@@ -133,8 +113,7 @@ const styles = css`
 export default class Badge extends DesignSystemElement {
   static styles = [sharedStyles, styles];
 
-  @property({ type: String, reflect: true }) variant: ComponentVariant = 'neutral';
-  @property({ type: String, reflect: true }) appearance: BadgeAppearance = 'soft';
+  @property({ type: String, reflect: true }) variant: BadgeVariant = 'soft';
   @property({ type: String, reflect: true }) size: ComponentSize = 'md';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
@@ -146,8 +125,8 @@ export default class Badge extends DesignSystemElement {
     const ctor = this.constructor as typeof Badge & { __dsLayers: readonly DSLayer[] };
     const activeKeys = getKeysForLayers([...ctor.__dsLayers]);
     const usedProps = filterProps(this as unknown as Record<string, unknown>, activeKeys);
-    const appearance = BADGE_APPEARANCE_DEFAULTS[this.appearance] ?? BADGE_APPEARANCE_DEFAULTS.soft;
-    const variantDefaults = appearance[this.variant] ?? {};
+    const style = BADGE_VARIANT_DEFAULTS[this.variant] ?? BADGE_VARIANT_DEFAULTS.soft;
+    const variantDefaults = this.tone && this.tone !== 'neutral' ? style.toned : style.neutral;
     const sizeDefaults = SIZE_DEFAULTS[this.size] ?? {};
     return mergeProps(
       usedProps,

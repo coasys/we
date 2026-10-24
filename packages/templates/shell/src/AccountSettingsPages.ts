@@ -32,7 +32,7 @@ const actions = (...labels: string[]): SchemaNode => ({
   props: { gap: '200', wrap: true },
   children: labels.map((label) => ({
     type: 'we-button',
-    props: { variant: 'secondary', size: 'sm' },
+    props: { variant: 'soft', size: 'sm' },
     children: [label],
   })),
 });

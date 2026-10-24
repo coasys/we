@@ -85,7 +85,7 @@ const openButton = (label: string, icon: string, kind: string): SchemaNode => ({
   type: 'we-button',
   props: {
     size: 'xs',
-    variant: expr`local.expandKind == ${kind} ? 'secondary' : 'ghost'`,
+    variant: expr`local.expandKind == ${kind} ? 'soft' : 'ghost'`,
     onClick: { $setLocal: 'expandKind', value: kind },
   },
   children: [{ type: 'we-icon', props: { name: icon } }, label],
@@ -258,7 +258,7 @@ const actions: SchemaNode = {
                   type: 'we-button',
                   props: {
                     size: 'xs',
-                    variant: 'secondary',
+                    variant: 'soft',
                     /*
                       A flag, not an id, because there is nowhere to copy an id *to*.
 

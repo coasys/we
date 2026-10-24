@@ -31,7 +31,8 @@ describe('a colour reaching the renderer', () => {
       'lab(59% 0.1 0.1)',
       'hwb(194 0% 0%)',
       'color(display-p3 1 0.5 0)',
-      'color-mix(in oklab, red 20%, white)',
+      // A CSS keyword that is not a palette name: the ten palette names are the theme's colours.
+      'color-mix(in oklab, tomato 20%, white)',
       'var(--we-role-page)',
       'transparent',
       'currentColor',
@@ -42,8 +43,14 @@ describe('a colour reaching the renderer', () => {
 
   it('still resolves a role and a scale position by name', () => {
     expect(color('page', 'surface')).toBe('var(--we-role-page)');
-    expect(color('accent-muted', 'surface')).toBe('var(--we-role-accent-muted)');
-    expect(color('primary-100', 'surface')).toBe('var(--we-color-primary-100)');
+    expect(color('accent-soft', 'surface')).toBe('var(--we-role-accent-soft)');
+    expect(color('accent-100', 'surface')).toBe('var(--we-color-accent-100)');
+  });
+
+  it("reads a palette name as the theme's colour, not the CSS keyword it shares", () => {
+    // `red` is the theme's red — pastel in one theme, deep in another. Literal CSS red is `#f00`.
+    expect(color('red', 'surface')).toBe('var(--we-role-red)');
+    expect(color('purple-soft', 'surface')).toBe('var(--we-role-purple-soft)');
   });
 
   it('falls back when there is no value, and resolves the fallback too', () => {
@@ -86,8 +93,8 @@ describe('the arrowhead for a colour', () => {
 describe('a mix of two colours', () => {
   it('resolves each stop by the same rules as a bare colour', () => {
     // A heat scale blends between two stops a reader picked, which may be tokens or roles.
-    expect(color('color-mix(in oklch, accent 40%, primary-100)', 'surface')).toBe(
-      'color-mix(in oklch, var(--we-role-accent) 40%, var(--we-color-primary-100))',
+    expect(color('color-mix(in oklch, accent 40%, accent-100)', 'surface')).toBe(
+      'color-mix(in oklch, var(--we-role-accent) 40%, var(--we-color-accent-100))',
     );
   });
 

@@ -8,7 +8,7 @@
  * side is tuned. A shared definition is the feature, not the tidiness.
  *
  * Read `seededFill` before using it: what makes it safe is that it is the theme's own ramp with the
- * hue swapped, so it follows polarity, saturation and chroma exactly as `accent-muted` does.
+ * hue swapped, so it follows polarity, saturation and chroma exactly as `accent-soft` does.
  */
 
 /**
@@ -58,7 +58,7 @@ function rampStep(lightness: string, hue: number): string {
  *
  * This is the `--we-color-*-100` / `-700` pair with the hue swapped out, character for character —
  * same lightness step, same saturation, same chroma taper, same ceiling. So a generated colour
- * follows a theme's polarity, its saturation and its ramp exactly as `accent-muted` and `accent-text`
+ * follows a theme's polarity, its saturation and its ramp exactly as `accent-soft` and `accent-text`
  * do, and the only thing that varies per identity is the angle.
  *
  * Reusing that *pair* is what makes the contrast safe without measuring anything: 100 as a fill with

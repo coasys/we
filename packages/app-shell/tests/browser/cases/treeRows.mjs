@@ -35,6 +35,8 @@ export async function check({ measureText, note }) {
   }
   if (at.Calls.x !== at.Channels.x || at.People.x !== at.Channels.x)
     problems.push('the top-level groups do not start at the same x');
-  if (at.General.x <= at.Channels.x) problems.push('a group’s rows are not indented under it');
+  // A nested leaf has no caret and its level indents by one, so its label sits under its parent's.
+  if (at.General.x !== at.Channels.x || at.Design.x !== at.Channels.x)
+    problems.push('a group’s rows do not line up under it');
   return problems;
 }

@@ -71,7 +71,7 @@ describe('setProperty write-tracking', () => {
       if (el.updateComplete) await el.updateComplete;
       expect((el.getAttribute('style') ?? '').includes('--we-text-color')).toBe(false);
 
-      el.color = 'primary-500';
+      el.color = 'accent-500';
       if (el.updateComplete) await el.updateComplete;
       expect(el.getAttribute('style') ?? '').toContain('--we-text-color');
     }
@@ -87,7 +87,7 @@ describe('setProperty write-tracking', () => {
   });
 
   it('does not clobber --we-spinner-color written directly by we-spinner', async () => {
-    const el = await mount('we-spinner', { color: 'primary-500' });
+    const el = await mount('we-spinner', { color: 'accent-500' });
     expect(el.getAttribute('style') ?? '').toContain('--we-spinner-color');
     el.remove();
   });

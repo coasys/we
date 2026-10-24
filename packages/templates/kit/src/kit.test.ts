@@ -59,7 +59,7 @@ const portable: Record<string, SchemaNode> = {
   emptyState: emptyState({ icon: 'newspaper', label: 'posts', searchable: true }),
   'emptyState (no delay)': emptyState({ icon: 'user', label: 'members', delay: 0 }),
   emptyNote: emptyNote('No spaces yet'),
-  gatePrompt: gatePrompt({ icon: 'lock', iconGradient: 'primary', title: 'Join', body: 'Body.' }),
+  gatePrompt: gatePrompt({ icon: 'lock', iconGradient: 'accent', title: 'Join', body: 'Body.' }),
   'gatePrompt (form)': gatePrompt({
     icon: 'rocket',
     title: 'Set up',

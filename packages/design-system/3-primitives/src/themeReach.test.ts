@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { RAMP_FAMILIES } from '@we/tokens';
 import { describe, expect, it } from 'vitest';
 
 import { componentCascadeFor } from './shared/helpers';
@@ -29,7 +30,17 @@ const SRC = join(__dirname, 'primitives');
  * pinning `dangerText` means "my error messages" and not "every item in this legend". Empty is the
  * honest state today: every scale position in the primitives turned out to be a meaning.
  */
-const PALETTES: { file: string; why: string }[] = [];
+const PALETTES: { file: string; why: string }[] = [
+  {
+    file: 'primitives/color-picker.ts',
+    why: 'its swatches are the theme’s scale, offered for somebody to pick from — the scale is the content',
+  },
+];
+
+// A scale position as a variable, or as a DS prop value in a component's defaults.
+const FAMILIES = ['primary', ...RAMP_FAMILIES].join('|');
+const SCALE_VAR = new RegExp(`var\\(--we-color-(${FAMILIES})-\\d`);
+const SCALE_TOKEN = new RegExp(`['"](${FAMILIES})-\\d{2,4}['"]`);
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((entry) => {
@@ -57,7 +68,7 @@ describe('no primitive paints a meaning with a scale position', () => {
       declarations(readFileSync(file, 'utf8'))
         .split('\n')
         .map((line, i) => ({ file: file.slice(SRC.length + 1), line: i + 1, text: line.trim() }))
-        .filter(({ text }) => /var\(--we-color-(neutral|primary|success|warning|danger)-\d/.test(text)),
+        .filter(({ text }) => SCALE_VAR.test(text) || SCALE_TOKEN.test(text)),
     );
 
   it('so a theme can pin it and the contrast layer can measure it', () => {

@@ -20,6 +20,7 @@ import {
   emptyState,
   foldingBody,
   foldingSectionLabel,
+  lineComposer,
   panelScroll,
   panelShell,
   timeline,
@@ -30,7 +31,6 @@ import { type SchemaNode, type SchemaProp } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
 
 import { CARET_SIZE, codePane, extractionActivity } from './ExtractionStatus.schema';
-import { lineComposer } from './lineComposer';
 import { messageLine } from './messageLine';
 import { SUBJECT_EXPR as SHARED_SUBJECT_EXPR, VIEWING_LIVE_EXPR } from './subject';
 import { repliesInclude } from './thread';
@@ -1018,7 +1018,7 @@ const proposalEditor: SchemaNode = {
  *
  * ## Still `we-alert`
  *
- * The look is unchanged and deliberately so — `appearance: 'accent'` is a plain surface with a thick
+ * The look is unchanged and deliberately so — `variant: 'edge'` is a plain surface with a thick
  * status edge, which is what stops a run of these reading as a stack of brown rectangles in a dark
  * theme. It also keeps the warning glyph, which is what makes the state readable to somebody who
  * cannot tell the colours apart. What changed is only what is *inside* it.
@@ -1329,7 +1329,7 @@ const proposals: SchemaNode = {
                             words, which is the whole meaning of the edge, and every card on screen
                             sits under it.
 
-                            The edge itself is `we-alert`'s `accent` appearance written out: a
+                            The edge itself is `we-alert`'s `edge` variant written out: a
                             surface, ordinary text, and a three-pixel rule in the status at full
                             strength rather than in its tint. Same figures, so a card here and an
                             alert elsewhere still look like the same family.
@@ -1740,7 +1740,7 @@ export const extractionTargets: SchemaNode = {
                   is most likely to want to press. The same confusion had a card's action buttons
                   fading along with the card they were anchored to.
                 */
-                variant: { $: "target.selected ? 'secondary' : 'outline'" },
+                variant: { $: "target.selected ? 'soft' : 'outline'" },
                 /*
                   A pill, because a chip is a chip.
 
@@ -2645,7 +2645,7 @@ const extractNowControl: SchemaNode = {
           and the split between them is deliberate, but a reader scanning for "make it happen" was
           being pointed at the standing decision.
         */
-        variant: 'primary',
+        variant: 'solid',
         gap: '100',
         // Its own alignment, so it needs no wrapper row to stop it stretching across the well —
         // and a wrapper that stayed behind when the button did not would cost a gap for nothing.
@@ -2826,7 +2826,7 @@ const extract: SchemaNode = {
         condition: { $: "modules.transcribe.extractStatus == 'error'" },
         then: {
           type: 'we-alert',
-          props: { variant: 'warning' },
+          props: { tone: 'warning' },
           children: [{ $: 'modules.transcribe.extractError' }],
         },
       },
@@ -3154,13 +3154,30 @@ export const transcriptLines: SchemaNode = {
       include: repliesInclude(),
       when: { $: 'modules.transcribe.collectionId' },
       /*
-        Live only while the call is.
+        A call's lines are live only while the call is; anything else — a channel these lines are
+        pointed at — always is, since somebody can write into it at any moment.
 
         A finished transcript is settled, so a subscription over it has the node re-running this
         query on every change in the space to be told nothing changed. Reading one back is the
-        commonest thing anybody does to a long transcript, and it was the case paying most.
+        commonest thing anybody does to a long transcript, and it was the case paying most. Until
+        the subject's kind is known it is not followed, so a past call is never subscribed to on the
+        way to finding out it is one.
       */
-      subscribe: { $: CALL_ON_SCREEN_LIVE },
+      subscribe: {
+        $: `${CALL_ON_SCREEN_LIVE} || (local.subjectKindLoaded && first(local.subjectKind).kind != 'call')`,
+      },
+    },
+    /*
+      What the subject is, read once. Through the same token as the scope, so a placement pointing
+      these lines at a channel points this at the channel too.
+    */
+    subjectKind: {
+      entity: 'CollectionBlock',
+      where: { id: { $: 'modules.transcribe.collectionId' } },
+      select: ['kind'],
+      limit: 1,
+      when: { $: 'modules.transcribe.collectionId' },
+      subscribe: false,
     },
   },
   children: [
@@ -3421,7 +3438,7 @@ export const captureStatus: SchemaNode = {
                   type: 'we-button',
                   props: {
                     size: 'sm',
-                    variant: 'primary',
+                    variant: 'solid',
                     loading: { $: 'modules.transcribe.installingModel' },
                     disabled: { $: 'modules.transcribe.installingModel' },
                     onClick: { $action: 'modules.transcribe.installModel' },
@@ -3439,7 +3456,7 @@ export const captureStatus: SchemaNode = {
                       type: 'we-button',
                       props: {
                         size: 'sm',
-                        variant: 'secondary',
+                        variant: 'soft',
                         onClick: { $action: 'shellStore.openShellView', args: ['settings', '/ai'] },
                       },
                       children: ['Open AI settings'],
@@ -3494,7 +3511,7 @@ export const captureStatus: SchemaNode = {
         condition: { $: 'modules.transcribe.installError' },
         then: {
           type: 'we-alert',
-          props: { variant: 'warning' },
+          props: { tone: 'warning' },
           children: [{ $: '`The model could not be installed: ${modules.transcribe.installError}`' }],
         },
       },
@@ -3513,7 +3530,7 @@ export const captureStatus: SchemaNode = {
         condition: { $: 'modules.transcribe.reconnecting' },
         then: {
           type: 'we-alert',
-          props: { variant: 'warning' },
+          props: { tone: 'warning' },
           children: ['Reconnecting to the speech model. What is said now is held, and written once it is back.'],
         },
       },
@@ -3524,7 +3541,7 @@ export const captureStatus: SchemaNode = {
         condition: { $: "modules.transcribe.status == 'error'" },
         then: {
           type: 'we-alert',
-          props: { variant: 'warning' },
+          props: { tone: 'warning' },
           children: [{ $: 'modules.transcribe.error' }],
         },
       },
@@ -3540,7 +3557,7 @@ export const captureStatus: SchemaNode = {
  * been written — several seconds during which a panel showing saved lines alone looks exactly like
  * a panel that has stopped listening. This is that gap, said out loud.
  *
- * `accent-muted` rather than the feed's `surface-sunken`, and labelled: it is deliberately not one
+ * `accent-soft` rather than the feed's `surface-sunken`, and labelled: it is deliberately not one
  * of the transcript's rows. What it holds is provisional — the model has not seen it, so the words
  * can change before they land — and a block that looked like the others would be quietly asserting
  * otherwise.
@@ -3582,7 +3599,7 @@ export const pendingUtterance: SchemaNode = {
     condition: { $: `modules.transcribe.pending && (${VIEWING_LIVE_EXPR})` },
     then: {
       type: 'Column',
-      props: { bg: 'accent-muted', r: '300', p: '300', gap: '200' },
+      props: { bg: 'accent-soft', r: '300', p: '300', gap: '200' },
       children: [
         {
           type: 'Row',
@@ -4507,7 +4524,10 @@ export const panel: SchemaNode = panelShell({
                             the way out of the thing nobody switched on.
                           */
                       variant: {
-                        $: "modules.transcribe.listening ? 'danger' : modules.transcribe.enabled ? 'secondary' : 'ghost'",
+                        $: "modules.transcribe.listening ? 'solid' : modules.transcribe.enabled ? 'soft' : 'ghost'",
+                      },
+                      tone: {
+                        $: "modules.transcribe.listening ? 'danger' : modules.transcribe.enabled ? '' : ''",
                       },
                       size: 'sm',
                       gap: '200',

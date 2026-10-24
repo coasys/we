@@ -21,6 +21,7 @@
  * routes are offered as what a fork would allow rather than as buttons that do nothing.
  */
 import { Column, Row } from '@we/components/solid';
+import { weProps } from '@we/design-utils/solid';
 import { SECTION_LABEL_PROPS } from '@we/schema-kit';
 import {
   copyWithNewIds,
@@ -49,7 +50,7 @@ function Route(props: { title: string; detail: string; action: string; onPress: 
     <Column gap="100" py="200">
       <Row ax="between" ay="center" gap="300">
         <we-text variant="label">{props.title}</we-text>
-        <we-button size="xs" variant="secondary" disabled={props.disabled} onClick={props.onPress}>
+        <we-button size="xs" variant="soft" disabled={props.disabled} onClick={props.onPress}>
           {props.action}
         </we-button>
       </Row>
@@ -181,14 +182,14 @@ export function PartCard(props: { node: SchemaNode }) {
 
           <Column px="400" gap="100">
             <Show when={part().missing}>
-              <Column gap="200" p="300" r="surface" bg="warning-surface">
+              <Column gap="200" p="300" r="surface" bg="warning-soft">
                 <we-text variant="footnote" color="warning-text">
                   {part().missing}
                 </we-text>
                 <Show when={part().fix}>
                   {(fix) => (
                     <Row>
-                      <we-button size="xs" variant="secondary" onClick={() => fix().go()}>
+                      <we-button size="xs" variant="soft" onClick={() => fix().go()}>
                         {fix().label}
                       </we-button>
                     </Row>
@@ -198,7 +199,7 @@ export function PartCard(props: { node: SchemaNode }) {
             </Show>
 
             <Show when={part().inputs.length}>
-              <we-text {...SECTION_LABEL_PROPS}>It needs</we-text>
+              <we-text {...weProps(SECTION_LABEL_PROPS)}>It needs</we-text>
               <For each={part().inputs}>
                 {(input) => (
                   <we-form-field
@@ -223,7 +224,7 @@ export function PartCard(props: { node: SchemaNode }) {
               </For>
             </Show>
 
-            <we-text {...SECTION_LABEL_PROPS}>Change it</we-text>
+            <we-text {...weProps(SECTION_LABEL_PROPS)}>Change it</we-text>
             <Show
               when={readOnly()}
               fallback={
@@ -359,7 +360,7 @@ function PartNodeCard(props: { owner: OwnerRef }) {
         </we-text>
       </Heading>
       <Column px="400" gap="100">
-        <we-text {...SECTION_LABEL_PROPS}>Change it</we-text>
+        <we-text {...weProps(SECTION_LABEL_PROPS)}>Change it</we-text>
         <Show when={!readOnly()} fallback={<ReadOnlyNote />}>
           <Show when={host.owners?.openPath}>
             <Route
@@ -432,7 +433,7 @@ function PanelCard(props: { dockId: string }) {
         <Column gap="200" pb="300">
           <Heading icon="squares-four" title={panel().title} subtitle={`A panel from ${panel().moduleName}`} />
           <Column px="400" gap="100">
-            <we-text {...SECTION_LABEL_PROPS}>Change it</we-text>
+            <we-text {...weProps(SECTION_LABEL_PROPS)}>Change it</we-text>
             <Show
               when={readOnly()}
               fallback={
@@ -516,7 +517,7 @@ function ViewCard(props: { id: string }) {
           </Heading>
           <Column px="400" gap="100">
             <Show when={canChangeHere(props.id)}>
-              <we-text {...SECTION_LABEL_PROPS}>Change it</we-text>
+              <we-text {...weProps(SECTION_LABEL_PROPS)}>Change it</we-text>
               <Route
                 title="Change it here"
                 detail="Edit it where it is, in this shell. Your changes are saved to it for everyone who sees it."
@@ -525,7 +526,7 @@ function ViewCard(props: { id: string }) {
               />
             </Show>
             <Show when={host.owners?.forkView && !canChangeHere(props.id)}>
-              <we-text {...SECTION_LABEL_PROPS}>Change it</we-text>
+              <we-text {...weProps(SECTION_LABEL_PROPS)}>Change it</we-text>
               <Show
                 when={!made()}
                 fallback={
@@ -564,13 +565,13 @@ function ViewCard(props: { id: string }) {
                     />
                   }
                 >
-                  <Column gap="200" p="300" r="surface" bg="warning-surface">
+                  <Column gap="200" p="300" r="surface" bg="warning-soft">
                     <we-text variant="footnote" color="warning-text">
                       Replace {view().name} with a copy for everyone here? The copy stops receiving updates to the
                       original.
                     </we-text>
                     <Row gap="200">
-                      <we-button size="xs" variant="primary" loading={step() === 'busy'} onClick={fork}>
+                      <we-button size="xs" variant="solid" loading={step() === 'busy'} onClick={fork}>
                         Make the copy
                       </we-button>
                       <we-button size="xs" variant="ghost" disabled={step() === 'busy'} onClick={() => setStep('idle')}>
@@ -655,7 +656,7 @@ export function SuppliedPanelNote(props: { nodeId: string }) {
           Giving it back throws this arrangement away, and the panel is drawn the way {moduleName()} draws it again.
         </we-text>
         <Row>
-          <we-button size="xs" variant="secondary" disabled={host.session.isReadOnly()} onClick={giveBack}>
+          <we-button size="xs" variant="soft" disabled={host.session.isReadOnly()} onClick={giveBack}>
             Give it back
           </we-button>
         </Row>
@@ -703,7 +704,7 @@ export function SectionOnItsOwnBar() {
           </we-text>
           <Show when={on().shell}>
             {(shell) => (
-              <we-button size="xs" variant="secondary" onClick={() => shell().back()}>
+              <we-button size="xs" variant="soft" onClick={() => shell().back()}>
                 Back to {shell().name}
               </we-button>
             )}
@@ -752,17 +753,17 @@ export function EditingSectionBar() {
           px="300"
           py="200"
           r="surface"
-          bg="accent-muted"
+          bg="accent-soft"
           flexShrink="0"
         >
           <we-text variant="footnote">{sentence()} Escape or a press outside it comes back out.</we-text>
           <Row gap="200" flexShrink="0">
             <Show when={app() && host.session.isReadOnly()}>
-              <we-button size="xs" variant="primary" onClick={() => host.session.startFork()}>
+              <we-button size="xs" variant="solid" onClick={() => host.session.startFork()}>
                 Fork
               </we-button>
             </Show>
-            <we-button size="xs" variant="secondary" onClick={leave}>
+            <we-button size="xs" variant="soft" onClick={leave}>
               Done
             </we-button>
           </Row>
@@ -797,12 +798,12 @@ export function EditTargetSwitch() {
     <Show when={host.targets?.enterApp}>
       <Row ay="center" gap="100" data-we-edit-target-switch="">
         <we-tooltip content="Edit the template on screen" placement="bottom">
-          <we-button size="sm" variant={onApp() ? 'ghost' : 'secondary'} onClick={toPage}>
+          <we-button size="sm" variant={onApp() ? 'ghost' : 'soft'} onClick={toPage}>
             Page
           </we-button>
         </we-tooltip>
         <we-tooltip content="Edit the app around every space: the sidebar, the rail" placement="bottom">
-          <we-button size="sm" variant={onApp() ? 'secondary' : 'ghost'} onClick={toApp}>
+          <we-button size="sm" variant={onApp() ? 'soft' : 'ghost'} onClick={toApp}>
             App
           </we-button>
         </we-tooltip>
@@ -1037,7 +1038,7 @@ export function PartsPalette(props: { node: SchemaNode }) {
   return (
     <Show when={host.owners && host.owners.parts().length}>
       <Column gap="200" px="400" py="300" borderTop="1px solid border">
-        <we-text {...SECTION_LABEL_PROPS}>Add a module’s part</we-text>
+        <we-text {...weProps(SECTION_LABEL_PROPS)}>Add a module’s part</we-text>
         <we-input
           size="sm"
           placeholder="Search parts"
