@@ -22,6 +22,7 @@ import {
   component,
   familySaturationVar,
   FILL_LIGHTNESS,
+  MOTION_ATTRIBUTE,
   RAMP,
   role,
   ROLE_ALIASES,
@@ -672,7 +673,11 @@ export function applyThemeVars(root: HTMLElement, asked: ThemeOverrides, options
   // See display.ts.
   if (!appliedThemes.has(root) && typeof WeakRef === 'function') appliedRoots.add(new WeakRef(root));
   appliedThemes.set(root, { theme: asked, options });
-  const theme = withDisplay(asked, currentDisplay());
+  const display = currentDisplay();
+  const theme = withDisplay(asked, display);
+  // The document says whether motion is reduced, for the rules and timers a theme's tokens do not
+  // reach — see MOTION_ATTRIBUTE in @we/tokens.
+  if (root === root.ownerDocument?.documentElement) root.setAttribute?.(MOTION_ATTRIBUTE, display.motion);
   applyFontFaces(root, theme);
   const styles = themeParametersToStyle(theme);
   // The font scale: the root font size at the document, the scoped variable anywhere below it.

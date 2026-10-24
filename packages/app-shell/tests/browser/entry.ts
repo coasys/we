@@ -48,7 +48,7 @@ import {
   VIEW_BOUNDARY_ATTR,
   VIEW_BOUNDARY_NAME_ATTR,
 } from '@we/schema-shared';
-import { applyThemeVars, clearThemeVars, setThemeLive } from '@we/schema-shared';
+import { applyThemeVars, clearThemeVars, setDisplayPreferences, setThemeLive } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import { VisualEditorProvider } from '@we/schema-solid';
 import { THEME_PRESETS } from '@we/themes/presets';
@@ -1208,7 +1208,7 @@ function themePanelProbe(overrides = '{"themeName":"dark"}'): void {
 
 (window as unknown as Record<string, unknown>).__harness = {
   // The theme pipeline itself, for a probe of how an apply behaves.
-  themeApi: { applyThemeVars, clearThemeVars, setThemeLive },
+  themeApi: { applyThemeVars, clearThemeVars, setDisplayPreferences, setThemeLive },
   themeDrag,
   themePanelProbe,
   composerFrame,

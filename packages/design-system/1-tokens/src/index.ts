@@ -100,6 +100,9 @@ export {
   FOCUS_RING,
   FOCUS_RING_BEYOND_BORDER,
   FOCUS_RING_INSET,
+  MOTION_ATTRIBUTE,
+  motionIsReduced,
+  REDUCED_MOTION_ROOT,
 } from './states.js';
 export {
   COMPONENT_THEME_KEYS,

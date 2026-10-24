@@ -236,3 +236,6 @@ export type {
   FormStateToken,
   ValueIf,
 } from './conditionModel';
+
+// Reduced motion, as the renderer's timers ask it — the system's preference or the person's.
+export { motionIsReduced } from '@we/tokens';

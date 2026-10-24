@@ -123,6 +123,24 @@ ${reducedVars}
 }
 
 /*
+  The same, for somebody who asked in the app rather than in their system: applying a theme marks
+  the document when motion resolves to reduced (see \`REDUCED_MOTION_ROOT\` in states.ts). Without
+  this the app's own Motion setting zeroed the transition tokens and nothing else.
+*/
+:root[data-we-motion='reduced'] {
+${reducedVars}
+}
+
+:root[data-we-motion='reduced'] *,
+:root[data-we-motion='reduced'] *::before,
+:root[data-we-motion='reduced'] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+/*
   The same argument for transparency, which nothing was consulting.
 
   Every floating panel defaults to glass — a 30% surface behind a 12px backdrop blur — and both are

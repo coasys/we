@@ -146,6 +146,11 @@ const CSS_STYLES = css`
       transition: none;
     }
   }
+  /* The person's own Motion setting, which a shadow root sees through its host's ancestors. */
+  :host-context([data-we-motion='reduced'])::after,
+  :host-context([data-we-motion='reduced']) [part='hint'] {
+    transition: none;
+  }
 `;
 
 /**
