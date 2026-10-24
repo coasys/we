@@ -1,5 +1,6 @@
 import { Column, Combobox, type ComboboxOption, Grid, Row } from '@we/components/solid';
 import { tokenVar } from '@we/design-utils';
+import { weProps } from '@we/design-utils/solid';
 import { PANEL_TITLE_PROPS, SECTION_LABEL_PROPS } from '@we/schema-kit';
 import type { ComponentMeta, PropLayer, PropMeta, SchemaNode, ScopeGroup, TemplateSchema } from '@we/schema-shared';
 import {
@@ -523,7 +524,7 @@ export function InspectorPanel() {
     >
       {/* Header */}
       <Row ax="between" ay="center" px="300" py="300" flexShrink="0">
-        <we-text {...PANEL_TITLE_PROPS}>Visual Inspector</we-text>
+        <we-text {...weProps(PANEL_TITLE_PROPS)}>Visual Inspector</we-text>
       </Row>
       <SectionOnItsOwnBar />
       <EditingSectionBar />
@@ -539,7 +540,7 @@ export function InspectorPanel() {
           borderBottom={`1px solid ${tokenVar('color', 'border')}`}
         >
           <we-icon name="list" size="xs" color="text-faint" />
-          <we-text {...SECTION_LABEL_PROPS}>Layers</we-text>
+          <we-text {...weProps(SECTION_LABEL_PROPS)}>Layers</we-text>
         </Row>
         <div style={{ flex: '1', 'overflow-y': 'auto', 'overflow-x': 'hidden' }}>
           <NodeTree />
@@ -974,7 +975,7 @@ function CollapsibleSection(props: { label: string; children: JSX.Element }) {
     <Column borderTop="1px solid neutral-50">
       <we-button variant="bare" width="100%" r="200" expanded={open()} onClick={() => setOpen((v) => !v)}>
         <Row ay="center" gap="200" px="400" py="100" width="100%">
-          <we-text {...SECTION_LABEL_PROPS} flex="1 1 auto" minWidth="0">
+          <we-text {...weProps(SECTION_LABEL_PROPS)} flex="1 1 auto" minWidth="0">
             {props.label}
           </we-text>
           <we-icon name={open() ? 'caret-up' : 'caret-down'} size="xs" color="text-faint" />
@@ -1000,7 +1001,7 @@ function CollapsibleSection(props: { label: string; children: JSX.Element }) {
  */
 function SectionLabel(props: { children: string }) {
   return (
-    <we-text py="100" px="14px" {...SECTION_LABEL_PROPS}>
+    <we-text py="100" px="14px" {...weProps(SECTION_LABEL_PROPS)}>
       {props.children}
     </we-text>
   );

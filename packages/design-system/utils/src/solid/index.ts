@@ -24,6 +24,20 @@ export type { CSSStyleObject } from '../index';
 
 export type MaybeAccessor<T> = T | Accessor<T>;
 
+/**
+ * A set of props to spread onto a `we-*` element, each delivered as a property.
+ *
+ * Solid assigns a computed prop on a custom element as a LOWERCASED property, and a spread is
+ * computed by nature: `{...{ textTransform: 'uppercase' }}` sets `el.texttransform`, which the
+ * element never reads, and the value is dropped without a trace. Only keys whose name is already
+ * lowercase — `variant`, `color` — survived, which is how the shared label styles lost their
+ * capitals and tracking in every hand-written panel. A `prop:` key is assigned as written, so
+ * `{...weProps(SECTION_LABEL_PROPS)}` delivers every key. `check:we-props` refuses any other spread.
+ */
+export function weProps<T extends Record<string, unknown>>(props: T): { [K in keyof T as `prop:${K & string}`]: T[K] } {
+  return Object.fromEntries(Object.entries(props).map(([key, value]) => [`prop:${key}`, value])) as never;
+}
+
 export function toValue<T>(v: MaybeAccessor<T>): T {
   return typeof v === 'function' ? (v as Accessor<T>)() : v;
 }

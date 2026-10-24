@@ -1,5 +1,6 @@
 import { Column, Row } from '@we/components/solid';
 import { tokenVar } from '@we/design-utils';
+import { weProps } from '@we/design-utils/solid';
 import { PANEL_TITLE_PROPS } from '@we/schema-kit';
 import { createEffect, createSignal, For, Show } from 'solid-js';
 
@@ -54,7 +55,7 @@ export function AiPanel() {
       {/* Header */}
       <Row ax="between" ay="center" gap="200" px="300" py="300" flexShrink="0">
         <Row ay="center" gap="300" minWidth="0">
-          <we-text {...PANEL_TITLE_PROPS}>AI Chat</we-text>
+          <we-text {...weProps(PANEL_TITLE_PROPS)}>AI Chat</we-text>
           <AssistantStatus />
         </Row>
         <Row ay="center" gap="100" flexShrink="0">

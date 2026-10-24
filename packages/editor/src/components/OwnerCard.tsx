@@ -21,6 +21,7 @@
  * routes are offered as what a fork would allow rather than as buttons that do nothing.
  */
 import { Column, Row } from '@we/components/solid';
+import { weProps } from '@we/design-utils/solid';
 import { SECTION_LABEL_PROPS } from '@we/schema-kit';
 import {
   copyWithNewIds,
@@ -198,7 +199,7 @@ export function PartCard(props: { node: SchemaNode }) {
             </Show>
 
             <Show when={part().inputs.length}>
-              <we-text {...SECTION_LABEL_PROPS}>It needs</we-text>
+              <we-text {...weProps(SECTION_LABEL_PROPS)}>It needs</we-text>
               <For each={part().inputs}>
                 {(input) => (
                   <we-form-field
@@ -223,7 +224,7 @@ export function PartCard(props: { node: SchemaNode }) {
               </For>
             </Show>
 
-            <we-text {...SECTION_LABEL_PROPS}>Change it</we-text>
+            <we-text {...weProps(SECTION_LABEL_PROPS)}>Change it</we-text>
             <Show
               when={readOnly()}
               fallback={
@@ -359,7 +360,7 @@ function PartNodeCard(props: { owner: OwnerRef }) {
         </we-text>
       </Heading>
       <Column px="400" gap="100">
-        <we-text {...SECTION_LABEL_PROPS}>Change it</we-text>
+        <we-text {...weProps(SECTION_LABEL_PROPS)}>Change it</we-text>
         <Show when={!readOnly()} fallback={<ReadOnlyNote />}>
           <Show when={host.owners?.openPath}>
             <Route
@@ -432,7 +433,7 @@ function PanelCard(props: { dockId: string }) {
         <Column gap="200" pb="300">
           <Heading icon="squares-four" title={panel().title} subtitle={`A panel from ${panel().moduleName}`} />
           <Column px="400" gap="100">
-            <we-text {...SECTION_LABEL_PROPS}>Change it</we-text>
+            <we-text {...weProps(SECTION_LABEL_PROPS)}>Change it</we-text>
             <Show
               when={readOnly()}
               fallback={
@@ -516,7 +517,7 @@ function ViewCard(props: { id: string }) {
           </Heading>
           <Column px="400" gap="100">
             <Show when={canChangeHere(props.id)}>
-              <we-text {...SECTION_LABEL_PROPS}>Change it</we-text>
+              <we-text {...weProps(SECTION_LABEL_PROPS)}>Change it</we-text>
               <Route
                 title="Change it here"
                 detail="Edit it where it is, in this shell. Your changes are saved to it for everyone who sees it."
@@ -525,7 +526,7 @@ function ViewCard(props: { id: string }) {
               />
             </Show>
             <Show when={host.owners?.forkView && !canChangeHere(props.id)}>
-              <we-text {...SECTION_LABEL_PROPS}>Change it</we-text>
+              <we-text {...weProps(SECTION_LABEL_PROPS)}>Change it</we-text>
               <Show
                 when={!made()}
                 fallback={
@@ -1037,7 +1038,7 @@ export function PartsPalette(props: { node: SchemaNode }) {
   return (
     <Show when={host.owners && host.owners.parts().length}>
       <Column gap="200" px="400" py="300" borderTop="1px solid border">
-        <we-text {...SECTION_LABEL_PROPS}>Add a module’s part</we-text>
+        <we-text {...weProps(SECTION_LABEL_PROPS)}>Add a module’s part</we-text>
         <we-input
           size="sm"
           placeholder="Search parts"
