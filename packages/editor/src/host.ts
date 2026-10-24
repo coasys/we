@@ -106,7 +106,7 @@ export interface ThemePort {
   themeScopePreference: () => 'global' | 'scoped';
   /** Preview a scope for this editing session only; null returns to the preference. */
   previewThemeScope: (scope: 'global' | 'scoped' | null) => void;
-  /** The colour scheme the person wears — the editor's Modes section previews a theme in each. */
+  /** The colour scheme the person wears. */
   themeMode: () => 'light' | 'dark' | 'system';
   setThemeMode: (mode: 'light' | 'dark' | 'system') => unknown;
   /** The person's display needs (`DisplayPreferences` in @we/themes), applied over any theme. */

@@ -63,7 +63,8 @@ export async function check({ themePanel, evaluate, screenshot }) {
       return parseFloat(/oklch\([\d.]+ ([\d.]+)/.exec(colour)?.[1] ?? 'NaN');
     };
     const before = chroma();
-    const label = [...document.querySelectorAll('we-text')].find((t) => t.textContent.trim() === 'Saturation');
+    // The whole theme's, which is the last of three: neutral's and the palette's come first.
+    const label = [...document.querySelectorAll('we-text')].filter((t) => t.textContent.trim() === 'Saturation').at(-1);
     const slider = label.parentElement.querySelector('we-slider');
     slider.dispatchEvent(new CustomEvent('input', { detail: 10, bubbles: true, composed: true }));
     slider.dispatchEvent(new CustomEvent('change', { detail: 10, bubbles: true, composed: true }));

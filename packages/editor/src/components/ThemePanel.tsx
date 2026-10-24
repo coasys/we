@@ -197,7 +197,7 @@ const FILL_ROLE_OPTIONS = [
   { value: 'surface-sunken', label: 'Sunken' },
   { value: 'control-surface', label: 'Control' },
   { value: 'accent', label: 'Accent' },
-  { value: 'accent-soft', label: 'Accent tint' },
+  { value: 'accent-soft', label: 'Accent soft' },
 ];
 
 const BORDER_ROLE_OPTIONS = [
@@ -225,12 +225,12 @@ const STATE_DURATION_OPTIONS = [
 
 /** The kinds of text a theme styles, in the order a reader meets them. */
 const TYPE_ROLE_LABELS: Record<TypeRole, string> = {
-  heading: 'Headings',
+  heading: 'Heading',
   body: 'Body',
-  label: 'Labels',
-  control: 'Controls',
-  badge: 'Badges',
-  overline: 'Overlines',
+  label: 'Label',
+  control: 'Control',
+  badge: 'Badge',
+  overline: 'Overline',
 };
 
 /** The surfaces a theme can lay an image over — see SURFACE_IMAGE_ROLES in @we/tokens. */
@@ -318,7 +318,7 @@ const ROLE_GROUPS: { label: string; hint: string; roles: { role: ThemeRole; labe
     ],
   },
   {
-    label: 'Elevation',
+    label: 'Surfaces',
     hint: 'How far a thing sits from the page. Ordered here the way they stack.',
     roles: [
       // First because it is the bottom of the stack and the one the rest is measured from — the
@@ -370,7 +370,7 @@ const ROLE_GROUPS: { label: string; hint: string; roles: { role: ThemeRole; labe
     roles: [
       {
         role: 'text',
-        label: 'Primary',
+        label: 'Text',
         hint: 'Body copy and headings. Most text in the app inherits this without asking.',
       },
       { role: 'textMuted', label: 'Muted', hint: 'Secondary text — captions, labels, metadata, timestamps.' },
@@ -386,7 +386,7 @@ const ROLE_GROUPS: { label: string; hint: string; roles: { role: ThemeRole; labe
     label: 'Accent',
     hint: 'Your brand colour, in the four jobs it has to do.',
     roles: [
-      { role: 'accent', label: 'Accent fill', hint: 'A filled accent — a primary button, a selected disc.' },
+      { role: 'accent', label: 'Accent fill', hint: 'A filled accent — a solid button, a selected disc.' },
       { role: 'accentHover', label: 'Fill hover', hint: 'That fill under the pointer.' },
       { role: 'accentActive', label: 'Fill pressed', hint: 'That fill while pressed.' },
       { role: 'onAccent', label: 'On accent', hint: 'Text and icons placed ON an accent fill. Usually near-white.' },
@@ -397,7 +397,7 @@ const ROLE_GROUPS: { label: string; hint: string; roles: { role: ThemeRole; labe
       },
       {
         role: 'accentSoft',
-        label: 'Accent tint',
+        label: 'Accent soft',
         hint: 'An accent-tinted fill — a selected row, a subtle highlight.',
       },
     ],
@@ -844,7 +844,7 @@ export function ThemePanel() {
 
   /*
     The person's own display, previewed while they edit: the side being edited when the theme has
-    two, and the contrast chosen in Modes. A preview rather than a change to their settings, so
+    two, and the contrast chosen under the preview. A preview rather than a change to their settings, so
     closing the panel puts everything back.
   */
   const [contrastPreview, setContrastPreview] = createSignal<'standard' | 'more' | null>(null);
@@ -1593,10 +1593,10 @@ export function ThemePanel() {
             </we-text>
             <Row gap="200" ay="center" wrap>
               <we-button size="xs" variant="solid">
-                Primary
+                Solid
               </we-button>
               <we-button size="xs" variant="soft">
-                Secondary
+                Soft
               </we-button>
               <we-button size="xs" variant="ghost">
                 Ghost
@@ -1901,6 +1901,29 @@ export function ThemePanel() {
                     is the same size whether it holds one finding or nine, and scrolls internally
                     past that.
                   */}
+                  {/*
+                    People choose more contrast for themselves, over any theme. A preview of that —
+                    their own setting is left as it is, and closing the panel takes it off.
+                  */}
+                  <Row ay="center" gap="300">
+                    <we-text minWidth="100px" fontSize="300" color="text-muted">
+                      Contrast
+                    </we-text>
+                    {/* Not `choiceRow`, which saves the theme: this changes nothing in it. */}
+                    <we-select
+                      flex="1"
+                      size="sm"
+                      value={contrastPreview() ?? ''}
+                      options={[
+                        { value: '', label: 'As I have it' },
+                        { value: 'standard', label: 'Standard' },
+                        { value: 'more', label: 'More' },
+                      ]}
+                      on:change={(e: CustomEvent) =>
+                        setContrastPreview(((e.detail as string) || null) as 'standard' | 'more' | null)
+                      }
+                    />
+                  </Row>
                   <Row ay="center" gap="200">
                     <we-button size="sm" variant="soft" onClick={runAudit}>
                       {auditResults() ? 'Re-test' : auditRun() ? 'Re-test' : 'Test theme'}
@@ -2092,8 +2115,8 @@ export function ThemePanel() {
               </Column>
               <Column gap="200">
                 <Subheading>Neutral</Subheading>
-                {hueSlider('Tint', 'neutralHue', COLOR_FAMILIES.accent.hue)}
-                {percentSlider('Amount', 'neutralSaturation', 0, 100, 20, '')}
+                {hueSlider('Hue', 'neutralHue', COLOR_FAMILIES.accent.hue)}
+                {percentSlider('Saturation', 'neutralSaturation', 0, 100, 20, '')}
               </Column>
               <Column gap="200">
                 <Subheading>Palette</Subheading>
@@ -2102,7 +2125,7 @@ export function ThemePanel() {
                   pick any one — it stays near the colour it is named for.
                 </we-text>
                 {sliderRow(
-                  'Vividness',
+                  'Saturation',
                   () => overrides().palette?.saturation ?? effectiveSaturation().palette,
                   (v) => scaleSaturation('palette', v),
                   {
@@ -2172,42 +2195,10 @@ export function ThemePanel() {
               </For>
             </FoldingSection>
 
-            {/* ── Modes ── */}
-            {/*
-              Preview, not settings: which side and which contrast are worn is the person's to say,
-              over any theme. These change the editor's own display preferences so a theme can be seen
-              the way somebody will see it.
-            */}
-            <FoldingSection title="Modes">
-              <we-text fontSize="200" color="text-muted" lineHeight="1.5">
-                People choose more contrast for themselves, over any theme. Preview this theme the way they will see it
-                — your own setting is left as it is:
-              </we-text>
-              <Row ay="center" gap="300">
-                <we-text minWidth="100px" fontSize="300" color="text-muted">
-                  Contrast
-                </we-text>
-                {/* Not `choiceRow`, which saves the theme: this changes nothing in it. */}
-                <we-select
-                  flex="1"
-                  size="sm"
-                  value={contrastPreview() ?? ''}
-                  options={[
-                    { value: '', label: 'As I have it' },
-                    { value: 'standard', label: 'Standard' },
-                    { value: 'more', label: 'More' },
-                  ]}
-                  on:change={(e: CustomEvent) =>
-                    setContrastPreview(((e.detail as string) || null) as 'standard' | 'more' | null)
-                  }
-                />
-              </Row>
-            </FoldingSection>
-
             {/* ── Shape ── */}
             <FoldingSection title="Shape">
               <Column gap="200">
-                <Subheading>Preset</Subheading>
+                <Subheading>Overall</Subheading>
                 {presetRow(
                   { sharp: 'Sharp', default: 'Default', rounded: 'Rounded', pill: 'Pill' } as Record<
                     ShapePreset,
@@ -2218,7 +2209,7 @@ export function ThemePanel() {
                 )}
               </Column>
               <Column gap="200">
-                <Subheading>Overrides</Subheading>
+                <Subheading>By family</Subheading>
                 {selectControl('Controls', 'controlRadius', RADIUS_OPTIONS, '80px')}
                 {selectControl('Surfaces', 'surfaceRadius', RADIUS_OPTIONS, '80px')}
                 {selectControl('Inputs', 'inputRadius', RADIUS_OPTIONS, '80px')}
@@ -2292,12 +2283,33 @@ export function ThemePanel() {
                   Size
                 </we-text>
                 {presetRow(
-                  { sm: 'Small', default: 'Default', lg: 'Large', xl: 'XL' } as Record<FontScalePreset, string>,
+                  { sm: 'Small', default: 'Default', lg: 'Large', xl: 'Extra large' } as Record<
+                    FontScalePreset,
+                    string
+                  >,
                   (p) => activeFontScalePreset() === p,
                   (p) => {
                     const scale = FONT_SCALE_PRESETS[p];
                     setOverrides({ fontScale: scale });
                   },
+                )}
+              </Column>
+              {/* Icons are drawn beside the words, and their weight is the same kind of decision. */}
+              <Column gap="200">
+                <Subheading>Icons</Subheading>
+                {choiceRow(
+                  'Weight',
+                  () => overrides().iconWeight ?? '',
+                  [
+                    { value: '', label: 'Default' },
+                    { value: 'thin', label: 'Thin' },
+                    { value: 'light', label: 'Light' },
+                    { value: 'regular', label: 'Regular' },
+                    { value: 'bold', label: 'Bold' },
+                    { value: 'fill', label: 'Filled' },
+                  ],
+                  (v) => setOverride('iconWeight', v as ThemeOverrides['iconWeight']),
+                  () => setOverride('iconWeight', undefined),
                 )}
               </Column>
               {/*
@@ -2316,7 +2328,7 @@ export function ThemePanel() {
                       () => setTypeStyle(role, 'weight', undefined),
                     )}
                     {choiceRow(
-                      'Tracking',
+                      'Letter spacing',
                       () => overrides().typeStyles?.[role]?.letterSpacing ?? '',
                       TRACKING_OPTIONS,
                       (v) => setTypeStyle(role, 'letterSpacing', v),
@@ -2341,21 +2353,21 @@ export function ThemePanel() {
               </For>
             </FoldingSection>
 
-            {/* ── Spacing & Density ── */}
-            <FoldingSection title="Spacing & Density">
+            {/* ── Spacing ── */}
+            <FoldingSection title="Spacing">
               <Column gap="200">
-                <Subheading>Preset</Subheading>
+                <Subheading>Overall</Subheading>
                 {presetRow(
-                  { compact: 'Compact', comfortable: 'Comfortable', spacious: 'Spacious' } as Record<
-                    SpacingPreset,
-                    string
-                  >,
+                  { compact: 'Compact', comfortable: 'Normal', spacious: 'Roomy' } as Record<SpacingPreset, string>,
                   (p) => activeSpacingPreset() === p,
                   (p) => setOverrides(SPACING_PRESETS[p]),
                 )}
+                {/* Mirrors the text size. It scales spacing *on top of* whatever the type scale
+                    already did — the steps are in rem — so this is "denser at the same text size". */}
+                {selectControl('Scale', 'spacingScale', SPACING_SCALE_OPTIONS, '120px')}
               </Column>
               <Column gap="200">
-                <Subheading>Overrides</Subheading>
+                <Subheading>By family</Subheading>
                 {selectControl('Control padding', 'controlPaddingX', SPACING_OPTIONS, '120px')}
                 {selectControl('Control gap', 'controlGap', SPACING_OPTIONS, '120px')}
                 {selectControl('Control height', 'controlHeightOffset', HEIGHT_OPTIONS, '120px')}
@@ -2363,19 +2375,12 @@ export function ThemePanel() {
                 {selectControl('Surface gap', 'surfaceGap', SPACING_OPTIONS, '120px')}
                 {selectControl('Input padding', 'inputPadding', INPUT_SPACING_OPTIONS, '120px')}
               </Column>
-              <Column gap="200">
-                <Subheading>Overall scale</Subheading>
-                {/* Mirrors `fontScale` in Typography. It scales spacing *on top of* whatever the
-                    type scale already did — the steps are in rem — so this is the control for
-                    "denser at the same text size". */}
-                {selectControl('Spacing', 'spacingScale', SPACING_SCALE_OPTIONS)}
-              </Column>
             </FoldingSection>
 
-            {/* ── Elevation ── */}
-            <FoldingSection title="Elevation">
+            {/* ── Shadows ── */}
+            <FoldingSection title="Shadows">
               <Column gap="200">
-                <Subheading>Shadows</Subheading>
+                <Subheading>Strength</Subheading>
                 {presetRow(
                   { flat: 'Flat', subtle: 'Subtle', elevated: 'Elevated', dramatic: 'Dramatic' } as Record<
                     NonNullable<ThemeOverrides['shadowIntensity']>,
@@ -2405,15 +2410,15 @@ export function ThemePanel() {
               </Column>
             </FoldingSection>
 
-            {/* ── Surfaces ── */}
-            <FoldingSection title="Surfaces">
-              {numericSlider('Surface opacity', 'surfaceOpacity', 1, {
+            {/* ── Surface effects ── */}
+            <FoldingSection title="Surface effects">
+              {numericSlider('Opacity', 'surfaceOpacity', 1, {
                 min: 0,
                 max: 1,
                 step: 0.05,
                 format: (v) => `${Math.round(v * 100)}%`,
               })}
-              {numericSlider('Surface blur', 'surfaceBlur', 0, {
+              {numericSlider('Blur', 'surfaceBlur', 0, {
                 min: 0,
                 max: 24,
                 step: 1,
@@ -2464,23 +2469,10 @@ export function ThemePanel() {
                   },
                 )}
               </Column>
-              {selectControl('Hover and press', 'stateDuration', STATE_DURATION_OPTIONS, '120px')}
+              {selectControl('State speed', 'stateDuration', STATE_DURATION_OPTIONS, '120px')}
               {/* How far "off" reads. A control rather than a role: one colour cannot serve a disabled
                   ghost button and a disabled danger one, since they start from different fills. */}
-              {selectControl('Disabled', 'disabledOpacity', DISABLED_OPACITY_OPTIONS, '120px')}
-              {choiceRow(
-                'Icon weight',
-                () => overrides().iconWeight ?? '',
-                [
-                  { value: '', label: 'Default' },
-                  { value: 'thin', label: 'Thin' },
-                  { value: 'light', label: 'Light' },
-                  { value: 'regular', label: 'Regular' },
-                  { value: 'bold', label: 'Bold' },
-                  { value: 'fill', label: 'Filled' },
-                ],
-                (v) => setOverride('iconWeight', v as ThemeOverrides['iconWeight']),
-              )}
+              {selectControl('Disabled fade', 'disabledOpacity', DISABLED_OPACITY_OPTIONS, '120px')}
             </FoldingSection>
 
             {/* ── Components ── */}
@@ -2547,7 +2539,7 @@ export function ThemePanel() {
                   () => setComponentKey('shadow', undefined),
                 )}
                 {choiceRow(
-                  'Type',
+                  'Text style',
                   () => overrides().components?.[component()]?.type ?? '',
                   [
                     { value: '', label: 'Default' },
@@ -2557,21 +2549,21 @@ export function ThemePanel() {
                   () => setComponentKey('type', undefined),
                 )}
                 {choiceRow(
-                  'Fill',
+                  'Fill colour',
                   () => overrides().components?.[component()]?.fill ?? '',
                   FILL_ROLE_OPTIONS,
                   (v) => setComponentKey('fill', v),
                   () => setComponentKey('fill', undefined),
                 )}
                 {choiceRow(
-                  'Text',
+                  'Text colour',
                   () => overrides().components?.[component()]?.text ?? '',
                   TEXT_ROLE_OPTIONS,
                   (v) => setComponentKey('text', v),
                   () => setComponentKey('text', undefined),
                 )}
                 {choiceRow(
-                  'Border',
+                  'Border colour',
                   () => overrides().components?.[component()]?.border ?? '',
                   BORDER_ROLE_OPTIONS,
                   (v) => setComponentKey('border', v),
