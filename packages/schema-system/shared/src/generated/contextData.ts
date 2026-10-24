@@ -3026,6 +3026,8 @@ export const contextData: ContextData = {
             'modules',
             'shareLink',
             'guestLink',
+            'sharing',
+            'shareError',
             'defaultTemplateId',
             'defaultThemeId',
             'templateOverride',
@@ -3097,6 +3099,7 @@ export const contextData: ContextData = {
       },
       actions: [
         'createSpace',
+        'shareSpace',
         'joinSpace',
         'initializeAsWeSpace',
         'removeSpace',

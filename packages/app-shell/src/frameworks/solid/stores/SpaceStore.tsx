@@ -74,6 +74,7 @@ import {
   type LocationData,
   removeSpaceFromParent,
   spaceSelfWhere,
+  type SpaceSyncOptions,
   syncSpaceToParent,
 } from '@shared/spaceSync';
 import { isSystemDataset } from '@shared/systemDatasets';
@@ -251,6 +252,24 @@ export interface SpaceListEntry {
    * it connects to the right node and joins the right space with no choices to make.
    */
   guestLink: string;
+  /**
+   * Where sharing this space stands while it is not yet shared: `'sharing'` while the backend
+   * publishes it, `'failed'` when that did not work (see `shareError`, and `shareSpace` to try
+   * again), `''` otherwise. A shared space reads `''` and has a `shareLink`.
+   *
+   * Creating a shared space makes the local space first and shares it after, so a space can be in
+   * use while this says `'sharing'`.
+   */
+  sharing: '' | 'sharing' | 'failed';
+  /** Why the last attempt to share this space failed, or `''`. */
+  shareError: string;
+}
+
+/** What sharing a space was asked for: the backend's sharing option, and the listing to write after. */
+interface ShareTask {
+  sharing?: string;
+  /** Set when the space is listed in global discovery — the images and place to list it with. */
+  listing?: SpaceSyncOptions;
 }
 
 /*
@@ -682,6 +701,11 @@ export interface SpaceStore {
     sharing?: string,
   ) => Promise<void>;
   /**
+   * Share a space that is still local — what retries a share that failed. Uses the sharing option
+   * and listing the failed attempt had. Watch `spaceList[].sharing` for how it is going.
+   */
+  shareSpace: (uuid: string) => Promise<void>;
+  /**
    * Join a shared dataset. `focus` defaults to true; pass false to join without navigating to it.
    *
    * Rejects when the join could not be completed, so a caller's `onSuccess` means what it says.
@@ -1096,6 +1120,13 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   const [mySpaces, setMySpaces] = createSignal<Space[]>([]);
   const [creatingSpace, setCreatingSpace] = createSignal(false);
+  /**
+   * Spaces being shared, or whose share failed, by dataset id — with what the share was asked for,
+   * so a retry asks the same. A space leaves the map once it is shared. See `SpaceListEntry.sharing`.
+   */
+  const [shares, setShares] = createSignal<
+    Record<string, { state: 'sharing' | 'failed'; error: string; task: ShareTask }>
+  >({});
 
   const [joiningSpace, setJoiningSpace] = createSignal('');
   const [joinSlow, setJoinSlow] = createSignal(false);
@@ -1445,6 +1476,8 @@ export function SpaceStoreProvider(props: ParentProps) {
         themeOverride: themeOverrideFor(ds.id),
         shareLink: shareLinkFor(ds),
         guestLink: guestLinkFor(ds),
+        sharing: shares()[ds.id]?.state ?? '',
+        shareError: shares()[ds.id]?.error ?? '',
       };
     }),
   );
@@ -1784,24 +1817,11 @@ export function SpaceStoreProvider(props: ParentProps) {
       // Create the dataset
       const spaceRef = await lifecycle.create(name);
       const spaceHandle = spaceRef.handle as DatasetProxy;
-      let publishedSharedId: string | undefined;
+      if (access === 'shared' && !lifecycle.publish) throw new Error('This backend cannot publish shared datasets.');
 
       // Register SDNA models (full set, same as switchDataset uses)
       const schemas = session.backendPorts()!.schemas;
       await schemas.installSpace(spaceHandle, moduleRegistry.moduleSchemas(schemas));
-
-      // If shared, publish — capture the returned URL so it can be stored on the Space model
-      // (the dataset handle's own sharedUrl is not updated in-place).
-      if (access === 'shared') {
-        if (!lifecycle.publish) throw new Error('This backend cannot publish shared datasets.');
-        const published = await lifecycle.publish(spaceRef.id, { sharing });
-        publishedSharedId = published.sharedId;
-        // Patch the ref so trackDataset sees the sharedId — the proxy's sharedUrl is not
-        // updated in-place by publish, so the ref captured at create time would otherwise
-        // stay empty and shareLinkFor / guestLinkFor would return ''.
-        spaceRef.sharedId = published.sharedId;
-        spaceRef.sharedUri = published.uri;
-      }
 
       // Process avatar image if provided
       const avatarData = avatarFile
@@ -1815,7 +1835,6 @@ export function SpaceStoreProvider(props: ParentProps) {
       const starter = defaultSpaceStarter(getSeed()?.spaceStarters);
       const spaceData = {
         uuid: spaceRef.id,
-        url: publishedSharedId,
         name,
         description,
         discovery,
@@ -1841,30 +1860,21 @@ export function SpaceStoreProvider(props: ParentProps) {
       */
       await writeSpaceStructure(spaceHandle, spaceRecord, starter);
 
-      // Sync to global discovery space when the user opted in.
-      // Space.create returns relations unhydrated, so we pass avatarData, coverImageData,
-      // and locationData directly rather than reading them back from spaceRecord.
-      if (discovery === 'listed') {
-        const globalDs = datasetStore.globalDataset();
-        if (globalDs) {
-          await syncSpaceToParent(spaceRecord, globalDs.handle, session.backendPorts()!.schemas, {
-            locationData,
-            avatarData,
-            coverImageData,
-          }).catch((err) => console.error('SpaceStore: sync space to global failed', err));
-        }
-      }
-
       // Track locally so the sidebar updates with the action rather than with the backend's
       // change event (which may lag, or on web may not fire at all).
-      //
-      // Re-read rather than tracking `spaceRef`: patching its uri above does not reach its handle,
-      // whose `sharedUrl` stays empty from before the publish, and the transport for presence and
-      // calls is opened from the handle. A fresh read carries both.
-      const tracked =
-        access === 'shared' ? ((await lifecycle.get(spaceRef.id).catch(() => null)) ?? spaceRef) : spaceRef;
-      await datasetStore.trackDataset(tracked);
+      await datasetStore.trackDataset(spaceRef);
       setMySpaces((prev) => [...prev, spaceRecord]);
+
+      // Space.create returns relations unhydrated, so the listing is given avatarData,
+      // coverImageData and locationData directly rather than reading them back from spaceRecord.
+      const listing = discovery === 'listed' ? { locationData, avatarData, coverImageData } : undefined;
+      if (access === 'shared') {
+        // The person waits for the local space only. Sharing talks to the network, and the
+        // listing needs the address sharing mints, so both follow, reported on `spaceList`.
+        void share(spaceRecord, { sharing, listing });
+      } else if (listing) {
+        await listInGlobal(spaceRecord, listing);
+      }
     } catch (error) {
       console.error('SpaceStore: createSpace error', error);
       toastService.error('Could not create the space.');
@@ -1875,6 +1885,58 @@ export function SpaceStoreProvider(props: ParentProps) {
     } finally {
       setCreatingSpace(false);
     }
+  }
+
+  /** Lists a space in global discovery. A failure is reported and swallowed: the space itself is fine. */
+  async function listInGlobal(space: Space, listing?: SpaceSyncOptions): Promise<void> {
+    const globalDs = datasetStore.globalDataset();
+    if (!globalDs) return;
+    await syncSpaceToParent(space, globalDs.handle, session.backendPorts()!.schemas, listing).catch((err) =>
+      console.error('SpaceStore: sync space to global failed', err),
+    );
+  }
+
+  /**
+   * Shares a local space: publishes it, then records the address it was published at, then lists
+   * it if it is listed — in that order, because the record and the listing carry the address.
+   *
+   * A failure leaves the space as it was, local and usable, with the error on `spaceList` and a
+   * toast offering to try again.
+   */
+  async function share(space: Space, task: ShareTask): Promise<void> {
+    const lifecycle = session.lifecycle();
+    const uuid = space.uuid;
+    if (!lifecycle?.publish || shares()[uuid]?.state === 'sharing') return;
+    setShares((prev) => ({ ...prev, [uuid]: { state: 'sharing', error: '', task } }));
+    try {
+      // A retry after a later step failed finds the dataset already published: keep its address.
+      const sharedId =
+        (await lifecycle.get(uuid))?.sharedId ?? (await lifecycle.publish(uuid, { sharing: task.sharing })).sharedId;
+      const ds = datasetStore.datasets().find((d) => d.id === uuid);
+      if (ds) await Space.update(ds.handle, space.id, { url: sharedId });
+      // Re-read rather than patching the ref: the handle it carries was minted before the publish,
+      // and the transport for presence and calls is opened from the handle. A fresh read carries both.
+      const ref = await lifecycle.get(uuid);
+      if (ref) await datasetStore.trackDataset(ref);
+      // Only now does the space show as shared: before this, a failure leaves it retryable.
+      const shared = Object.assign(Object.create(Object.getPrototypeOf(space)), space, { url: sharedId }) as Space;
+      setMySpaces((prev) => prev.map((s) => (s.uuid === uuid ? shared : s)));
+      setShares(({ [uuid]: _done, ...rest }) => rest);
+      if (shared.discovery === 'listed') await listInGlobal(shared, task.listing);
+    } catch (error) {
+      console.error('SpaceStore: sharing a space failed', error);
+      const message = error instanceof Error ? error.message : String(error);
+      setShares((prev) => ({ ...prev, [uuid]: { state: 'failed', error: message, task } }));
+      toastService.add(`Could not share “${space.name}”. It is here, unshared.`, 'danger', 8000, {
+        label: 'Try again',
+        run: () => void shareSpace(uuid),
+      });
+    }
+  }
+
+  async function shareSpace(uuid: string): Promise<void> {
+    const space = mySpaces().find((s) => s.uuid === uuid);
+    if (space && !space.url) await share(space, shares()[uuid]?.task ?? {});
   }
 
   /**
@@ -1988,10 +2050,14 @@ export function SpaceStoreProvider(props: ParentProps) {
   async function finishJoin(joinedRef: DatasetRef, focus: boolean): Promise<void> {
     const joinedHandle = joinedRef.handle as DatasetProxy;
 
+    // A join returns before the dataset has synced, and until it has it holds none of the
+    // space's data — the creator's schema included. Everything below reads it, so wait.
+    await session.lifecycle()?.whenSynced?.(joinedRef.id);
+
     // Install WE SDNA so Space, SignalType, CollectionBlock etc. are queryable
     // immediately. installSpace diffs against the dataset's actual state before writing,
-    // so this is safe to call unconditionally even when the space's creator or an earlier
-    // joiner already installed it — it won't write a duplicate copy.
+    // so once the dataset has synced this writes only what the creator and earlier joiners
+    // have not — never a duplicate copy.
     const joinSchemas = session.backendPorts()!.schemas;
     await joinSchemas.installSpace(joinedHandle, moduleRegistry.moduleSchemas(joinSchemas));
 
@@ -5744,6 +5810,7 @@ export function SpaceStoreProvider(props: ParentProps) {
 
     // Actions
     createSpace,
+    shareSpace,
     joinSpace,
     initializeAsWeSpace,
     removeSpace,
