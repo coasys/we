@@ -341,11 +341,6 @@ async fn finish_pending_quietly<R: ExecutorRpc>(executor: &ViaExecutor<R>, vault
 }
 
 async fn public_state(vault: &DesktopVault, address: &ExecutorAddress) -> CustodyPublic {
-    let unlock = if vault.needs_passphrase() {
-        "passphrase"
-    } else {
-        "touch-id-or-password"
-    };
     let did = match connect(address).await {
         Ok(executor) => {
             finish_pending_quietly(&executor, vault).await;
@@ -353,26 +348,41 @@ async fn public_state(vault: &DesktopVault, address: &ExecutorAddress) -> Custod
         }
         Err(_) => None,
     };
-    let holds_master = did
+    // Whether this identity's key is held here and, if so, whether it is sealed.
+    let sealed = did
         .as_deref()
         .and_then(ad4m_identity_core::scid_of)
-        .and_then(|scid| match vault.holds(scid) {
-            Ok(held) => Some(held),
-            // The store could not be asked (no Secret Service, a keychain error): reported as not
-            // known to hold one, and logged so the cause is not lost.
+        .and_then(|scid| match held_sealed(vault, scid) {
+            Ok(sealed) => sealed,
+            // The store could not be asked (no Secret Service, a keychain error, a copy on both
+            // sides): reported as not known to hold one, and logged so the cause is not lost.
             Err(e) => {
                 log::warn!("custody: cannot tell whether the master key is held here: {e}");
                 None
             }
-        })
-        .filter(|held| *held)
-        // The index sits inside the sealed item; only master #0 is held for now (no rotation yet).
-        .map(|_| HoldsMaster { index: 0 });
+        });
+    // The index sits inside the sealed item; only master #0 is held for now (no rotation yet).
+    let holds_master = sealed.map(|_| HoldsMaster { index: 0 });
+    // The unlock of the key reported as held; with none held, the unlock a new one would get.
+    let unlock = if sealed.unwrap_or_else(|| vault.needs_passphrase()) {
+        "passphrase"
+    } else {
+        "touch-id-or-password"
+    };
     CustodyPublic {
         did,
         holds_master,
         unlock,
     }
+}
+
+/// `None` when `scid`'s key is not held here; else whether it is sealed under a passphrase — from
+/// where that one item rests, never from where a new one would go.
+fn held_sealed(vault: &DesktopVault, scid: &str) -> Result<Option<bool>, VaultError> {
+    if !vault.holds(scid)? {
+        return Ok(None);
+    }
+    Ok(Some(vault.needs_passphrase_for(scid)?))
 }
 
 type Reply = Option<oneshot::Sender<Result<Screen, CustodyError>>>;
@@ -522,7 +532,8 @@ async fn run_create(
         }
     }
 
-    // The macOS keychain asks when the item is written. A sealed item: the passphrase comes first.
+    // A new identity's item goes where a new item goes. The macOS keychain asks when the item is
+    // written. A sealed item: the passphrase comes first.
     let mut passphrase: Option<Secret<String>> = None;
     if vault.needs_passphrase() {
         answer(reply, Ok(Screen::SetPassphrase { error: None }));
@@ -571,6 +582,13 @@ async fn run_create(
 
 // ─── link (the holder's side) ───────────────────────────────────────────────────
 
+/// Whether a flow on the key of `did`, an identity already made, asks for a passphrase: decided by
+/// where that key rests here, since two identities on one computer can rest in different stores.
+fn passphrase_for(vault: &DesktopVault, did: &str) -> Result<bool, ClientError> {
+    let scid = ad4m_identity_core::scid_of(did).ok_or(VaultError::NotFound)?;
+    Ok(vault.needs_passphrase_for(scid)?)
+}
+
 async fn run_link(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, reply: &mut Reply) {
     let Some(store_url) = address.store_url.clone() else {
         return answer(
@@ -602,14 +620,18 @@ async fn run_link(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, 
         Err(e) => return answer(reply, Ok(failed(&ClientError::Rpc(e)))),
     };
 
-    // The one unlock of the flow — a flow asks the person to unlock once, not per signature: on
-    // Linux, after the passphrase.
+    // The one unlock of the flow — a flow asks the person to unlock once, not per signature: where
+    // this identity's key is sealed, after the passphrase.
+    let needs = match passphrase_for(vault, &did) {
+        Ok(needs) => needs,
+        Err(e) => return answer(reply, Ok(failed(&e))),
+    };
     let mut passphrase: Option<Secret<String>> = None;
-    if vault.needs_passphrase() {
+    if needs {
         answer(reply, Ok(Screen::EnterPassphrase { error: None }));
     }
     let flow = loop {
-        if vault.needs_passphrase() {
+        if needs {
             let Some(input) = next_input(vault, address, rx, reply).await else {
                 return;
             };
@@ -632,7 +654,7 @@ async fn run_link(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, 
         .await
         {
             Ok(flow) => break flow,
-            Err(ClientError::Vault(VaultError::Cancelled)) if vault.needs_passphrase() => {
+            Err(ClientError::Vault(VaultError::Cancelled)) if needs => {
                 answer(
                     reply,
                     Ok(Screen::EnterPassphrase {
@@ -766,7 +788,10 @@ async fn run_revoke(
             }),
         );
     }
-    let needs = vault.needs_passphrase();
+    let needs = match passphrase_for(vault, &did) {
+        Ok(needs) => needs,
+        Err(e) => return answer(reply, Ok(failed(&e))),
+    };
     answer(
         reply,
         Ok(Screen::RevokeConfirm {

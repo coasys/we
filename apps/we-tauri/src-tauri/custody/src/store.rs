@@ -3,6 +3,12 @@
 //! entitlement. One item per identity, named `coasys.identity/<scid>`. No Windows: the desktop app
 //! does not ship there.
 //!
+//! The place is decided per item, never for the whole process ([`PlacedStore`]): the custody folder
+//! is shared by every account on this computer, so one identity's key can be sealed in a file
+//! (made by a build that could not use the keychain) while another's is in the keychain, and both
+//! stay usable. An item is used wherever it already is; a new item goes to the platform's store
+//! when this build and session can use one, else to the file. Nothing moves on its own.
+//!
 //! A store keeps bytes; it does not know what they are. In the Secret Service and in a file they
 //! are already sealed under the passphrase ([`crate::seal`]); the keychain item's access control is
 //! the unlock, so the keychain store is the one that may hold the item as it is
@@ -12,7 +18,8 @@ use std::path::PathBuf;
 
 use ad4m_identity_client::VaultError;
 
-/// Which kind of store holds the item, and so how the person unlocks it.
+/// Which kind of store holds an item, and so how the person unlocks it. Asked per item
+/// ([`SecretStore::kind_of`]): two identities on one computer can rest in different kinds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StoreKind {
     /// macOS: a keychain item behind `.userPresence` — Touch ID or the login password.
@@ -35,7 +42,12 @@ impl StoreKind {
 
 /// Bytes kept by name.
 pub trait SecretStore: Send + Sync {
+    /// The kind a new item is kept in.
     fn kind(&self) -> StoreKind;
+    /// The kind the item under `name` is kept in — where it is now, or, when it is not kept
+    /// anywhere yet, where it would go ([`SecretStore::kind`]). Asks whether it exists, never reads
+    /// it. An error is an error: it never means the item is absent.
+    fn kind_of(&self, name: &str) -> Result<StoreKind, VaultError>;
     fn put(&self, name: &str, bytes: &[u8]) -> Result<(), VaultError>;
     fn get(&self, name: &str) -> Result<Option<Vec<u8>>, VaultError>;
     /// Whether an item is kept under `name`, without reading it: no unlock, no prompt, and the bytes
@@ -66,23 +78,6 @@ impl FileStore {
         let file = name.rsplit('/').next().unwrap_or(name);
         self.dir.join(format!("{file}.bin"))
     }
-
-    /// Whether any sealed item is kept here (a `.bin` file; a half-written `.bin.tmp` does not
-    /// count). Reads directory entries only.
-    pub fn holds_any(&self) -> Result<bool, VaultError> {
-        let entries = match std::fs::read_dir(&self.dir) {
-            Ok(entries) => entries,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
-            Err(e) => return Err(io(e)),
-        };
-        for entry in entries {
-            let path = entry.map_err(io)?.path();
-            if path.extension().is_some_and(|ext| ext == "bin") && path.is_file() {
-                return Ok(true);
-            }
-        }
-        Ok(false)
-    }
 }
 
 fn io(e: std::io::Error) -> VaultError {
@@ -92,6 +87,10 @@ fn io(e: std::io::Error) -> VaultError {
 impl SecretStore for FileStore {
     fn kind(&self) -> StoreKind {
         StoreKind::File
+    }
+
+    fn kind_of(&self, _: &str) -> Result<StoreKind, VaultError> {
+        Ok(StoreKind::File)
     }
 
     fn put(&self, name: &str, bytes: &[u8]) -> Result<(), VaultError> {
@@ -170,6 +169,9 @@ impl SecretStore for MemoryStore {
     fn kind(&self) -> StoreKind {
         self.kind.unwrap_or(StoreKind::Memory)
     }
+    fn kind_of(&self, _: &str) -> Result<StoreKind, VaultError> {
+        Ok(self.kind())
+    }
     fn put(&self, name: &str, bytes: &[u8]) -> Result<(), VaultError> {
         self.items
             .lock()
@@ -240,6 +242,10 @@ mod secret_service_store {
     impl SecretStore for SecretServiceStore {
         fn kind(&self) -> StoreKind {
             StoreKind::SecretService
+        }
+
+        fn kind_of(&self, _: &str) -> Result<StoreKind, VaultError> {
+            Ok(StoreKind::SecretService)
         }
 
         fn put(&self, name: &str, bytes: &[u8]) -> Result<(), VaultError> {
@@ -339,7 +345,8 @@ mod keychain_store {
     ///
     /// Needs an app signed with a `keychain-access-groups` entitlement. A build without one gets
     /// `errSecMissingEntitlement` from every call; [`system_store`](super::system_store) probes for
-    /// that once and gives such a build the [`FileStore`] instead.
+    /// that once and gives such a build no platform store, so its items rest in the
+    /// [`FileStore`].
     pub struct KeychainStore;
 
     const SERVICE: &str = "org.coasys.app";
@@ -373,6 +380,10 @@ mod keychain_store {
     impl SecretStore for KeychainStore {
         fn kind(&self) -> StoreKind {
             StoreKind::Keychain
+        }
+
+        fn kind_of(&self, _: &str) -> Result<StoreKind, VaultError> {
+            Ok(StoreKind::Keychain)
         }
 
         fn put(&self, name: &str, bytes: &[u8]) -> Result<(), VaultError> {
@@ -477,29 +488,117 @@ fn keychain_usable(probe_status: i32) -> bool {
     probe_status != ERR_SEC_MISSING_ENTITLEMENT
 }
 
-/// The store this computer offers. A master key already sealed in a file under `fallback_dir`
-/// stays there: an earlier build of the app chose the file, and the item is readable only through
-/// it. Otherwise, macOS: the keychain, unless this build lacks the keychain entitlement (an
-/// unsigned or ad-hoc-signed build), then that file, sealed under a passphrase. Linux: the Secret
-/// Service, else that file.
-pub fn system_store(fallback_dir: PathBuf) -> Box<dyn SecretStore> {
-    choose_store(FileStore::new(fallback_dir), platform_store)
+// ─── Placed per item ──────────────────────────────────────────────────────────────
+
+/// The file and, where this build and session can use one, the platform's own store, with each
+/// item kept on the side that holds it.
+///
+/// Every call first asks both sides whether they hold the item, without reading it:
+/// - one side holds it: that side is used for every read, write, check and delete, with its own
+///   kind — so a key sealed in the file is opened with its passphrase while a key in the keychain
+///   beside it asks for none;
+/// - neither does: a new item goes to the platform store, or to the file when there is none;
+/// - both do: refused. Two copies of one identity's key are not something this store made, and
+///   choosing one would hide the other.
+///
+/// If either side cannot answer, the call is refused rather than taken to mean the item is not
+/// there: falling through to the other side would hide a key, or put a second one beside it.
+/// Nothing is ever moved from one side to the other.
+pub struct PlacedStore {
+    file: Box<dyn SecretStore>,
+    platform: Option<Box<dyn SecretStore>>,
 }
 
-/// [`system_store`] with the platform's own store supplied by `platform` (`None`: not usable).
-pub(crate) fn choose_store(
-    file: FileStore,
-    platform: impl FnOnce() -> Option<Box<dyn SecretStore>>,
-) -> Box<dyn SecretStore> {
-    match file.holds_any() {
-        Ok(true) => {
-            log::info!(
-                "custody: the master key is already sealed in a file here; keeping it there"
-            );
-            Box::new(file)
-        }
-        _ => platform().unwrap_or_else(|| Box::new(file)),
+fn unanswered(side: &str, e: VaultError) -> VaultError {
+    VaultError::Unavailable(format!(
+        "cannot tell whether the {side} holds this master key: {e}"
+    ))
+}
+
+impl PlacedStore {
+    /// `file` is the sealed-file side; `platform` the keychain or Secret Service, `None` when this
+    /// build or session cannot use one.
+    pub fn new(file: Box<dyn SecretStore>, platform: Option<Box<dyn SecretStore>>) -> Self {
+        PlacedStore { file, platform }
     }
+
+    /// The side that holds `name`, `None` when neither does.
+    fn holder(&self, name: &str) -> Result<Option<&dyn SecretStore>, VaultError> {
+        let in_file = self
+            .file
+            .contains(name)
+            .map_err(|e| unanswered("custody file", e))?;
+        let on_platform = match self.platform.as_deref() {
+            Some(platform) => platform
+                .contains(name)
+                .map_err(|e| unanswered("platform store", e))?
+                .then_some(platform),
+            None => None,
+        };
+        match (in_file, on_platform) {
+            (true, Some(_)) => Err(VaultError::Unavailable(
+                "this master key is kept both in the custody file and in the platform store; \
+                 remove one copy"
+                    .into(),
+            )),
+            (true, None) => Ok(Some(self.file.as_ref())),
+            (false, platform) => Ok(platform),
+        }
+    }
+
+    /// The side a new item goes to.
+    fn for_new(&self) -> &dyn SecretStore {
+        self.platform.as_deref().unwrap_or(self.file.as_ref())
+    }
+
+    /// The side that holds `name`, or the one it goes to when it is new.
+    fn side(&self, name: &str) -> Result<&dyn SecretStore, VaultError> {
+        Ok(self.holder(name)?.unwrap_or(self.for_new()))
+    }
+}
+
+impl SecretStore for PlacedStore {
+    fn kind(&self) -> StoreKind {
+        self.for_new().kind()
+    }
+
+    fn kind_of(&self, name: &str) -> Result<StoreKind, VaultError> {
+        self.side(name)?.kind_of(name)
+    }
+
+    fn put(&self, name: &str, bytes: &[u8]) -> Result<(), VaultError> {
+        self.side(name)?.put(name, bytes)
+    }
+
+    fn get(&self, name: &str) -> Result<Option<Vec<u8>>, VaultError> {
+        match self.holder(name)? {
+            Some(side) => side.get(name),
+            None => Ok(None),
+        }
+    }
+
+    fn contains(&self, name: &str) -> Result<bool, VaultError> {
+        Ok(self.holder(name)?.is_some())
+    }
+
+    fn delete(&self, name: &str) -> Result<(), VaultError> {
+        match self.holder(name)? {
+            Some(side) => side.delete(name),
+            None => Ok(()),
+        }
+    }
+}
+
+/// The store this computer offers: a [`PlacedStore`] over the sealed files in `fallback_dir` and
+/// the platform's store. An item already kept on one side stays there. A new item goes, on macOS,
+/// to the keychain, unless this build lacks the keychain entitlement (an unsigned or
+/// ad-hoc-signed build), then to that file, sealed under a passphrase; on Linux, to the Secret
+/// Service, else to that file.
+pub fn system_store(fallback_dir: PathBuf) -> Box<dyn SecretStore> {
+    Box::new(PlacedStore::new(
+        Box::new(FileStore::new(fallback_dir)),
+        platform_store(),
+    ))
 }
 
 /// The keychain or the Secret Service, when this build and this session can use it.

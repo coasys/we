@@ -54,10 +54,21 @@ impl DesktopVault {
         self.pending.list()
     }
 
-    /// Whether the identity window must ask for a passphrase before a flow: false where the OS's own
-    /// prompt unlocks the item (the keychain), true where the item is sealed with a passphrase.
+    /// Whether the identity window must ask for a passphrase before making a NEW identity here:
+    /// false where the OS's own prompt will unlock the item (the keychain), true where it will be
+    /// sealed with a passphrase. For an identity already kept here ask
+    /// [`needs_passphrase_for`](Self::needs_passphrase_for): two identities on one computer can
+    /// rest in different stores.
     pub fn needs_passphrase(&self) -> bool {
         !self.store.kind().unlocks_itself()
+    }
+
+    /// Whether a flow on `scid`'s key must ask for a passphrase: true where that item is sealed
+    /// (a file, the Secret Service), false where the keychain unlocks it. For an item not kept
+    /// here, the answer for a new one. Asks the store where the item is, never reads it; an error
+    /// is returned, never guessed at.
+    pub fn needs_passphrase_for(&self, scid: &str) -> Result<bool, VaultError> {
+        Ok(!self.store.kind_of(&item_name(scid))?.unlocks_itself())
     }
 
     /// The store in use.
@@ -87,12 +98,11 @@ impl DesktopVault {
         why: MasterUse,
     ) -> Result<CustodyItem, VaultError> {
         log::info!("custody: read for {why:?}");
-        let bytes = Zeroizing::new(
-            self.store
-                .get(&item_name(scid))?
-                .ok_or(VaultError::NotFound)?,
-        );
-        if self.store.kind().unlocks_itself() {
+        let name = item_name(scid);
+        let bytes = Zeroizing::new(self.store.get(&name)?.ok_or(VaultError::NotFound)?);
+        // How this item is kept, not how a new one would be: another identity on this computer
+        // may rest in another store.
+        if self.store.kind_of(&name)?.unlocks_itself() {
             return CustodyItem::from_bytes(&bytes);
         }
         let passphrase = passphrase.ok_or(VaultError::Cancelled)?;
@@ -101,13 +111,16 @@ impl DesktopVault {
 
     fn write(&self, item: &CustodyItem, passphrase: Option<&str>) -> Result<(), VaultError> {
         log::info!("custody: write");
-        let bytes = if self.store.kind().unlocks_itself() {
+        let name = item_name(&item.scid);
+        // Sealed or not as the store this item goes to (where it already is, or where a new one
+        // goes) keeps it.
+        let bytes = if self.store.kind_of(&name)?.unlocks_itself() {
             item.to_bytes().to_vec()
         } else {
             let passphrase = passphrase.ok_or(VaultError::Cancelled)?;
             seal::seal(item, passphrase, self.kdf, &os_random)?
         };
-        self.store.put(&item_name(&item.scid), &bytes)
+        self.store.put(&name, &bytes)
     }
 }
 
@@ -164,6 +177,8 @@ impl Vault for Unlocking<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
+
     use crate::store::{MemoryStore, StoreKind};
 
     const CHEAP: Kdf = Kdf {
@@ -178,28 +193,19 @@ mod tests {
 
     #[test]
     fn a_key_sealed_in_a_file_stays_usable_when_the_platform_store_becomes_available() {
-        use crate::store::{choose_store, FileStore};
+        use crate::store::{FileStore, PlacedStore};
         let dir = tempfile::tempdir().unwrap();
         let custody = dir.path().join("custody");
         // A build without the keychain (or without a Secret Service) makes the identity: the
         // master key goes into the sealed file.
-        let first = DesktopVault::with_kdf(
-            Box::new(FileStore::new(&custody)),
-            PendingIncepts::memory(),
-            CHEAP,
-        );
-        first
-            .unlocking(pass("a passphrase of length"))
-            .store_master("QmScid", 0, Secret::new([7u8; 32]))
-            .unwrap();
+        sealed_in_file(&custody, "QmScid", [7u8; 32], "a passphrase of length");
 
-        // The next start can use the platform store, and still picks the file that holds the key.
-        let store = choose_store(FileStore::new(&custody), || {
-            Some(Box::new(MemoryStore::new()))
-        });
-        assert_eq!(store.kind(), StoreKind::File);
-        let second = DesktopVault::with_kdf(store, PendingIncepts::memory(), CHEAP);
-        assert!(second.needs_passphrase());
+        // The next start can use the platform store. The key stays in the file and opens with
+        // its passphrase; a new identity would go to the platform store.
+        let platform = Arc::new(MemoryStore::as_kind(StoreKind::Keychain));
+        let second = placed(&custody, Some(platform.clone()));
+        assert!(!second.needs_passphrase());
+        assert!(second.needs_passphrase_for("QmScid").unwrap());
         assert!(second.holds("QmScid").unwrap());
         let unlocked = second
             .unlocking(pass("a passphrase of length"))
@@ -209,16 +215,253 @@ mod tests {
             ad4m_identity_core::build::Signer::key(unlocked.signer(10).unwrap()),
             ed25519_signing_key_multikey([7u8; 32])
         );
+        // Writing it again (a flow replacing the item) keeps it in the file, sealed.
+        second
+            .unlocking(pass("a passphrase of length"))
+            .store_master("QmScid", 0, Secret::new([7u8; 32]))
+            .unwrap();
+        assert!(FileStore::new(&custody)
+            .contains(&item_name("QmScid"))
+            .unwrap());
+        assert!(!platform.contains(&item_name("QmScid")).unwrap());
 
-        // With nothing sealed in the file, the platform store wins.
+        // Without a platform store, a new item goes to the file, sealed.
         let empty = dir.path().join("empty");
-        let fresh = choose_store(FileStore::new(&empty), || {
-            Some(Box::new(MemoryStore::new()))
-        });
-        assert_eq!(fresh.kind(), StoreKind::Memory);
-        // And without a platform store, the file.
-        let none = choose_store(FileStore::new(&empty), || None);
-        assert_eq!(none.kind(), StoreKind::File);
+        let none = DesktopVault::with_kdf(
+            Box::new(PlacedStore::new(Box::new(FileStore::new(&empty)), None)),
+            PendingIncepts::memory(),
+            CHEAP,
+        );
+        assert_eq!(none.store().kind(), StoreKind::File);
+        assert!(none.needs_passphrase());
+        assert!(none.needs_passphrase_for("QmNew").unwrap());
+        none.unlocking(pass("a passphrase of length"))
+            .store_master("QmNew", 0, Secret::new([5u8; 32]))
+            .unwrap();
+        assert!(FileStore::new(&empty)
+            .contains(&item_name("QmNew"))
+            .unwrap());
+    }
+
+    #[test]
+    fn two_identities_on_one_computer_each_unlock_from_where_they_rest() {
+        use crate::store::FileStore;
+        let dir = tempfile::tempdir().unwrap();
+        let custody = dir.path().join("custody");
+        let platform = Arc::new(MemoryStore::as_kind(StoreKind::Keychain));
+
+        // One account makes its identity while the folder is empty and the keychain usable: the
+        // key goes to the keychain, with no passphrase.
+        let vault = placed(&custody, Some(platform.clone()));
+        assert!(!vault.needs_passphrase_for("QmA").unwrap());
+        vault
+            .unlocking(None)
+            .store_master("QmA", 0, Secret::new([4u8; 32]))
+            .unwrap();
+        assert!(platform.contains(&item_name("QmA")).unwrap());
+        // Another account, on a build without the keychain, seals its key in the same folder.
+        sealed_in_file(&custody, "QmB", [7u8; 32], "b passphrase of length");
+
+        // Both are held, and each is opened the way it is kept.
+        let vault = placed(&custody, Some(platform.clone()));
+        assert!(vault.holds("QmA").unwrap());
+        assert!(vault.holds("QmB").unwrap());
+        assert!(!vault.needs_passphrase_for("QmA").unwrap());
+        assert!(vault.needs_passphrase_for("QmB").unwrap());
+        let a = vault
+            .unlocking(None)
+            .unlock("QmA", MasterUse::Link, 10)
+            .unwrap();
+        assert_eq!(
+            ad4m_identity_core::build::Signer::key(a.signer(10).unwrap()),
+            ed25519_signing_key_multikey([4u8; 32])
+        );
+        assert_eq!(
+            vault
+                .unlocking(None)
+                .unlock("QmB", MasterUse::Link, 10)
+                .err(),
+            Some(VaultError::Cancelled)
+        );
+        let b = vault
+            .unlocking(pass("b passphrase of length"))
+            .unlock("QmB", MasterUse::Revoke, 10)
+            .unwrap();
+        assert_eq!(
+            ad4m_identity_core::build::Signer::key(b.signer(10).unwrap()),
+            ed25519_signing_key_multikey([7u8; 32])
+        );
+
+        // Deleting one leaves the other.
+        vault.store().delete(&item_name("QmA")).unwrap();
+        assert!(!vault.holds("QmA").unwrap());
+        assert!(vault.holds("QmB").unwrap());
+        vault
+            .unlocking(None)
+            .store_master("QmA", 0, Secret::new([4u8; 32]))
+            .unwrap();
+        vault.store().delete(&item_name("QmB")).unwrap();
+        assert!(!vault.holds("QmB").unwrap());
+        assert!(!FileStore::new(&custody)
+            .contains(&item_name("QmB"))
+            .unwrap());
+        assert!(vault
+            .unlocking(None)
+            .unlock("QmA", MasterUse::Link, 10)
+            .is_ok());
+    }
+
+    #[test]
+    fn a_side_that_cannot_answer_is_never_taken_to_be_empty() {
+        use crate::store::PlacedStore;
+        struct Unanswering(StoreKind);
+        impl SecretStore for Unanswering {
+            fn kind(&self) -> StoreKind {
+                self.0
+            }
+            fn kind_of(&self, _: &str) -> Result<StoreKind, VaultError> {
+                Ok(self.0)
+            }
+            fn put(&self, _: &str, _: &[u8]) -> Result<(), VaultError> {
+                Err(VaultError::Unavailable("cannot write".into()))
+            }
+            fn get(&self, _: &str) -> Result<Option<Vec<u8>>, VaultError> {
+                Err(VaultError::Unavailable("cannot read".into()))
+            }
+            fn contains(&self, _: &str) -> Result<bool, VaultError> {
+                Err(VaultError::Unavailable("cannot stat".into()))
+            }
+            fn delete(&self, _: &str) -> Result<(), VaultError> {
+                Err(VaultError::Unavailable("cannot delete".into()))
+            }
+        }
+        let name = item_name("QmScid");
+        fn refused(store: &dyn SecretStore, name: &str) {
+            assert!(unavailable(store.get(name)));
+            assert!(unavailable(store.contains(name)));
+            assert!(unavailable(store.kind_of(name)));
+            assert!(unavailable(store.put(name, b"x")));
+            assert!(unavailable(store.delete(name)));
+        }
+
+        // The file cannot be asked; the keychain holds the key. Nothing falls through to it.
+        let platform = Arc::new(MemoryStore::as_kind(StoreKind::Keychain));
+        platform.put(&name, b"the keychain item").unwrap();
+        let store = PlacedStore::new(
+            Box::new(Unanswering(StoreKind::File)),
+            Some(Box::new(platform.clone())),
+        );
+        refused(&store, &name);
+        assert_eq!(
+            platform.get(&name).unwrap().as_deref(),
+            Some(&b"the keychain item"[..])
+        );
+
+        // The platform store cannot be asked; the file holds the key. Nothing is decided either.
+        let file = Arc::new(MemoryStore::as_kind(StoreKind::File));
+        file.put(&name, b"the sealed item").unwrap();
+        let store = PlacedStore::new(
+            Box::new(file.clone()),
+            Some(Box::new(Unanswering(StoreKind::Keychain))),
+        );
+        refused(&store, &name);
+        assert_eq!(
+            file.get(&name).unwrap().as_deref(),
+            Some(&b"the sealed item"[..])
+        );
+
+        // A real folder that cannot be searched is refused the same way.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let dir = tempfile::tempdir().unwrap();
+            let custody = dir.path().join("custody");
+            sealed_in_file(&custody, "QmScid", [7u8; 32], "a passphrase of length");
+            std::fs::set_permissions(&custody, std::fs::Permissions::from_mode(0o000)).unwrap();
+            // Root searches anything, so the folder only fails where it can.
+            if std::fs::metadata(custody.join("QmScid.bin")).is_err() {
+                let vault = placed(
+                    &custody,
+                    Some(Arc::new(MemoryStore::as_kind(StoreKind::Keychain))),
+                );
+                refused(vault.store(), &name);
+                assert!(vault.holds("QmScid").is_err());
+                assert!(vault.needs_passphrase_for("QmScid").is_err());
+            }
+            std::fs::set_permissions(&custody, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
+    }
+
+    #[test]
+    fn a_key_kept_on_both_sides_is_refused_rather_than_chosen() {
+        use crate::store::PlacedStore;
+        let name = item_name("QmScid");
+        let file = Arc::new(MemoryStore::as_kind(StoreKind::File));
+        let platform = Arc::new(MemoryStore::as_kind(StoreKind::Keychain));
+        file.put(&name, b"sealed").unwrap();
+        platform.put(&name, b"keychain").unwrap();
+        let store = PlacedStore::new(Box::new(file.clone()), Some(Box::new(platform.clone())));
+        assert!(unavailable(store.get(&name)));
+        assert!(unavailable(store.contains(&name)));
+        assert!(unavailable(store.kind_of(&name)));
+        assert!(unavailable(store.put(&name, b"new")));
+        assert!(unavailable(store.delete(&name)));
+        // Both copies are as they were.
+        assert_eq!(file.get(&name).unwrap().unwrap(), b"sealed");
+        assert_eq!(platform.get(&name).unwrap().unwrap(), b"keychain");
+        // Another identity is unaffected.
+        assert!(!store.contains(&item_name("QmOther")).unwrap());
+    }
+
+    fn unavailable<T>(result: Result<T, VaultError>) -> bool {
+        matches!(result, Err(VaultError::Unavailable(_)))
+    }
+
+    /// Seals `secret` for `scid` in the file under `custody`, as a build without a platform store
+    /// does.
+    fn sealed_in_file(custody: &std::path::Path, scid: &str, secret: [u8; 32], passphrase: &str) {
+        DesktopVault::with_kdf(
+            Box::new(crate::store::FileStore::new(custody)),
+            PendingIncepts::memory(),
+            CHEAP,
+        )
+        .unlocking(pass(passphrase))
+        .store_master(scid, 0, Secret::new(secret))
+        .unwrap();
+    }
+
+    /// A vault over the file under `custody` and `platform`, placed per item.
+    fn placed(custody: &std::path::Path, platform: Option<Arc<MemoryStore>>) -> DesktopVault {
+        DesktopVault::with_kdf(
+            Box::new(crate::store::PlacedStore::new(
+                Box::new(crate::store::FileStore::new(custody)),
+                platform.map(|p| Box::new(p) as Box<dyn SecretStore>),
+            )),
+            PendingIncepts::memory(),
+            CHEAP,
+        )
+    }
+
+    /// A store shared with the test, so it can look at what was kept where.
+    impl<T: SecretStore + ?Sized> SecretStore for Arc<T> {
+        fn kind(&self) -> StoreKind {
+            (**self).kind()
+        }
+        fn kind_of(&self, n: &str) -> Result<StoreKind, VaultError> {
+            (**self).kind_of(n)
+        }
+        fn put(&self, n: &str, b: &[u8]) -> Result<(), VaultError> {
+            (**self).put(n, b)
+        }
+        fn get(&self, n: &str) -> Result<Option<Vec<u8>>, VaultError> {
+            (**self).get(n)
+        }
+        fn contains(&self, n: &str) -> Result<bool, VaultError> {
+            (**self).contains(n)
+        }
+        fn delete(&self, n: &str) -> Result<(), VaultError> {
+            (**self).delete(n)
+        }
     }
 
     #[test]
@@ -228,6 +471,9 @@ mod tests {
         impl SecretStore for Shared {
             fn kind(&self) -> StoreKind {
                 self.0.kind()
+            }
+            fn kind_of(&self, n: &str) -> Result<StoreKind, VaultError> {
+                self.0.kind_of(n)
             }
             fn put(&self, n: &str, b: &[u8]) -> Result<(), VaultError> {
                 self.0.put(n, b)
@@ -288,6 +534,9 @@ mod tests {
         impl SecretStore for NoReads {
             fn kind(&self) -> StoreKind {
                 self.0.kind()
+            }
+            fn kind_of(&self, n: &str) -> Result<StoreKind, VaultError> {
+                self.0.kind_of(n)
             }
             fn put(&self, n: &str, b: &[u8]) -> Result<(), VaultError> {
                 self.0.put(n, b)
