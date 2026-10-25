@@ -34,7 +34,9 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use we_custody::seal::{self, Kdf};
 use we_custody::store::{item_name, FileStore, SecretStore};
-use we_custody::{spawn, DesktopVault, ExecutorAddress, IdentityStep, Screen, StepInput};
+use we_custody::{
+    spawn, DesktopVault, ExecutorAddress, IdentityStep, PendingIncepts, Screen, StepInput,
+};
 
 const PASSPHRASE: &str = "a long passphrase for the test";
 const CHEAP: Kdf = Kdf {
@@ -327,7 +329,11 @@ async fn make_link_and_revoke_through_the_custody_service() {
     let a = world.start_node("a", None, Some(credential)).await;
 
     let vault_dir = dir.path().join("custody");
-    let vault = DesktopVault::with_kdf(Box::new(FileStore::new(&vault_dir)), CHEAP);
+    let vault = DesktopVault::with_kdf(
+        Box::new(FileStore::new(&vault_dir)),
+        PendingIncepts::file(&vault_dir),
+        CHEAP,
+    );
     let custody = spawn(
         vault,
         ExecutorAddress {

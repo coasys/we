@@ -192,12 +192,16 @@ pub fn run() {
     // The custody service: the person's master key, behind the OS unlock, in this process but never
     // in the executor's code (it is its own crate, `custody/`, and reaches the executor over RPC with
     // the admin credential only). The sealed file is the fallback for Linux without a Secret Service.
+    // The same folder keeps the incept of an identity made here until its publish is confirmed.
     let custody_dir = dirs::data_dir()
         .unwrap_or_else(|| home.join(".local/share"))
         .join("coasys")
         .join("custody");
     let custody = we_custody::spawn(
-        we_custody::DesktopVault::new(we_custody::store::system_store(custody_dir)),
+        we_custody::DesktopVault::new(
+            we_custody::store::system_store(custody_dir.clone()),
+            we_custody::PendingIncepts::file(custody_dir),
+        ),
         we_custody::ExecutorAddress {
             url: format!("http://127.0.0.1:{graphql_port}"),
             admin_credential: std::sync::Arc::from(req_credential.as_str()),

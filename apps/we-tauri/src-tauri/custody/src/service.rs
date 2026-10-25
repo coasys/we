@@ -15,10 +15,12 @@
 use std::sync::Arc;
 
 use ad4m_client::ws_rpc::WsRpcClient;
-use ad4m_identity_client::flows::create::{CreateFlow, CreateScreen};
+use ad4m_identity_client::flows::create::{resume, CreateFlow, CreateScreen, Created};
 use ad4m_identity_client::flows::link::{Claimed, LinkFlow};
 use ad4m_identity_client::flows::revoke::revoke;
-use ad4m_identity_client::{ClientError, OsRandom, Secret, SystemClock, VaultError, ViaExecutor};
+use ad4m_identity_client::{
+    ClientError, ExecutorRpc, OsRandom, Secret, SystemClock, VaultError, ViaExecutor,
+};
 use ad4m_identity_core::link::OfferKind;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, oneshot};
@@ -275,6 +277,10 @@ fn failed(e: &ClientError) -> Screen {
             format!("This computer could not keep your master key: {why}")
         }
         ClientError::HasIdentity(did) => format!("This computer already speaks for {did}."),
+        ClientError::CreatePending(did) => format!(
+            "{did} was made on this computer and is still being finished. Open this step again \
+             to finish it; no other identity can be made here until it is."
+        ),
         ClientError::OfferEnded(state) => {
             format!("The offer ended ({state}) before it was confirmed. Nothing was added.")
         }
@@ -312,6 +318,28 @@ async fn serve(vault: DesktopVault, address: ExecutorAddress, mut rx: Rx) {
     }
 }
 
+/// Finishes an identity whose `create` kept its incept here and did not see the publish answered
+/// (the app stopped, or the publish failed): publishes that incept again, which needs no unlock.
+/// `None` when nothing is pending. Asks the executor nothing when nothing is kept.
+async fn finish_pending<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    vault: &DesktopVault,
+) -> Result<Option<Created>, ClientError> {
+    if vault.pending_incepts()?.is_empty() {
+        return Ok(None);
+    }
+    log::info!("custody: finishing an identity whose publish was not confirmed");
+    resume(executor, &vault.unlocking(None)).await
+}
+
+/// [`finish_pending`] where a step does not depend on it: a failure is logged, and the next
+/// attempt (any step, or the main window asking for the state) tries again.
+async fn finish_pending_quietly<R: ExecutorRpc>(executor: &ViaExecutor<R>, vault: &DesktopVault) {
+    if let Err(e) = finish_pending(executor, vault).await {
+        log::warn!("custody: the pending identity is not finished yet: {e}");
+    }
+}
+
 async fn public_state(vault: &DesktopVault, address: &ExecutorAddress) -> CustodyPublic {
     let unlock = if vault.needs_passphrase() {
         "passphrase"
@@ -319,7 +347,10 @@ async fn public_state(vault: &DesktopVault, address: &ExecutorAddress) -> Custod
         "touch-id-or-password"
     };
     let did = match connect(address).await {
-        Ok(executor) => executor.status().await.ok().and_then(|s| s.did),
+        Ok(executor) => {
+            finish_pending_quietly(&executor, vault).await;
+            executor.status().await.ok().and_then(|s| s.did)
+        }
         Err(_) => None,
     };
     let holds_master = did
@@ -373,6 +404,19 @@ async fn next_input(
     }
 }
 
+/// A pending identity that could not be finished yet: why, and that trying again finishes it.
+fn unfinished(e: &ClientError) -> Screen {
+    let Screen::Failed { message } = failed(e) else {
+        unreachable!("failed() answers Failed")
+    };
+    Screen::Failed {
+        message: format!(
+            "Your identity was made on this computer but is not published yet. {message} \
+             Try again in a moment: the same identity will be finished."
+        ),
+    }
+}
+
 fn passphrase_error(problem: PassphraseProblem) -> Option<String> {
     Some(problem.message())
 }
@@ -389,6 +433,21 @@ async fn run_create(
         Ok(e) => e,
         Err(message) => return answer(reply, Ok(Screen::Failed { message })),
     };
+    // An identity made here earlier whose publish was not confirmed is finished, never replaced:
+    // its master key is already kept, and its words are the ones the person wrote down.
+    match finish_pending(&executor, vault).await {
+        Ok(Some(created)) => {
+            return answer(
+                reply,
+                Ok(Screen::IdentityReady {
+                    did: created.did,
+                    key_id: created.device_key_id,
+                }),
+            )
+        }
+        Ok(None) => {}
+        Err(e) => return answer(reply, Ok(unfinished(&e))),
+    }
     // Refuse before showing words that would make nothing: this device speaks for someone already.
     match executor.status().await {
         Ok(status) if status.did.is_some() => {
@@ -488,13 +547,15 @@ async fn run_create(
         }
     }
 
-    // incept, the executor's co-signature, publish, then the vault keeps master #0.
+    // incept, the executor's co-signature, the vault keeps master #0 and the incept, publish.
     let unlocking = vault.unlocking(passphrase);
     let screen = match flow.finish(&executor, &unlocking).await {
         Ok(created) => Screen::IdentityReady {
             did: created.did,
             key_id: created.device_key_id,
         },
+        // Custody came first, so a publish that failed left an identity to finish, not a loss.
+        Err(e) if !vault.pending_incepts().unwrap_or_default().is_empty() => unfinished(&e),
         Err(e) => failed(&e),
     };
     answer(reply, Ok(screen));
@@ -517,6 +578,7 @@ async fn run_link(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, 
         Ok(e) => e,
         Err(message) => return answer(reply, Ok(Screen::Failed { message })),
     };
+    finish_pending_quietly(&executor, vault).await;
     let did = match executor.status().await {
         Ok(status) => match status.did {
             Some(did) => did,
@@ -672,6 +734,7 @@ async fn run_revoke(
         Ok(e) => e,
         Err(message) => return answer(reply, Ok(Screen::Failed { message })),
     };
+    finish_pending_quietly(&executor, vault).await;
     let (did, own) = match executor.status().await {
         Ok(status) => match status.did {
             Some(did) => (did, status.key_id),
@@ -747,6 +810,192 @@ async fn run_revoke(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::{Cell, RefCell};
+
+    use ad4m_identity_client::vault::KeySigner;
+    use ad4m_identity_client::{RpcError, Vault};
+    use ad4m_identity_core::build::{cosign, Signer};
+    use ad4m_identity_core::{did_of, words, Event};
+    use serde_json::{json, Value};
+
+    use crate::pending::PendingIncepts;
+    use crate::seal::Kdf;
+    use crate::store::FileStore;
+
+    const CHEAP: Kdf = Kdf {
+        m_kib: 64,
+        t: 1,
+        p: 1,
+    };
+    const PASSPHRASE: &str = "a passphrase of some length";
+
+    /// An executor with one device key that co-signs and takes a publish, answering
+    /// `identity.status` from what it took. Its publish can be made to fail once.
+    struct FakeExecutor {
+        device: KeySigner,
+        held: RefCell<Option<String>>,
+        refuse_publish: Cell<bool>,
+        publishes: Cell<u32>,
+        calls: Cell<u32>,
+    }
+
+    impl FakeExecutor {
+        fn new() -> Self {
+            FakeExecutor {
+                device: KeySigner::new(&[5u8; 32], 0),
+                held: RefCell::new(None),
+                refuse_publish: Cell::new(false),
+                publishes: Cell::new(0),
+                calls: Cell::new(0),
+            }
+        }
+    }
+
+    #[async_trait::async_trait(?Send)]
+    impl ExecutorRpc for FakeExecutor {
+        async fn call(&self, method: &str, p: Value) -> Result<Value, RpcError> {
+            self.calls.set(self.calls.get() + 1);
+            match method {
+                "identity.status" => {
+                    let held = self.held.borrow().clone();
+                    Ok(json!({
+                        "did": held.as_deref().map(did_of),
+                        "deviceKey": Signer::key(&self.device),
+                        "deviceEnc": ad4m_identity_core::encode_x25519_multikey(&[6u8; 32]),
+                        "keyId": held.map(|_| "d1"),
+                        "revoked": null,
+                        "head": null,
+                        "fork": null,
+                    }))
+                }
+                "identity.cosignIncept" => {
+                    let mut event = Event::from_json(&p["event"]).unwrap();
+                    cosign(&mut event, "d1", &self.device).unwrap();
+                    Ok(serde_json::to_value(&event).unwrap())
+                }
+                "identity.publish" => {
+                    if self.refuse_publish.replace(false) {
+                        return Err(RpcError {
+                            code: 503,
+                            message: "the store did not answer".into(),
+                        });
+                    }
+                    let event = Event::from_json(&p["events"][0]).unwrap();
+                    self.publishes.set(self.publishes.get() + 1);
+                    *self.held.borrow_mut() = Some(event.scid.clone());
+                    Ok(json!({
+                        "scid": event.scid, "seq": 0, "hash": "h", "time": 0,
+                        "store": "did:key:zStore", "sig": "s",
+                    }))
+                }
+                other => Err(RpcError {
+                    code: 404,
+                    message: format!("no {other}"),
+                }),
+            }
+        }
+    }
+
+    /// A create of fixed words, past the two words typed back.
+    fn confirmed(entropy: u8) -> CreateFlow {
+        let words = words::from_entropy(&[entropy; 16]);
+        let list: Vec<String> = words.words().iter().map(|w| w.to_string()).collect();
+        let (mut flow, _) = CreateFlow::from_words(words);
+        let CreateScreen::ConfirmWords { positions } = flow.words_written(&RANDOM).unwrap() else {
+            panic!("expected the confirm screen");
+        };
+        flow.confirm([&list[positions[0] - 1], &list[positions[1] - 1]])
+            .unwrap();
+        flow
+    }
+
+    /// The desktop vault over `dir`, as the app opens it on each start.
+    fn open_vault(dir: &std::path::Path) -> DesktopVault {
+        DesktopVault::with_kdf(
+            Box::new(FileStore::new(dir)),
+            PendingIncepts::file(dir),
+            CHEAP,
+        )
+    }
+
+    fn pass() -> Option<Secret<String>> {
+        Some(Secret::new(PASSPHRASE.to_string()))
+    }
+
+    #[tokio::test]
+    async fn a_create_whose_publish_failed_is_finished_after_the_app_starts_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let executor = ViaExecutor::new(FakeExecutor::new());
+
+        // The publish fails after custody: the master key and the incept are kept, nothing is public.
+        executor.rpc().refuse_publish.set(true);
+        let vault = open_vault(dir.path());
+        let failed_create = confirmed(21)
+            .finish(&executor, &vault.unlocking(pass()))
+            .await;
+        assert!(
+            matches!(&failed_create, Err(ClientError::Rpc(e)) if e.code == 503),
+            "{failed_create:?}"
+        );
+        assert!(executor.rpc().held.borrow().is_none());
+        let scid = vault.pending_incepts().unwrap()[0].scid.clone();
+        drop(vault);
+
+        // The app starts again: the incept and the master key are still here.
+        let vault = open_vault(dir.path());
+        assert_eq!(vault.pending_incepts().unwrap().len(), 1);
+        assert!(vault.holds(&scid).unwrap());
+
+        // Other words are refused while it is pending, in words a person reads.
+        let other = confirmed(22)
+            .finish(&executor, &vault.unlocking(pass()))
+            .await;
+        let Err(e @ ClientError::CreatePending(did)) = &other else {
+            panic!("{other:?}");
+        };
+        assert_eq!(*did, did_of(&scid));
+        let Screen::Failed { message } = failed(e) else {
+            unreachable!()
+        };
+        assert!(message.contains(did.as_str()), "{message}");
+
+        // Finishing it publishes the same incept, with no unlock, and forgets it.
+        let created = finish_pending(&executor, &vault)
+            .await
+            .unwrap()
+            .expect("a pending identity");
+        assert_eq!(created.did, did_of(&scid));
+        assert_eq!(created.device_key_id, "d1");
+        assert_eq!(executor.rpc().publishes.get(), 1);
+        assert_eq!(executor.rpc().held.borrow().as_deref(), Some(scid.as_str()));
+        assert!(vault.pending_incepts().unwrap().is_empty());
+        assert!(open_vault(dir.path()).pending_incepts().unwrap().is_empty());
+        assert!(vault
+            .unlocking(pass())
+            .unlock(&scid, ad4m_identity_client::MasterUse::Link, 0)
+            .is_ok());
+
+        // Nothing left: finishing again asks the executor nothing.
+        let calls = executor.rpc().calls.get();
+        assert!(finish_pending(&executor, &vault).await.unwrap().is_none());
+        assert_eq!(executor.rpc().calls.get(), calls);
+    }
+
+    #[tokio::test]
+    async fn a_create_that_publishes_leaves_nothing_pending() {
+        let dir = tempfile::tempdir().unwrap();
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        let vault = open_vault(dir.path());
+        let created = confirmed(23)
+            .finish(&executor, &vault.unlocking(pass()))
+            .await
+            .unwrap();
+        assert!(vault.pending_incepts().unwrap().is_empty());
+        assert!(!dir.path().join(crate::pending::FILE_NAME).exists());
+        assert!(vault
+            .holds(ad4m_identity_core::scid_of(&created.did).unwrap())
+            .unwrap());
+    }
 
     #[test]
     fn steps_and_screens_cross_ipc_in_the_shapes_the_windows_expect() {
@@ -807,7 +1056,10 @@ mod tests {
 
     #[tokio::test]
     async fn a_step_input_with_no_step_open_is_refused_and_cancel_is_harmless() {
-        let vault = DesktopVault::new(Box::new(crate::store::MemoryStore::new()));
+        let vault = DesktopVault::new(
+            Box::new(crate::store::MemoryStore::new()),
+            crate::pending::PendingIncepts::memory(),
+        );
         let handle = spawn(
             vault,
             ExecutorAddress {

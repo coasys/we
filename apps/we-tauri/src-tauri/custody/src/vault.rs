@@ -6,16 +6,22 @@
 //! passphrase — and it lives exactly as long as the flow step that needs it.
 //!
 //! Every read and write is logged by kind only (`custody: read for Link`), never with contents.
+//!
+//! Beside the master keys the vault keeps the incept of an identity `create` made here until its
+//! publish is confirmed ([`PendingIncepts`]): public data, so in a file rather than the secret store.
 
 use ad4m_identity_client::vault::KeySigner;
 use ad4m_identity_client::{MasterUse, Secret, Unlocked, Vault, VaultError};
+use ad4m_identity_core::Event;
 use zeroize::Zeroizing;
 
+use crate::pending::PendingIncepts;
 use crate::seal::{self, CustodyItem, Kdf};
 use crate::store::{item_name, SecretStore};
 
 pub struct DesktopVault {
     store: Box<dyn SecretStore>,
+    pending: PendingIncepts,
     kdf: Kdf,
 }
 
@@ -24,16 +30,27 @@ fn os_random(out: &mut [u8]) {
 }
 
 impl DesktopVault {
-    pub fn new(store: Box<dyn SecretStore>) -> Self {
+    /// Master keys in `store`, pending incepts in `pending`.
+    pub fn new(store: Box<dyn SecretStore>, pending: PendingIncepts) -> Self {
         DesktopVault {
             store,
+            pending,
             kdf: Kdf::DESKTOP,
         }
     }
 
     /// With another Argon2id cost (tests).
-    pub fn with_kdf(store: Box<dyn SecretStore>, kdf: Kdf) -> Self {
-        DesktopVault { store, kdf }
+    pub fn with_kdf(store: Box<dyn SecretStore>, pending: PendingIncepts, kdf: Kdf) -> Self {
+        DesktopVault {
+            store,
+            pending,
+            kdf,
+        }
+    }
+
+    /// The incepts of identities made here whose publish is not confirmed. Needs no unlock.
+    pub fn pending_incepts(&self) -> Result<Vec<Event>, VaultError> {
+        self.pending.list()
     }
 
     /// Whether the identity window must ask for a passphrase before a flow: false where the OS's own
@@ -126,6 +143,20 @@ impl Vault for Unlocking<'_> {
             now,
         ))
     }
+
+    fn store_pending_incept(&self, incept: &Event) -> Result<(), VaultError> {
+        log::info!("custody: keep pending incept");
+        self.vault.pending.keep(incept)
+    }
+
+    fn pending_incepts(&self) -> Result<Vec<Event>, VaultError> {
+        self.vault.pending.list()
+    }
+
+    fn incept_published(&self, scid: &str) -> Result<(), VaultError> {
+        log::info!("custody: forget published incept");
+        self.vault.pending.forget(scid)
+    }
 }
 
 #[cfg(test)]
@@ -161,7 +192,11 @@ mod tests {
                 self.0.delete(n)
             }
         }
-        let vault = DesktopVault::with_kdf(Box::new(Shared(store.clone())), CHEAP);
+        let vault = DesktopVault::with_kdf(
+            Box::new(Shared(store.clone())),
+            PendingIncepts::memory(),
+            CHEAP,
+        );
         assert!(vault.needs_passphrase());
         let flow = vault.unlocking(pass("a passphrase of length"));
         assert!(!vault.holds("QmScid").unwrap());
@@ -197,7 +232,10 @@ mod tests {
 
     #[test]
     fn a_keychain_vault_asks_for_no_passphrase() {
-        let vault = DesktopVault::new(Box::new(MemoryStore::as_kind(StoreKind::Keychain)));
+        let vault = DesktopVault::new(
+            Box::new(MemoryStore::as_kind(StoreKind::Keychain)),
+            PendingIncepts::memory(),
+        );
         assert!(!vault.needs_passphrase());
         let flow = vault.unlocking(None);
         flow.store_master("QmScid", 3, Secret::new([4u8; 32]))
