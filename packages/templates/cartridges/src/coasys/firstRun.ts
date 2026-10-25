@@ -68,7 +68,7 @@ function door(options: {
           },
           { type: 'Column', props: { gap: '100', flex: '1', minWidth: '0', textAlign: 'left' }, children: text },
           options.soon
-            ? { type: 'we-tag', props: { variant: 'neutral' }, children: ['Coming soon'] }
+            ? { type: 'we-tag', props: { tone: 'neutral' }, children: ['Coming soon'] }
             : { type: 'we-icon', props: { name: 'caret-right', color: 'text-faint' } },
         ],
       },
@@ -156,7 +156,7 @@ export const coasysFirstRun: SchemaNode = {
                 condition: { $: "identityStore.lastOutcome == 'failed'" },
                 then: {
                   type: 'we-alert',
-                  props: { variant: 'danger' },
+                  props: { tone: 'danger' },
                   children: ['Your identity was not made. Nothing was published; try again.'],
                 },
               },

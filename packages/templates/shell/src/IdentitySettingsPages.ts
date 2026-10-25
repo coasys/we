@@ -36,7 +36,12 @@ const footnote = (icon: string, text: string): SchemaNode => ({
 
 const back = (label: string, path: string): SchemaNode => ({
   type: 'we-button',
-  props: { variant: 'ghost', size: 'sm', onClick: { $action: 'routeStore.navigate', args: [path] } },
+  props: {
+    variant: 'ghost',
+    size: 'sm',
+    alignSelf: 'start',
+    onClick: { $action: 'routeStore.navigate', args: [path] },
+  },
   children: [{ type: 'we-icon', props: { name: 'caret-left' } }, label],
 });
 
@@ -128,7 +133,7 @@ export const keyLogPage: SchemaNode = {
         condition: { $: 'identityStore.forked' },
         then: {
           type: 'we-alert',
-          props: { variant: 'danger' },
+          props: { tone: 'danger' },
           children: [
             'Two different logs exist for your identity. Coasys kept the one it had and added nothing until this is settled.',
           ],
@@ -172,7 +177,7 @@ export const keyLogSummary: SchemaNode[] = [
       {
         type: 'we-button',
         props: {
-          variant: 'secondary',
+          variant: 'soft',
           size: 'sm',
           onClick: { $action: 'routeStore.navigate', args: ['/security/key-log'] },
         },
@@ -215,7 +220,7 @@ export const makeIdentityCard: SchemaNode = {
             {
               type: 'we-button',
               props: {
-                variant: 'primary',
+                variant: 'solid',
                 size: 'sm',
                 loading: { $: 'identityStore.busy' },
                 disabled: { $: 'identityStore.busy' },
@@ -255,7 +260,7 @@ const deviceRow: SchemaNode = listRow(
   [
     {
       type: 'we-badge',
-      props: { variant: { $: "device.revoked ? 'danger' : 'success'" }, size: 'sm' },
+      props: { tone: { $: "device.revoked ? 'danger' : 'success'" }, size: 'sm' },
       children: [{ $: 'device.status' }],
     },
     {
@@ -267,7 +272,7 @@ const deviceRow: SchemaNode = listRow(
           props: {
             variant: 'ghost',
             size: 'sm',
-            color: 'danger-text',
+            tone: 'danger',
             disabled: { $: 'identityStore.busy' },
             onClick: { $action: 'deviceStore.revoke', args: [{ $: 'device.keyId' }] },
           },
@@ -306,7 +311,7 @@ export const addDeviceButton: SchemaNode = {
     then: {
       type: 'we-button',
       props: {
-        variant: 'primary',
+        variant: 'solid',
         loading: { $: 'identityStore.busy' },
         disabled: { $: 'identityStore.busy' },
         onClick: { $action: 'deviceStore.addDevice' },

@@ -801,11 +801,7 @@
                                           }
                                         ]
                                       },
-                                      {
-                                        "type": "we-tag",
-                                        "props": { "variant": "neutral" },
-                                        "children": ["Coming soon"]
-                                      }
+                                      { "type": "we-tag", "props": { "tone": "neutral" }, "children": ["Coming soon"] }
                                     ]
                                   }
                                 ]
@@ -854,11 +850,7 @@
                                           }
                                         ]
                                       },
-                                      {
-                                        "type": "we-tag",
-                                        "props": { "variant": "neutral" },
-                                        "children": ["Coming soon"]
-                                      }
+                                      { "type": "we-tag", "props": { "tone": "neutral" }, "children": ["Coming soon"] }
                                     ]
                                   }
                                 ]
@@ -900,11 +892,7 @@
                                         "props": { "gap": "100", "flex": "1", "minWidth": "0", "textAlign": "left" },
                                         "children": [{ "type": "we-text", "children": ["Use my 12 words"] }]
                                       },
-                                      {
-                                        "type": "we-tag",
-                                        "props": { "variant": "neutral" },
-                                        "children": ["Coming soon"]
-                                      }
+                                      { "type": "we-tag", "props": { "tone": "neutral" }, "children": ["Coming soon"] }
                                     ]
                                   }
                                 ]
@@ -917,7 +905,7 @@
                               "condition": { "$": "identityStore.lastOutcome == 'failed'" },
                               "then": {
                                 "type": "we-alert",
-                                "props": { "variant": "danger" },
+                                "props": { "tone": "danger" },
                                 "children": ["Your identity was not made. Nothing was published; try again."]
                               }
                             }
