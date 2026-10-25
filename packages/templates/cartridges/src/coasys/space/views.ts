@@ -4,6 +4,7 @@ import { FLOWS_LOCALS, flowsPage } from '@we/template-showcase';
 
 import { liveDot } from './marks.ts';
 import { CHANNEL, CHANNEL_EXPR, channelPath, IN_ROOT_EXPR, PAGE_EXPR } from './paths.ts';
+import { newChannelDialog } from './tree.ts';
 
 /**
  * What the view beside the tree draws: a channel as chat or as a canvas, the space's flows, and — as
@@ -100,24 +101,33 @@ const CLEAR_OF_THE_BAR = 'calc(var(--we-space-500) + var(--we-covered-bottom, 0p
 const LIFT = 'padding-bottom 300 ease';
 
 /**
- * Where to start, in a space with nothing in it yet: a hint for each first thing worth doing. Shown in
- * the root channel until the space has a call or a channel of its own.
+ * Where to start, in a space with nothing in it yet: a card for each first thing worth doing, which
+ * does it when pressed. Shown in the root channel until the space has a call or a channel of its own.
  *
- * The first is the one to do, so it is lit: an accent border and a glow, as a highlighted card is in
- * Nico's design. How bright the glow is, is the theme's — strong in Glow, quiet elsewhere.
+ * Each card is a bare button around the card itself, so it is reachable from the keyboard and
+ * announced as what it does. It lights under the pointer — an accent border and a glow, as a
+ * highlighted card is in Nico's design; how bright the glow is, is the theme's.
  */
-const hint = (icon: string, title: string, body: string, lit = false): SchemaNode => ({
-  type: 'Card',
-  props: {
-    bg: 'surface',
-    gap: '200',
-    flex: '1 1 200px',
-    ...(lit ? { border: '1px solid accent-border', shadow: 'glow' } : {}),
-  },
+const hint = (icon: string, title: string, body: string, onClick: SchemaProp, disabled?: SchemaProp): SchemaNode => ({
+  type: 'we-button',
+  props: { variant: 'bare', label: title, flex: '1 1 200px', onClick, ...(disabled ? { disabled } : {}) },
   children: [
-    { type: 'we-icon', props: { name: icon, color: 'accent-text', size: 'md' } },
-    { type: 'we-text', props: { fontWeight: 'semibold' }, children: [title] },
-    { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: [body] },
+    {
+      type: 'Card',
+      props: {
+        bg: 'surface',
+        gap: '200',
+        width: '100%',
+        height: '100%',
+        border: '1px solid transparent',
+        hoverProps: { border: '1px solid accent-border', shadow: 'glow' },
+      },
+      children: [
+        { type: 'we-icon', props: { name: icon, color: 'accent-text', size: 'md' } },
+        { type: 'we-text', props: { fontWeight: 'semibold' }, children: [title] },
+        { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: [body] },
+      ],
+    },
   ],
 });
 
@@ -157,10 +167,16 @@ const firstSteps: SchemaNode = {
               'phone',
               'Start a call',
               'Everyone here can join. What is said is written down, and what is decided becomes work you can see.',
-              true,
+              { $action: 'modules.call.goToCall' },
+              { $: '!modules.call.canCall' },
             ),
-            hint('hash', 'Make a channel', 'A place for one subject, from the + beside Channels.'),
-            hint('chat-circle', 'Say hello', 'Write below. Everyone in the space reads General.'),
+            hint('hash', 'Make a channel', 'A place for one subject, also from the + beside Channels.', {
+              $setLocal: 'newChannelOpen',
+              value: true,
+            }),
+            hint('chat-circle', 'Say hello', 'Write below. Everyone in the space reads General.', {
+              $callLocal: 'focusLine',
+            }),
           ],
         },
       ],
@@ -217,10 +233,16 @@ const chatRoute: RouteSchema = {
       when: { $: 'spaceStore.root' },
     },
   },
-  $localState: { sending: { type: 'boolean', initial: false } },
+  $localState: {
+    sending: { type: 'boolean', initial: false },
+    // For the first steps: the new-channel dialog, and the composer's own focus once it is ready.
+    newChannelOpen: { type: 'boolean', initial: false },
+    focusLine: { type: 'function', initial: null },
+  },
   children: [
     viewBar([{ $: CHANNEL_TITLE }], 'hash', [channelModes]),
     firstSteps,
+    newChannelDialog('newChannelOpen'),
     {
       type: 'Column',
       props: { flex: '1', minHeight: '0', px: '500', py: '300' },
@@ -252,7 +274,12 @@ const chatRoute: RouteSchema = {
             },
           },
         },
-        lineComposer({ placeholder: 'Write a message…', sendLabel: 'Send', onSubmit: sendLine }),
+        lineComposer({
+          placeholder: 'Write a message…',
+          sendLabel: 'Send',
+          onSubmit: sendLine,
+          focusLocal: 'focusLine',
+        }),
       ],
     },
   ],

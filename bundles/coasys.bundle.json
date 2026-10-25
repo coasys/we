@@ -16,8 +16,8 @@
       "icon": "hexagon",
       "role": "app",
       "frame": { "left": 72 },
-      "themeId": "theme",
-      "themeIds": ["theme", "glow"]
+      "themeId": "glow",
+      "themeIds": ["glow", "theme"]
     },
     "props": { "styles": { "display": "contents" } },
     "children": [
@@ -1546,8 +1546,8 @@
             ]
           }
         },
-        "themeId": "theme",
-        "themeIds": ["theme", "glow"]
+        "themeId": "glow",
+        "themeIds": ["glow", "theme"]
       },
       "type": "Row",
       "props": { "bg": "page", "width": "100%", "height": "100%" },
@@ -1585,7 +1585,11 @@
               "when": { "$": "spaceStore.root" }
             }
           },
-          "$localState": { "sending": { "type": "boolean", "initial": false } },
+          "$localState": {
+            "sending": { "type": "boolean", "initial": false },
+            "newChannelOpen": { "type": "boolean", "initial": false },
+            "focusLine": { "type": "function", "initial": null }
+          },
           "children": [
             {
               "type": "Row",
@@ -1703,58 +1707,186 @@
                       "props": { "gap": "300", "wrap": true },
                       "children": [
                         {
-                          "type": "Card",
+                          "type": "we-button",
                           "props": {
-                            "bg": "surface",
-                            "gap": "200",
+                            "variant": "bare",
+                            "label": "Start a call",
                             "flex": "1 1 200px",
-                            "border": "1px solid accent-border",
-                            "shadow": "glow"
+                            "onClick": { "$action": "modules.call.goToCall" },
+                            "disabled": { "$": "!modules.call.canCall" }
                           },
                           "children": [
-                            { "type": "we-icon", "props": { "name": "phone", "color": "accent-text", "size": "md" } },
-                            { "type": "we-text", "props": { "fontWeight": "semibold" }, "children": ["Start a call"] },
                             {
-                              "type": "we-text",
-                              "props": { "variant": "footnote", "color": "text-muted" },
+                              "type": "Card",
+                              "props": {
+                                "bg": "surface",
+                                "gap": "200",
+                                "width": "100%",
+                                "height": "100%",
+                                "border": "1px solid transparent",
+                                "hoverProps": { "border": "1px solid accent-border", "shadow": "glow" }
+                              },
                               "children": [
-                                "Everyone here can join. What is said is written down, and what is decided becomes work you can see."
+                                {
+                                  "type": "we-icon",
+                                  "props": { "name": "phone", "color": "accent-text", "size": "md" }
+                                },
+                                {
+                                  "type": "we-text",
+                                  "props": { "fontWeight": "semibold" },
+                                  "children": ["Start a call"]
+                                },
+                                {
+                                  "type": "we-text",
+                                  "props": { "variant": "footnote", "color": "text-muted" },
+                                  "children": [
+                                    "Everyone here can join. What is said is written down, and what is decided becomes work you can see."
+                                  ]
+                                }
                               ]
                             }
                           ]
                         },
                         {
-                          "type": "Card",
-                          "props": { "bg": "surface", "gap": "200", "flex": "1 1 200px" },
+                          "type": "we-button",
+                          "props": {
+                            "variant": "bare",
+                            "label": "Make a channel",
+                            "flex": "1 1 200px",
+                            "onClick": { "$setLocal": "newChannelOpen", "value": true }
+                          },
                           "children": [
-                            { "type": "we-icon", "props": { "name": "hash", "color": "accent-text", "size": "md" } },
                             {
-                              "type": "we-text",
-                              "props": { "fontWeight": "semibold" },
-                              "children": ["Make a channel"]
-                            },
-                            {
-                              "type": "we-text",
-                              "props": { "variant": "footnote", "color": "text-muted" },
-                              "children": ["A place for one subject, from the + beside Channels."]
+                              "type": "Card",
+                              "props": {
+                                "bg": "surface",
+                                "gap": "200",
+                                "width": "100%",
+                                "height": "100%",
+                                "border": "1px solid transparent",
+                                "hoverProps": { "border": "1px solid accent-border", "shadow": "glow" }
+                              },
+                              "children": [
+                                {
+                                  "type": "we-icon",
+                                  "props": { "name": "hash", "color": "accent-text", "size": "md" }
+                                },
+                                {
+                                  "type": "we-text",
+                                  "props": { "fontWeight": "semibold" },
+                                  "children": ["Make a channel"]
+                                },
+                                {
+                                  "type": "we-text",
+                                  "props": { "variant": "footnote", "color": "text-muted" },
+                                  "children": ["A place for one subject, also from the + beside Channels."]
+                                }
+                              ]
                             }
                           ]
                         },
                         {
-                          "type": "Card",
-                          "props": { "bg": "surface", "gap": "200", "flex": "1 1 200px" },
+                          "type": "we-button",
+                          "props": {
+                            "variant": "bare",
+                            "label": "Say hello",
+                            "flex": "1 1 200px",
+                            "onClick": { "$callLocal": "focusLine" }
+                          },
                           "children": [
                             {
-                              "type": "we-icon",
-                              "props": { "name": "chat-circle", "color": "accent-text", "size": "md" }
-                            },
-                            { "type": "we-text", "props": { "fontWeight": "semibold" }, "children": ["Say hello"] },
-                            {
-                              "type": "we-text",
-                              "props": { "variant": "footnote", "color": "text-muted" },
-                              "children": ["Write below. Everyone in the space reads General."]
+                              "type": "Card",
+                              "props": {
+                                "bg": "surface",
+                                "gap": "200",
+                                "width": "100%",
+                                "height": "100%",
+                                "border": "1px solid transparent",
+                                "hoverProps": { "border": "1px solid accent-border", "shadow": "glow" }
+                              },
+                              "children": [
+                                {
+                                  "type": "we-icon",
+                                  "props": { "name": "chat-circle", "color": "accent-text", "size": "md" }
+                                },
+                                { "type": "we-text", "props": { "fontWeight": "semibold" }, "children": ["Say hello"] },
+                                {
+                                  "type": "we-text",
+                                  "props": { "variant": "footnote", "color": "text-muted" },
+                                  "children": ["Write below. Everyone in the space reads General."]
+                                }
+                              ]
                             }
                           ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "type": "$if",
+              "props": {
+                "condition": { "$": "local.newChannelOpen" },
+                "then": {
+                  "type": "we-modal",
+                  "props": { "size": "sm", "close": { "$setLocal": "newChannelOpen", "value": false } },
+                  "$localState": { "channelName": { "type": "string", "initial": "" } },
+                  "children": [
+                    {
+                      "type": "we-text",
+                      "slot": "header",
+                      "props": { "variant": "heading-md" },
+                      "children": ["New channel"]
+                    },
+                    {
+                      "type": "we-form-field",
+                      "key": "channelName",
+                      "props": { "label": "Name" },
+                      "children": [
+                        {
+                          "type": "we-input",
+                          "props": {
+                            "placeholder": "What it is about",
+                            "value": { "$": "local.channelName" },
+                            "onInput": { "$setLocal": "channelName", "value": { "$": "event.detail" } }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "Row",
+                      "slot": "footer",
+                      "props": { "ax": "end", "gap": "300" },
+                      "children": [
+                        {
+                          "type": "we-button",
+                          "props": { "variant": "soft", "onClick": { "$setLocal": "newChannelOpen", "value": false } },
+                          "children": ["Cancel"]
+                        },
+                        {
+                          "type": "we-button",
+                          "props": {
+                            "variant": "solid",
+                            "disabled": { "$": "!trim(local.channelName)" },
+                            "onClick": {
+                              "$action": "record.create",
+                              "args": [
+                                "CollectionBlock",
+                                { "kind": "channel", "title": { "$": "trim(local.channelName)" } },
+                                {
+                                  "parent": {
+                                    "id": { "$": "spaceStore.root" },
+                                    "relation": "children",
+                                    "entity": "CollectionBlock"
+                                  }
+                                }
+                              ],
+                              "onSuccess": [{ "$setLocal": "newChannelOpen", "value": false }]
+                            }
+                          },
+                          "children": ["Make channel"]
                         }
                       ]
                     }
@@ -1833,7 +1965,10 @@
                             "autoFocus": false,
                             "handles": false,
                             "placeholder": "Write a message…",
-                            "onReady": { "$setLocal": "sendLine", "value": { "$": "event.submit" } },
+                            "onReady": [
+                              { "$setLocal": "sendLine", "value": { "$": "event.submit" } },
+                              { "$setLocal": "focusLine", "value": { "$": "event.focus" } }
+                            ],
                             "onSubmit": {
                               "$if": {
                                 "condition": { "$": "!local.sending" },
@@ -6253,53 +6388,6 @@
   ],
   "themes": [
     {
-      "id": "theme",
-      "name": "Coasys",
-      "icon": "hexagon",
-      "overrides": {
-        "schemaVersion": 7,
-        "accentHue": 160,
-        "saturation": 60,
-        "neutralHue": 278,
-        "neutralSaturation": 22,
-        "surfaceRadius": "20px",
-        "controlRadius": "999px",
-        "inputRadius": "14px",
-        "avatarRadius": "999px",
-        "polarity": "dark",
-        "lightnessFloor": "16%",
-        "lightnessCeiling": "104%",
-        "roles": {
-          "page": "oklch(18.5% 0.04 278)",
-          "chrome": "oklch(16% 0.04 278)",
-          "accent": "oklch(85% 0.12 160)",
-          "onAccent": "oklch(20% 0.045 278)"
-        },
-        "light": {
-          "polarity": "light",
-          "lightnessFloor": "0%",
-          "lightnessCeiling": "100%",
-          "roles": {
-            "page": "oklch(98% 0.012 278)",
-            "chrome": "oklch(96% 0.016 278)",
-            "accent": "oklch(55% 0.14 160)",
-            "onAccent": "oklch(99% 0.005 278)"
-          }
-        },
-        "dark": {
-          "polarity": "dark",
-          "lightnessFloor": "16%",
-          "lightnessCeiling": "104%",
-          "roles": {
-            "page": "oklch(18.5% 0.04 278)",
-            "chrome": "oklch(16% 0.04 278)",
-            "accent": "oklch(85% 0.12 160)",
-            "onAccent": "oklch(20% 0.045 278)"
-          }
-        }
-      }
-    },
-    {
       "id": "glow",
       "name": "Coasys Glow",
       "icon": "sparkle",
@@ -6385,6 +6473,53 @@
           "blueSoft": "color-mix(in oklab, var(--we-role-blue) 16%, var(--we-role-surface))",
           "purpleSoft": "color-mix(in oklab, var(--we-role-purple) 16%, var(--we-role-surface))",
           "pinkSoft": "color-mix(in oklab, var(--we-role-pink) 16%, var(--we-role-surface))"
+        }
+      }
+    },
+    {
+      "id": "theme",
+      "name": "Coasys",
+      "icon": "hexagon",
+      "overrides": {
+        "schemaVersion": 7,
+        "accentHue": 160,
+        "saturation": 60,
+        "neutralHue": 278,
+        "neutralSaturation": 22,
+        "surfaceRadius": "20px",
+        "controlRadius": "999px",
+        "inputRadius": "14px",
+        "avatarRadius": "999px",
+        "polarity": "dark",
+        "lightnessFloor": "16%",
+        "lightnessCeiling": "104%",
+        "roles": {
+          "page": "oklch(18.5% 0.04 278)",
+          "chrome": "oklch(16% 0.04 278)",
+          "accent": "oklch(85% 0.12 160)",
+          "onAccent": "oklch(20% 0.045 278)"
+        },
+        "light": {
+          "polarity": "light",
+          "lightnessFloor": "0%",
+          "lightnessCeiling": "100%",
+          "roles": {
+            "page": "oklch(98% 0.012 278)",
+            "chrome": "oklch(96% 0.016 278)",
+            "accent": "oklch(55% 0.14 160)",
+            "onAccent": "oklch(99% 0.005 278)"
+          }
+        },
+        "dark": {
+          "polarity": "dark",
+          "lightnessFloor": "16%",
+          "lightnessCeiling": "104%",
+          "roles": {
+            "page": "oklch(18.5% 0.04 278)",
+            "chrome": "oklch(16% 0.04 278)",
+            "accent": "oklch(85% 0.12 160)",
+            "onAccent": "oklch(20% 0.045 278)"
+          }
         }
       }
     }

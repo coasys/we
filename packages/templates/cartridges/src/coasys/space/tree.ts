@@ -385,24 +385,29 @@ const callRunning: SchemaNode = {
   },
 };
 
-const newChannel: SchemaNode = formModal({
-  open: { $: 'local.newChannelOpen' },
-  close: { $setLocal: 'newChannelOpen', value: false },
-  title: 'New channel',
-  size: 'sm',
-  localState: { channelName: { type: 'string', initial: '' } },
-  children: [field({ name: 'channelName', label: 'Name', placeholder: 'What it is about' })],
-  disabled: { $: '!trim(local.channelName)' },
-  submitLabel: 'Make channel',
-  submit: {
-    $action: 'record.create',
-    args: [
-      'CollectionBlock',
-      { kind: 'channel', title: { $: 'trim(local.channelName)' } },
-      { parent: { id: { $: 'spaceStore.root' }, relation: 'children', entity: 'CollectionBlock' } },
-    ],
-  },
-});
+/**
+ * The new-channel dialog, opened by a boolean local the caller declares — the tree's + and the empty
+ * channel's "Make a channel" card each hold their own.
+ */
+export const newChannelDialog = (openLocal: string): SchemaNode =>
+  formModal({
+    open: { $: `local.${openLocal}` },
+    close: { $setLocal: openLocal, value: false },
+    title: 'New channel',
+    size: 'sm',
+    localState: { channelName: { type: 'string', initial: '' } },
+    children: [field({ name: 'channelName', label: 'Name', placeholder: 'What it is about' })],
+    disabled: { $: '!trim(local.channelName)' },
+    submitLabel: 'Make channel',
+    submit: {
+      $action: 'record.create',
+      args: [
+        'CollectionBlock',
+        { kind: 'channel', title: { $: 'trim(local.channelName)' } },
+        { parent: { id: { $: 'spaceStore.root' }, relation: 'children', entity: 'CollectionBlock' } },
+      ],
+    },
+  });
 
 /** The tree section, as the space template's left lane holds it. */
 export const treeSection: SchemaNode = {
@@ -449,6 +454,6 @@ export const treeSection: SchemaNode = {
       ],
     },
     callButton,
-    newChannel,
+    newChannelDialog('newChannelOpen'),
   ],
 };
