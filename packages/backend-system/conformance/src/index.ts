@@ -24,6 +24,7 @@ import {
   type BackendPorts,
   CONTAINMENT_PREDICATE,
   type DatasetHandle,
+  type EntityManifest,
   itemFor,
   RECORD_TYPE_KEY,
   type RendererDataBindings,
@@ -65,6 +66,66 @@ export interface ConformanceHarness {
   knownIntermittent?: Partial<Record<ConformanceCase, string>>;
 }
 
+/**
+ * A community's model as a space stores one: predicates and flag resolved, a parent it extends, and
+ * every kind of thing a manifest says beyond structure — a default, closed options, a control, a
+ * card's display, which fields its form asks for, a relation to core vocabulary and an ordered
+ * containment of its own. A store that keeps any of it in a form of its own has to read all of it back.
+ */
+const SIGHTING_MANIFEST = {
+  version: '1',
+  entities: {
+    Sighting: {
+      extends: 'WeNode',
+      flag: { predicate: 'we://flag', value: 'we://module/shape/conformance-sighting/sighting' },
+      description: 'A bird somebody saw',
+      interpretationHint: 'Somebody saying they saw a bird',
+      extractable: true,
+      authoring: { fields: ['species', 'count', 'notes'] },
+      display: { title: 'species', summary: 'notes', media: 'photo', fields: ['count', 'seenAt'] },
+      properties: {
+        species: {
+          type: 'string',
+          predicate: 'we://module/shape/conformance-sighting/species',
+          required: true,
+          identity: true,
+          interpretationHint: 'Which bird',
+          default: '',
+        },
+        count: { type: 'number', predicate: 'we://module/shape/conformance-sighting/count', default: 1 },
+        notes: {
+          type: 'string',
+          predicate: 'we://module/shape/conformance-sighting/notes',
+          control: 'textarea',
+          default: '',
+        },
+        seenAt: { type: 'datetime', predicate: 'we://module/shape/conformance-sighting/seen_at', control: 'datetime' },
+        certainty: {
+          type: 'string',
+          predicate: 'we://module/shape/conformance-sighting/certainty',
+          options: ['sure', 'probably', 'not sure'],
+          default: 'sure',
+        },
+        photo: {
+          type: 'string',
+          predicate: 'we://module/shape/conformance-sighting/photo',
+          format: 'file',
+          readAs: 'dataUri',
+          default: null,
+        },
+      },
+      relations: {
+        place: {
+          target: 'LocationBlock',
+          cardinality: 'one',
+          predicate: 'we://module/shape/conformance-sighting/place',
+        },
+        parts: { target: '', cardinality: 'many', containment: true, ordered: true },
+      },
+    },
+  },
+} as const;
+
 export const CONFORMANCE_CASES = [
   'bindings.surface',
   'bindings.identities',
@@ -73,6 +134,7 @@ export const CONFORMANCE_CASES = [
   'records.not-excludes-absent',
   'schema.module-entity',
   'schema.hints-round-trip',
+  'schema.shapes-round-trip',
   'schema.containment-predicate',
   'relations.create-under-parent',
   'relations.read-under-parent',
@@ -353,6 +415,45 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
         await subject.ports.schemas.resetInterpretationHints(subject.dataset, NOTE);
         expect(await hints()).toMatchObject({ classHint: 'A note somebody wrote', customized: false });
       });
+
+      test(
+        'schema.shapes-round-trip',
+        'keeps a space’s own model and reads it back as the manifest it was saved as',
+        async () => {
+          const store = subject.ports.schemas.shapes;
+          if (!store) return;
+          const shape = {
+            name: 'Sighting',
+            description: 'A bird somebody saw',
+            icon: 'bird',
+            shapeId: 'we://shapes/conformance-sighting',
+            version: 1,
+            forkedFrom: '',
+            manifest: SIGHTING_MANIFEST as unknown as EntityManifest,
+          };
+          const id = await store.save(subject.dataset, shape);
+          const read = async () => (await store.list(subject.dataset)).find((s) => s.shapeId === shape.shapeId);
+          await eventually(async () => {
+            expect(await read()).toMatchObject({
+              id,
+              name: 'Sighting',
+              description: 'A bird somebody saw',
+              icon: 'bird',
+              version: 1,
+              editable: true,
+            });
+            expect((await read())?.manifest).toEqual(SIGHTING_MANIFEST);
+          }, settle);
+
+          await store.save(subject.dataset, { ...shape, version: 2, description: 'A bird' }, id);
+          await eventually(async () => {
+            expect(await read()).toMatchObject({ id, version: 2, description: 'A bird' });
+          }, settle);
+
+          await store.remove(subject.dataset, id);
+          await eventually(async () => expect(await read()).toBeUndefined(), settle);
+        },
+      );
     });
 
     describe('containment', () => {
