@@ -356,7 +356,15 @@ async fn public_state(vault: &DesktopVault, address: &ExecutorAddress) -> Custod
     let holds_master = did
         .as_deref()
         .and_then(ad4m_identity_core::scid_of)
-        .and_then(|scid| vault.holds(scid).ok())
+        .and_then(|scid| match vault.holds(scid) {
+            Ok(held) => Some(held),
+            // The store could not be asked (no Secret Service, a keychain error): reported as not
+            // known to hold one, and logged so the cause is not lost.
+            Err(e) => {
+                log::warn!("custody: cannot tell whether the master key is held here: {e}");
+                None
+            }
+        })
         .filter(|held| *held)
         // The index sits inside the sealed item; only master #0 is held for now (no rotation yet).
         .map(|_| HoldsMaster { index: 0 });

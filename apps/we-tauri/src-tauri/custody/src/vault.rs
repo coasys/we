@@ -73,9 +73,10 @@ impl DesktopVault {
         }
     }
 
-    /// Whether an item for `scid` is held, without an unlock (no prompt, no passphrase).
+    /// Whether an item for `scid` is held, without an unlock (no prompt, no passphrase): the store is
+    /// asked whether the item exists, and the item itself is never read.
     pub fn holds(&self, scid: &str) -> Result<bool, VaultError> {
-        Ok(self.store.get(&item_name(scid))?.is_some())
+        self.store.contains(&item_name(scid))
     }
 
     fn read(
@@ -188,6 +189,9 @@ mod tests {
             fn get(&self, n: &str) -> Result<Option<Vec<u8>>, VaultError> {
                 self.0.get(n)
             }
+            fn contains(&self, n: &str) -> Result<bool, VaultError> {
+                self.0.contains(n)
+            }
             fn delete(&self, n: &str) -> Result<(), VaultError> {
                 self.0.delete(n)
             }
@@ -228,6 +232,44 @@ mod tests {
             Some(VaultError::Cancelled)
         );
         assert_eq!(unlocked.signer(10).unwrap().index(), 0);
+    }
+
+    #[test]
+    fn holds_answers_without_a_passphrase_and_never_reads_the_item() {
+        // A store whose reads fail the test: on the keychain a read is a Touch ID prompt and the
+        // secret in memory, which asking whether the key is here must never cost.
+        struct NoReads(crate::store::FileStore);
+        impl SecretStore for NoReads {
+            fn kind(&self) -> StoreKind {
+                self.0.kind()
+            }
+            fn put(&self, n: &str, b: &[u8]) -> Result<(), VaultError> {
+                self.0.put(n, b)
+            }
+            fn get(&self, _: &str) -> Result<Option<Vec<u8>>, VaultError> {
+                panic!("holds read the item")
+            }
+            fn contains(&self, n: &str) -> Result<bool, VaultError> {
+                self.0.contains(n)
+            }
+            fn delete(&self, n: &str) -> Result<(), VaultError> {
+                self.0.delete(n)
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let vault = DesktopVault::with_kdf(
+            Box::new(NoReads(crate::store::FileStore::new(dir.path()))),
+            PendingIncepts::memory(),
+            CHEAP,
+        );
+        assert!(!vault.holds("QmScid").unwrap());
+        // Sealed under a passphrase only the flow that stored it had.
+        vault
+            .unlocking(pass("a passphrase of length"))
+            .store_master("QmScid", 0, Secret::new([7u8; 32]))
+            .unwrap();
+        assert!(vault.holds("QmScid").unwrap());
+        assert!(!vault.holds("QmOther").unwrap());
     }
 
     #[test]

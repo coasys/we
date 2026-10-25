@@ -44,7 +44,13 @@ log = "0.4"
 secret-service = { version = "4", features = ["rt-tokio-crypto-rust"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-security-framework = "3"
+# `OSX_10_15` is what exposes the data-protection keychain (`kSecUseDataProtectionKeychain`): without
+# it `PasswordOptions::use_protected_keychain` does not exist on macOS.
+security-framework = { version = "3", features = ["OSX_10_15"] }
+# The existence query (`KeychainStore::contains`) asks the keychain directly, to say "never show UI"
+# (`kSecUseAuthenticationUIFail`), which the safe wrapper does not offer.
+security-framework-sys = { version = "2.17", features = ["OSX_10_15"] }
+core-foundation = "0.10"
 
 [dev-dependencies]
 tempfile = "3"

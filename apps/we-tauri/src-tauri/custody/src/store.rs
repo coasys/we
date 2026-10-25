@@ -35,6 +35,9 @@ pub trait SecretStore: Send + Sync {
     fn kind(&self) -> StoreKind;
     fn put(&self, name: &str, bytes: &[u8]) -> Result<(), VaultError>;
     fn get(&self, name: &str) -> Result<Option<Vec<u8>>, VaultError>;
+    /// Whether an item is kept under `name`, without reading it: no unlock, no prompt, and the bytes
+    /// never leave the store.
+    fn contains(&self, name: &str) -> Result<bool, VaultError>;
     fn delete(&self, name: &str) -> Result<(), VaultError>;
 }
 
@@ -97,6 +100,14 @@ impl SecretStore for FileStore {
         }
     }
 
+    fn contains(&self, name: &str) -> Result<bool, VaultError> {
+        match std::fs::metadata(self.path(name)) {
+            Ok(meta) => Ok(meta.is_file()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(e) => Err(io(e)),
+        }
+    }
+
     fn delete(&self, name: &str) -> Result<(), VaultError> {
         match std::fs::remove_file(self.path(name)) {
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(io(e)),
@@ -153,6 +164,13 @@ impl SecretStore for MemoryStore {
             .map_err(|_| VaultError::Unavailable("poisoned".into()))?
             .get(name)
             .cloned())
+    }
+    fn contains(&self, name: &str) -> Result<bool, VaultError> {
+        Ok(self
+            .items
+            .lock()
+            .map_err(|_| VaultError::Unavailable("poisoned".into()))?
+            .contains_key(name))
     }
     fn delete(&self, name: &str) -> Result<(), VaultError> {
         self.items
@@ -240,6 +258,16 @@ mod secret_service_store {
             Ok(Some(item.get_secret().map_err(unavailable)?))
         }
 
+        fn contains(&self, name: &str) -> Result<bool, VaultError> {
+            // `SearchItems` answers for locked items too, listing them apart: nothing is unlocked
+            // and no secret is fetched.
+            let found = self
+                .service
+                .search_items(HashMap::from([(ATTRIBUTE, name)]))
+                .map_err(unavailable)?;
+            Ok(!found.unlocked.is_empty() || !found.locked.is_empty())
+        }
+
         fn delete(&self, name: &str) -> Result<(), VaultError> {
             let found = self
                 .service
@@ -260,12 +288,31 @@ pub use keychain_store::KeychainStore;
 
 #[cfg(target_os = "macos")]
 mod keychain_store {
+    use core_foundation::base::{CFType, CFTypeRef, TCFType};
+    use core_foundation::boolean::CFBoolean;
+    use core_foundation::dictionary::CFDictionary;
+    use core_foundation::number::CFNumber;
+    use core_foundation::string::{CFString, CFStringRef};
+    use security_framework::base::Error;
     use security_framework::passwords::{
-        delete_generic_password, generic_password, set_generic_password_options,
+        delete_generic_password_options, generic_password, set_generic_password_options,
         AccessControlOptions, PasswordOptions,
     };
+    use security_framework_sys::item::{
+        kSecAttrAccount, kSecAttrService, kSecClass, kSecClassGenericPassword, kSecMatchLimit,
+        kSecReturnAttributes, kSecUseAuthenticationUI, kSecUseDataProtectionKeychain,
+    };
+    use security_framework_sys::keychain_item::SecItemCopyMatching;
 
     use super::*;
+
+    #[link(name = "Security", kind = "framework")]
+    extern "C" {
+        // "Fail rather than show UI" for `kSecUseAuthenticationUI`. Deprecated in macOS 11 in favour
+        // of an `LAContext` with `interactionNotAllowed`, which would pull in LocalAuthentication;
+        // still exported and honoured.
+        static kSecUseAuthenticationUIFail: CFStringRef;
+    }
 
     /// A data-protection keychain item, generic password, service `org.coasys.app`, account the item
     /// name, readable only after the user is present (Touch ID or the login password).
@@ -276,13 +323,25 @@ mod keychain_store {
 
     const SERVICE: &str = "org.coasys.app";
 
-    fn unavailable(e: security_framework::base::Error) -> VaultError {
-        // -128 errSecUserCanceled: the person cancelled the prompt.
-        if e.code() == -128 {
+    const ERR_SEC_USER_CANCELED: i32 = -128;
+    const ERR_SEC_ITEM_NOT_FOUND: i32 = -25300;
+    const ERR_SEC_INTERACTION_NOT_ALLOWED: i32 = -25308;
+
+    fn unavailable(e: Error) -> VaultError {
+        if e.code() == ERR_SEC_USER_CANCELED {
             VaultError::Cancelled
         } else {
             VaultError::Unavailable(format!("keychain: {e}"))
         }
+    }
+
+    /// The one item `name` names: this service, that account, in the data-protection keychain. Every
+    /// operation goes through it, because a query without `use_protected_keychain` searches the
+    /// legacy file keychain and never finds an item written to the data-protection one.
+    fn item(name: &str) -> PasswordOptions {
+        let mut options = PasswordOptions::new_generic_password(SERVICE, name);
+        options.use_protected_keychain();
+        options
     }
 
     impl SecretStore for KeychainStore {
@@ -291,25 +350,74 @@ mod keychain_store {
         }
 
         fn put(&self, name: &str, bytes: &[u8]) -> Result<(), VaultError> {
-            let _ = delete_generic_password(SERVICE, name);
-            let mut options = PasswordOptions::new_generic_password(SERVICE, name);
+            // Replacing is delete-then-add, both in the data-protection keychain: an update cannot
+            // change an item's access control, and the new item must carry it.
+            self.delete(name)?;
+            let mut options = item(name);
             options.set_access_control_options(AccessControlOptions::USER_PRESENCE);
-            options.use_protected_keychain();
             set_generic_password_options(bytes, options).map_err(unavailable)
         }
 
         fn get(&self, name: &str) -> Result<Option<Vec<u8>>, VaultError> {
-            match generic_password(PasswordOptions::new_generic_password(SERVICE, name)) {
+            match generic_password(item(name)) {
                 Ok(bytes) => Ok(Some(bytes)),
-                // -25300 errSecItemNotFound
-                Err(e) if e.code() == -25300 => Ok(None),
+                Err(e) if e.code() == ERR_SEC_ITEM_NOT_FOUND => Ok(None),
                 Err(e) => Err(unavailable(e)),
             }
         }
 
+        fn contains(&self, name: &str) -> Result<bool, VaultError> {
+            // Attributes only, never the data, and never UI: an item that exists but would need the
+            // person to read even this much answers errSecInteractionNotAllowed, which is still a yes.
+            let pairs: Vec<(CFString, CFType)> = unsafe {
+                vec![
+                    (
+                        CFString::wrap_under_get_rule(kSecClass),
+                        CFString::wrap_under_get_rule(kSecClassGenericPassword).into_CFType(),
+                    ),
+                    (
+                        CFString::wrap_under_get_rule(kSecAttrService),
+                        CFString::new(SERVICE).into_CFType(),
+                    ),
+                    (
+                        CFString::wrap_under_get_rule(kSecAttrAccount),
+                        CFString::new(name).into_CFType(),
+                    ),
+                    (
+                        CFString::wrap_under_get_rule(kSecUseDataProtectionKeychain),
+                        CFBoolean::true_value().into_CFType(),
+                    ),
+                    (
+                        CFString::wrap_under_get_rule(kSecReturnAttributes),
+                        CFBoolean::true_value().into_CFType(),
+                    ),
+                    (
+                        CFString::wrap_under_get_rule(kSecMatchLimit),
+                        CFNumber::from(1i64).into_CFType(),
+                    ),
+                    (
+                        CFString::wrap_under_get_rule(kSecUseAuthenticationUI),
+                        CFString::wrap_under_get_rule(kSecUseAuthenticationUIFail).into_CFType(),
+                    ),
+                ]
+            };
+            let query = CFDictionary::from_CFType_pairs(&pairs);
+            let mut found: CFTypeRef = std::ptr::null();
+            let status = unsafe { SecItemCopyMatching(query.as_concrete_TypeRef(), &mut found) };
+            if !found.is_null() {
+                // A +1 reference to the attributes dictionary; dropping the wrapper releases it.
+                drop(unsafe { CFType::wrap_under_create_rule(found) });
+            }
+            match status {
+                0 | ERR_SEC_INTERACTION_NOT_ALLOWED => Ok(true),
+                ERR_SEC_ITEM_NOT_FOUND => Ok(false),
+                code => Err(unavailable(Error::from_code(code))),
+            }
+        }
+
         fn delete(&self, name: &str) -> Result<(), VaultError> {
-            match delete_generic_password(SERVICE, name) {
-                Err(e) if e.code() != -25300 => Err(unavailable(e)),
+            match delete_generic_password_options(item(name)) {
+                Err(e) if e.code() != ERR_SEC_ITEM_NOT_FOUND => Err(unavailable(e)),
                 _ => Ok(()),
             }
         }
@@ -362,5 +470,45 @@ mod tests {
         store.delete(&name).unwrap();
         store.delete(&name).unwrap();
         assert_eq!(store.get(&name).unwrap(), None);
+    }
+
+    #[test]
+    fn a_file_store_says_whether_it_holds_an_item_without_reading_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = FileStore::new(dir.path().join("custody"));
+        let name = item_name("QmScid");
+        // Before the folder exists at all.
+        assert!(!store.contains(&name).unwrap());
+        store.put(&name, b"sealed bytes").unwrap();
+        assert!(store.contains(&name).unwrap());
+        assert!(!store.contains(&item_name("QmOther")).unwrap());
+        #[cfg(unix)]
+        {
+            // With the file unreadable, a read fails and `contains` still answers: it looks at the
+            // directory entry, never at the bytes. (Root reads anything, so the read is only
+            // asserted to fail where it can.)
+            use std::os::unix::fs::PermissionsExt;
+            let path = dir.path().join("custody/QmScid.bin");
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
+            if std::fs::read(&path).is_err() {
+                assert!(store.get(&name).is_err());
+            }
+            assert!(store.contains(&name).unwrap());
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        }
+        store.delete(&name).unwrap();
+        assert!(!store.contains(&name).unwrap());
+    }
+
+    #[test]
+    fn a_memory_store_says_whether_it_holds_an_item() {
+        let store = MemoryStore::new();
+        let name = item_name("QmScid");
+        assert!(!store.contains(&name).unwrap());
+        store.put(&name, b"bytes").unwrap();
+        assert!(store.contains(&name).unwrap());
+        assert!(!store.contains(&item_name("QmOther")).unwrap());
+        store.delete(&name).unwrap();
+        assert!(!store.contains(&name).unwrap());
     }
 }
