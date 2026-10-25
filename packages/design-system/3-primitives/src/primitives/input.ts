@@ -330,7 +330,10 @@ export default class Input extends DesignSystemElement {
         <input
           part="input"
           aria-label=${this.label || nothing}
-          .value=${this.value}
+          .value=${
+            // A missing value is an empty field, not the text "undefined" — see `we-textarea`.
+            this.value ?? ''
+          }
           .type=${this.revealable && this._revealed ? 'text' : this.type}
           .max=${this.max}
           .min=${this.min}
