@@ -8,7 +8,7 @@
   "desktop": {
     "productName": "Coasys",
     "appId": "io.coasys.app",
-    "icon": "packages/templates/cartridges/src/coasys/assets/mark.svg"
+    "icon": "packages/templates/cartridges/src/coasys/assets/icon.svg"
   },
   "bundles": ["coasys"],
   "modules": ["call", "transcribe", "live", "graph"],

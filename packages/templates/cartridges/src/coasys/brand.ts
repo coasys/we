@@ -3,14 +3,12 @@ import { readFileSync } from 'node:fs';
 import type { BundleBrand } from '@we/schema-shared';
 
 /**
- * The Coasys mark: a filled hexagon in the accent, Phosphor's `hexagon` as the designs draw it.
+ * The Coasys mark: the Coasys logo, in a mint that deepens to green.
  *
- * There is no logo file in either design repo yet, so this is the mark the designs use until there
- * is. Drawn as an image, so its colours are written out rather than read from the theme: a mint that
- * deepens to green, which holds on a light page and a dark one.
- *
- * One file, `assets/mark.svg`, read here into the bundle and named by `seeds/coasys.seed.json` as the
- * desktop icon, so the app and its installer cannot drift apart.
+ * Drawn as an image, so its colours are written out rather than read from the theme, and chosen to
+ * hold on a light page and a dark one. The desktop icon is `assets/icon.svg`: the same logo on Glow's
+ * indigo, as a rounded tile like WE's, named by `seeds/coasys.seed.json` and rendered into every
+ * desktop size by `@we/brand`.
  */
 export const COASYS_MARK = readFileSync(new URL('./assets/mark.svg', import.meta.url), 'utf-8').trim();
 

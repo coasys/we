@@ -37,6 +37,11 @@ id and icon (`desktop`) and its own data folder (`ad4m.dataPath`).
 Paths inside any seed (`ad4m.executorPath`, `desktop.icon`, …) are relative to
 the repository root, wherever the seed file sits.
 
+`desktop.icon` is an SVG of the whole desktop icon, drawn edge to edge: a tile,
+its rounded corners and its margin included, as WE's own icon is. `@we/brand`
+renders it into every size the desktop apps ship; run
+`WE_SEED=… pnpm --filter @we/brand generate-icons` after changing it.
+
 The registries generated from a seed (`*.generated.ts` in the shell) and the
 desktop icons are checked in for WE's own seed. For another seed they are
 written under a `.seed-build/<name>/` directory beside the package that makes
