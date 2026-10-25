@@ -2265,7 +2265,7 @@
         },
         {
           "name": "onReady",
-          "type": "((api: { save: () => void; submit: () => void; }) => void)",
+          "type": "((api: { save: () => void; submit: () => void; focus: () => void; }) => void)",
           "optional": true
         },
         {

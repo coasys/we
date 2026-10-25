@@ -92,7 +92,7 @@ export {
   TONES,
 } from './families.js';
 export type { ChromaticFamily, ColorFamily, PaletteHue, SemanticFamily, ToneName } from './families.js';
-export { FAMILY_ROLES, toneVariables } from './familyRoles.js';
+export { FAMILY_ROLES, HELD_ACCENT_VARS, toneVariables } from './familyRoles.js';
 export {
   DISABLED_OPACITY,
   FOCUS_OUTLINE,

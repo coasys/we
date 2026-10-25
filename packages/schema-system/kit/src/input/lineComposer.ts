@@ -26,6 +26,11 @@ export interface LineComposerOptions {
   sendLabel: string;
   /** Sends one line — `event.text` and `event.marks`. Guard it on `local.sending`. */
   onSubmit: SchemaProp;
+  /**
+   * The name of a `function` local the caller declares, to receive a call that puts the caret in
+   * the box: `{ $callLocal: '<name>' }` from anything on the page that invites somebody to write.
+   */
+  focusLocal?: string;
 }
 
 export function lineComposer(opts: LineComposerOptions): SchemaNode {
@@ -47,7 +52,12 @@ export function lineComposer(opts: LineComposerOptions): SchemaNode {
               autoFocus: false,
               handles: false,
               placeholder: opts.placeholder,
-              onReady: { $setLocal: 'sendLine', value: { $: 'event.submit' } },
+              onReady: opts.focusLocal
+                ? [
+                    { $setLocal: 'sendLine', value: { $: 'event.submit' } },
+                    { $setLocal: opts.focusLocal, value: { $: 'event.focus' } },
+                  ]
+                : { $setLocal: 'sendLine', value: { $: 'event.submit' } },
               onSubmit: opts.onSubmit,
             },
           },

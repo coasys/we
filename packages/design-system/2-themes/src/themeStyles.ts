@@ -22,6 +22,7 @@ import {
   component,
   familySaturationVar,
   FILL_LIGHTNESS,
+  HELD_ACCENT_VARS,
   MOTION_ATTRIBUTE,
   RAMP,
   role,
@@ -548,6 +549,10 @@ export function themeParametersToStyle(overrides: ThemeOverrides): Record<string
   for (const [property, value] of Object.entries(style)) {
     if (fetchesRemotely(value)) delete style[property];
   }
+
+  // The accent this root draws, held where a tone cannot re-point it, for `tone: 'accent'` to read
+  // back — see HELD_ACCENT_VARS in @we/tokens.
+  Object.assign(style, HELD_ACCENT_VARS);
 
   return style;
 }

@@ -21,6 +21,7 @@ import {
   BUNDLE_FORMAT_VERSION,
   type BundleBrand,
   type BundleRecordType,
+  type BundleTheme,
   type SchemaNode,
   type TemplateSchema,
 } from '@we/schema-shared';
@@ -35,6 +36,8 @@ export interface Cartridge {
   shell: TemplateSchema & { id: string };
   sections: Array<TemplateSchema & { id: string }>;
   theme: FixtureTheme;
+  /** More themes the app offers beside `theme`, which stays its default. */
+  themes?: BundleTheme[];
   /** What the app calls itself — its name, mark and About page — when it is not WE. */
   brand?: BundleBrand;
   /** Its own sign-in screen, around the host's password field. */
@@ -140,10 +143,17 @@ export function toBundle(cartridge: Cartridge, version = '1.0.0'): Bundle {
     },
   };
   const theme = { ...cartridge.theme, id: piece(cartridge.theme.id) };
+  const extra = (cartridge.themes ?? []).map((t) => ({ ...t, id: piece(t.id) }));
+  // Every theme the app offers, its default first — what a template names in `meta.themeIds`.
+  const themeIds = extra.length ? { themeIds: [theme.id, ...extra.map((t) => t.id)] } : {};
   // The app wears the cartridge's theme too: it is what stands in for the agent's default until they
   // choose one, so the chrome and the space it frames open in the same look.
   const app = cartridge.app
-    ? { ...cartridge.app, id: piece(cartridge.app.id), meta: { ...cartridge.app.meta, themeId: theme.id } }
+    ? {
+        ...cartridge.app,
+        id: piece(cartridge.app.id),
+        meta: { ...cartridge.app.meta, themeId: theme.id, ...themeIds },
+      }
     : undefined;
   return {
     format: BUNDLE_FORMAT,
@@ -156,10 +166,10 @@ export function toBundle(cartridge: Cartridge, version = '1.0.0'): Bundle {
     author: { name: 'WE' },
     ...(app ? { app } : {}),
     templates: [
-      { ...shell, meta: { ...shell.meta, themeId: theme.id } },
+      { ...shell, meta: { ...shell.meta, themeId: theme.id, ...themeIds } },
       ...cartridge.sections.map((section) => ({ ...section, id: piece(section.id) })),
     ],
-    theme,
+    ...(extra.length ? { themes: [theme, ...extra] } : { theme }),
     recordTypes: cartridge.shapes.map((shape) => ({
       name: shape.name,
       ...(shape.icon ? { icon: shape.icon } : {}),

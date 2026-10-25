@@ -224,6 +224,10 @@ async function main() {
     for (const scale of mod.scales ?? [undefined]) for (const w of mod.widths ?? [320]) combos.push([scale, w]);
 
     for (const [scale, width] of combos) {
+      // The pointer parked away from the mount, so a case never inherits a hover from whatever the
+      // last one pressed: a soft button under it draws its hover fill, not its own.
+      const viewport = page.viewportSize();
+      if (viewport) await page.mouse.move(viewport.width - 1, viewport.height - 1);
       await page.evaluate(([s, w, n]) => window.__harness.mount(s, w, n), [mod.scenario, width, scale]);
       // One frame for the primitives to upgrade and lay out.
       await page.waitForTimeout(250);

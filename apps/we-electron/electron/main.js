@@ -486,10 +486,21 @@ const trusted = (url) => isTrusted(url, trustedOrigins(policyOptions()));
  * lists its icons, was showing the mark while this one was not.
  *
  * The file therefore has to exist at runtime rather than only at package time; it is copied to
- * `resources/icon.png` by `extraResources`, alongside the executor and the renderer bundle.
+ * `resources/icon.png` by `extraResources`, alongside the executor and the renderer bundle — the
+ * seed's own icon when it has one, as the package's is.
  */
-const windowIcon = () =>
-  app.isPackaged ? join(process.resourcesPath, 'icon.png') : join(__dirname, '..', 'build', 'icon.png');
+const windowIcon = () => {
+  if (app.isPackaged) return join(process.resourcesPath, 'icon.png');
+  // Unpackaged: another seed's icon where `@we/brand` has rendered it (see seed-runtime.json),
+  // else WE's own.
+  try {
+    const runtime = JSON.parse(readFileSync(join(__dirname, 'seed-runtime.json'), 'utf8'));
+    if (runtime.windowIcon) return runtime.windowIcon;
+  } catch {
+    // No generated config: WE's own icon.
+  }
+  return join(__dirname, '..', 'build', 'icon.png');
+};
 
 function createWindow() {
   mainWindow = new BrowserWindow({
