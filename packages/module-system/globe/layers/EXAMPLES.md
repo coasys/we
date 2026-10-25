@@ -215,7 +215,7 @@ have given it a range to play through.
           "children": [
             {
               "type": "we-button",
-              "props": { "onClick": { "$action": "clockStore.toggle", "args": ["events"] } },
+              "props": { "onClick": { "$invoke": "clockStore.toggle", "args": ["events"] } },
               "children": [{ "$": "clockStore.clocks.events.playing ? 'Pause' : 'Play'" }]
             },
             {
@@ -225,7 +225,7 @@ have given it a range to play through.
                 "max": 1,
                 "step": 0.001,
                 "value": { "$": "clockStore.clocks.events.progress" },
-                "onInput": { "$action": "clockStore.seekProgress", "args": ["events", { "$": "event.detail" }] }
+                "onInput": { "$invoke": "clockStore.seekProgress", "args": ["events", { "$": "event.detail" }] }
               }
             },
             {

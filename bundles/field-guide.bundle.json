@@ -98,7 +98,7 @@
                               "props": {
                                 "variant": { "$": "contains(routeStore.currentPath, view.segment) ? 'soft' : 'ghost'" },
                                 "size": "sm",
-                                "onClick": { "$action": "routeStore.navigate", "args": [{ "$": "view.path" }] }
+                                "onClick": { "$invoke": "routeStore.navigate", "args": [{ "$": "view.path" }] }
                               },
                               "children": [
                                 { "type": "we-icon", "props": { "name": { "$": "view.icon" } } },
@@ -203,7 +203,7 @@
                     "variant": "solid",
                     "size": "sm",
                     "flexShrink": "0",
-                    "onClick": { "$action": "recordStore.openRecordForm", "args": ["Species"] }
+                    "onClick": { "$invoke": "recordStore.openRecordForm", "args": ["Species"] }
                   },
                   "children": [
                     { "type": "we-icon", "props": { "name": "plus" } },
@@ -327,7 +327,7 @@
                   "$if": {
                     "condition": { "$": "recordStore.recordDraftDirty" },
                     "then": { "$setLocal": "confirmDiscardOpen", "value": true },
-                    "else": { "$action": "recordStore.cancelRecordForm" }
+                    "else": { "$invoke": "recordStore.cancelRecordForm" }
                   }
                 }
               },
@@ -419,7 +419,7 @@
                                 },
                                 "value": { "$": "recordStore.relationshipKind" },
                                 "onChange": {
-                                  "$action": "recordStore.setRelationshipKind",
+                                  "$invoke": "recordStore.setRelationshipKind",
                                   "args": [{ "$": "event.detail" }]
                                 }
                               }
@@ -439,7 +439,7 @@
                                         "square": true,
                                         "label": "Leave the kind unnamed",
                                         "flexShrink": "0",
-                                        "onClick": { "$action": "recordStore.setRelationshipKind", "args": [""] }
+                                        "onClick": { "$invoke": "recordStore.setRelationshipKind", "args": [""] }
                                       },
                                       "children": [{ "type": "we-icon", "props": { "name": "x" } }]
                                     }
@@ -474,7 +474,7 @@
                               "$": "find(recordStore.recordDraft.fields, { name: 'longitude' }).value == '' ? null : find(recordStore.recordDraft.fields, { name: 'longitude' }).value"
                             },
                             "placeholder": "Pin it on the map…",
-                            "onChange": { "$action": "recordStore.setRecordPlace", "args": [{ "$": "arg.detail" }] }
+                            "onChange": { "$invoke": "recordStore.setRecordPlace", "args": [{ "$": "arg.detail" }] }
                           }
                         }
                       ]
@@ -512,7 +512,7 @@
                                     "value": { "$": "field.value" },
                                     "width": "100%",
                                     "onInput": {
-                                      "$action": "recordStore.setRecordField",
+                                      "$invoke": "recordStore.setRecordField",
                                       "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                     },
                                     "placeholder": { "$": "field.placeholder" }
@@ -540,7 +540,7 @@
                                     "value": { "$": "field.value" },
                                     "width": "100%",
                                     "onInput": {
-                                      "$action": "recordStore.setRecordField",
+                                      "$invoke": "recordStore.setRecordField",
                                       "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                     },
                                     "type": "url",
@@ -569,7 +569,7 @@
                                     "value": { "$": "field.value" },
                                     "width": "100%",
                                     "onInput": {
-                                      "$action": "recordStore.setRecordField",
+                                      "$invoke": "recordStore.setRecordField",
                                       "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                     },
                                     "rows": 3,
@@ -600,7 +600,7 @@
                                     "maxWidth": "100%",
                                     "alignSelf": "start",
                                     "onChange": {
-                                      "$action": "recordStore.setRecordField",
+                                      "$invoke": "recordStore.setRecordField",
                                       "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                     },
                                     "placeholder": { "$": "field.placeholder" }
@@ -628,7 +628,7 @@
                                     "checked": { "$": "field.value" },
                                     "width": "100%",
                                     "onChange": {
-                                      "$action": "recordStore.setRecordField",
+                                      "$invoke": "recordStore.setRecordField",
                                       "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                     }
                                   }
@@ -657,7 +657,7 @@
                                     "maxWidth": "100%",
                                     "alignSelf": "start",
                                     "onChange": {
-                                      "$action": "recordStore.setRecordField",
+                                      "$invoke": "recordStore.setRecordField",
                                       "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                     },
                                     "options": { "$": "field.options" }
@@ -685,7 +685,7 @@
                                     "value": { "$": "field.value" },
                                     "width": "100%",
                                     "onChange": {
-                                      "$action": "recordStore.setRecordField",
+                                      "$invoke": "recordStore.setRecordField",
                                       "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                     },
                                     "placeholder": { "$": "field.placeholder" }
@@ -713,7 +713,7 @@
                                     "value": { "$": "field.value" },
                                     "width": "100%",
                                     "onChange": {
-                                      "$action": "recordStore.setRecordField",
+                                      "$invoke": "recordStore.setRecordField",
                                       "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                     },
                                     "showTime": true,
@@ -742,7 +742,7 @@
                                     "value": { "$": "field.value" },
                                     "width": "100%",
                                     "onChange": {
-                                      "$action": "recordStore.setRecordField",
+                                      "$invoke": "recordStore.setRecordField",
                                       "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                     }
                                   }
@@ -769,7 +769,7 @@
                                     "value": { "$": "field.value" },
                                     "width": "100%",
                                     "onChange": {
-                                      "$action": "recordStore.setRecordField",
+                                      "$invoke": "recordStore.setRecordField",
                                       "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                     }
                                   }
@@ -795,7 +795,7 @@
                                   "props": {
                                     "width": "100%",
                                     "onChange": {
-                                      "$action": "recordStore.setRecordField",
+                                      "$invoke": "recordStore.setRecordField",
                                       "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                     },
                                     "accept": { "$": "field.accept" }
@@ -833,7 +833,7 @@
                                             },
                                             "placeholder": { "$": "`Pin ${lower(field.label)} on the map…`" },
                                             "onChange": {
-                                              "$action": "recordStore.setRelationLocation",
+                                              "$invoke": "recordStore.setRelationLocation",
                                               "args": [{ "$": "field.name" }, { "$": "arg.detail" }]
                                             }
                                           }
@@ -856,7 +856,7 @@
                                                         "size": "sm",
                                                         "value": { "$": "first(field.entries).fields.name ?? ''" },
                                                         "onInput": {
-                                                          "$action": "recordStore.setRelationEntryField",
+                                                          "$invoke": "recordStore.setRelationEntryField",
                                                           "args": [
                                                             { "$": "field.name" },
                                                             { "$": "first(field.entries).key" },
@@ -878,7 +878,7 @@
                                                         "size": "sm",
                                                         "value": { "$": "first(field.entries).fields.address ?? ''" },
                                                         "onInput": {
-                                                          "$action": "recordStore.setRelationEntryField",
+                                                          "$invoke": "recordStore.setRelationEntryField",
                                                           "args": [
                                                             { "$": "field.name" },
                                                             { "$": "first(field.entries).key" },
@@ -948,7 +948,7 @@
                                                                 "square": true,
                                                                 "label": { "$": "`Remove ${entry.label}`" },
                                                                 "onClick": {
-                                                                  "$action": "recordStore.removeRelationEntry",
+                                                                  "$invoke": "recordStore.removeRelationEntry",
                                                                   "args": [{ "$": "field.name" }, { "$": "entry.key" }]
                                                                 }
                                                               },
@@ -972,7 +972,7 @@
                                                     "placeholderIcon": "image",
                                                     "uploadLabel": { "$": "`Add ${lower(field.targetLabel)}`" },
                                                     "onImageChange": {
-                                                      "$action": "recordStore.addRelationImage",
+                                                      "$invoke": "recordStore.addRelationImage",
                                                       "args": [{ "$": "field.name" }, { "$": "event" }]
                                                     }
                                                   }
@@ -992,11 +992,11 @@
                                                 "uploadLabel": { "$": "`Add ${lower(field.targetLabel)}`" },
                                                 "editLabel": { "$": "`Change ${lower(field.targetLabel)}`" },
                                                 "onImageChange": {
-                                                  "$action": "recordStore.addRelationImage",
+                                                  "$invoke": "recordStore.addRelationImage",
                                                   "args": [{ "$": "field.name" }, { "$": "event" }]
                                                 },
                                                 "onImageRemove": {
-                                                  "$action": "recordStore.removeRelationEntry",
+                                                  "$invoke": "recordStore.removeRelationEntry",
                                                   "args": [{ "$": "field.name" }, { "$": "first(field.entries).key" }]
                                                 }
                                               }
@@ -1059,7 +1059,7 @@
                                                                 "square": true,
                                                                 "label": { "$": "`Remove ${entry.label}`" },
                                                                 "onClick": {
-                                                                  "$action": "recordStore.removeRelationEntry",
+                                                                  "$invoke": "recordStore.removeRelationEntry",
                                                                   "args": [{ "$": "field.name" }, { "$": "entry.key" }]
                                                                 }
                                                               },
@@ -1115,7 +1115,7 @@
                                                                 },
                                                                 "value": "",
                                                                 "onChange": {
-                                                                  "$action": "recordStore.pickRelation",
+                                                                  "$invoke": "recordStore.pickRelation",
                                                                   "args": [
                                                                     { "$": "field.name" },
                                                                     { "$": "event.detail" }
@@ -1137,7 +1137,7 @@
                                                             "variant": "soft",
                                                             "size": "sm",
                                                             "onClick": {
-                                                              "$action": "recordStore.openRelationForm",
+                                                              "$invoke": "recordStore.openRelationForm",
                                                               "args": [{ "$": "field.name" }]
                                                             }
                                                           },
@@ -1202,7 +1202,7 @@
                           "$if": {
                             "condition": { "$": "recordStore.recordDraftDirty" },
                             "then": { "$setLocal": "confirmDiscardOpen", "value": true },
-                            "else": { "$action": "recordStore.cancelRecordForm" }
+                            "else": { "$invoke": "recordStore.cancelRecordForm" }
                           }
                         }
                       },
@@ -1214,7 +1214,7 @@
                         "variant": "solid",
                         "loading": { "$": "recordStore.savingRecord" },
                         "disabled": { "$": "recordStore.savingRecord" },
-                        "onClick": { "$action": "recordStore.saveRecord" }
+                        "onClick": { "$invoke": "recordStore.saveRecord" }
                       },
                       "children": ["Create"]
                     }
@@ -1226,7 +1226,7 @@
                     "condition": { "$": "recordStore.relationDraft" },
                     "then": {
                       "type": "we-modal",
-                      "props": { "size": "sm", "close": { "$action": "recordStore.cancelRelationForm" } },
+                      "props": { "size": "sm", "close": { "$invoke": "recordStore.cancelRelationForm" } },
                       "children": [
                         {
                           "type": "Row",
@@ -1267,7 +1267,7 @@
                                             "value": { "$": "field.value" },
                                             "width": "100%",
                                             "onInput": {
-                                              "$action": "recordStore.setRelationField",
+                                              "$invoke": "recordStore.setRelationField",
                                               "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                             },
                                             "placeholder": { "$": "field.placeholder" }
@@ -1295,7 +1295,7 @@
                                             "value": { "$": "field.value" },
                                             "width": "100%",
                                             "onInput": {
-                                              "$action": "recordStore.setRelationField",
+                                              "$invoke": "recordStore.setRelationField",
                                               "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                             },
                                             "type": "url",
@@ -1324,7 +1324,7 @@
                                             "value": { "$": "field.value" },
                                             "width": "100%",
                                             "onInput": {
-                                              "$action": "recordStore.setRelationField",
+                                              "$invoke": "recordStore.setRelationField",
                                               "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                             },
                                             "rows": 3,
@@ -1355,7 +1355,7 @@
                                             "maxWidth": "100%",
                                             "alignSelf": "start",
                                             "onChange": {
-                                              "$action": "recordStore.setRelationField",
+                                              "$invoke": "recordStore.setRelationField",
                                               "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                             },
                                             "placeholder": { "$": "field.placeholder" }
@@ -1383,7 +1383,7 @@
                                             "checked": { "$": "field.value" },
                                             "width": "100%",
                                             "onChange": {
-                                              "$action": "recordStore.setRelationField",
+                                              "$invoke": "recordStore.setRelationField",
                                               "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                             }
                                           }
@@ -1412,7 +1412,7 @@
                                             "maxWidth": "100%",
                                             "alignSelf": "start",
                                             "onChange": {
-                                              "$action": "recordStore.setRelationField",
+                                              "$invoke": "recordStore.setRelationField",
                                               "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                             },
                                             "options": { "$": "field.options" }
@@ -1440,7 +1440,7 @@
                                             "value": { "$": "field.value" },
                                             "width": "100%",
                                             "onChange": {
-                                              "$action": "recordStore.setRelationField",
+                                              "$invoke": "recordStore.setRelationField",
                                               "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                             },
                                             "placeholder": { "$": "field.placeholder" }
@@ -1468,7 +1468,7 @@
                                             "value": { "$": "field.value" },
                                             "width": "100%",
                                             "onChange": {
-                                              "$action": "recordStore.setRelationField",
+                                              "$invoke": "recordStore.setRelationField",
                                               "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                             },
                                             "showTime": true,
@@ -1497,7 +1497,7 @@
                                             "value": { "$": "field.value" },
                                             "width": "100%",
                                             "onChange": {
-                                              "$action": "recordStore.setRelationField",
+                                              "$invoke": "recordStore.setRelationField",
                                               "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                             }
                                           }
@@ -1524,7 +1524,7 @@
                                             "value": { "$": "field.value" },
                                             "width": "100%",
                                             "onChange": {
-                                              "$action": "recordStore.setRelationField",
+                                              "$invoke": "recordStore.setRelationField",
                                               "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                             }
                                           }
@@ -1550,7 +1550,7 @@
                                           "props": {
                                             "width": "100%",
                                             "onChange": {
-                                              "$action": "recordStore.setRelationField",
+                                              "$invoke": "recordStore.setRelationField",
                                               "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                             },
                                             "accept": { "$": "field.accept" }
@@ -1584,13 +1584,13 @@
                               "type": "we-button",
                               "props": {
                                 "variant": "soft",
-                                "onClick": { "$action": "recordStore.cancelRelationForm" }
+                                "onClick": { "$invoke": "recordStore.cancelRelationForm" }
                               },
                               "children": ["Cancel"]
                             },
                             {
                               "type": "we-button",
-                              "props": { "variant": "solid", "onClick": { "$action": "recordStore.saveRelationForm" } },
+                              "props": { "variant": "solid", "onClick": { "$invoke": "recordStore.saveRelationForm" } },
                               "children": ["Add"]
                             }
                           ]
@@ -1651,7 +1651,7 @@
                                 "variant": "solid",
                                 "tone": "danger",
                                 "onClick": {
-                                  "$action": "recordStore.cancelRecordForm",
+                                  "$invoke": "recordStore.cancelRecordForm",
                                   "onSuccess": [{ "$setLocal": "confirmDiscardOpen", "value": false }]
                                 }
                               },
@@ -1703,7 +1703,7 @@
                     "variant": "solid",
                     "size": "sm",
                     "flexShrink": "0",
-                    "onClick": { "$action": "recordStore.openRecordForm", "args": ["Sighting"] }
+                    "onClick": { "$invoke": "recordStore.openRecordForm", "args": ["Sighting"] }
                   },
                   "children": [
                     { "type": "we-icon", "props": { "name": "binoculars" } },
@@ -1846,7 +1846,7 @@
                   "$if": {
                     "condition": { "$": "recordStore.recordDraftDirty" },
                     "then": { "$setLocal": "confirmDiscardOpen", "value": true },
-                    "else": { "$action": "recordStore.cancelRecordForm" }
+                    "else": { "$invoke": "recordStore.cancelRecordForm" }
                   }
                 }
               },
@@ -1938,7 +1938,7 @@
                                 },
                                 "value": { "$": "recordStore.relationshipKind" },
                                 "onChange": {
-                                  "$action": "recordStore.setRelationshipKind",
+                                  "$invoke": "recordStore.setRelationshipKind",
                                   "args": [{ "$": "event.detail" }]
                                 }
                               }
@@ -1958,7 +1958,7 @@
                                         "square": true,
                                         "label": "Leave the kind unnamed",
                                         "flexShrink": "0",
-                                        "onClick": { "$action": "recordStore.setRelationshipKind", "args": [""] }
+                                        "onClick": { "$invoke": "recordStore.setRelationshipKind", "args": [""] }
                                       },
                                       "children": [{ "type": "we-icon", "props": { "name": "x" } }]
                                     }
@@ -1993,7 +1993,7 @@
                               "$": "find(recordStore.recordDraft.fields, { name: 'longitude' }).value == '' ? null : find(recordStore.recordDraft.fields, { name: 'longitude' }).value"
                             },
                             "placeholder": "Pin it on the map…",
-                            "onChange": { "$action": "recordStore.setRecordPlace", "args": [{ "$": "arg.detail" }] }
+                            "onChange": { "$invoke": "recordStore.setRecordPlace", "args": [{ "$": "arg.detail" }] }
                           }
                         }
                       ]
@@ -2031,7 +2031,7 @@
                                     "value": { "$": "field.value" },
                                     "width": "100%",
                                     "onInput": {
-                                      "$action": "recordStore.setRecordField",
+                                      "$invoke": "recordStore.setRecordField",
                                       "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                     },
                                     "placeholder": { "$": "field.placeholder" }
@@ -2059,7 +2059,7 @@
                                     "value": { "$": "field.value" },
                                     "width": "100%",
                                     "onInput": {
-                                      "$action": "recordStore.setRecordField",
+                                      "$invoke": "recordStore.setRecordField",
                                       "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                     },
                                     "type": "url",
@@ -2088,7 +2088,7 @@
                                     "value": { "$": "field.value" },
                                     "width": "100%",
                                     "onInput": {
-                                      "$action": "recordStore.setRecordField",
+                                      "$invoke": "recordStore.setRecordField",
                                       "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                     },
                                     "rows": 3,
@@ -2119,7 +2119,7 @@
                                     "maxWidth": "100%",
                                     "alignSelf": "start",
                                     "onChange": {
-                                      "$action": "recordStore.setRecordField",
+                                      "$invoke": "recordStore.setRecordField",
                                       "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                     },
                                     "placeholder": { "$": "field.placeholder" }
@@ -2147,7 +2147,7 @@
                                     "checked": { "$": "field.value" },
                                     "width": "100%",
                                     "onChange": {
-                                      "$action": "recordStore.setRecordField",
+                                      "$invoke": "recordStore.setRecordField",
                                       "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                     }
                                   }
@@ -2176,7 +2176,7 @@
                                     "maxWidth": "100%",
                                     "alignSelf": "start",
                                     "onChange": {
-                                      "$action": "recordStore.setRecordField",
+                                      "$invoke": "recordStore.setRecordField",
                                       "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                     },
                                     "options": { "$": "field.options" }
@@ -2204,7 +2204,7 @@
                                     "value": { "$": "field.value" },
                                     "width": "100%",
                                     "onChange": {
-                                      "$action": "recordStore.setRecordField",
+                                      "$invoke": "recordStore.setRecordField",
                                       "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                     },
                                     "placeholder": { "$": "field.placeholder" }
@@ -2232,7 +2232,7 @@
                                     "value": { "$": "field.value" },
                                     "width": "100%",
                                     "onChange": {
-                                      "$action": "recordStore.setRecordField",
+                                      "$invoke": "recordStore.setRecordField",
                                       "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                     },
                                     "showTime": true,
@@ -2261,7 +2261,7 @@
                                     "value": { "$": "field.value" },
                                     "width": "100%",
                                     "onChange": {
-                                      "$action": "recordStore.setRecordField",
+                                      "$invoke": "recordStore.setRecordField",
                                       "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                     }
                                   }
@@ -2288,7 +2288,7 @@
                                     "value": { "$": "field.value" },
                                     "width": "100%",
                                     "onChange": {
-                                      "$action": "recordStore.setRecordField",
+                                      "$invoke": "recordStore.setRecordField",
                                       "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                     }
                                   }
@@ -2314,7 +2314,7 @@
                                   "props": {
                                     "width": "100%",
                                     "onChange": {
-                                      "$action": "recordStore.setRecordField",
+                                      "$invoke": "recordStore.setRecordField",
                                       "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                     },
                                     "accept": { "$": "field.accept" }
@@ -2352,7 +2352,7 @@
                                             },
                                             "placeholder": { "$": "`Pin ${lower(field.label)} on the map…`" },
                                             "onChange": {
-                                              "$action": "recordStore.setRelationLocation",
+                                              "$invoke": "recordStore.setRelationLocation",
                                               "args": [{ "$": "field.name" }, { "$": "arg.detail" }]
                                             }
                                           }
@@ -2375,7 +2375,7 @@
                                                         "size": "sm",
                                                         "value": { "$": "first(field.entries).fields.name ?? ''" },
                                                         "onInput": {
-                                                          "$action": "recordStore.setRelationEntryField",
+                                                          "$invoke": "recordStore.setRelationEntryField",
                                                           "args": [
                                                             { "$": "field.name" },
                                                             { "$": "first(field.entries).key" },
@@ -2397,7 +2397,7 @@
                                                         "size": "sm",
                                                         "value": { "$": "first(field.entries).fields.address ?? ''" },
                                                         "onInput": {
-                                                          "$action": "recordStore.setRelationEntryField",
+                                                          "$invoke": "recordStore.setRelationEntryField",
                                                           "args": [
                                                             { "$": "field.name" },
                                                             { "$": "first(field.entries).key" },
@@ -2467,7 +2467,7 @@
                                                                 "square": true,
                                                                 "label": { "$": "`Remove ${entry.label}`" },
                                                                 "onClick": {
-                                                                  "$action": "recordStore.removeRelationEntry",
+                                                                  "$invoke": "recordStore.removeRelationEntry",
                                                                   "args": [{ "$": "field.name" }, { "$": "entry.key" }]
                                                                 }
                                                               },
@@ -2491,7 +2491,7 @@
                                                     "placeholderIcon": "image",
                                                     "uploadLabel": { "$": "`Add ${lower(field.targetLabel)}`" },
                                                     "onImageChange": {
-                                                      "$action": "recordStore.addRelationImage",
+                                                      "$invoke": "recordStore.addRelationImage",
                                                       "args": [{ "$": "field.name" }, { "$": "event" }]
                                                     }
                                                   }
@@ -2511,11 +2511,11 @@
                                                 "uploadLabel": { "$": "`Add ${lower(field.targetLabel)}`" },
                                                 "editLabel": { "$": "`Change ${lower(field.targetLabel)}`" },
                                                 "onImageChange": {
-                                                  "$action": "recordStore.addRelationImage",
+                                                  "$invoke": "recordStore.addRelationImage",
                                                   "args": [{ "$": "field.name" }, { "$": "event" }]
                                                 },
                                                 "onImageRemove": {
-                                                  "$action": "recordStore.removeRelationEntry",
+                                                  "$invoke": "recordStore.removeRelationEntry",
                                                   "args": [{ "$": "field.name" }, { "$": "first(field.entries).key" }]
                                                 }
                                               }
@@ -2578,7 +2578,7 @@
                                                                 "square": true,
                                                                 "label": { "$": "`Remove ${entry.label}`" },
                                                                 "onClick": {
-                                                                  "$action": "recordStore.removeRelationEntry",
+                                                                  "$invoke": "recordStore.removeRelationEntry",
                                                                   "args": [{ "$": "field.name" }, { "$": "entry.key" }]
                                                                 }
                                                               },
@@ -2634,7 +2634,7 @@
                                                                 },
                                                                 "value": "",
                                                                 "onChange": {
-                                                                  "$action": "recordStore.pickRelation",
+                                                                  "$invoke": "recordStore.pickRelation",
                                                                   "args": [
                                                                     { "$": "field.name" },
                                                                     { "$": "event.detail" }
@@ -2656,7 +2656,7 @@
                                                             "variant": "soft",
                                                             "size": "sm",
                                                             "onClick": {
-                                                              "$action": "recordStore.openRelationForm",
+                                                              "$invoke": "recordStore.openRelationForm",
                                                               "args": [{ "$": "field.name" }]
                                                             }
                                                           },
@@ -2721,7 +2721,7 @@
                           "$if": {
                             "condition": { "$": "recordStore.recordDraftDirty" },
                             "then": { "$setLocal": "confirmDiscardOpen", "value": true },
-                            "else": { "$action": "recordStore.cancelRecordForm" }
+                            "else": { "$invoke": "recordStore.cancelRecordForm" }
                           }
                         }
                       },
@@ -2733,7 +2733,7 @@
                         "variant": "solid",
                         "loading": { "$": "recordStore.savingRecord" },
                         "disabled": { "$": "recordStore.savingRecord" },
-                        "onClick": { "$action": "recordStore.saveRecord" }
+                        "onClick": { "$invoke": "recordStore.saveRecord" }
                       },
                       "children": ["Create"]
                     }
@@ -2745,7 +2745,7 @@
                     "condition": { "$": "recordStore.relationDraft" },
                     "then": {
                       "type": "we-modal",
-                      "props": { "size": "sm", "close": { "$action": "recordStore.cancelRelationForm" } },
+                      "props": { "size": "sm", "close": { "$invoke": "recordStore.cancelRelationForm" } },
                       "children": [
                         {
                           "type": "Row",
@@ -2786,7 +2786,7 @@
                                             "value": { "$": "field.value" },
                                             "width": "100%",
                                             "onInput": {
-                                              "$action": "recordStore.setRelationField",
+                                              "$invoke": "recordStore.setRelationField",
                                               "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                             },
                                             "placeholder": { "$": "field.placeholder" }
@@ -2814,7 +2814,7 @@
                                             "value": { "$": "field.value" },
                                             "width": "100%",
                                             "onInput": {
-                                              "$action": "recordStore.setRelationField",
+                                              "$invoke": "recordStore.setRelationField",
                                               "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                             },
                                             "type": "url",
@@ -2843,7 +2843,7 @@
                                             "value": { "$": "field.value" },
                                             "width": "100%",
                                             "onInput": {
-                                              "$action": "recordStore.setRelationField",
+                                              "$invoke": "recordStore.setRelationField",
                                               "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                             },
                                             "rows": 3,
@@ -2874,7 +2874,7 @@
                                             "maxWidth": "100%",
                                             "alignSelf": "start",
                                             "onChange": {
-                                              "$action": "recordStore.setRelationField",
+                                              "$invoke": "recordStore.setRelationField",
                                               "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                             },
                                             "placeholder": { "$": "field.placeholder" }
@@ -2902,7 +2902,7 @@
                                             "checked": { "$": "field.value" },
                                             "width": "100%",
                                             "onChange": {
-                                              "$action": "recordStore.setRelationField",
+                                              "$invoke": "recordStore.setRelationField",
                                               "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                             }
                                           }
@@ -2931,7 +2931,7 @@
                                             "maxWidth": "100%",
                                             "alignSelf": "start",
                                             "onChange": {
-                                              "$action": "recordStore.setRelationField",
+                                              "$invoke": "recordStore.setRelationField",
                                               "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                             },
                                             "options": { "$": "field.options" }
@@ -2959,7 +2959,7 @@
                                             "value": { "$": "field.value" },
                                             "width": "100%",
                                             "onChange": {
-                                              "$action": "recordStore.setRelationField",
+                                              "$invoke": "recordStore.setRelationField",
                                               "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                             },
                                             "placeholder": { "$": "field.placeholder" }
@@ -2987,7 +2987,7 @@
                                             "value": { "$": "field.value" },
                                             "width": "100%",
                                             "onChange": {
-                                              "$action": "recordStore.setRelationField",
+                                              "$invoke": "recordStore.setRelationField",
                                               "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                             },
                                             "showTime": true,
@@ -3016,7 +3016,7 @@
                                             "value": { "$": "field.value" },
                                             "width": "100%",
                                             "onChange": {
-                                              "$action": "recordStore.setRelationField",
+                                              "$invoke": "recordStore.setRelationField",
                                               "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                             }
                                           }
@@ -3043,7 +3043,7 @@
                                             "value": { "$": "field.value" },
                                             "width": "100%",
                                             "onChange": {
-                                              "$action": "recordStore.setRelationField",
+                                              "$invoke": "recordStore.setRelationField",
                                               "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                             }
                                           }
@@ -3069,7 +3069,7 @@
                                           "props": {
                                             "width": "100%",
                                             "onChange": {
-                                              "$action": "recordStore.setRelationField",
+                                              "$invoke": "recordStore.setRelationField",
                                               "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                             },
                                             "accept": { "$": "field.accept" }
@@ -3103,13 +3103,13 @@
                               "type": "we-button",
                               "props": {
                                 "variant": "soft",
-                                "onClick": { "$action": "recordStore.cancelRelationForm" }
+                                "onClick": { "$invoke": "recordStore.cancelRelationForm" }
                               },
                               "children": ["Cancel"]
                             },
                             {
                               "type": "we-button",
-                              "props": { "variant": "solid", "onClick": { "$action": "recordStore.saveRelationForm" } },
+                              "props": { "variant": "solid", "onClick": { "$invoke": "recordStore.saveRelationForm" } },
                               "children": ["Add"]
                             }
                           ]
@@ -3170,7 +3170,7 @@
                                 "variant": "solid",
                                 "tone": "danger",
                                 "onClick": {
-                                  "$action": "recordStore.cancelRecordForm",
+                                  "$invoke": "recordStore.cancelRecordForm",
                                   "onSuccess": [{ "$setLocal": "confirmDiscardOpen", "value": false }]
                                 }
                               },
@@ -3223,7 +3223,7 @@
                 "variant": "solid",
                 "size": "sm",
                 "flexShrink": "0",
-                "onClick": { "$action": "recordStore.openRecordForm", "args": ["Sighting"] }
+                "onClick": { "$invoke": "recordStore.openRecordForm", "args": ["Sighting"] }
               },
               "children": [
                 { "type": "we-icon", "props": { "name": "binoculars" } },
@@ -3270,7 +3270,7 @@
                   "$if": {
                     "condition": { "$": "recordStore.recordDraftDirty" },
                     "then": { "$setLocal": "confirmDiscardOpen", "value": true },
-                    "else": { "$action": "recordStore.cancelRecordForm" }
+                    "else": { "$invoke": "recordStore.cancelRecordForm" }
                   }
                 }
               },
@@ -3362,7 +3362,7 @@
                                 },
                                 "value": { "$": "recordStore.relationshipKind" },
                                 "onChange": {
-                                  "$action": "recordStore.setRelationshipKind",
+                                  "$invoke": "recordStore.setRelationshipKind",
                                   "args": [{ "$": "event.detail" }]
                                 }
                               }
@@ -3382,7 +3382,7 @@
                                         "square": true,
                                         "label": "Leave the kind unnamed",
                                         "flexShrink": "0",
-                                        "onClick": { "$action": "recordStore.setRelationshipKind", "args": [""] }
+                                        "onClick": { "$invoke": "recordStore.setRelationshipKind", "args": [""] }
                                       },
                                       "children": [{ "type": "we-icon", "props": { "name": "x" } }]
                                     }
@@ -3417,7 +3417,7 @@
                               "$": "find(recordStore.recordDraft.fields, { name: 'longitude' }).value == '' ? null : find(recordStore.recordDraft.fields, { name: 'longitude' }).value"
                             },
                             "placeholder": "Pin it on the map…",
-                            "onChange": { "$action": "recordStore.setRecordPlace", "args": [{ "$": "arg.detail" }] }
+                            "onChange": { "$invoke": "recordStore.setRecordPlace", "args": [{ "$": "arg.detail" }] }
                           }
                         }
                       ]
@@ -3455,7 +3455,7 @@
                                     "value": { "$": "field.value" },
                                     "width": "100%",
                                     "onInput": {
-                                      "$action": "recordStore.setRecordField",
+                                      "$invoke": "recordStore.setRecordField",
                                       "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                     },
                                     "placeholder": { "$": "field.placeholder" }
@@ -3483,7 +3483,7 @@
                                     "value": { "$": "field.value" },
                                     "width": "100%",
                                     "onInput": {
-                                      "$action": "recordStore.setRecordField",
+                                      "$invoke": "recordStore.setRecordField",
                                       "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                     },
                                     "type": "url",
@@ -3512,7 +3512,7 @@
                                     "value": { "$": "field.value" },
                                     "width": "100%",
                                     "onInput": {
-                                      "$action": "recordStore.setRecordField",
+                                      "$invoke": "recordStore.setRecordField",
                                       "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                     },
                                     "rows": 3,
@@ -3543,7 +3543,7 @@
                                     "maxWidth": "100%",
                                     "alignSelf": "start",
                                     "onChange": {
-                                      "$action": "recordStore.setRecordField",
+                                      "$invoke": "recordStore.setRecordField",
                                       "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                     },
                                     "placeholder": { "$": "field.placeholder" }
@@ -3571,7 +3571,7 @@
                                     "checked": { "$": "field.value" },
                                     "width": "100%",
                                     "onChange": {
-                                      "$action": "recordStore.setRecordField",
+                                      "$invoke": "recordStore.setRecordField",
                                       "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                     }
                                   }
@@ -3600,7 +3600,7 @@
                                     "maxWidth": "100%",
                                     "alignSelf": "start",
                                     "onChange": {
-                                      "$action": "recordStore.setRecordField",
+                                      "$invoke": "recordStore.setRecordField",
                                       "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                     },
                                     "options": { "$": "field.options" }
@@ -3628,7 +3628,7 @@
                                     "value": { "$": "field.value" },
                                     "width": "100%",
                                     "onChange": {
-                                      "$action": "recordStore.setRecordField",
+                                      "$invoke": "recordStore.setRecordField",
                                       "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                     },
                                     "placeholder": { "$": "field.placeholder" }
@@ -3656,7 +3656,7 @@
                                     "value": { "$": "field.value" },
                                     "width": "100%",
                                     "onChange": {
-                                      "$action": "recordStore.setRecordField",
+                                      "$invoke": "recordStore.setRecordField",
                                       "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                     },
                                     "showTime": true,
@@ -3685,7 +3685,7 @@
                                     "value": { "$": "field.value" },
                                     "width": "100%",
                                     "onChange": {
-                                      "$action": "recordStore.setRecordField",
+                                      "$invoke": "recordStore.setRecordField",
                                       "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                     }
                                   }
@@ -3712,7 +3712,7 @@
                                     "value": { "$": "field.value" },
                                     "width": "100%",
                                     "onChange": {
-                                      "$action": "recordStore.setRecordField",
+                                      "$invoke": "recordStore.setRecordField",
                                       "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                     }
                                   }
@@ -3738,7 +3738,7 @@
                                   "props": {
                                     "width": "100%",
                                     "onChange": {
-                                      "$action": "recordStore.setRecordField",
+                                      "$invoke": "recordStore.setRecordField",
                                       "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                     },
                                     "accept": { "$": "field.accept" }
@@ -3776,7 +3776,7 @@
                                             },
                                             "placeholder": { "$": "`Pin ${lower(field.label)} on the map…`" },
                                             "onChange": {
-                                              "$action": "recordStore.setRelationLocation",
+                                              "$invoke": "recordStore.setRelationLocation",
                                               "args": [{ "$": "field.name" }, { "$": "arg.detail" }]
                                             }
                                           }
@@ -3799,7 +3799,7 @@
                                                         "size": "sm",
                                                         "value": { "$": "first(field.entries).fields.name ?? ''" },
                                                         "onInput": {
-                                                          "$action": "recordStore.setRelationEntryField",
+                                                          "$invoke": "recordStore.setRelationEntryField",
                                                           "args": [
                                                             { "$": "field.name" },
                                                             { "$": "first(field.entries).key" },
@@ -3821,7 +3821,7 @@
                                                         "size": "sm",
                                                         "value": { "$": "first(field.entries).fields.address ?? ''" },
                                                         "onInput": {
-                                                          "$action": "recordStore.setRelationEntryField",
+                                                          "$invoke": "recordStore.setRelationEntryField",
                                                           "args": [
                                                             { "$": "field.name" },
                                                             { "$": "first(field.entries).key" },
@@ -3891,7 +3891,7 @@
                                                                 "square": true,
                                                                 "label": { "$": "`Remove ${entry.label}`" },
                                                                 "onClick": {
-                                                                  "$action": "recordStore.removeRelationEntry",
+                                                                  "$invoke": "recordStore.removeRelationEntry",
                                                                   "args": [{ "$": "field.name" }, { "$": "entry.key" }]
                                                                 }
                                                               },
@@ -3915,7 +3915,7 @@
                                                     "placeholderIcon": "image",
                                                     "uploadLabel": { "$": "`Add ${lower(field.targetLabel)}`" },
                                                     "onImageChange": {
-                                                      "$action": "recordStore.addRelationImage",
+                                                      "$invoke": "recordStore.addRelationImage",
                                                       "args": [{ "$": "field.name" }, { "$": "event" }]
                                                     }
                                                   }
@@ -3935,11 +3935,11 @@
                                                 "uploadLabel": { "$": "`Add ${lower(field.targetLabel)}`" },
                                                 "editLabel": { "$": "`Change ${lower(field.targetLabel)}`" },
                                                 "onImageChange": {
-                                                  "$action": "recordStore.addRelationImage",
+                                                  "$invoke": "recordStore.addRelationImage",
                                                   "args": [{ "$": "field.name" }, { "$": "event" }]
                                                 },
                                                 "onImageRemove": {
-                                                  "$action": "recordStore.removeRelationEntry",
+                                                  "$invoke": "recordStore.removeRelationEntry",
                                                   "args": [{ "$": "field.name" }, { "$": "first(field.entries).key" }]
                                                 }
                                               }
@@ -4002,7 +4002,7 @@
                                                                 "square": true,
                                                                 "label": { "$": "`Remove ${entry.label}`" },
                                                                 "onClick": {
-                                                                  "$action": "recordStore.removeRelationEntry",
+                                                                  "$invoke": "recordStore.removeRelationEntry",
                                                                   "args": [{ "$": "field.name" }, { "$": "entry.key" }]
                                                                 }
                                                               },
@@ -4058,7 +4058,7 @@
                                                                 },
                                                                 "value": "",
                                                                 "onChange": {
-                                                                  "$action": "recordStore.pickRelation",
+                                                                  "$invoke": "recordStore.pickRelation",
                                                                   "args": [
                                                                     { "$": "field.name" },
                                                                     { "$": "event.detail" }
@@ -4080,7 +4080,7 @@
                                                             "variant": "soft",
                                                             "size": "sm",
                                                             "onClick": {
-                                                              "$action": "recordStore.openRelationForm",
+                                                              "$invoke": "recordStore.openRelationForm",
                                                               "args": [{ "$": "field.name" }]
                                                             }
                                                           },
@@ -4145,7 +4145,7 @@
                           "$if": {
                             "condition": { "$": "recordStore.recordDraftDirty" },
                             "then": { "$setLocal": "confirmDiscardOpen", "value": true },
-                            "else": { "$action": "recordStore.cancelRecordForm" }
+                            "else": { "$invoke": "recordStore.cancelRecordForm" }
                           }
                         }
                       },
@@ -4157,7 +4157,7 @@
                         "variant": "solid",
                         "loading": { "$": "recordStore.savingRecord" },
                         "disabled": { "$": "recordStore.savingRecord" },
-                        "onClick": { "$action": "recordStore.saveRecord" }
+                        "onClick": { "$invoke": "recordStore.saveRecord" }
                       },
                       "children": ["Create"]
                     }
@@ -4169,7 +4169,7 @@
                     "condition": { "$": "recordStore.relationDraft" },
                     "then": {
                       "type": "we-modal",
-                      "props": { "size": "sm", "close": { "$action": "recordStore.cancelRelationForm" } },
+                      "props": { "size": "sm", "close": { "$invoke": "recordStore.cancelRelationForm" } },
                       "children": [
                         {
                           "type": "Row",
@@ -4210,7 +4210,7 @@
                                             "value": { "$": "field.value" },
                                             "width": "100%",
                                             "onInput": {
-                                              "$action": "recordStore.setRelationField",
+                                              "$invoke": "recordStore.setRelationField",
                                               "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                             },
                                             "placeholder": { "$": "field.placeholder" }
@@ -4238,7 +4238,7 @@
                                             "value": { "$": "field.value" },
                                             "width": "100%",
                                             "onInput": {
-                                              "$action": "recordStore.setRelationField",
+                                              "$invoke": "recordStore.setRelationField",
                                               "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                             },
                                             "type": "url",
@@ -4267,7 +4267,7 @@
                                             "value": { "$": "field.value" },
                                             "width": "100%",
                                             "onInput": {
-                                              "$action": "recordStore.setRelationField",
+                                              "$invoke": "recordStore.setRelationField",
                                               "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                             },
                                             "rows": 3,
@@ -4298,7 +4298,7 @@
                                             "maxWidth": "100%",
                                             "alignSelf": "start",
                                             "onChange": {
-                                              "$action": "recordStore.setRelationField",
+                                              "$invoke": "recordStore.setRelationField",
                                               "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                             },
                                             "placeholder": { "$": "field.placeholder" }
@@ -4326,7 +4326,7 @@
                                             "checked": { "$": "field.value" },
                                             "width": "100%",
                                             "onChange": {
-                                              "$action": "recordStore.setRelationField",
+                                              "$invoke": "recordStore.setRelationField",
                                               "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                             }
                                           }
@@ -4355,7 +4355,7 @@
                                             "maxWidth": "100%",
                                             "alignSelf": "start",
                                             "onChange": {
-                                              "$action": "recordStore.setRelationField",
+                                              "$invoke": "recordStore.setRelationField",
                                               "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                             },
                                             "options": { "$": "field.options" }
@@ -4383,7 +4383,7 @@
                                             "value": { "$": "field.value" },
                                             "width": "100%",
                                             "onChange": {
-                                              "$action": "recordStore.setRelationField",
+                                              "$invoke": "recordStore.setRelationField",
                                               "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                             },
                                             "placeholder": { "$": "field.placeholder" }
@@ -4411,7 +4411,7 @@
                                             "value": { "$": "field.value" },
                                             "width": "100%",
                                             "onChange": {
-                                              "$action": "recordStore.setRelationField",
+                                              "$invoke": "recordStore.setRelationField",
                                               "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                             },
                                             "showTime": true,
@@ -4440,7 +4440,7 @@
                                             "value": { "$": "field.value" },
                                             "width": "100%",
                                             "onChange": {
-                                              "$action": "recordStore.setRelationField",
+                                              "$invoke": "recordStore.setRelationField",
                                               "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                             }
                                           }
@@ -4467,7 +4467,7 @@
                                             "value": { "$": "field.value" },
                                             "width": "100%",
                                             "onChange": {
-                                              "$action": "recordStore.setRelationField",
+                                              "$invoke": "recordStore.setRelationField",
                                               "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                             }
                                           }
@@ -4493,7 +4493,7 @@
                                           "props": {
                                             "width": "100%",
                                             "onChange": {
-                                              "$action": "recordStore.setRelationField",
+                                              "$invoke": "recordStore.setRelationField",
                                               "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                             },
                                             "accept": { "$": "field.accept" }
@@ -4527,13 +4527,13 @@
                               "type": "we-button",
                               "props": {
                                 "variant": "soft",
-                                "onClick": { "$action": "recordStore.cancelRelationForm" }
+                                "onClick": { "$invoke": "recordStore.cancelRelationForm" }
                               },
                               "children": ["Cancel"]
                             },
                             {
                               "type": "we-button",
-                              "props": { "variant": "solid", "onClick": { "$action": "recordStore.saveRelationForm" } },
+                              "props": { "variant": "solid", "onClick": { "$invoke": "recordStore.saveRelationForm" } },
                               "children": ["Add"]
                             }
                           ]
@@ -4594,7 +4594,7 @@
                                 "variant": "solid",
                                 "tone": "danger",
                                 "onClick": {
-                                  "$action": "recordStore.cancelRecordForm",
+                                  "$invoke": "recordStore.cancelRecordForm",
                                   "onSuccess": [{ "$setLocal": "confirmDiscardOpen", "value": false }]
                                 }
                               },

@@ -69,14 +69,14 @@ describe('propResolvers (combined)', () => {
     expect(read('userStore', stores)).toBeUndefined();
   });
 
-  it('resolveActionProp handles ../ relative route navigation', () => {
+  it('resolveInvokeProp handles ../ relative route navigation', () => {
     const navigate = vi.fn();
     const stores = { routeStore: { navigate } };
     const context = { $nav: { baseDepth: 2 } };
 
     window.history.pushState({}, '', '/a/b/c');
 
-    const action = { $action: 'routeStore.navigate', args: ['../foo'] };
+    const action = { $invoke: 'routeStore.navigate', args: ['../foo'] };
     const fn = resolveProp(action, stores, context) as () => void;
     expect(typeof fn).toBe('function');
     fn();
@@ -124,7 +124,7 @@ describe('propResolvers (combined)', () => {
   it('resolveProp calls store method for non-route action', () => {
     const doer = vi.fn();
     const stores = { fooStore: { do: doer } };
-    const action = { $action: 'fooStore.do', args: [42] };
+    const action = { $invoke: 'fooStore.do', args: [42] };
     const fn = resolveProp(action, stores, {}) as () => void;
     fn();
     expect(doer).toHaveBeenCalledWith(42);
@@ -134,14 +134,14 @@ describe('propResolvers (combined)', () => {
     expect(read("val ? 'A' : 'B'", {}, { val: false })).toBe('B');
   });
 
-  it('a handler $if does not eagerly invoke its $action', () => {
+  it('a handler $if does not eagerly invoke its $invoke', () => {
     const handler = vi.fn();
     const stores = { myStore: { submit: handler } };
     const ctx = { isValid: true };
     const schema = {
       $if: {
         condition: { $: 'isValid' },
-        then: { $action: 'myStore.submit', args: ['data'] },
+        then: { $invoke: 'myStore.submit', args: ['data'] },
       },
     };
     const result = resolveProp(schema, stores, ctx);
@@ -165,7 +165,7 @@ describe('propResolvers (combined)', () => {
             condition: { $: 'isDirty' },
             then: [
               { $setLocal: 'saving', value: true },
-              { $action: 'spaceStore.save', args: [] },
+              { $invoke: 'spaceStore.save', args: [] },
             ],
           },
         },
@@ -187,8 +187,8 @@ describe('propResolvers (combined)', () => {
           $if: {
             condition: { $: 'flag' },
             then: [
-              { $action: 's.a', args: [] },
-              { $action: 's.b', args: [] },
+              { $invoke: 's.a', args: [] },
+              { $invoke: 's.b', args: [] },
             ],
           },
         },
@@ -209,7 +209,7 @@ describe('propResolvers (combined)', () => {
     const onEnter = vi.fn();
     const stores = { s: { onEnter } };
     const schema = {
-      onKeyDown: [{ $if: { condition: { $: "event.key == 'Enter'" }, then: { $action: 's.onEnter' } } }],
+      onKeyDown: [{ $if: { condition: { $: "event.key == 'Enter'" }, then: { $invoke: 's.onEnter' } } }],
     };
     const resolved = resolveProp(schema, stores, {}) as { onKeyDown: (e: unknown) => void };
     resolved.onKeyDown({ key: 'Escape' });
@@ -222,7 +222,7 @@ describe('propResolvers (combined)', () => {
     const navigate = vi.fn();
     const stores = { routeStore: { navigate } };
     const ctx = { $nav: { baseDepth: 2 } };
-    const action = { $action: 'routeStore.navigate', args: ['/home'] };
+    const action = { $invoke: 'routeStore.navigate', args: ['/home'] };
     const fn = resolveProp(action, stores, ctx) as () => void;
     fn();
     expect(navigate).toHaveBeenCalledWith('/home');
@@ -234,13 +234,13 @@ describe('propResolvers (combined)', () => {
     const ctx = { $nav: { baseDepth: 2 } };
     window.history.pushState({}, '', '/a/b/c/d');
 
-    const dot = { $action: 'routeStore.navigate', args: ['.'] };
+    const dot = { $invoke: 'routeStore.navigate', args: ['.'] };
     const fnDot = resolveProp(dot, stores, ctx) as () => void;
     fnDot();
     expect(navigate).toHaveBeenCalled();
     expect(typeof navigate.mock.calls[0][0]).toBe('string');
 
-    const dotSlash = { $action: 'routeStore.navigate', args: ['./z'] };
+    const dotSlash = { $invoke: 'routeStore.navigate', args: ['./z'] };
     const fnDotSlash = resolveProp(dotSlash, stores, ctx) as () => void;
     fnDotSlash();
     expect(navigate).toHaveBeenCalled();
@@ -249,7 +249,7 @@ describe('propResolvers (combined)', () => {
 
   it('action with missing method should return undefined', () => {
     const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const missing = resolveProp({ $action: 'noStore.noMethod', args: [] }, {}, {});
+    const missing = resolveProp({ $invoke: 'noStore.noMethod', args: [] }, {}, {});
     expect(missing).toBeUndefined();
     spy.mockRestore();
   });
@@ -277,7 +277,7 @@ describe('propResolvers (combined)', () => {
   it('an expression on arg extracts a nested property from the callback argument', () => {
     const doSomething = vi.fn();
     const stores = { myStore: { doSomething } };
-    const action = { $action: 'myStore.doSomething', args: [{ $: 'arg.id' }] };
+    const action = { $invoke: 'myStore.doSomething', args: [{ $: 'arg.id' }] };
 
     const fn = resolveProp(action, stores, {}) as (arg: unknown) => void;
     expect(typeof fn).toBe('function');
@@ -288,7 +288,7 @@ describe('propResolvers (combined)', () => {
   it('arg reads deeply nested properties', () => {
     const callback = vi.fn();
     const stores = { store: { callback } };
-    const action = { $action: 'store.callback', args: [{ $: 'arg.user.profile.email' }] };
+    const action = { $invoke: 'store.callback', args: [{ $: 'arg.user.profile.email' }] };
 
     const fn = resolveProp(action, stores, {}) as (arg: unknown) => void;
     fn({ user: { profile: { email: 'test@example.com', name: 'Test' } } });
@@ -298,7 +298,7 @@ describe('propResolvers (combined)', () => {
   it('a bare arg passes the entire first argument', () => {
     const callback = vi.fn();
     const stores = { store: { callback } };
-    const action = { $action: 'store.callback', args: [{ $: 'arg' }] };
+    const action = { $invoke: 'store.callback', args: [{ $: 'arg' }] };
 
     const fn = resolveProp(action, stores, {}) as (arg: unknown) => void;
     const testObj = { id: '123', name: 'Test' };
@@ -309,7 +309,7 @@ describe('propResolvers (combined)', () => {
   it('arg works with DOM events (can access event properties)', () => {
     const callback = vi.fn();
     const stores = { store: { callback } };
-    const action = { $action: 'store.callback', args: [{ $: 'arg.target.value' }] };
+    const action = { $invoke: 'store.callback', args: [{ $: 'arg.target.value' }] };
 
     const fn = resolveProp(action, stores, {}) as (arg: unknown) => void;
     const mockEvent = { target: { value: 'extracted-value' }, key: 'Enter' } as unknown as Event;
@@ -320,7 +320,7 @@ describe('propResolvers (combined)', () => {
   it('arg expressions sit among static args', () => {
     const callback = vi.fn();
     const stores = { store: { callback } };
-    const action = { $action: 'store.callback', args: [{ $: 'arg.id' }, 'static-value', 42] };
+    const action = { $invoke: 'store.callback', args: [{ $: 'arg.id' }, 'static-value', 42] };
 
     const fn = resolveProp(action, stores, { ignored: true }) as (arg: unknown) => void;
     fn({ id: 'test-id', name: 'Test' });
@@ -342,35 +342,35 @@ describe('propResolvers (combined)', () => {
     expect(read('s.isAdmin && s.isLocked', stores)).toBe(false);
   });
 
-  // --- $action error handling ---
+  // --- $invoke error handling ---
 
-  it('$action warns on missing store', () => {
+  it('$invoke warns on missing store', () => {
     const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const result = resolveProp({ $action: 'noStore.noMethod', args: [] }, {}, {});
+    const result = resolveProp({ $invoke: 'noStore.noMethod', args: [] }, {}, {});
     expect(result).toBeUndefined();
     expect(spy).toHaveBeenCalledWith(expect.stringContaining('noStore'));
     spy.mockRestore();
   });
 
-  it('$action warns on missing method', () => {
+  it('$invoke warns on missing method', () => {
     const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const stores = { myStore: { exists: () => {} } };
-    const result = resolveProp({ $action: 'myStore.missing', args: [] }, stores, {});
+    const result = resolveProp({ $invoke: 'myStore.missing', args: [] }, stores, {});
     expect(result).toBeUndefined();
     expect(spy).toHaveBeenCalledWith(expect.stringContaining('missing'));
     spy.mockRestore();
   });
 
-  // --- $action lifecycle callbacks ---
+  // --- $invoke lifecycle callbacks ---
 
   it('onSuccess fires after async action resolves, with result in scope', async () => {
     const successValue = { uuid: 'space-123' };
     const onSuccessSpy = vi.fn();
     const stores = { myStore: { create: () => Promise.resolve(successValue), notify: onSuccessSpy } };
     const action = {
-      $action: 'myStore.create',
+      $invoke: 'myStore.create',
       args: [],
-      onSuccess: [{ $action: 'myStore.notify', args: [{ $: 'result.uuid' }] }],
+      onSuccess: [{ $invoke: 'myStore.notify', args: [{ $: 'result.uuid' }] }],
     };
     const fn = resolveProp(action, stores, {}) as () => void;
     fn();
@@ -382,9 +382,9 @@ describe('propResolvers (combined)', () => {
     const errorSpy = vi.fn();
     const stores = { myStore: { fail: () => Promise.reject(new Error('oops')), handleError: errorSpy } };
     const action = {
-      $action: 'myStore.fail',
+      $invoke: 'myStore.fail',
       args: [],
-      onError: [{ $action: 'myStore.handleError', args: [{ $: 'result.message' }] }],
+      onError: [{ $invoke: 'myStore.handleError', args: [{ $: 'result.message' }] }],
     };
     const fn = resolveProp(action, stores, {}) as () => void;
     fn();
@@ -396,8 +396,8 @@ describe('propResolvers (combined)', () => {
     const finallySpy = vi.fn();
     const stores = { myStore: { succeed: () => Promise.resolve('ok'), cleanup: finallySpy } };
     const action = {
-      $action: 'myStore.succeed',
-      onFinally: [{ $action: 'myStore.cleanup', args: [] }],
+      $invoke: 'myStore.succeed',
+      onFinally: [{ $invoke: 'myStore.cleanup', args: [] }],
     };
     const fn = resolveProp(action, stores, {}) as () => void;
     fn();
@@ -410,9 +410,9 @@ describe('propResolvers (combined)', () => {
     const errorSpy = vi.fn();
     const stores = { myStore: { fail: () => Promise.reject(new Error('boom')), cleanup: finallySpy, onErr: errorSpy } };
     const action = {
-      $action: 'myStore.fail',
-      onError: [{ $action: 'myStore.onErr', args: [] }],
-      onFinally: [{ $action: 'myStore.cleanup', args: [] }],
+      $invoke: 'myStore.fail',
+      onError: [{ $invoke: 'myStore.onErr', args: [] }],
+      onFinally: [{ $invoke: 'myStore.cleanup', args: [] }],
     };
     const fn = resolveProp(action, stores, {}) as () => void;
     fn();
@@ -431,7 +431,7 @@ describe('propResolvers (combined)', () => {
     };
     const stores = { myStore: { create: () => Promise.resolve('done') } };
     const action = {
-      $action: 'myStore.create',
+      $invoke: 'myStore.create',
       onSuccess: [{ $setLocal: 'modalOpen', value: false }],
     };
     const fn = resolveProp(action, stores, mockContext) as () => void;
@@ -443,7 +443,7 @@ describe('propResolvers (combined)', () => {
   it('logs error to console when async action rejects and no onError is provided', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const stores = { myStore: { fail: () => Promise.reject(new Error('unhandled')) } };
-    const action = { $action: 'myStore.fail', args: [] };
+    const action = { $invoke: 'myStore.fail', args: [] };
     const fn = resolveProp(action, stores, {}) as () => void;
     fn();
     await new Promise((r) => setTimeout(r, 0));
@@ -455,8 +455,8 @@ describe('propResolvers (combined)', () => {
     const successSpy = vi.fn();
     const stores = { myStore: { sync: () => 42, notify: successSpy } };
     const action = {
-      $action: 'myStore.sync',
-      onSuccess: [{ $action: 'myStore.notify', args: [] }],
+      $invoke: 'myStore.sync',
+      onSuccess: [{ $invoke: 'myStore.notify', args: [] }],
     };
     const fn = resolveProp(action, stores, {}) as () => unknown;
     fn();
@@ -583,7 +583,7 @@ describe('locals via dispatcher', () => {
   });
 });
 
-describe('$action arg unwrapping', () => {
+describe('$invoke arg unwrapping', () => {
   it('unwraps REACTIVE_ACCESSOR args at execution time', () => {
     const method = vi.fn();
     const stores = { myStore: { method } };
@@ -592,7 +592,7 @@ describe('$action arg unwrapping', () => {
     const accessor = markReactive(() => value);
 
     const context = { $local: { name: accessor } };
-    const action = { $action: 'myStore.method', args: [{ $: 'local.name' }] };
+    const action = { $invoke: 'myStore.method', args: [{ $: 'local.name' }] };
     // A render-time memo hands the handler an accessor, read when the handler fires.
     const fn = resolveProp(action, stores, context, ((fn: () => unknown) => fn) as <T>(fn: () => T) => T) as () => void;
 
@@ -605,7 +605,7 @@ describe('$action arg unwrapping', () => {
   it('leaves non-reactive function args untouched', () => {
     const method = vi.fn();
     const stores = { myStore: { method } };
-    const action = { $action: 'myStore.method', args: [42, 'static'] };
+    const action = { $invoke: 'myStore.method', args: [42, 'static'] };
     const fn = resolveProp(action, stores, {}) as () => void;
     fn();
     expect(method).toHaveBeenCalledWith(42, 'static');
@@ -795,7 +795,7 @@ describe('dispatcher integration — validation tokens', () => {
       $localScopeFields: ['name'],
     };
     const handler = resolveProp(
-      { onClick: [{ $touch: '$all' }, { $if: { condition: { $: 'formValid()' }, then: { $action: 's.submit' } } }] },
+      { onClick: [{ $touch: '$all' }, { $if: { condition: { $: 'formValid()' }, then: { $invoke: 's.submit' } } }] },
       { s: { submit } },
       context,
     ) as { onClick: () => void };

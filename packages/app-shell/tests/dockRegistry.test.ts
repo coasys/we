@@ -86,7 +86,7 @@ describe('dock registry notifications', () => {
 /**
  * A panel's close button is two strings that have to agree.
  *
- * The frame renders `{ $action: '<store>.<close>' }`, so a `close` naming a method the store does
+ * The frame renders `{ $invoke: '<store>.<close>' }`, so a `close` naming a method the store does
  * not have — or one the template surface does not grant — produces a button that renders, takes the
  * click, and does nothing. Nothing fails to build; the panel simply cannot be closed from the one
  * control that says it closes it. The same shape as `ModuleLauncher.action`, which is checked for

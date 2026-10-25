@@ -26,7 +26,7 @@ const tabBar = {
     props: {
       key: tab.key,
       label: tab.label,
-      onClick: { $action: 'routeStore.navigate', args: [tab.path] },
+      onClick: { $invoke: 'routeStore.navigate', args: [tab.path] },
     },
   })),
 };

@@ -319,7 +319,7 @@ export interface RecordStore {
    * The id of the last record created, empty before the first.
    *
    * Read by a surface that wants to do something with what was just made — select the new node on a
-   * graph, scroll to the new row. Kept rather than passed to a callback because `$action`'s
+   * graph, scroll to the new row. Kept rather than passed to a callback because `$invoke`'s
    * `onSuccess` can read a store and cannot hold a value.
    */
   lastCreatedId: Accessor<string>;
@@ -336,7 +336,7 @@ export interface RecordStore {
    * Open the form: on the named model, or on the first one this space offers.
    *
    * Takes `unknown` rather than `string | undefined` because a template writing
-   * `{ $action: 'recordStore.openRecordForm' }` with no `args` hands it the DOM event — anything
+   * `{ $invoke: 'recordStore.openRecordForm' }` with no `args` hands it the DOM event — anything
    * that is not a model name is treated as "no model named".
    */
   openRecordForm: (entity?: unknown) => void;
@@ -439,7 +439,7 @@ export interface RecordStore {
    * differently, and a fold is that plus a placement per card hidden under it.
    *
    * It exists because a schema cannot loop. The carried cards arrive as a list whose length nothing
-   * knows in advance, and `$action` calls a method once — so "place this, and each of those" has to
+   * knows in advance, and `$invoke` calls a method once — so "place this, and each of those" has to
    * be one call. Without it, carrying a fold into a corner and unfolding it there scatters the
    * contents back to where they were, which makes a fold a way of hiding rather than of tidying.
    */
@@ -864,7 +864,7 @@ export function RecordStoreProvider(props: ParentProps) {
     One display per creatable model, from the same declarations the forms come from.
 
     A map rather than a lookup action because a template reads it in a value position — a feed
-    indexes it by each row's type — and `$action` cannot return a value. Recomputed when the
+    indexes it by each row's type — and `$invoke` cannot return a value. Recomputed when the
     space's shapes change, so a model defined a moment ago has a display a moment later.
   */
   /**
@@ -935,16 +935,16 @@ export function RecordStoreProvider(props: ParentProps) {
   });
 
   /*
-    `entity` is typed loosely because of how `$action` calls a store method.
+    `entity` is typed loosely because of how `$invoke` calls a store method.
 
     A token with no `args` forwards the handler's own arguments, so
-    `{ $action: 'recordStore.openRecordForm' }` on a button arrives here holding a `PointerEvent`.
-    That is right for the common case — it is how `onChange: { $action: … }` passes a value through —
+    `{ $invoke: 'recordStore.openRecordForm' }` on a button arrives here holding a `PointerEvent`.
+    That is right for the common case — it is how `onChange: { $invoke: … }` passes a value through —
     and it means *any* store method with an optional leading parameter can be handed an event by a
     template that was written the obvious way. It surfaced as a toast reading
     `No model named "[object PointerEvent]" in this space`, which at least said what had happened.
 
-    Guarded here as well as at the call site, because the trap belongs to `$action` rather than to
+    Guarded here as well as at the call site, because the trap belongs to `$invoke` rather than to
     any one template, and there will be more call sites than there are stores.
   */
   function openRecordForm(entity?: unknown): void {

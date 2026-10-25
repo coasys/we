@@ -71,8 +71,8 @@ const signIn: SchemaNode = {
             purpose: 'unlock',
             width: '100%',
             placeholder: 'Your password',
-            onEdit: { $action: 'sessionStore.clearPasswordError' },
-            onSubmit: { $action: 'sessionStore.unlock' },
+            onEdit: { $invoke: 'sessionStore.clearPasswordError' },
+            onSubmit: { $invoke: 'sessionStore.unlock' },
           },
         },
       ],
@@ -87,7 +87,7 @@ const signIn: SchemaNode = {
             variant: 'solid',
             disabled: { $: '!sessionStore.credentialEntered' },
             loading: { $: 'sessionStore.loginLoading' },
-            onClick: { $action: 'sessionStore.unlock' },
+            onClick: { $invoke: 'sessionStore.unlock' },
           },
           children: ['Unlock'],
         },
@@ -127,11 +127,11 @@ const createAccount: SchemaNode = {
             loading: { $: 'sessionStore.createAgentLoading' },
             onClick: [
               { $touch: '$all' },
-              { $action: 'sessionStore.touchCredential' },
+              { $invoke: 'sessionStore.touchCredential' },
               {
                 $if: {
                   condition: { $: 'formValid() && sessionStore.credentialConfirmed' },
-                  then: { $action: 'profileStore.completeAccountSetup', args: [{ $: 'local.name' }] },
+                  then: { $invoke: 'profileStore.completeAccountSetup', args: [{ $: 'local.name' }] },
                 },
               },
             ],
@@ -160,7 +160,7 @@ const failed: SchemaNode = {
       children: [
         {
           type: 'we-button',
-          props: { variant: 'solid', onClick: { $action: 'sessionStore.retryBoot' } },
+          props: { variant: 'solid', onClick: { $invoke: 'sessionStore.retryBoot' } },
           children: ['Try again'],
         },
       ],
@@ -207,7 +207,7 @@ const otherAccounts: SchemaNode = {
           props: {
             variant: 'ghost',
             ax: 'start',
-            onClick: { $action: 'accountStore.switchAccount', args: [{ $: 'account.id' }] },
+            onClick: { $invoke: 'accountStore.switchAccount', args: [{ $: 'account.id' }] },
           },
           children: [
             {
@@ -239,7 +239,7 @@ const otherAccounts: SchemaNode = {
           children: [
             {
               type: 'we-button',
-              props: { variant: 'ghost', onClick: { $action: 'accountStore.createAccount' } },
+              props: { variant: 'ghost', onClick: { $invoke: 'accountStore.createAccount' } },
               children: [{ type: 'we-icon', props: { name: 'user-plus' } }, 'New account'],
             },
           ],

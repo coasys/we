@@ -34,13 +34,13 @@ const accountMenu: SchemaNode = {
       {
         $if: {
           condition: { $: "arg.id == 'profile'" },
-          then: { $action: 'shellStore.openShellView', args: ['profile'] },
+          then: { $invoke: 'shellStore.openShellView', args: ['profile'] },
         },
       },
       {
         $if: {
           condition: { $: "arg.id == 'about'" },
-          then: { $action: 'shellStore.openShellView', args: ['landing-page'] },
+          then: { $invoke: 'shellStore.openShellView', args: ['landing-page'] },
         },
       },
       /*
@@ -54,7 +54,7 @@ const accountMenu: SchemaNode = {
             $if: {
               condition: { $: 'sessionStore.isGuest' },
               then: { $setLocal: 'confirmGuestLogout', value: true },
-              else: { $action: 'sessionStore.logout' },
+              else: { $invoke: 'sessionStore.logout' },
             },
           },
         },
@@ -91,7 +91,7 @@ const rail: SchemaNode = railShell({
       ax: 'center',
       ay: 'center',
       cursor: 'pointer',
-      onClick: { $action: 'shellStore.openShellView', args: ['landing-page'] },
+      onClick: { $invoke: 'shellStore.openShellView', args: ['landing-page'] },
     },
     children: [
       {
@@ -108,7 +108,7 @@ const rail: SchemaNode = railShell({
         icon: 'gear-six',
         label: 'Settings',
         active: viewing('settings'),
-        onClick: [{ $action: 'appStore.deactivateApp' }, { $action: 'shellStore.openShellView', args: ['settings'] }],
+        onClick: [{ $invoke: 'appStore.deactivateApp' }, { $invoke: 'shellStore.openShellView', args: ['settings'] }],
       }),
       accountMenu,
       confirmModal({
@@ -119,7 +119,7 @@ const rail: SchemaNode = railShell({
         detail: 'To keep it, stay signed in on this browser.',
         confirmLabel: 'Sign out anyway',
         cancelLabel: 'Stay signed in',
-        confirm: { $action: 'sessionStore.logout' },
+        confirm: { $invoke: 'sessionStore.logout' },
       }),
     ],
   },
@@ -128,7 +128,7 @@ const rail: SchemaNode = railShell({
       id: 'spaces',
       label: 'Spaces',
       reorderable: true,
-      onReorder: { $action: 'datasetStore.reorderDatasets', args: [{ $: 'arg.detail' }] },
+      onReorder: { $invoke: 'datasetStore.reorderDatasets', args: [{ $: 'arg.detail' }] },
       action: {
         type: 'DropdownMenu',
         props: {
@@ -146,13 +146,13 @@ const rail: SchemaNode = railShell({
             {
               $if: {
                 condition: { $: "arg.id == 'create'" },
-                then: { $action: 'shellStore.setCreateSpaceOpen', args: [true] },
+                then: { $invoke: 'shellStore.setCreateSpaceOpen', args: [true] },
               },
             },
             {
               $if: {
                 condition: { $: "arg.id == 'join'" },
-                then: { $action: 'shellStore.setJoinSpaceOpen', args: [true] },
+                then: { $invoke: 'shellStore.setJoinSpaceOpen', args: [true] },
               },
             },
           ],
@@ -169,8 +169,8 @@ const rail: SchemaNode = railShell({
               label: { $: 'space.name' },
               active: { $: 'space.spaceId == routeStore.segments[1] && !shellStore.activeShellView' },
               onClick: [
-                { $action: 'shellStore.closeShellView' },
-                { $action: 'spaceStore.navigateToSpace', args: [{ $: 'space.spaceId' }] },
+                { $invoke: 'shellStore.closeShellView' },
+                { $invoke: 'spaceStore.navigateToSpace', args: [{ $: 'space.spaceId' }] },
               ],
               // The space a call is running in, so the way back to it is on the rail.
               live: {

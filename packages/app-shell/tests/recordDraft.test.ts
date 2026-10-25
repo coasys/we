@@ -41,7 +41,7 @@ describe('asEntityName', () => {
   });
 
   it('discards anything that is not one', () => {
-    // The case that actually happened: `$action` with no `args` forwards the handler's own
+    // The case that actually happened: `$invoke` with no `args` forwards the handler's own
     // arguments, so a button calling a store method with an optional leading parameter hands it a
     // PointerEvent. Read as a model name it produced `No model named "[object PointerEvent]"`.
     expect(asEntityName(new Error('not a name'))).toBe('');

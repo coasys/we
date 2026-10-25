@@ -152,7 +152,7 @@ const sharedIn: SchemaNode = {
           props: {
             variant: 'ghost',
             size: 'xs',
-            onClick: { $action: 'spaceStore.openRecordRef', args: [{ $: 'share.ref' }] },
+            onClick: { $invoke: 'spaceStore.openRecordRef', args: [{ $: 'share.ref' }] },
           },
           children: [{ $: "share.spaceName ? 'Shared in ' + share.spaceName : 'Shared'" }],
         },
@@ -199,7 +199,7 @@ const noteCard: SchemaNode = {
             then: editor({
               editorState: { $: 'note.editorState' },
               save: {
-                $action: 'modules.notes.update',
+                $invoke: 'modules.notes.update',
                 args: [{ $: 'note.id' }, { $: 'arg' }],
                 onSuccess: [{ $setLocal: 'editing', value: '' }],
               },
@@ -284,7 +284,7 @@ const confirmShare = confirmModal({
   detail: 'A copy is posted. Editing the note afterwards does not change the post.',
   confirmLabel: 'Share',
   confirm: {
-    $action: 'modules.notes.share',
+    $invoke: 'modules.notes.share',
     args: [{ $: 'local.confirmShareId' }, { $: 'spaceStore.currentSpace.name' }],
   },
   busy: { $: "modules.notes.sharing != ''" },
@@ -297,7 +297,7 @@ const confirmDelete = confirmModal({
   body: 'It cannot be recovered.',
   detail: 'Posts it was shared as stay where they are.',
   confirmLabel: 'Delete',
-  confirm: { $action: 'modules.notes.remove', args: [{ $: 'local.confirmDeleteId' }] },
+  confirm: { $invoke: 'modules.notes.remove', args: [{ $: 'local.confirmDeleteId' }] },
   busy: { $: "modules.notes.saving != ''" },
 });
 
@@ -336,7 +336,7 @@ export const panel: SchemaNode = {
               condition: { $: 'local.composing' },
               then: editor({
                 save: {
-                  $action: 'modules.notes.create',
+                  $invoke: 'modules.notes.create',
                   args: [{ $: 'arg' }],
                   onSuccess: [{ $setLocal: 'composing', value: false }],
                 },
@@ -415,6 +415,6 @@ export const panel: SchemaNode = {
  */
 export const toggleButton: SchemaNode = {
   type: 'we-button',
-  props: { variant: 'ghost', size: 'sm', onClick: { $action: 'spaceStore.launchModule', args: ['notes:main'] } },
+  props: { variant: 'ghost', size: 'sm', onClick: { $invoke: 'spaceStore.launchModule', args: ['notes:main'] } },
   children: [{ type: 'we-icon', props: { name: 'note' } }],
 };

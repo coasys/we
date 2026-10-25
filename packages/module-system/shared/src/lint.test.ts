@@ -134,7 +134,7 @@ describe('lintModule — one module reaching another', () => {
               title: 'P',
               node: {
                 type: 'DropdownMenu',
-                props: { items: [{ id: 'x', label: 'Go', onSelect: { $action: 'modules.call.startCall' } }] },
+                props: { items: [{ id: 'x', label: 'Go', onSelect: { $invoke: 'modules.call.startCall' } }] },
               },
             },
           ],
@@ -166,7 +166,7 @@ describe('lintModule — one module reaching another', () => {
           parts: {
             // The sanctioned optional dependency: resolves to nothing where the module is absent.
             gate: { type: '$if', props: { condition: { $: 'modules.call' }, then: { type: 'Column' } } },
-            own: { type: 'we-button', props: { onClick: { $action: 'modules.demo.toggle' } } },
+            own: { type: 'we-button', props: { onClick: { $invoke: 'modules.demo.toggle' } } },
           },
         },
       }),

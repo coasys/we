@@ -28,7 +28,7 @@ const template = (children: unknown[], extra: Record<string, unknown> = {}): Sch
   }) as unknown as SchemaNode;
 
 /** A handler with a key nothing reads — the fault that started this. */
-const strayKey = { $if: { condition: { $: 'local.x' }, then: { $action: 'store.go' } }, onSuccess: [] };
+const strayKey = { $if: { condition: { $: 'local.x' }, then: { $invoke: 'store.go' } }, onSuccess: [] };
 
 describe('a node held in a prop', () => {
   it('is checked, so a fault inside a $if branch is reported', () => {
@@ -89,7 +89,7 @@ describe('a handler held by another handler', () => {
   const button = (onClick: unknown) => template([{ type: 'we-button', props: { onClick }, children: ['Go'] }]);
 
   it('is checked in a lifecycle list', () => {
-    const typo = { $action: 'store.save', onSuccess: [{ $setLokal: 'open', value: false }] };
+    const typo = { $invoke: 'store.save', onSuccess: [{ $setLokal: 'open', value: false }] };
     expect(validateStructure(button(typo)).valid).toBe(false);
   });
 
@@ -102,8 +102,8 @@ describe('a handler held by another handler', () => {
     const good = {
       $if: {
         condition: { $: 'local.existing' },
-        then: { $action: 'store.move', args: [''], onSuccess: [{ $setLocal: 'open', value: false }] },
-        else: [{ $touch: '$all' }, { $action: 'store.create' }],
+        then: { $invoke: 'store.move', args: [''], onSuccess: [{ $setLocal: 'open', value: false }] },
+        else: [{ $touch: '$all' }, { $invoke: 'store.create' }],
       },
     };
     expect(validateStructure(button(good)).errors).toEqual([]);
@@ -120,7 +120,7 @@ describe('a handler held by another handler', () => {
   question, and where a template sits in that spectrum stops being a thing anybody has to know.
 */
 describe('where a node sits does not change the verdict', () => {
-  const strayKey = { $if: { condition: { $: 'local.x' }, then: { $action: 'store.go' } }, onSuccess: [] };
+  const strayKey = { $if: { condition: { $: 'local.x' }, then: { $invoke: 'store.go' } }, onSuccess: [] };
   const held = (words: string) => ({
     type: 'Column',
     props: { gap: '300' },

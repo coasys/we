@@ -25,7 +25,7 @@ export const spaceHeader: SchemaNode = {
                 rb: '600',
                 aspect: 4 / 1,
                 placeholderIcon: 'panorama',
-                onImageChange: { $action: 'spaceStore.updateSpaceImage', args: ['coverImage', { $: 'arg' }] },
+                onImageChange: { $invoke: 'spaceStore.updateSpaceImage', args: ['coverImage', { $: 'arg' }] },
               },
             },
             {
@@ -44,7 +44,7 @@ export const spaceHeader: SchemaNode = {
                     r: 'avatar',
                     ring: '0 0 0 2px var(--we-ring-color)',
                     placeholderIcon: 'users-three',
-                    onImageChange: { $action: 'spaceStore.updateSpaceImage', args: ['avatar', { $: 'arg' }] },
+                    onImageChange: { $invoke: 'spaceStore.updateSpaceImage', args: ['avatar', { $: 'arg' }] },
                   },
                 },
                 // Space Details
@@ -337,7 +337,7 @@ export const spaceNavBar: SchemaNode = {
                           type: 'we-button',
                           props: {
                             variant: { $: "routeStore.segments[2] == view.segment ? 'solid' : 'ghost'" },
-                            onClick: { $action: 'routeStore.navigate', args: [{ $: 'view.path' }] },
+                            onClick: { $invoke: 'routeStore.navigate', args: [{ $: 'view.path' }] },
                           },
                           children: [
                             { type: 'we-icon', props: { name: { $: 'view.icon' } } },

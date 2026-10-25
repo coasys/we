@@ -119,7 +119,7 @@ Example node:
 {
   "type": "we-button",
   "props": {
-    "onClick": { "$action": "routeStore.navigate", "args": ["/home"] }
+    "onClick": { "$invoke": "routeStore.navigate", "args": ["/home"] }
   },
   "children": [
     { "type": "we-icon", "props": { "name": "house" } },
@@ -130,21 +130,22 @@ Example node:
 ## Prop-level Dynamic Logic & Expressions
 
 Two kinds of token go in props: an EXPRESSION, { "$": "…" }, for anything computed (a store read, a
-condition, a label, a list), and a HANDLER ($action, $setLocal, …) for anything that happens on an
+condition, a label, a list), and a HANDLER ($invoke, $setLocal, …) for anything that happens on an
 event. A plain string is always text. There are no other value tokens.
 
 Store reference:
 { "$": "storeName.property.path" }
 Reads a value from a named store, supporting nested paths — reactive, so the prop follows the store.
 
-Action/event:
-{ "$action": "storeName.method", "args": [...] }
-Calls a method on a store, optionally with arguments (which can themselves be tokens).
+Invoking a store method:
+{ "$invoke": "storeName.method", "args": [...] }
+Calls a method on a store, optionally with arguments (which can themselves be tokens). The token's old
+spelling, with "action" where "invoke" is now, is refused by the validator.
 The method is called with exactly the "args" written, and with none when there are none — what the element
 emitted is never passed on by itself. To pass it, say so: { "$": "event" } is the whole value the handler
 received, and { "$": "event.detail" } (or any path into it) a part of it:
-{ "onChange": { "$action": "spaceStore.setViewEnabled", "args": ["cards", { "$": "event.detail" }] } }
-{ "onArrange": { "$action": "modules.call.setArrangement", "args": [{ "$": "arg" }] } }
+{ "onChange": { "$invoke": "spaceStore.setViewEnabled", "args": ["cards", { "$": "event.detail" }] } }
+{ "onArrange": { "$invoke": "modules.call.setArrangement", "args": [{ "$": "arg" }] } }
 The validator warns about an action that needs arguments called with none.
 Supports async lifecycle callbacks — fired after the store method's Promise resolves/rejects:
   onSuccess: [...actions]  — fired on resolve; { "$": "result" } (and result.<path>) in args refers to the resolved value
@@ -152,9 +153,9 @@ Supports async lifecycle callbacks — fired after the store method's Promise re
   onFinally: [...actions]  — fired regardless of outcome
 Non-promise (synchronous) methods are unaffected — lifecycle keys are ignored.
 Example — close modal after async submission:
-{ "$action": "spaceStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }] }
+{ "$invoke": "spaceStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }] }
 Example — navigate to newly created item:
-{ "$action": "spaceStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }, { "$action": "routeStore.navigate", "args": [{ "$": "\`/space/\${result.uuid}\`" }] }] }
+{ "$invoke": "spaceStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }, { "$invoke": "routeStore.navigate", "args": [{ "$": "\`/space/\${result.uuid}\`" }] }] }
 
 An action runs only when somebody asked for it. A press, a key, typing, a drop or a paste that reaches
 the element whose handler calls it counts as asking — and so does whatever the element does in answer,
@@ -165,20 +166,20 @@ the press instead. Navigating, opening and closing surfaces and editing an unsav
 they work anywhere. onSuccess, onError and onFinally count as part of the press that started them, and
 so does onBlur on a field somebody typed into. The validator warns about a write on an event nobody causes.
 
-Record mutations via $action (use these for creating/updating/deleting records):
+Record mutations via $invoke (use these for creating/updating/deleting records):
 A RECORD is one stored thing; an ENTITY is its type. Every one of these takes the entity name first
 and acts on a record of it.
 
 record.create — creates a record in the current dataset (default) or a specified one:
-{ "$action": "record.create", "args": ["EntityName", { "field": "value" }, { "dataset": "datasetStore.rootDataset" }] }
+{ "$invoke": "record.create", "args": ["EntityName", { "field": "value" }, { "dataset": "datasetStore.rootDataset" }] }
 The third argument is an options object. Omit it to write into the space on screen.
 
 record.update — updates one record:
-{ "$action": "record.update", "args": ["EntityName", { "$": "item.id" }, { "field": "newValue" }] }
-To target another dataset: { "$action": "record.update", "args": ["EntityName", { "$": "item.id" }, { "field": "value" }, { "dataset": "datasetStore.rootDataset" }] }
+{ "$invoke": "record.update", "args": ["EntityName", { "$": "item.id" }, { "field": "newValue" }] }
+To target another dataset: { "$invoke": "record.update", "args": ["EntityName", { "$": "item.id" }, { "field": "value" }, { "dataset": "datasetStore.rootDataset" }] }
 
 record.delete — deletes one record:
-{ "$action": "record.delete", "args": ["EntityName", { "$": "item.id" }] }
+{ "$invoke": "record.delete", "args": ["EntityName", { "$": "item.id" }] }
 
 Use dataset: 'datasetStore.rootDataset' for we-root entities (AgentSettings, ChatSession, etc.), and
 'datasetStore.personalDataset' for the agent's own content (a note, a Pocket folder). Both are chrome-tier.
@@ -200,9 +201,9 @@ Expressions:
 { "$": "<expression>" }
 Every computed value — a condition, a label, a number, a filtered list — is one expression string in a
 { "$": … } token. This is the value layer's whole vocabulary. The node layer ($each, node-level $if,
-$routes, $animate…), queries ($query, $queries) and handlers ($action, $setLocal, $toggleLocal…) stay
+$routes, $animate…), queries ($query, $queries) and handlers ($invoke, $setLocal, $toggleLocal…) stay
 as tokens; an expression goes anywhere a VALUE goes — a prop, a condition, $each's items, a children
-array (rendered as text), a where value, an $action argument.
+array (rendered as text), a where value, an $invoke argument.
 
 References — what a name starts from:
   spaceStore.members             a store member (any store in the Stores section; modules.<id>.<key> for a module)
@@ -211,11 +212,11 @@ References — what a name starts from:
   index, prev                    $each's row position, and the previous row
   me.did, currentDataset         the current agent, and the active dataset
   surface.tier, surface.width    the responsive boundary
-  event, arg, result             the callback argument inside a handler, and a settled $action's value
+  event, arg, result             the callback argument inside a handler, and a settled $invoke's value
 A plain string in an expression is ALWAYS a literal: 'item.name' is five words, item.name is a read.
 A plain string in a PROP or in children is text too: "$item.name" renders those ten characters. A
 reference is always written { "$": "item.name" }; the validator rejects the old string spelling.
-A store's actions are unreachable — spaceStore.createPost reads as nothing; only $action calls.
+A store's actions are unreachable — spaceStore.createPost reads as nothing; only $invoke calls.
 
 Operators, in JavaScript's spelling and precedence:
   == !=                          strict equality
@@ -340,7 +341,7 @@ Examples:
 { "$": "post.author in spaceStore.mutedDids" }
 
 Rules:
-- An expression naming event/arg/result at the TOP LEVEL of an $action's args, or as a $setLocal
+- An expression naming event/arg/result at the TOP LEVEL of an $invoke's args, or as a $setLocal
   "value", is evaluated when the handler fires. Nested inside another token it is evaluated at render
   time against no event and becomes a constant — the validator rejects that.
 - The validator reports every mistake with a column: an unknown name (with "did you mean"), an unknown
@@ -616,7 +617,7 @@ Call function: { "$callLocal": "fieldName" } — event handler that calls the fu
   The field must be declared as type: 'function' and set via $setLocal.
   Example: { "onClick": { "$callLocal": "onConfirm" } }
 State is created on mount and destroyed on unmount. Nested $localState declarations merge, inner fields shadow outer.
-Local values can be used in $action args: { "$action": "store.method", "args": [{ "$": "local.name" }] }
+Local values can be used in $invoke args: { "$invoke": "store.method", "args": [{ "$": "local.name" }] }
 
 Object-typed local state (consolidating related scalar fields):
 When several related fields share a common condition on their initial values (e.g. all null/empty when a store value is absent), prefer a single "object" field seeded from the store, then read sub-fields with dot-notation and write with merge.
@@ -719,10 +720,10 @@ Action tokens:
 { "$resetLocal": "$scope" } — resets all fields to initial values and clears touched state.
 
 Handler arrays (compose multiple actions on one event):
-{ "onClick": [{ "$touch": "$all" }, { "$if": { "condition": { "$": "formValid()" }, "then": { "$action": "store.submit", "onSuccess": [{ "$setLocal": "modalOpen", "value": false }] } } }] }
+{ "onClick": [{ "$touch": "$all" }, { "$if": { "condition": { "$": "formValid()" }, "then": { "$invoke": "store.submit", "onSuccess": [{ "$setLocal": "modalOpen", "value": false }] } } }] }
 Array entries execute sequentially. { "$if": { "condition", "then", "else" } } in a handler position runs one side or the
 other when the event fires — its condition may read event. It is the one place $if is a token rather than a node.
-Prefer onSuccess over a bare $setLocal before the $action — the bare form closes the modal immediately (losing the loading spinner); onSuccess waits for the Promise to resolve.
+Prefer onSuccess over a bare $setLocal before the $invoke — the bare form closes the modal immediately (losing the loading spinner); onSuccess waits for the Promise to resolve.
 
 Typical form pattern — validate on submit:
 {
@@ -749,7 +750,7 @@ Typical form pattern — validate on submit:
         "disabled": { "$": "local.submitting" },
         "onClick": [
           { "$touch": "$all" },
-          { "$if": { "condition": { "$": "formValid()" }, "then": { "$action": "store.save", "args": [{ "$": "local.name" }], "onSuccess": [{ "$setLocal": "submitDone", "value": true }] } } }
+          { "$if": { "condition": { "$": "formValid()" }, "then": { "$invoke": "store.save", "args": [{ "$": "local.name" }], "onSuccess": [{ "$setLocal": "submitDone", "value": true }] } } }
         ]
       },
       "children": ["Submit"]

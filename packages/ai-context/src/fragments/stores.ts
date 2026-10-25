@@ -646,10 +646,10 @@ export const storeEntries: StoreEntry[] = [
     },
     actions: ['activateApp', 'deactivateApp'],
   },
-  // Pseudo-store for record.create / record.update / record.delete $action tokens.
+  // Pseudo-store for record.create / record.update / record.delete $invoke tokens.
   // Not a real store (no `descriptions` entry below, so it's omitted from the
   // generated "## Stores" doc section) — it's already documented separately
-  // under "Record mutations via $action" in rules.ts. Wired at runtime in
+  // under "Record mutations via $invoke" in rules.ts. Wired at runtime in
   // TemplateProvider.tsx as `recordActions`, not through the store registry.
   {
     name: 'record',
@@ -708,7 +708,7 @@ export const storeEntries: StoreEntry[] = [
     state: { clocks: { type: 'object' } },
     actions: ['play', 'pause', 'toggle', 'seek', 'seekProgress', 'setSpeed', 'setLoop', 'configure'],
   },
-  // Pseudo-store for the clipboard.copy $action, wired the same way as `record` — documented in
+  // Pseudo-store for the clipboard.copy $invoke, wired the same way as `record` — documented in
   // the descriptions below, since nothing else describes it.
   {
     name: 'clipboard',
@@ -1291,7 +1291,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       moduleInstallSettings:
         "{ id, name, description, icon, installed, surface, switchable, capabilities }[] — every registered module and whether this agent wants it anywhere. `capabilities` is what a person is agreeing to — derived from the module's manifest (its permissions and the kernels it reaches) and what it contributes (a panel, storage in the space), never authored, so it cannot go stale. The global Settings → Modules list, and the only place an 'app', 'capability' or agent-scoped module is decided about: a contribution is gated at the layer where it renders, and only 'chrome' (panels, slots, rail) and 'content' (sections, blocks) render inside a space. `surface` is derived from what the module contributes. Unset, every registered module counts as installed — a seed entry's `enabled: false` is about spaces, not people. Its per-space counterpart is `modules` on each spaceList row, which carries enabled/installed/visible/active together and lists the community-decided modules only: chrome or content, and not agent-scoped. A community-decided module a space has off takes its sections and its space-level settings out of that space",
       moduleLaunchers:
-        '{ id, icon, label, active, busy, concealed }[] — one entry per module panel that asks for a rail button, plus the launchers a module declares of its own; what the host module rail renders. `id` is a panel’s dock id (`<moduleId>:<name>`) or a launcher’s key, and is what launchModule takes. `active` is the module reporting its surface open; `concealed` says that panel is open and out of sight — a background tab of a stack, folded to its bar, or in a lane collapsed to its edge — so light the button on `mod.active && !mod.concealed`, since pressing a concealed one brings the panel forward rather than closing it. `busy` says the module is working in the background — an extraction pass running — and is independent of `active`, so a rail can show work going on behind a closed panel. Pair with { $action: "spaceStore.launchModule", args: [{ $: "mod.id" }] }',
+        '{ id, icon, label, active, busy, concealed }[] — one entry per module panel that asks for a rail button, plus the launchers a module declares of its own; what the host module rail renders. `id` is a panel’s dock id (`<moduleId>:<name>`) or a launcher’s key, and is what launchModule takes. `active` is the module reporting its surface open; `concealed` says that panel is open and out of sight — a background tab of a stack, folded to its bar, or in a lane collapsed to its edge — so light the button on `mod.active && !mod.concealed`, since pressing a concealed one brings the panel forward rather than closing it. `busy` says the module is working in the background — an extraction pass running — and is independent of `active`, so a rail can show work going on behind a closed panel. Pair with { $invoke: "spaceStore.launchModule", args: [{ $: "mod.id" }] }',
     },
     actions: {
       moveChild:
@@ -1388,7 +1388,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       setWorkflowArchived:
         '(name: string, archived: boolean): puts a workflow away, or brings it back. Only whoever administers the space; rejects otherwise. Archiving never touches the records going through the workflow — offer it in place of deleting one that has any',
       setInvolvement:
-        '(nodeId: string, agent: string, kind: string, on: boolean): puts somebody on a record as a kind one member says about another — assigning a task, asking for a review — or takes them off. `on` is the state wanted rather than a toggle, so a menu passes the opposite of the tick it shows and a double press cannot undo itself. Every copy of the pair goes on removal. A reflexive kind is routed to respondTo, and refused for anybody but the agent it is about. Pair with a DropdownMenu of toggle entries: `onSelect: { $action: "spaceStore.setInvolvement", args: [{ $: "card.id" }, { $: "arg.id" }, "assignee", { $: "!arg.checked" }] }`',
+        '(nodeId: string, agent: string, kind: string, on: boolean): puts somebody on a record as a kind one member says about another — assigning a task, asking for a review — or takes them off. `on` is the state wanted rather than a toggle, so a menu passes the opposite of the tick it shows and a double press cannot undo itself. Every copy of the pair goes on removal. A reflexive kind is routed to respondTo, and refused for anybody but the agent it is about. Pair with a DropdownMenu of toggle entries: `onSelect: { $invoke: "spaceStore.setInvolvement", args: [{ $: "card.id" }, { $: "arg.id" }, "assignee", { $: "!arg.checked" }] }`',
       respondTo:
         '(nodeId: string, kind: string): gives this agent\u2019s own answer to a record — "going", "maybe", "not-going" — replacing any other answer it held there, in one transaction. Pass an empty kind to withdraw the answer. Refuses a kind that is not reflexive. Shown on the click, before the write lands',
       createRole:
@@ -1453,7 +1453,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       setModuleEnabled:
         '(moduleId: string, enabled: boolean, spaceUuid?): turns a feature module on or off for a space; writes the resolved list, so the first toggle also pins whatever was on by fallback. Omit spaceUuid for the space on screen',
       launchModule:
-        "(moduleId: string): invokes that module's declared launcher action. Takes an id rather than a path because $action resolves a literal string, so a rail iterating over modules cannot build modules.<id>.<method> itself",
+        "(moduleId: string): invokes that module's declared launcher action. Takes an id rather than a path because $invoke resolves a literal string, so a rail iterating over modules cannot build modules.<id>.<method> itself",
     },
   },
   recordStore: {
@@ -1472,7 +1472,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       recordErrors: 'string[] — validation errors from the last save attempt, plus any backend failure',
       savingRecord: 'boolean — a create is in flight',
       lastCreatedId:
-        "string — the id of the last record created, empty before the first. Read it to act on what was just made; kept in the store because an $action's onSuccess can read a store and cannot hold a value",
+        "string — the id of the last record created, empty before the first. Read it to act on what was just made; kept in the store because an $invoke's onSuccess can read a store and cannot hold a value",
       pendingLink:
         'the two records a pending connection joins ({ sourceId, sourceType, sourceLabel, targetId, targetType, targetLabel }), or null when the open form is an ordinary one. Read it to name what is being connected',
       relationshipKind:
@@ -1485,7 +1485,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       placeOnCanvas:
         '(canvas: string, nodeId: string, nodeType: string, x: number, y: number): puts a record at a position on a canvas, or moves one already there. An upsert, so dragging twice leaves one coordinate. Prefer dragOnCanvas for the graph’s onNodeDragEnd, which also carries what a folded card is holding',
       dragOnCanvas:
-        "(canvas: string, payload): writes where a drag left a card, and where everything a FOLDED card carried with it now sits. Takes the graph's onNodeDragEnd payload as it arrives. This rather than placeOnCanvas wherever the canvas can fold: the carried cards are a list, $action calls a method once, and a schema cannot loop — so without it, carrying a fold into a corner and unfolding it scatters its contents back where they were",
+        "(canvas: string, payload): writes where a drag left a card, and where everything a FOLDED card carried with it now sits. Takes the graph's onNodeDragEnd payload as it arrives. This rather than placeOnCanvas wherever the canvas can fold: the carried cards are a list, $invoke calls a method once, and a schema cannot loop — so without it, carrying a fold into a corner and unfolding it scatters its contents back where they were",
       removeFromCanvas:
         "(canvas: string, node: string | string[]): takes a record — or a whole selection — off a canvas, leaving the records themselves alone. A card the canvas owns survives as an unplaced one in the tray. Takes one id or a list, so a selection is not a special case: pass the graph's onDeleteSelection or onSelectionAction records as event.records.map(r, r.recordId). UNDOABLE, which is why this rather than deleteRecords is what a canvas should bind its Delete key to",
       deleteRecords:
@@ -1512,7 +1512,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       dropOnCanvas:
         "(canvas: string, payload): puts something dragged in from elsewhere onto a canvas where it landed. Takes the graph's onDrop payload as it arrives. A record from this space is placed as it is; something from another dataset is brought in first (the bringIn rule) and placed — a whole post or note as a post, a single block as itself (a copy of the block, or a lone EmbedBlock quoting somebody else's), owned by the canvas. Refuses, with a toast, anything that is not a record — an agent, a space",
       bringIn:
-        "(payload): takes a `we-drop-zone`'s dropped detail ({ items }) into the space on screen as posts — `onDropped: { $action: 'recordStore.bringIn', args: [{ $: 'event.detail' }] }`. Your own note or post becomes a copy (a post from another shared space records sourceRef/sourceName, shown as 'Also posted in …'); anybody else's post or block becomes a new post quoting it through an EmbedBlock carrying sourceAuthor and sourceName. Things already in this space are ignored. Each new post shows a toast with Undo",
+        "(payload): takes a `we-drop-zone`'s dropped detail ({ items }) into the space on screen as posts — `onDropped: { $invoke: 'recordStore.bringIn', args: [{ $: 'event.detail' }] }`. Your own note or post becomes a copy (a post from another shared space records sourceRef/sourceName, shown as 'Also posted in …'); anybody else's post or block becomes a new post quoting it through an EmbedBlock carrying sourceAuthor and sourceName. Things already in this space are ignored. Each new post shows a toast with Undo",
       updateRecordField:
         "(entity: string, id: string, field: string, value): changes one property of one record — the inspector's edit mode. Takes the field name so one action serves every control; the value is coerced by the field's declared kind and a control's { detail } is unwrapped. An empty string is not written, so a text field cannot be cleared this way",
       rekeyConnection:
@@ -1920,7 +1920,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
     state: {},
     actions: {
       create:
-        "(entity: string, fields: object, options?: { dataset?: string }): creates a record in the current space, or in the dataset a store path names ('datasetStore.rootDataset' for we-root entities, 'datasetStore.personalDataset' for the agent's own content). See \"Record mutations via $action\" above",
+        "(entity: string, fields: object, options?: { dataset?: string }): creates a record in the current space, or in the dataset a store path names ('datasetStore.rootDataset' for we-root entities, 'datasetStore.personalDataset' for the agent's own content). See \"Record mutations via $invoke\" above",
       update:
         '(entity: string, id: string, fields: object, options?: { dataset?: string }): updates the named fields of one record, leaving the rest',
       delete: '(entity: string, id: string, options?: { dataset?: string }): deletes one record. Irreversible',
@@ -2085,7 +2085,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
     '## Stores',
     '',
     'Stores provide state (readable values) and actions (methods) for dynamic logic in schemas.',
-    'Read state in an expression ({ "$": "storeName.member" }) and call actions with $action.',
+    'Read state in an expression ({ "$": "storeName.member" }) and call actions with $invoke.',
     'For ephemeral/form state, use $localState with local.* reads and $setLocal writes instead of stores (see Dynamic Logic).',
   ];
 

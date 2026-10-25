@@ -42,7 +42,7 @@ const optionRow: SchemaNode = {
             size: 'sm',
             disabled: { $: 'block.closed || modules.polls.voting == block.id' },
             loading: { $: 'modules.polls.voting == block.id' },
-            onClick: { $action: 'modules.polls.vote', args: [{ $: 'block.id' }, { $: 'row.option' }] },
+            onClick: { $invoke: 'modules.polls.vote', args: [{ $: 'block.id' }, { $: 'row.option' }] },
           },
           children: [{ $: 'row.option' }],
         },
@@ -167,7 +167,7 @@ export const pollComposer: SchemaNode = {
             disabled: { $: '!trim(local.question) || count(tally({ options: local.options })) < 2' },
             onClick: [
               {
-                $action: 'record.create',
+                $invoke: 'record.create',
                 args: ['Poll', { question: { $: 'trim(local.question)' }, options: { $: 'local.options' } }],
                 onSuccess: [
                   { $setLocal: 'question', value: '' },

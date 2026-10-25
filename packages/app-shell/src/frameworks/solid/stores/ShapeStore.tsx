@@ -677,7 +677,7 @@ export function ShapeStoreProvider(props: ParentProps) {
   // ── Wizard actions ────────────────────────────────────────────────────────────
 
   function openShapeWizard(shapeRecordId?: string): void {
-    // A schema $action with no declared args passes the DOM event as the first argument, so
+    // A schema $invoke with no declared args passes the DOM event as the first argument, so
     // anything but a real id means "new model" — without this, the New button arrived carrying a
     // MouseEvent and the wizard refused to open.
     const recordId = typeof shapeRecordId === 'string' && shapeRecordId ? shapeRecordId : undefined;

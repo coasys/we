@@ -380,7 +380,7 @@ describe('modules — private by default, public by marking', () => {
 
   it('tags state reactive and leaves an action callable but not readable', () => {
     // `{ $: 'modules.pocket.toggle' }` used to *call* toggle during paint. A marked action is the
-    // function itself, untagged, so an expression reads a function and `$action` calls it.
+    // function itself, untagged, so an expression reads a function and `$invoke` calls it.
     const space = bagFor(SPACE_TIER);
     expect(isReactive(space.pocket.open as never)).toBe(true);
     expect(isReactive(space.pocket.toggle as never)).toBe(false);

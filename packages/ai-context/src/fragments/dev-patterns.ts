@@ -374,7 +374,7 @@ themselves. Read the library table in the schema reference before composing.
 is falsy, so \`count(local.items)\` alone is the condition. Keep the comparison where a prop wants a
 real boolean — \`&&\`/\`||\` already answer with one.
 
-**Handlers stay tokens.** \`$action\`, \`$setLocal\`, \`$toggleLocal\`, \`$toggleLocalIn\`, \`$callLocal\`,
+**Handlers stay tokens.** \`$invoke\`, \`$setLocal\`, \`$toggleLocal\`, \`$toggleLocalIn\`, \`$callLocal\`,
 \`$touch\`, \`$resetLocal\` are the statement layer — about seven verbs, enumerable on purpose because
 capability grants and \`destructive\` flags attach to verbs. Their *arguments* take expressions, and an
 expression naming \`event\`/\`arg\`/\`result\` at the top level of \`args\` or as a \`$setLocal\` \`value\`

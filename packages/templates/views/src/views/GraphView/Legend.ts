@@ -107,7 +107,7 @@ const typeRow: SchemaNode = {
         then: swatchRow({
           current: colorOf,
           pick: (token) => ({
-            $action: 'recordStore.setTypeColor',
+            $invoke: 'recordStore.setTypeColor',
             args: [CANVAS, { $: 'placement.nodeType' }, token],
             // The graph re-reads and merges, so every card of that type changes at once — which is
             // the whole point of colouring a type rather than a card.

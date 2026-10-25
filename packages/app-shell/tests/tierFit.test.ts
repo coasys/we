@@ -129,7 +129,7 @@ describe('bundled module chrome', () => {
  * The half this test was missing, and the bug that found it.
  *
  * Chrome is schema too. `dockRegistry.dockFrame` builds a docked panel's frame — its geometry, and
- * the drag handle that resizes it — out of `$store` and `$action` references, exactly like a
+ * the drag handle that resizes it — out of `$store` and `$invoke` references, exactly like a
  * template does. Marking those store members `WIRING` therefore did not mean "the host keeps this
  * to itself"; it meant *nothing could reach them*, and every docked panel rendered as empty space
  * with no resize rail. The call module's video dock is the one that got noticed.
@@ -221,7 +221,7 @@ describe('a template’s declared panels are part of its surface', () => {
   it('reports an action a panel calls, not only a value it reads', () => {
     const template = withPanel({
       type: 'we-button',
-      props: { onClick: { $action: 'sessionStore.logout' } },
+      props: { onClick: { $invoke: 'sessionStore.logout' } },
       children: ['Sign out'],
     });
     const { blocked } = inspectTemplateSurface(template, SPACE_TIER);

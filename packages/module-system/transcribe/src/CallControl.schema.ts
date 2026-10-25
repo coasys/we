@@ -81,7 +81,7 @@ export const callControl: SchemaNode = {
             tone: {
               $: "modules.transcribe.recordingCall.listening ? 'danger' : modules.transcribe.recordingCall.enabled ? '' : ''",
             },
-            onClick: { $action: 'modules.transcribe.toggle' },
+            onClick: { $invoke: 'modules.transcribe.toggle' },
           },
           children: [
             {

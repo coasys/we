@@ -53,7 +53,7 @@ const openSpaceFirst: SchemaNode = {
         variant: 'soft',
         size: 'sm',
         alignSelf: 'start',
-        onClick: { $action: 'spaceStore.navigateToSpace', args: [{ $: 'space.uuid' }] },
+        onClick: { $invoke: 'spaceStore.navigateToSpace', args: [{ $: 'space.uuid' }] },
       },
       children: [
         { type: 'we-text', props: { variant: 'label' }, children: ['Open this space'] },

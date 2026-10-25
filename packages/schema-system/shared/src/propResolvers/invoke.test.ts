@@ -7,10 +7,10 @@ function resolve(token: unknown, stores: Props) {
   return resolveProp(token, stores, {});
 }
 
-describe('$action path resolution', () => {
+describe('$invoke path resolution', () => {
   it('resolves the classic store.method form', () => {
     const save = vi.fn();
-    const handler = resolve({ $action: 'myStore.save' }, { myStore: { save } });
+    const handler = resolve({ $invoke: 'myStore.save' }, { myStore: { save } });
 
     expect(typeof handler).toBe('function');
     (handler as () => void)();
@@ -22,7 +22,7 @@ describe('$action path resolution', () => {
     // an object rather than a function — and the handler was silently dropped. The button rendered,
     // clicked, and did nothing, with no error anywhere.
     const toggle = vi.fn();
-    const handler = resolve({ $action: 'modules.notes.toggle' }, { modules: { notes: { toggle } } });
+    const handler = resolve({ $invoke: 'modules.notes.toggle' }, { modules: { notes: { toggle } } });
 
     expect(typeof handler).toBe('function');
     (handler as () => void)();
@@ -31,17 +31,17 @@ describe('$action path resolution', () => {
 
   it('resolves arbitrary depth, matching what $store has always allowed', () => {
     const deep = vi.fn();
-    const handler = resolve({ $action: 'a.b.c.d.run' }, { a: { b: { c: { d: { run: deep } } } } });
+    const handler = resolve({ $invoke: 'a.b.c.d.run' }, { a: { b: { c: { d: { run: deep } } } } });
 
     (handler as () => void)();
     expect(deep).toHaveBeenCalled();
   });
 
   it('calls a method with no args with nothing, whatever the element emitted', () => {
-    // An `$action` with no `args` used to be handed the callback's own arguments, so a button wired
+    // An `$invoke` with no `args` used to be handed the callback's own arguments, so a button wired
     // the obvious way passed its click to any method with an optional first parameter.
     const startCall = vi.fn();
-    const handler = resolve({ $action: 'modules.call.startCall' }, { modules: { call: { startCall } } });
+    const handler = resolve({ $invoke: 'modules.call.startCall' }, { modules: { call: { startCall } } });
 
     (handler as (e: unknown) => void)(new Event('click'));
     expect(startCall).toHaveBeenCalledWith();
@@ -49,7 +49,7 @@ describe('$action path resolution', () => {
 
   it('calls a method with an empty args list with nothing too', () => {
     const open = vi.fn();
-    const handler = resolve({ $action: 'shellStore.open', args: [] }, { shellStore: { open } });
+    const handler = resolve({ $invoke: 'shellStore.open', args: [] }, { shellStore: { open } });
 
     (handler as (e: unknown) => void)({ detail: 'ignored' });
     expect(open).toHaveBeenCalledWith();
@@ -58,7 +58,7 @@ describe('$action path resolution', () => {
   it('passes resolved args through', () => {
     const add = vi.fn();
     const handler = resolve(
-      { $action: 'modules.notes.add', args: ['hello', { $: 'cfg.tag' }] },
+      { $invoke: 'modules.notes.add', args: ['hello', { $: 'cfg.tag' }] },
       { modules: { notes: { add } }, cfg: { tag: 'urgent' } },
     );
 
@@ -68,18 +68,18 @@ describe('$action path resolution', () => {
 
   it('extracts callback-argument paths via an expression on arg', () => {
     const set = vi.fn();
-    const handler = resolve({ $action: 'store.set', args: ['notes', { $: 'arg.detail' }] }, { store: { set } });
+    const handler = resolve({ $invoke: 'store.set', args: ['notes', { $: 'arg.detail' }] }, { store: { set } });
 
     (handler as (e: unknown) => void)({ detail: false });
     expect(set).toHaveBeenCalledWith('notes', false);
   });
 
   it('reads event the same as arg', () => {
-    // A lone `{ $action, args }` resolves once at render time, before any event exists. An
+    // A lone `{ $invoke, args }` resolves once at render time, before any event exists. An
     // expression naming `event` is deferred to the callback rather than evaluated to nothing — so
     // the store is handed the detail, not `undefined` and not a literal string.
     const set = vi.fn();
-    const handler = resolve({ $action: 'store.set', args: ['notes', { $: 'event.detail' }] }, { store: { set } });
+    const handler = resolve({ $invoke: 'store.set', args: ['notes', { $: 'event.detail' }] }, { store: { set } });
 
     (handler as (e: unknown) => void)({ detail: false });
     expect(set).toHaveBeenCalledWith('notes', false);
@@ -87,7 +87,7 @@ describe('$action path resolution', () => {
 
   it('leaves a dollar-prefixed string as the text it is', () => {
     const set = vi.fn();
-    const handler = resolve({ $action: 'store.set', args: ['notes', '$event.detail'] }, { store: { set } });
+    const handler = resolve({ $invoke: 'store.set', args: ['notes', '$event.detail'] }, { store: { set } });
 
     (handler as (e: unknown) => void)({ detail: false });
     expect(set).toHaveBeenCalledWith('notes', '$event.detail');
@@ -96,8 +96,8 @@ describe('$action path resolution', () => {
   it('passes the whole callback argument for a bare event or arg', () => {
     const set = vi.fn();
     const event = { detail: 42 };
-    const viaEvent = resolve({ $action: 'store.set', args: [{ $: 'event' }] }, { store: { set } });
-    const viaArg = resolve({ $action: 'store.set', args: [{ $: 'arg' }] }, { store: { set } });
+    const viaEvent = resolve({ $invoke: 'store.set', args: [{ $: 'event' }] }, { store: { set } });
+    const viaArg = resolve({ $invoke: 'store.set', args: [{ $: 'arg' }] }, { store: { set } });
 
     (viaEvent as (e: unknown) => void)(event);
     (viaArg as (e: unknown) => void)(event);
@@ -107,7 +107,7 @@ describe('$action path resolution', () => {
 
   it('warns naming the full path when the owner is missing', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    resolve({ $action: 'modules.absent.toggle' }, { modules: {} });
+    resolve({ $invoke: 'modules.absent.toggle' }, { modules: {} });
 
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('modules.absent'));
     warn.mockRestore();
@@ -115,7 +115,7 @@ describe('$action path resolution', () => {
 
   it('warns naming the method when the owner exists but the method does not', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    resolve({ $action: 'modules.notes.nope' }, { modules: { notes: {} } });
+    resolve({ $invoke: 'modules.notes.nope' }, { modules: { notes: {} } });
 
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('nope'));
     warn.mockRestore();
@@ -127,7 +127,7 @@ describe('$action path resolution', () => {
     // signal on the way through would be wrong.
     const signal = vi.fn(() => 'value');
     const run = vi.fn();
-    const handler = resolve({ $action: 'modules.notes.run' }, { modules: { notes: { run, open: signal } } });
+    const handler = resolve({ $invoke: 'modules.notes.run' }, { modules: { notes: { run, open: signal } } });
 
     (handler as () => void)();
     expect(run).toHaveBeenCalled();
@@ -149,8 +149,8 @@ describe('lifecycle dispatch resolves without a reactive owner', () => {
     const create = vi.fn().mockResolvedValue({ id: 'abc' });
     const handler = resolve(
       {
-        $action: 'myStore.create',
-        onSuccess: [{ $action: 'routeStore.navigate', args: [{ $: '`/board/${result.id}`' }] }],
+        $invoke: 'myStore.create',
+        onSuccess: [{ $invoke: 'routeStore.navigate', args: [{ $: '`/board/${result.id}`' }] }],
       },
       { myStore: { create }, routeStore: { navigate } },
     );
@@ -164,7 +164,7 @@ describe('lifecycle dispatch resolves without a reactive owner', () => {
     const save = vi.fn();
     // A render-time resolve keeps the reactive memo; `deepUnwrap` flattens it before the call.
     const handler = resolveProp(
-      { $action: 'myStore.save', args: [{ $: "'a' + 'b'" }] },
+      { $invoke: 'myStore.save', args: [{ $: "'a' + 'b'" }] },
       { myStore: { save } },
       {},
       (fn) => fn(),
@@ -185,7 +185,7 @@ describe('relative navigation with a render-time memo', () => {
     const navigate = vi.fn();
     const memo = ((fn: () => unknown) => fn) as <T>(fn: () => T) => T;
     const handler = resolveProp(
-      { $action: 'routeStore.navigate', args: [{ $: 'view.path' }] },
+      { $invoke: 'routeStore.navigate', args: [{ $: 'view.path' }] },
       { routeStore: { navigate } },
       { view: { path: './cards' }, $nav: { baseDepth: 2, pathname: '/space/abc' } },
       memo,

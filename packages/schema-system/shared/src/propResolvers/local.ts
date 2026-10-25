@@ -141,7 +141,7 @@ export function resolveToggleLocalProp(value: { $toggleLocal: string }, context:
  * value, and an expression can reach it. The read side needs nothing new — `group.id in
  * local.collapsedGroups`.
  *
- * `value` is evaluated when the handler fires, like `$action` args, so it reads the state as it is
+ * `value` is evaluated when the handler fires, like `$invoke` args, so it reads the state as it is
  * when the user clicks.
  */
 export function resolveToggleLocalInProp(

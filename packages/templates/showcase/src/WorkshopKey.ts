@@ -94,7 +94,7 @@ export const HIDDEN_KINDS = `split(routeStore.params.${HIDE_PARAM})`;
 export function toggleKindShown(kind: string): SchemaProp {
   const hidden = `(${kind} in ${HIDDEN_KINDS})`;
   return {
-    $action: 'routeStore.setParam',
+    $invoke: 'routeStore.setParam',
     args: [
       HIDE_PARAM,
       {
@@ -130,7 +130,7 @@ export const FOLD_COUNT = `count(${FOLDED_CARDS})`;
  * nobody has folded has a clean address.
  */
 export const FOLD_FROM_GRAPH: SchemaProp = {
-  $action: 'routeStore.setParam',
+  $invoke: 'routeStore.setParam',
   args: [
     FOLD_PARAM,
     {
@@ -155,7 +155,7 @@ export const FOLD_FROM_GRAPH: SchemaProp = {
 export const FOLD_QUERY = `\${routeStore.params.${FOLD_PARAM} ? '&${FOLD_PARAM}=' + routeStore.params.${FOLD_PARAM} : ''}`;
 
 /** Bring every folded card back — see `foldSection` for why this exists at all. */
-export const UNFOLD_ALL: SchemaProp = { $action: 'routeStore.setParam', args: [FOLD_PARAM, null] };
+export const UNFOLD_ALL: SchemaProp = { $invoke: 'routeStore.setParam', args: [FOLD_PARAM, null] };
 
 /**
  * Turn one lens on or off, leaving the other as it is.
@@ -172,7 +172,7 @@ export function toggleLens(lens: 'kind' | 'state' | 'order'): SchemaProp {
     replaces the heat map — which the arithmetic below already does, since neither is in `order`.
   */
   if (lens === 'order') {
-    return { $action: 'routeStore.setParam', args: [LENS_PARAM, { $: `${BY_ORDER} ? '' : 'order'` }] };
+    return { $invoke: 'routeStore.setParam', args: [LENS_PARAM, { $: `${BY_ORDER} ? '' : 'order'` }] };
   }
   const other = lens === 'kind' ? 'state' : 'kind';
   const on = `contains(${LENS}, '${lens}')`;
@@ -182,7 +182,7 @@ export function toggleLens(lens: 'kind' | 'state' | 'order'): SchemaProp {
   const onlyOther = other === 'kind' ? "''" : `'${other}'`;
   const onlyThis = lens === 'kind' ? "''" : `'${lens}'`;
   return {
-    $action: 'routeStore.setParam',
+    $invoke: 'routeStore.setParam',
     args: [LENS_PARAM, { $: `${on} ? (${otherOn} ? ${onlyOther} : 'none') : (${otherOn} ? ${both} : ${onlyThis})` }],
   };
 }
@@ -693,7 +693,7 @@ function canvasRow(opts: {
   label: string | ExpressionToken;
 }): SchemaNode {
   const write = (color: SchemaProp): SchemaProp => ({
-    $action: 'recordStore.setSpaceTypeColor',
+    $invoke: 'recordStore.setSpaceTypeColor',
     args: [{ $: 'spaceStore.currentSpace.id' }, opts.key, color],
   });
   return keyRow({
@@ -837,7 +837,7 @@ function kindRow(kind: string): SchemaNode {
     mark: picker(
       { $: kindFill(kind) },
       {
-        $action: 'recordStore.setSpaceTypeColor',
+        $invoke: 'recordStore.setSpaceTypeColor',
         args: [{ $: 'spaceStore.currentSpace.id' }, { $: kind }, { $: 'event.detail' }],
       },
     ),
@@ -855,7 +855,7 @@ function kindRow(kind: string): SchemaNode {
           */
           { $: `find(local.typeStyles, { nodeType: ${kind} }).color && ${KIND_DEFAULTS_LOOKUP}[${kind}]` },
           {
-            $action: 'recordStore.setSpaceTypeColor',
+            $invoke: 'recordStore.setSpaceTypeColor',
             args: [{ $: 'spaceStore.currentSpace.id' }, { $: kind }, ''],
           },
         ),
@@ -969,7 +969,7 @@ const kindRows: SchemaNode = {
  * state back to the template's default without deleting anything.
  */
 const setStateColor = (color: SchemaProp): SchemaProp => ({
-  $action: 'spaceStore.updateTaskState',
+  $invoke: 'spaceStore.updateTaskState',
   args: [{ $: 'state.slug' }, { color }],
 });
 
@@ -1267,7 +1267,7 @@ export function keyPanel(opts: {
                           props: {
                             size: 'xs',
                             variant: 'ghost',
-                            onClick: { $action: 'shellStore.openSpaceSettings', args: ['vocabulary'] },
+                            onClick: { $invoke: 'shellStore.openSpaceSettings', args: ['vocabulary'] },
                           },
                           children: ['Edit'],
                         },

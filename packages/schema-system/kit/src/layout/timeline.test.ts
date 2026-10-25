@@ -47,10 +47,10 @@ describe('a timeline', () => {
         fromStart: 'local.fromStart',
         orientation: 'local.orientation',
         children: [],
-        onLoadOlder: { $action: 'older' },
-        onLoadNewer: { $action: 'newer' },
-        onJumpNewest: { $action: 'newest' },
-        onJumpOldest: { $action: 'oldest' },
+        onLoadOlder: { $invoke: 'older' },
+        onLoadNewer: { $invoke: 'newer' },
+        onJumpNewest: { $invoke: 'newest' },
+        onJumpOldest: { $invoke: 'oldest' },
       });
       const pin = (node.props as { pin: { $: string } }).pin.$;
       expect(value(pin, locals)).toBe(bottom ? 'end' : '');
@@ -62,16 +62,16 @@ describe('a timeline', () => {
       fromStart: 'local.fromStart',
       orientation: 'local.orientation',
       children: [],
-      onLoadOlder: { $action: 'older' },
-      onLoadNewer: { $action: 'newer' },
-      onJumpNewest: { $action: 'newest' },
-      onJumpOldest: { $action: 'oldest' },
+      onLoadOlder: { $invoke: 'older' },
+      onLoadNewer: { $invoke: 'newer' },
+      onJumpNewest: { $invoke: 'newest' },
+      onJumpOldest: { $invoke: 'oldest' },
     });
     const props = node.props as Record<string, { $if: { condition: { $: string }; then: unknown; else: unknown } }>;
     // Top is newest only when drawn newest-at-top: then the top button means "newest".
-    expect(props['on:jumpstart'].$if.then).toEqual({ $action: 'newest' });
-    expect(props['on:jumpstart'].$if.else).toEqual({ $action: 'oldest' });
-    expect(props['on:jumpend'].$if.then).toEqual({ $action: 'oldest' });
+    expect(props['on:jumpstart'].$if.then).toEqual({ $invoke: 'newest' });
+    expect(props['on:jumpstart'].$if.else).toEqual({ $invoke: 'oldest' });
+    expect(props['on:jumpend'].$if.then).toEqual({ $invoke: 'oldest' });
     expect(value(props['on:jumpstart'].$if.condition.$, { orientation: 'newestTop' })).toBe(true);
   });
 });

@@ -126,7 +126,7 @@ export default function TemplateProvider() {
   });
 
   /*
-    The console, as a store, so a schema author can print from an `$action` while working something
+    The console, as a store, so a schema author can print from an `$invoke` while working something
     out. This is the one place `console.log` is the *feature* rather than a leftover — hence the
     disable, rather than an exemption in the lint config that would cover the whole file.
   */
@@ -813,12 +813,12 @@ export default function TemplateProvider() {
    * straight here from a template, so
    *
    * ```json
-   * { "$action": "record.create", "args": ["TextBlock", {}, { "dataset": "sessionStore.logout" }] }
+   * { "$invoke": "record.create", "args": ["TextBlock", {}, { "dataset": "sessionStore.logout" }] }
    * ```
    *
    * logged the user out from a synced space template, and `runtimeStore.restartExecutor`,
    * `runtimeStore.exportDatabase` and `themeStore.restorePersonalTheme` were reachable the same way.
-   * `buildTemplateBag` protects `{ "$action": "sessionStore.logout" }` and did nothing for this
+   * `buildTemplateBag` protects `{ "$invoke": "sessionStore.logout" }` and did nothing for this
    * closure's own lookup — a filtered bag around an unfiltered walk.
    *
    * The fix is not a better walk. The option means *which dataset*, and the datasets are a closed
@@ -1138,7 +1138,7 @@ export default function TemplateProvider() {
               // The dataset id, never the route segment: for a shared space the segment is the
               // neighbourhood CID, and the settings page keys off the dataset id.
               onClick: {
-                $action: 'shellStore.openShellView',
+                $invoke: 'shellStore.openShellView',
                 args: ['settings', { $: '`/spaces/${datasetStore.currentDataset.id}`' }],
               },
             },
@@ -1181,7 +1181,7 @@ export default function TemplateProvider() {
             type: 'we-button',
             props: {
               variant: 'solid',
-              onClick: { $action: 'routeStore.navigate', args: [{ $: 'first(spaceStore.viewNav).path' }] },
+              onClick: { $invoke: 'routeStore.navigate', args: [{ $: 'first(spaceStore.viewNav).path' }] },
             },
             children: [{ $: '`Go to ${first(spaceStore.viewNav).label}`' }],
           },

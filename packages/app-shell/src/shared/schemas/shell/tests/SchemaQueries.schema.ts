@@ -61,7 +61,7 @@ const seedControls: SchemaNode = {
   children: [
     {
       type: 'we-button',
-      props: { variant: 'solid', onClick: { $action: 'testStore.seedQueryData' } },
+      props: { variant: 'solid', onClick: { $invoke: 'testStore.seedQueryData' } },
       children: [{ type: 'we-icon', props: { name: 'arrows-clockwise' } }, 'Seed known data'],
     },
     {
@@ -194,7 +194,7 @@ const liveSection = section(
     children: [
       {
         type: 'we-button',
-        props: { variant: 'soft', onClick: { $action: 'testStore.createTestItem' } },
+        props: { variant: 'soft', onClick: { $invoke: 'testStore.createTestItem' } },
         children: [{ type: 'we-icon', props: { name: 'plus' } }, 'Add item'],
       },
       labeledRow('all, name asc', {

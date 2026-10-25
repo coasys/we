@@ -525,7 +525,7 @@ const composer: SchemaNode = formModal({
   discardWhen: { $: 'local.draftTitle || local.draftStart || local.draftLocation' },
   submitLabel: 'Add event',
   submit: {
-    $action: 'record.create',
+    $invoke: 'record.create',
     args: [
       'EventBlock',
       {

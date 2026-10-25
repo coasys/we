@@ -2,7 +2,7 @@
  * `$if` between handlers — the statement layer's one conditional.
  *
  *   { $if: { condition: { $: "arg.detail.key == 'Enter' && local.password" },
- *            then: { $action: 'sessionStore.login', args: [{ $: 'local.password' }] } } }
+ *            then: { $invoke: 'sessionStore.login', args: [{ $: 'local.password' }] } } }
  *
  * `condition` is an expression; `then` and `else` are a handler or a list of handlers, either
  * optional. The whole thing resolves to one handler, evaluated when it fires: the condition is read

@@ -69,7 +69,7 @@ const appSection: SchemaNode = {
             options: { $: 'templateStore.appTemplateOptions' },
             value: { $: 'templateStore.appTemplateId' },
             size: 'sm',
-            onChange: { $action: 'templateStore.setAppTemplate', args: [{ $: 'event.detail' }] },
+            onChange: { $invoke: 'templateStore.setAppTemplate', args: [{ $: 'event.detail' }] },
           },
         },
       ],
@@ -125,7 +125,7 @@ const appSection: SchemaNode = {
                             variant: 'ghost',
                             size: 'sm',
                             label: 'Delete this app',
-                            onClick: { $action: 'templateStore.deleteTemplate', args: [{ $: 'app.value' }] },
+                            onClick: { $invoke: 'templateStore.deleteTemplate', args: [{ $: 'app.value' }] },
                           },
                           children: [{ type: 'we-icon', props: { name: 'trash', size: '16px', color: 'danger-text' } }],
                         },
@@ -157,7 +157,7 @@ const setUpPicker: SchemaNode = {
     condition: { $: 'bundleStore.setUpPicker' },
     then: {
       type: 'we-modal',
-      props: { size: 'sm', close: { $action: 'bundleStore.closeSetUp' } },
+      props: { size: 'sm', close: { $invoke: 'bundleStore.closeSetUp' } },
       children: [
         {
           type: 'we-text',
@@ -175,7 +175,7 @@ const setUpPicker: SchemaNode = {
           children: [
             {
               type: 'we-button',
-              props: { variant: 'ghost', onClick: { $action: 'bundleStore.closeSetUp' } },
+              props: { variant: 'ghost', onClick: { $invoke: 'bundleStore.closeSetUp' } },
               children: ['Cancel'],
             },
             {
@@ -184,7 +184,7 @@ const setUpPicker: SchemaNode = {
                 variant: 'solid',
                 disabled: { $: '!bundleStore.spaceChoices.exists(c, c.chosen)' },
                 loading: { $: 'bundleStore.busy' },
-                onClick: { $action: 'bundleStore.confirmSetUp' },
+                onClick: { $invoke: 'bundleStore.confirmSetUp' },
               },
               children: ['Set up'],
             },
@@ -252,7 +252,7 @@ const appsSection: SchemaNode = {
                     variant: 'soft',
                     size: 'sm',
                     disabled: { $: 'bundleStore.busy' },
-                    onClick: { $action: 'bundleStore.openSetUp', args: [{ $: 'app.id' }] },
+                    onClick: { $invoke: 'bundleStore.openSetUp', args: [{ $: 'app.id' }] },
                   },
                   children: ['Set up a space…'],
                 },
@@ -280,7 +280,7 @@ const appsSection: SchemaNode = {
                         size: 'sm',
                         label: 'Remove this app',
                         disabled: { $: 'bundleStore.busy' },
-                        onClick: { $action: 'bundleStore.removeBundle', args: [{ $: 'app.id' }] },
+                        onClick: { $invoke: 'bundleStore.removeBundle', args: [{ $: 'app.id' }] },
                       },
                       children: [{ type: 'we-icon', props: { name: 'trash', size: '16px', color: 'danger-text' } }],
                     },
@@ -297,7 +297,7 @@ const appsSection: SchemaNode = {
       props: {
         accept: '.json,application/json',
         disabled: { $: 'bundleStore.busy' },
-        onChange: { $action: 'bundleStore.installFromFile', args: [{ $: 'event.detail' }] },
+        onChange: { $invoke: 'bundleStore.installFromFile', args: [{ $: 'event.detail' }] },
       },
       children: [
         {
@@ -400,7 +400,7 @@ const templatesSection: SchemaNode = {
                             checked: { $: 'template.isInstalled' },
                             size: 'sm',
                             onChange: {
-                              $action: 'templateStore.toggleInstalled',
+                              $invoke: 'templateStore.toggleInstalled',
                               args: [{ $: 'template.id' }],
                             },
                           },
@@ -431,7 +431,7 @@ const templatesSection: SchemaNode = {
                             name: 'default-template',
                             value: { $: 'template.id' },
                             onChange: {
-                              $action: 'templateStore.setDefaultTemplate',
+                              $invoke: 'templateStore.setDefaultTemplate',
                               args: [{ $: 'template.id' }],
                             },
                           },
@@ -465,7 +465,7 @@ const templatesSection: SchemaNode = {
                         variant: 'ghost',
                         size: 'sm',
                         onClick: {
-                          $action: 'templateStore.deleteTemplate',
+                          $invoke: 'templateStore.deleteTemplate',
                           args: [{ $: 'template.id' }],
                         },
                       },
@@ -543,7 +543,7 @@ function refusedTemplatesGroup(): SchemaNode {
                       size: 'sm',
                       label: 'Delete',
                       loading: { $: 'templateStore.operationLoading == `delete:${refused.id}`' },
-                      onClick: { $action: 'templateStore.deleteRefusedTemplate', args: [{ $: 'refused.id' }] },
+                      onClick: { $invoke: 'templateStore.deleteRefusedTemplate', args: [{ $: 'refused.id' }] },
                     },
                     children: [{ type: 'we-icon', props: { name: 'trash', size: '16px', color: 'danger-text' } }],
                   },
@@ -603,7 +603,7 @@ const templateUpdatesSection: SchemaNode = {
       type: 'we-switch',
       props: {
         checked: { $: 'templateStore.followTemplateUpdates' },
-        onChange: { $action: 'templateStore.setFollowTemplateUpdates', args: [{ $: 'event.detail' }] },
+        onChange: { $invoke: 'templateStore.setFollowTemplateUpdates', args: [{ $: 'event.detail' }] },
       },
     },
   ],
@@ -655,7 +655,7 @@ const themeScopeSection: SchemaNode = {
           type: 'we-switch',
           props: {
             checked: { $: 'themeStore.themeScopeGlobal' },
-            onChange: { $action: 'themeStore.setThemeScopeGlobal', args: [{ $: 'event.detail' }] },
+            onChange: { $invoke: 'themeStore.setThemeScopeGlobal', args: [{ $: 'event.detail' }] },
           },
         },
       ],
@@ -690,7 +690,7 @@ const themeScopeSection: SchemaNode = {
           type: 'we-switch',
           props: {
             checked: { $: 'themeStore.useTemplateTheme' },
-            onChange: { $action: 'themeStore.setUseTemplateTheme', args: [{ $: 'event.detail' }] },
+            onChange: { $invoke: 'themeStore.setUseTemplateTheme', args: [{ $: 'event.detail' }] },
           },
         },
       ],
@@ -737,7 +737,7 @@ const themeModeRow = (where: string): SchemaNode => ({
               { label: 'Light', value: 'light' },
               { label: 'Dark', value: 'dark' },
             ],
-            onChange: { $action: 'themeStore.setThemeMode', args: [{ $: 'event.detail' }] },
+            onChange: { $invoke: 'themeStore.setThemeMode', args: [{ $: 'event.detail' }] },
           },
         },
       ],
@@ -782,7 +782,7 @@ const displayRow = (
         },
         options,
         onChange: {
-          $action: 'themeStore.setDisplayPreference',
+          $invoke: 'themeStore.setDisplayPreference',
           args: [key, key === 'textSize' ? { $: 'event.detail * 1' } : { $: 'event.detail' }],
         },
       },
@@ -925,7 +925,7 @@ const themesSection: SchemaNode = {
                                 checked: { $: 'theme.isInstalled' },
                                 size: 'sm',
                                 onChange: {
-                                  $action: 'themeStore.setThemeInstalled',
+                                  $invoke: 'themeStore.setThemeInstalled',
                                   args: [{ $: 'theme.id' }, { $: 'event.detail' }],
                                 },
                               },
@@ -956,7 +956,7 @@ const themesSection: SchemaNode = {
                                 name: 'default-theme',
                                 value: { $: 'theme.id' },
                                 onChange: {
-                                  $action: 'themeStore.setDefaultTheme',
+                                  $invoke: 'themeStore.setDefaultTheme',
                                   args: [{ $: 'theme.id' }],
                                 },
                               },
@@ -977,7 +977,7 @@ const themesSection: SchemaNode = {
                             variant: 'ghost',
                             size: 'sm',
                             onClick: {
-                              $action: 'themeStore.deleteTheme',
+                              $invoke: 'themeStore.deleteTheme',
                               args: [{ $: 'theme.id' }],
                             },
                           },
@@ -1145,7 +1145,7 @@ const agentModuleSettingsSection: SchemaNode = {
                             variant: 'ghost',
                             size: 'xs',
                             onClick: {
-                              $action: 'spaceStore.setAgentModuleSetting',
+                              $invoke: 'spaceStore.setAgentModuleSetting',
                               args: [{ $: 'setting.group' }, { $: 'setting.key' }],
                             },
                           },
@@ -1166,7 +1166,7 @@ const agentModuleSettingsSection: SchemaNode = {
                         checked: { $: 'setting.value' },
                         disabled: { $: 'setting.locked' },
                         onChange: {
-                          $action: 'spaceStore.setAgentModuleSetting',
+                          $invoke: 'spaceStore.setAgentModuleSetting',
                           args: [{ $: 'setting.group' }, { $: 'setting.key' }, { $: 'event.detail' }],
                         },
                       },
@@ -1183,7 +1183,7 @@ const agentModuleSettingsSection: SchemaNode = {
                             value: { $: 'setting.value' },
                             disabled: { $: 'setting.locked' },
                             onChange: {
-                              $action: 'spaceStore.setAgentModuleSetting',
+                              $invoke: 'spaceStore.setAgentModuleSetting',
                               args: [{ $: 'setting.group' }, { $: 'setting.key' }, { $: 'event.detail' }],
                             },
                           },
@@ -1195,7 +1195,7 @@ const agentModuleSettingsSection: SchemaNode = {
                             value: { $: 'setting.value' },
                             disabled: { $: 'setting.locked' },
                             onInput: {
-                              $action: 'spaceStore.setAgentModuleSetting',
+                              $invoke: 'spaceStore.setAgentModuleSetting',
                               args: [{ $: 'setting.group' }, { $: 'setting.key' }, { $: 'event.detail' }],
                             },
                           },
@@ -1253,7 +1253,7 @@ const moduleSwitch: SchemaNode = {
   type: 'we-switch',
   props: {
     checked: { $: 'mod.installed' },
-    onChange: { $action: 'spaceStore.setModuleInstalled', args: [{ $: 'mod.id' }, { $: 'event.detail' }] },
+    onChange: { $invoke: 'spaceStore.setModuleInstalled', args: [{ $: 'mod.id' }, { $: 'event.detail' }] },
   },
 };
 
@@ -1330,7 +1330,7 @@ const spaceActions: SchemaNode = {
         text: 'Create New Space',
         variant: 'solid',
         height: '40px',
-        onClick: { $action: 'shellStore.setCreateSpaceOpen', args: [true] },
+        onClick: { $invoke: 'shellStore.setCreateSpaceOpen', args: [true] },
       },
     },
     {
@@ -1339,7 +1339,7 @@ const spaceActions: SchemaNode = {
         text: 'Join a Space',
         variant: 'soft',
         height: '40px',
-        onClick: { $action: 'shellStore.setJoinSpaceOpen', args: [true] },
+        onClick: { $invoke: 'shellStore.setJoinSpaceOpen', args: [true] },
       },
     },
   ],
@@ -1393,7 +1393,7 @@ function navItem(label: string, icon: string, path: string): SchemaNode {
       variant: expr`${selected} ? 'soft' : 'ghost'`,
       width: '100%',
       ax: 'start',
-      onClick: { $action: 'routeStore.navigate', args: [path] },
+      onClick: { $invoke: 'routeStore.navigate', args: [path] },
     },
     children: [
       { type: 'we-icon', props: { name: icon } },
@@ -1475,7 +1475,7 @@ const developerSection: SchemaNode = {
             checked: { $: 'sessionStore.devTools' },
             // Positive-phrased, so the switch's own value passes straight through — `$not` around it
             // would resolve at render time and send a constant.
-            onChange: { $action: 'sessionStore.setDevTools', args: [{ $: 'event.detail' }] },
+            onChange: { $invoke: 'sessionStore.setDevTools', args: [{ $: 'event.detail' }] },
           },
         },
       ],

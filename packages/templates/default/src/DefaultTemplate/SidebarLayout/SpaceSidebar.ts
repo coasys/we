@@ -17,7 +17,7 @@ export const spaceSidebar: SchemaNode = {
         placeholderIcon: 'panorama',
         uploadLabel: 'Upload cover image',
         editLabel: 'Change cover image',
-        onImageChange: { $action: 'spaceStore.updateSpaceImage', args: ['coverImage', { $: 'arg' }] },
+        onImageChange: { $invoke: 'spaceStore.updateSpaceImage', args: ['coverImage', { $: 'arg' }] },
       },
     },
     {
@@ -39,7 +39,7 @@ export const spaceSidebar: SchemaNode = {
             uploadLabel: 'Add image',
             editLabel: 'Change image',
             fontSize: '200',
-            onImageChange: { $action: 'spaceStore.updateSpaceImage', args: ['avatar', { $: 'arg' }] },
+            onImageChange: { $invoke: 'spaceStore.updateSpaceImage', args: ['avatar', { $: 'arg' }] },
           },
         },
       ],
@@ -84,7 +84,7 @@ export const spaceSidebar: SchemaNode = {
               type: 'we-button',
               props: {
                 variant: { $: "routeStore.segments[2] == view.segment ? 'solid' : 'ghost'" },
-                onClick: { $action: 'routeStore.navigate', args: [{ $: 'view.path' }] },
+                onClick: { $invoke: 'routeStore.navigate', args: [{ $: 'view.path' }] },
               },
               children: [
                 { type: 'we-icon', props: { name: { $: 'view.icon' } } },

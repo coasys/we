@@ -272,7 +272,7 @@ context, and known to the validator from there.
 ### Stores
 
 State and actions the app shell holds — and, because every member is reachable from a template via
-an expression (`{ $: 'spaceStore.members' }`) or `$action`, **schema-facing public API**. Name members for template authors rather than for
+an expression (`{ $: 'spaceStore.members' }`) or `$invoke`, **schema-facing public API**. Name members for template authors rather than for
 the code that calls them, and treat a removal as breaking.
 
 This surface has the strictest registration on the page, and both halves fail the build rather than

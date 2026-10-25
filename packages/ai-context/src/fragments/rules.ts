@@ -12,7 +12,7 @@ export const rules = `
 - Use design tokens for spacing, color, radius, etc. (do not use raw CSS except in styles).
 - Use the styles prop for custom inline CSS (e.g., { "width": "100px" }).
 - Use hoverProps for hover state overrides, activeProps for pressed state, focusProps for keyboard-focus state. Supported on @we/primitives (we-text, we-button, etc.) and layout components (Column, Row). focusProps fires on \`:focus-visible\` (keyboard), not on mouse click. Do not add a focus ring by hand — \`we-button\` and \`we-input\` already have one, in the \`focus\` role, which a \`tone\` re-points and a theme's \`focusRingWidth\` thickens.
-- Use expressions ({ "$": "…" }) for anything computed and handler tokens ($action, $setLocal, …) for anything that happens on an event; a plain string is always text.
+- Use expressions ({ "$": "…" }) for anything computed and handler tokens ($invoke, $setLocal, …) for anything that happens on an event; a plain string is always text.
 - Nest components using children or slots as needed.
 - For routes, use the routes array with path and child nodes.
 - Do not invent new components or props — use only those listed in the component registry.

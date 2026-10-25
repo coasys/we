@@ -100,7 +100,7 @@ export function formModal(opts: FormModalOptions): SchemaNode {
   /*
     Attach the close to whatever actually SETTLES, wherever that turns out to be.
 
-    `onSuccess` waits for a promise, so it belongs on an `$action` and nowhere else. A `$if` picks
+    `onSuccess` waits for a promise, so it belongs on an `$invoke` and nowhere else. A `$if` picks
     a branch and runs it, so an `onSuccess` beside one is read by nothing: spreading onto the token
     gave `{ $if: …, onSuccess: [close] }`, which typechecked, validated and silently never closed
     the modal — this fragment's whole promise, lost for every conditional submit. The one caller
@@ -133,7 +133,7 @@ export function formModal(opts: FormModalOptions): SchemaNode {
       };
     }
     // Only an action settles; anything else is run and done, so the close follows it.
-    if (!('$action' in token)) return [token, opts.close];
+    if (!('$invoke' in token)) return [token, opts.close];
     return { ...token, onSuccess: [opts.close, ...((token.onSuccess as unknown[]) ?? [])] };
   };
 

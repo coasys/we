@@ -434,7 +434,7 @@ function replyBody(
                             */
                             onClick: [
                               { $setLocal: 'pressedControl', value: true },
-                              { $action: 'spaceStore.deleteCollection', args: [{ $: `${as}.id` }] },
+                              { $invoke: 'spaceStore.deleteCollection', args: [{ $: `${as}.id` }] },
                             ],
                           },
                           children: [{ type: 'we-icon', props: { name: 'trash' } }],
@@ -912,7 +912,7 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
                       onSave: [
                         { $setLocal: COMPOSER_BUSY, value: true },
                         {
-                          $action: 'spaceStore.createPost',
+                          $invoke: 'spaceStore.createPost',
                           // The tree first: `createPost(json, options)`. `we://response` rather than
                           // `we://child` — a reply answers the thing rather than becoming part
                           // of it, which is what lets a reply be a composition with children.
@@ -983,7 +983,7 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
             saveLabel: 'Save',
             editorState: { $: 'first(local.discussionEdit).editorState' },
             saveAction: {
-              $action: 'spaceStore.updatePost',
+              $invoke: 'spaceStore.updatePost',
               // The id first: `updatePost(postId, json)` takes the tree second, which is why the
               // fragment asks a caller to place `arg` rather than appending it.
               args: [{ $: `local.${EDITING}` }, { $: 'arg' }],
@@ -999,7 +999,7 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
         title: opts.title ?? 'Reply',
         saveLabel: 'Reply',
         saveAction: {
-          $action: 'spaceStore.createPost',
+          $invoke: 'spaceStore.createPost',
           // The tree first: `createPost(json, options)`. `we://response` rather than `we://child`
           // — a reply answers the thing rather than becoming part of it, which is what lets a reply
           // be a full composition with children of its own.

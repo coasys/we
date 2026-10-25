@@ -23,7 +23,7 @@ export const OPEN_NODES = `split(routeStore.params.${OPEN_PARAM})`;
 
 /** Open a card or close it — from the graph's own report, for the reason `FOLD_FROM_GRAPH` gives. */
 export const OPEN_FROM_GRAPH: SchemaProp = {
-  $action: 'routeStore.setParam',
+  $invoke: 'routeStore.setParam',
   args: [
     OPEN_PARAM,
     { $: `join(event.open ? distinct(${OPEN_NODES}, [event.id]) : ${OPEN_NODES}.filter(k, k != event.id), ',')` },
@@ -179,7 +179,7 @@ export const vocabularyToggle: SchemaNode = {
       type: 'we-button',
       props: {
         variant: { $: `${VOCAB_ON} ? 'soft' : 'ghost'` },
-        onClick: { $action: 'routeStore.setParam', args: [VOCAB_PARAM, { $: `${VOCAB_ON} ? null : '1'` }] },
+        onClick: { $invoke: 'routeStore.setParam', args: [VOCAB_PARAM, { $: `${VOCAB_ON} ? null : '1'` }] },
       },
       children: [
         { type: 'we-icon', props: { name: 'book-open-text' } },
@@ -208,7 +208,7 @@ export function vocabularyEditLink(cardType: string): SchemaNode {
           size: 'sm',
           variant: 'soft',
           // About this record, so the settings land on its row — see `spaceSettingsFocus`.
-          onClick: { $action: 'shellStore.openSpaceSettings', args: ['vocabulary', { $: 'row.id' }] },
+          onClick: { $invoke: 'shellStore.openSpaceSettings', args: ['vocabulary', { $: 'row.id' }] },
         },
         children: [
           { type: 'we-icon', props: { name: 'book-open-text' } },

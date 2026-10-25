@@ -16,7 +16,7 @@ export type {
   TransitionConfig,
   TransitionEffect,
   ExpressionToken,
-  ActionToken,
+  InvokeToken,
   IfToken,
   QueryToken,
   QueryDescriptor,

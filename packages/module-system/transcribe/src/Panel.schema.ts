@@ -122,7 +122,7 @@ export const timelineOrderButton: SchemaNode = {
         variant: 'ghost',
         label: 'Newest at the top or the bottom',
         onClick: {
-          $action: 'spaceStore.setAgentModuleSetting',
+          $invoke: 'spaceStore.setAgentModuleSetting',
           args: [
             'transcribe',
             'timelineOrder',
@@ -951,7 +951,7 @@ const proposalEditor: SchemaNode = {
                 showTime: { $: "field.kind == 'datetime'" },
                 value: { $: 'modules.transcribe.proposalDraft[field.name]' },
                 onChange: {
-                  $action: 'modules.transcribe.setProposalField',
+                  $invoke: 'modules.transcribe.setProposalField',
                   args: [{ $: 'field.name' }, { $: 'event.detail' }],
                 },
               },
@@ -967,7 +967,7 @@ const proposalEditor: SchemaNode = {
                     value: { $: 'modules.transcribe.proposalDraft[field.name]' },
                     options: { $: 'field.options.map(o, { label: o, value: o })' },
                     onChange: {
-                      $action: 'modules.transcribe.setProposalField',
+                      $invoke: 'modules.transcribe.setProposalField',
                       args: [{ $: 'field.name' }, { $: 'event.detail' }],
                     },
                   },
@@ -978,7 +978,7 @@ const proposalEditor: SchemaNode = {
                     size: 'xs',
                     value: { $: 'modules.transcribe.proposalDraft[field.name]' },
                     onInput: {
-                      $action: 'modules.transcribe.setProposalField',
+                      $invoke: 'modules.transcribe.setProposalField',
                       args: [{ $: 'field.name' }, { $: 'event.detail' }],
                     },
                   },
@@ -1185,11 +1185,11 @@ const suggestedChangesGroup: SchemaNode = {
                                   props: { gap: '100', ay: 'center', flexShrink: '0' },
                                   children: [
                                     answerButton('success', 'Accept this change', {
-                                      $action: 'modules.transcribe.applyChange',
+                                      $invoke: 'modules.transcribe.applyChange',
                                       args: [{ $: 'proposal.id' }, { $: 'change.name' }],
                                     }),
                                     answerButton('danger', 'Reject this change — keeps the current value', {
-                                      $action: 'modules.transcribe.dismissChange',
+                                      $invoke: 'modules.transcribe.dismissChange',
                                       args: [{ $: 'proposal.id' }, { $: 'change.name' }],
                                     }),
                                   ],
@@ -1212,7 +1212,7 @@ const suggestedChangesGroup: SchemaNode = {
                                     variant: 'ghost',
                                     size: 'xs',
                                     onClick: {
-                                      $action: 'modules.transcribe.acceptProposal',
+                                      $invoke: 'modules.transcribe.acceptProposal',
                                       args: [{ $: 'proposal.id' }],
                                     },
                                   },
@@ -1224,7 +1224,7 @@ const suggestedChangesGroup: SchemaNode = {
                                     variant: 'ghost',
                                     size: 'xs',
                                     onClick: {
-                                      $action: 'modules.transcribe.rejectProposal',
+                                      $invoke: 'modules.transcribe.rejectProposal',
                                       args: [{ $: 'proposal.id' }],
                                     },
                                   },
@@ -1412,7 +1412,7 @@ const proposals: SchemaNode = {
                                                             square: true,
                                                             label: 'Stop editing',
                                                             onClick: {
-                                                              $action: 'modules.transcribe.cancelProposalEdit',
+                                                              $invoke: 'modules.transcribe.cancelProposalEdit',
                                                             },
                                                           },
                                                           children: [{ type: 'we-icon', props: { name: 'x' } }],
@@ -1431,7 +1431,7 @@ const proposals: SchemaNode = {
                                                             square: true,
                                                             label: 'Edit before accepting',
                                                             onClick: {
-                                                              $action: 'modules.transcribe.editProposal',
+                                                              $invoke: 'modules.transcribe.editProposal',
                                                               args: [{ $: 'proposal.id' }],
                                                             },
                                                           },
@@ -1556,7 +1556,7 @@ const proposals: SchemaNode = {
                                                           borderColor: 'success',
                                                         },
                                                         onClick: {
-                                                          $action: 'modules.transcribe.acceptProposal',
+                                                          $invoke: 'modules.transcribe.acceptProposal',
                                                           args: [{ $: 'proposal.id' }],
                                                         },
                                                       },
@@ -1586,7 +1586,7 @@ const proposals: SchemaNode = {
                                                           borderColor: 'danger',
                                                         },
                                                         onClick: {
-                                                          $action: 'modules.transcribe.rejectProposal',
+                                                          $invoke: 'modules.transcribe.rejectProposal',
                                                           args: [{ $: 'proposal.id' }],
                                                         },
                                                       },
@@ -1762,7 +1762,7 @@ export const extractionTargets: SchemaNode = {
                   is the shape this replaced.
                 */
                 onClick: {
-                  $action: 'modules.transcribe.toggleExtractionTarget',
+                  $invoke: 'modules.transcribe.toggleExtractionTarget',
                   args: [{ $: 'target.entity' }, EXTRACTION_SUBJECT],
                 },
               },
@@ -2138,7 +2138,7 @@ const extractionHistory: SchemaNode = {
                       size: 'sm',
                       square: true,
                       label: 'Export the extraction log',
-                      onClick: { $action: 'spaceStore.exportExtractionLog', args: [EXTRACTION_SUBJECT] },
+                      onClick: { $invoke: 'spaceStore.exportExtractionLog', args: [EXTRACTION_SUBJECT] },
                     },
                     children: [{ type: 'we-icon', props: { name: 'download' } }],
                   },
@@ -2572,7 +2572,7 @@ const autoExtractControl: SchemaNode = {
             disabled: { $: `!(${CAN_DECIDE})` },
             // The collection on screen, named: the store's own default is the call this agent is
             // in, which is not the one this panel shows outside a call.
-            onChange: { $action: 'modules.transcribe.toggleAutoExtract', args: [EXTRACTION_SUBJECT] },
+            onChange: { $invoke: 'modules.transcribe.toggleAutoExtract', args: [EXTRACTION_SUBJECT] },
           },
         },
       ],
@@ -2668,7 +2668,7 @@ const extractNowControl: SchemaNode = {
           `canExtract` about the live call while the action behind it would have worked on the one
           being shown.
         */
-        onClick: { $action: 'modules.transcribe.extractCollection', args: [EXTRACTION_SUBJECT] },
+        onClick: { $invoke: 'modules.transcribe.extractCollection', args: [EXTRACTION_SUBJECT] },
       },
       children: [
         { type: 'we-icon', props: { name: 'sparkle' } },
@@ -2891,7 +2891,7 @@ const extract: SchemaNode = {
                   variant: 'ghost',
                   square: true,
                   label: "Add a kind of thing to extract, in this space's vocabulary",
-                  onClick: { $action: 'shellStore.openSpaceSettings', args: ['vocabulary'] },
+                  onClick: { $invoke: 'shellStore.openSpaceSettings', args: ['vocabulary'] },
                 },
                 children: [{ type: 'we-icon', props: { name: 'plus' } }],
               },
@@ -3441,7 +3441,7 @@ export const captureStatus: SchemaNode = {
                     variant: 'solid',
                     loading: { $: 'modules.transcribe.installingModel' },
                     disabled: { $: 'modules.transcribe.installingModel' },
-                    onClick: { $action: 'modules.transcribe.installModel' },
+                    onClick: { $invoke: 'modules.transcribe.installModel' },
                   },
                   children: [
                     { type: 'we-icon', props: { name: 'download-simple' } },
@@ -3457,7 +3457,7 @@ export const captureStatus: SchemaNode = {
                       props: {
                         size: 'sm',
                         variant: 'soft',
-                        onClick: { $action: 'shellStore.openShellView', args: ['settings', '/ai'] },
+                        onClick: { $invoke: 'shellStore.openShellView', args: ['settings', '/ai'] },
                       },
                       children: ['Open AI settings'],
                     },
@@ -3638,7 +3638,7 @@ export const pendingUtterance: SchemaNode = {
                 condition: { $: 'modules.transcribe.pending' },
                 then: {
                   type: 'we-button',
-                  props: { variant: 'ghost', size: 'xs', onClick: { $action: 'modules.transcribe.flushNow' } },
+                  props: { variant: 'ghost', size: 'xs', onClick: { $invoke: 'modules.transcribe.flushNow' } },
                   children: ['Save now'],
                 },
               },
@@ -3717,7 +3717,7 @@ const sendMessage = [
     $if: {
       condition: { $: TRANSCRIPT_REPLY },
       then: {
-        $action: 'modules.transcribe.reply',
+        $invoke: 'modules.transcribe.reply',
         args: [
           { $: 'modules.transcribe.replyingTo.id' },
           { $: 'event.text' },
@@ -3727,7 +3727,7 @@ const sendMessage = [
         onFinally: [{ $setLocal: 'sending', value: false }],
       },
       else: {
-        $action: 'modules.transcribe.addMessage',
+        $invoke: 'modules.transcribe.addMessage',
         args: [{ $: TRANSCRIPT_TARGET_EXPR }, { $: 'event.text' }, { $: 'event.marks' }],
         onFinally: [{ $setLocal: 'sending', value: false }],
       },
@@ -3796,7 +3796,7 @@ export const transcriptComposer: SchemaNode = {
             },
             {
               type: 'we-button',
-              props: { size: 'xs', variant: 'ghost', onClick: { $action: 'modules.transcribe.cancelReply' } },
+              props: { size: 'xs', variant: 'ghost', onClick: { $invoke: 'modules.transcribe.cancelReply' } },
               children: ['Cancel'],
             },
           ],
@@ -3844,10 +3844,10 @@ export const transcriptFeed: SchemaNode = timeline({
   */
   fromStart: TRANSCRIPT_FROM_START,
   orientation: TIMELINE_ORIENTATION,
-  onLoadOlder: { $action: 'modules.transcribe.showMoreTranscript' },
-  onLoadNewer: { $action: 'modules.transcribe.showMoreTranscript' },
-  onJumpNewest: { $action: 'modules.transcribe.readTranscriptLive' },
-  onJumpOldest: { $action: 'modules.transcribe.readTranscriptFromStart' },
+  onLoadOlder: { $invoke: 'modules.transcribe.showMoreTranscript' },
+  onLoadNewer: { $invoke: 'modules.transcribe.showMoreTranscript' },
+  onJumpNewest: { $invoke: 'modules.transcribe.readTranscriptLive' },
+  onJumpOldest: { $invoke: 'modules.transcribe.readTranscriptFromStart' },
   children: [
     {
       type: 'Column',
@@ -4438,7 +4438,7 @@ export const panel: SchemaNode = panelShell({
                   size: 'sm',
                   square: true,
                   label: 'Export the transcript',
-                  onClick: { $action: 'spaceStore.exportCallTranscript', args: [SUBJECT] },
+                  onClick: { $invoke: 'spaceStore.exportCallTranscript', args: [SUBJECT] },
                 },
                 children: [{ type: 'we-icon', props: { name: 'download' } }],
               },
@@ -4531,7 +4531,7 @@ export const panel: SchemaNode = panelShell({
                       },
                       size: 'sm',
                       gap: '200',
-                      onClick: { $action: 'modules.transcribe.toggle' },
+                      onClick: { $invoke: 'modules.transcribe.toggle' },
                     },
                     /*
                           A glyph and a word, the shape the Continue button beside it already has.

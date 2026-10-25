@@ -300,7 +300,7 @@ export function codePane(options: {
                       variant: 'ghost',
                       square: true,
                       label: `Copy ${options.label.toLowerCase()}`,
-                      onClick: { $action: 'clipboard.copy', args: [options.value, options.label] },
+                      onClick: { $invoke: 'clipboard.copy', args: [options.value, options.label] },
                     },
                     children: [{ type: 'we-icon', props: { name: 'copy' } }],
                   },

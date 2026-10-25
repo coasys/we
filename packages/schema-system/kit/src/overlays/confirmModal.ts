@@ -113,7 +113,7 @@ export function confirmModal(opts: ConfirmModalOptions): SchemaNode {
   /*
     Where the close goes depends on what the confirm actually is.
 
-    `$action` is the only token with lifecycle hooks, and the close belongs in its `onSuccess` so it
+    `$invoke` is the only token with lifecycle hooks, and the close belongs in its `onSuccess` so it
     waits for the promise — closing before it resolves loses the spinner and the error path. Every
     other token is synchronous, and giving *those* an `onSuccess` writes a key the resolver never
     reads: it was spliced onto them unconditionally, so a `$setLocal` confirm silently never closed
@@ -123,7 +123,7 @@ export function confirmModal(opts: ConfirmModalOptions): SchemaNode {
   // A handler array is a confirm too — `discardGuard` hands over whatever the modal's `close` is,
   // and a composer's close can be several steps (close, then clear a presence activity). Nested
   // arrays are not flattened by the resolver, so the steps are spliced in rather than wrapped.
-  const isAction = !Array.isArray(opts.confirm) && '$action' in opts.confirm;
+  const isAction = !Array.isArray(opts.confirm) && '$invoke' in opts.confirm;
   const confirmAction = isAction
     ? {
         ...(opts.confirm as Record<string, unknown>),

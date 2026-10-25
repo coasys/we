@@ -7,7 +7,7 @@
  *
  * Groups:
  *   1. Data Access     — expressions ({ $: … }), including interpolation
- *   2. Actions         — $action, $arg
+ *   2. Actions         — $invoke, $arg
  *   3. Operators       — $eq, $ne, $not, $and, $or
  *   4. Control Flow    — $if, $each (flat, nested, empty)
  *   5. Data Transforms — $map (array, object), $pick (standalone, chained)
@@ -117,7 +117,7 @@ function filterModeButton(mode: string, label: string, icon: string): SchemaNode
     type: 'we-button',
     props: {
       variant: expr`testStore.queryFilterMode == ${mode} ? 'solid' : 'soft'`,
-      onClick: { $action: 'testStore.setQueryFilterMode', args: [mode] },
+      onClick: { $invoke: 'testStore.setQueryFilterMode', args: [mode] },
     },
     children: [{ type: 'we-icon', props: { name: icon } }, label],
   };
@@ -203,10 +203,10 @@ const concatTest = section('interpolation', 'Concatenate strings and store value
 ]);
 
 // ---------------------------------------------------------------------------
-// 2. Actions — $action, $arg
+// 2. Actions — $invoke, $arg
 // ---------------------------------------------------------------------------
 
-const actionTest = section('$action', 'Trigger store mutations', [
+const actionTest = section('$invoke', 'Trigger store mutations', [
   interactiveLabel('Click button — counter should increment'),
   {
     type: 'Row',
@@ -214,7 +214,7 @@ const actionTest = section('$action', 'Trigger store mutations', [
     children: [
       {
         type: 'we-button',
-        props: { size: 'sm', onClick: { $action: 'testStore.increment' } },
+        props: { size: 'sm', onClick: { $invoke: 'testStore.increment' } },
         children: [{ type: 'we-icon', props: { name: 'plus' } }, 'Increment'],
       },
       { type: 'we-text', children: ['Counter:'] },
@@ -237,7 +237,7 @@ const argTest = section('$arg', 'Extract native event values', [
         type: 'we-input',
         props: {
           placeholder: 'Type here...',
-          onInput: { $action: 'testStore.setTypedText', args: [{ $: 'arg.detail' }] },
+          onInput: { $invoke: 'testStore.setTypedText', args: [{ $: 'arg.detail' }] },
         },
       },
       { type: 'we-text', props: { color: 'text-faint' }, children: ['Echo:'] },
@@ -308,7 +308,7 @@ const ifTest = section('$if', 'Conditional rendering (prop + node level)', [
     children: [
       {
         type: 'we-button',
-        props: { variant: 'outline', onClick: { $action: 'testStore.toggle' } },
+        props: { variant: 'outline', onClick: { $invoke: 'testStore.toggle' } },
         children: ['Toggle'],
       },
       {
@@ -625,7 +625,7 @@ const querySubscriptionTest = section('$query (subscription)', 'FindAll $query w
             children: [
               {
                 type: 'we-button',
-                props: { variant: 'solid', onClick: { $action: 'testStore.createTestItem' } },
+                props: { variant: 'solid', onClick: { $invoke: 'testStore.createTestItem' } },
                 children: [{ type: 'we-icon', props: { name: 'plus' } }, 'Add item'],
               },
               {
@@ -654,7 +654,7 @@ const querySubscriptionTest = section('$query (subscription)', 'FindAll $query w
                     props: {
                       variant: 'soft',
                       size: 'xs', // TODO: not having any effect
-                      onClick: { $action: 'testStore.deleteTestItem', args: [{ $: 'q.id' }] },
+                      onClick: { $invoke: 'testStore.deleteTestItem', args: [{ $: 'q.id' }] },
                     },
                     children: [{ type: 'we-icon', props: { name: 'x', color: 'text-muted', size: 'xs' } }],
                   },
@@ -765,7 +765,7 @@ const localStateBasicTest: SchemaNode = {
         { type: 'we-text', props: { fontWeight: '600' }, children: [{ $: 'local.name' }] },
       ],
     },
-    // --- $local in $action args ---
+    // --- $local in $invoke args ---
     interactiveLabel('Click increment then "Log name" — testStore.setTypedText receives $local value'),
     {
       type: 'Row',
@@ -775,7 +775,7 @@ const localStateBasicTest: SchemaNode = {
           type: 'we-button',
           props: {
             variant: 'solid',
-            onClick: { $action: 'testStore.setTypedText', args: [{ $: 'local.name' }] },
+            onClick: { $invoke: 'testStore.setTypedText', args: [{ $: 'local.name' }] },
           },
           children: ['Log name'],
         },
@@ -980,7 +980,7 @@ const formValidationBasicTest: SchemaNode = {
             variant: 'solid',
             disabled: { $: '!formValid()' },
             onClick: {
-              $action: 'testStore.setTypedText',
+              $invoke: 'testStore.setTypedText',
               args: [{ $: '`${local.username} / ${local.email}`' }],
             },
           },
@@ -1078,7 +1078,7 @@ const formValidationActionsTest: SchemaNode = {
                 $if: {
                   condition: { $: 'formValid()' },
                   then: {
-                    $action: 'testStore.setTypedText',
+                    $invoke: 'testStore.setTypedText',
                     args: [{ $: '`${local.firstName} ${local.lastName}`' }],
                   },
                 },
@@ -1110,7 +1110,7 @@ const formValidationActionsTest: SchemaNode = {
             disabled: { $: '!formValid()' },
             onClick: [
               {
-                $action: 'testStore.setTypedText',
+                $invoke: 'testStore.setTypedText',
                 args: [{ $: '`${local.firstName} ${local.lastName}`' }],
               },
               { $resetLocal: '$scope' },
@@ -1199,7 +1199,7 @@ const formValidationMatchTest: SchemaNode = {
               {
                 $if: {
                   condition: { $: 'formValid()' },
-                  then: { $action: 'testStore.setTypedText', args: ['Password set!'] },
+                  then: { $invoke: 'testStore.setTypedText', args: ['Password set!'] },
                 },
               },
             ],
@@ -1324,7 +1324,7 @@ const wcReactivePropsTest = section('WC reactive props', 'Web component props up
   interactiveLabel('Toggle to switch text color between success-600 and danger-600'),
   {
     type: 'we-button',
-    props: { variant: 'soft', onClick: { $action: 'testStore.toggle' } },
+    props: { variant: 'soft', onClick: { $invoke: 'testStore.toggle' } },
     children: ['Toggle'],
   },
   {
@@ -1529,7 +1529,7 @@ function navTab(group: (typeof groups)[number]): SchemaNode {
     type: 'we-button',
     props: {
       variant: expr`${isActive} ? 'solid' : 'soft'`,
-      onClick: { $action: 'routeStore.navigate', args: [navPath] },
+      onClick: { $invoke: 'routeStore.navigate', args: [navPath] },
     },
     children: [group.label],
   };

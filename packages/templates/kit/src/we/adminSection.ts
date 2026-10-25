@@ -48,7 +48,7 @@ export function adminSection(opts: AdminSectionOptions): SchemaNode {
                 props: {
                   variant: 'ghost',
                   size: 'sm',
-                  onClick: { $action: refresh },
+                  onClick: { $invoke: refresh },
                   // Spins for this section's own reload. It read the store-wide flag once, and every
                   // heading on the page spun whenever anything anywhere was fetching.
                   loading: { $: `'${refresh.slice(refresh.lastIndexOf('.') + 1)}' in runtimeStore.pending` },

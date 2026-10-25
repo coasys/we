@@ -72,7 +72,7 @@ const createModal: SchemaNode = formModal({
     opens straight away: the new id comes back as the action's own result.
   */
   submit: {
-    $action: 'spaceStore.createBoard',
+    $invoke: 'spaceStore.createBoard',
     args: [{ $: 'local.boardTitle' }, ANCHOR_ID],
     onSuccess: [
       { $setLocal: 'createBoardOpen', value: false },
@@ -142,7 +142,7 @@ const boardList: SchemaNode = {
             variant: 'bare',
             width: '100%',
             onClick: {
-              $action: 'spaceStore.openBoardFor',
+              $invoke: 'spaceStore.openBoardFor',
               args: ['', 'Everything'],
               onSuccess: [{ $setLocal: 'boardId', value: { $: 'result' } }],
             },

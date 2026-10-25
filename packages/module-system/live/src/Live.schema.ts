@@ -43,7 +43,7 @@ export const cursorToggle: SchemaNode = {
           props: {
             square: true,
             variant: expr`modules.live.cursorsOn ? 'soft' : 'ghost'`,
-            onClick: { $action: 'modules.live.toggleCursors' },
+            onClick: { $invoke: 'modules.live.toggleCursors' },
           },
           children: [{ type: 'we-icon', props: { name: 'cursor-click' } }],
         },
@@ -79,12 +79,12 @@ export const wheelButton: SchemaNode = {
               One action for both states, because only the store can ask which state it is in at the
               moment of the click.
 
-              A ternary cannot do this: `$action` is a *token*, and an expression resolves to a value.
+              A ternary cannot do this: `$invoke` is a *token*, and an expression resolves to a value.
               Written as `expr`…` ? tokenA : tokenB` it typechecks, validates and renders — and then
               always takes the first branch, because the tag returns an object and every object is
               truthy. The call module's `goToCall` carries the same note for the same reason.
             */
-            onClick: { $action: 'modules.live.toggleWheel' },
+            onClick: { $invoke: 'modules.live.toggleWheel' },
           },
           children: [{ type: 'we-icon', props: { name: 'signpost' } }],
         },
@@ -147,7 +147,7 @@ export const driverStrip: SchemaNode = {
             condition: { $: 'modules.live.driving' },
             then: {
               type: 'we-button',
-              props: { size: 'xs', variant: 'soft', onClick: { $action: 'modules.live.releaseWheel' } },
+              props: { size: 'xs', variant: 'soft', onClick: { $invoke: 'modules.live.releaseWheel' } },
               children: [{ type: 'we-text', props: { variant: 'footnote' }, children: ['Give up'] }],
             },
             else: {
@@ -156,12 +156,12 @@ export const driverStrip: SchemaNode = {
                 condition: { $: 'modules.live.following' },
                 then: {
                   type: 'we-button',
-                  props: { size: 'xs', variant: 'ghost', onClick: { $action: 'modules.live.unfollow' } },
+                  props: { size: 'xs', variant: 'ghost', onClick: { $invoke: 'modules.live.unfollow' } },
                   children: [{ type: 'we-text', props: { variant: 'footnote' }, children: ['Stop'] }],
                 },
                 else: {
                   type: 'we-button',
-                  props: { size: 'xs', variant: 'soft', onClick: { $action: 'modules.live.follow' } },
+                  props: { size: 'xs', variant: 'soft', onClick: { $invoke: 'modules.live.follow' } },
                   children: [{ type: 'we-text', props: { variant: 'footnote' }, children: ['Follow'] }],
                 },
               },
@@ -184,7 +184,7 @@ export const problemStrip: SchemaNode = {
         tone: 'warning',
         dismissible: true,
         pointerEvents: 'auto',
-        onClose: { $action: 'modules.live.dismissProblem' },
+        onClose: { $invoke: 'modules.live.dismissProblem' },
       },
       children: [{ type: 'we-text', props: { variant: 'footnote' }, children: [{ $: 'modules.live.problem' }] }],
     },
@@ -237,7 +237,7 @@ export const fakeCursorControls: SchemaNode = {
             disabled: { $: '!modules.live.fakeCursorCount' },
             // Zero-argument: the schema layer has no arithmetic, so "the count minus one" is the
             // store's to work out.
-            onClick: { $action: 'modules.live.removeFakeCursor' },
+            onClick: { $invoke: 'modules.live.removeFakeCursor' },
           },
           children: [{ type: 'we-icon', props: { name: 'minus' } }],
         },
@@ -254,7 +254,7 @@ export const fakeCursorControls: SchemaNode = {
       children: [
         {
           type: 'we-button',
-          props: { square: true, size: 'sm', variant: 'ghost', onClick: { $action: 'modules.live.addFakeCursor' } },
+          props: { square: true, size: 'sm', variant: 'ghost', onClick: { $invoke: 'modules.live.addFakeCursor' } },
           children: [{ type: 'we-icon', props: { name: 'plus' } }],
         },
       ],

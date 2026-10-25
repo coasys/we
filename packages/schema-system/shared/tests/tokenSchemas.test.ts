@@ -22,24 +22,24 @@ describe('token shape validation', () => {
     });
   });
 
-  // --- $action ---
-  describe('$action', () => {
-    it('accepts valid $action token', () => {
-      expect(() => zSchemaProp.parse({ $action: 'routeStore.navigate' })).not.toThrow();
+  // --- $invoke ---
+  describe('$invoke', () => {
+    it('accepts valid $invoke token', () => {
+      expect(() => zSchemaProp.parse({ $invoke: 'routeStore.navigate' })).not.toThrow();
     });
 
-    it('accepts $action with args, including expressions', () => {
+    it('accepts $invoke with args, including expressions', () => {
       expect(() =>
-        zSchemaProp.parse({ $action: 'routeStore.navigate', args: ['/home', { $: 'event.detail' }] }),
+        zSchemaProp.parse({ $invoke: 'routeStore.navigate', args: ['/home', { $: 'event.detail' }] }),
       ).not.toThrow();
     });
 
-    it('rejects $action with empty string', () => {
-      expect(() => zSchemaProp.parse({ $action: '' })).toThrow();
+    it('rejects $invoke with empty string', () => {
+      expect(() => zSchemaProp.parse({ $invoke: '' })).toThrow();
     });
 
-    it('rejects $action with extra keys', () => {
-      expect(() => zSchemaProp.parse({ $action: 'x', args: [], extra: 1 })).toThrow();
+    it('rejects $invoke with extra keys', () => {
+      expect(() => zSchemaProp.parse({ $invoke: 'x', args: [], extra: 1 })).toThrow();
     });
   });
 
@@ -47,7 +47,7 @@ describe('token shape validation', () => {
   describe('$if', () => {
     it('accepts a condition with a then handler', () => {
       expect(() =>
-        zSchemaProp.parse({ $if: { condition: { $: 'formValid()' }, then: { $action: 'store.submit' } } }),
+        zSchemaProp.parse({ $if: { condition: { $: 'formValid()' }, then: { $invoke: 'store.submit' } } }),
       ).not.toThrow();
     });
 
@@ -64,7 +64,7 @@ describe('token shape validation', () => {
     });
 
     it('rejects $if missing condition', () => {
-      expect(() => zSchemaProp.parse({ $if: { then: { $action: 'x.y' } } })).toThrow();
+      expect(() => zSchemaProp.parse({ $if: { then: { $invoke: 'x.y' } } })).toThrow();
     });
 
     it('rejects $if with wrong shape', () => {

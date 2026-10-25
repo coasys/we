@@ -47,7 +47,7 @@ const videoCard: SchemaNode = {
       props: {
         variant: 'bare',
         width: '100%',
-        onClick: { $action: 'routeStore.navigate', args: [{ $: '`./watch/${video.id}`' }] },
+        onClick: { $invoke: 'routeStore.navigate', args: [{ $: '`./watch/${video.id}`' }] },
       },
       children: [
         {
@@ -134,7 +134,7 @@ const watchRoute: RouteSchema = {
             variant: 'ghost',
             size: 'sm',
             alignSelf: 'start',
-            onClick: { $action: 'routeStore.navigate', args: ['.'] },
+            onClick: { $invoke: 'routeStore.navigate', args: ['.'] },
           },
           children: [{ type: 'we-icon', props: { name: 'arrow-left' } }, 'Back'],
         },
@@ -327,7 +327,7 @@ export const youtubeTemplate: TemplateSchema = {
                     variant: {
                       $: "(nav.segment ? nav.segment in routeStore.templateSegments : !count(routeStore.templateSegments)) ? 'soft' : 'ghost'",
                     },
-                    onClick: { $action: 'routeStore.navigate', args: [{ $: 'nav.path' }] },
+                    onClick: { $invoke: 'routeStore.navigate', args: [{ $: 'nav.path' }] },
                   },
                   children: [{ $: 'nav.label' }],
                 },

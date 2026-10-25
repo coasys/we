@@ -142,7 +142,7 @@ const leftRail: SchemaNode = {
             width: '100%',
             ax: 'start',
             gap: '300',
-            onClick: { $action: 'routeStore.navigate', args: [{ $: 'nav.path' }] },
+            onClick: { $invoke: 'routeStore.navigate', args: [{ $: 'nav.path' }] },
           },
           children: [
             { type: 'we-icon', props: { name: { $: 'nav.icon' } } },
@@ -190,7 +190,7 @@ const postCard = (opts: { clickable?: boolean }): SchemaNode => {
         props: {
           variant: 'bare',
           width: '100%',
-          onClick: { $action: 'routeStore.navigate', args: [{ $: '`./post/${post.id}`' }] },
+          onClick: { $invoke: 'routeStore.navigate', args: [{ $: '`./post/${post.id}`' }] },
         },
         children: [
           {

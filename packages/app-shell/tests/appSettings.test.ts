@@ -25,7 +25,7 @@ describe('deleting an app in Settings', () => {
   it('offers a delete for an app, aimed at that app', () => {
     expect(appDelete).toBeDefined();
     expect((appDelete!.props as { onClick: unknown }).onClick).toEqual({
-      $action: 'templateStore.deleteTemplate',
+      $invoke: 'templateStore.deleteTemplate',
       args: [{ $: 'app.value' }],
     });
   });

@@ -123,10 +123,10 @@ export function newThingChooser(call: SchemaProp): SchemaNode {
                   then: { $setLocal: 'newNoteOpen', value: true },
                   else: [
                     {
-                      $action: 'recordStore.createOnCanvas',
+                      $invoke: 'recordStore.createOnCanvas',
                       args: [call, { $: 'local.newAt.x' }, { $: 'local.newAt.y' }],
                     },
-                    { $action: 'recordStore.setRecordEntity', args: [{ $: `${kind}.value` }] },
+                    { $invoke: 'recordStore.setRecordEntity', args: [{ $: `${kind}.value` }] },
                   ],
                 },
               },
@@ -151,7 +151,7 @@ export function newNoteModal(call: SchemaProp): SchemaNode {
     title: 'New note',
     saveLabel: 'Add',
     saveAction: {
-      $action: 'recordStore.createCardOnCanvas',
+      $invoke: 'recordStore.createCardOnCanvas',
       // `arg` first: the serialized tree, then where it goes.
       args: [{ $: 'arg' }, { canvas: call, at: { $: 'local.newAt' } }],
     },
@@ -184,7 +184,7 @@ export const editNoteModal: SchemaNode = {
           saveLabel: 'Save',
           editorState: { $: 'note.editorState' },
           // `arg` second: `updatePost(postId, json)`.
-          saveAction: { $action: 'spaceStore.updatePost', args: [{ $: 'note.id' }, { $: 'arg' }] },
+          saveAction: { $invoke: 'spaceStore.updatePost', args: [{ $: 'note.id' }, { $: 'arg' }] },
         }),
       ],
     },
@@ -216,7 +216,7 @@ export const editNoteModal: SchemaNode = {
  */
 export function fieldEditor(entity: SchemaProp, id: SchemaProp, fields = 'local.display.fields'): SchemaNode {
   const write = (value: SchemaProp): SchemaProp => ({
-    $action: 'recordStore.updateRecordField',
+    $invoke: 'recordStore.updateRecordField',
     args: [entity, id, { $: 'field.name' }, value],
   });
   const onChange = write({ $: 'event.detail' });

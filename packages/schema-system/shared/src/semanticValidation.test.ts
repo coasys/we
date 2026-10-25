@@ -200,7 +200,7 @@ describe('BlockComposer save handshake', () => {
           type: 'BlockComposer',
           props: {
             onReady: { $setLocal: 'savePost', value: { $: 'event.save' } },
-            onSave: { $action: 'spaceStore.createPost', args: [{ $: 'arg' }] },
+            onSave: { $invoke: 'spaceStore.createPost', args: [{ $: 'arg' }] },
           },
         },
       ],
@@ -501,14 +501,14 @@ describe('space values', () => {
 
 describe('a write wired to an event nobody causes', () => {
   const unasked = (node: SchemaNode) => messages(node, 'warning').filter((m) => m.includes('fires without anybody'));
-  const create = { $action: 'record.create', args: ['TaskBlock', { title: 'x' }] };
+  const create = { $invoke: 'record.create', args: ['TaskBlock', { title: 'x' }] };
 
   it('warns when an image loading would write', () => {
     expect(unasked({ type: 'img', props: { src: 'a.png', onLoad: create } })).toHaveLength(1);
   });
 
   it('finds the write inside a handler list and inside a lifecycle callback', () => {
-    const nested = { $action: 'routeStore.navigate', args: ['/'], onSuccess: [create] };
+    const nested = { $invoke: 'routeStore.navigate', args: ['/'], onSuccess: [create] };
     expect(unasked({ type: 'details', props: { onToggle: [{ $setLocal: 'x', value: 1 }, nested] } })).toHaveLength(1);
   });
 
@@ -518,9 +518,9 @@ describe('a write wired to an event nobody causes', () => {
 
   it('says nothing about an action that may run unasked', () => {
     expect(
-      unasked({ type: 'img', props: { src: 'a.png', onLoad: { $action: 'routeStore.navigate', args: ['/'] } } }),
+      unasked({ type: 'img', props: { src: 'a.png', onLoad: { $invoke: 'routeStore.navigate', args: ['/'] } } }),
     ).toEqual([]);
-    expect(unasked({ type: 'Grid', props: { onArrange: { $action: 'modules.call.setArrangement' } } })).toEqual([]);
+    expect(unasked({ type: 'Grid', props: { onArrange: { $invoke: 'modules.call.setArrangement' } } })).toEqual([]);
   });
 
   it('says nothing about a blur, which counts as asking once somebody typed', () => {
@@ -538,7 +538,7 @@ describe('a dialog asking about what the host asks about anyway', () => {
     ({ type: '$if', props: { condition: { $: 'true' }, then: { type: 'we-modal', children } } }) as SchemaNode;
   const deleteButton = {
     type: 'we-button',
-    props: { onClick: { $action: 'spaceStore.deleteCollection', args: ['c1'] } },
+    props: { onClick: { $invoke: 'spaceStore.deleteCollection', args: ['c1'] } },
   };
 
   it('warns about a confirmation in front of a delete', () => {

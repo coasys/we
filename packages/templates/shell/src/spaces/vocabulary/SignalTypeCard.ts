@@ -71,7 +71,7 @@ export const signalTypeCard: SchemaNode = {
                     size: 'sm',
                     label: 'Bring this reaction back',
                     onClick: {
-                      $action: 'spaceStore.setSignalTypeRetired',
+                      $invoke: 'spaceStore.setSignalTypeRetired',
                       args: [{ $: 'signalType.id' }, false],
                     },
                   },
@@ -84,7 +84,7 @@ export const signalTypeCard: SchemaNode = {
                     size: 'sm',
                     label: 'Retire this reaction',
                     onClick: {
-                      $action: 'spaceStore.setSignalTypeRetired',
+                      $invoke: 'spaceStore.setSignalTypeRetired',
                       args: [{ $: 'signalType.id' }, true],
                     },
                   },

@@ -60,7 +60,7 @@
                       "ax": "center",
                       "ay": "center",
                       "cursor": "pointer",
-                      "onClick": { "$action": "shellStore.openShellView", "args": ["landing-page"] }
+                      "onClick": { "$invoke": "shellStore.openShellView", "args": ["landing-page"] }
                     },
                     "children": [
                       {
@@ -161,13 +161,13 @@
                                         {
                                           "$if": {
                                             "condition": { "$": "arg.id == 'create'" },
-                                            "then": { "$action": "shellStore.setCreateSpaceOpen", "args": [true] }
+                                            "then": { "$invoke": "shellStore.setCreateSpaceOpen", "args": [true] }
                                           }
                                         },
                                         {
                                           "$if": {
                                             "condition": { "$": "arg.id == 'join'" },
-                                            "then": { "$action": "shellStore.setJoinSpaceOpen", "args": [true] }
+                                            "then": { "$invoke": "shellStore.setJoinSpaceOpen", "args": [true] }
                                           }
                                         }
                                       ]
@@ -198,7 +198,7 @@
                                   "gap": "var(--we-space-200)",
                                   "width": "100%",
                                   "onReorder": {
-                                    "$action": "datasetStore.reorderDatasets",
+                                    "$invoke": "datasetStore.reorderDatasets",
                                     "args": [{ "$": "arg.detail" }]
                                   }
                                 },
@@ -223,9 +223,9 @@
                                               "gap": "300",
                                               "p": "300",
                                               "onClick": [
-                                                { "$action": "shellStore.closeShellView" },
+                                                { "$invoke": "shellStore.closeShellView" },
                                                 {
-                                                  "$action": "spaceStore.navigateToSpace",
+                                                  "$invoke": "spaceStore.navigateToSpace",
                                                   "args": [{ "$": "space.spaceId" }]
                                                 }
                                               ],
@@ -364,8 +364,8 @@
                               "gap": "300",
                               "p": "300",
                               "onClick": [
-                                { "$action": "appStore.deactivateApp" },
-                                { "$action": "shellStore.openShellView", "args": ["settings"] }
+                                { "$invoke": "appStore.deactivateApp" },
+                                { "$invoke": "shellStore.openShellView", "args": ["settings"] }
                               ],
                               "bg": { "$": "(shellStore.activeShellView == 'settings') ? 'accent-soft' : ''" },
                               "color": {
@@ -420,13 +420,13 @@
                                 {
                                   "$if": {
                                     "condition": { "$": "arg.id == 'profile'" },
-                                    "then": { "$action": "shellStore.openShellView", "args": ["profile"] }
+                                    "then": { "$invoke": "shellStore.openShellView", "args": ["profile"] }
                                   }
                                 },
                                 {
                                   "$if": {
                                     "condition": { "$": "arg.id == 'about'" },
-                                    "then": { "$action": "shellStore.openShellView", "args": ["landing-page"] }
+                                    "then": { "$invoke": "shellStore.openShellView", "args": ["landing-page"] }
                                   }
                                 },
                                 {
@@ -436,7 +436,7 @@
                                       "$if": {
                                         "condition": { "$": "sessionStore.isGuest" },
                                         "then": { "$setLocal": "confirmGuestLogout", "value": true },
-                                        "else": { "$action": "sessionStore.logout" }
+                                        "else": { "$invoke": "sessionStore.logout" }
                                       }
                                     }
                                   }
@@ -566,7 +566,7 @@
                                           "variant": "solid",
                                           "tone": "danger",
                                           "onClick": {
-                                            "$action": "sessionStore.logout",
+                                            "$invoke": "sessionStore.logout",
                                             "onSuccess": [{ "$setLocal": "confirmGuestLogout", "value": false }]
                                           }
                                         },
@@ -664,7 +664,7 @@
                             "size": "sm",
                             "square": true,
                             "label": "Space settings",
-                            "onClick": { "$action": "shellStore.toggleSpaceSettings" }
+                            "onClick": { "$invoke": "shellStore.toggleSpaceSettings" }
                           },
                           "children": [{ "type": "we-icon", "props": { "name": "gear-six" } }]
                         }
@@ -681,7 +681,7 @@
                             "size": "sm",
                             "square": true,
                             "label": "Hide the tree",
-                            "onClick": { "$action": "shellStore.setLaneCollapsed", "args": ["tree", true] }
+                            "onClick": { "$invoke": "shellStore.setLaneCollapsed", "args": ["tree", true] }
                           },
                           "children": [{ "type": "we-icon", "props": { "name": "sidebar-simple" } }]
                         }
@@ -715,7 +715,7 @@
                                 "p": "300",
                                 "r": "surface",
                                 "border": "1px dashed border-strong",
-                                "onClick": { "$action": "shellStore.openSpaceSettings", "args": ["about"] }
+                                "onClick": { "$invoke": "shellStore.openSpaceSettings", "args": ["about"] }
                               },
                               "children": [
                                 {
@@ -772,14 +772,14 @@
                                 "$if": {
                                   "condition": { "$": "modules.call.active && !modules.call.elsewhere" },
                                   "then": {
-                                    "$action": "routeStore.navigate",
+                                    "$invoke": "routeStore.navigate",
                                     "args": [
                                       {
                                         "$": "spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (modules.call.callRecordId)"
                                       }
                                     ]
                                   },
-                                  "else": { "$action": "modules.call.goToCall" }
+                                  "else": { "$invoke": "modules.call.goToCall" }
                                 }
                               }
                             ]
@@ -817,9 +817,9 @@
                             "$if": {
                               "condition": { "$": "event.detail.value == 'group|workflows'" },
                               "then": [
-                                { "$action": "workflowStore.closeWorkflow" },
+                                { "$invoke": "workflowStore.closeWorkflow" },
                                 {
-                                  "$action": "routeStore.navigate",
+                                  "$invoke": "routeStore.navigate",
                                   "args": [{ "$": "spaceStore.spacePath + '/workflows'" }]
                                 }
                               ]
@@ -829,7 +829,7 @@
                             "$if": {
                               "condition": { "$": "startsWith(event.detail.value, 'channel|')" },
                               "then": {
-                                "$action": "routeStore.navigate",
+                                "$invoke": "routeStore.navigate",
                                 "args": [
                                   { "$": "spaceStore.spacePath + '?channel=' + (split(event.detail.value, '|')[1])" }
                                 ]
@@ -840,7 +840,7 @@
                             "$if": {
                               "condition": { "$": "startsWith(event.detail.value, 'call|')" },
                               "then": {
-                                "$action": "routeStore.navigate",
+                                "$invoke": "routeStore.navigate",
                                 "args": [
                                   {
                                     "$": "spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (split(event.detail.value, '|')[1])"
@@ -854,11 +854,11 @@
                               "condition": { "$": "startsWith(event.detail.value, 'workflow|')" },
                               "then": [
                                 {
-                                  "$action": "workflowStore.openWorkflow",
+                                  "$invoke": "workflowStore.openWorkflow",
                                   "args": [{ "$": "split(event.detail.value, '|')[1]" }]
                                 },
                                 {
-                                  "$action": "routeStore.navigate",
+                                  "$invoke": "routeStore.navigate",
                                   "args": [{ "$": "spaceStore.spacePath + '/workflows'" }]
                                 }
                               ]
@@ -868,7 +868,7 @@
                             "$if": {
                               "condition": { "$": "startsWith(event.detail.value, 'dna|')" },
                               "then": {
-                                "$action": "shellStore.openSpaceSettings",
+                                "$invoke": "shellStore.openSpaceSettings",
                                 "args": ["vocabulary", { "$": "split(event.detail.value, '|')[1]" }]
                               }
                             }
@@ -1109,7 +1109,7 @@
                                         "square": true,
                                         "label": "New workflow",
                                         "onClick": {
-                                          "$action": "routeStore.navigate",
+                                          "$invoke": "routeStore.navigate",
                                           "args": [{ "$": "spaceStore.spacePath + '/workflows' + '?new=1'" }]
                                         }
                                       },
@@ -1302,7 +1302,7 @@
                       "children": [
                         {
                           "type": "we-button",
-                          "props": { "variant": "soft", "onClick": { "$action": "modules.call.goToCall" } },
+                          "props": { "variant": "soft", "onClick": { "$invoke": "modules.call.goToCall" } },
                           "children": [{ "type": "we-icon", "props": { "name": "phone" } }, "Start a call"]
                         }
                       ]
@@ -1358,7 +1358,7 @@
                                 "variant": "solid",
                                 "disabled": { "$": "!trim(local.channelName)" },
                                 "onClick": {
-                                  "$action": "record.create",
+                                  "$invoke": "record.create",
                                   "args": [
                                     "CollectionBlock",
                                     { "kind": "channel", "title": { "$": "trim(local.channelName)" } },
@@ -1430,7 +1430,7 @@
                               "size": "sm",
                               "square": true,
                               "label": "Show the tree",
-                              "onClick": { "$action": "shellStore.setLaneCollapsed", "args": ["tree", false] }
+                              "onClick": { "$invoke": "shellStore.setLaneCollapsed", "args": ["tree", false] }
                             },
                             "children": [{ "type": "we-icon", "props": { "name": "sidebar-simple" } }]
                           }
@@ -1515,7 +1515,7 @@
                         "props": {
                           "variant": "solid",
                           "onClick": {
-                            "$action": "modules.call.continueCall",
+                            "$invoke": "modules.call.continueCall",
                             "args": [{ "$": "routeStore.params.id" }]
                           }
                         },
@@ -1620,7 +1620,7 @@
                             "size": "sm",
                             "square": true,
                             "label": "Show the tree",
-                            "onClick": { "$action": "shellStore.setLaneCollapsed", "args": ["tree", false] }
+                            "onClick": { "$invoke": "shellStore.setLaneCollapsed", "args": ["tree", false] }
                           },
                           "children": [{ "type": "we-icon", "props": { "name": "sidebar-simple" } }]
                         }
@@ -1650,7 +1650,7 @@
                           "$": "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == '' ? 'soft' : 'ghost'"
                         },
                         "onClick": {
-                          "$action": "routeStore.navigate",
+                          "$invoke": "routeStore.navigate",
                           "args": [
                             {
                               "$": "spaceStore.spacePath + '?channel=' + (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)"
@@ -1668,7 +1668,7 @@
                           "$": "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'canvas' ? 'soft' : 'ghost'"
                         },
                         "onClick": {
-                          "$action": "routeStore.navigate",
+                          "$invoke": "routeStore.navigate",
                           "args": [
                             {
                               "$": "spaceStore.spacePath + '/canvas?channel=' + (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)"
@@ -1715,7 +1715,7 @@
                             "variant": "bare",
                             "label": "Start a call",
                             "flex": "1 1 200px",
-                            "onClick": { "$action": "modules.call.goToCall" },
+                            "onClick": { "$invoke": "modules.call.goToCall" },
                             "disabled": { "$": "!modules.call.canCall" }
                           },
                           "children": [
@@ -1874,7 +1874,7 @@
                             "variant": "solid",
                             "disabled": { "$": "!trim(local.channelName)" },
                             "onClick": {
-                              "$action": "record.create",
+                              "$invoke": "record.create",
                               "args": [
                                 "CollectionBlock",
                                 { "kind": "channel", "title": { "$": "trim(local.channelName)" } },
@@ -1944,7 +1944,7 @@
                           "props": {
                             "size": "xs",
                             "variant": "ghost",
-                            "onClick": { "$action": "modules.transcribe.cancelReply" }
+                            "onClick": { "$invoke": "modules.transcribe.cancelReply" }
                           },
                           "children": ["Cancel"]
                         }
@@ -1981,7 +1981,7 @@
                                     "$if": {
                                       "condition": { "$": "modules.transcribe.replyingTo.surface == 'transcript'" },
                                       "then": {
-                                        "$action": "modules.transcribe.reply",
+                                        "$invoke": "modules.transcribe.reply",
                                         "args": [
                                           { "$": "modules.transcribe.replyingTo.id" },
                                           { "$": "event.text" },
@@ -1990,7 +1990,7 @@
                                         "onFinally": [{ "$setLocal": "sending", "value": false }]
                                       },
                                       "else": {
-                                        "$action": "modules.transcribe.addMessage",
+                                        "$invoke": "modules.transcribe.addMessage",
                                         "args": [
                                           {
                                             "$": "routeStore.params.channel ? routeStore.params.channel : spaceStore.root"
@@ -2074,7 +2074,7 @@
                             "size": "sm",
                             "square": true,
                             "label": "Show the tree",
-                            "onClick": { "$action": "shellStore.setLaneCollapsed", "args": ["tree", false] }
+                            "onClick": { "$invoke": "shellStore.setLaneCollapsed", "args": ["tree", false] }
                           },
                           "children": [{ "type": "we-icon", "props": { "name": "sidebar-simple" } }]
                         }
@@ -2104,7 +2104,7 @@
                           "$": "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == '' ? 'soft' : 'ghost'"
                         },
                         "onClick": {
-                          "$action": "routeStore.navigate",
+                          "$invoke": "routeStore.navigate",
                           "args": [
                             {
                               "$": "spaceStore.spacePath + '?channel=' + (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)"
@@ -2122,7 +2122,7 @@
                           "$": "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'canvas' ? 'soft' : 'ghost'"
                         },
                         "onClick": {
-                          "$action": "routeStore.navigate",
+                          "$invoke": "routeStore.navigate",
                           "args": [
                             {
                               "$": "spaceStore.spacePath + '/canvas?channel=' + (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)"
@@ -2179,21 +2179,21 @@
                     "empty": "Nothing here yet. Double-click to make something, or drop something in from Pocket.",
                     "emptyIcon": "squares-four",
                     "onNodeDragEnd": {
-                      "$action": "recordStore.dragOnCanvas",
+                      "$invoke": "recordStore.dragOnCanvas",
                       "args": [
                         { "$": "routeStore.params.channel ? routeStore.params.channel : spaceStore.root" },
                         { "$": "event" }
                       ]
                     },
                     "onDrop": {
-                      "$action": "recordStore.dropOnCanvas",
+                      "$invoke": "recordStore.dropOnCanvas",
                       "args": [
                         { "$": "routeStore.params.channel ? routeStore.params.channel : spaceStore.root" },
                         { "$": "event" }
                       ]
                     },
                     "onCanvasDoubleClick": {
-                      "$action": "recordStore.createOnCanvas",
+                      "$invoke": "recordStore.createOnCanvas",
                       "args": [
                         { "$": "routeStore.params.channel ? routeStore.params.channel : spaceStore.root" },
                         { "$": "event.x" },
@@ -2201,7 +2201,7 @@
                       ]
                     },
                     "onNodeDoubleClick": {
-                      "$action": "routeStore.navigate",
+                      "$invoke": "routeStore.navigate",
                       "args": [
                         { "$": "spaceStore.spacePath + '/record/' + event.recordType + '?id=' + event.recordId" }
                       ]
@@ -2222,7 +2222,7 @@
                       "$if": {
                         "condition": { "$": "recordStore.recordDraftDirty" },
                         "then": { "$setLocal": "confirmDiscardOpen", "value": true },
-                        "else": { "$action": "recordStore.cancelRecordForm" }
+                        "else": { "$invoke": "recordStore.cancelRecordForm" }
                       }
                     }
                   },
@@ -2317,7 +2317,7 @@
                                     },
                                     "value": { "$": "recordStore.relationshipKind" },
                                     "onChange": {
-                                      "$action": "recordStore.setRelationshipKind",
+                                      "$invoke": "recordStore.setRelationshipKind",
                                       "args": [{ "$": "event.detail" }]
                                     }
                                   }
@@ -2337,7 +2337,7 @@
                                             "square": true,
                                             "label": "Leave the kind unnamed",
                                             "flexShrink": "0",
-                                            "onClick": { "$action": "recordStore.setRelationshipKind", "args": [""] }
+                                            "onClick": { "$invoke": "recordStore.setRelationshipKind", "args": [""] }
                                           },
                                           "children": [{ "type": "we-icon", "props": { "name": "x" } }]
                                         }
@@ -2368,7 +2368,7 @@
                                 "options": { "$": "recordStore.creatableEntities.filter(k, k.via == 'form')" },
                                 "value": { "$": "recordStore.recordDraft.entity" },
                                 "onChange": {
-                                  "$action": "recordStore.setRecordEntity",
+                                  "$invoke": "recordStore.setRecordEntity",
                                   "args": [{ "$": "event.detail" }]
                                 }
                               }
@@ -2398,7 +2398,7 @@
                                   "$": "find(recordStore.recordDraft.fields, { name: 'longitude' }).value == '' ? null : find(recordStore.recordDraft.fields, { name: 'longitude' }).value"
                                 },
                                 "placeholder": "Pin it on the map…",
-                                "onChange": { "$action": "recordStore.setRecordPlace", "args": [{ "$": "arg.detail" }] }
+                                "onChange": { "$invoke": "recordStore.setRecordPlace", "args": [{ "$": "arg.detail" }] }
                               }
                             }
                           ]
@@ -2436,7 +2436,7 @@
                                         "value": { "$": "field.value" },
                                         "width": "100%",
                                         "onInput": {
-                                          "$action": "recordStore.setRecordField",
+                                          "$invoke": "recordStore.setRecordField",
                                           "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                         },
                                         "placeholder": { "$": "field.placeholder" }
@@ -2464,7 +2464,7 @@
                                         "value": { "$": "field.value" },
                                         "width": "100%",
                                         "onInput": {
-                                          "$action": "recordStore.setRecordField",
+                                          "$invoke": "recordStore.setRecordField",
                                           "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                         },
                                         "type": "url",
@@ -2493,7 +2493,7 @@
                                         "value": { "$": "field.value" },
                                         "width": "100%",
                                         "onInput": {
-                                          "$action": "recordStore.setRecordField",
+                                          "$invoke": "recordStore.setRecordField",
                                           "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                         },
                                         "rows": 3,
@@ -2524,7 +2524,7 @@
                                         "maxWidth": "100%",
                                         "alignSelf": "start",
                                         "onChange": {
-                                          "$action": "recordStore.setRecordField",
+                                          "$invoke": "recordStore.setRecordField",
                                           "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                         },
                                         "placeholder": { "$": "field.placeholder" }
@@ -2552,7 +2552,7 @@
                                         "checked": { "$": "field.value" },
                                         "width": "100%",
                                         "onChange": {
-                                          "$action": "recordStore.setRecordField",
+                                          "$invoke": "recordStore.setRecordField",
                                           "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                         }
                                       }
@@ -2581,7 +2581,7 @@
                                         "maxWidth": "100%",
                                         "alignSelf": "start",
                                         "onChange": {
-                                          "$action": "recordStore.setRecordField",
+                                          "$invoke": "recordStore.setRecordField",
                                           "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                         },
                                         "options": { "$": "field.options" }
@@ -2609,7 +2609,7 @@
                                         "value": { "$": "field.value" },
                                         "width": "100%",
                                         "onChange": {
-                                          "$action": "recordStore.setRecordField",
+                                          "$invoke": "recordStore.setRecordField",
                                           "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                         },
                                         "placeholder": { "$": "field.placeholder" }
@@ -2637,7 +2637,7 @@
                                         "value": { "$": "field.value" },
                                         "width": "100%",
                                         "onChange": {
-                                          "$action": "recordStore.setRecordField",
+                                          "$invoke": "recordStore.setRecordField",
                                           "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                         },
                                         "showTime": true,
@@ -2666,7 +2666,7 @@
                                         "value": { "$": "field.value" },
                                         "width": "100%",
                                         "onChange": {
-                                          "$action": "recordStore.setRecordField",
+                                          "$invoke": "recordStore.setRecordField",
                                           "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                         }
                                       }
@@ -2693,7 +2693,7 @@
                                         "value": { "$": "field.value" },
                                         "width": "100%",
                                         "onChange": {
-                                          "$action": "recordStore.setRecordField",
+                                          "$invoke": "recordStore.setRecordField",
                                           "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                         }
                                       }
@@ -2719,7 +2719,7 @@
                                       "props": {
                                         "width": "100%",
                                         "onChange": {
-                                          "$action": "recordStore.setRecordField",
+                                          "$invoke": "recordStore.setRecordField",
                                           "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                         },
                                         "accept": { "$": "field.accept" }
@@ -2757,7 +2757,7 @@
                                                 },
                                                 "placeholder": { "$": "`Pin ${lower(field.label)} on the map…`" },
                                                 "onChange": {
-                                                  "$action": "recordStore.setRelationLocation",
+                                                  "$invoke": "recordStore.setRelationLocation",
                                                   "args": [{ "$": "field.name" }, { "$": "arg.detail" }]
                                                 }
                                               }
@@ -2784,7 +2784,7 @@
                                                             "size": "sm",
                                                             "value": { "$": "first(field.entries).fields.name ?? ''" },
                                                             "onInput": {
-                                                              "$action": "recordStore.setRelationEntryField",
+                                                              "$invoke": "recordStore.setRelationEntryField",
                                                               "args": [
                                                                 { "$": "field.name" },
                                                                 { "$": "first(field.entries).key" },
@@ -2812,7 +2812,7 @@
                                                               "$": "first(field.entries).fields.address ?? ''"
                                                             },
                                                             "onInput": {
-                                                              "$action": "recordStore.setRelationEntryField",
+                                                              "$invoke": "recordStore.setRelationEntryField",
                                                               "args": [
                                                                 { "$": "field.name" },
                                                                 { "$": "first(field.entries).key" },
@@ -2882,7 +2882,7 @@
                                                                     "square": true,
                                                                     "label": { "$": "`Remove ${entry.label}`" },
                                                                     "onClick": {
-                                                                      "$action": "recordStore.removeRelationEntry",
+                                                                      "$invoke": "recordStore.removeRelationEntry",
                                                                       "args": [
                                                                         { "$": "field.name" },
                                                                         { "$": "entry.key" }
@@ -2909,7 +2909,7 @@
                                                         "placeholderIcon": "image",
                                                         "uploadLabel": { "$": "`Add ${lower(field.targetLabel)}`" },
                                                         "onImageChange": {
-                                                          "$action": "recordStore.addRelationImage",
+                                                          "$invoke": "recordStore.addRelationImage",
                                                           "args": [{ "$": "field.name" }, { "$": "event" }]
                                                         }
                                                       }
@@ -2929,11 +2929,11 @@
                                                     "uploadLabel": { "$": "`Add ${lower(field.targetLabel)}`" },
                                                     "editLabel": { "$": "`Change ${lower(field.targetLabel)}`" },
                                                     "onImageChange": {
-                                                      "$action": "recordStore.addRelationImage",
+                                                      "$invoke": "recordStore.addRelationImage",
                                                       "args": [{ "$": "field.name" }, { "$": "event" }]
                                                     },
                                                     "onImageRemove": {
-                                                      "$action": "recordStore.removeRelationEntry",
+                                                      "$invoke": "recordStore.removeRelationEntry",
                                                       "args": [
                                                         { "$": "field.name" },
                                                         { "$": "first(field.entries).key" }
@@ -2999,7 +2999,7 @@
                                                                     "square": true,
                                                                     "label": { "$": "`Remove ${entry.label}`" },
                                                                     "onClick": {
-                                                                      "$action": "recordStore.removeRelationEntry",
+                                                                      "$invoke": "recordStore.removeRelationEntry",
                                                                       "args": [
                                                                         { "$": "field.name" },
                                                                         { "$": "entry.key" }
@@ -3058,7 +3058,7 @@
                                                                     },
                                                                     "value": "",
                                                                     "onChange": {
-                                                                      "$action": "recordStore.pickRelation",
+                                                                      "$invoke": "recordStore.pickRelation",
                                                                       "args": [
                                                                         { "$": "field.name" },
                                                                         { "$": "event.detail" }
@@ -3080,7 +3080,7 @@
                                                                 "variant": "soft",
                                                                 "size": "sm",
                                                                 "onClick": {
-                                                                  "$action": "recordStore.openRelationForm",
+                                                                  "$invoke": "recordStore.openRelationForm",
                                                                   "args": [{ "$": "field.name" }]
                                                                 }
                                                               },
@@ -3145,7 +3145,7 @@
                               "$if": {
                                 "condition": { "$": "recordStore.recordDraftDirty" },
                                 "then": { "$setLocal": "confirmDiscardOpen", "value": true },
-                                "else": { "$action": "recordStore.cancelRecordForm" }
+                                "else": { "$invoke": "recordStore.cancelRecordForm" }
                               }
                             }
                           },
@@ -3157,7 +3157,7 @@
                             "variant": "solid",
                             "loading": { "$": "recordStore.savingRecord" },
                             "disabled": { "$": "recordStore.savingRecord" },
-                            "onClick": { "$action": "recordStore.saveRecord" }
+                            "onClick": { "$invoke": "recordStore.saveRecord" }
                           },
                           "children": ["Create"]
                         }
@@ -3169,7 +3169,7 @@
                         "condition": { "$": "recordStore.relationDraft" },
                         "then": {
                           "type": "we-modal",
-                          "props": { "size": "sm", "close": { "$action": "recordStore.cancelRelationForm" } },
+                          "props": { "size": "sm", "close": { "$invoke": "recordStore.cancelRelationForm" } },
                           "children": [
                             {
                               "type": "Row",
@@ -3210,7 +3210,7 @@
                                                 "value": { "$": "field.value" },
                                                 "width": "100%",
                                                 "onInput": {
-                                                  "$action": "recordStore.setRelationField",
+                                                  "$invoke": "recordStore.setRelationField",
                                                   "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                                 },
                                                 "placeholder": { "$": "field.placeholder" }
@@ -3238,7 +3238,7 @@
                                                 "value": { "$": "field.value" },
                                                 "width": "100%",
                                                 "onInput": {
-                                                  "$action": "recordStore.setRelationField",
+                                                  "$invoke": "recordStore.setRelationField",
                                                   "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                                 },
                                                 "type": "url",
@@ -3267,7 +3267,7 @@
                                                 "value": { "$": "field.value" },
                                                 "width": "100%",
                                                 "onInput": {
-                                                  "$action": "recordStore.setRelationField",
+                                                  "$invoke": "recordStore.setRelationField",
                                                   "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                                 },
                                                 "rows": 3,
@@ -3298,7 +3298,7 @@
                                                 "maxWidth": "100%",
                                                 "alignSelf": "start",
                                                 "onChange": {
-                                                  "$action": "recordStore.setRelationField",
+                                                  "$invoke": "recordStore.setRelationField",
                                                   "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                                 },
                                                 "placeholder": { "$": "field.placeholder" }
@@ -3326,7 +3326,7 @@
                                                 "checked": { "$": "field.value" },
                                                 "width": "100%",
                                                 "onChange": {
-                                                  "$action": "recordStore.setRelationField",
+                                                  "$invoke": "recordStore.setRelationField",
                                                   "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                                 }
                                               }
@@ -3355,7 +3355,7 @@
                                                 "maxWidth": "100%",
                                                 "alignSelf": "start",
                                                 "onChange": {
-                                                  "$action": "recordStore.setRelationField",
+                                                  "$invoke": "recordStore.setRelationField",
                                                   "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                                 },
                                                 "options": { "$": "field.options" }
@@ -3383,7 +3383,7 @@
                                                 "value": { "$": "field.value" },
                                                 "width": "100%",
                                                 "onChange": {
-                                                  "$action": "recordStore.setRelationField",
+                                                  "$invoke": "recordStore.setRelationField",
                                                   "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                                 },
                                                 "placeholder": { "$": "field.placeholder" }
@@ -3411,7 +3411,7 @@
                                                 "value": { "$": "field.value" },
                                                 "width": "100%",
                                                 "onChange": {
-                                                  "$action": "recordStore.setRelationField",
+                                                  "$invoke": "recordStore.setRelationField",
                                                   "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                                 },
                                                 "showTime": true,
@@ -3440,7 +3440,7 @@
                                                 "value": { "$": "field.value" },
                                                 "width": "100%",
                                                 "onChange": {
-                                                  "$action": "recordStore.setRelationField",
+                                                  "$invoke": "recordStore.setRelationField",
                                                   "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                                 }
                                               }
@@ -3467,7 +3467,7 @@
                                                 "value": { "$": "field.value" },
                                                 "width": "100%",
                                                 "onChange": {
-                                                  "$action": "recordStore.setRelationField",
+                                                  "$invoke": "recordStore.setRelationField",
                                                   "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                                 }
                                               }
@@ -3493,7 +3493,7 @@
                                               "props": {
                                                 "width": "100%",
                                                 "onChange": {
-                                                  "$action": "recordStore.setRelationField",
+                                                  "$invoke": "recordStore.setRelationField",
                                                   "args": [{ "$": "field.name" }, { "$": "event.detail" }]
                                                 },
                                                 "accept": { "$": "field.accept" }
@@ -3527,7 +3527,7 @@
                                   "type": "we-button",
                                   "props": {
                                     "variant": "soft",
-                                    "onClick": { "$action": "recordStore.cancelRelationForm" }
+                                    "onClick": { "$invoke": "recordStore.cancelRelationForm" }
                                   },
                                   "children": ["Cancel"]
                                 },
@@ -3535,7 +3535,7 @@
                                   "type": "we-button",
                                   "props": {
                                     "variant": "solid",
-                                    "onClick": { "$action": "recordStore.saveRelationForm" }
+                                    "onClick": { "$invoke": "recordStore.saveRelationForm" }
                                   },
                                   "children": ["Add"]
                                 }
@@ -3597,7 +3597,7 @@
                                     "variant": "solid",
                                     "tone": "danger",
                                     "onClick": {
-                                      "$action": "recordStore.cancelRecordForm",
+                                      "$invoke": "recordStore.cancelRecordForm",
                                       "onSuccess": [{ "$setLocal": "confirmDiscardOpen", "value": false }]
                                     }
                                   },
@@ -3659,7 +3659,7 @@
                             "size": "sm",
                             "square": true,
                             "label": "Show the tree",
-                            "onClick": { "$action": "shellStore.setLaneCollapsed", "args": ["tree", false] }
+                            "onClick": { "$invoke": "shellStore.setLaneCollapsed", "args": ["tree", false] }
                           },
                           "children": [{ "type": "we-icon", "props": { "name": "sidebar-simple" } }]
                         }
@@ -3753,9 +3753,9 @@
                                         },
                                         "width": "100%",
                                         "onClick": [
-                                          { "$action": "workflowStore.cancelDraft" },
+                                          { "$invoke": "workflowStore.cancelDraft" },
                                           {
-                                            "$action": "workflowStore.openWorkflow",
+                                            "$invoke": "workflowStore.openWorkflow",
                                             "args": [{ "$": "workflow.name" }]
                                           }
                                         ]
@@ -3859,9 +3859,9 @@
                                                         },
                                                         "width": "100%",
                                                         "onClick": [
-                                                          { "$action": "workflowStore.cancelDraft" },
+                                                          { "$invoke": "workflowStore.cancelDraft" },
                                                           {
-                                                            "$action": "workflowStore.openWorkflow",
+                                                            "$invoke": "workflowStore.openWorkflow",
                                                             "args": [{ "$": "workflow.name" }]
                                                           }
                                                         ]
@@ -3936,7 +3936,7 @@
                                                         "label": "Name",
                                                         "value": { "$": "workflowStore.draft.label" },
                                                         "onChange": {
-                                                          "$action": "workflowStore.setDraftLabel",
+                                                          "$invoke": "workflowStore.setDraftLabel",
                                                           "args": [{ "$": "event.detail" }]
                                                         }
                                                       }
@@ -3953,7 +3953,7 @@
                                                   "type": "we-button",
                                                   "props": {
                                                     "variant": "ghost",
-                                                    "onClick": { "$action": "workflowStore.cancelDraft" }
+                                                    "onClick": { "$invoke": "workflowStore.cancelDraft" }
                                                   },
                                                   "children": [
                                                     { "type": "we-text", "props": {}, "children": ["Cancel"] }
@@ -3966,7 +3966,7 @@
                                                     "disabled": {
                                                       "$": "count(workflowStore.draft.problems) > 0 || !workflowStore.draft.dirty"
                                                     },
-                                                    "onClick": { "$action": "workflowStore.saveDraft" }
+                                                    "onClick": { "$invoke": "workflowStore.saveDraft" }
                                                   },
                                                   "children": [{ "type": "we-text", "props": {}, "children": ["Save"] }]
                                                 }
@@ -3978,7 +3978,7 @@
                                                 "label": "What it is for",
                                                 "value": { "$": "workflowStore.draft.hint" },
                                                 "onChange": {
-                                                  "$action": "workflowStore.setDraftHint",
+                                                  "$invoke": "workflowStore.setDraftHint",
                                                   "args": [{ "$": "event.detail" }]
                                                 }
                                               }
@@ -3999,7 +3999,7 @@
                                                           "$": "[{ label: 'Any record', value: '' }, { label: 'Tasks', value: 'TaskBlock' }, { label: 'Notes and posts', value: 'CollectionBlock' }, { label: 'Events', value: 'EventBlock' }]"
                                                         },
                                                         "onChange": {
-                                                          "$action": "workflowStore.setDraftEntities",
+                                                          "$invoke": "workflowStore.setDraftEntities",
                                                           "args": [{ "$": "event.detail ? [event.detail] : []" }]
                                                         }
                                                       }
@@ -4018,7 +4018,7 @@
                                                           "$": "[{ label: 'On to the next', value: 'next' }, { label: 'On, or back one', value: 'next-and-back' }, { label: 'Anywhere', value: 'any' }]"
                                                         },
                                                         "onChange": {
-                                                          "$action": "workflowStore.setRule",
+                                                          "$invoke": "workflowStore.setRule",
                                                           "args": [{ "$": "event.detail" }]
                                                         }
                                                       }
@@ -4280,7 +4280,7 @@
                                                                             "square": true,
                                                                             "label": "Earlier",
                                                                             "onClick": {
-                                                                              "$action": "workflowStore.moveStep",
+                                                                              "$invoke": "workflowStore.moveStep",
                                                                               "args": [{ "$": "step.name" }, -1]
                                                                             }
                                                                           },
@@ -4311,7 +4311,7 @@
                                                                             "square": true,
                                                                             "label": "Later",
                                                                             "onClick": {
-                                                                              "$action": "workflowStore.moveStep",
+                                                                              "$invoke": "workflowStore.moveStep",
                                                                               "args": [{ "$": "step.name" }, 1]
                                                                             }
                                                                           },
@@ -4438,7 +4438,7 @@
                                                                             "square": true,
                                                                             "label": "Remove this step",
                                                                             "onClick": {
-                                                                              "$action": "workflowStore.removeStep",
+                                                                              "$invoke": "workflowStore.removeStep",
                                                                               "args": [{ "$": "step.name" }]
                                                                             }
                                                                           },
@@ -4575,7 +4575,7 @@
                                                                   "$": "distinct([{ label: 'Ends here', value: '' }], workflowStore.draft.steps.map(s, { label: 'Rejoins at ' + s.label, value: s.name }))"
                                                                 },
                                                                 "onChange": {
-                                                                  "$action": "workflowStore.setBranchEnd",
+                                                                  "$invoke": "workflowStore.setBranchEnd",
                                                                   "args": [
                                                                     { "$": "lane.index" },
                                                                     { "$": "event.detail" }
@@ -4636,7 +4636,7 @@
                                                             "square": true,
                                                             "label": "Remove this move",
                                                             "onClick": {
-                                                              "$action": "workflowStore.removeException",
+                                                              "$invoke": "workflowStore.removeException",
                                                               "args": [{ "$": "move.from" }, { "$": "move.to" }]
                                                             }
                                                           },
@@ -4698,7 +4698,7 @@
                                                     "disabled": { "$": "!local.excFrom || !local.excTo" },
                                                     "onClick": [
                                                       {
-                                                        "$action": "workflowStore.addException",
+                                                        "$invoke": "workflowStore.addException",
                                                         "args": [{ "$": "local.excFrom" }, { "$": "local.excTo" }]
                                                       },
                                                       { "$setLocal": "excFrom", "value": "" },
@@ -4773,7 +4773,7 @@
                                                             "size": "sm",
                                                             "variant": "soft",
                                                             "onClick": {
-                                                              "$action": "shellStore.openSpaceSettings",
+                                                              "$invoke": "shellStore.openSpaceSettings",
                                                               "args": ["vocabulary"]
                                                             }
                                                           },
@@ -4807,7 +4807,7 @@
                                                                     "size": "sm",
                                                                     "variant": "soft",
                                                                     "onClick": {
-                                                                      "$action": "workflowStore.editWorkflow"
+                                                                      "$invoke": "workflowStore.editWorkflow"
                                                                     }
                                                                   },
                                                                   "children": [
@@ -4826,7 +4826,7 @@
                                                                 "size": "sm",
                                                                 "variant": "ghost",
                                                                 "onClick": {
-                                                                  "$action": "spaceStore.setWorkflowArchived",
+                                                                  "$invoke": "spaceStore.setWorkflowArchived",
                                                                   "args": [
                                                                     { "$": "workflowStore.open.name" },
                                                                     { "$": "!workflowStore.open.archived" }
@@ -4857,7 +4857,7 @@
                                                                     "size": "sm",
                                                                     "variant": "ghost",
                                                                     "onClick": {
-                                                                      "$action": "workflowStore.deleteWorkflow",
+                                                                      "$invoke": "workflowStore.deleteWorkflow",
                                                                       "args": [{ "$": "workflowStore.open.name" }]
                                                                     }
                                                                   },
@@ -5367,7 +5367,7 @@
                                                                   "props": {
                                                                     "variant": "bare",
                                                                     "onClick": {
-                                                                      "$action": "routeStore.setParam",
+                                                                      "$invoke": "routeStore.setParam",
                                                                       "args": ["card", { "$": "rec.record" }]
                                                                     }
                                                                   },
@@ -5456,7 +5456,7 @@
                                                                         "label": "What has happened to it",
                                                                         "onClick": [
                                                                           {
-                                                                            "$action": "workflowStore.loadHistory",
+                                                                            "$invoke": "workflowStore.loadHistory",
                                                                             "args": [{ "$": "rec.record" }]
                                                                           },
                                                                           {
@@ -5586,7 +5586,7 @@
                                                                                 "size": "sm",
                                                                                 "variant": "ghost",
                                                                                 "onClick": {
-                                                                                  "$action": "workflowStore.withdrawRecord",
+                                                                                  "$invoke": "workflowStore.withdrawRecord",
                                                                                   "args": [
                                                                                     { "$": "workflowStore.open.name" },
                                                                                     { "$": "rec.record" }
@@ -5607,7 +5607,7 @@
                                                                                 "size": "sm",
                                                                                 "variant": "soft",
                                                                                 "onClick": {
-                                                                                  "$action": "workflowStore.moveRecord",
+                                                                                  "$invoke": "workflowStore.moveRecord",
                                                                                   "args": [
                                                                                     { "$": "workflowStore.open.name" },
                                                                                     { "$": "rec.record" },
@@ -5666,7 +5666,7 @@
                                                                             "size": "sm",
                                                                             "variant": "ghost",
                                                                             "onClick": {
-                                                                              "$action": "workflowStore.moveRecord",
+                                                                              "$invoke": "workflowStore.moveRecord",
                                                                               "args": [
                                                                                 { "$": "workflowStore.open.name" },
                                                                                 { "$": "rec.record" },
@@ -5863,7 +5863,7 @@
                               "$if": {
                                 "condition": { "$": "routeStore.params.new == '1'" },
                                 "then": [
-                                  { "$action": "routeStore.setParam", "args": ["new", null] },
+                                  { "$invoke": "routeStore.setParam", "args": ["new", null] },
                                   { "$setLocal": "newWorkflowOpen", "value": false }
                                 ],
                                 "else": { "$setLocal": "newWorkflowOpen", "value": false }
@@ -5918,7 +5918,7 @@
                                       "$if": {
                                         "condition": { "$": "routeStore.params.new == '1'" },
                                         "then": [
-                                          { "$action": "routeStore.setParam", "args": ["new", null] },
+                                          { "$invoke": "routeStore.setParam", "args": ["new", null] },
                                           { "$setLocal": "newWorkflowOpen", "value": false }
                                         ],
                                         "else": { "$setLocal": "newWorkflowOpen", "value": false }
@@ -5933,7 +5933,7 @@
                                     "variant": "solid",
                                     "disabled": { "$": "!local.workflowLabel" },
                                     "onClick": {
-                                      "$action": "workflowStore.newWorkflow",
+                                      "$invoke": "workflowStore.newWorkflow",
                                       "args": [
                                         { "$": "local.workflowPreset" },
                                         { "$": "local.workflowLabel" },
@@ -5946,7 +5946,7 @@
                                           "$if": {
                                             "condition": { "$": "routeStore.params.new == '1'" },
                                             "then": [
-                                              { "$action": "routeStore.setParam", "args": ["new", null] },
+                                              { "$invoke": "routeStore.setParam", "args": ["new", null] },
                                               { "$setLocal": "newWorkflowOpen", "value": false }
                                             ],
                                             "else": { "$setLocal": "newWorkflowOpen", "value": false }
@@ -6005,7 +6005,7 @@
                                     "variant": "solid",
                                     "disabled": { "$": "!local.stepLabel" },
                                     "onClick": {
-                                      "$action": "workflowStore.addStep",
+                                      "$invoke": "workflowStore.addStep",
                                       "args": [
                                         { "$": "local.addStepLane" },
                                         { "$": "local.stepLabel" },
@@ -6083,7 +6083,7 @@
                                     "variant": "solid",
                                     "disabled": { "$": "!local.branchLabel" },
                                     "onClick": {
-                                      "$action": "workflowStore.addBranch",
+                                      "$invoke": "workflowStore.addBranch",
                                       "args": [
                                         { "$": "local.branchFrom" },
                                         { "$": "local.branchLabel" },
@@ -6225,7 +6225,7 @@
                                             "square": true,
                                             "label": "Remove",
                                             "onClick": {
-                                              "$action": "workflowStore.removeEvidence",
+                                              "$invoke": "workflowStore.removeEvidence",
                                               "args": [{ "$": "local.editStep" }, { "$": "index" }]
                                             }
                                           },
@@ -6275,7 +6275,7 @@
                                     "variant": "solid",
                                     "disabled": { "$": "!local.stepName" },
                                     "onClick": {
-                                      "$action": "workflowStore.updateStep",
+                                      "$invoke": "workflowStore.updateStep",
                                       "args": [
                                         { "$": "local.editStep" },
                                         {
@@ -6381,7 +6381,7 @@
                                   "props": {
                                     "variant": "solid",
                                     "onClick": {
-                                      "$action": "workflowStore.addEvidence",
+                                      "$invoke": "workflowStore.addEvidence",
                                       "args": [
                                         { "$": "local.evidenceStep" },
                                         { "$": "local.evidenceEntity" },
@@ -6720,8 +6720,8 @@
                                   "purpose": "unlock",
                                   "width": "100%",
                                   "placeholder": "Your password",
-                                  "onEdit": { "$action": "sessionStore.clearPasswordError" },
-                                  "onSubmit": { "$action": "sessionStore.unlock" }
+                                  "onEdit": { "$invoke": "sessionStore.clearPasswordError" },
+                                  "onSubmit": { "$invoke": "sessionStore.unlock" }
                                 }
                               }
                             ]
@@ -6736,7 +6736,7 @@
                                   "variant": "solid",
                                   "disabled": { "$": "!sessionStore.credentialEntered" },
                                   "loading": { "$": "sessionStore.loginLoading" },
-                                  "onClick": { "$action": "sessionStore.unlock" }
+                                  "onClick": { "$invoke": "sessionStore.unlock" }
                                 },
                                 "children": ["Unlock"]
                               }
@@ -6817,12 +6817,12 @@
                                   "loading": { "$": "sessionStore.createAgentLoading" },
                                   "onClick": [
                                     { "$touch": "$all" },
-                                    { "$action": "sessionStore.touchCredential" },
+                                    { "$invoke": "sessionStore.touchCredential" },
                                     {
                                       "$if": {
                                         "condition": { "$": "formValid() && sessionStore.credentialConfirmed" },
                                         "then": {
-                                          "$action": "profileStore.completeAccountSetup",
+                                          "$invoke": "profileStore.completeAccountSetup",
                                           "args": [{ "$": "local.name" }]
                                         }
                                       }
@@ -6878,7 +6878,7 @@
                             "children": [
                               {
                                 "type": "we-button",
-                                "props": { "variant": "solid", "onClick": { "$action": "sessionStore.retryBoot" } },
+                                "props": { "variant": "solid", "onClick": { "$invoke": "sessionStore.retryBoot" } },
                                 "children": ["Try again"]
                               }
                             ]
@@ -6934,7 +6934,7 @@
                                   "variant": "ghost",
                                   "ax": "start",
                                   "onClick": {
-                                    "$action": "accountStore.switchAccount",
+                                    "$invoke": "accountStore.switchAccount",
                                     "args": [{ "$": "account.id" }]
                                   }
                                 },
@@ -6974,7 +6974,7 @@
                                     "type": "we-button",
                                     "props": {
                                       "variant": "ghost",
-                                      "onClick": { "$action": "accountStore.createAccount" }
+                                      "onClick": { "$invoke": "accountStore.createAccount" }
                                     },
                                     "children": [{ "type": "we-icon", "props": { "name": "user-plus" } }, "New account"]
                                   }

@@ -5,7 +5,7 @@
  *
  * Event props bind by shape — any `on[A-Z]…` key holding a handler — so a template reaches every
  * event an element can fire, and several fire with nobody there: an image failing or finishing, a
- * `details` that starts open, an input that takes focus on mount. Each of those ran an `$action` on
+ * `details` that starts open, an input that takes focus on mount. Each of those ran an `$invoke` on
  * render (the `security:self-firing-events` browser case measured it), so a template installed from
  * a stranger could write into a shared space the moment it painted, and nobody would be asked.
  *
@@ -45,7 +45,7 @@
  *
  * ## Carried, never timed
  *
- * - **An `$action`'s continuations.** `onSuccess`/`onError`/`onFinally` run after a promise settles;
+ * - **An `$invoke`'s continuations.** `onSuccess`/`onError`/`onFinally` run after a promise settles;
  *   `captureGesture` takes whatever the call was running under and `runWithGesture` restores it.
  * - **A blur after typing.** Leaving a field somebody typed into is the end of that typing, whether
  *   they clicked elsewhere or switched windows — and an autosave on blur refused because the window

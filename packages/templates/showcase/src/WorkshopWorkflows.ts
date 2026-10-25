@@ -140,11 +140,11 @@ function stepCard(editing: boolean): SchemaNode {
               props: { gap: '100', wrap: true },
               children: [
                 iconButton('arrow-left', 'Earlier', {
-                  $action: 'workflowStore.moveStep',
+                  $invoke: 'workflowStore.moveStep',
                   args: [{ $: 'step.name' }, -1],
                 }),
                 iconButton('arrow-right', 'Later', {
-                  $action: 'workflowStore.moveStep',
+                  $invoke: 'workflowStore.moveStep',
                   args: [{ $: 'step.name' }, 1],
                 }),
                 iconButton('plus', 'Add a step after this one', [
@@ -154,7 +154,7 @@ function stepCard(editing: boolean): SchemaNode {
                 iconButton('git-branch', 'Branch from here', { $setLocal: 'branchFrom', value: { $: 'step.name' } }),
                 iconButton('pencil-simple', 'Edit this step', { $setLocal: 'editStep', value: { $: 'step.name' } }),
                 iconButton('trash', 'Remove this step', {
-                  $action: 'workflowStore.removeStep',
+                  $invoke: 'workflowStore.removeStep',
                   args: [{ $: 'step.name' }],
                 }),
               ],
@@ -322,7 +322,7 @@ function lanes(source: string, editing: boolean): SchemaNode {
                                   $: `distinct([{ label: 'Ends here', value: '' }], ${source}.steps.map(s, { label: 'Rejoins at ' + s.label, value: s.name }))`,
                                 },
                                 onChange: {
-                                  $action: 'workflowStore.setBranchEnd',
+                                  $invoke: 'workflowStore.setBranchEnd',
                                   args: [{ $: 'lane.index' }, { $: 'event.detail' }],
                                 },
                               },
@@ -366,7 +366,7 @@ function exceptions(source: string, editing: boolean): SchemaNode {
               ...(editing
                 ? [
                     iconButton('x', 'Remove this move', {
-                      $action: 'workflowStore.removeException',
+                      $invoke: 'workflowStore.removeException',
                       args: [{ $: 'move.from' }, { $: 'move.to' }],
                     }),
                   ]
@@ -411,7 +411,7 @@ function exceptions(source: string, editing: boolean): SchemaNode {
                     variant: 'soft',
                     disabled: { $: '!local.excFrom || !local.excTo' },
                     onClick: [
-                      { $action: 'workflowStore.addException', args: [{ $: 'local.excFrom' }, { $: 'local.excTo' }] },
+                      { $invoke: 'workflowStore.addException', args: [{ $: 'local.excFrom' }, { $: 'local.excTo' }] },
                       { $setLocal: 'excFrom', value: '' },
                       { $setLocal: 'excTo', value: '' },
                     ],
@@ -584,7 +584,7 @@ const recordRow: SchemaNode = {
           type: 'we-button',
           props: {
             variant: 'bare',
-            onClick: { $action: 'routeStore.setParam', args: ['card', { $: 'rec.record' }] },
+            onClick: { $invoke: 'routeStore.setParam', args: ['card', { $: 'rec.record' }] },
           },
           children: [text({ $: "rec.title ? rec.title : 'Untitled'" }, { truncate: true, maxWidth: '360px' })],
         },
@@ -614,7 +614,7 @@ const recordRow: SchemaNode = {
         },
         { type: 'Row', props: { flex: '1' } },
         iconButton('clock-counter-clockwise', 'What has happened to it', [
-          { $action: 'workflowStore.loadHistory', args: [{ $: 'rec.record' }] },
+          { $invoke: 'workflowStore.loadHistory', args: [{ $: 'rec.record' }] },
           { $setLocal: 'historyOf', value: { $: "local.historyOf == rec.record ? '' : rec.record" } },
         ]),
       ],
@@ -646,7 +646,7 @@ const recordRow: SchemaNode = {
                         size: 'sm',
                         variant: 'ghost',
                         onClick: {
-                          $action: 'workflowStore.withdrawRecord',
+                          $invoke: 'workflowStore.withdrawRecord',
                           args: [{ $: `${OPEN}.name` }, { $: 'rec.record' }],
                         },
                       },
@@ -658,7 +658,7 @@ const recordRow: SchemaNode = {
                         size: 'sm',
                         variant: 'soft',
                         onClick: {
-                          $action: 'workflowStore.moveRecord',
+                          $invoke: 'workflowStore.moveRecord',
                           args: [{ $: `${OPEN}.name` }, { $: 'rec.record' }, { $: 'move.to' }],
                         },
                       },
@@ -691,7 +691,7 @@ const recordRow: SchemaNode = {
                     size: 'sm',
                     variant: 'ghost',
                     onClick: {
-                      $action: 'workflowStore.moveRecord',
+                      $invoke: 'workflowStore.moveRecord',
                       args: [{ $: `${OPEN}.name` }, { $: 'rec.record' }, { $: 'to.name' }],
                     },
                   },
@@ -729,7 +729,7 @@ const openHeader: SchemaNode = {
               props: {
                 size: 'sm',
                 variant: 'soft',
-                onClick: { $action: 'shellStore.openSpaceSettings', args: ['vocabulary'] },
+                onClick: { $invoke: 'shellStore.openSpaceSettings', args: ['vocabulary'] },
               },
               children: [text('Edit in Task states')],
             },
@@ -749,7 +749,7 @@ const openHeader: SchemaNode = {
                     condition: { $: `${OPEN}.editable` },
                     then: {
                       type: 'we-button',
-                      props: { size: 'sm', variant: 'soft', onClick: { $action: 'workflowStore.editWorkflow' } },
+                      props: { size: 'sm', variant: 'soft', onClick: { $invoke: 'workflowStore.editWorkflow' } },
                       children: [text('Edit')],
                     },
                   },
@@ -760,7 +760,7 @@ const openHeader: SchemaNode = {
                     size: 'sm',
                     variant: 'ghost',
                     onClick: {
-                      $action: 'spaceStore.setWorkflowArchived',
+                      $invoke: 'spaceStore.setWorkflowArchived',
                       args: [{ $: `${OPEN}.name` }, { $: `!${OPEN}.archived` }],
                     },
                   },
@@ -777,7 +777,7 @@ const openHeader: SchemaNode = {
                       props: {
                         size: 'sm',
                         variant: 'ghost',
-                        onClick: { $action: 'workflowStore.deleteWorkflow', args: [{ $: `${OPEN}.name` }] },
+                        onClick: { $invoke: 'workflowStore.deleteWorkflow', args: [{ $: `${OPEN}.name` }] },
                       },
                       children: [text('Delete')],
                     },
@@ -959,7 +959,7 @@ const draftHeader: SchemaNode = {
               props: {
                 label: 'Name',
                 value: { $: `${DRAFT}.label` },
-                onChange: { $action: 'workflowStore.setDraftLabel', args: [{ $: 'event.detail' }] },
+                onChange: { $invoke: 'workflowStore.setDraftLabel', args: [{ $: 'event.detail' }] },
               },
             },
             else: text({ $: `${DRAFT}.label` }, { variant: 'heading-sm' }),
@@ -968,7 +968,7 @@ const draftHeader: SchemaNode = {
         { type: 'Row', props: { flex: '1' } },
         {
           type: 'we-button',
-          props: { variant: 'ghost', onClick: { $action: 'workflowStore.cancelDraft' } },
+          props: { variant: 'ghost', onClick: { $invoke: 'workflowStore.cancelDraft' } },
           children: [text('Cancel')],
         },
         {
@@ -976,7 +976,7 @@ const draftHeader: SchemaNode = {
           props: {
             variant: 'solid',
             disabled: { $: `count(${DRAFT}.problems) > 0 || !${DRAFT}.dirty` },
-            onClick: { $action: 'workflowStore.saveDraft' },
+            onClick: { $invoke: 'workflowStore.saveDraft' },
           },
           children: [text('Save')],
         },
@@ -987,7 +987,7 @@ const draftHeader: SchemaNode = {
       props: {
         label: 'What it is for',
         value: { $: `${DRAFT}.hint` },
-        onChange: { $action: 'workflowStore.setDraftHint', args: [{ $: 'event.detail' }] },
+        onChange: { $invoke: 'workflowStore.setDraftHint', args: [{ $: 'event.detail' }] },
       },
     },
     {
@@ -1011,7 +1011,7 @@ const draftHeader: SchemaNode = {
                   $: "[{ label: 'Any record', value: '' }, { label: 'Tasks', value: 'TaskBlock' }, { label: 'Notes and posts', value: 'CollectionBlock' }, { label: 'Events', value: 'EventBlock' }]",
                 },
                 onChange: {
-                  $action: 'workflowStore.setDraftEntities',
+                  $invoke: 'workflowStore.setDraftEntities',
                   args: [{ $: 'event.detail ? [event.detail] : []' }],
                 },
               },
@@ -1029,7 +1029,7 @@ const draftHeader: SchemaNode = {
                 options: {
                   $: "[{ label: 'On to the next', value: 'next' }, { label: 'On, or back one', value: 'next-and-back' }, { label: 'Anywhere', value: 'any' }]",
                 },
-                onChange: { $action: 'workflowStore.setRule', args: [{ $: 'event.detail' }] },
+                onChange: { $invoke: 'workflowStore.setRule', args: [{ $: 'event.detail' }] },
               },
             },
           ],
@@ -1090,7 +1090,7 @@ const newWorkflowModal: SchemaNode = formModal({
     $if: {
       condition: { $: "routeStore.params.new == '1'" },
       then: [
-        { $action: 'routeStore.setParam', args: ['new', null] },
+        { $invoke: 'routeStore.setParam', args: ['new', null] },
         { $setLocal: 'newWorkflowOpen', value: false },
       ],
       else: { $setLocal: 'newWorkflowOpen', value: false },
@@ -1131,7 +1131,7 @@ const newWorkflowModal: SchemaNode = formModal({
   disabled: { $: '!local.workflowLabel' },
   submitLabel: 'Start writing',
   submit: {
-    $action: 'workflowStore.newWorkflow',
+    $invoke: 'workflowStore.newWorkflow',
     args: [
       { $: 'local.workflowPreset' },
       { $: 'local.workflowLabel' },
@@ -1159,7 +1159,7 @@ const addStepModal: SchemaNode = formModal({
   disabled: { $: '!local.stepLabel' },
   submitLabel: 'Add',
   submit: {
-    $action: 'workflowStore.addStep',
+    $invoke: 'workflowStore.addStep',
     args: [{ $: 'local.addStepLane' }, { $: 'local.stepLabel' }, { $: 'local.addStepAfter' }],
   },
 });
@@ -1202,7 +1202,7 @@ const branchModal: SchemaNode = formModal({
   disabled: { $: '!local.branchLabel' },
   submitLabel: 'Add branch',
   submit: {
-    $action: 'workflowStore.addBranch',
+    $invoke: 'workflowStore.addBranch',
     args: [{ $: 'local.branchFrom' }, { $: 'local.branchLabel' }, { $: 'local.branchRejoins' }],
   },
 });
@@ -1247,7 +1247,7 @@ const editStepModal: SchemaNode = formModal({
       kind: { value: { $: 'local.stepKind' }, onChange: { $setLocal: 'stepKind', value: { $: 'event.detail' } } },
       evidence: {
         items: `${EDITING}.evidence ?? []`,
-        onRemove: { $action: 'workflowStore.removeEvidence', args: [{ $: 'local.editStep' }, { $: 'index' }] },
+        onRemove: { $invoke: 'workflowStore.removeEvidence', args: [{ $: 'local.editStep' }, { $: 'index' }] },
         onAdd: { $setLocal: 'evidenceStep', value: { $: 'local.editStep' } },
       },
     }),
@@ -1255,7 +1255,7 @@ const editStepModal: SchemaNode = formModal({
   disabled: { $: '!local.stepName' },
   submitLabel: 'Save step',
   submit: {
-    $action: 'workflowStore.updateStep',
+    $invoke: 'workflowStore.updateStep',
     args: [
       { $: 'local.editStep' },
       {
@@ -1272,7 +1272,7 @@ const evidenceStepModal: SchemaNode = evidenceModal({
   open: { $: 'local.evidenceStep' },
   close: { $setLocal: 'evidenceStep', value: '' },
   submit: ({ entity, via, min }) => ({
-    $action: 'workflowStore.addEvidence',
+    $invoke: 'workflowStore.addEvidence',
     args: [{ $: 'local.evidenceStep' }, entity, via, min],
   }),
 });
@@ -1285,8 +1285,8 @@ const workflowButton: SchemaNode = {
     variant: { $: `${OPEN}.name == workflow.name && !${DRAFT} ? 'soft' : 'ghost'` },
     width: '100%',
     onClick: [
-      { $action: 'workflowStore.cancelDraft' },
-      { $action: 'workflowStore.openWorkflow', args: [{ $: 'workflow.name' }] },
+      { $invoke: 'workflowStore.cancelDraft' },
+      { $invoke: 'workflowStore.openWorkflow', args: [{ $: 'workflow.name' }] },
     ],
   },
   children: [
@@ -1476,7 +1476,7 @@ const inspectorMoves: SchemaNode = {
                     size: 'xs',
                     variant: 'ghost',
                     onClick: {
-                      $action: 'workflowStore.withdrawRecord',
+                      $invoke: 'workflowStore.withdrawRecord',
                       args: [{ $: 'inWorkflow.workflow' }, { $: 'row.id' }],
                     },
                   },
@@ -1488,7 +1488,7 @@ const inspectorMoves: SchemaNode = {
                     size: 'xs',
                     variant: 'soft',
                     onClick: {
-                      $action: 'workflowStore.moveRecord',
+                      $invoke: 'workflowStore.moveRecord',
                       args: [{ $: 'inWorkflow.workflow' }, { $: 'row.id' }, { $: 'ask.to' }],
                     },
                   },
@@ -1519,7 +1519,7 @@ const inspectorMoves: SchemaNode = {
                     size: 'xs',
                     variant: 'ghost',
                     onClick: {
-                      $action: 'workflowStore.moveRecord',
+                      $invoke: 'workflowStore.moveRecord',
                       args: [{ $: 'inWorkflow.workflow' }, { $: 'row.id' }, { $: 'to.name' }],
                     },
                   },
@@ -1578,7 +1578,7 @@ export function workflowsSection(opts: {
                 items: {
                   $: `workflowStore.startable.filter(f, (${opts.type} in f.entities || !count(f.entities)) && !(${mine}).exists(c, c.workflow == f.name)).map(f, { id: f.name, label: f.label })`,
                 },
-                onSelect: { $action: 'workflowStore.startWorkflow', args: [{ $: 'arg.id' }, { $: 'row.id' }] },
+                onSelect: { $invoke: 'workflowStore.startWorkflow', args: [{ $: 'arg.id' }, { $: 'row.id' }] },
               },
             },
           }),
@@ -1625,8 +1625,8 @@ export function workflowsSection(opts: {
                                   size: 'xs',
                                   variant: 'ghost',
                                   onClick: [
-                                    { $action: 'workflowStore.openWorkflow', args: [{ $: 'inWorkflow.workflow' }] },
-                                    { $action: 'routeStore.navigate', args: [opts.workflowsPath] },
+                                    { $invoke: 'workflowStore.openWorkflow', args: [{ $: 'inWorkflow.workflow' }] },
+                                    { $invoke: 'routeStore.navigate', args: [opts.workflowsPath] },
                                   ],
                                 },
                                 children: [text('Open')],
