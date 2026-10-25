@@ -26,6 +26,13 @@ const EXTRA_RESOURCES_FILE = path.join(OUTPUT_DIR, 'seed-extra-resources.json');
 const RUNTIME_FILE = path.join(OUTPUT_DIR, 'seed-runtime.json');
 const CSP_FILE = path.join(OUTPUT_DIR, 'seed-csp.json');
 
+/** Another seed's rendered window icon, when `@we/brand` has made one — WE's own is `build/icon.png`. */
+function seedWindowIcon() {
+  const dir = require('../../../scripts/seed.cjs').generatedDir(path.join(__dirname, '..'));
+  const icon = dir && path.join(dir, 'icon.png');
+  return icon && fs.existsSync(icon) ? icon : null;
+}
+
 /** Where the executor keeps its data when the seed says nothing. Also the launcher's location. */
 const DEFAULT_AD4M_DATA_PATH = '~/.ad4m';
 
@@ -141,6 +148,9 @@ function main() {
     // Only when the seed names its own product: a development run then keeps its config (the
     // account registry) under that name rather than WE's. Absent, nothing changes for WE.
     ...(seed.desktop?.productName ? { productName: seed.desktop.productName } : {}),
+    // Development only: another seed's window icon, as `@we/brand` rendered it. A packaged build
+    // copies the same file in beside the executor (electron-builder.config.js), so the two agree.
+    ...(seedWindowIcon() ? { windowIcon: seedWindowIcon() } : {}),
     // Carried through for **development** runs. Packaged builds get the binary copied in as an
     // extraResource above and read it from `resourcesPath`, but an unpackaged run has to find it in
     // the workspace — and until this was here it did so from a path hardcoded in `main.js`, so a

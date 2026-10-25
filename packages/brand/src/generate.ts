@@ -284,10 +284,14 @@ function assertTauriIconOrder() {
 // ─── Another deployment's icon ──────────────────────────────────────────────────
 
 /*
-  A seed other than WE's own (`WE_SEED`) may name its own icon (`desktop.icon`, an SVG). It is drawn
-  as it is — its own colours, no tile — with the desktop margin around it, and written beside each
-  desktop app under `.seed-build/<name>/`, where that app's build looks for it. WE's checked-in icons
-  are left alone, so building another deployment changes nothing tracked. See `scripts/seed.cjs`.
+  A seed other than WE's own (`WE_SEED`) may name its own icon (`desktop.icon`, an SVG). It is the
+  whole icon, drawn as it is, edge to edge — a tile, its corners and its margin included, as WE's own
+  icon is composed above — and written beside each desktop app under `.seed-build/<name>/`, where that
+  app's build looks for it. WE's checked-in icons are left alone, so building another deployment
+  changes nothing tracked. See `scripts/seed.cjs`.
+
+  Edge to edge rather than inset: a margin added here around a tile that already has one left the
+  icon visibly smaller than every other app's on the panel, WE's included.
 */
 const seedFile = createRequire(import.meta.url)('../../../scripts/seed.cjs') as {
   isDefaultSeed(): boolean;
@@ -297,13 +301,11 @@ const seedFile = createRequire(import.meta.url)('../../../scripts/seed.cjs') as 
   seedLabel(): string;
 };
 
-/** The seed's SVG, centred in a square with a margin, as an image so any SVG composes. */
-function composeSeedIcon(source: string, size = 1024, padding = PADDING): string {
-  const inset = Math.round(size * padding);
-  const box = size - inset * 2;
+/** The seed's SVG filling a square, as an image so any SVG composes. */
+function composeSeedIcon(source: string, size = 1024): string {
   const data = Buffer.from(readFileSync(source)).toString('base64');
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-  <image x="${inset}" y="${inset}" width="${box}" height="${box}" preserveAspectRatio="xMidYMid meet" href="data:image/svg+xml;base64,${data}"/>
+  <image width="${size}" height="${size}" preserveAspectRatio="xMidYMid meet" href="data:image/svg+xml;base64,${data}"/>
 </svg>
 `;
 }
