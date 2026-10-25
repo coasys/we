@@ -56,7 +56,9 @@ passphrase (Argon2id, XChaCha20-Poly1305) in the Linux Secret Service, or in
 (`$XDG_DATA_HOME`), and on macOS where the build lacks the `keychain-access-groups` entitlement
 (`~/Library/Application Support`), which the data-protection keychain requires: an unsigned or
 ad-hoc-signed build, as a dev build is (the app asks the keychain once at start, and a file holds
-the key behind a passphrase from then on). The crate runs the identity client's flows — make the identity, add a device, revoke one — and reaches the executor only over
+the key behind a passphrase from then on). A key already sealed in that file stays there: when
+the folder holds a `<scid>.bin`, every later start uses the file, even once the keychain or a
+Secret Service is available, so a switch of build never leaves a key unreachable. The crate runs the identity client's flows — make the identity, add a device, revoke one — and reaches the executor only over
 its RPC with the admin credential. It is its own crate so nothing of it links the executor;
 `custody/tests/boundary.rs` keeps it so.
 

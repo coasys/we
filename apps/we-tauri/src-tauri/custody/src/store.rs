@@ -66,6 +66,23 @@ impl FileStore {
         let file = name.rsplit('/').next().unwrap_or(name);
         self.dir.join(format!("{file}.bin"))
     }
+
+    /// Whether any sealed item is kept here (a `.bin` file; a half-written `.bin.tmp` does not
+    /// count). Reads directory entries only.
+    pub fn holds_any(&self) -> Result<bool, VaultError> {
+        let entries = match std::fs::read_dir(&self.dir) {
+            Ok(entries) => entries,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(e) => return Err(io(e)),
+        };
+        for entry in entries {
+            let path = entry.map_err(io)?.path();
+            if path.extension().is_some_and(|ext| ext == "bin") && path.is_file() {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
 }
 
 fn io(e: std::io::Error) -> VaultError {
@@ -460,14 +477,37 @@ fn keychain_usable(probe_status: i32) -> bool {
     probe_status != ERR_SEC_MISSING_ENTITLEMENT
 }
 
-/// The store this computer offers. macOS: the keychain, unless this build lacks the keychain
-/// entitlement (an unsigned or ad-hoc-signed build), then a file under `fallback_dir` holding the
-/// item sealed under a passphrase. Linux: the Secret Service, else that file.
+/// The store this computer offers. A master key already sealed in a file under `fallback_dir`
+/// stays there: an earlier build of the app chose the file, and the item is readable only through
+/// it. Otherwise, macOS: the keychain, unless this build lacks the keychain entitlement (an
+/// unsigned or ad-hoc-signed build), then that file, sealed under a passphrase. Linux: the Secret
+/// Service, else that file.
 pub fn system_store(fallback_dir: PathBuf) -> Box<dyn SecretStore> {
+    choose_store(FileStore::new(fallback_dir), platform_store)
+}
+
+/// [`system_store`] with the platform's own store supplied by `platform` (`None`: not usable).
+pub(crate) fn choose_store(
+    file: FileStore,
+    platform: impl FnOnce() -> Option<Box<dyn SecretStore>>,
+) -> Box<dyn SecretStore> {
+    match file.holds_any() {
+        Ok(true) => {
+            log::info!(
+                "custody: the master key is already sealed in a file here; keeping it there"
+            );
+            Box::new(file)
+        }
+        _ => platform().unwrap_or_else(|| Box::new(file)),
+    }
+}
+
+/// The keychain or the Secret Service, when this build and this session can use it.
+fn platform_store() -> Option<Box<dyn SecretStore>> {
     #[cfg(target_os = "macos")]
     {
         if keychain_usable(keychain_store::probe_status(PROBE_NAME)) {
-            return Box::new(KeychainStore);
+            return Some(Box::new(KeychainStore));
         }
         log::warn!(
             "custody: the data-protection keychain needs an entitlement this build lacks; keeping \
@@ -477,13 +517,13 @@ pub fn system_store(fallback_dir: PathBuf) -> Box<dyn SecretStore> {
     #[cfg(target_os = "linux")]
     {
         match SecretServiceStore::connect() {
-            Ok(store) => return Box::new(store),
+            Ok(store) => return Some(Box::new(store)),
             Err(e) => {
                 log::warn!("custody: no Secret Service ({e}); keeping the sealed item in a file")
             }
         }
     }
-    Box::new(FileStore::new(fallback_dir))
+    None
 }
 
 #[cfg(test)]

@@ -177,6 +177,51 @@ mod tests {
     }
 
     #[test]
+    fn a_key_sealed_in_a_file_stays_usable_when_the_platform_store_becomes_available() {
+        use crate::store::{choose_store, FileStore};
+        let dir = tempfile::tempdir().unwrap();
+        let custody = dir.path().join("custody");
+        // A build without the keychain (or without a Secret Service) makes the identity: the
+        // master key goes into the sealed file.
+        let first = DesktopVault::with_kdf(
+            Box::new(FileStore::new(&custody)),
+            PendingIncepts::memory(),
+            CHEAP,
+        );
+        first
+            .unlocking(pass("a passphrase of length"))
+            .store_master("QmScid", 0, Secret::new([7u8; 32]))
+            .unwrap();
+
+        // The next start can use the platform store, and still picks the file that holds the key.
+        let store = choose_store(FileStore::new(&custody), || {
+            Some(Box::new(MemoryStore::new()))
+        });
+        assert_eq!(store.kind(), StoreKind::File);
+        let second = DesktopVault::with_kdf(store, PendingIncepts::memory(), CHEAP);
+        assert!(second.needs_passphrase());
+        assert!(second.holds("QmScid").unwrap());
+        let unlocked = second
+            .unlocking(pass("a passphrase of length"))
+            .unlock("QmScid", MasterUse::Link, 10)
+            .unwrap();
+        assert_eq!(
+            ad4m_identity_core::build::Signer::key(unlocked.signer(10).unwrap()),
+            ed25519_signing_key_multikey([7u8; 32])
+        );
+
+        // With nothing sealed in the file, the platform store wins.
+        let empty = dir.path().join("empty");
+        let fresh = choose_store(FileStore::new(&empty), || {
+            Some(Box::new(MemoryStore::new()))
+        });
+        assert_eq!(fresh.kind(), StoreKind::Memory);
+        // And without a platform store, the file.
+        let none = choose_store(FileStore::new(&empty), || None);
+        assert_eq!(none.kind(), StoreKind::File);
+    }
+
+    #[test]
     fn a_passphrase_vault_keeps_the_key_sealed_and_opens_it_with_the_passphrase() {
         let store = std::sync::Arc::new(MemoryStore::new());
         struct Shared(std::sync::Arc<MemoryStore>);
