@@ -456,6 +456,9 @@ export interface ExtractionPassRecord extends RecordInstance {
 export interface TypeStyleRecord extends RecordInstance {
   nodeType: string;
   color: string;
+  display: string;
+  controls: string;
+  authoring: string;
 }
 
 export interface VideoBlockRecord extends WeNodeRecord {

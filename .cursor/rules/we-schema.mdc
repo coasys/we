@@ -2912,6 +2912,9 @@ TypeStyle extends Ad4mModel:
   Fields:
   - nodeType: string [we://node_type]
   - color: string [we://color]
+  - display: string [we://type_display]
+  - controls: string [we://type_controls]
+  - authoring: string [we://type_authoring]
 
 VideoBlock extends WeNode:
   Fields:
@@ -3194,6 +3197,7 @@ RecordStore:
   - previewCardStyle(nodeId: string, field: string, value): shows a presentation change without writing it — for a slider that reports while it moves. Pair with setCardStyle on release; both go through the same pending map so the card never jumps
   - setTypeColor(canvas: string, nodeType: string, color): sets the colour every card of one type is drawn in, on one canvas — the canvas's key, made writable. An empty colour clears it
   - setSpaceTypeColor(spaceId: string, nodeType: string, color): sets the colour every card of one type is drawn in across the whole space — the community's key, which a canvas falls back to where it has no colour of its own for that type. Pass spaceStore.currentSpace.id. Read the result back with a TypeStyle query scoped { anchor: 'Space', via: 'typeStyles', anchorId: spaceStore.currentSpace.id }. An empty colour clears it
+  - setSpaceTypePresentation(spaceId: string, nodeType: string, presentation: { display?: { title?, summary?, media?, fields? }, controls?: Record<field, control>, authoring?: string[] } | null): how every record of one type is laid out in this space, over the model's own — which field titles, summarises and pictures its cards and which it lists, the control a field uses, the fields its form asks for. Only what it sets is overridden, slot by slot; null puts the type back to the model's. Read back through recordStore.displays, which every card and form draws from. Keeps the type's colour in the space's key. Takes spaceStore.currentSpace.id
   - createOnCanvas(canvas: string, x?: number, y?: number): opens the create form and places whatever it makes onto that canvas, at the point given. Pair with the graph’s onCanvasDoubleClick
   - createCardOnCanvas(editorState, { canvas, at? }): composes a card onto a canvas and records where it sits, as one write. Without `at` the card lands in the canvas's tray. The composer's counterpart to createOnCanvas
 

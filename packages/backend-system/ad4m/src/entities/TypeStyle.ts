@@ -34,6 +34,13 @@ import { Ad4mModel, Flag, Model, Property } from '@coasys/ad4m';
  * on a shared board two people colouring two different types would clobber each other. One record
  * per fact means two independent changes are two independent writes.
  *
+ * ## Beside colour: how a card and a form are laid out
+ *
+ * The same record carries the rest of a type's presentation where this community wants something
+ * other than the model's own — a card's title and summary, the control a field uses, the fields a
+ * form asks for. A model ships its author's defaults; a record here overrides only what it sets, and
+ * a template can still override both. See `shared/shapes/presentation.ts` in `@we/app-shell`.
+ *
  * ## What this is the start of
  *
  * Colour is the first rule, not the only conceivable one. The board's key is a legend today and a
@@ -54,4 +61,15 @@ export class TypeStyle extends Ad4mModel {
   /** Design token or CSS colour. Empty is unset, and the board's own rules decide again. */
   @Property({ through: 'we://color' })
   color: string = '';
+
+  @Property({ through: 'we://type_display' })
+  display: string = '';
+
+  /** The form control a field uses here, by field name — JSON. Empty is unset. */
+  @Property({ through: 'we://type_controls' })
+  controls: string = '';
+
+  /** The fields a form for this type asks for, in order — JSON list. Empty is unset. */
+  @Property({ through: 'we://type_authoring' })
+  authoring: string = '';
 }

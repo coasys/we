@@ -43,18 +43,36 @@ import {
   getEntityForDataset,
   Placement,
   runEntityTransaction,
+  Space,
   TypeStyle,
 } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import { PLACEMENT_UNSET, resolvePlacement } from '@we/graph-expanders';
 import { createHistory, type HistoryState } from '@we/history';
 import { createOptimism, DEFAULT_TTL_MS, keyOf, sameValue } from '@we/optimism';
-import { Accessor, batch, createContext, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
+import {
+  Accessor,
+  batch,
+  createContext,
+  createEffect,
+  createMemo,
+  createSignal,
+  onCleanup,
+  ParentProps,
+  untrack,
+  useContext,
+} from 'solid-js';
 
 import { bringIn as decideBringIn, type BringInItem, type BroughtIn } from '../../../shared/bringIn';
 import { routeWrite } from '../../../shared/edgeRoute';
 import { hostSlot } from '../../../shared/hostSlot';
 import { notifyCopiedIn } from '../../../shared/registries/moduleHostServices';
+import {
+  presentationFields,
+  presentationOf,
+  type TypePresentation,
+  withPresentation,
+} from '../../../shared/shapes/presentation';
 import { displayFor, modelLabel, type RecordDisplay } from '../../../shared/shapes/recordDisplay';
 import {
   asEntityName,
@@ -686,6 +704,13 @@ export interface RecordStore {
    */
   setSpaceTypeColor: (spaceId: string, nodeType: string, color: unknown) => Promise<void>;
   /**
+   * Say how every record of one type is laid out in this space — a card's title, summary, picture
+   * and listed fields, a field's control, the fields its form asks for — over the model's own.
+   * Only what `presentation` sets is overridden; `null` puts the type back to the model's. The
+   * colour the type has in the space's key is kept. See `shared/shapes/presentation.ts`.
+   */
+  setSpaceTypePresentation: (spaceId: string, nodeType: string, presentation: TypePresentation | null) => Promise<void>;
+  /**
    * Open the create form, and place whatever it makes onto this canvas.
    *
    * The counterpart to `connectNodes`: the same form and the same save path, with an intent held
@@ -888,6 +913,9 @@ export function RecordStoreProvider(props: ParentProps) {
   const contentHome = (canvas?: string): string | undefined =>
     canvas ? (contentHomes.get()?.forCanvas(canvas) ?? canvas) : contentHomes.get()?.root() || undefined;
 
+  /** The space's layer of each type's presentation, by type — filled by `reloadSpacePresentation`. */
+  const [spacePresentation, setSpacePresentation] = createSignal<Record<string, TypePresentation>>({});
+
   const displays = createMemo<Record<string, RecordDisplay>>(() => {
     const out: Record<string, RecordDisplay> = {};
     for (const entity of displayableEntities()) {
@@ -897,7 +925,8 @@ export function RecordStoreProvider(props: ParentProps) {
         entity: entity.value,
         label: entity.label,
         icon: found.icon,
-        schema: found.schema,
+        // The model's own presentation, with the space's laid over it.
+        schema: withPresentation(found.schema, spacePresentation()[entity.value]),
         authorable: found.authorable,
         vocabularyFor: (vocabulary) => vocabularies.get()?.(vocabulary),
       });
@@ -2550,6 +2579,80 @@ export function RecordStoreProvider(props: ParentProps) {
       toastService.error('Could not save that colour.');
     }
   }
+  /*
+    The space's layer of a type's presentation — see `shared/shapes/presentation.ts`. Read live, as
+    the space's key is drawn: a change somebody else makes reaches every card here.
+  */
+  async function reloadSpacePresentation(): Promise<void> {
+    const dataset = datasetStore.currentDataset();
+    if (!dataset) {
+      setSpacePresentation({});
+      return;
+    }
+    try {
+      const space = (await Space.findOne(dataset.handle as never)) as { id?: string } | null;
+      if (!space?.id || datasetStore.currentDataset()?.id !== dataset.id) return;
+      const parent = { id: space.id, relation: 'typeStyles', entity: 'Space' };
+      const rows = (await TypeStyle.findAll(dataset.handle, { parent } as Record<string, unknown>)) as KeyRow[];
+      if (datasetStore.currentDataset()?.id !== dataset.id) return;
+      const out: Record<string, TypePresentation> = {};
+      for (const row of rows) {
+        const layer = presentationOf(row);
+        if (row.nodeType && Object.keys(layer).length) out[row.nodeType] = layer;
+      }
+      setSpacePresentation(out);
+    } catch (error) {
+      console.warn("RecordStore: could not read the space's presentation of its types", error);
+    }
+  }
+  createEffect(() => {
+    const dataset = datasetStore.currentDataset();
+    let stopped = false;
+    let watch: { subscribe(cb: () => void): Promise<unknown>; dispose(): void } | undefined;
+    onCleanup(() => {
+      stopped = true;
+      watch?.dispose();
+    });
+    setSpacePresentation({});
+    if (!dataset) return;
+    void untrack(reloadSpacePresentation).then(() => {
+      if (stopped) return;
+      // A backend whose records cannot be followed is read once, on entering.
+      const query = (TypeStyle as unknown as { query?: (dataset: unknown, q: object) => typeof watch }).query;
+      if (typeof query !== 'function') return;
+      watch = query.call(TypeStyle, dataset.handle, {});
+      watch
+        ?.subscribe(() => void (!stopped && reloadSpacePresentation()))
+        .catch((error: unknown) => console.warn("RecordStore: could not watch the space's types", error));
+    });
+  });
+
+  async function setSpaceTypePresentation(
+    spaceId: string,
+    nodeType: string,
+    presentation: TypePresentation | null,
+  ): Promise<void> {
+    const dataset = datasetStore.currentDataset();
+    if (!dataset || !spaceId || !nodeType) return;
+    const parent = { id: spaceId, relation: 'typeStyles', entity: 'Space' };
+    try {
+      const existing = (await TypeStyle.findAll(dataset.handle, { parent } as Record<string, unknown>)) as KeyRow[];
+      const rows = existing.filter((row) => row.nodeType === nodeType);
+      const color = rows.find((row) => row.color)?.color ?? '';
+      const fields = presentationFields(presentation ?? {});
+      // Written whole: a field cannot be emptied in place (the ORM skips `''`), so the row is made
+      // again with exactly what it should say — the colour it had, and the presentation given.
+      for (const row of rows) await TypeStyle.delete(dataset.handle, row.id);
+      const keep = Object.fromEntries(Object.entries({ color, ...fields }).filter(([, v]) => v));
+      if (Object.keys(keep).length) {
+        await TypeStyle.create(dataset.handle as never, { nodeType, ...keep } as never, { parent } as never);
+      }
+      await reloadSpacePresentation();
+    } catch (error) {
+      console.error('RecordStore: saving how the space presents a type failed', error);
+      toastService.error('Could not save how that type is shown.');
+    }
+  }
 
   async function dropOnCanvas(
     canvas: string,
@@ -2787,6 +2890,16 @@ export function RecordStoreProvider(props: ParentProps) {
     }
   }
 
+  /** A row of the space's key, as read: what it styles, its colour, and how it lays the type out. */
+  type KeyRow = {
+    id: string;
+    nodeType?: string;
+    color?: string;
+    display?: string;
+    controls?: string;
+    authoring?: string;
+  };
+
   async function setSpaceTypeColor(spaceId: string, nodeType: string, color: unknown): Promise<void> {
     const dataset = datasetStore.currentDataset();
     if (!dataset || !spaceId || !nodeType) return;
@@ -2798,15 +2911,20 @@ export function RecordStoreProvider(props: ParentProps) {
     const parent = { id: spaceId, relation: 'typeStyles', entity: 'Space' };
 
     try {
-      const existing = (await TypeStyle.findAll(dataset.handle, { parent } as Record<string, unknown>)) as {
-        id: string;
-        nodeType?: string;
-      }[];
+      const existing = (await TypeStyle.findAll(dataset.handle, { parent } as Record<string, unknown>)) as KeyRow[];
       const rows = existing.filter((row) => row.nodeType === nodeType);
       if (!value) {
         // Clearing deletes. `''` cannot be stored — the ORM's update skips it — and the canvas
-        // sentinel would leave a row every reader has to know to ignore.
+        // sentinel would leave a row every reader has to know to ignore. A row that also says how
+        // the type is laid out is written again with that alone.
+        const kept = rows.map(presentationOf).find((p) => Object.keys(p).length);
         for (const row of rows) await TypeStyle.delete(dataset.handle, row.id);
+        if (kept)
+          await TypeStyle.create(
+            dataset.handle as never,
+            { nodeType, ...presentationFields(kept) } as never,
+            { parent } as never,
+          );
         return;
       }
       const [already, ...duplicates] = rows;
@@ -3146,6 +3264,7 @@ export function RecordStoreProvider(props: ParentProps) {
     setCardStyle,
     setTypeColor,
     setSpaceTypeColor,
+    setSpaceTypePresentation,
     dropOnCanvas,
     bringIn,
     updateRecordField,
