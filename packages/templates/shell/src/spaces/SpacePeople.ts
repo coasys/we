@@ -20,6 +20,12 @@ import { field, formModal, sectionCard } from '@we/template-kit';
  * changes, so a ticked entry is a role to take away and an unticked one a role to give. The one refusal
  * — the last admin cannot lose `admin` — is the store's, and says so in a toast rather than leaving the
  * tick where it was without a word.
+ *
+ * ## The rules sit with the roles
+ *
+ * The space's policy names roles — moderators delete anything, admins change the settings — so it is
+ * read beside them: which preset the space is on, and each permission as a sentence. Switching preset
+ * is offered to whoever the policy lets change it (`can()`), and the store judges the switch again.
  */
 
 const openSpaceFirst: SchemaNode = {
@@ -140,6 +146,86 @@ const rolesSection: SchemaNode = sectionCard({
   ],
 });
 
+/** One preset the space can be on: chosen, or offered to whoever may change the rules. */
+const presetOption = (preset: 'community' | 'open', name: string, description: string): SchemaNode => ({
+  type: 'Row',
+  props: { gap: '300', ay: 'start', width: '100%', py: '200' },
+  children: [
+    {
+      type: 'we-icon',
+      props: {
+        name: { $: `spaceStore.policy.preset == '${preset}' ? 'check-circle' : 'circle'` },
+        color: { $: `spaceStore.policy.preset == '${preset}' ? 'accent' : 'text-faint'` },
+      },
+    },
+    {
+      type: 'Column',
+      props: { gap: '100', flex: '1' },
+      children: [
+        { type: 'we-text', props: { fontWeight: '600' }, children: [name] },
+        { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: [description] },
+      ],
+    },
+    {
+      type: '$if',
+      props: {
+        condition: {
+          $: `spaceStore.policy.preset != '${preset}' && can({ policy: spaceStore.policy, action: 'Policy.edit' })`,
+        },
+        then: {
+          type: 'we-button',
+          props: {
+            variant: 'soft',
+            size: 'sm',
+            onClick: { $action: 'spaceStore.setPolicyPreset', args: [preset] },
+          },
+          children: [{ type: 'we-text', children: ['Use these'] }],
+        },
+      },
+    },
+  ],
+});
+
+const policySection: SchemaNode = sectionCard({
+  title: 'Rules',
+  description:
+    'What people may do here. Every change anybody makes in this space is checked against them, and one they do not allow is refused with the reason.',
+  children: [
+    presetOption(
+      'community',
+      'Community',
+      'Members make things and look after their own. Moderators delete anything; admins look after the space and its rules.',
+    ),
+    presetOption(
+      'open',
+      'Open',
+      'Everybody who has joined may do anything. Admins still decide the rules and the roles.',
+    ),
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'spaceStore.policy.loaded && !spaceStore.policy.preset' },
+        then: {
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'text-muted' },
+          children: ['This space has rules of its own, set out below.'],
+        },
+      },
+    },
+    {
+      type: 'Column',
+      props: { gap: '100', pt: '300', borderTop: '1px solid border' },
+      children: [
+        {
+          type: '$each',
+          props: { items: { $: 'spaceStore.policy.sentences' }, as: 'sentence' },
+          children: [{ type: 'we-text', props: { variant: 'footnote' }, children: [{ $: 'sentence' }] }],
+        },
+      ],
+    },
+  ],
+});
+
 /** The roles a member holds, by name, as badges. */
 const memberBadges: SchemaNode = {
   type: '$each',
@@ -212,7 +298,7 @@ export const spacePeopleSection: SchemaNode = {
       type: 'Column',
       props: { gap: '400' },
       $localState: { createRoleOpen: { type: 'boolean', initial: false } },
-      children: [membersSection, rolesSection],
+      children: [membersSection, rolesSection, policySection],
     },
     else: openSpaceFirst,
   },
