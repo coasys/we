@@ -5,10 +5,10 @@ import { countPill, liveDot } from './marks.ts';
 import { callPath, channelPath, ROW_ID, SELECTED_EXPR } from './paths.ts';
 
 /**
- * The space as a tree: its channels, its calls, its flows, its people and its Social DNA, under the
+ * The space as a tree: its channels, its calls, its workflows, its people and its Social DNA, under the
  * space's name and what it is for. Nico's d12 inner sidebar, built on `we-tree`.
  *
- * Each group is a query, not a list somebody keeps: a channel made anywhere, a call held, a flow
+ * Each group is a query, not a list somebody keeps: a channel made anywhere, a call held, a workflow
  * written, a member joining — each appears here because it exists. Choosing a row navigates; the view
  * beside the tree draws whatever was chosen. What is selected comes from the address, so arriving by
  * a link lights the same row a click would.
@@ -24,8 +24,8 @@ const toggle = (value: SchemaProp): SchemaProp => ({ $toggleLocalIn: 'openRows',
 
 /**
  * A group: one of the space's kinds of thing, with its glyph, opened or closed by a press anywhere on
- * its row — a group is not a place to go, so choosing it is opening it (see `onSelect`). Flows is the
- * exception: its row opens the Flows page as well as the group.
+ * its row — a group is not a place to go, so choosing it is opening it (see `onSelect`). Workflows is the
+ * exception: its row opens the Workflows page as well as the group.
  */
 const group = (key: string, label: string, icon: string, children: SchemaNode[], badge?: SchemaNode): SchemaNode =>
   treeRow({
@@ -115,28 +115,28 @@ const calls = group(
   countPill('count(modules.call.liveCalls)', 'success'),
 );
 
-const FLOWS_PAGE = "spaceStore.spacePath + '/flows'";
+const FLOWS_PAGE = "spaceStore.spacePath + '/workflows'";
 
-const flows = group(
-  'flows',
-  'Flows',
+const workflows = group(
+  'workflows',
+  'Workflows',
   'flow-arrow',
   [
     {
       type: '$each',
-      props: { items: { $: 'flowStore.flows.filter(f, !f.archived)' }, as: 'flow' },
+      props: { items: { $: 'workflowStore.workflows.filter(f, !f.archived)' }, as: 'workflow' },
       children: [
         treeRow({
           nested: true,
-          value: { $: "'flow|' + flow.name" },
-          label: { $: 'flow.label' },
+          value: { $: "'workflow|' + workflow.name" },
+          label: { $: 'workflow.label' },
           icon: 'flow-arrow',
-          badge: countPill('flow.records'),
+          badge: countPill('workflow.records'),
         }),
       ],
     },
   ],
-  addButton('New flow', { $action: 'routeStore.navigate', args: [{ $: `${FLOWS_PAGE} + '?new=1'` }] }),
+  addButton('New workflow', { $action: 'routeStore.navigate', args: [{ $: `${FLOWS_PAGE} + '?new=1'` }] }),
 );
 
 const people = group(
@@ -184,11 +184,11 @@ const onSelect: SchemaProp = [
       then: { $toggleLocalIn: 'openRows', value: { $: 'event.detail.value' } },
     },
   },
-  // Flows is a place as well as a group: its page lists every flow and makes new ones.
+  // Workflows is a place as well as a group: its page lists every workflow and makes new ones.
   {
     $if: {
-      condition: { $: "event.detail.value == 'group|flows'" },
-      then: [{ $action: 'flowStore.closeFlow' }, { $action: 'routeStore.navigate', args: [{ $: FLOWS_PAGE }] }],
+      condition: { $: "event.detail.value == 'group|workflows'" },
+      then: [{ $action: 'workflowStore.closeWorkflow' }, { $action: 'routeStore.navigate', args: [{ $: FLOWS_PAGE }] }],
     },
   },
   {
@@ -205,10 +205,10 @@ const onSelect: SchemaProp = [
   },
   {
     $if: {
-      condition: { $: "startsWith(event.detail.value, 'flow|')" },
+      condition: { $: "startsWith(event.detail.value, 'workflow|')" },
       then: [
-        { $action: 'flowStore.openFlow', args: [{ $: ROW_ID }] },
-        { $action: 'routeStore.navigate', args: [{ $: "spaceStore.spacePath + '/flows'" }] },
+        { $action: 'workflowStore.openWorkflow', args: [{ $: ROW_ID }] },
+        { $action: 'routeStore.navigate', args: [{ $: "spaceStore.spacePath + '/workflows'" }] },
       ],
     },
   },
@@ -416,7 +416,7 @@ export const treeSection: SchemaNode = {
   $localState: {
     openRows: {
       type: 'array',
-      initial: ['group|channels', 'group|calls', 'group|flows'],
+      initial: ['group|channels', 'group|calls', 'group|workflows'],
       persist: 'coasys.tree.open',
     },
     newChannelOpen: { type: 'boolean', initial: false },
@@ -449,7 +449,7 @@ export const treeSection: SchemaNode = {
         {
           type: 'we-tree',
           props: { label: 'This space', selected: { $: SELECTED_EXPR }, onSelect },
-          children: [channels, calls, flows, people, socialDna],
+          children: [channels, calls, workflows, people, socialDna],
         },
       ],
     },

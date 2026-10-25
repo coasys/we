@@ -1,13 +1,13 @@
 import type { RouteSchema, SchemaNode, SchemaProp } from '@we/schema-shared';
 import { lineComposer, recordFormModal } from '@we/template-kit';
-import { FLOWS_LOCALS, flowsPage } from '@we/template-showcase';
+import { FLOWS_LOCALS, workflowsPage } from '@we/template-showcase';
 
 import { liveDot } from './marks.ts';
 import { CHANNEL, CHANNEL_EXPR, channelPath, IN_ROOT_EXPR, PAGE_EXPR } from './paths.ts';
 import { newChannelDialog } from './tree.ts';
 
 /**
- * What the view beside the tree draws: a channel as chat or as a canvas, the space's flows, and — as
+ * What the view beside the tree draws: a channel as chat or as a canvas, the space's workflows, and — as
  * its own page — a call.
  */
 
@@ -341,26 +341,26 @@ const canvasRoute: RouteSchema = {
 };
 
 /**
- * The space's flows: WE's own Flows page — every flow down the left, the one chosen beside it with
+ * The space's workflows: WE's own Workflows page — every workflow down the left, the one chosen beside it with
  * the records going through it, and the editor for a new or changed one. `?new=1` opens the new-flow
- * dialog, which is what the + on the tree's Flows row goes to.
+ * dialog, which is what the + on the tree's Workflows row goes to.
  */
-const flowsRoute: RouteSchema = {
-  path: '/flows',
+const workflowsRoute: RouteSchema = {
+  path: '/workflows',
   type: 'Column',
   props: { width: '100%', height: '100%' },
   $localState: { ...FLOWS_LOCALS },
   children: [
-    viewBar([{ $: "flowStore.open ? flowStore.open.label : 'Flows'" }], 'flow-arrow'),
+    viewBar([{ $: "workflowStore.open ? workflowStore.open.label : 'Workflows'" }], 'flow-arrow'),
     {
       type: 'Column',
       props: { flex: '1', minHeight: '0', overflowY: 'auto' },
-      children: [flowsPage({ pt: '500', pb: '600' })],
+      children: [workflowsPage({ pt: '500', pb: '600' })],
     },
   ],
 };
 
-export const spaceRoutes: RouteSchema[] = [chatRoute, canvasRoute, flowsRoute, { path: '*', redirect: './' }];
+export const spaceRoutes: RouteSchema[] = [chatRoute, canvasRoute, workflowsRoute, { path: '*', redirect: './' }];
 
 /** The call on its own page is the record the address names. */
 const CALL_ID = 'routeStore.params.id';

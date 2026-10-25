@@ -9,7 +9,7 @@ import { callPage, spaceRoutes } from './views.ts';
  * The tree is a section in a home lane down the left — resizable from its inner edge and folded away
  * from its own header. It is `fixed`, not breakable out into a panel: it is the space's only section,
  * so a tree floating free has nowhere to go but back, and leaves its lane empty meanwhile. Beside it
- * the view takes the rest: a channel's chat or canvas, the flows, or a record's own page. A call's record has a page of
+ * the view takes the rest: a channel's chat or canvas, the workflows, or a record's own page. A call's record has a page of
  * its own here; every other record gets the host's.
  *
  * On a narrow screen the lane takes the whole width, so the tree is what a phone opens on; folding it
@@ -19,7 +19,7 @@ export const coasysSpace: TemplateSchema & { id: string } = {
   id: 'coasys-space',
   meta: {
     name: 'Coasys',
-    description: 'A space as one tree and one view: its channels, calls, flows and people beside what you chose.',
+    description: 'A space as one tree and one view: its channels, calls, workflows and people beside what you chose.',
     icon: 'tree-structure',
     requires: { modules: ['call', 'transcribe'] },
     // `grow` so the tree takes the lane's whole length and scrolls inside it, rather than stopping

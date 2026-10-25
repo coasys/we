@@ -5,7 +5,6 @@ import type {
   ClockStore,
   DatasetStore,
   EditorStore,
-  FlowStore,
   InterpretationStore,
   PresenceStore,
   ProfileStore,
@@ -18,6 +17,7 @@ import type {
   SpaceStore,
   TemplateStore,
   ThemeStore,
+  WorkflowStore,
 } from '@solid/stores';
 import type { RendererStores } from '@we/backend-shared';
 import type { RecordInstance } from '@we/backend-shared';
@@ -75,7 +75,7 @@ export interface Stores extends RendererStores {
   interpretationStore: InterpretationStore;
   bundleStore: BundleStore;
   clockStore: ClockStore;
-  flowStore: FlowStore;
+  workflowStore: WorkflowStore;
   record?: RecordActions;
   /** Neutral identity — the current agent (templates read `$me.did`). Backed by `sessionStore.me`;
    *  typed `unknown` so the seam stays backend-agnostic. Host-specific: not part of the data contract. */

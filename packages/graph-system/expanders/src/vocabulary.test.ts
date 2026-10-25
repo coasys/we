@@ -40,9 +40,9 @@ const BUCKETS = {
     { key: 'signals', label: 'Signal types', entity: 'SignalType' },
     { key: 'models', label: 'Models', models: [{ name: 'TaskBlock', label: 'Task' }] },
     {
-      key: 'flows',
-      label: 'Flows',
-      flows: [
+      key: 'workflows',
+      label: 'Workflows',
+      workflows: [
         {
           name: 'Review',
           label: 'Review',
@@ -64,7 +64,7 @@ describe('vocabulary', () => {
     expect(result.nodes.map((n) => [n.label, n.data?.count])).toEqual([
       ['Signal types', 0],
       ['Models', 1],
-      ['Flows', 1],
+      ['Workflows', 1],
     ]);
     expect(result.nodes[0]).toMatchObject({ id: clusterAddress('vocabulary', 'signals'), kind: 'cluster' });
   });
@@ -78,7 +78,7 @@ describe('vocabulary', () => {
     // Equal counts keep the order given.
     expect(byLabel['Models']).toMatchObject({ data: { order: 0 } });
     expect(byLabel['Models'].leaf).toBeUndefined();
-    expect(byLabel['Flows']).toMatchObject({ data: { order: 1 } });
+    expect(byLabel['Workflows']).toMatchObject({ data: { order: 1 } });
   });
 
   it('opens a bucket of records by asking for them, each held by the bucket', async () => {
@@ -91,7 +91,7 @@ describe('vocabulary', () => {
     expect(result.edges[0]).toMatchObject({ source: clusterAddress('vocabulary', 'signals'), type: 'contains' });
   });
 
-  it('opens models into type nodes and flows into their steps, with a line for each move', async () => {
+  it('opens models into type nodes and workflows into their steps, with a line for each move', async () => {
     const { seed, expander } = vocabularyPlugins();
     const ctx = context();
     await seed.seed(BUCKETS, ctx);
@@ -100,11 +100,11 @@ describe('vocabulary', () => {
     const models = await expander.expand({ id: clusterAddress('vocabulary', 'models'), direction: 'out' }, ctx);
     expect(models.nodes).toMatchObject([{ id: entityAddress('ds', SCHEMA_TYPE, 'TaskBlock'), label: 'Task' }]);
 
-    const flows = await expander.expand({ id: clusterAddress('vocabulary', 'flows'), direction: 'out' }, ctx);
-    const flowNode = flows.nodes[0];
-    expect(flowNode).toMatchObject({ kind: 'cluster', type: 'flow', label: 'Review' });
+    const workflows = await expander.expand({ id: clusterAddress('vocabulary', 'workflows'), direction: 'out' }, ctx);
+    const workflowNode = workflows.nodes[0];
+    expect(workflowNode).toMatchObject({ kind: 'cluster', type: 'workflow', label: 'Review' });
 
-    const steps = await expander.expand({ id: flowNode.id, direction: 'out' }, ctx);
+    const steps = await expander.expand({ id: workflowNode.id, direction: 'out' }, ctx);
     expect(steps.nodes.map((n) => [n.label, n.data?.final])).toEqual([
       ['Draft', false],
       ['Done', true],
@@ -183,11 +183,11 @@ describe('schemaPropertiesExpander', () => {
   });
 
   // A caret is offered wherever an expander claims a node, and one claiming every cluster put a caret
-  // on each of a flow's steps that opened nothing.
-  it("claims only buckets and flows, not a flow's steps", () => {
+  // on each of a workflow's steps that opened nothing.
+  it("claims only buckets and workflows, not a workflow's steps", () => {
     const { expander, records } = vocabularyPlugins();
     expect(expander.kinds).toEqual(['cluster']);
-    expect(expander.types).toEqual(['vocabulary', 'flow']);
+    expect(expander.types).toEqual(['vocabulary', 'workflow']);
     expect(records.kinds).toEqual(['entity']);
   });
 });

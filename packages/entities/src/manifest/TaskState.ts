@@ -98,8 +98,8 @@ export const TaskState: CoreEntityDef = {
        *
        * One — the default, and what every state predating this reads as — means a drop moves the
        * card, exactly as it always has. More than one, or an `approverKind`, is the community asking
-       * for agreement: the space's task states then run as a flow, and a card dragged here waits for
-       * the approvals rather than moving (see `app-shell/src/shared/taskFlow.ts`).
+       * for agreement: the space's task states then run as a workflow, and a card dragged here waits for
+       * the approvals rather than moving (see `app-shell/src/shared/taskWorkflow.ts`).
        *
        * On the state rather than on a move between two states, because what a community means is
        * "nothing is Done until two of us say so" — whichever column it came from.
@@ -116,16 +116,16 @@ export const TaskState: CoreEntityDef = {
       approverKind: { type: 'string', predicate: 'we://approver_kind', default: '' },
       /**
        * What must be there before a task may enter this state — "a document in response to it" — as a
-       * JSON list of `{ entity, tie?, min? }`: at least `min` records of `entity`, held by the task
-       * through the relation `tie` (`responses` for what was made in response to it), or anywhere in
-       * the space when `tie` is empty.
+       * JSON list of `{ entity, via?, min? }`: at least `min` records of `entity`, held by the task
+       * through the relation `via` (`responses` for what was made in response to it), or anywhere in
+       * the space when `via` is empty.
        *
        * Like `approvals`, it is about entering the state from wherever: the space's states then run as
-       * a flow, a drop into this column is refused until the records exist, and the move records which
-       * ones met it. JSON rather than records of their own because a guard is part of what the state
+       * a workflow, a drop into this column is refused until the records exist, and the move records which
+       * ones met it. JSON rather than records of their own because an evidence requirement is part of what the state
        * asks, written and read with it, never on its own.
        */
-      guards: { type: 'string', predicate: 'we://guards', default: '' },
+      evidence: { type: 'string', predicate: 'we://evidence', default: '' },
       schemaVersion: { type: 'number', predicate: 'we://schema_version', default: 1 },
     },
     relations: {},

@@ -15,8 +15,8 @@ import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/te
 import { completeResponse, respondsThrough } from '@shared/responses';
 import { installRenderSettleOnExit, installSafeModeShortcut } from '@shared/safeMode';
 import { hostSourceBag } from '@shared/sources';
-import { flowStateOf } from '@shared/taskFlow';
-import { taskFlowLive } from '@shared/taskFlowLive';
+import { workflowStateOf } from '@shared/taskWorkflow';
+import { taskWorkflowLive } from '@shared/taskWorkflowLive';
 import { copyText } from '@shared/utils';
 
 import { signalOptimism } from '../../../shared/signalOptimism';
@@ -34,7 +34,6 @@ import {
   useClockStore,
   useDatasetStore,
   useEditorStore,
-  useFlowStore,
   useInterpretationStore,
   usePresenceStore,
   useProfileStore,
@@ -47,6 +46,7 @@ import {
   useSpaceStore,
   useTemplateStore,
   useThemeStore,
+  useWorkflowStore,
 } from '@solid/stores';
 import type { Stores } from '@solid/types';
 import { Route, Router } from '@solidjs/router';
@@ -104,7 +104,7 @@ export default function TemplateProvider() {
   const interpretationStore = useInterpretationStore();
   const clockStore = useClockStore();
   const bundleStore = useBundleStore();
-  const flowStore = useFlowStore();
+  const workflowStore = useWorkflowStore();
 
   // Set CSS custom properties on :root so position:fixed elements (e.g. CesiumGlobe canvas)
   // can consume the shell's own furniture without hard-coding it.
@@ -506,7 +506,7 @@ export default function TemplateProvider() {
     interpretationStore,
     clockStore,
     bundleStore,
-    flowStore,
+    workflowStore,
     // Always present, even with no modules registered: a read of `modules.x` resolves through the
     // single-segment path, which indexes the store object without a guard and would throw on a
     // missing `modules` key rather than returning undefined.
@@ -648,15 +648,15 @@ export default function TemplateProvider() {
     ...sources,
     arrangedBoard: (options: unknown) => {
       const given = (options ?? {}) as { columns?: unknown; board?: unknown };
-      const flowView = taskFlowLive.view();
+      const workflowView = taskWorkflowLive.view();
       const view = arrangedBoardSource({
         ...given,
         pending: boardOptimism.overlay(),
         // Who is on each card, including a tick nobody's subscription has carried back yet — a
         // filter that ignored it would dim the card somebody was just assigned to.
         pendingInvolvements: involvementOptimism.overlay(),
-        // Where the space's states ask for agreement, a card is where its run is. See `taskFlow.ts`.
-        flow: flowView,
+        // Where the space's states ask for agreement, a card is where its run is. See `taskWorkflow.ts`.
+        workflow: workflowView,
       });
 
       const rows = new Map<string, readonly string[]>();
@@ -678,7 +678,7 @@ export default function TemplateProvider() {
         const row = record as { id?: string; status?: unknown } | null;
         // Against the state the board draws — the run's where there is one — or a drop that moved a
         // run would be held until `status` caught up, which it may never do if nobody mirrors it.
-        if (row?.id) rows.set(`${row.id}.status`, [flowStateOf(flowView, row.id) ?? String(row.status ?? '')]);
+        if (row?.id) rows.set(`${row.id}.status`, [workflowStateOf(workflowView, row.id) ?? String(row.status ?? '')]);
       }
 
       queueMicrotask(() => boardOptimism.settle((id, relation) => rows.get(`${id}.${relation}`)));

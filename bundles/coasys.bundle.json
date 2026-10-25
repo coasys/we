@@ -595,7 +595,7 @@
       "id": "space",
       "meta": {
         "name": "Coasys",
-        "description": "A space as one tree and one view: its channels, calls, flows and people beside what you chose.",
+        "description": "A space as one tree and one view: its channels, calls, workflows and people beside what you chose.",
         "icon": "tree-structure",
         "requires": { "modules": ["call", "transcribe", "graph"] },
         "panels": [
@@ -607,7 +607,7 @@
               "$localState": {
                 "openRows": {
                   "type": "array",
-                  "initial": ["group|channels", "group|calls", "group|flows"],
+                  "initial": ["group|channels", "group|calls", "group|workflows"],
                   "persist": "coasys.tree.open"
                 },
                 "newChannelOpen": { "type": "boolean", "initial": false }
@@ -804,7 +804,7 @@
                       "props": {
                         "label": "This space",
                         "selected": {
-                          "$": "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' ? 'call|' + routeStore.params.id : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'flows' ? (flowStore.open ? 'flow|' + flowStore.open.name : 'group|flows') : 'channel|' + (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)"
+                          "$": "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' ? 'call|' + routeStore.params.id : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' ? (workflowStore.open ? 'workflow|' + workflowStore.open.name : 'group|workflows') : 'channel|' + (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)"
                         },
                         "onSelect": [
                           {
@@ -815,12 +815,12 @@
                           },
                           {
                             "$if": {
-                              "condition": { "$": "event.detail.value == 'group|flows'" },
+                              "condition": { "$": "event.detail.value == 'group|workflows'" },
                               "then": [
-                                { "$action": "flowStore.closeFlow" },
+                                { "$action": "workflowStore.closeWorkflow" },
                                 {
                                   "$action": "routeStore.navigate",
-                                  "args": [{ "$": "spaceStore.spacePath + '/flows'" }]
+                                  "args": [{ "$": "spaceStore.spacePath + '/workflows'" }]
                                 }
                               ]
                             }
@@ -851,15 +851,15 @@
                           },
                           {
                             "$if": {
-                              "condition": { "$": "startsWith(event.detail.value, 'flow|')" },
+                              "condition": { "$": "startsWith(event.detail.value, 'workflow|')" },
                               "then": [
                                 {
-                                  "$action": "flowStore.openFlow",
+                                  "$action": "workflowStore.openWorkflow",
                                   "args": [{ "$": "split(event.detail.value, '|')[1]" }]
                                 },
                                 {
                                   "$action": "routeStore.navigate",
-                                  "args": [{ "$": "spaceStore.spacePath + '/flows'" }]
+                                  "args": [{ "$": "spaceStore.spacePath + '/workflows'" }]
                                 }
                               ]
                             }
@@ -1078,9 +1078,9 @@
                         {
                           "type": "we-tree-item",
                           "props": {
-                            "value": "group|flows",
-                            "open": { "$": "'group|flows' in local.openRows" },
-                            "onOpenChange": { "$toggleLocalIn": "openRows", "value": "group|flows" },
+                            "value": "group|workflows",
+                            "open": { "$": "'group|workflows' in local.openRows" },
+                            "onOpenChange": { "$toggleLocalIn": "openRows", "value": "group|workflows" },
                             "expandable": true
                           },
                           "children": [
@@ -1095,11 +1095,11 @@
                                 {
                                   "type": "we-text",
                                   "props": { "truncate": true, "flex": "1", "minWidth": "0" },
-                                  "children": ["Flows"]
+                                  "children": ["Workflows"]
                                 },
                                 {
                                   "type": "we-tooltip",
-                                  "props": { "content": "New flow", "placement": "right" },
+                                  "props": { "content": "New workflow", "placement": "right" },
                                   "children": [
                                     {
                                       "type": "we-button",
@@ -1107,10 +1107,10 @@
                                         "variant": "ghost",
                                         "size": "xs",
                                         "square": true,
-                                        "label": "New flow",
+                                        "label": "New workflow",
                                         "onClick": {
                                           "$action": "routeStore.navigate",
-                                          "args": [{ "$": "spaceStore.spacePath + '/flows' + '?new=1'" }]
+                                          "args": [{ "$": "spaceStore.spacePath + '/workflows' + '?new=1'" }]
                                         }
                                       },
                                       "children": [{ "type": "we-icon", "props": { "name": "plus" } }]
@@ -1121,12 +1121,15 @@
                             },
                             {
                               "type": "$each",
-                              "props": { "items": { "$": "flowStore.flows.filter(f, !f.archived)" }, "as": "flow" },
+                              "props": {
+                                "items": { "$": "workflowStore.workflows.filter(f, !f.archived)" },
+                                "as": "workflow"
+                              },
                               "children": [
                                 {
                                   "type": "we-tree-item",
                                   "slot": "children",
-                                  "props": { "value": { "$": "'flow|' + flow.name" } },
+                                  "props": { "value": { "$": "'workflow|' + workflow.name" } },
                                   "children": [
                                     {
                                       "type": "Row",
@@ -1139,16 +1142,16 @@
                                         {
                                           "type": "we-text",
                                           "props": { "truncate": true, "flex": "1", "minWidth": "0" },
-                                          "children": [{ "$": "flow.label" }]
+                                          "children": [{ "$": "workflow.label" }]
                                         },
                                         {
                                           "type": "$if",
                                           "props": {
-                                            "condition": { "$": "flow.records" },
+                                            "condition": { "$": "workflow.records" },
                                             "then": {
                                               "type": "we-badge",
                                               "props": { "variant": "soft", "size": "xs" },
-                                              "children": [{ "$": "flow.records" }]
+                                              "children": [{ "$": "workflow.records" }]
                                             }
                                           }
                                         }
@@ -3613,21 +3616,21 @@
           ]
         },
         {
-          "path": "/flows",
+          "path": "/workflows",
           "type": "Column",
           "props": { "width": "100%", "height": "100%" },
           "$localState": {
-            "newFlowOpen": { "type": "boolean", "initial": false },
+            "newWorkflowOpen": { "type": "boolean", "initial": false },
             "addStepLane": { "type": "number", "initial": -1 },
             "addStepAfter": { "type": "string", "initial": "" },
             "branchFrom": { "type": "string", "initial": "" },
             "editStep": { "type": "string", "initial": "" },
-            "guardStep": { "type": "string", "initial": "" },
+            "evidenceStep": { "type": "string", "initial": "" },
             "excFrom": { "type": "string", "initial": "" },
             "excTo": { "type": "string", "initial": "" },
             "historyOf": { "type": "string", "initial": "" },
             "showArchived": { "type": "boolean", "initial": false },
-            "flowAsGraph": { "type": "boolean", "initial": false }
+            "workflowAsGraph": { "type": "boolean", "initial": false }
           },
           "children": [
             {
@@ -3668,7 +3671,7 @@
                 {
                   "type": "we-text",
                   "props": { "variant": "heading-sm", "truncate": true, "flex": "1", "minWidth": "0" },
-                  "children": [{ "$": "flowStore.open ? flowStore.open.label : 'Flows'" }]
+                  "children": [{ "$": "workflowStore.open ? workflowStore.open.label : 'Workflows'" }]
                 }
               ]
             },
@@ -3683,7 +3686,7 @@
                     {
                       "type": "$if",
                       "props": {
-                        "condition": { "$": "flowStore.available" },
+                        "condition": { "$": "workflowStore.available" },
                         "then": {
                           "type": "Row",
                           "props": {
@@ -3706,15 +3709,15 @@
                                     {
                                       "type": "we-text",
                                       "props": { "variant": "label", "flex": "1" },
-                                      "children": ["Flows"]
+                                      "children": ["Workflows"]
                                     },
                                     {
                                       "type": "$if",
                                       "props": {
-                                        "condition": { "$": "flowStore.canEdit" },
+                                        "condition": { "$": "workflowStore.canEdit" },
                                         "then": {
                                           "type": "we-tooltip",
-                                          "props": { "placement": "top", "content": "New flow" },
+                                          "props": { "placement": "top", "content": "New workflow" },
                                           "children": [
                                             {
                                               "type": "we-button",
@@ -3722,8 +3725,8 @@
                                                 "variant": "ghost",
                                                 "size": "sm",
                                                 "square": true,
-                                                "label": "New flow",
-                                                "onClick": { "$setLocal": "newFlowOpen", "value": true }
+                                                "label": "New workflow",
+                                                "onClick": { "$setLocal": "newWorkflowOpen", "value": true }
                                               },
                                               "children": [
                                                 { "type": "we-icon", "props": { "name": "plus", "size": "sm" } }
@@ -3737,18 +3740,24 @@
                                 },
                                 {
                                   "type": "$each",
-                                  "props": { "items": { "$": "flowStore.flows.filter(f, !f.archived)" }, "as": "flow" },
+                                  "props": {
+                                    "items": { "$": "workflowStore.workflows.filter(f, !f.archived)" },
+                                    "as": "workflow"
+                                  },
                                   "children": [
                                     {
                                       "type": "we-button",
                                       "props": {
                                         "variant": {
-                                          "$": "flowStore.open.name == flow.name && !flowStore.draft ? 'soft' : 'ghost'"
+                                          "$": "workflowStore.open.name == workflow.name && !workflowStore.draft ? 'soft' : 'ghost'"
                                         },
                                         "width": "100%",
                                         "onClick": [
-                                          { "$action": "flowStore.cancelDraft" },
-                                          { "$action": "flowStore.openFlow", "args": [{ "$": "flow.name" }] }
+                                          { "$action": "workflowStore.cancelDraft" },
+                                          {
+                                            "$action": "workflowStore.openWorkflow",
+                                            "args": [{ "$": "workflow.name" }]
+                                          }
                                         ]
                                       },
                                       "children": [
@@ -3759,19 +3768,19 @@
                                             {
                                               "type": "we-icon",
                                               "props": {
-                                                "name": { "$": "flow.managedBy ? 'kanban' : 'flow-arrow'" },
+                                                "name": { "$": "workflow.managedBy ? 'kanban' : 'flow-arrow'" },
                                                 "size": "sm"
                                               }
                                             },
                                             {
                                               "type": "we-text",
                                               "props": { "truncate": true, "flex": "1" },
-                                              "children": [{ "$": "flow.label" }]
+                                              "children": [{ "$": "workflow.label" }]
                                             },
                                             {
                                               "type": "we-text",
                                               "props": { "variant": "footnote", "color": "text-faint" },
-                                              "children": [{ "$": "flow.records" }]
+                                              "children": [{ "$": "workflow.records" }]
                                             }
                                           ]
                                         }
@@ -3782,15 +3791,15 @@
                                 {
                                   "type": "$if",
                                   "props": {
-                                    "condition": { "$": "flowStore.flowsLoaded" },
+                                    "condition": { "$": "workflowStore.workflowsLoaded" },
                                     "then": {
                                       "type": "$if",
                                       "props": {
-                                        "condition": { "$": "!count(flowStore.flows)" },
+                                        "condition": { "$": "!count(workflowStore.workflows)" },
                                         "then": {
                                           "type": "we-text",
                                           "props": { "variant": "footnote", "color": "text-faint" },
-                                          "children": ["No flows yet."]
+                                          "children": ["No workflows yet."]
                                         }
                                       }
                                     },
@@ -3807,7 +3816,7 @@
                                 {
                                   "type": "$if",
                                   "props": {
-                                    "condition": { "$": "flowStore.flows.exists(f, f.archived)" },
+                                    "condition": { "$": "workflowStore.workflows.exists(f, f.archived)" },
                                     "then": {
                                       "type": "Column",
                                       "props": { "gap": "100" },
@@ -3838,22 +3847,22 @@
                                                 {
                                                   "type": "$each",
                                                   "props": {
-                                                    "items": { "$": "flowStore.flows.filter(f, f.archived)" },
-                                                    "as": "flow"
+                                                    "items": { "$": "workflowStore.workflows.filter(f, f.archived)" },
+                                                    "as": "workflow"
                                                   },
                                                   "children": [
                                                     {
                                                       "type": "we-button",
                                                       "props": {
                                                         "variant": {
-                                                          "$": "flowStore.open.name == flow.name && !flowStore.draft ? 'soft' : 'ghost'"
+                                                          "$": "workflowStore.open.name == workflow.name && !workflowStore.draft ? 'soft' : 'ghost'"
                                                         },
                                                         "width": "100%",
                                                         "onClick": [
-                                                          { "$action": "flowStore.cancelDraft" },
+                                                          { "$action": "workflowStore.cancelDraft" },
                                                           {
-                                                            "$action": "flowStore.openFlow",
-                                                            "args": [{ "$": "flow.name" }]
+                                                            "$action": "workflowStore.openWorkflow",
+                                                            "args": [{ "$": "workflow.name" }]
                                                           }
                                                         ]
                                                       },
@@ -3866,7 +3875,7 @@
                                                               "type": "we-icon",
                                                               "props": {
                                                                 "name": {
-                                                                  "$": "flow.managedBy ? 'kanban' : 'flow-arrow'"
+                                                                  "$": "workflow.managedBy ? 'kanban' : 'flow-arrow'"
                                                                 },
                                                                 "size": "sm"
                                                               }
@@ -3874,12 +3883,12 @@
                                                             {
                                                               "type": "we-text",
                                                               "props": { "truncate": true, "flex": "1" },
-                                                              "children": [{ "$": "flow.label" }]
+                                                              "children": [{ "$": "workflow.label" }]
                                                             },
                                                             {
                                                               "type": "we-text",
                                                               "props": { "variant": "footnote", "color": "text-faint" },
-                                                              "children": [{ "$": "flow.records" }]
+                                                              "children": [{ "$": "workflow.records" }]
                                                             }
                                                           ]
                                                         }
@@ -3904,7 +3913,7 @@
                                 {
                                   "type": "$if",
                                   "props": {
-                                    "condition": { "$": "flowStore.draft" },
+                                    "condition": { "$": "workflowStore.draft" },
                                     "then": {
                                       "type": "Column",
                                       "props": { "gap": "500", "width": "100%" },
@@ -3920,14 +3929,14 @@
                                                 {
                                                   "type": "$if",
                                                   "props": {
-                                                    "condition": { "$": "flowStore.draft.isNew" },
+                                                    "condition": { "$": "workflowStore.draft.isNew" },
                                                     "then": {
                                                       "type": "we-input",
                                                       "props": {
                                                         "label": "Name",
-                                                        "value": { "$": "flowStore.draft.label" },
+                                                        "value": { "$": "workflowStore.draft.label" },
                                                         "onChange": {
-                                                          "$action": "flowStore.setDraftLabel",
+                                                          "$action": "workflowStore.setDraftLabel",
                                                           "args": [{ "$": "event.detail" }]
                                                         }
                                                       }
@@ -3935,7 +3944,7 @@
                                                     "else": {
                                                       "type": "we-text",
                                                       "props": { "variant": "heading-sm" },
-                                                      "children": [{ "$": "flowStore.draft.label" }]
+                                                      "children": [{ "$": "workflowStore.draft.label" }]
                                                     }
                                                   }
                                                 },
@@ -3944,7 +3953,7 @@
                                                   "type": "we-button",
                                                   "props": {
                                                     "variant": "ghost",
-                                                    "onClick": { "$action": "flowStore.cancelDraft" }
+                                                    "onClick": { "$action": "workflowStore.cancelDraft" }
                                                   },
                                                   "children": [
                                                     { "type": "we-text", "props": {}, "children": ["Cancel"] }
@@ -3955,9 +3964,9 @@
                                                   "props": {
                                                     "variant": "solid",
                                                     "disabled": {
-                                                      "$": "count(flowStore.draft.problems) > 0 || !flowStore.draft.dirty"
+                                                      "$": "count(workflowStore.draft.problems) > 0 || !workflowStore.draft.dirty"
                                                     },
-                                                    "onClick": { "$action": "flowStore.saveDraft" }
+                                                    "onClick": { "$action": "workflowStore.saveDraft" }
                                                   },
                                                   "children": [{ "type": "we-text", "props": {}, "children": ["Save"] }]
                                                 }
@@ -3967,9 +3976,9 @@
                                               "type": "we-input",
                                               "props": {
                                                 "label": "What it is for",
-                                                "value": { "$": "flowStore.draft.hint" },
+                                                "value": { "$": "workflowStore.draft.hint" },
                                                 "onChange": {
-                                                  "$action": "flowStore.setDraftHint",
+                                                  "$action": "workflowStore.setDraftHint",
                                                   "args": [{ "$": "event.detail" }]
                                                 }
                                               }
@@ -3985,12 +3994,12 @@
                                                     {
                                                       "type": "we-select",
                                                       "props": {
-                                                        "value": { "$": "flowStore.draft.subjects[0] ?? ''" },
+                                                        "value": { "$": "workflowStore.draft.entities[0] ?? ''" },
                                                         "options": {
                                                           "$": "[{ label: 'Any record', value: '' }, { label: 'Tasks', value: 'TaskBlock' }, { label: 'Notes and posts', value: 'CollectionBlock' }, { label: 'Events', value: 'EventBlock' }]"
                                                         },
                                                         "onChange": {
-                                                          "$action": "flowStore.setDraftSubjects",
+                                                          "$action": "workflowStore.setDraftEntities",
                                                           "args": [{ "$": "event.detail ? [event.detail] : []" }]
                                                         }
                                                       }
@@ -4004,12 +4013,12 @@
                                                     {
                                                       "type": "we-select",
                                                       "props": {
-                                                        "value": { "$": "flowStore.draft.rule" },
+                                                        "value": { "$": "workflowStore.draft.rule" },
                                                         "options": {
                                                           "$": "[{ label: 'On to the next', value: 'next' }, { label: 'On, or back one', value: 'next-and-back' }, { label: 'Anywhere', value: 'any' }]"
                                                         },
                                                         "onChange": {
-                                                          "$action": "flowStore.setRule",
+                                                          "$action": "workflowStore.setRule",
                                                           "args": [{ "$": "event.detail" }]
                                                         }
                                                       }
@@ -4021,7 +4030,7 @@
                                             {
                                               "type": "$each",
                                               "props": {
-                                                "items": { "$": "flowStore.draft.problems" },
+                                                "items": { "$": "workflowStore.draft.problems" },
                                                 "as": "problem"
                                               },
                                               "children": [
@@ -4035,12 +4044,14 @@
                                             {
                                               "type": "$if",
                                               "props": {
-                                                "condition": { "$": "flowStore.capabilities.contention == 'stall'" },
+                                                "condition": {
+                                                  "$": "workflowStore.capabilities.contention == 'stall'"
+                                                },
                                                 "then": {
                                                   "type": "we-text",
                                                   "props": { "variant": "footnote", "color": "text-faint" },
                                                   "children": [
-                                                    "If two moves out of one step are both agreed, the record stops there until somebody withdraws — so give the ends of a vote different numbers, or expect to settle a tie."
+                                                    "If two moves out of one step are both agreed, the record stops there until somebody withdraws — so give the ends of a vote different numbers, or expect to settle a via."
                                                   ]
                                                 }
                                               }
@@ -4048,7 +4059,9 @@
                                             {
                                               "type": "$if",
                                               "props": {
-                                                "condition": { "$": "flowStore.capabilities.enforcement == 'peers'" },
+                                                "condition": {
+                                                  "$": "workflowStore.capabilities.enforcement == 'peers'"
+                                                },
                                                 "then": {
                                                   "type": "we-text",
                                                   "props": { "variant": "footnote", "color": "text-faint" },
@@ -4074,7 +4087,7 @@
                                           "children": [
                                             {
                                               "type": "$each",
-                                              "props": { "items": { "$": "flowStore.draft.lanes" }, "as": "lane" },
+                                              "props": { "items": { "$": "workflowStore.draft.lanes" }, "as": "lane" },
                                               "children": [
                                                 {
                                                   "type": "Row",
@@ -4267,7 +4280,7 @@
                                                                             "square": true,
                                                                             "label": "Earlier",
                                                                             "onClick": {
-                                                                              "$action": "flowStore.moveStep",
+                                                                              "$action": "workflowStore.moveStep",
                                                                               "args": [{ "$": "step.name" }, -1]
                                                                             }
                                                                           },
@@ -4298,7 +4311,7 @@
                                                                             "square": true,
                                                                             "label": "Later",
                                                                             "onClick": {
-                                                                              "$action": "flowStore.moveStep",
+                                                                              "$action": "workflowStore.moveStep",
                                                                               "args": [{ "$": "step.name" }, 1]
                                                                             }
                                                                           },
@@ -4425,7 +4438,7 @@
                                                                             "square": true,
                                                                             "label": "Remove this step",
                                                                             "onClick": {
-                                                                              "$action": "flowStore.removeStep",
+                                                                              "$action": "workflowStore.removeStep",
                                                                               "args": [{ "$": "step.name" }]
                                                                             }
                                                                           },
@@ -4559,10 +4572,10 @@
                                                                 "size": "sm",
                                                                 "value": { "$": "lane.rejoins" },
                                                                 "options": {
-                                                                  "$": "distinct([{ label: 'Ends here', value: '' }], flowStore.draft.steps.map(s, { label: 'Rejoins at ' + s.label, value: s.name }))"
+                                                                  "$": "distinct([{ label: 'Ends here', value: '' }], workflowStore.draft.steps.map(s, { label: 'Rejoins at ' + s.label, value: s.name }))"
                                                                 },
                                                                 "onChange": {
-                                                                  "$action": "flowStore.setBranchEnd",
+                                                                  "$action": "workflowStore.setBranchEnd",
                                                                   "args": [
                                                                     { "$": "lane.index" },
                                                                     { "$": "event.detail" }
@@ -4587,7 +4600,7 @@
                                             {
                                               "type": "$if",
                                               "props": {
-                                                "condition": { "$": "count(flowStore.draft.exceptions) || true" },
+                                                "condition": { "$": "count(workflowStore.draft.exceptions) || true" },
                                                 "then": {
                                                   "type": "we-text",
                                                   "props": { "variant": "label", "color": "text-muted" },
@@ -4597,7 +4610,10 @@
                                             },
                                             {
                                               "type": "$each",
-                                              "props": { "items": { "$": "flowStore.draft.exceptions" }, "as": "move" },
+                                              "props": {
+                                                "items": { "$": "workflowStore.draft.exceptions" },
+                                                "as": "move"
+                                              },
                                               "children": [
                                                 {
                                                   "type": "Row",
@@ -4620,7 +4636,7 @@
                                                             "square": true,
                                                             "label": "Remove this move",
                                                             "onClick": {
-                                                              "$action": "flowStore.removeException",
+                                                              "$action": "workflowStore.removeException",
                                                               "args": [{ "$": "move.from" }, { "$": "move.to" }]
                                                             }
                                                           },
@@ -4649,7 +4665,7 @@
                                                     "placeholder": "From",
                                                     "value": { "$": "local.excFrom" },
                                                     "options": {
-                                                      "$": "flowStore.draft.steps.map(s, { label: s.label, value: s.name })"
+                                                      "$": "workflowStore.draft.steps.map(s, { label: s.label, value: s.name })"
                                                     },
                                                     "onChange": {
                                                       "$setLocal": "excFrom",
@@ -4666,7 +4682,7 @@
                                                     "placeholder": "To",
                                                     "value": { "$": "local.excTo" },
                                                     "options": {
-                                                      "$": "flowStore.draft.steps.map(s, { label: s.label, value: s.name })"
+                                                      "$": "workflowStore.draft.steps.map(s, { label: s.label, value: s.name })"
                                                     },
                                                     "onChange": {
                                                       "$setLocal": "excTo",
@@ -4682,7 +4698,7 @@
                                                     "disabled": { "$": "!local.excFrom || !local.excTo" },
                                                     "onClick": [
                                                       {
-                                                        "$action": "flowStore.addException",
+                                                        "$action": "workflowStore.addException",
                                                         "args": [{ "$": "local.excFrom" }, { "$": "local.excTo" }]
                                                       },
                                                       { "$setLocal": "excFrom", "value": "" },
@@ -4702,7 +4718,7 @@
                                     "else": {
                                       "type": "$if",
                                       "props": {
-                                        "condition": { "$": "flowStore.open" },
+                                        "condition": { "$": "workflowStore.open" },
                                         "then": {
                                           "type": "Column",
                                           "props": { "gap": "500", "width": "100%" },
@@ -4718,12 +4734,12 @@
                                                     {
                                                       "type": "we-text",
                                                       "props": { "variant": "heading-sm" },
-                                                      "children": [{ "$": "flowStore.open.label" }]
+                                                      "children": [{ "$": "workflowStore.open.label" }]
                                                     },
                                                     {
                                                       "type": "$if",
                                                       "props": {
-                                                        "condition": { "$": "flowStore.open.archived" },
+                                                        "condition": { "$": "workflowStore.open.archived" },
                                                         "then": {
                                                           "type": "Row",
                                                           "props": {
@@ -4749,7 +4765,7 @@
                                                       "type": "$if",
                                                       "props": {
                                                         "condition": {
-                                                          "$": "flowStore.open.managedBy == 'task-states'"
+                                                          "$": "workflowStore.open.managedBy == 'task-states'"
                                                         },
                                                         "then": {
                                                           "type": "we-button",
@@ -4775,7 +4791,7 @@
                                                       "type": "$if",
                                                       "props": {
                                                         "condition": {
-                                                          "$": "flowStore.canEdit && !flowStore.open.managedBy"
+                                                          "$": "workflowStore.canEdit && !workflowStore.open.managedBy"
                                                         },
                                                         "then": {
                                                           "type": "Row",
@@ -4784,13 +4800,15 @@
                                                             {
                                                               "type": "$if",
                                                               "props": {
-                                                                "condition": { "$": "flowStore.open.editable" },
+                                                                "condition": { "$": "workflowStore.open.editable" },
                                                                 "then": {
                                                                   "type": "we-button",
                                                                   "props": {
                                                                     "size": "sm",
                                                                     "variant": "soft",
-                                                                    "onClick": { "$action": "flowStore.editFlow" }
+                                                                    "onClick": {
+                                                                      "$action": "workflowStore.editWorkflow"
+                                                                    }
                                                                   },
                                                                   "children": [
                                                                     {
@@ -4808,10 +4826,10 @@
                                                                 "size": "sm",
                                                                 "variant": "ghost",
                                                                 "onClick": {
-                                                                  "$action": "spaceStore.setFlowArchived",
+                                                                  "$action": "spaceStore.setWorkflowArchived",
                                                                   "args": [
-                                                                    { "$": "flowStore.open.name" },
-                                                                    { "$": "!flowStore.open.archived" }
+                                                                    { "$": "workflowStore.open.name" },
+                                                                    { "$": "!workflowStore.open.archived" }
                                                                   ]
                                                                 }
                                                               },
@@ -4821,7 +4839,7 @@
                                                                   "props": {},
                                                                   "children": [
                                                                     {
-                                                                      "$": "flowStore.open.archived ? 'Bring back' : 'Archive'"
+                                                                      "$": "workflowStore.open.archived ? 'Bring back' : 'Archive'"
                                                                     }
                                                                   ]
                                                                 }
@@ -4831,7 +4849,7 @@
                                                               "type": "$if",
                                                               "props": {
                                                                 "condition": {
-                                                                  "$": "flowStore.open.recordsLoaded && !count(flowStore.open.records)"
+                                                                  "$": "workflowStore.open.recordsLoaded && !count(workflowStore.open.records)"
                                                                 },
                                                                 "then": {
                                                                   "type": "we-button",
@@ -4839,8 +4857,8 @@
                                                                     "size": "sm",
                                                                     "variant": "ghost",
                                                                     "onClick": {
-                                                                      "$action": "flowStore.deleteFlow",
-                                                                      "args": [{ "$": "flowStore.open.name" }]
+                                                                      "$action": "workflowStore.deleteWorkflow",
+                                                                      "args": [{ "$": "workflowStore.open.name" }]
                                                                     }
                                                                   },
                                                                   "children": [
@@ -4862,11 +4880,11 @@
                                                 {
                                                   "type": "$if",
                                                   "props": {
-                                                    "condition": { "$": "flowStore.open.hint" },
+                                                    "condition": { "$": "workflowStore.open.hint" },
                                                     "then": {
                                                       "type": "we-text",
                                                       "props": { "color": "text-muted" },
-                                                      "children": [{ "$": "flowStore.open.hint" }]
+                                                      "children": [{ "$": "workflowStore.open.hint" }]
                                                     }
                                                   }
                                                 },
@@ -4875,19 +4893,19 @@
                                                   "props": { "variant": "footnote", "color": "text-muted" },
                                                   "children": [
                                                     {
-                                                      "$": "flowStore.open.rule == 'any' ? 'Any step can move to any other.' : flowStore.open.rule == 'next-and-back' ? 'Each step moves on to the next, or back to the one before.' : 'Each step moves on to the next.'"
+                                                      "$": "workflowStore.open.rule == 'any' ? 'Any step can move to any other.' : workflowStore.open.rule == 'next-and-back' ? 'Each step moves on to the next, or back to the one before.' : 'Each step moves on to the next.'"
                                                     }
                                                   ]
                                                 },
                                                 {
                                                   "type": "$if",
                                                   "props": {
-                                                    "condition": { "$": "!flowStore.open.fits" },
+                                                    "condition": { "$": "!workflowStore.open.fits" },
                                                     "then": {
                                                       "type": "we-text",
                                                       "props": { "variant": "footnote", "color": "text-faint" },
                                                       "children": [
-                                                        "This flow was not written as lanes, so it is shown as one line with every other move listed below it."
+                                                        "This workflow was not written as lanes, so it is shown as one line with every other move listed below it."
                                                       ]
                                                     }
                                                   }
@@ -4902,8 +4920,8 @@
                                                   "type": "we-button",
                                                   "props": {
                                                     "size": "sm",
-                                                    "variant": { "$": "local.flowAsGraph ? 'ghost' : 'soft'" },
-                                                    "onClick": { "$setLocal": "flowAsGraph", "value": false }
+                                                    "variant": { "$": "local.workflowAsGraph ? 'ghost' : 'soft'" },
+                                                    "onClick": { "$setLocal": "workflowAsGraph", "value": false }
                                                   },
                                                   "children": [
                                                     { "type": "we-text", "props": {}, "children": ["Lanes"] }
@@ -4913,8 +4931,8 @@
                                                   "type": "we-button",
                                                   "props": {
                                                     "size": "sm",
-                                                    "variant": { "$": "local.flowAsGraph ? 'soft' : 'ghost'" },
-                                                    "onClick": { "$setLocal": "flowAsGraph", "value": true }
+                                                    "variant": { "$": "local.workflowAsGraph ? 'soft' : 'ghost'" },
+                                                    "onClick": { "$setLocal": "workflowAsGraph", "value": true }
                                                   },
                                                   "children": [
                                                     { "type": "we-text", "props": {}, "children": ["Graph"] }
@@ -4925,7 +4943,7 @@
                                             {
                                               "type": "$if",
                                               "props": {
-                                                "condition": { "$": "local.flowAsGraph" },
+                                                "condition": { "$": "local.workflowAsGraph" },
                                                 "then": {
                                                   "type": "Column",
                                                   "props": {
@@ -4942,10 +4960,10 @@
                                                         "seeds": {
                                                           "literal": true,
                                                           "nodes": {
-                                                            "$": "(flowStore.open.steps ?? []).map(s, { id: 'step:' + s.name, kind: 'cluster', type: 'flow-step', label: s.label + (count(s.requires) ? '\\n' + join(s.requires, '\\n') : '') + (s.hint ? '\\n' + s.hint : ''), data: { final: s.final } })"
+                                                            "$": "(workflowStore.open.steps ?? []).map(s, { id: 'step:' + s.name, kind: 'cluster', type: 'workflow-step', label: s.label + (count(s.requires) ? '\\n' + join(s.requires, '\\n') : '') + (s.hint ? '\\n' + s.hint : ''), data: { final: s.final } })"
                                                           },
                                                           "edges": {
-                                                            "$": "(flowStore.flows.find(f, f.name == flowStore.open.name).moves ?? []).map(m, { id: m.from + '>' + m.to, source: 'step:' + m.from, target: 'step:' + m.to, type: 'move' })"
+                                                            "$": "(workflowStore.workflows.find(f, f.name == workflowStore.open.name).moves ?? []).map(m, { id: m.from + '>' + m.to, source: 'step:' + m.from, target: 'step:' + m.to, type: 'move' })"
                                                           }
                                                         },
                                                         "layout": {
@@ -4996,7 +5014,7 @@
                                                         {
                                                           "type": "$each",
                                                           "props": {
-                                                            "items": { "$": "flowStore.open.lanes" },
+                                                            "items": { "$": "workflowStore.open.lanes" },
                                                             "as": "lane"
                                                           },
                                                           "children": [
@@ -5298,14 +5316,14 @@
                                                     {
                                                       "type": "we-text",
                                                       "props": { "variant": "footnote" },
-                                                      "children": [{ "$": "count(flowStore.open.records)" }]
+                                                      "children": [{ "$": "count(workflowStore.open.records)" }]
                                                     }
                                                   ]
                                                 },
                                                 {
                                                   "type": "$if",
                                                   "props": {
-                                                    "condition": { "$": "count(flowStore.open.records) > 1" },
+                                                    "condition": { "$": "count(workflowStore.open.records) > 1" },
                                                     "then": {
                                                       "type": "we-text",
                                                       "props": { "variant": "footnote", "color": "text-faint" },
@@ -5318,7 +5336,7 @@
                                             {
                                               "type": "$if",
                                               "props": {
-                                                "condition": { "$": "count(flowStore.open.records)" },
+                                                "condition": { "$": "count(workflowStore.open.records)" },
                                                 "then": {
                                                   "type": "Column",
                                                   "props": { "gap": "200" },
@@ -5326,7 +5344,7 @@
                                                     {
                                                       "type": "$each",
                                                       "props": {
-                                                        "items": { "$": "flowStore.open.records" },
+                                                        "items": { "$": "workflowStore.open.records" },
                                                         "as": "rec"
                                                       },
                                                       "children": [
@@ -5350,7 +5368,7 @@
                                                                     "variant": "bare",
                                                                     "onClick": {
                                                                       "$action": "routeStore.setParam",
-                                                                      "args": ["card", { "$": "rec.subject" }]
+                                                                      "args": ["card", { "$": "rec.record" }]
                                                                     }
                                                                   },
                                                                   "children": [
@@ -5438,13 +5456,13 @@
                                                                         "label": "What has happened to it",
                                                                         "onClick": [
                                                                           {
-                                                                            "$action": "flowStore.loadHistory",
-                                                                            "args": [{ "$": "rec.subject" }]
+                                                                            "$action": "workflowStore.loadHistory",
+                                                                            "args": [{ "$": "rec.record" }]
                                                                           },
                                                                           {
                                                                             "$setLocal": "historyOf",
                                                                             "value": {
-                                                                              "$": "local.historyOf == rec.subject ? '' : rec.subject"
+                                                                              "$": "local.historyOf == rec.record ? '' : rec.record"
                                                                             }
                                                                           }
                                                                         ]
@@ -5548,7 +5566,7 @@
                                                                       "props": { "variant": "footnote" },
                                                                       "children": [
                                                                         {
-                                                                          "$": "`Asked to move to ${move.toLabel} · ${count(move.voters)} of ${move.needs}`"
+                                                                          "$": "`Asked to move to ${move.toLabel} · ${count(move.approvers)} of ${move.needs}`"
                                                                         }
                                                                       ]
                                                                     },
@@ -5556,7 +5574,7 @@
                                                                       "type": "$if",
                                                                       "props": {
                                                                         "condition": {
-                                                                          "$": "!flowStore.open.managedBy"
+                                                                          "$": "!workflowStore.open.managedBy"
                                                                         },
                                                                         "then": {
                                                                           "type": "$if",
@@ -5568,10 +5586,10 @@
                                                                                 "size": "sm",
                                                                                 "variant": "ghost",
                                                                                 "onClick": {
-                                                                                  "$action": "flowStore.withdrawRecord",
+                                                                                  "$action": "workflowStore.withdrawRecord",
                                                                                   "args": [
-                                                                                    { "$": "flowStore.open.name" },
-                                                                                    { "$": "rec.subject" }
+                                                                                    { "$": "workflowStore.open.name" },
+                                                                                    { "$": "rec.record" }
                                                                                   ]
                                                                                 }
                                                                               },
@@ -5589,10 +5607,10 @@
                                                                                 "size": "sm",
                                                                                 "variant": "soft",
                                                                                 "onClick": {
-                                                                                  "$action": "flowStore.moveRecord",
+                                                                                  "$action": "workflowStore.moveRecord",
                                                                                   "args": [
-                                                                                    { "$": "flowStore.open.name" },
-                                                                                    { "$": "rec.subject" },
+                                                                                    { "$": "workflowStore.open.name" },
+                                                                                    { "$": "rec.record" },
                                                                                     { "$": "move.to" }
                                                                                   ]
                                                                                 }
@@ -5617,7 +5635,7 @@
                                                               "type": "$if",
                                                               "props": {
                                                                 "condition": {
-                                                                  "$": "!flowStore.open.managedBy && count(rec.next)"
+                                                                  "$": "!workflowStore.open.managedBy && count(rec.next)"
                                                                 },
                                                                 "then": {
                                                                   "type": "Row",
@@ -5648,10 +5666,10 @@
                                                                             "size": "sm",
                                                                             "variant": "ghost",
                                                                             "onClick": {
-                                                                              "$action": "flowStore.moveRecord",
+                                                                              "$action": "workflowStore.moveRecord",
                                                                               "args": [
-                                                                                { "$": "flowStore.open.name" },
-                                                                                { "$": "rec.subject" },
+                                                                                { "$": "workflowStore.open.name" },
+                                                                                { "$": "rec.record" },
                                                                                 { "$": "to.name" }
                                                                               ]
                                                                             }
@@ -5673,7 +5691,7 @@
                                                             {
                                                               "type": "$if",
                                                               "props": {
-                                                                "condition": { "$": "local.historyOf == rec.subject" },
+                                                                "condition": { "$": "local.historyOf == rec.record" },
                                                                 "enterTransition": [
                                                                   { "type": "reveal", "duration": 250 },
                                                                   { "type": "fade", "duration": 150 }
@@ -5686,7 +5704,7 @@
                                                                       "type": "$each",
                                                                       "props": {
                                                                         "items": {
-                                                                          "$": "flowStore.open.history[rec.subject] ?? []"
+                                                                          "$": "workflowStore.open.history[rec.record] ?? []"
                                                                         },
                                                                         "as": "step"
                                                                       },
@@ -5713,7 +5731,7 @@
                                                                               "props": {
                                                                                 "placement": "top",
                                                                                 "content": {
-                                                                                  "$": "'Agreed by ' + join(step.voters.map(d, find(spaceStore.members, { did: d }).name ?? 'Someone'), ', ')"
+                                                                                  "$": "'Agreed by ' + join(step.approvers.map(d, find(spaceStore.members, { did: d }).name ?? 'Someone'), ', ')"
                                                                                 }
                                                                               },
                                                                               "children": [
@@ -5721,7 +5739,7 @@
                                                                                   "type": "AvatarStack",
                                                                                   "props": {
                                                                                     "avatars": {
-                                                                                      "$": "step.voters.map(d, { image: find(spaceStore.members, { did: d }).avatar, hash: d, initials: find(spaceStore.members, { did: d }).name })"
+                                                                                      "$": "step.approvers.map(d, { image: find(spaceStore.members, { did: d }).avatar, hash: d, initials: find(spaceStore.members, { did: d }).name })"
                                                                                     },
                                                                                     "size": "xs",
                                                                                     "max": 5
@@ -5772,7 +5790,7 @@
                                                                       "type": "$if",
                                                                       "props": {
                                                                         "condition": {
-                                                                          "$": "!count(flowStore.open.history[rec.subject] ?? [])"
+                                                                          "$": "!count(workflowStore.open.history[rec.record] ?? [])"
                                                                         },
                                                                         "then": {
                                                                           "type": "we-text",
@@ -5799,7 +5817,7 @@
                                                   "props": { "variant": "footnote", "color": "text-faint" },
                                                   "children": [
                                                     {
-                                                      "$": "flowStore.open.managedBy ? 'Tasks join this flow the first time somebody moves them on the board.' : 'Nothing yet. Start this flow on a record from its inspector.'"
+                                                      "$": "workflowStore.open.managedBy ? 'Tasks join this workflow the first time somebody moves them on the board.' : 'Nothing yet. Start this workflow on a record from its inspector.'"
                                                     }
                                                   ]
                                                 }
@@ -5810,7 +5828,7 @@
                                         "else": {
                                           "type": "we-text",
                                           "props": { "color": "text-faint" },
-                                          "children": ["Choose a flow to see what is going through it."]
+                                          "children": ["Choose a workflow to see what is going through it."]
                                         }
                                       }
                                     }
@@ -5827,7 +5845,7 @@
                             {
                               "type": "we-text",
                               "props": { "color": "text-faint" },
-                              "children": ["Flows are not available in this space."]
+                              "children": ["Workflows are not available in this space."]
                             }
                           ]
                         }
@@ -5836,7 +5854,7 @@
                     {
                       "type": "$if",
                       "props": {
-                        "condition": { "$": "local.newFlowOpen || routeStore.params.new == '1'" },
+                        "condition": { "$": "local.newWorkflowOpen || routeStore.params.new == '1'" },
                         "then": {
                           "type": "we-modal",
                           "props": {
@@ -5846,29 +5864,29 @@
                                 "condition": { "$": "routeStore.params.new == '1'" },
                                 "then": [
                                   { "$action": "routeStore.setParam", "args": ["new", null] },
-                                  { "$setLocal": "newFlowOpen", "value": false }
+                                  { "$setLocal": "newWorkflowOpen", "value": false }
                                 ],
-                                "else": { "$setLocal": "newFlowOpen", "value": false }
+                                "else": { "$setLocal": "newWorkflowOpen", "value": false }
                               }
                             }
                           },
                           "$localState": {
-                            "flowLabel": { "type": "string", "initial": "" },
-                            "flowPreset": { "type": "string", "initial": "proposal" }
+                            "workflowLabel": { "type": "string", "initial": "" },
+                            "workflowPreset": { "type": "string", "initial": "proposal" }
                           },
                           "children": [
                             {
                               "type": "we-text",
                               "slot": "header",
                               "props": { "variant": "heading-md" },
-                              "children": ["New flow"]
+                              "children": ["New workflow"]
                             },
                             {
                               "type": "we-input",
                               "props": {
                                 "label": "Name",
-                                "value": { "$": "local.flowLabel" },
-                                "onChange": { "$setLocal": "flowLabel", "value": { "$": "event.detail" } }
+                                "value": { "$": "local.workflowLabel" },
+                                "onChange": { "$setLocal": "workflowLabel", "value": { "$": "event.detail" } }
                               }
                             },
                             {
@@ -5878,11 +5896,11 @@
                                 {
                                   "type": "we-select",
                                   "props": {
-                                    "value": { "$": "local.flowPreset" },
+                                    "value": { "$": "local.workflowPreset" },
                                     "options": {
-                                      "$": "[{ label: 'A proposal: discussed, voted on, adopted or rejected', value: 'proposal' }, { label: 'A review: drafted, checked, published', value: 'review' }, { label: 'Two steps, to build on', value: 'blank' }]"
+                                      "$": "[{ label: 'A proposal: discussed, approved on, adopted or rejected', value: 'proposal' }, { label: 'A review: drafted, checked, published', value: 'review' }, { label: 'Two steps, to build on', value: 'blank' }]"
                                     },
-                                    "onChange": { "$setLocal": "flowPreset", "value": { "$": "event.detail" } }
+                                    "onChange": { "$setLocal": "workflowPreset", "value": { "$": "event.detail" } }
                                   }
                                 }
                               ]
@@ -5901,9 +5919,9 @@
                                         "condition": { "$": "routeStore.params.new == '1'" },
                                         "then": [
                                           { "$action": "routeStore.setParam", "args": ["new", null] },
-                                          { "$setLocal": "newFlowOpen", "value": false }
+                                          { "$setLocal": "newWorkflowOpen", "value": false }
                                         ],
-                                        "else": { "$setLocal": "newFlowOpen", "value": false }
+                                        "else": { "$setLocal": "newWorkflowOpen", "value": false }
                                       }
                                     }
                                   },
@@ -5913,13 +5931,15 @@
                                   "type": "we-button",
                                   "props": {
                                     "variant": "solid",
-                                    "disabled": { "$": "!local.flowLabel" },
+                                    "disabled": { "$": "!local.workflowLabel" },
                                     "onClick": {
-                                      "$action": "flowStore.newFlow",
+                                      "$action": "workflowStore.newWorkflow",
                                       "args": [
-                                        { "$": "local.flowPreset" },
-                                        { "$": "local.flowLabel" },
-                                        { "$": "local.flowPreset == 'proposal' ? ['CollectionBlock'] : ['TaskBlock']" }
+                                        { "$": "local.workflowPreset" },
+                                        { "$": "local.workflowLabel" },
+                                        {
+                                          "$": "local.workflowPreset == 'proposal' ? ['CollectionBlock'] : ['TaskBlock']"
+                                        }
                                       ],
                                       "onSuccess": [
                                         {
@@ -5927,9 +5947,9 @@
                                             "condition": { "$": "routeStore.params.new == '1'" },
                                             "then": [
                                               { "$action": "routeStore.setParam", "args": ["new", null] },
-                                              { "$setLocal": "newFlowOpen", "value": false }
+                                              { "$setLocal": "newWorkflowOpen", "value": false }
                                             ],
-                                            "else": { "$setLocal": "newFlowOpen", "value": false }
+                                            "else": { "$setLocal": "newWorkflowOpen", "value": false }
                                           }
                                         }
                                       ]
@@ -5985,7 +6005,7 @@
                                     "variant": "solid",
                                     "disabled": { "$": "!local.stepLabel" },
                                     "onClick": {
-                                      "$action": "flowStore.addStep",
+                                      "$action": "workflowStore.addStep",
                                       "args": [
                                         { "$": "local.addStepLane" },
                                         { "$": "local.stepLabel" },
@@ -6040,7 +6060,7 @@
                                   "props": {
                                     "value": { "$": "local.branchRejoins" },
                                     "options": {
-                                      "$": "distinct([{ label: 'It ends there', value: '' }], flowStore.draft.steps.map(s, { label: 'It rejoins at ' + s.label, value: s.name }))"
+                                      "$": "distinct([{ label: 'It ends there', value: '' }], workflowStore.draft.steps.map(s, { label: 'It rejoins at ' + s.label, value: s.name }))"
                                     },
                                     "onChange": { "$setLocal": "branchRejoins", "value": { "$": "event.detail" } }
                                   }
@@ -6063,7 +6083,7 @@
                                     "variant": "solid",
                                     "disabled": { "$": "!local.branchLabel" },
                                     "onClick": {
-                                      "$action": "flowStore.addBranch",
+                                      "$action": "workflowStore.addBranch",
                                       "args": [
                                         { "$": "local.branchFrom" },
                                         { "$": "local.branchLabel" },
@@ -6090,22 +6110,22 @@
                           "$localState": {
                             "stepName": {
                               "type": "string",
-                              "initial": { "$": "flowStore.draft.steps.find(s, s.name == local.editStep).label" }
+                              "initial": { "$": "workflowStore.draft.steps.find(s, s.name == local.editStep).label" }
                             },
                             "stepHint": {
                               "type": "string",
-                              "initial": { "$": "flowStore.draft.steps.find(s, s.name == local.editStep).hint" }
+                              "initial": { "$": "workflowStore.draft.steps.find(s, s.name == local.editStep).hint" }
                             },
                             "stepApprovals": {
                               "type": "number",
                               "initial": {
-                                "$": "flowStore.draft.steps.find(s, s.name == local.editStep).approvals ?? 1"
+                                "$": "workflowStore.draft.steps.find(s, s.name == local.editStep).approvals ?? 1"
                               }
                             },
                             "stepKind": {
                               "type": "string",
                               "initial": {
-                                "$": "flowStore.draft.steps.find(s, s.name == local.editStep).approverKind ?? ''"
+                                "$": "workflowStore.draft.steps.find(s, s.name == local.editStep).approverKind ?? ''"
                               }
                             }
                           },
@@ -6183,9 +6203,9 @@
                                   "type": "$each",
                                   "props": {
                                     "items": {
-                                      "$": "flowStore.draft.steps.find(s, s.name == local.editStep).guards ?? []"
+                                      "$": "workflowStore.draft.steps.find(s, s.name == local.editStep).evidence ?? []"
                                     },
-                                    "as": "guard"
+                                    "as": "requirement"
                                   },
                                   "children": [
                                     {
@@ -6195,7 +6215,7 @@
                                         {
                                           "type": "we-text",
                                           "props": { "variant": "footnote", "flex": "1" },
-                                          "children": [{ "$": "guard.label" }]
+                                          "children": [{ "$": "requirement.label" }]
                                         },
                                         {
                                           "type": "we-button",
@@ -6205,7 +6225,7 @@
                                             "square": true,
                                             "label": "Remove",
                                             "onClick": {
-                                              "$action": "flowStore.removeGuard",
+                                              "$action": "workflowStore.removeEvidence",
                                               "args": [{ "$": "local.editStep" }, { "$": "index" }]
                                             }
                                           },
@@ -6219,7 +6239,7 @@
                                   "type": "$if",
                                   "props": {
                                     "condition": {
-                                      "$": "!count(flowStore.draft.steps.find(s, s.name == local.editStep).guards ?? [])"
+                                      "$": "!count(workflowStore.draft.steps.find(s, s.name == local.editStep).evidence ?? [])"
                                     },
                                     "then": {
                                       "type": "we-text",
@@ -6233,7 +6253,7 @@
                                   "props": {
                                     "size": "sm",
                                     "variant": "ghost",
-                                    "onClick": { "$setLocal": "guardStep", "value": { "$": "local.editStep" } }
+                                    "onClick": { "$setLocal": "evidenceStep", "value": { "$": "local.editStep" } }
                                   },
                                   "children": ["Add something that must be there"]
                                 }
@@ -6255,7 +6275,7 @@
                                     "variant": "solid",
                                     "disabled": { "$": "!local.stepName" },
                                     "onClick": {
-                                      "$action": "flowStore.updateStep",
+                                      "$action": "workflowStore.updateStep",
                                       "args": [
                                         { "$": "local.editStep" },
                                         {
@@ -6279,14 +6299,14 @@
                     {
                       "type": "$if",
                       "props": {
-                        "condition": { "$": "local.guardStep" },
+                        "condition": { "$": "local.evidenceStep" },
                         "then": {
                           "type": "we-modal",
-                          "props": { "size": "sm", "close": { "$setLocal": "guardStep", "value": "" } },
+                          "props": { "size": "sm", "close": { "$setLocal": "evidenceStep", "value": "" } },
                           "$localState": {
-                            "guardEntity": { "type": "string", "initial": "comment" },
-                            "guardTie": { "type": "string", "initial": "responses" },
-                            "guardMin": { "type": "number", "initial": 1 }
+                            "evidenceEntity": { "type": "string", "initial": "comment" },
+                            "evidenceVia": { "type": "string", "initial": "responses" },
+                            "evidenceMin": { "type": "number", "initial": 1 }
                           },
                           "children": [
                             {
@@ -6302,11 +6322,11 @@
                                 {
                                   "type": "we-select",
                                   "props": {
-                                    "value": { "$": "local.guardEntity" },
+                                    "value": { "$": "local.evidenceEntity" },
                                     "options": {
                                       "$": "[{ label: 'A comment', value: 'comment' }, { label: 'A call about it', value: 'call' }, { label: 'A task', value: 'task' }, { label: 'A file', value: 'file' }, { label: 'A link', value: 'link' }, { label: 'An image', value: 'image' }]"
                                     },
-                                    "onChange": { "$setLocal": "guardEntity", "value": { "$": "event.detail" } }
+                                    "onChange": { "$setLocal": "evidenceEntity", "value": { "$": "event.detail" } }
                                   }
                                 }
                               ]
@@ -6318,11 +6338,11 @@
                                 {
                                   "type": "we-select",
                                   "props": {
-                                    "value": { "$": "local.guardTie" },
+                                    "value": { "$": "local.evidenceVia" },
                                     "options": {
                                       "$": "[{ label: 'In response to the record', value: 'responses' }, { label: 'Anywhere in the space', value: '' }]"
                                     },
-                                    "onChange": { "$setLocal": "guardTie", "value": { "$": "event.detail" } }
+                                    "onChange": { "$setLocal": "evidenceVia", "value": { "$": "event.detail" } }
                                   }
                                 }
                               ]
@@ -6334,11 +6354,11 @@
                                 {
                                   "type": "we-number-input",
                                   "props": {
-                                    "value": { "$": "local.guardMin" },
+                                    "value": { "$": "local.evidenceMin" },
                                     "min": 1,
                                     "max": 20,
                                     "step": 1,
-                                    "onChange": { "$setLocal": "guardMin", "value": { "$": "event.detail" } }
+                                    "onChange": { "$setLocal": "evidenceMin", "value": { "$": "event.detail" } }
                                   }
                                 }
                               ]
@@ -6350,7 +6370,10 @@
                               "children": [
                                 {
                                   "type": "we-button",
-                                  "props": { "variant": "soft", "onClick": { "$setLocal": "guardStep", "value": "" } },
+                                  "props": {
+                                    "variant": "soft",
+                                    "onClick": { "$setLocal": "evidenceStep", "value": "" }
+                                  },
                                   "children": ["Cancel"]
                                 },
                                 {
@@ -6358,14 +6381,14 @@
                                   "props": {
                                     "variant": "solid",
                                     "onClick": {
-                                      "$action": "flowStore.addGuard",
+                                      "$action": "workflowStore.addEvidence",
                                       "args": [
-                                        { "$": "local.guardStep" },
-                                        { "$": "local.guardEntity" },
-                                        { "$": "local.guardTie" },
-                                        { "$": "local.guardMin" }
+                                        { "$": "local.evidenceStep" },
+                                        { "$": "local.evidenceEntity" },
+                                        { "$": "local.evidenceVia" },
+                                        { "$": "local.evidenceMin" }
                                       ],
-                                      "onSuccess": [{ "$setLocal": "guardStep", "value": "" }]
+                                      "onSuccess": [{ "$setLocal": "evidenceStep", "value": "" }]
                                     }
                                   },
                                   "children": ["Add"]

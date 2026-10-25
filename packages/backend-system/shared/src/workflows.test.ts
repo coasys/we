@@ -4,16 +4,16 @@ import {
   allowedMoves,
   approvalsFor,
   asksForMore,
-  type FlowCapabilities,
-  type FlowDefinition,
-  guardsFor,
+  evidenceFor,
   isFinalState,
-  validateFlowDefinition,
-} from './flows';
+  validateWorkflowDefinition,
+  type WorkflowCapabilities,
+  type WorkflowDefinition,
+} from './workflows';
 
-const PROPOSAL: FlowDefinition = {
+const PROPOSAL: WorkflowDefinition = {
   name: 'Proposal',
-  subjects: ['TextBlock'],
+  entities: ['TextBlock'],
   states: [
     { name: 'draft' },
     { name: 'discussion' },
@@ -29,20 +29,20 @@ const PROPOSAL: FlowDefinition = {
   ],
 };
 
-const SERVER: FlowCapabilities = {
+const SERVER: WorkflowCapabilities = {
   requirements: ['approvals'],
   enforcement: 'server',
   sealedEvidence: false,
   contention: 'first',
 };
 
-describe('validateFlowDefinition', () => {
+describe('validateWorkflowDefinition', () => {
   it('finds nothing wrong with a sound definition', () => {
-    expect(validateFlowDefinition(PROPOSAL)).toEqual([]);
+    expect(validateWorkflowDefinition(PROPOSAL)).toEqual([]);
   });
 
   it('refuses a state name the backend keeps for itself, and one used twice', () => {
-    const problems = validateFlowDefinition({
+    const problems = validateWorkflowDefinition({
       ...PROPOSAL,
       states: [...PROPOSAL.states, { name: '_entry' }, { name: 'draft' }],
     });
@@ -50,13 +50,13 @@ describe('validateFlowDefinition', () => {
     expect(problems.some((p) => p.includes('Two states are called "draft"'))).toBe(true);
   });
 
-  it('refuses a move naming a state the flow does not have', () => {
-    const problems = validateFlowDefinition({ ...PROPOSAL, transitions: [{ from: 'draft', to: 'published' }] });
-    expect(problems).toEqual(['A move names "published", which is not a state of this flow.']);
+  it('refuses a move naming a state the workflow does not have', () => {
+    const problems = validateWorkflowDefinition({ ...PROPOSAL, transitions: [{ from: 'draft', to: 'published' }] });
+    expect(problems).toEqual(['A move names "published", which is not a state of this workflow.']);
   });
 
   it('refuses two approval rules on one state, and a count below one', () => {
-    const problems = validateFlowDefinition({
+    const problems = validateWorkflowDefinition({
       ...PROPOSAL,
       states: [
         {
@@ -74,16 +74,16 @@ describe('validateFlowDefinition', () => {
   });
 
   it('refuses a requirement the backend says it cannot enforce', () => {
-    const guarded: FlowDefinition = {
+    const guarded: WorkflowDefinition = {
       ...PROPOSAL,
       states: [
-        { name: 'draft', requires: [{ kind: 'guard', entity: 'Comment', tie: { relation: 'responses' } }] },
+        { name: 'draft', requires: [{ kind: 'evidence', entity: 'Comment', via: { relation: 'responses' } }] },
         ...PROPOSAL.states.slice(1),
       ],
     };
-    expect(validateFlowDefinition(guarded)).toEqual([]);
-    expect(validateFlowDefinition(guarded, SERVER)).toEqual([
-      '"draft" requires guard, which this backend cannot enforce.',
+    expect(validateWorkflowDefinition(guarded)).toEqual([]);
+    expect(validateWorkflowDefinition(guarded, SERVER)).toEqual([
+      '"draft" requires evidence, which this backend cannot enforce.',
     ]);
   });
 });
@@ -106,12 +106,12 @@ describe('readings', () => {
     expect(asksForMore(PROPOSAL.states[3])).toBe(true);
   });
 
-  it('counts a guard alone as asking for more', () => {
+  it('counts a requirement alone as asking for more', () => {
     const state = {
       name: 'review',
-      requires: [{ kind: 'guard' as const, entity: 'Document', tie: { relation: 'responses' } }],
+      requires: [{ kind: 'evidence' as const, entity: 'Document', via: { relation: 'responses' } }],
     };
-    expect(guardsFor(state)).toHaveLength(1);
+    expect(evidenceFor(state)).toHaveLength(1);
     expect(asksForMore(state)).toBe(true);
   });
 });

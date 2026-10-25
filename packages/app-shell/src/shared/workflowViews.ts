@@ -1,41 +1,41 @@
 /**
- * A flow as a template draws it: lanes of labelled steps, each step's requirements as words, and a
+ * A workflow as a template draws it: lanes of labelled steps, each step's requirements as words, and a
  * record's walk — computed here, from the definition, so a schema arranges values and decides nothing.
  *
- * Framework-neutral and pure, like `flowLanes.ts` and `flowDraft.ts` beside it; `FlowStore` is the
+ * Framework-neutral and pure, like `workflowLanes.ts` and `workflowDraft.ts` beside it; `WorkflowStore` is the
  * Solid binding that feeds these the live definition and the records going through it.
  */
 import type {
-  FlowApprovals,
-  FlowDefinition,
-  FlowGuard,
-  FlowItem,
-  FlowRole,
-  FlowStep,
-  FlowTie,
+  AgentQuery,
+  ApprovalsRequirement,
+  EvidenceRequirement,
+  Move,
+  Via,
+  WorkflowDefinition,
+  WorkflowItem,
 } from '@we/backend-shared';
-import { allowedMoves, approvalsFor, guardsFor } from '@we/backend-shared';
+import { allowedMoves, approvalsFor, evidenceFor } from '@we/backend-shared';
 
-import { stateLabelOf } from './flowDraft';
-import { finalStates, type FlowLanes, type FlowSequenceRule, toLanes, walkOf } from './flowLanes';
-import { subjectOfGuard } from './guardSubjects';
+import { subjectOfEvidence } from './evidenceSubjects';
+import { stateLabelOf } from './workflowDraft';
+import { finalStates, toLanes, walkOf, type WorkflowLanes, type WorkflowSequenceRule } from './workflowLanes';
 
-/** The role task states and the flow editor both write: holders of an involvement kind on the record. */
-export function involvementRole(kind: string): FlowRole {
-  return { entity: 'Involvement', agentField: 'agent', where: { kind }, subjectField: 'node' };
+/** The role task states and the workflow editor both write: holders of an involvement kind on the record. */
+export function involvementRole(kind: string): AgentQuery {
+  return { entity: 'Involvement', agentField: 'agent', where: { kind }, recordField: 'node' };
 }
 
 /** The involvement kind a role names, when it is the one {@link involvementRole} writes. */
-export function kindOf(role: FlowRole | undefined): string {
-  if (!role || role.entity !== 'Involvement' || role.subjectField !== 'node') return '';
+export function kindOf(role: AgentQuery | undefined): string {
+  if (!role || role.entity !== 'Involvement' || role.recordField !== 'node') return '';
   const kind = role.where?.kind;
   return typeof kind === 'string' ? kind : '';
 }
 
-export interface GuardView {
+export interface EvidenceView {
   entity: string;
   /** `responses`, `children`, a field's name, or empty for "anywhere". */
-  tie: string;
+  via: string;
   min: number;
   max: number | null;
   label: string;
@@ -52,7 +52,7 @@ export interface StepView {
   approverKind: string;
   /** Who counts, in words. Empty when anybody does. */
   approverLabel: string;
-  guards: GuardView[];
+  evidence: EvidenceView[];
   /** Everything entering it takes, as one short phrase each. */
   requires: string[];
   hint: string;
@@ -96,11 +96,11 @@ export interface ExceptionView {
   name: string;
 }
 
-export interface FlowEditorView {
+export interface WorkflowEditorView {
   name: string;
-  subjects: string[];
+  entities: string[];
   hint: string;
-  rule: FlowSequenceRule;
+  rule: WorkflowSequenceRule;
   /** The definition reads back as lanes, so it can be edited as lanes. */
   fits: boolean;
   lanes: LaneView[];
@@ -109,31 +109,31 @@ export interface FlowEditorView {
   steps: StepView[];
 }
 
-export interface FlowLabels {
+export interface WorkflowLabels {
   /** A step's name as a person reads it. */
   state: (name: string) => string;
   /** An involvement kind's name as the community calls it. */
   kind: (slug: string) => string;
 }
 
-export const defaultLabels: FlowLabels = { state: stateLabelOf, kind: stateLabelOf };
+export const defaultLabels: WorkflowLabels = { state: stateLabelOf, kind: stateLabelOf };
 
-const tieOf = (tie: FlowTie | undefined) => (!tie ? '' : 'relation' in tie ? tie.relation : tie.field);
+const viaOf = (via: Via | undefined) => (!via ? '' : 'relation' in via ? via.relation : via.field);
 
-/** A guard in words: "at least 1 TextBlock in response to it". */
-export function guardLabel(guard: FlowGuard): string {
-  const min = guard.min ?? 1;
-  const count = guard.max !== undefined ? `${min}–${guard.max}` : `at least ${min}`;
+/** An evidence requirement in words: "at least 1 TextBlock in response to it". */
+export function evidenceLabel(requirement: EvidenceRequirement): string {
+  const min = requirement.min ?? 1;
+  const count = requirement.max !== undefined ? `${min}–${requirement.max}` : `at least ${min}`;
   const where =
-    guard.tie && 'relation' in guard.tie
-      ? guard.tie.relation === 'responses'
+    requirement.via && 'relation' in requirement.via
+      ? requirement.via.relation === 'responses'
         ? ' in response to it'
-        : ` in its ${guard.tie.relation}`
-      : guard.tie
-        ? ` naming it as ${guard.tie.field}`
+        : ` in its ${requirement.via.relation}`
+      : requirement.via
+        ? ` naming it as ${requirement.via.field}`
         : '';
-  const subject = subjectOfGuard(guard);
-  const noun = subject ? (guard.max === undefined && min === 1 ? subject.one : subject.many) : guard.entity;
+  const subject = subjectOfEvidence(requirement);
+  const noun = subject ? (requirement.max === undefined && min === 1 ? subject.one : subject.many) : requirement.entity;
   return `${count} ${noun}${where}`;
 }
 
@@ -144,14 +144,14 @@ const orList = (words: string[]) =>
 /**
  * Why a move was refused, as a sentence — or `null` where there is not enough to say more than that
  * it was. A refusal that only says "not allowed" leaves a person guessing which rule stopped them,
- * and the flow already knows: where a record may go from where it stands, and what a step asks for.
+ * and the workflow already knows: where a record may go from where it stands, and what a step asks for.
  */
 export function refusalWords(
-  definition: FlowDefinition | null | undefined,
+  definition: WorkflowDefinition | null | undefined,
   from: string | null | undefined,
   to: string,
   reason: string,
-  labels: FlowLabels = defaultLabels,
+  labels: WorkflowLabels = defaultLabels,
 ): string | null {
   if (!definition) return null;
   if (reason === 'not-allowed') {
@@ -162,24 +162,24 @@ export function refusalWords(
       : `Nothing moves on from ${labels.state(from)}.`;
   }
   if (reason === 'unmet') {
-    const guards = guardsFor(definition.states.find((s) => s.name === to));
-    if (!guards.length) return null;
-    return `Not yet — ${labels.state(to)} needs ${guards.map(guardLabel).join(' and ')}.`;
+    const evidence = evidenceFor(definition.states.find((s) => s.name === to));
+    if (!evidence.length) return null;
+    return `Not yet — ${labels.state(to)} needs ${evidence.map(evidenceLabel).join(' and ')}.`;
   }
   return null;
 }
 
-function stepView(definition: FlowDefinition, name: string, labels: FlowLabels, finals: Set<string>): StepView {
+function stepView(definition: WorkflowDefinition, name: string, labels: WorkflowLabels, finals: Set<string>): StepView {
   const state = definition.states.find((s) => s.name === name);
-  const approvals: { count: number; from?: FlowRole } = approvalsFor(state);
+  const approvals: { count: number; from?: AgentQuery } = approvalsFor(state);
   const kind = kindOf(approvals.from);
   const approverLabel = approvals.from ? (kind ? labels.kind(kind) : approvals.from.entity) : '';
-  const guards = guardsFor(state).map((guard): GuardView => ({
-    entity: guard.entity,
-    tie: tieOf(guard.tie),
-    min: guard.min ?? 1,
-    max: guard.max ?? null,
-    label: guardLabel(guard),
+  const evidence = evidenceFor(state).map((requirement): EvidenceView => ({
+    entity: requirement.entity,
+    via: viaOf(requirement.via),
+    min: requirement.min ?? 1,
+    max: requirement.max ?? null,
+    label: evidenceLabel(requirement),
   }));
   const requires = [
     ...(approvals.count > 1 || approvals.from
@@ -187,7 +187,7 @@ function stepView(definition: FlowDefinition, name: string, labels: FlowLabels, 
           `${approvals.count} approval${approvals.count === 1 ? '' : 's'}${approverLabel ? ` from ${approverLabel}` : ''}`,
         ]
       : []),
-    ...guards.map((g) => g.label),
+    ...evidence.map((g) => g.label),
   ];
   return {
     name,
@@ -196,7 +196,7 @@ function stepView(definition: FlowDefinition, name: string, labels: FlowLabels, 
     approvals: approvals.count,
     approverKind: kind,
     approverLabel,
-    guards,
+    evidence,
     requires,
     hint: state?.hint ?? '',
     // Filled in where the lanes are known — see `editorView`.
@@ -206,16 +206,16 @@ function stepView(definition: FlowDefinition, name: string, labels: FlowLabels, 
 
 /** A definition as the editor draws it — the same view whether it is being edited or only shown. */
 export function editorView(
-  definition: FlowDefinition,
-  labels: FlowLabels = defaultLabels,
-  model?: FlowLanes,
-): FlowEditorView {
+  definition: WorkflowDefinition,
+  labels: WorkflowLabels = defaultLabels,
+  model?: WorkflowLanes,
+): WorkflowEditorView {
   const read = model ? { model, fits: true } : toLanes(definition);
   const finals = new Set(finalStates(definition));
   const label = (name: string | undefined) => (name ? labels.state(name) : '');
   return {
     name: definition.name,
-    subjects: [...definition.subjects],
+    entities: [...definition.entities],
     hint: definition.hint ?? '',
     rule: read.model.rule,
     fits: read.fits,
@@ -250,9 +250,9 @@ export function editorView(
 }
 
 export interface RecordView {
-  subject: string;
+  record: string;
   title: string;
-  /** When it entered the flow, as an ISO date for a timestamp; empty where the backend cannot say. */
+  /** When it entered the workflow, as an ISO date for a timestamp; empty where the backend cannot say. */
   startedAt: string;
   state: string | null;
   stateLabel: string;
@@ -261,7 +261,7 @@ export interface RecordView {
   waiting: {
     to: string;
     toLabel: string;
-    voters: string[];
+    approvers: string[];
     needs: number;
     note: string;
     /** The viewer has asked for it. */
@@ -275,7 +275,7 @@ export interface RecordView {
  * Each lane with the column its first step stands in — see `LaneView.column`. A lane leaving a step not
  * placed yet (written before the lane it leaves) is placed after the main line's first step.
  */
-function lanesWithColumns(lanes: readonly FlowLanes['lanes'][number][]) {
+function lanesWithColumns(lanes: readonly WorkflowLanes['lanes'][number][]) {
   const columnOf = new Map<string, number>();
   const laneOf = new Map<string, number>();
   return lanes.map((lane, index) => {
@@ -288,18 +288,18 @@ function lanesWithColumns(lanes: readonly FlowLanes['lanes'][number][]) {
   });
 }
 
-/** One record going through a flow, as a row draws it. */
+/** One record going through a workflow, as a row draws it. */
 export function recordView(
-  definition: FlowDefinition,
-  model: FlowLanes,
-  item: FlowItem,
+  definition: WorkflowDefinition,
+  model: WorkflowLanes,
+  item: WorkflowItem,
   title: string,
   me: string | undefined,
-  labels: FlowLabels = defaultLabels,
+  labels: WorkflowLabels = defaultLabels,
 ): RecordView {
   const walk = walkOf(definition, model, item.state);
   return {
-    subject: item.subject,
+    record: item.record,
     title,
     startedAt: isoOf(item.since),
     state: item.state,
@@ -308,10 +308,10 @@ export function recordView(
     waiting: item.waiting.map((move) => ({
       to: move.to,
       toLabel: labels.state(move.to),
-      voters: move.voters,
+      approvers: move.approvers,
       needs: approvalsFor(definition.states.find((s) => s.name === move.to)).count,
       note: move.note ?? '',
-      mine: Boolean(me && move.voters.includes(me)),
+      mine: Boolean(me && move.approvers.includes(me)),
     })),
     walk: walk.steps.map((step) => ({ ...step, label: labels.state(step.name) })),
     next: walk.next.map((name) => ({ name, label: labels.state(name) })),
@@ -323,7 +323,7 @@ export interface StepHistoryView {
   to: string;
   fromLabel: string;
   toLabel: string;
-  voters: string[];
+  approvers: string[];
   at: number | null;
   /** `at` as an ISO date, for a timestamp; empty where the backend cannot say. */
   when: string;
@@ -335,13 +335,13 @@ export interface StepHistoryView {
 const isoOf = (ms: number | null | undefined): string =>
   typeof ms === 'number' && Number.isFinite(ms) ? new Date(ms).toISOString() : '';
 
-export const historyView = (steps: FlowStep[], labels: FlowLabels = defaultLabels): StepHistoryView[] =>
+export const historyView = (steps: Move[], labels: WorkflowLabels = defaultLabels): StepHistoryView[] =>
   steps.map((step) => ({
     from: step.from,
     to: step.to,
     fromLabel: labels.state(step.from),
     toLabel: labels.state(step.to),
-    voters: step.voters,
+    approvers: step.approvers,
     at: step.at ?? null,
     when: isoOf(step.at),
     evidence: step.evidence,
@@ -349,7 +349,7 @@ export const historyView = (steps: FlowStep[], labels: FlowLabels = defaultLabel
   }));
 
 /** An approvals rule from what the editor offers: a count, and whose agreement counts. */
-export function approvalsRule(count: number, kind: string): FlowApprovals | null {
+export function approvalsRule(count: number, kind: string): ApprovalsRequirement | null {
   const n = Math.max(1, Math.floor(count));
   if (n === 1 && !kind) return null;
   return { kind: 'approvals', count: n, ...(kind ? { from: involvementRole(kind) } : {}) };

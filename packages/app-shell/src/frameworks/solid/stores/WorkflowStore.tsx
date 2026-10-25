@@ -1,60 +1,66 @@
 /**
- * FlowStore — the space's flows, as the Flows route, a record's inspector and a card read and change
+ * WorkflowStore — the space's workflows, as the Workflows route, a record's inspector and a card read and change
  * them.
  *
- * The Solid binding over three framework-neutral files: `shared/flowLanes.ts` (a flow as a main line,
- * branches and a sequence rule), `shared/flowDraft.ts` (every edit to a flow being written) and
- * `shared/flowViews.ts` (lanes, requirements and a record's walk, in words). Everything a schema shows
- * is computed there; this file decides only *when* — which flow is open, what is being watched, and
+ * The Solid binding over three framework-neutral files: `shared/workflowLanes.ts` (a workflow as a main line,
+ * branches and a sequence rule), `shared/workflowDraft.ts` (every edit to a workflow being written) and
+ * `shared/workflowViews.ts` (lanes, requirements and a record's walk, in words). Everything a schema shows
+ * is computed there; this file decides only *when* — which workflow is open, what is being watched, and
  * what a press does.
  *
  * ## What it watches
  *
- * - **The open flow**: every record going through it, for the route's list of records.
- * - **Every startable flow**: so a card or the inspector can say which flows a record is going
- *   through, and where it stands in each (`recordFlows`). One watch per flow; a space has a handful.
+ * - **The open workflow**: every record going through it, for the route's list of records.
+ * - **Every startable workflow**: so a card or the inspector can say which workflows a record is going
+ *   through, and where it stands in each (`recordWorkflows`). One watch per workflow; a space has a handful.
  *
- * The task-state flow is listed and shown, but it is the board's: it is written from the space's
+ * The task-state workflow is listed and shown, but it is the board's: it is written from the space's
  * task states and moved on the board, so it is never edited, started or moved from here
  * (`managedBy: 'task-states'`).
  *
  * ## Who may change what
  *
- * Saving, deleting and archiving a flow are for whoever administers the space — the same person the
- * space's other shared settings answer to. Anybody may start a flow on a record, ask for a move, and
+ * Saving, deleting and archiving a workflow are for whoever administers the space — the same person the
+ * space's other shared settings answer to. Anybody may start a workflow on a record, ask for a move, and
  * take back their own ask.
  */
-import * as draftEdits from '@shared/flowDraft';
+import { evidenceSubjectOf } from '@shared/evidenceSubjects';
+import { TASK_WORKFLOW } from '@shared/taskWorkflow';
+import * as draftEdits from '@shared/workflowDraft';
 import {
   definitionOf,
   type DraftEdit,
   draftOf,
-  type FlowDraft,
-  type FlowPreset,
   isRefusal,
   presetDraft,
   stateLabelOf,
-} from '@shared/flowDraft';
-import { type FlowSequenceRule, toLanes } from '@shared/flowLanes';
+  type WorkflowDraft,
+  type WorkflowPreset,
+} from '@shared/workflowDraft';
+import { toLanes, type WorkflowSequenceRule } from '@shared/workflowLanes';
 import {
   approvalsRule,
   editorView,
-  type FlowEditorView,
-  type FlowLabels,
   historyView,
   kindOf,
   type RecordView,
   recordView,
   refusalWords,
   type StepHistoryView,
-} from '@shared/flowViews';
-import { guardSubjectOf } from '@shared/guardSubjects';
-import { TASK_FLOW } from '@shared/taskFlow';
+  type WorkflowEditorView,
+  type WorkflowLabels,
+} from '@shared/workflowViews';
 import { useDatasetStore } from '@solid/stores/DatasetStore';
 import { useSessionStore } from '@solid/stores/SessionStore';
 import { useSpaceStore } from '@solid/stores/SpaceStore';
-import type { FlowCapabilities, FlowDefinition, FlowItem, FlowRequirement, FlowSummary } from '@we/backend-shared';
-import { validateFlowDefinition } from '@we/backend-shared';
+import type {
+  Requirement,
+  WorkflowCapabilities,
+  WorkflowDefinition,
+  WorkflowItem,
+  WorkflowSummary,
+} from '@we/backend-shared';
+import { validateWorkflowDefinition } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import { getEntityForDataset } from '@we/entities';
 import {
@@ -69,8 +75,8 @@ import {
   useContext,
 } from 'solid-js';
 
-/** A flow as a list shows it. */
-export interface FlowSummaryView {
+/** A workflow as a list shows it. */
+export interface WorkflowSummaryView {
   name: string;
   label: string;
   /** It can be edited here: it reads back exactly, and nothing else writes it. */
@@ -86,8 +92,8 @@ export interface FlowSummaryView {
   moves: { from: string; to: string }[];
 }
 
-/** The flow on screen, and the records going through it. */
-export interface OpenFlowView extends FlowEditorView {
+/** The workflow on screen, and the records going through it. */
+export interface OpenWorkflowView extends WorkflowEditorView {
   label: string;
   editable: boolean;
   managedBy: '' | 'task-states';
@@ -96,15 +102,15 @@ export interface OpenFlowView extends FlowEditorView {
   records: RecordView[];
   /**
    * The records have been read. Until they have, an empty `records` is not yet an answer — so Delete,
-   * which is offered only for a flow nothing is going through, waits for it rather than flashing.
+   * which is offered only for a workflow nothing is going through, waits for it rather than flashing.
    */
   recordsLoaded: boolean;
   /** A record's moves, once asked for with `loadHistory`. */
   history: Record<string, StepHistoryView[]>;
 }
 
-/** The flow being written. */
-export interface FlowDraftView extends FlowEditorView {
+/** The workflow being written. */
+export interface WorkflowDraftView extends WorkflowEditorView {
   label: string;
   /** Not saved yet at all. */
   isNew: boolean;
@@ -114,62 +120,62 @@ export interface FlowDraftView extends FlowEditorView {
   problems: string[];
 }
 
-/** One flow a record is going through, as a chip on its card says it. */
-export interface RecordFlowChip {
-  flow: string;
+/** One workflow a record is going through, as a chip on its card says it. */
+export interface RecordWorkflowChip {
+  workflow: string;
   label: string;
   state: string | null;
   stateLabel: string;
   /** Moves asked for and not made. */
   waiting: number;
   stalled: boolean;
-  /** Where it may be asked to go from here — empty until the flow's definition is read. */
+  /** Where it may be asked to go from here — empty until the workflow's definition is read. */
   next: RecordView['next'];
   /** Each move asked for, with who asked and whether the viewer did — what Agree and Withdraw act on. */
   asks: RecordView['waiting'];
 }
 
-export interface FlowStore {
-  /** This space has flows at all: its backend offers them and it is a WE space. */
+export interface WorkflowStore {
+  /** This space has workflows at all: its backend offers them and it is a WE space. */
   available: Accessor<boolean>;
-  /** What the backend can enforce, and how — see `FlowCapabilities`. `null` without flows. */
-  capabilities: Accessor<FlowCapabilities | null>;
-  /** The viewer may save, delete and archive flows here. */
+  /** What the backend can enforce, and how — see `WorkflowCapabilities`. `null` without workflows. */
+  capabilities: Accessor<WorkflowCapabilities | null>;
+  /** The viewer may save, delete and archive workflows here. */
   canEdit: Accessor<boolean>;
-  /** Every flow in the space, archived ones included. */
-  flows: Accessor<FlowSummaryView[]>;
+  /** Every workflow in the space, archived ones included. */
+  workflows: Accessor<WorkflowSummaryView[]>;
   /**
-   * The backend has answered with this space's flows. Until it has, an empty `flows` is not yet an
-   * answer, and the list is drawn as loading rather than as "no flows".
+   * The backend has answered with this space's workflows. Until it has, an empty `workflows` is not yet an
+   * answer, and the list is drawn as loading rather than as "no workflows".
    */
-  flowsLoaded: Accessor<boolean>;
-  /** Flows a record can be started on: not archived, not written by something else. */
-  startable: Accessor<{ name: string; label: string; subjects: string[] }[]>;
-  /** The flow on screen, or `null`. */
-  open: Accessor<OpenFlowView | null>;
-  /** The flow being written, or `null`. */
-  draft: Accessor<FlowDraftView | null>;
-  /** By record id: every startable flow the record is going through. */
-  recordFlows: Accessor<Record<string, RecordFlowChip[]>>;
+  workflowsLoaded: Accessor<boolean>;
+  /** Workflows a record can be started on: not archived, not written by something else. */
+  startable: Accessor<{ name: string; label: string; entities: string[] }[]>;
+  /** The workflow on screen, or `null`. */
+  open: Accessor<OpenWorkflowView | null>;
+  /** The workflow being written, or `null`. */
+  draft: Accessor<WorkflowDraftView | null>;
+  /** By record id: every startable workflow the record is going through. */
+  recordWorkflows: Accessor<Record<string, RecordWorkflowChip[]>>;
 
-  refreshFlows: () => Promise<void>;
-  openFlow: (name: string) => Promise<void>;
-  closeFlow: () => void;
-  loadHistory: (subject: string) => Promise<void>;
+  refreshWorkflows: () => Promise<void>;
+  openWorkflow: (name: string) => Promise<void>;
+  closeWorkflow: () => void;
+  loadHistory: (record: string) => Promise<void>;
 
-  startFlow: (flow: string, recordId: string) => Promise<void>;
-  moveRecord: (flow: string, recordId: string, to: string, note?: string) => Promise<string>;
-  withdrawRecord: (flow: string, recordId: string) => Promise<void>;
+  startWorkflow: (workflow: string, recordId: string) => Promise<void>;
+  moveRecord: (workflow: string, recordId: string, to: string, note?: string) => Promise<string>;
+  withdrawRecord: (workflow: string, recordId: string) => Promise<void>;
 
-  newFlow: (preset: FlowPreset, label: string, subjects?: string[]) => Promise<void>;
-  editFlow: () => void;
+  newWorkflow: (preset: WorkflowPreset, label: string, entities?: string[]) => Promise<void>;
+  editWorkflow: () => void;
   cancelDraft: () => void;
   saveDraft: () => Promise<void>;
-  deleteFlow: (name: string) => Promise<void>;
+  deleteWorkflow: (name: string) => Promise<void>;
 
   setDraftLabel: (label: string) => void;
   setDraftHint: (hint: string) => void;
-  setDraftSubjects: (subjects: string[]) => void;
+  setDraftEntities: (entities: string[]) => void;
   addStep: (lane: number, label: string, after?: string) => Promise<void>;
   removeStep: (name: string) => void;
   moveStep: (name: string, by: number) => void;
@@ -185,18 +191,18 @@ export interface FlowStore {
   ) => Promise<void>;
   addBranch: (from: string, label: string, rejoins?: string) => Promise<void>;
   setBranchEnd: (lane: number, rejoins: string) => void;
-  setRule: (rule: FlowSequenceRule) => void;
+  setRule: (rule: WorkflowSequenceRule) => void;
   addException: (from: string, to: string) => void;
   removeException: (from: string, to: string) => void;
   setApprovals: (name: string, count: number, kind?: string) => void;
-  addGuard: (name: string, entity: string, tie?: string, min?: number) => Promise<void>;
-  removeGuard: (name: string, index: number) => void;
+  addEvidence: (name: string, entity: string, via?: string, min?: number) => Promise<void>;
+  removeEvidence: (name: string, index: number) => void;
 }
 
-const FlowContext = createContext<FlowStore>();
+const WorkflowContext = createContext<WorkflowStore>();
 
-/** A flow's name from what a person typed: its words, capitalised and run together. */
-function flowNameOf(label: string): string {
+/** A workflow's name from what a person typed: its words, capitalised and run together. */
+function workflowNameOf(label: string): string {
   return label
     .split(/[^A-Za-z0-9]+/)
     .filter(Boolean)
@@ -204,14 +210,14 @@ function flowNameOf(label: string): string {
     .join('');
 }
 
-/** A flow's name as a person reads it: "DesignReview" → "Design review". */
-function flowLabelOf(name: string): string {
-  if (name === TASK_FLOW) return 'Task states';
+/** A workflow's name as a person reads it: "DesignReview" → "Design review". */
+function workflowLabelOf(name: string): string {
+  if (name === TASK_WORKFLOW) return 'Task states';
   const words = name.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase();
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-/** The entities searched for a record's title, when a flow names none. */
+/** The entities searched for a record's title, when a workflow names none. */
 const ANY_RECORD = ['TaskBlock', 'TextBlock', 'CollectionBlock', 'EventBlock'];
 
 const titleOf = (row: Record<string, unknown>): string => {
@@ -226,12 +232,12 @@ const titleOf = (row: Record<string, unknown>): string => {
   return '';
 };
 
-export function FlowStoreProvider(props: ParentProps) {
+export function WorkflowStoreProvider(props: ParentProps) {
   const session = useSessionStore();
   const datasetStore = useDatasetStore();
   const spaceStore = useSpaceStore();
 
-  const port = () => (datasetStore.isWeSpace() ? (session.backendPorts()?.flows ?? null) : null);
+  const port = () => (datasetStore.isWeSpace() ? (session.backendPorts()?.workflows ?? null) : null);
   const handle = () => datasetStore.currentDataset()?.handle;
   const datasetId = () => datasetStore.currentDataset()?.id ?? '';
   const me = () => session.me()?.did;
@@ -241,29 +247,29 @@ export function FlowStoreProvider(props: ParentProps) {
   const canEdit = () => available() && spaceStore.canAdministerCurrentSpace();
 
   /**
-   * Words for a flow's steps. The task-state flow's steps are the space's task states, so they read as
-   * the community named them; any other flow's read from their names.
+   * Words for a workflow's steps. The task-state workflow's steps are the space's task states, so they read as
+   * the community named them; any other workflow's read from their names.
    */
   const taskStateNames = createMemo(() => new Map(spaceStore.taskStates().map((s) => [s.slug, s.name])));
   const kindNames = createMemo(() => new Map(spaceStore.involvementTypes().map((k) => [k.slug, k.name])));
-  const labelsFor = (flow: string): FlowLabels => ({
-    state: (name) => (flow === TASK_FLOW ? taskStateNames().get(name) : undefined) ?? stateLabelOf(name),
+  const labelsFor = (workflow: string): WorkflowLabels => ({
+    state: (name) => (workflow === TASK_WORKFLOW ? taskStateNames().get(name) : undefined) ?? stateLabelOf(name),
     kind: (slug) => kindNames().get(slug) ?? stateLabelOf(slug),
   });
 
   // ─── The list ────────────────────────────────────────────────────────────────
 
-  const [summaries, setSummaries] = createSignal<FlowSummary[]>([]);
+  const [summaries, setSummaries] = createSignal<WorkflowSummary[]>([]);
   /*
     Which space the list last answered for, rather than a flag: a switch of space has to make the list
     unanswered again at once, and a slow answer for the space somebody just left must not count for
-    the one they are in. On a shared node listing flows takes seconds, and "no flows" for those
+    the one they are in. On a shared node listing workflows takes seconds, and "no workflows" for those
     seconds read as the space having lost them.
   */
   const [listedFor, setListedFor] = createSignal<string | null>(null);
-  const flowsLoaded = () => listedFor() === datasetId();
+  const workflowsLoaded = () => listedFor() === datasetId();
 
-  async function refreshFlows(): Promise<void> {
+  async function refreshWorkflows(): Promise<void> {
     const p = port();
     const h = handle();
     const asked = datasetId();
@@ -277,11 +283,11 @@ export function FlowStoreProvider(props: ParentProps) {
       if (datasetId() !== asked) return;
       setSummaries(listed);
       setListedFor(asked);
-      // Every definition, once: the list says which flows there are, and a map of the space's flows
-      // draws their steps — a handful of flows, each read once and kept until the space changes.
-      for (const summary of listed) void definitionOfFlow(summary.name).catch(() => {});
+      // Every definition, once: the list says which workflows there are, and a map of the space's workflows
+      // draws their steps — a handful of workflows, each read once and kept until the space changes.
+      for (const summary of listed) void definitionOfWorkflow(summary.name).catch(() => {});
     } catch (error) {
-      console.warn('FlowStore: could not list the flows', error);
+      console.warn('WorkflowStore: could not list the workflows', error);
       // An answer of a kind: waiting on a list that failed would spin for ever.
       if (datasetId() === asked) setListedFor(asked);
     }
@@ -292,15 +298,15 @@ export function FlowStoreProvider(props: ParentProps) {
     datasetId();
     available();
     untrack(() => setSummaries([]));
-    void untrack(refreshFlows);
+    void untrack(refreshWorkflows);
   });
 
-  // ─── Definitions, read once per flow and kept ────────────────────────────────
+  // ─── Definitions, read once per workflow and kept ────────────────────────────────
 
-  // Declared before `flows`, which reads them: a memo runs as soon as it is made, and a signal
+  // Declared before `workflows`, which reads them: a memo runs as soon as it is made, and a signal
   // declared below it does not exist yet at that moment.
-  const [definitions, setDefinitions] = createSignal<Record<string, FlowDefinition>>({});
-  const definitionOfFlow = async (name: string): Promise<FlowDefinition | null> => {
+  const [definitions, setDefinitions] = createSignal<Record<string, WorkflowDefinition>>({});
+  const definitionOfWorkflow = async (name: string): Promise<WorkflowDefinition | null> => {
     const known = untrack(definitions)[name];
     if (known) return known;
     const p = port();
@@ -315,18 +321,18 @@ export function FlowStoreProvider(props: ParentProps) {
     setDefinitions({});
   });
 
-  const flows = createMemo<FlowSummaryView[]>(() => {
-    const archived = new Set(spaceStore.archivedFlows());
+  const workflows = createMemo<WorkflowSummaryView[]>(() => {
+    const archived = new Set(spaceStore.archivedWorkflows());
     const defs = definitions();
     return summaries()
       .map((s) => {
-        const managedBy = s.name === TASK_FLOW ? ('task-states' as const) : ('' as const);
+        const managedBy = s.name === TASK_WORKFLOW ? ('task-states' as const) : ('' as const);
         const definition = defs[s.name];
         const labels = labelsFor(s.name);
         const leaving = new Set(definition?.transitions.map((t) => t.from) ?? []);
         return {
           name: s.name,
-          label: flowLabelOf(s.name),
+          label: workflowLabelOf(s.name),
           editable: s.editable && !managedBy,
           records: s.records,
           managedBy,
@@ -344,7 +350,7 @@ export function FlowStoreProvider(props: ParentProps) {
 
   const startableNames = createMemo(
     () =>
-      flows()
+      workflows()
         .filter((f) => !f.archived && !f.managedBy)
         .map((f) => f.name),
     [],
@@ -353,15 +359,19 @@ export function FlowStoreProvider(props: ParentProps) {
 
   const startable = createMemo(() => {
     const defs = definitions();
-    return startableNames().map((name) => ({ name, label: flowLabelOf(name), subjects: defs[name]?.subjects ?? [] }));
+    return startableNames().map((name) => ({
+      name,
+      label: workflowLabelOf(name),
+      entities: defs[name]?.entities ?? [],
+    }));
   });
 
   // ─── Watching ────────────────────────────────────────────────────────────────
 
-  const [items, setItems] = createSignal<Record<string, FlowItem[]>>({});
+  const [items, setItems] = createSignal<Record<string, WorkflowItem[]>>({});
 
-  /** Watch these flows, and only these, for as long as the space is on screen. */
-  function watchFlows(names: () => string[]) {
+  /** Watch these workflows, and only these, for as long as the space is on screen. */
+  function watchWorkflows(names: () => string[]) {
     createEffect(() => {
       const list = names();
       const p = port();
@@ -374,22 +384,22 @@ export function FlowStoreProvider(props: ParentProps) {
         for (const stop of stops) stop();
       });
       for (const name of list) {
-        void definitionOfFlow(name).catch(() => {});
+        void definitionOfWorkflow(name).catch(() => {});
         void p
           .watch(h, name, (view) => {
             if (!cancelled) setItems((prev) => ({ ...prev, [name]: view.items }));
           })
           .then(
             (stop) => (cancelled ? stop() : stops.push(stop)),
-            (error: unknown) => console.warn('FlowStore: could not watch', name, error),
+            (error: unknown) => console.warn('WorkflowStore: could not watch', name, error),
           );
       }
     });
   }
 
   const [openName, setOpenName] = createSignal('');
-  watchFlows(startableNames);
-  watchFlows(() => (openName() && !startableNames().includes(openName()) ? [openName()] : []));
+  watchWorkflows(startableNames);
+  watchWorkflows(() => (openName() && !startableNames().includes(openName()) ? [openName()] : []));
 
   createEffect(() => {
     datasetId();
@@ -409,9 +419,9 @@ export function FlowStoreProvider(props: ParentProps) {
     const definition = definitions()[name];
     if (!h || !list.length) return;
     const known = untrack(titles);
-    const missing = list.map((item) => item.subject).filter((id) => !(id in known));
+    const missing = list.map((item) => item.record).filter((id) => !(id in known));
     if (!missing.length) return;
-    const entities = definition?.subjects.length ? definition.subjects : ANY_RECORD;
+    const entities = definition?.entities.length ? definition.entities : ANY_RECORD;
     void (async () => {
       const found: Record<string, string> = Object.fromEntries(missing.map((id) => [id, '']));
       for (const entity of entities) {
@@ -430,62 +440,62 @@ export function FlowStoreProvider(props: ParentProps) {
     })();
   });
 
-  // ─── The open flow ───────────────────────────────────────────────────────────
+  // ─── The open workflow ───────────────────────────────────────────────────────────
 
   const [history, setHistory] = createSignal<Record<string, StepHistoryView[]>>({});
 
-  async function openFlow(name: string): Promise<void> {
-    if (!name) return closeFlow();
+  async function openWorkflow(name: string): Promise<void> {
+    if (!name) return closeWorkflow();
     setOpenName(name);
     setHistory({});
     setDefinitions(({ [name]: _stale, ...rest }) => rest);
     try {
-      await definitionOfFlow(name);
+      await definitionOfWorkflow(name);
     } catch (error) {
-      console.error('FlowStore: could not read that flow', error);
-      toastService.error('Could not open that flow');
+      console.error('WorkflowStore: could not read that workflow', error);
+      toastService.error('Could not open that workflow');
       throw error;
     }
   }
 
-  function closeFlow(): void {
+  function closeWorkflow(): void {
     setOpenName('');
     setHistory({});
   }
 
-  const open = createMemo<OpenFlowView | null>(() => {
+  const open = createMemo<OpenWorkflowView | null>(() => {
     const name = openName();
     const definition = definitions()[name];
     if (!name || !definition) return null;
-    const summary = flows().find((f) => f.name === name);
+    const summary = workflows().find((f) => f.name === name);
     const labels = labelsFor(name);
     const view = editorView(definition, labels);
     const { model } = toLanes(definition);
     const named = titles();
     return {
       ...view,
-      label: flowLabelOf(name),
+      label: workflowLabelOf(name),
       editable: summary?.editable ?? false,
-      managedBy: summary?.managedBy ?? (name === TASK_FLOW ? 'task-states' : ''),
+      managedBy: summary?.managedBy ?? (name === TASK_WORKFLOW ? 'task-states' : ''),
       archived: summary?.archived ?? false,
       records: [...(items()[name] ?? [])]
         .sort((a, b) => (b.since ?? 0) - (a.since ?? 0))
-        .map((item) => recordView(definition, model, item, named[item.subject] ?? '', me(), labels)),
+        .map((item) => recordView(definition, model, item, named[item.record] ?? '', me(), labels)),
       recordsLoaded: name in items(),
       history: history(),
     };
   });
 
-  async function loadHistory(subject: string): Promise<void> {
+  async function loadHistory(record: string): Promise<void> {
     const p = port();
     const h = handle();
     const name = openName();
     if (!p || !h || !name) return;
     try {
-      const steps = await p.history(h, name, subject);
-      setHistory((prev) => ({ ...prev, [subject]: historyView(steps, labelsFor(name)) }));
+      const moves = await p.history(h, name, record);
+      setHistory((prev) => ({ ...prev, [record]: historyView(moves, labelsFor(name)) }));
     } catch (error) {
-      console.error('FlowStore: could not read that record’s history', error);
+      console.error('WorkflowStore: could not read that record’s history', error);
       toastService.error('Could not read what happened to that record');
       throw error;
     }
@@ -493,8 +503,8 @@ export function FlowStoreProvider(props: ParentProps) {
 
   // ─── Records ─────────────────────────────────────────────────────────────────
 
-  const recordFlows = createMemo<Record<string, RecordFlowChip[]>>(() => {
-    const out: Record<string, RecordFlowChip[]> = {};
+  const recordWorkflows = createMemo<Record<string, RecordWorkflowChip[]>>(() => {
+    const out: Record<string, RecordWorkflowChip[]> = {};
     const all = items();
     const defs = definitions();
     for (const name of startableNames()) {
@@ -503,9 +513,9 @@ export function FlowStoreProvider(props: ParentProps) {
       const labels = labelsFor(name);
       for (const item of all[name] ?? []) {
         const view = definition && model ? recordView(definition, model, item, '', me(), labels) : null;
-        (out[item.subject] ??= []).push({
-          flow: name,
-          label: flowLabelOf(name),
+        (out[item.record] ??= []).push({
+          workflow: name,
+          label: workflowLabelOf(name),
           state: item.state,
           stateLabel: item.state ? labels.state(item.state) : '',
           waiting: item.waiting.length,
@@ -518,38 +528,38 @@ export function FlowStoreProvider(props: ParentProps) {
     return out;
   });
 
-  const writable = (flow: string) => {
-    if (flow === TASK_FLOW) throw new Error('Tasks move through their states on the board');
+  const writable = (workflow: string) => {
+    if (workflow === TASK_WORKFLOW) throw new Error('Tasks move through their states on the board');
     const p = port();
     const h = handle();
-    if (!p || !h) throw new Error('This space has no flows');
+    if (!p || !h) throw new Error('This space has no workflows');
     return { p, h };
   };
 
-  async function startFlow(flow: string, recordId: string): Promise<void> {
+  async function startWorkflow(workflow: string, recordId: string): Promise<void> {
     try {
-      const { p, h } = writable(flow);
-      await p.start(h, flow, recordId);
+      const { p, h } = writable(workflow);
+      await p.start(h, workflow, recordId);
     } catch (error) {
-      console.error('FlowStore: could not start that flow', error);
-      toastService.error('Could not start that flow');
+      console.error('WorkflowStore: could not start that workflow', error);
+      toastService.error('Could not start that workflow');
       throw error;
     }
   }
 
-  async function moveRecord(flow: string, recordId: string, to: string, note?: string): Promise<string> {
+  async function moveRecord(workflow: string, recordId: string, to: string, note?: string): Promise<string> {
     let outcome: string;
     try {
-      const { p, h } = writable(flow);
-      const result = await p.move(h, flow, recordId, to, note ? { note } : undefined);
+      const { p, h } = writable(workflow);
+      const result = await p.move(h, workflow, recordId, to, note ? { note } : undefined);
       outcome = result.outcome === 'refused' ? result.reason : result.outcome;
     } catch (error) {
-      console.error('FlowStore: could not ask for that move', error);
+      console.error('WorkflowStore: could not ask for that move', error);
       toastService.error('Could not ask for that move');
       throw error;
     }
-    const from = untrack(items)[flow]?.find((item) => item.subject === recordId)?.state;
-    const why = refusalWords(untrack(definitions)[flow], from, to, outcome, labelsFor(flow));
+    const from = untrack(items)[workflow]?.find((item) => item.record === recordId)?.state;
+    const why = refusalWords(untrack(definitions)[workflow], from, to, outcome, labelsFor(workflow));
     if (outcome === 'unmet') toastService.error(why ?? 'Not yet — what that step asks for is not there');
     else if (outcome === 'not-allowed') toastService.error(why ?? 'It cannot move there from where it is');
     else if (outcome === 'stalled')
@@ -558,41 +568,43 @@ export function FlowStoreProvider(props: ParentProps) {
     return outcome;
   }
 
-  async function withdrawRecord(flow: string, recordId: string): Promise<void> {
+  async function withdrawRecord(workflow: string, recordId: string): Promise<void> {
     try {
-      const { p, h } = writable(flow);
-      await p.withdraw(h, flow, recordId);
+      const { p, h } = writable(workflow);
+      await p.withdraw(h, workflow, recordId);
     } catch (error) {
-      console.error('FlowStore: could not withdraw that', error);
+      console.error('WorkflowStore: could not withdraw that', error);
       toastService.error('Could not withdraw that');
       throw error;
     }
   }
 
-  // ─── Writing a flow ──────────────────────────────────────────────────────────
+  // ─── Writing a workflow ──────────────────────────────────────────────────────────
 
-  const [draftState, setDraftState] = createSignal<{ draft: FlowDraft; saved: FlowDefinition | null } | null>(null);
+  const [draftState, setDraftState] = createSignal<{ draft: WorkflowDraft; saved: WorkflowDefinition | null } | null>(
+    null,
+  );
 
-  const draft = createMemo<FlowDraftView | null>(() => {
+  const draft = createMemo<WorkflowDraftView | null>(() => {
     const state = draftState();
     if (!state) return null;
     const definition = definitionOf(state.draft);
     const caps = capabilities();
-    const taken = !state.saved && flows().some((f) => f.name === state.draft.name);
+    const taken = !state.saved && workflows().some((f) => f.name === state.draft.name);
     return {
       ...editorView(definition, labelsFor(state.draft.name), state.draft.model),
-      label: flowLabelOf(state.draft.name),
+      label: workflowLabelOf(state.draft.name),
       isNew: !state.saved,
       dirty: !state.saved || JSON.stringify(state.saved) !== JSON.stringify(definition),
       problems: [
-        ...(taken ? [`There is already a flow called "${flowLabelOf(state.draft.name)}".`] : []),
-        ...validateFlowDefinition(definition, caps ?? undefined),
+        ...(taken ? [`There is already a workflow called "${workflowLabelOf(state.draft.name)}".`] : []),
+        ...validateWorkflowDefinition(definition, caps ?? undefined),
       ],
     };
   });
 
   /** Apply one edit to the draft, or say why it cannot be made. Answers whether it applied. */
-  const edit = (change: (draft: FlowDraft) => DraftEdit): boolean => {
+  const edit = (change: (draft: WorkflowDraft) => DraftEdit): boolean => {
     const state = draftState();
     if (!state) return false;
     const next = change(state.draft);
@@ -610,16 +622,16 @@ export function FlowStoreProvider(props: ParentProps) {
     closes on the one and stays open, holding what was typed, on the other. The refusal has already
     been said in a toast.
   */
-  const submitted = async (change: (draft: FlowDraft) => DraftEdit): Promise<void> => {
+  const submitted = async (change: (draft: WorkflowDraft) => DraftEdit): Promise<void> => {
     if (!edit(change)) throw new Error('That change was not made');
   };
 
-  async function newFlow(preset: FlowPreset, label: string, subjects: string[] = ['TaskBlock']): Promise<void> {
-    const name = flowNameOf(label) || 'NewFlow';
-    setDraftState({ draft: presetDraft(preset, name, subjects), saved: null });
+  async function newWorkflow(preset: WorkflowPreset, label: string, entities: string[] = ['TaskBlock']): Promise<void> {
+    const name = workflowNameOf(label) || 'NewWorkflow';
+    setDraftState({ draft: presetDraft(preset, name, entities), saved: null });
   }
 
-  function editFlow(): void {
+  function editWorkflow(): void {
     const view = open();
     const definition = definitions()[openName()];
     if (!view || !definition) return;
@@ -627,13 +639,13 @@ export function FlowStoreProvider(props: ParentProps) {
       toastService.error(
         view.managedBy === 'task-states'
           ? 'Task states are edited in the space’s settings'
-          : 'This flow was written by something that uses more than this editor can show',
+          : 'This workflow was written by something that uses more than this editor can show',
       );
       return;
     }
     const read = draftOf(definition);
     if (!read) {
-      toastService.error('This flow does not read as lanes, so it cannot be edited here');
+      toastService.error('This workflow does not read as lanes, so it cannot be edited here');
       return;
     }
     setDraftState({ draft: read, saved: definition });
@@ -647,7 +659,7 @@ export function FlowStoreProvider(props: ParentProps) {
     const state = draftState();
     const view = draft();
     if (!state || !view) return;
-    if (!canEdit()) throw new Error('Only whoever administers this space can save its flows');
+    if (!canEdit()) throw new Error('Only whoever administers this space can save its workflows');
     if (view.problems.length) {
       toastService.error(view.problems[0]);
       throw new Error(view.problems.join(' '));
@@ -657,65 +669,65 @@ export function FlowStoreProvider(props: ParentProps) {
       const { p, h } = writable(definition.name);
       await p.install(h, definition);
     } catch (error) {
-      console.error('FlowStore: could not save that flow', error);
-      toastService.error('Could not save that flow');
+      console.error('WorkflowStore: could not save that workflow', error);
+      toastService.error('Could not save that workflow');
       throw error;
     }
     setDraftState(null);
     setDefinitions((prev) => ({ ...prev, [definition.name]: definition }));
-    await refreshFlows();
-    await openFlow(definition.name);
+    await refreshWorkflows();
+    await openWorkflow(definition.name);
   }
 
-  async function deleteFlow(name: string): Promise<void> {
-    if (!canEdit()) throw new Error('Only whoever administers this space can delete its flows');
+  async function deleteWorkflow(name: string): Promise<void> {
+    if (!canEdit()) throw new Error('Only whoever administers this space can delete its workflows');
     try {
       const { p, h } = writable(name);
       await p.remove(h, name);
     } catch (error) {
-      console.error('FlowStore: could not delete that flow', error);
-      toastService.error('A flow can only be deleted once nothing is going through it — archive it instead');
+      console.error('WorkflowStore: could not delete that workflow', error);
+      toastService.error('A workflow can only be deleted once nothing is going through it — archive it instead');
       throw error;
     }
-    if (openName() === name) closeFlow();
-    await refreshFlows();
+    if (openName() === name) closeWorkflow();
+    await refreshWorkflows();
   }
 
-  const requirementsOf = (draftValue: FlowDraft, name: string): FlowRequirement[] => [
+  const requirementsOf = (draftValue: WorkflowDraft, name: string): Requirement[] => [
     ...(draftValue.states[name]?.requires ?? []),
   ];
 
-  const store: FlowStore = {
+  const store: WorkflowStore = {
     available,
     capabilities,
     canEdit,
-    flows,
-    flowsLoaded,
+    workflows,
+    workflowsLoaded,
     startable,
     open,
     draft,
-    recordFlows,
-    refreshFlows,
-    openFlow,
-    closeFlow,
+    recordWorkflows,
+    refreshWorkflows,
+    openWorkflow,
+    closeWorkflow,
     loadHistory,
-    startFlow,
+    startWorkflow,
     moveRecord,
     withdrawRecord,
-    newFlow,
-    editFlow,
+    newWorkflow,
+    editWorkflow,
     cancelDraft,
     saveDraft,
-    deleteFlow,
+    deleteWorkflow,
     setDraftLabel: (label) =>
       edit((d) => {
         const state = draftState();
-        if (state?.saved) return { refused: 'A saved flow keeps its name.' };
-        const name = flowNameOf(label);
-        return name ? { ...d, name } : { refused: 'A flow needs a name.' };
+        if (state?.saved) return { refused: 'A saved workflow keeps its name.' };
+        const name = workflowNameOf(label);
+        return name ? { ...d, name } : { refused: 'A workflow needs a name.' };
       }),
     setDraftHint: (hint) => edit((d) => ({ ...d, ...(hint.trim() ? { hint: hint.trim() } : { hint: undefined }) })),
-    setDraftSubjects: (subjects) => edit((d) => ({ ...d, subjects: [...new Set(subjects.filter(Boolean))] })),
+    setDraftEntities: (entities) => edit((d) => ({ ...d, entities: [...new Set(entities.filter(Boolean))] })),
     addStep: (lane, label, after) => submitted((d) => draftEdits.addStep(d, lane, label, after || undefined)),
     removeStep: (name) => edit((d) => draftEdits.removeStep(d, name)),
     moveStep: (name, by) => edit((d) => draftEdits.moveStep(d, name, by < 0 ? -1 : 1)),
@@ -748,30 +760,30 @@ export function FlowStoreProvider(props: ParentProps) {
         const rest = requirementsOf(d, name).filter((r) => r.kind !== 'approvals');
         return draftEdits.setRequirements(d, name, rule ? [rule, ...rest] : rest);
       }),
-    addGuard: (name, entity, tie, min = 1) =>
+    addEvidence: (name, entity, via, min = 1) =>
       submitted((d) => {
         if (!entity) return { refused: 'Say what kind of record has to be there.' };
-        const guard: FlowRequirement = {
-          kind: 'guard',
-          ...guardSubjectOf(entity),
+        const requirement: Requirement = {
+          kind: 'evidence',
+          ...evidenceSubjectOf(entity),
           ...(min !== 1 ? { min } : {}),
-          ...(tie ? { tie: { relation: tie } } : {}),
+          ...(via ? { via: { relation: via } } : {}),
         };
-        return draftEdits.setRequirements(d, name, [...requirementsOf(d, name), guard]);
+        return draftEdits.setRequirements(d, name, [...requirementsOf(d, name), requirement]);
       }),
-    removeGuard: (name, index) =>
+    removeEvidence: (name, index) =>
       edit((d) => {
         let seen = -1;
-        const kept = requirementsOf(d, name).filter((r) => r.kind !== 'guard' || ++seen !== index);
+        const kept = requirementsOf(d, name).filter((r) => r.kind !== 'evidence' || ++seen !== index);
         return draftEdits.setRequirements(d, name, kept);
       }),
   };
 
-  return <FlowContext.Provider value={store}>{props.children}</FlowContext.Provider>;
+  return <WorkflowContext.Provider value={store}>{props.children}</WorkflowContext.Provider>;
 }
 
-export function useFlowStore(): FlowStore {
-  const store = useContext(FlowContext);
-  if (!store) throw new Error('useFlowStore must be used within a FlowStoreProvider');
+export function useWorkflowStore(): WorkflowStore {
+  const store = useContext(WorkflowContext);
+  if (!store) throw new Error('useWorkflowStore must be used within a WorkflowStoreProvider');
   return store;
 }

@@ -85,8 +85,8 @@ export {
 } from './we/signalTypes.ts';
 export { signalDisplay } from './we/signalDisplay.ts';
 export {
-  guardModal,
-  type GuardModalOptions,
+  evidenceModal,
+  type EvidenceModalOptions,
   stepRequirementFields,
   type StepRequirementOptions,
 } from './we/stepRequirements.ts';

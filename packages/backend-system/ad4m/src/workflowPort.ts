@@ -1,9 +1,9 @@
 /**
- * The flow port, over AD4M's flow engine.
+ * The workflow port, over AD4M's flow engine.
  *
  * AD4M derives a record's state in a flow on every replica, from the signed proposals and votes it
- * holds. The contract speaks about records and moves; the engine about runs, proposals and an
- * entry state. This file translates between the two: a neutral definition into a `SHACLFlow` and
+ * holds. The contract speaks about workflows, records and moves; the engine about flows, runs,
+ * proposals and an entry state. This file translates between the two: a neutral definition into a `SHACLFlow` and
  * back, a move into the proposals it takes, and what the engine holds back into records
  * ({@link ./flowRuns}).
  *
@@ -42,7 +42,7 @@
  *
  * The definition itself is ordinary links, which any member can rewrite; the engine reads whatever
  * the dataset holds. That is an engine property, recorded against the engine (coasys/ad4m#1080), and
- * nothing here can close it — which is why {@link AD4M_FLOW_CAPABILITIES} says `peers`.
+ * nothing here can close it — which is why {@link AD4M_WORKFLOW_CAPABILITIES} says `peers`.
  */
 import {
   FlowInstance,
@@ -57,36 +57,36 @@ import {
   SHACLFlow,
 } from '@coasys/ad4m';
 import type {
+  AgentQuery,
+  ApprovalsRequirement,
   DatasetHandle,
-  FlowApprovals,
-  FlowCapabilities,
-  FlowDefinition,
-  FlowGuard,
-  FlowItem,
-  FlowMoveResult,
-  FlowPort,
-  FlowRequirement,
-  FlowRole,
-  FlowStateDefinition,
-  FlowStep,
-  FlowSummary,
+  EvidenceRequirement,
+  Move,
+  MoveResult,
+  Requirement,
+  WorkflowCapabilities,
+  WorkflowDefinition,
+  WorkflowItem,
+  WorkflowPort,
+  WorkflowState,
+  WorkflowSummary,
 } from '@we/backend-shared';
-import { approvalsFor, guardsFor, trace, tracing, validateFlowDefinition } from '@we/backend-shared';
+import { approvalsFor, evidenceFor, trace, tracing, validateWorkflowDefinition } from '@we/backend-shared';
 
-import { ENTRY_STATE, itemOf, openMoves, type Proposal, type Run, runFor, stateOf, stepsOf } from './flowRuns';
+import { type EngineProposal, ENTRY_STATE, itemOf, openMoves, type Run, runFor, stateOf, stepsOf } from './flowRuns';
 import { recordMissingMethod } from './missingMethods';
 import { coreEntities, predicateOfRelation, relationOfPredicate } from './relationPredicates';
 
-/** The entities a flow's records may be: its subjects, or any WE declares. */
-const subjectEntities = (subjects: readonly string[]) => (subjects.length ? subjects : coreEntities());
+/** The entities a workflow's records may be: those it names, or any WE declares. */
+const recordEntities = (entities: readonly string[]) => (entities.length ? entities : coreEntities());
 
 const proxy = (dataset: DatasetHandle) => dataset as PerspectiveProxy;
 
 /** Where a flow's URIs live: `${namespace}${name}Flow`, which the SDK reads a name back out of. */
 export const FLOW_NAMESPACE = 'we://flow/';
 
-export const AD4M_FLOW_CAPABILITIES: FlowCapabilities = {
-  requirements: ['approvals', 'guard'],
+export const AD4M_WORKFLOW_CAPABILITIES: WorkflowCapabilities = {
+  requirements: ['approvals', 'evidence'],
   enforcement: 'peers',
   sealedEvidence: true,
   contention: 'stall',
@@ -158,41 +158,46 @@ const sortedWhere = (where: Record<string, string | number | boolean>) =>
  * text: two installs of one definition must write the same bytes or the second looks like a rival
  * rule rather than the same one.
  */
-function ruleFor(state: FlowStateDefinition): Record<string, unknown> | undefined {
+function ruleFor(state: WorkflowState): Record<string, unknown> | undefined {
   const { count, from } = approvalsFor(state);
   if (count === 1 && !from) return undefined;
   const rule: Record<string, unknown> = { n: count };
   if (from) {
     const where: Record<string, string | number | boolean> = { ...(from.where ?? {}) };
-    if (from.subjectField) where[from.subjectField] = BASE;
+    if (from.recordField) where[from.recordField] = BASE;
     rule.fromRole = { className: from.entity, where: sortedWhere(where), didProperty: from.agentField };
   }
   return rule;
 }
 
-/** A guard in the engine's shape. Keys in a fixed order, for {@link ruleFor}'s reason. */
-function guardQuery(guard: FlowGuard, subjects: readonly string[]): ModelQuery {
-  const where: Record<string, string | number | boolean> = { ...(guard.where ?? {}) };
-  if (guard.tie && 'field' in guard.tie) where[guard.tie.field] = BASE;
-  const query: ModelQuery = { className: guard.entity };
+/**
+ * An evidence requirement as the engine's guard. Keys in a fixed order, for {@link ruleFor}'s reason.
+ */
+function guardQuery(evidence: EvidenceRequirement, entities: readonly string[]): ModelQuery {
+  const where: Record<string, string | number | boolean> = { ...(evidence.where ?? {}) };
+  if (evidence.via && 'field' in evidence.via) where[evidence.via.field] = BASE;
+  const query: ModelQuery = { className: evidence.entity };
   if (Object.keys(where).length) query.where = sortedWhere(where);
-  const min = guard.min ?? 1;
-  if (min !== 1 || guard.max !== undefined)
-    query.count = { min, ...(guard.max !== undefined ? { max: guard.max } : {}) };
-  if (guard.tie && 'relation' in guard.tie)
-    query.linkedTo = { via: predicateOfRelation(guard.tie.relation, undefined, subjectEntities(subjects)), to: 'base' };
+  const min = evidence.min ?? 1;
+  if (min !== 1 || evidence.max !== undefined)
+    query.count = { min, ...(evidence.max !== undefined ? { max: evidence.max } : {}) };
+  if (evidence.via && 'relation' in evidence.via)
+    query.linkedTo = {
+      via: predicateOfRelation(evidence.via.relation, undefined, recordEntities(entities)),
+      to: 'base',
+    };
   return query;
 }
 
-export function toShaclFlow(definition: FlowDefinition): SHACLFlow {
+export function toShaclFlow(definition: WorkflowDefinition): SHACLFlow {
   const flow = new SHACLFlow(definition.name, FLOW_NAMESPACE);
-  flow.inputTypes = [...definition.subjects];
+  flow.inputTypes = [...definition.entities];
   if (definition.hint) flow.interpretationHint = definition.hint;
   // The entry comes first: the engine starts every run in the lowest value.
   flow.addState({ name: ENTRY_STATE, value: 0 });
   definition.states.forEach((state, index) => {
     const rule = ruleFor(state);
-    const guards = guardsFor(state).map((guard) => guardQuery(guard, definition.subjects));
+    const guards = evidenceFor(state).map((evidence) => guardQuery(evidence, definition.entities));
     flow.addState({
       name: state.name,
       value: index + 1,
@@ -229,41 +234,41 @@ function splitBase(where: Record<string, unknown> | undefined) {
 }
 
 /**
- * A `SHACLFlow` as the contract says it — {@link toShaclFlow} backwards. What the contract cannot
+ * A `SHACLFlow` as the contract's workflow — {@link toShaclFlow} backwards. What the contract cannot
  * hold is dropped; whether anything was is what {@link isEditable} answers.
  */
-export function fromShaclFlow(flow: SHACLFlow): FlowDefinition {
-  const subjects = flow.inputTypes.filter((t) => t !== 'any');
-  const states: FlowStateDefinition[] = [...flow.states]
+export function fromShaclFlow(flow: SHACLFlow): WorkflowDefinition {
+  const entities = flow.inputTypes.filter((t) => t !== 'any');
+  const states: WorkflowState[] = [...flow.states]
     .filter((s) => s.name !== ENTRY_STATE)
     .sort((a, b) => a.value - b.value)
     .map((state) => {
-      const requires: FlowRequirement[] = [];
+      const requires: Requirement[] = [];
       const rule = state.consensusRule ?? flow.consensusRule;
       if (rule && (rule.n > 1 || rule.fromRole)) {
-        const approvals: FlowApprovals = { kind: 'approvals', count: rule.n };
+        const approvals: ApprovalsRequirement = { kind: 'approvals', count: rule.n };
         if (rule.fromRole) {
           const { field, rest } = splitBase(rule.fromRole.where);
-          const from: FlowRole = { entity: rule.fromRole.className, agentField: rule.fromRole.didProperty ?? '' };
+          const from: AgentQuery = { entity: rule.fromRole.className, agentField: rule.fromRole.didProperty ?? '' };
           if (Object.keys(rest).length) from.where = rest;
-          if (field) from.subjectField = field;
+          if (field) from.recordField = field;
           approvals.from = from;
         }
         requires.push(approvals);
       }
       for (const query of state.requires ?? []) {
         const { field, rest } = splitBase(query.where);
-        const guard: FlowGuard = { kind: 'guard', entity: query.className };
-        if (Object.keys(rest).length) guard.where = rest;
-        if (query.count?.min !== undefined && query.count.min !== 1) guard.min = query.count.min;
-        if (query.count?.max !== undefined) guard.max = query.count.max;
-        const via =
+        const evidence: EvidenceRequirement = { kind: 'evidence', entity: query.className };
+        if (Object.keys(rest).length) evidence.where = rest;
+        if (query.count?.min !== undefined && query.count.min !== 1) evidence.min = query.count.min;
+        if (query.count?.max !== undefined) evidence.max = query.count.max;
+        const relation =
           typeof query.linkedTo === 'object'
-            ? relationOfPredicate(query.linkedTo.via, subjectEntities(subjects))
+            ? relationOfPredicate(query.linkedTo.via, recordEntities(entities))
             : undefined;
-        if (via) guard.tie = { relation: via };
-        else if (field) guard.tie = { field };
-        requires.push(guard);
+        if (relation) evidence.via = { relation };
+        else if (field) evidence.via = { field };
+        requires.push(evidence);
       }
       return {
         name: state.name,
@@ -280,7 +285,7 @@ export function fromShaclFlow(flow: SHACLFlow): FlowDefinition {
     }));
   return {
     name: flow.name,
-    subjects,
+    entities,
     states,
     transitions,
     ...(flow.interpretationHint ? { hint: flow.interpretationHint } : {}),
@@ -409,7 +414,7 @@ async function readRuns(perspective: PerspectiveProxy, flowName: string, subject
 }
 
 /** Every proposal on these runs, with its voters, whether it settled a move, and its evidence. */
-async function readProposals(perspective: PerspectiveProxy, runs: readonly Run[]): Promise<Proposal[]> {
+async function readProposals(perspective: PerspectiveProxy, runs: readonly Run[]): Promise<EngineProposal[]> {
   if (!runs.length) return [];
   const runIds = new Set(runs.map((run) => run.id));
   let rows: FlowTransitionProposal[] = [];
@@ -479,10 +484,10 @@ const shown = (state: string | undefined): string | null => (state && state !== 
  * error that is not a refusal at all, which the caller rethrows. `state` is where the record was last
  * known to stand, for a refusal that does not say.
  */
-export function moveRefusal(error: unknown, to: string, state: string | null): FlowMoveResult | undefined {
+export function moveRefusal(error: unknown, to: string, state: string | null): MoveResult | undefined {
   const at = refusedFrom(error);
   // Refused because the record is already there: what the caller saw was behind.
-  if (at === to) return { outcome: 'moved', state: to, steps: [] };
+  if (at === to) return { outcome: 'moved', state: to, moves: [] };
   if (at !== undefined) return { outcome: 'refused', reason: 'not-allowed', state: shown(at) };
   if (refusedUnmet(error)) return { outcome: 'refused', reason: 'unmet', state };
   if (refusedContested(error)) return { outcome: 'stalled', state };
@@ -491,7 +496,7 @@ export function moveRefusal(error: unknown, to: string, state: string | null): F
 }
 
 /**
- * Time one step under the `flows` trace scope — `localStorage.setItem('we:trace', 'flows')`.
+ * Time one step under the `workflows` trace scope — `localStorage.setItem('we:trace', 'workflows')`.
  *
  * Kept rather than added for one investigation: a move that takes twenty seconds is several calls
  * (find the run, propose, re-read), and only the timing of each says whether the time is spent in
@@ -502,10 +507,10 @@ async function timed<T>(event: string, detail: Record<string, unknown>, run: () 
   const started = performance.now();
   try {
     const result = await run();
-    trace('flows', event, { ...detail, ms: Math.round(performance.now() - started) });
+    trace('workflows', event, { ...detail, ms: Math.round(performance.now() - started) });
     return result;
   } catch (error) {
-    trace('flows', `${event}:error`, {
+    trace('workflows', `${event}:error`, {
       ...detail,
       ms: Math.round(performance.now() - started),
       error: asError(error).message,
@@ -524,7 +529,7 @@ interface Watch {
 
 // ─── The port ─────────────────────────────────────────────────────────────────
 
-export function createAd4mFlowPort(selfId: () => string | undefined = () => undefined): FlowPort {
+export function createAd4mWorkflowPort(selfId: () => string | undefined = () => undefined): WorkflowPort {
   /** One set of subscriptions per perspective, shared by every watcher of it. */
   const watches = new Map<PerspectiveProxy, Watch>();
   /** Definitions read back, per perspective and name, until they are written or grow old. */
@@ -556,7 +561,7 @@ export function createAd4mFlowPort(selfId: () => string | undefined = () => unde
 
   async function installed(perspective: PerspectiveProxy, name: string): Promise<SHACLFlow> {
     const flow = await stored(perspective, name);
-    if (!flow) throw new Error(`flows: flow "${name}" is not installed`);
+    if (!flow) throw new Error(`workflows: workflow "${name}" is not installed`);
     return flow;
   }
 
@@ -602,11 +607,11 @@ export function createAd4mFlowPort(selfId: () => string | undefined = () => unde
     }
   }
 
-  /** The voters on a run's waiting move, for a move that is still short. */
-  async function votersOn(perspective: PerspectiveProxy, run: Run, state: string | null, to: string) {
+  /** Who has asked for a run's waiting move, for a move that is still short. */
+  async function approversOn(perspective: PerspectiveProxy, run: Run, state: string | null, to: string) {
     const proposals = await readProposals(perspective, [run]);
     const open = openMoves(proposals, { ...run, state: state ?? run.state });
-    return open.find((move) => move.to === to)?.voters ?? [];
+    return open.find((move) => move.to === to)?.approvers ?? [];
   }
 
   async function toMoveResult(
@@ -614,26 +619,26 @@ export function createAd4mFlowPort(selfId: () => string | undefined = () => unde
     run: Run,
     to: string,
     result: Ad4mFlowProposeResult,
-  ): Promise<FlowMoveResult> {
+  ): Promise<MoveResult> {
     const state = shown(result.derivedState);
     if (result.contested) return { outcome: 'stalled', state };
     if (result.outcomes.length) {
-      const steps: FlowStep[] = result.outcomes
+      const moves: Move[] = result.outcomes
         .filter((outcome) => outcome.fromState !== ENTRY_STATE)
         .map((outcome) => ({
           from: outcome.fromState,
           to: outcome.toState,
-          voters: [...outcome.voters],
+          approvers: [...outcome.voters],
           evidence: [],
         }));
-      return { outcome: 'moved', state: state ?? to, steps };
+      return { outcome: 'moved', state: state ?? to, moves };
     }
     return {
       outcome: 'waiting',
       state,
       to,
-      voted: result.recordedVote,
-      voters: await votersOn(perspective, run, state, to),
+      approved: result.recordedVote,
+      approvers: await approversOn(perspective, run, state, to),
     };
   }
 
@@ -642,7 +647,7 @@ export function createAd4mFlowPort(selfId: () => string | undefined = () => unde
     if (!watch) {
       const listeners = new Set<() => void>();
       const notify = (cause: string) => {
-        trace('flows', 'changed', { cause });
+        trace('workflows', 'changed', { cause });
         for (const listener of [...listeners]) listener();
       };
       const started = Promise.all([
@@ -690,8 +695,8 @@ export function createAd4mFlowPort(selfId: () => string | undefined = () => unde
     };
   }
 
-  /** Every record going through a flow, as the contract reads them. */
-  async function readItems(perspective: PerspectiveProxy, flowName: string): Promise<FlowItem[]> {
+  /** Every record going through a workflow, as the contract reads them. */
+  async function readItems(perspective: PerspectiveProxy, flowName: string): Promise<WorkflowItem[]> {
     const [flow, runs] = await Promise.all([stored(perspective, flowName), readRuns(perspective, flowName)]);
     // Not installed (yet): a member can watch before whoever administers the space has written it.
     if (!flow) return [];
@@ -702,11 +707,11 @@ export function createAd4mFlowPort(selfId: () => string | undefined = () => unde
   }
 
   return {
-    capabilities: AD4M_FLOW_CAPABILITIES,
+    capabilities: AD4M_WORKFLOW_CAPABILITIES,
 
     async install(dataset, definition) {
-      const problems = validateFlowDefinition(definition, AD4M_FLOW_CAPABILITIES);
-      if (problems.length) throw new Error(`flows: ${problems.join(' ')}`);
+      const problems = validateWorkflowDefinition(definition, AD4M_WORKFLOW_CAPABILITIES);
+      if (problems.length) throw new Error(`workflows: ${problems.join(' ')}`);
       const perspective = proxy(dataset);
       const flow = toShaclFlow(definition);
       const desired = [...flow.toLinks(), ...registrationLinks(flow.name, flow.flowUri)];
@@ -716,7 +721,7 @@ export function createAd4mFlowPort(selfId: () => string | undefined = () => unde
 
       const stale = held.filter((l) => !desiredKeys.has(keyOf(l.data)));
       const missing = desired.filter((l) => !heldKeys.has(keyOf(l)));
-      trace('flows', 'install', { flow: definition.name, removing: stale.length, adding: missing.length });
+      trace('workflows', 'install', { workflow: definition.name, removing: stale.length, adding: missing.length });
       forget(perspective, definition.name);
       if (!stale.length && !missing.length) return;
       // Removed first: for as long as an old rule and its replacement sit side by side, the engine
@@ -729,14 +734,14 @@ export function createAd4mFlowPort(selfId: () => string | undefined = () => unde
       const perspective = proxy(dataset);
       const names = await perspective.sdnaFlows();
       const summaries = await Promise.all(
-        [...new Set(names)].map(async (name): Promise<FlowSummary | null> => {
+        [...new Set(names)].map(async (name): Promise<WorkflowSummary | null> => {
           const flow = await stored(perspective, name);
           if (!flow) return null;
           const runs = await readRuns(perspective, name);
           return { name, editable: isEditable(flow), records: new Set(runs.map((r) => r.subject)).size };
         }),
       );
-      return summaries.filter((s): s is FlowSummary => s !== null);
+      return summaries.filter((s): s is WorkflowSummary => s !== null);
     },
 
     async read(dataset, name) {
@@ -749,22 +754,22 @@ export function createAd4mFlowPort(selfId: () => string | undefined = () => unde
       const flow = await stored(perspective, name);
       if (!flow) return;
       const records = new Set((await readRuns(perspective, name)).map((r) => r.subject)).size;
-      if (records) throw new Error(`flows: "${name}" still has ${records} record(s) going through it`);
+      if (records) throw new Error(`workflows: "${name}" still has ${records} record(s) going through it`);
       const held = await heldDefinition(perspective, name, flow.flowUri);
       forget(perspective, name);
       if (held.length) await perspective.removeLinks(held as never);
       poke(perspective);
     },
 
-    async start(dataset, flowName, subject, opts) {
+    async start(dataset, flowName, record, opts) {
       const perspective = proxy(dataset);
       try {
         const flow = await installed(perspective, flowName);
-        const run = await runOfSubject(perspective, flowName, subject);
+        const run = await runOfSubject(perspective, flowName, record);
         const state = await place(perspective, flow, run, opts?.at);
         poke(perspective);
         return {
-          subject,
+          record,
           state,
           ...(run.startedAt !== undefined ? { since: run.startedAt } : {}),
           waiting: [],
@@ -776,16 +781,16 @@ export function createAd4mFlowPort(selfId: () => string | undefined = () => unde
       }
     },
 
-    async move(dataset, flowName, subject, to, opts) {
+    async move(dataset, flowName, record, to, opts) {
       const perspective = proxy(dataset);
       let state: string | null = null;
       try {
         const flow = await installed(perspective, flowName);
-        const run = await runOfSubject(perspective, flowName, subject);
+        const run = await runOfSubject(perspective, flowName, record);
         state = await place(perspective, flow, run, opts?.from);
         if (state === to) {
           poke(perspective);
-          return { outcome: 'moved', state: to, steps: [] };
+          return { outcome: 'moved', state: to, moves: [] };
         }
         const result = await timed('propose', { run: run.id, to }, () =>
           perspective.proposeFlowTransition(run.id, to, opts?.note),
@@ -800,11 +805,11 @@ export function createAd4mFlowPort(selfId: () => string | undefined = () => unde
       }
     },
 
-    async withdraw(dataset, flowName, subject) {
+    async withdraw(dataset, flowName, record) {
       const perspective = proxy(dataset);
       const me = selfId();
-      if (!me) throw new Error('flows: no agent is signed in');
-      const run = runFor(await readRuns(perspective, flowName, subject), subject);
+      if (!me) throw new Error('workflows: no agent is signed in');
+      const run = runFor(await readRuns(perspective, flowName, record), record);
       if (!run) return 0;
       let withdrawn = 0;
       try {
@@ -839,10 +844,10 @@ export function createAd4mFlowPort(selfId: () => string | undefined = () => unde
         }
         reading = true;
         try {
-          const items = await timed('read', { flow: flowName }, () => readItems(perspective, flowName));
-          if (!stopped) onChange({ flow: flowName, items });
+          const items = await timed('read', { workflow: flowName }, () => readItems(perspective, flowName));
+          if (!stopped) onChange({ workflow: flowName, items });
         } catch (error) {
-          if (!recordMissingMethod(error)) console.warn('flows: could not read the records of', flowName, error);
+          if (!recordMissingMethod(error)) console.warn('workflows: could not read the records of', flowName, error);
         } finally {
           reading = false;
           if (again && !stopped) {
@@ -865,9 +870,9 @@ export function createAd4mFlowPort(selfId: () => string | undefined = () => unde
       };
     },
 
-    async history(dataset, flowName, subject) {
+    async history(dataset, flowName, record) {
       const perspective = proxy(dataset);
-      const run = runFor(await readRuns(perspective, flowName, subject), subject);
+      const run = runFor(await readRuns(perspective, flowName, record), record);
       if (!run) return [];
       return stepsOf(await readProposals(perspective, [run]), run);
     },

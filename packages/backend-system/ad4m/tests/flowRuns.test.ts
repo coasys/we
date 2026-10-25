@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { itemOf, openMoves, type Proposal, type Run, runFor, stepsOf } from '../src/flowRuns';
+import { type EngineProposal, itemOf, openMoves, type Run, runFor, stepsOf } from '../src/flowRuns';
 
 const run = (id: string, subject: string, startedAt?: number, state = 'todo'): Run => ({
   id,
@@ -13,7 +13,7 @@ const run = (id: string, subject: string, startedAt?: number, state = 'todo'): R
   ...(startedAt !== undefined ? { startedAt } : {}),
 });
 
-const proposal = (over: Partial<Proposal> & Pick<Proposal, 'id' | 'to'>): Proposal => ({
+const proposal = (over: Partial<EngineProposal> & Pick<EngineProposal, 'id' | 'to'>): EngineProposal => ({
   run: 'r1',
   from: 'todo',
   proposer: 'did:a',
@@ -60,7 +60,7 @@ describe('openMoves', () => {
       }),
     ];
     expect(openMoves(proposals, current)).toEqual([
-      { to: 'done', proposals: ['p1', 'p2'], voters: ['did:a', 'did:c', 'did:b'], askedAt: 10, note: 'Ready' },
+      { to: 'done', proposals: ['p1', 'p2'], approvers: ['did:a', 'did:c', 'did:b'], askedAt: 10, note: 'Ready' },
     ]);
   });
 
@@ -80,7 +80,7 @@ describe('itemOf', () => {
     expect(itemOf(run('r1', 'task', 1, '_entry'), [], anybody()).state).toBeNull();
     expect(itemOf(run('r1', 'task', 1, ''), [], anybody()).state).toBeNull();
     expect(itemOf(run('r1', 'task', 1, 'todo'), [], anybody())).toEqual({
-      subject: 'task',
+      record: 'task',
       state: 'todo',
       since: 1,
       waiting: [],
@@ -132,7 +132,7 @@ describe('stepsOf', () => {
       proposal({ id: 'open', from: 'done', to: 'todo', proposedAt: 9 }),
     ];
     expect(stepsOf(proposals, r)).toEqual([
-      { from: 'todo', to: 'done', voters: ['did:a', 'did:b'], at: 5, evidence: ['e1', 'e2'] },
+      { from: 'todo', to: 'done', approvers: ['did:a', 'did:b'], at: 5, evidence: ['e1', 'e2'] },
     ]);
   });
 });

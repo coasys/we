@@ -1,8 +1,8 @@
 /**
- * Editing a flow as lanes: every edit either gives the next draft or says why not, and every preset is
+ * Editing a workflow as lanes: every edit either gives the next draft or says why not, and every preset is
  * a definition a backend accepts and reads back as the same lanes.
  */
-import { validateFlowDefinition } from '@we/backend-shared';
+import { validateWorkflowDefinition } from '@we/backend-shared';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -12,7 +12,6 @@ import {
   definitionOf,
   type DraftEdit,
   draftOf,
-  type FlowDraft,
   isRefusal,
   moveStep,
   presetDraft,
@@ -23,14 +22,15 @@ import {
   setRule,
   stateLabelOf,
   stateNameOf,
-} from '../src/shared/flowDraft';
-import { finalStates } from '../src/shared/flowLanes';
+  type WorkflowDraft,
+} from '../src/shared/workflowDraft';
+import { finalStates } from '../src/shared/workflowLanes';
 
-const ok = (edit: DraftEdit): FlowDraft => {
+const ok = (edit: DraftEdit): WorkflowDraft => {
   if (isRefusal(edit)) throw new Error(edit.refused);
   return edit;
 };
-const pairs = (draft: FlowDraft) =>
+const pairs = (draft: WorkflowDraft) =>
   definitionOf(draft)
     .transitions.map((t) => `${t.from}>${t.to}`)
     .sort();
@@ -39,9 +39,9 @@ const blank = () => presetDraft('blank', 'Work', ['TaskBlock']);
 
 describe('presets', () => {
   it.each(['blank', 'review', 'proposal'] as const)('%s is a sound definition that reads back as itself', (preset) => {
-    const draft = presetDraft(preset, 'Flow', ['TaskBlock']);
+    const draft = presetDraft(preset, 'Workflow', ['TaskBlock']);
     const definition = definitionOf(draft);
-    expect(validateFlowDefinition(definition)).toEqual([]);
+    expect(validateWorkflowDefinition(definition)).toEqual([]);
     expect(draftOf(definition)).toEqual(draft);
   });
 

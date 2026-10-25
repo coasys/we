@@ -310,8 +310,8 @@ export interface SpaceRecord extends WeNodeRecord {
   autoInterpret: boolean;
   threadMode: string;
   moduleSettings: string;
-  archivedFlows: string;
-  taskFlowRule: string;
+  archivedWorkflows: string;
+  taskWorkflowRule: string;
   location?: LocationBlockRecord;
   taskStates: string[];
   typeStyles: string[];
@@ -369,7 +369,7 @@ export interface TaskStateRecord extends WeNodeRecord {
   retired: boolean;
   approvals: number;
   approverKind: string;
-  guards: string;
+  evidence: string;
   schemaVersion: number;
 }
 

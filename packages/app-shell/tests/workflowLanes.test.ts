@@ -1,16 +1,16 @@
 /**
- * Lanes read out of a definition and compiled back — the round trip that lets a flow be edited as a
+ * Lanes read out of a definition and compiled back — the round trip that lets a workflow be edited as a
  * main line and branches while only states and moves are stored.
  */
-import type { FlowDefinition } from '@we/backend-shared';
+import type { WorkflowDefinition } from '@we/backend-shared';
 import { describe, expect, it } from 'vitest';
 
-import { finalStates, type FlowLanes, toDefinition, toLanes, walkOf } from '../src/shared/flowLanes';
+import { finalStates, toDefinition, toLanes, walkOf, type WorkflowLanes } from '../src/shared/workflowLanes';
 
-const base = { name: 'Flow', subjects: ['TaskBlock'] };
-const pairs = (definition: FlowDefinition) => definition.transitions.map((t) => `${t.from}>${t.to}`).sort();
+const base = { name: 'Workflow', entities: ['TaskBlock'] };
+const pairs = (definition: WorkflowDefinition) => definition.transitions.map((t) => `${t.from}>${t.to}`).sort();
 
-const roundTrips = (model: FlowLanes) => {
+const roundTrips = (model: WorkflowLanes) => {
   const definition = toDefinition(base, model, {});
   const read = toLanes(definition);
   expect(read.fits).toBe(true);
@@ -85,9 +85,9 @@ describe('lanes', () => {
   });
 
   it('reads the same lanes, exceptions in step order, whatever order the moves come back in', () => {
-    // A backend may answer with a flow's moves in any order; the editor must not see a different
-    // flow, or a list that reshuffles, because of it.
-    const model: FlowLanes = {
+    // A backend may answer with a workflow's moves in any order; the editor must not see a different
+    // workflow, or a list that reshuffles, because of it.
+    const model: WorkflowLanes = {
       rule: 'next',
       lanes: [{ states: ['draft', 'review', 'vote', 'done'] }],
       exceptions: [
@@ -122,7 +122,7 @@ describe('lanes', () => {
 
   it('says a definition whose order lanes would change does not fit', () => {
     // A branch state placed before the main line it leaves from: lanes would reorder it.
-    const foreign: FlowDefinition = {
+    const foreign: WorkflowDefinition = {
       ...base,
       states: [{ name: 'side' }, { name: 'a' }, { name: 'b' }],
       transitions: [
@@ -135,7 +135,7 @@ describe('lanes', () => {
 });
 
 describe('walkOf', () => {
-  const model: FlowLanes = {
+  const model: WorkflowLanes = {
     rule: 'next',
     lanes: [{ states: ['draft', 'discussion', 'vote', 'adopted'] }, { states: ['rejected'], leaves: 'vote' }],
     exceptions: [],

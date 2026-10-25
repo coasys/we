@@ -16,8 +16,7 @@ import {
   unreadContainerIds,
 } from '@shared/containerActivity';
 import { datasetAddressedBy } from '@shared/datasetIdentity';
-import { guardLabel, refusalWords } from '@shared/flowViews';
-import { guardSubjectOf } from '@shared/guardSubjects';
+import { evidenceSubjectOf } from '@shared/evidenceSubjects';
 import { buildGuestLink } from '@shared/guestLink';
 import {
   type AmendmentEntry,
@@ -80,18 +79,18 @@ import {
 import { isSystemDataset } from '@shared/systemDatasets';
 import {
   approvalsOf,
-  compileTaskFlow,
-  createTaskFlowActions,
-  flowStateOf,
+  compileTaskWorkflow,
+  createTaskWorkflowActions,
   needsAgreement,
   openMoveOf,
-  parseTaskStateGuards,
-  storeTaskStateGuards,
-  TASK_FLOW,
-  type TaskFlowRule,
+  parseTaskStateEvidence,
+  storeTaskStateEvidence,
+  TASK_WORKFLOW,
   type TaskStateRule,
-} from '@shared/taskFlow';
-import { taskFlowLive } from '@shared/taskFlowLive';
+  type TaskWorkflowRule,
+  workflowStateOf,
+} from '@shared/taskWorkflow';
+import { taskWorkflowLive } from '@shared/taskWorkflowLive';
 import {
   resolveSpaceTheme,
   type SpaceThemeHiddenBy,
@@ -109,7 +108,8 @@ import {
   routableSections,
   viewSettings,
 } from '@shared/viewResolution';
-import type { AgentProfileSummary, DatasetRef, FlowView } from '@we/backend-shared';
+import { evidenceLabel, refusalWords } from '@shared/workflowViews';
+import type { AgentProfileSummary, DatasetRef, WorkflowView } from '@we/backend-shared';
 import { displayName, trace } from '@we/backend-shared';
 import type { ContentInput } from '@we/block-shared';
 import {
@@ -395,12 +395,12 @@ export interface TaskStateView {
   approverKind: string;
   /**
    * What must be there before a task enters this state, each with a sentence saying so — see
-   * `TaskState.guards`. `tie` is the relation the task holds them through, empty for anywhere.
+   * `TaskState.evidence`. `via` is the relation the task holds them through, empty for anywhere.
    */
-  guards: {
+  evidence: {
     entity: string;
     where?: Record<string, string | number | boolean>;
-    tie: string;
+    via: string;
     min: number;
     label: string;
   }[];
@@ -971,37 +971,37 @@ export interface SpaceStore {
       semantic?: TaskStateView['semantic'];
       approvals?: number;
       approverKind?: string;
-      guards?: { entity: string; where?: Record<string, string | number | boolean>; tie?: string; min?: number }[];
+      evidence?: { entity: string; where?: Record<string, string | number | boolean>; via?: string; min?: number }[];
     },
   ) => Promise<void>;
   /**
    * How a task may move between this space's states, in their order — `''` for anywhere, `next`, or
-   * `next-and-back` (see `Space.taskFlowRule`). Only whoever administers the space; rejects otherwise.
+   * `next-and-back` (see `Space.taskWorkflowRule`). Only whoever administers the space; rejects otherwise.
    */
-  setTaskFlowRule: (rule: '' | 'next' | 'next-and-back') => Promise<void>;
-  /** Add something that must be there before a task enters this state — see `TaskState.guards`. */
-  addTaskStateGuard: (slug: string, guard: { entity: string; tie?: string; min?: number }) => Promise<void>;
-  /** Take away the state's guard at that position in its `guards`. */
-  removeTaskStateGuard: (slug: string, index: number) => Promise<void>;
-  /** How a task may move between this space's states — see `setTaskFlowRule`. */
-  taskFlowRule: Accessor<'' | 'next' | 'next-and-back'>;
+  setTaskWorkflowRule: (rule: '' | 'next' | 'next-and-back') => Promise<void>;
+  /** Add something that must be there before a task enters this state — see `TaskState.evidence`. */
+  addTaskStateEvidence: (slug: string, requirement: { entity: string; via?: string; min?: number }) => Promise<void>;
+  /** Take away the state's evidence requirement at that position in its `evidence`. */
+  removeTaskStateEvidence: (slug: string, index: number) => Promise<void>;
+  /** How a task may move between this space's states — see `setTaskWorkflowRule`. */
+  taskWorkflowRule: Accessor<'' | 'next' | 'next-and-back'>;
   /**
    * Whether this space's task states ask for agreement — some state needs more than one approval, or
    * names whose approval counts. Where they do, a card dragged into such a state waits rather than
    * moving, and the board shows what it is waiting on.
    */
-  taskFlowEnabled: Accessor<boolean>;
+  taskWorkflowEnabled: Accessor<boolean>;
   /** Agree with the move a task is waiting on — the same as dragging it there yourself. */
   approveTaskMove: (taskId: string) => Promise<void>;
   /** Take back this agent's own vote on the move a task is waiting on. Never touches anybody else's. */
   withdrawTaskMove: (taskId: string) => Promise<void>;
   /**
-   * The flows this space has put away, by name (`Space.archivedFlows`). An archived flow keeps its
+   * The workflows this space has put away, by name (`Space.archivedWorkflows`). An archived workflow keeps its
    * records, which still show and can still finish, but is not offered for starting on anything new.
    */
-  archivedFlows: Accessor<string[]>;
-  /** Put a flow away, or bring it back. Only whoever administers the space; rejects otherwise. */
-  setFlowArchived: (name: string, archived: boolean) => Promise<void>;
+  archivedWorkflows: Accessor<string[]>;
+  /** Put a workflow away, or bring it back. Only whoever administers the space; rejects otherwise. */
+  setWorkflowArchived: (name: string, archived: boolean) => Promise<void>;
   /**
    * Withdraw a state from use, or bring it back. Never touches the work sitting in it. By slug, which
    * is what a task and a screen both hold.
@@ -2337,13 +2337,13 @@ export function SpaceStoreProvider(props: ParentProps) {
     offeredStates: () => offeredTaskStates(),
     notify: (message) => toastService.error(message),
     rolesChanged: () => void reloadSpaceStructure(),
-    // Wrapped for `offeredStates`' reason: the flow is worked out from the states, further down.
-    flow: {
-      enabled: () => taskFlow.enabled(),
-      needsAgreement: (slug) => needsAgreement(taskFlowRules().find((state) => state.slug === slug)),
-      stateOf: (taskId) => flowStateOf(taskFlowLive.view(), taskId),
-      move: (taskId, from, to) => taskFlow.move(taskId, from, to),
-      entryFor: (to) => taskFlow.entryFor(to),
+    // Wrapped for `offeredStates`' reason: the workflow is worked out from the states, further down.
+    workflow: {
+      enabled: () => taskWorkflow.enabled(),
+      needsAgreement: (slug) => needsAgreement(taskWorkflowRules().find((state) => state.slug === slug)),
+      stateOf: (taskId) => workflowStateOf(taskWorkflowLive.view(), taskId),
+      move: (taskId, from, to) => taskWorkflow.move(taskId, from, to),
+      entryFor: (to) => taskWorkflow.entryFor(to),
       explain: (from, to, outcome) => explainTaskMove(from, to, outcome ?? ''),
     },
     /*
@@ -3196,12 +3196,12 @@ export function SpaceStoreProvider(props: ParentProps) {
           // A record written before these existed has neither: one approval, from anybody.
           approvals: approvalsOf({ slug: '', approvals: r.approvals }),
           approverKind: r.approverKind || '',
-          guards: parseTaskStateGuards(r.guards).map((g) => ({
+          evidence: parseTaskStateEvidence(r.evidence).map((g) => ({
             entity: g.entity,
             ...(g.where ? { where: g.where } : {}),
-            tie: g.tie && 'relation' in g.tie ? g.tie.relation : '',
+            via: g.via && 'relation' in g.via ? g.via.relation : '',
             min: g.min ?? 1,
-            label: guardLabel(g),
+            label: evidenceLabel(g),
           })),
         })),
       );
@@ -3297,7 +3297,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     a.retired === b.retired &&
     a.approvals === b.approvals &&
     a.approverKind === b.approverKind &&
-    JSON.stringify(a.guards) === JSON.stringify(b.guards);
+    JSON.stringify(a.evidence) === JSON.stringify(b.evidence);
 
   /**
    * The states this space uses, as screens read them.
@@ -3346,45 +3346,45 @@ export function SpaceStoreProvider(props: ParentProps) {
   const offeredTaskStates = createMemo<TaskStateView[]>(() => taskStates().filter((s) => !s.retired));
 
   /*
-    The space's task states as a flow — see `shared/taskFlow.ts` for when a space has one and what it
+    The space's task states as a workflow — see `shared/taskWorkflow.ts` for when a space has one and what it
     compiles to.
 
-    Every state, withdrawn ones included: work still sits in a withdrawn state, and a flow that did
+    Every state, withdrawn ones included: work still sits in a withdrawn state, and a workflow that did
     not know it could not move that work out of it.
   */
-  const taskFlowRules = createMemo<TaskStateRule[]>(
+  const taskWorkflowRules = createMemo<TaskStateRule[]>(
     () =>
       taskStates().map((s) => ({
         slug: s.slug,
         approvals: s.approvals,
         approverKind: s.approverKind,
-        guards: parseTaskStateGuards(storeTaskStateGuards(s.guards)),
+        evidence: parseTaskStateEvidence(storeTaskStateEvidence(s.evidence)),
       })),
     [],
     { equals: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
   );
-  const taskFlowRule = createMemo<TaskFlowRule>(() => {
-    const rule = currentSpace()?.taskFlowRule ?? '';
+  const taskWorkflowRule = createMemo<TaskWorkflowRule>(() => {
+    const rule = currentSpace()?.taskWorkflowRule ?? '';
     return rule === 'next' || rule === 'next-and-back' ? rule : '';
   });
-  const taskFlowDefinition = createMemo(() => compileTaskFlow(taskFlowRules(), taskFlowRule()));
+  const taskWorkflowDefinition = createMemo(() => compileTaskWorkflow(taskWorkflowRules(), taskWorkflowRule()));
   /** Why a task's move was refused, naming the rule — in the community's own words for its states. */
   const explainTaskMove = (from: string, to: string, outcome: string): string | null => {
     const names = new Map(taskStates().map((state) => [state.slug, state.name]));
-    return refusalWords(untrack(taskFlowDefinition), from, to, outcome, {
+    return refusalWords(untrack(taskWorkflowDefinition), from, to, outcome, {
       state: (slug) => names.get(slug) ?? slug,
       kind: (slug) => slug,
     });
   };
-  const taskFlowEnabled = (): boolean =>
-    Boolean(taskFlowDefinition() && session.backendPorts()?.flows && datasetStore.isWeSpace());
-  const [taskFlowView, setTaskFlowView] = createSignal<FlowView | null>(null);
+  const taskWorkflowEnabled = (): boolean =>
+    Boolean(taskWorkflowDefinition() && session.backendPorts()?.workflows && datasetStore.isWeSpace());
+  const [taskWorkflowView, setTaskWorkflowView] = createSignal<WorkflowView | null>(null);
 
-  const taskFlow = createTaskFlowActions({
+  const taskWorkflow = createTaskWorkflowActions({
     dataset: () => datasetStore.currentDataset()?.handle,
-    port: () => (taskFlowEnabled() ? session.backendPorts()?.flows : undefined),
-    states: () => taskFlowRules(),
-    rule: () => taskFlowRule(),
+    port: () => (taskWorkflowEnabled() ? session.backendPorts()?.workflows : undefined),
+    states: () => taskWorkflowRules(),
+    rule: () => taskWorkflowRule(),
   });
 
   /*
@@ -3399,18 +3399,18 @@ export function SpaceStoreProvider(props: ParentProps) {
     before writing, so an administrator opening a space whose definition is already current writes
     nothing.
   */
-  const taskFlowKey = createMemo(() => {
-    const definition = taskFlowDefinition();
+  const taskWorkflowKey = createMemo(() => {
+    const definition = taskWorkflowDefinition();
     const id = datasetStore.currentDataset()?.id;
-    return definition && id && taskFlowEnabled() ? `${id}\u0000${JSON.stringify(definition)}` : '';
+    return definition && id && taskWorkflowEnabled() ? `${id}\u0000${JSON.stringify(definition)}` : '';
   });
   createEffect(() => {
-    const key = taskFlowKey();
-    setTaskFlowView(null);
+    const key = taskWorkflowKey();
+    setTaskWorkflowView(null);
     if (!key) return;
-    const port = session.backendPorts()?.flows;
+    const port = session.backendPorts()?.workflows;
     const dataset = datasetStore.currentDataset()?.handle;
-    const definition = untrack(taskFlowDefinition);
+    const definition = untrack(taskWorkflowDefinition);
     if (!port || !dataset || !definition) return;
     let stop: (() => void) | undefined;
     let cancelled = false;
@@ -3423,35 +3423,35 @@ export function SpaceStoreProvider(props: ParentProps) {
         try {
           await port.install(dataset, definition);
         } catch (error) {
-          console.error('SpaceStore: could not install the task flow', error);
+          console.error('SpaceStore: could not install the task workflow', error);
           toastService.error('Could not save which moves need agreement');
         }
       }
       if (cancelled) return;
       try {
-        const unsubscribe = await port.watch(dataset, TASK_FLOW, (view) => {
-          if (!cancelled) setTaskFlowView(view);
+        const unsubscribe = await port.watch(dataset, TASK_WORKFLOW, (view) => {
+          if (!cancelled) setTaskWorkflowView(view);
         });
         if (cancelled) unsubscribe();
         else stop = unsubscribe;
       } catch (error) {
-        console.warn('SpaceStore: could not watch the task flow', error);
+        console.warn('SpaceStore: could not watch the task workflow', error);
       }
     })();
   });
 
   // What the board draws from — the view and the rules, together, or nothing.
   createEffect(() => {
-    const view = taskFlowView();
+    const view = taskWorkflowView();
     const rules = Object.fromEntries(
-      taskFlowRules().map((rule) => [
+      taskWorkflowRules().map((rule) => [
         rule.slug,
         { approvals: approvalsOf(rule), approverKind: rule.approverKind ?? '' },
       ]),
     );
-    taskFlowLive.set(taskFlowKey() && view ? { view, rules } : null);
+    taskWorkflowLive.set(taskWorkflowKey() && view ? { view, rules } : null);
   });
-  onCleanup(() => taskFlowLive.set(null));
+  onCleanup(() => taskWorkflowLive.set(null));
 
   /**
    * Write `status` to follow a move that happened, for every surface that reads it rather than the run.
@@ -3467,7 +3467,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     task.status = slug;
     const started = performance.now();
     await task.save();
-    trace('flows', 'mirror', { taskId, slug, ms: Math.round(performance.now() - started) });
+    trace('workflows', 'mirror', { taskId, slug, ms: Math.round(performance.now() - started) });
   }
 
   /**
@@ -3475,12 +3475,12 @@ export function SpaceStoreProvider(props: ParentProps) {
    * what dragging the card there would do.
    */
   async function approveTaskMove(taskId: string): Promise<void> {
-    const view = taskFlowLive.view();
+    const view = taskWorkflowLive.view();
     const move = openMoveOf(view, taskId);
-    const from = flowStateOf(view, taskId);
+    const from = workflowStateOf(view, taskId);
     if (!move || !from) return;
     try {
-      const outcome = await taskFlow.move(taskId, from, move.to);
+      const outcome = await taskWorkflow.move(taskId, from, move.to);
       if (outcome === 'moved' || outcome === 'already-there') await mirrorTaskStatus(taskId, move.to);
       else if (outcome === 'stalled') {
         toastService.error('That card is stuck between two moves — one of them has to be withdrawn');
@@ -3501,85 +3501,90 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   }
 
-  const archivedFlows = createMemo<string[]>(() => parseIdList(currentSpace()?.archivedFlows), [], {
+  const archivedWorkflows = createMemo<string[]>(() => parseIdList(currentSpace()?.archivedWorkflows), [], {
     equals: (a, b) => a.join('\u0000') === b.join('\u0000'),
   });
 
   /**
-   * Put a flow away or bring it back — persisted on the space, cached, and republished the way
+   * Put a workflow away or bring it back — persisted on the space, cached, and republished the way
    * `writeEnabledViews` does it, for the reason it gives.
    */
-  async function setFlowArchived(name: string, archived: boolean): Promise<void> {
+  async function setWorkflowArchived(name: string, archived: boolean): Promise<void> {
     const ds = datasetStore.currentDataset();
     const space = currentSpace();
     if (!ds || !space) return;
-    if (!canAdministerCurrentSpace()) throw new Error('Only whoever administers this space can archive its flows');
-    const current = parseIdList(space.archivedFlows);
+    if (!canAdministerCurrentSpace()) throw new Error('Only whoever administers this space can archive its workflows');
+    const current = parseIdList(space.archivedWorkflows);
     const next = archived ? [...new Set([...current, name])] : current.filter((n) => n !== name);
     if (next.join('\u0000') === current.join('\u0000')) return;
-    const archivedFlowsJson = next.length ? JSON.stringify(next) : '';
+    const archivedWorkflowsJson = next.length ? JSON.stringify(next) : '';
     try {
-      await Space.update(ds.handle, space.id, { archivedFlows: archivedFlowsJson });
+      await Space.update(ds.handle, space.id, { archivedWorkflows: archivedWorkflowsJson });
     } catch (error) {
-      console.error('SpaceStore: could not persist archivedFlows', error);
+      console.error('SpaceStore: could not persist archivedWorkflows', error);
       toastService.error('Could not save this change for the space.');
       throw error;
     }
-    updateSpaceInCache(ds, { archivedFlows: archivedFlowsJson } as never);
+    updateSpaceInCache(ds, { archivedWorkflows: archivedWorkflowsJson } as never);
     setCurrentSpace((prev) =>
       prev
         ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, {
-            archivedFlows: archivedFlowsJson,
+            archivedWorkflows: archivedWorkflowsJson,
           }) as Space)
         : prev,
     );
   }
 
-  /** The state's guards as stored, for an edit that adds or takes one away. */
+  /** The state's evidence requirements as stored, for an edit that adds or takes one away. */
   const guardsOfState = (slug: string) =>
-    (taskStates().find((t) => t.slug === slug)?.guards ?? []).map(({ entity, where, tie, min }) => ({
+    (taskStates().find((t) => t.slug === slug)?.evidence ?? []).map(({ entity, where, via, min }) => ({
       entity,
       ...(where ? { where } : {}),
-      tie,
+      via,
       min,
     }));
 
-  async function addTaskStateGuard(slug: string, guard: { entity: string; tie?: string; min?: number }): Promise<void> {
-    if (!guard?.entity) return;
+  async function addTaskStateEvidence(
+    slug: string,
+    requirement: { entity: string; via?: string; min?: number },
+  ): Promise<void> {
+    if (!requirement?.entity) return;
     // `entity` is what the requirement form picked — a key such as "comment" — or an entity name.
-    const what = guardSubjectOf(guard.entity);
-    await updateTaskState(slug, { guards: [...guardsOfState(slug), { ...guard, ...what }] });
+    const what = evidenceSubjectOf(requirement.entity);
+    await updateTaskState(slug, { evidence: [...guardsOfState(slug), { ...requirement, ...what }] });
   }
 
-  async function removeTaskStateGuard(slug: string, index: number): Promise<void> {
-    await updateTaskState(slug, { guards: guardsOfState(slug).filter((_, i) => i !== index) });
+  async function removeTaskStateEvidence(slug: string, index: number): Promise<void> {
+    await updateTaskState(slug, { evidence: guardsOfState(slug).filter((_, i) => i !== index) });
   }
 
-  /** See the interface. Persisted on the space the way `setFlowArchived` is. */
-  async function setTaskFlowRule(rule: '' | 'next' | 'next-and-back'): Promise<void> {
+  /** See the interface. Persisted on the space the way `setWorkflowArchived` is. */
+  async function setTaskWorkflowRule(rule: '' | 'next' | 'next-and-back'): Promise<void> {
     const ds = datasetStore.currentDataset();
     const space = currentSpace();
     if (!ds || !space) return;
     if (!canAdministerCurrentSpace()) throw new Error('Only whoever administers this space can change how tasks move');
     const next = rule === 'next' || rule === 'next-and-back' ? rule : '';
-    if ((space.taskFlowRule ?? '') === next) return;
+    if ((space.taskWorkflowRule ?? '') === next) return;
     try {
-      await Space.update(ds.handle, space.id, { taskFlowRule: next });
+      await Space.update(ds.handle, space.id, { taskWorkflowRule: next });
     } catch (error) {
-      console.error('SpaceStore: could not persist taskFlowRule', error);
+      console.error('SpaceStore: could not persist taskWorkflowRule', error);
       toastService.error('Could not save this change for the space.');
       throw error;
     }
-    updateSpaceInCache(ds, { taskFlowRule: next } as never);
+    updateSpaceInCache(ds, { taskWorkflowRule: next } as never);
     setCurrentSpace((prev) =>
-      prev ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, { taskFlowRule: next }) as Space) : prev,
+      prev
+        ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, { taskWorkflowRule: next }) as Space)
+        : prev,
     );
   }
 
   /** Take back this agent's vote on the move a task is waiting on. */
   async function withdrawTaskMove(taskId: string): Promise<void> {
     try {
-      await taskFlow.withdraw(taskId);
+      await taskWorkflow.withdraw(taskId);
     } catch (error) {
       console.error('SpaceStore: could not withdraw that vote', error);
       toastService.error('Could not withdraw that');
@@ -3759,7 +3764,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       semantic?: TaskStateView['semantic'];
       approvals?: number;
       approverKind?: string;
-      guards?: { entity: string; where?: Record<string, string | number | boolean>; tie?: string; min?: number }[];
+      evidence?: { entity: string; where?: Record<string, string | number | boolean>; via?: string; min?: number }[];
     },
   ): Promise<void> {
     const p = datasetStore.currentDataset()?.handle;
@@ -3775,16 +3780,16 @@ export function SpaceStoreProvider(props: ParentProps) {
         record.semantic = updates.semantic;
       }
       /*
-        What agreement a state asks for. Changing either is what turns the space's states into a flow
-        or back — nothing else has to be switched — and the flow's definition follows from the states
+        What agreement a state asks for. Changing either is what turns the space's states into a workflow
+        or back — nothing else has to be switched — and the workflow's definition follows from the states
         on the next read, installed by whoever administers the space.
       */
       if (updates.approvals !== undefined) record.approvals = approvalsOf({ slug, approvals: updates.approvals });
       if (updates.approverKind !== undefined) record.approverKind = updates.approverKind;
-      // A form's list may hold keys ("comment") beside guards read back off the record; both store as records.
-      if (Array.isArray(updates.guards))
-        record.guards = storeTaskStateGuards(
-          updates.guards.map((guard) => ({ ...guard, ...guardSubjectOf(guard.entity) })),
+      // A form's list may hold keys ("comment") beside evidence requirements read back off the record; both store as records.
+      if (Array.isArray(updates.evidence))
+        record.evidence = storeTaskStateEvidence(
+          updates.evidence.map((requirement) => ({ ...requirement, ...evidenceSubjectOf(requirement.entity) })),
         );
       await record.save();
       await loadTaskStates();
@@ -5865,13 +5870,13 @@ export function SpaceStoreProvider(props: ParentProps) {
     createTaskState,
     updateTaskState,
     setTaskStateRetired,
-    taskFlowEnabled,
-    archivedFlows,
-    setFlowArchived,
-    taskFlowRule,
-    setTaskFlowRule,
-    addTaskStateGuard,
-    removeTaskStateGuard,
+    taskWorkflowEnabled,
+    archivedWorkflows,
+    setWorkflowArchived,
+    taskWorkflowRule,
+    setTaskWorkflowRule,
+    addTaskStateEvidence,
+    removeTaskStateEvidence,
     approveTaskMove,
     withdrawTaskMove,
     reorderTaskStates,

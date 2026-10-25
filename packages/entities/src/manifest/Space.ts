@@ -157,25 +157,25 @@ export const Space: CoreEntityDef = {
        */
       moduleSettings: { type: 'string', predicate: 'we://module_settings', default: '' },
       /**
-       * The flows this space has put away, by name — a JSON list. An archived flow is kept, so the
+       * The workflows this space has put away, by name — a JSON list. An archived workflow is kept, so the
        * records going through it still show and can still finish, but it is not offered for starting
        * on anything new and is listed apart.
        *
-       * A property of the space rather than of the flow, because archiving is how this community
-       * arranges its flows, not part of what a flow is: the backend holds the definition, and a
+       * A property of the space rather than of the workflow, because archiving is how this community
+       * arranges its workflows, not part of what a workflow is: the backend holds the definition, and a
        * definition knows nothing about being put away. A JSON string for `enabledViews`' reason —
        * the values are names, not entities.
        */
-      archivedFlows: { type: 'string', predicate: 'we://archived_flows', default: '' },
+      archivedWorkflows: { type: 'string', predicate: 'we://archived_workflows', default: '' },
       /**
        * How a task may move between this space's states, in their order: empty for anywhere (a board
        * lets a card go to any column), `next` for on to the next state only, `next-and-back` for on or
-       * back one. Anything but empty runs the states as a flow, so a move it does not allow is refused
+       * back one. Anything but empty runs the states as a workflow, so a move it does not allow is refused
        * on the board rather than made.
        */
-      taskFlowRule: {
+      taskWorkflowRule: {
         type: 'string',
-        predicate: 'we://task_flow_rule',
+        predicate: 'we://task_workflow_rule',
         default: '',
         options: ['', 'next', 'next-and-back'],
       },

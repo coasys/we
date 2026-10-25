@@ -11,7 +11,6 @@
 import type { CallPort } from './call';
 import type { DatasetHandle, RendererDataBindings } from './dataSource';
 import type { EphemeralPort } from './ephemeral';
-import type { FlowPort } from './flows';
 import type { IdentityPort } from './identity';
 import type { InterpretationPort } from './interpretation';
 import type { LanguageModelPort } from './languageModel';
@@ -22,6 +21,7 @@ import type { ModelAdminPort } from './modelAdmin';
 import type { AgentProfileSummary, PublishProfileFields } from './profileTypes';
 import type { RuntimeAdminPort } from './runtimeAdmin';
 import type { TranscriptionPort } from './transcription';
+import type { WorkflowPort } from './workflows';
 
 /**
  * Schema management on a dataset: installing the host's entity schemas, checking what a dataset
@@ -238,7 +238,7 @@ export interface BackendPorts {
    * Rules over a record's state, and moves made under them. Optional: a backend that cannot enforce
    * rules omits it, and a surface that would have asked for agreement falls back to writing the state.
    */
-  flows?: FlowPort;
+  workflows?: WorkflowPort;
   /**
    * Who points at a value through one predicate — every message that mentions an agent. Optional: a
    * backend that cannot answer omits it, and a surface asking falls back to what it can read.

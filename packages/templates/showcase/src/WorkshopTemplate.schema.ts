@@ -96,7 +96,6 @@ import {
   newNoteModal,
   newThingChooser,
 } from './WorkshopCards.ts';
-import { FLOWS_LOCALS, flowsPage, flowsSection } from './WorkshopFlows.ts';
 import {
   CANVAS_FILL,
   FOLD_FROM_GRAPH,
@@ -142,6 +141,7 @@ import {
   vocabularyEditLink,
   vocabularyToggle,
 } from './WorkshopVocabulary.ts';
+import { FLOWS_LOCALS, workflowsPage, workflowsSection } from './WorkshopWorkflows.ts';
 
 /**
  * The call on screen — **named in the address**, or the one being recorded when it names none.
@@ -315,7 +315,7 @@ const openLiveCall: SchemaProp = pageWithCall("''");
  * word covers equally well. `BoardsView` keeps its name: it lists board records, has a picker, and
  * has no canvas beside it. See `docs/architecture/boards.md`.
  */
-const ROUTE = { canvas: 'canvas', kanban: 'kanban', calendar: 'calendar', flows: 'flows' } as const;
+const ROUTE = { canvas: 'canvas', kanban: 'kanban', calendar: 'calendar', workflows: 'workflows' } as const;
 
 const NAV = [
   { segment: ROUTE.canvas, icon: 'graph', label: 'Canvas' },
@@ -323,9 +323,9 @@ const NAV = [
   // already used this one, so the strip and the page it led to disagreed about what was there.
   { segment: ROUTE.kanban, icon: 'kanban', label: 'Kanban' },
   { segment: ROUTE.calendar, icon: 'calendar', label: 'Calendar' },
-  // The space's flows and what is going through them — see `WorkshopFlows.ts`. Named for what it
-  // lists, unlike its neighbours: a flow has no arrangement of its own to name the page after.
-  { segment: ROUTE.flows, icon: 'flow-arrow', label: 'Flows' },
+  // The space's workflows and what is going through them — see `WorkshopWorkflows.ts`. Named for what it
+  // lists, unlike its neighbours: a workflow has no arrangement of its own to name the page after.
+  { segment: ROUTE.workflows, icon: 'flow-arrow', label: 'Workflows' },
 ];
 
 /**
@@ -2349,7 +2349,7 @@ const inspectorPanel: SchemaNode = {
     connectionsOpen: { type: 'boolean', initial: false, persist: 'inspector.connectionsSection' },
     connectsOpen: { type: 'boolean', initial: false, persist: 'inspector.connectsSection' },
     peopleOpen: { type: 'boolean', initial: false, persist: 'inspector.peopleSection' },
-    flowsOpen: { type: 'boolean', initial: false, persist: 'inspector.flowsSection' },
+    workflowsOpen: { type: 'boolean', initial: false, persist: 'inspector.workflowsSection' },
     reactionsOpen: { type: 'boolean', initial: false, persist: 'inspector.reactionsSection' },
     discussionOpen: { type: 'boolean', initial: false, persist: 'inspector.discussionSection' },
   },
@@ -2850,11 +2850,11 @@ const inspectorPanel: SchemaNode = {
                     // A vocabulary record is edited where the space's words are — see `WorkshopVocabulary`.
                     vocabularyEditLink(CARD_TYPE),
                     peopleSection,
-                    // Beside who is on it: which flows it is going through is also about this record.
-                    flowsSection({
+                    // Beside who is on it: which workflows it is going through is also about this record.
+                    workflowsSection({
                       type: CARD_TYPE,
-                      open: { field: 'flowsOpen' },
-                      flowsPath: { $: '`${spaceStore.spacePath}/flows`' },
+                      open: { field: 'workflowsOpen' },
+                      workflowsPath: { $: '`${spaceStore.spacePath}/workflows`' },
                     }),
                     // After the disclosure: that is about this record's own fields, and connections
                     // are about other records.
@@ -4566,8 +4566,8 @@ const kanbanRoute: RouteSchema = {
                             there is something to open, which is what a preview owes a reader.
                           */
                       social: true,
-                      // A chip per flow the task is going through, beside the board's own.
-                      flows: true,
+                      // A chip per workflow the task is going through, beside the board's own.
+                      workflows: true,
                       // Put away what extraction made and nobody has kept — shared with the canvas and calendar.
                       suggestions: true,
                       /*
@@ -5195,13 +5195,13 @@ const eventList: SchemaNode = {
  * cell: one subscription sifted 42 times, against 42 subscriptions for rows already in hand.
  */
 /**
- * Every flow in the space, the records going through each, and the editor. The page is in
- * `WorkshopFlows.ts`; this gives it the route's padding under the pinned chrome.
+ * Every workflow in the space, the records going through each, and the editor. The page is in
+ * `WorkshopWorkflows.ts`; this gives it the route's padding under the pinned chrome.
  */
-const flowsRoute: RouteSchema = {
-  path: '/flows',
+const workflowsRoute: RouteSchema = {
+  path: '/workflows',
   $localState: { ...FLOWS_LOCALS },
-  ...flowsPage({ ...ROUTE_BAND }),
+  ...workflowsPage({ ...ROUTE_BAND }),
 };
 
 const calendarRoute: RouteSchema = {
@@ -5869,7 +5869,7 @@ export const workshopTemplate: TemplateSchema = {
     canvasRoute,
     kanbanRoute,
     calendarRoute,
-    flowsRoute,
+    workflowsRoute,
     /*
       An address this template has no screen for goes to the canvas, rather than saying so.
 
