@@ -22,9 +22,10 @@ export const coasys: Cartridge = {
   app: coasysApp,
   shell: coasysSpace,
   sections: [],
-  theme: coasysTheme,
-  // Nico's look, to switch to in Appearance.
-  themes: [glowTheme],
+  // Nico's look leads: what a new Coasys space and the app wear until somebody chooses.
+  theme: glowTheme,
+  // Josh's, with a light and a dark side, to switch to in Appearance.
+  themes: [coasysTheme],
   brand: coasysBrand,
   bootScreen: coasysBootScreen,
   shapes: [],

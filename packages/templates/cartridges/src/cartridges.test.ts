@@ -63,17 +63,17 @@ describe('the Coasys cartridge', () => {
     expect(bundle.brand?.name).toBe('Coasys');
     expect(bundle.brand?.mark).toMatch(/^<svg/);
     expect(JSON.stringify(bundle.bootScreen)).toContain('CredentialField');
-    const [coasysTheme] = bundleThemes(bundle);
-    expect(bundle.app?.meta.themeId).toBe(coasysTheme.id);
+    const [glowTheme, coasysTheme] = bundleThemes(bundle);
+    expect(bundle.app?.meta.themeId).toBe(glowTheme.id);
     expect(Object.keys(coasysTheme.overrides)).toEqual(expect.arrayContaining(['light', 'dark']));
   });
 
-  it('offers Glow beside its own theme, carrying its font rather than fetching it', () => {
+  it('leads with Glow and offers Coasys beside it, Glow carrying its font rather than fetching it', () => {
     const bundle = cartridgeBundles().find((b) => b.id === 'coasys')!;
     const themes = bundleThemes(bundle);
-    expect(themes.map((t) => t.name)).toEqual(['Coasys', 'Coasys Glow']);
+    expect(themes.map((t) => t.name)).toEqual(['Coasys Glow', 'Coasys']);
     expect(bundle.app?.meta.themeIds).toEqual(themes.map((t) => t.id));
-    const glow = themes[1];
+    const glow = themes[0];
     const faces = (glow.overrides as { fontFaces?: { family: string; src: string }[] }).fontFaces ?? [];
     expect(faces.map((f) => f.family)).toEqual(['Bricolage Grotesque']);
     expect(faces.every((f) => f.src.startsWith('data:font/woff2;base64,'))).toBe(true);
