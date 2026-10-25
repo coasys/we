@@ -15,6 +15,19 @@ const roles = [
 ];
 
 describe('rolesView', () => {
+  it('leaves out a revoked grant, and with a moment, reads the grants held then', () => {
+    const grants = [
+      { id: 'g1', role: 'moderator', agent: ANA, createdAt: '2026-10-01T00:00:00Z', revokedAt: '2026-10-10T00:00:00Z' },
+      { id: 'g2', role: 'moderator', agent: BEN, createdAt: '2026-10-05T00:00:00Z' },
+    ];
+    expect(rolesView(roles, grants).find((r) => r.slug === 'moderator')?.holders).toEqual([BEN]);
+    const then = (iso: string) =>
+      rolesView(roles, grants, Date.parse(iso)).find((r) => r.slug === 'moderator')?.holders;
+    expect(then('2026-10-03T00:00:00Z')).toEqual([ANA]);
+    expect(then('2026-10-07T00:00:00Z')).toEqual([ANA, BEN]);
+    expect(then('2026-10-12T00:00:00Z')).toEqual([BEN]);
+  });
+
   it('lists admin first, each role with its holders once, in the order they were granted', () => {
     const view = rolesView(roles, [
       { id: 'g1', role: 'moderator', agent: BEN },

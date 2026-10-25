@@ -32,6 +32,7 @@ import { ExtractionAmendment } from './ExtractionAmendment';
 import { ExtractionPass } from './ExtractionPass';
 import { MutedAgent } from './MutedAgent';
 import { Placement } from './Placement';
+import { Policy } from './Policy';
 import { ReadMarker } from './ReadMarker';
 import { Relationship } from './Relationship';
 import { RelationshipType } from './RelationshipType';
@@ -82,6 +83,7 @@ export const CORE_DEFS: Record<string, CoreEntityDef> = {
   RelationshipType,
   Role,
   RoleGrant,
+  Policy,
   Shape,
   Signal,
   SignalType,
