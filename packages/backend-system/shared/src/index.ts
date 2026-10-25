@@ -246,6 +246,32 @@ export type {
 export type { CallPort, CallSessionOptions } from './call';
 export { NO_IDENTITY_CAPABILITIES } from './identity';
 export { SELF_PERSONS } from './persons';
+export {
+  actionOf,
+  describeRefusal,
+  evaluate,
+  isAction,
+  isPolicyRefusal,
+  needsRecord,
+  permissionsFor,
+  POLICY_EDIT,
+  POLICY_FORMAT,
+  PolicyRefusal,
+  policyWarnings,
+  readPolicy,
+  validatePolicy,
+} from './policy';
+export type {
+  ActionRequest,
+  Actor,
+  ActorFacts,
+  Condition,
+  Permission,
+  Policy,
+  PolicyCatalogue,
+  Refusal,
+  WriteKind,
+} from './policy';
 export type { ShapeInput, ShapeStore, StoredShape } from './shapes';
 export type { PersonPort } from './persons';
 export type { IdentityCapabilities, IdentityPort } from './identity';
