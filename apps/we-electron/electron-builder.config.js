@@ -21,6 +21,8 @@ const desktop = seedFile.desktopOf(seedFile.readSeed());
 // Another seed's icon is generated beside this app, not over WE's checked-in one (`@we/brand`).
 const seedIconDir = seedFile.generatedDir(__dirname);
 const seedIcon = seedIconDir && join(seedIconDir, 'icon.png');
+// One file for the package and for the running window, so the two cannot disagree.
+const appIcon = seedIcon && existsSync(seedIcon) ? seedIcon : 'build/icon.png';
 
 // Load the generated extraResources configuration
 const extraResourcesPath = join(__dirname, 'electron', 'seed-extra-resources.json');
@@ -42,7 +44,7 @@ export default {
   productName: desktop.productName,
   // The same 512x512 mark the Tauri build ships, so the two desktop apps are not
   // two different icons. electron-builder derives every other size from it.
-  icon: seedIcon && existsSync(seedIcon) ? seedIcon : 'build/icon.png',
+  icon: appIcon,
   directories: {
     output: 'dist-electron',
   },
@@ -68,7 +70,7 @@ export default {
     That needs the file on disk at runtime, so it is copied in beside the executor and the renderer
     bundle — see `windowIcon()` in electron/main.js, which reads it from `process.resourcesPath`.
   */
-  extraResources: [...extraResources, { from: 'build/icon.png', to: 'icon.png' }],
+  extraResources: [...extraResources, { from: appIcon, to: 'icon.png' }],
   /*
     Without this the artifact is `WE-0.1.0.AppImage`, naming neither platform nor architecture —
     which stops being merely untidy the moment a second target sits beside it in a release.

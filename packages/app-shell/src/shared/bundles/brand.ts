@@ -49,7 +49,14 @@ const WE: AppFace = { bundleId: '' };
 export function resolveFace(input: FaceInput): AppFace {
   if (input.safe) return WE;
   if (!input.settled && input.device) {
-    const { bundleId, brand, bootScreen } = input.device;
+    /*
+      The device says which app it last ran; the build, where it carries that bundle, says what the
+      app looks like now. The device's copy is from the last session, so taken whole it drew an old
+      mark at sign-in after the app's own had changed — Coasys's placeholder hexagon after its logo
+      arrived. Only a bundle the build does not carry falls back to it.
+    */
+    const fresh = input.sources.find((candidate) => candidate.bundleId === input.device!.bundleId);
+    const { bundleId, brand, bootScreen } = fresh ?? input.device;
     return { bundleId, ...(brand ? { brand } : {}), ...(bootScreen ? { bootScreen } : {}) };
   }
   if (!input.inUseBundle) return WE;

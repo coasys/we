@@ -114,6 +114,22 @@ const TONED_SUFFIXES = ['', 'Soft', 'Text', 'Border', 'Hover', 'Active'] as cons
 
 const kebab = (name: string): string => name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
 const roleVariable = (name: string): string => `--we-role-${kebab(name)}`;
+const heldVariable = (name: string): string => `--we-held-${kebab(name)}`;
+
+/**
+ * The theme's own accent, held where a tone cannot re-point it.
+ *
+ * Declared at every theme root as `--we-held-accent-soft: var(--we-role-accent-soft)` and so on. A
+ * custom property is computed where it is declared, so each holds that root's accent — pinned,
+ * corrected or the default — and is inherited unchanged through any `tone` below, since a tone
+ * re-points the roles and never these. `tone: 'accent'` reads them back.
+ */
+export const HELD_ACCENT_VARS: Record<string, string> = Object.fromEntries(
+  [...TONED_SUFFIXES.map((suffix) => `accent${suffix}`), 'onAccent'].map((name) => [
+    heldVariable(name),
+    `var(${roleVariable(name)})`,
+  ]),
+);
 
 /**
  * What `tone` sets on an element: the accent's roles, re-pointed at one family.
@@ -128,17 +144,19 @@ const roleVariable = (name: string): string => `--we-role-${kebab(name)}`;
  * contrast — so a toned button's label is the family's label, chosen against the family's fill, and
  * nothing is measured again.
  *
- * `accent` writes the accent's own definitions rather than references, so `tone: 'accent'` inside a
- * purple-toned element restores the real accent instead of aliasing a variable to itself.
+ * `accent` reads back the theme's own accent, held at its root (`HELD_ACCENT_VARS`), so
+ * `tone: 'accent'` inside a purple-toned element restores the accent the theme drew — its pins and
+ * corrections included — instead of aliasing a variable to itself. The vocabulary's definition is the
+ * fallback, for an element under no theme root.
  */
 export function toneVariables(tone: ChromaticFamily | 'neutral'): Record<string, string> {
   const vars: Record<string, string> = {};
+  const held = (name: string) => `var(${heldVariable(name)}, ${FAMILY_ROLES[name as FamilyRole]})`;
   for (const suffix of TONED_SUFFIXES) {
     const accentRole = `accent${suffix}`;
-    vars[roleVariable(accentRole)] =
-      tone === 'accent' ? FAMILY_ROLES[accentRole as FamilyRole] : `var(${roleVariable(`${tone}${suffix}`)})`;
+    vars[roleVariable(accentRole)] = tone === 'accent' ? held(accentRole) : `var(${roleVariable(`${tone}${suffix}`)})`;
   }
-  const label = tone === 'accent' ? FAMILY_ROLES.onAccent : `var(${roleVariable(`on${capitalise(tone)}`)})`;
+  const label = tone === 'accent' ? held('onAccent') : `var(${roleVariable(`on${capitalise(tone)}`)})`;
   vars['--we-role-on-accent'] = label;
   vars['--we-role-on-accent-muted'] = 'oklch(from var(--we-role-on-accent) l c h / 0.8)';
   // The focus ring and what reads it, restated here because each is worked out where it is declared.

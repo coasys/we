@@ -1,6 +1,7 @@
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 import { field, formModal, treeRow } from '@we/template-kit';
 
+import { countPill, liveDot } from './marks.ts';
 import { callPath, channelPath, ROW_ID, SELECTED_EXPR } from './paths.ts';
 
 /**
@@ -51,14 +52,6 @@ const addButton = (label: string, onClick: SchemaProp): SchemaNode => ({
   ],
 });
 
-const countBadge = (expr: string): SchemaNode => ({
-  type: '$if',
-  props: {
-    condition: { $: expr },
-    then: { type: 'we-text', props: { variant: 'footnote', color: 'text-faint' }, children: [{ $: expr }] },
-  },
-});
-
 const channels = group(
   'channels',
   'Channels',
@@ -102,7 +95,7 @@ const calls = group(
             type: '$if',
             props: {
               condition: { $: LIVE },
-              then: { type: 'we-badge', props: { tone: 'success', size: 'xs' }, children: ['Live'] },
+              then: { type: 'we-badge', props: { tone: 'success', size: 'xs' }, children: [liveDot, 'Live'] },
               else: {
                 type: 'we-timestamp',
                 props: {
@@ -119,7 +112,7 @@ const calls = group(
       ],
     },
   ],
-  countBadge('count(modules.call.liveCalls)'),
+  countPill('count(modules.call.liveCalls)', 'success'),
 );
 
 const FLOWS_PAGE = "spaceStore.spacePath + '/flows'";
@@ -138,7 +131,7 @@ const flows = group(
           value: { $: "'flow|' + flow.name" },
           label: { $: 'flow.label' },
           icon: 'flow-arrow',
-          badge: countBadge('flow.records'),
+          badge: countPill('flow.records'),
         }),
       ],
     },
@@ -164,7 +157,7 @@ const people = group(
       ],
     },
   ],
-  countBadge('count(spaceStore.members)'),
+  countPill('count(spaceStore.members)'),
 );
 
 /** The kinds of record this space defines — what it is about, as data. */
@@ -302,16 +295,21 @@ const purpose: SchemaNode = {
           props: {
             condition: { $: 'spaceStore.canAdministerCurrentSpace' },
             then: {
+              // d12's dashed box: not yet written, and a press away from being.
               type: 'we-button',
               props: {
                 variant: 'bare',
                 ax: 'start',
+                width: '100%',
+                p: '300',
+                r: 'surface',
+                border: '1px dashed border-strong',
                 onClick: { $action: 'shellStore.openSpaceSettings', args: ['about'] },
               },
               children: [
                 {
                   type: 'we-text',
-                  props: { variant: 'footnote', color: 'accent-text' },
+                  props: { variant: 'overline', color: 'accent-text' },
                   children: ['What is this space for?'],
                 },
               ],
@@ -359,7 +357,7 @@ const callRunning: SchemaNode = {
       type: 'Row',
       props: { gap: '200', ay: 'center', px: '300', pb: '300' },
       children: [
-        { type: 'we-icon', props: { name: 'phone-call', size: 'sm', color: 'success-text' } },
+        liveDot,
         {
           type: 'we-text',
           props: { variant: 'footnote', color: 'text-muted', flex: '1', minWidth: '0', truncate: true },
@@ -387,24 +385,29 @@ const callRunning: SchemaNode = {
   },
 };
 
-const newChannel: SchemaNode = formModal({
-  open: { $: 'local.newChannelOpen' },
-  close: { $setLocal: 'newChannelOpen', value: false },
-  title: 'New channel',
-  size: 'sm',
-  localState: { channelName: { type: 'string', initial: '' } },
-  children: [field({ name: 'channelName', label: 'Name', placeholder: 'What it is about' })],
-  disabled: { $: '!trim(local.channelName)' },
-  submitLabel: 'Make channel',
-  submit: {
-    $action: 'record.create',
-    args: [
-      'CollectionBlock',
-      { kind: 'channel', title: { $: 'trim(local.channelName)' } },
-      { parent: { id: { $: 'spaceStore.root' }, relation: 'children', entity: 'CollectionBlock' } },
-    ],
-  },
-});
+/**
+ * The new-channel dialog, opened by a boolean local the caller declares — the tree's + and the empty
+ * channel's "Make a channel" card each hold their own.
+ */
+export const newChannelDialog = (openLocal: string): SchemaNode =>
+  formModal({
+    open: { $: `local.${openLocal}` },
+    close: { $setLocal: openLocal, value: false },
+    title: 'New channel',
+    size: 'sm',
+    localState: { channelName: { type: 'string', initial: '' } },
+    children: [field({ name: 'channelName', label: 'Name', placeholder: 'What it is about' })],
+    disabled: { $: '!trim(local.channelName)' },
+    submitLabel: 'Make channel',
+    submit: {
+      $action: 'record.create',
+      args: [
+        'CollectionBlock',
+        { kind: 'channel', title: { $: 'trim(local.channelName)' } },
+        { parent: { id: { $: 'spaceStore.root' }, relation: 'children', entity: 'CollectionBlock' } },
+      ],
+    },
+  });
 
 /** The tree section, as the space template's left lane holds it. */
 export const treeSection: SchemaNode = {
@@ -442,6 +445,7 @@ export const treeSection: SchemaNode = {
       type: 'Column',
       props: { flex: '1', minHeight: '0', overflowY: 'auto', px: '200' },
       children: [
+        { type: 'we-text', props: { variant: 'overline', px: '200', pb: '100' }, children: ['Space'] },
         {
           type: 'we-tree',
           props: { label: 'This space', selected: { $: SELECTED_EXPR }, onSelect },
@@ -450,6 +454,6 @@ export const treeSection: SchemaNode = {
       ],
     },
     callButton,
-    newChannel,
+    newChannelDialog('newChannelOpen'),
   ],
 };
