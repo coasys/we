@@ -7385,6 +7385,19 @@
         "involvementTypesLoaded": {
           "type": "boolean"
         },
+        "roles": {
+          "type": "array",
+          "properties": ["id", "slug", "name", "description", "holders"]
+        },
+        "myRoles": {
+          "type": "array"
+        },
+        "memberRoles": {
+          "type": "object"
+        },
+        "rolesLoaded": {
+          "type": "boolean"
+        },
         "templateOverrideOptions": {
           "type": "array",
           "properties": ["label", "value"]
@@ -7557,6 +7570,10 @@
         "navigateToSpace",
         "openRecordRef",
         "canAdministerSpace",
+        "createRole",
+        "updateRole",
+        "grantRole",
+        "revokeRole",
         "copyShareLink",
         "copyGuestLink",
         "exportCallTranscript",
