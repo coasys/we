@@ -450,7 +450,7 @@ export function linkKey(link: LinkLike): string {
  * Compared as the SDK reads a shape (`fromLinks`) rather than link for link, because the executor
  * writes a shape's links itself from its JSON, and how it spells them is its own business; plus the
  * annotations, link for link, since those are this file's. A field, a constraint or an annotation
- * nothing here writes makes the two differ.
+ * nothing here writes makes the two differ — including one on a predicate the SDK does not read.
  */
 export function sameShape(stored: readonly LinkLike[], rebuilt: readonly LinkLike[]): boolean {
   /*
@@ -471,7 +471,11 @@ export function sameShape(stored: readonly LinkLike[], rebuilt: readonly LinkLik
   const annotations = (links: readonly LinkLike[]) => new Set(links.filter(isAnnotation).map(linkKey));
   const a = annotations(stored);
   const b = annotations(rebuilt);
-  return asRead(stored) === asRead(rebuilt) && a.size === b.size && [...a].every((key) => b.has(key));
+  // A predicate the SDK does not read is invisible to the comparison above, so a constraint it has
+  // no field for would pass it. Any node and predicate a rebuild does not write is one saving drops.
+  const written = new Set(rebuilt.map((l) => `${l.source}\u0000${l.predicate ?? ''}`));
+  const unknown = stored.some((l) => !written.has(`${l.source}\u0000${l.predicate ?? ''}`));
+  return !unknown && asRead(stored) === asRead(rebuilt) && a.size === b.size && [...a].every((key) => b.has(key));
 }
 
 /** A JSON value with every object's keys in one order, so two readings compare as text. */
