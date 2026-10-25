@@ -222,6 +222,12 @@ and never in how a backend enforces them: runs, proposals and an entry state sta
 adapter, and where backends differ they say so in `WorkflowPort.capabilities`. A workflow is edited as lanes
 that are read back out of the stored definition, never stored themselves.
 
+**Before changing who may write what, read docs/architecture/space-policy.md.** A space's policy is an
+allow-list held in the space as versioned `Policy` records, and every write is judged by it at one
+point: the write check in `@we/entities`, which every backend asks from its own write path. Never add a
+permission check in a store or a template instead — a caller that forgets is a way round every rule.
+`can()` lets a template decide what to offer; the write is judged again when it is made.
+
 ---
 
 ## Contribution Surfaces (codebase work — not for JSON schema authoring)
@@ -485,6 +491,12 @@ record.* writes directly; recordStore is the form surface over the same job — 
 the entity's own declaration, so a community's newest entity is creatable with no schema written for
 it. Reach for record.create when the template knows the fields, recordStore when a person is filling
 them in.
+
+A space's policy can refuse a write — a member deleting a post they did not write, a muted member
+posting. The refusal arrives at the handler's onError with the reason as result.message, and the person
+is told in a toast either way. To hide a control the viewer may not use, ask can():
+{ "$": "can({ policy: spaceStore.policy, action: 'CollectionBlock.delete', record: post })" }
+Actions are "Entity.create", "Entity.edit", "Entity.delete" and "Entity.relation.add" / ".remove".
 
 Expressions:
 { "$": "<expression>" }
