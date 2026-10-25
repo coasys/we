@@ -14,7 +14,7 @@ use accounts::{expand_home, AccountRegistry};
 use app_state::AppState;
 use executor_log::ExecutorLog;
 use rust_executor::utils::find_port;
-use rust_executor::Ad4mConfig;
+use rust_executor::{Ad4mConfig, Secret};
 use std::path::PathBuf;
 use tauri::Manager;
 use uuid::Uuid;
@@ -211,7 +211,8 @@ pub fn run() {
             }
 
             let config = Ad4mConfig {
-                admin_credential: Some(req_credential.clone()),
+                // A `Secret`: the executor can compare it and never print or serialise it.
+                admin_credential: Some(Secret::new(req_credential.clone())),
                 app_data_path: Some(app_data_path.to_str().unwrap().to_string()),
                 // `port` is the executor's GraphQL/REST port — the same one the electron host
                 // passes as `--port`. It was `gql_port` in an older Ad4mConfig.

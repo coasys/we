@@ -18,6 +18,7 @@ import type {
   AiModelDraft,
   AiModelKind,
   AiModelSource,
+  AiModelSourceDraft,
   AiModelStatus,
 } from '@we/backend-shared';
 
@@ -37,7 +38,17 @@ export interface AiModelForm {
   apiService: string;
   apiProtocol: AiApiProtocol;
   apiBaseUrl: string;
+  /**
+   * A key typed into the form, to send — empty when none has been. Never a key the backend holds:
+   * the backend never returns one, so an edit that leaves this empty keeps the stored key.
+   */
   apiKey: string;
+  /** The backend holds a key for this model. False for a new model. */
+  apiKeyStored: boolean;
+  /** The address the stored key was set for. A key goes only there, so moving away needs it again. */
+  apiKeyBaseUrl: string;
+  /** The stored key is to be removed on save. Typing a new key replaces it instead. */
+  apiKeyRemoved: boolean;
   apiModel: string;
   /**
    * The context ceiling as typed, in tokens — empty for none. Text rather than a number so an empty
@@ -65,6 +76,9 @@ export const EMPTY_FORM: AiModelForm = {
   apiProtocol: 'openai',
   apiBaseUrl: 'https://api.openai.com/v1',
   apiKey: '',
+  apiKeyStored: false,
+  apiKeyBaseUrl: '',
+  apiKeyRemoved: false,
   apiModel: '',
   apiMaxContext: '',
   hfRepo: '',
@@ -87,7 +101,8 @@ export function draftFrom(model: AiModel): AiModelForm {
     form.apiProtocol = source.protocol;
     form.apiBaseUrl = source.baseUrl;
     form.apiService = matchingApiPreset(form) || CUSTOM_SERVICE;
-    form.apiKey = source.apiKey;
+    form.apiKeyStored = source.hasApiKey;
+    form.apiKeyBaseUrl = source.hasApiKey ? source.baseUrl : '';
     form.apiModel = source.model;
     form.apiMaxContext = source.maxContext ? String(source.maxContext) : '';
     return form;
@@ -118,7 +133,7 @@ export function toDraft(form: AiModelForm): AiModelDraft {
   return { name: form.name.trim(), kind: form.kind, source: toSource(form) };
 }
 
-function toSource(form: AiModelForm): AiModelSource {
+function toSource(form: AiModelForm): AiModelSourceDraft {
   const tokenizer = form.useTokenizer
     ? { repo: form.tokenizerRepo, revision: form.tokenizerRevision || 'main', fileName: form.tokenizerFileName }
     : undefined;
@@ -130,7 +145,7 @@ function toSource(form: AiModelForm): AiModelSource {
         kind: 'api',
         protocol: form.apiProtocol,
         baseUrl: form.apiBaseUrl,
-        apiKey: form.apiKey,
+        ...apiKeyOf(form),
         model: form.apiModel,
         ...(maxContext ? { maxContext } : {}),
       };
@@ -146,6 +161,51 @@ function toSource(form: AiModelForm): AiModelSource {
       return { kind: 'file', fileName: form.filePath, tokenizer };
     default:
       return { kind: 'preset', name: form.presetName };
+  }
+}
+
+/**
+ * The key the save sends: the one typed, or `''` to remove the stored one, or nothing at all — which
+ * keeps whatever the backend holds, and for a new model means it has none.
+ */
+function apiKeyOf(form: AiModelForm): { apiKey?: string } {
+  const typed = form.apiKey.trim();
+  if (typed) return { apiKey: typed };
+  return form.apiKeyStored && form.apiKeyRemoved ? { apiKey: '' } : {};
+}
+
+/**
+ * The stored key is kept by a save that sends none: there is one, it is not being removed, and no
+ * new one has been typed. Discovery cannot use it — the backend never hands it back — so a model
+ * list for such a form needs the key typed again.
+ */
+export function keepsStoredKey(form: AiModelForm): boolean {
+  return form.apiKeyStored && !form.apiKeyRemoved && !form.apiKey.trim();
+}
+
+/**
+ * Why the key stands in the way of saving, or empty when it does not.
+ *
+ * A stored key goes only to the address it was set for, and the backend refuses an update that
+ * moves the address while keeping the key. Said here, in front of the Save button, rather than left
+ * for the backend's refusal: the fix is in this form, and it is to type the key again or remove it.
+ */
+export function apiKeyProblem(form: AiModelForm): string {
+  if (form.sourceKind !== 'api' || !keepsStoredKey(form)) return '';
+  if (sameEndpoint(form.apiKeyBaseUrl, form.apiBaseUrl)) return '';
+  return 'The key is sent only to the address it was set for. Type it again for the new address, or remove it.';
+}
+
+/**
+ * The backend's own test of "the same address": equal as parsed URLs, or as strings when either does
+ * not parse. Matched rather than approximated, so the form refuses exactly what the backend would —
+ * `https://host` and `https://host/` are one address, `…/v1` and `…/v1/` are two.
+ */
+function sameEndpoint(stored: string, sent: string): boolean {
+  try {
+    return new URL(stored).href === new URL(sent).href;
+  } catch {
+    return stored === sent;
   }
 }
 
@@ -183,7 +243,7 @@ export function formComplete(form: AiModelForm): boolean {
   if (!form.name.trim()) return false;
   switch (form.sourceKind) {
     case 'api':
-      return !!form.apiBaseUrl.trim() && !!form.apiModel.trim() && !maxContextProblem(form);
+      return !!form.apiBaseUrl.trim() && !!form.apiModel.trim() && !maxContextProblem(form) && !apiKeyProblem(form);
     case 'huggingface':
       return !!form.hfRepo.trim() && !!form.hfFileName.trim();
     case 'file':

@@ -3253,10 +3253,12 @@ RuntimeStore:
   - unsupportedCapabilities: { name, firstSeen }[] — capabilities this backend was asked for and does not have, `name` being the backend's own word for each (its RPC method name), so it can be searched for in that backend's source. What a node running an older build looks like from inside the app: the adapter degrades rather than failing, so the symptom is a part of the app quietly doing less, and this is the only thing connecting that to the node. EMPTY MEANS NOTHING HAS BEEN REFUSED YET, not that the backend is current — nothing is recorded until something asks — so say as much rather than rendering silence as health
   - aiModels: AiModelView[] — installed models, each carrying its display strings (kindLabel, sourceLabel, detail, statusText, ready) alongside id/name/kind/source/isDefault. Empty until loadAiModels() runs
   - aiTasks: AiTask[] — named prompts apps registered against a model (id, name, modelId, systemPrompt)
-  - aiForm: AiModelForm | null — the model form while it is open, null when closed. One flat field per input; read with runtimeStore.aiForm.<field>
+  - aiForm: AiModelForm | null — the model form while it is open, null when closed. One flat field per input; read with runtimeStore.aiForm.<field>. The backend never returns a stored key: apiKey is only a key typed to send (empty keeps the stored one), apiKeyStored says one is held, and apiKeyRemoved set true removes it on save
   - aiPresetOptions: { label, value }[] — model names the backend can fetch itself, for the open form kind
   - aiFormComplete: boolean — the open form has every field its chosen source needs
   - aiMaxContextError: string — why the open form's context limit (aiForm.apiMaxContext) cannot be saved, or empty. Bind it to that field's error: a limit that does not parse holds Save disabled, and nothing else says which field is doing it
+  - aiApiKeyError: string — why the open form's key holds Save, or empty: the base URL moved away from the address the stored key was set for and no new key was typed. Bind it to the key field's error
+  - aiDiscoverNeedsKey: boolean — the open form keeps a key the backend holds, so "List models" needs the key typed again: the backend never hands a stored key back. Disable that control on it and say why
   - aiServiceOptions: { label, value }[] — the remote services a model can be reached through (Anthropic, OpenAI, OpenRouter…) plus 'Custom endpoint', for a we-select bound to aiForm.apiService. Pass the value to setAiService. Show the protocol and base URL fields only while aiForm.apiService == 'custom'
   - canDiscoverAiModels: boolean — the backend can ask a remote endpoint which models it serves. Gate a "List models" control on it; where it is false, the model id is typed
   - aiDiscoveredModelOptions: { label, value }[] — the models the open form's endpoint said it serves, for a we-select. Empty until discoverAiModels() answers, and empty again once the protocol, URL or key changes
@@ -3285,7 +3287,7 @@ RuntimeStore:
   - editAiModel(id: string): opens the model form on an existing model
   - setAiFormField(field: string, value: string | boolean): sets one field of the open model form. Takes the field name so one action serves every input
   - setAiService(id: string): chooses the open form's service. A named one sets the protocol and base URL; 'custom' keeps what the form holds for editing
-  - discoverAiModels(): asks the open form's endpoint which models it serves, through the node — also the check that the key works. A refusal lands in error; an empty model field takes the first model
+  - discoverAiModels(): asks the open form's endpoint which models it serves, through the node — also the check that the key works. A refusal lands in error; an empty model field takes the first model. Does nothing while aiDiscoverNeedsKey
   - closeAiForm(): closes the model form, discarding it
   - saveAiModel(): saves the open form — adds or updates depending on whether it has an id
   - removeAiModel(id: string): deletes a model
