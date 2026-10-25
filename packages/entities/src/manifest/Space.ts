@@ -228,15 +228,15 @@ export const Space: CoreEntityDef = {
        * because this record is identity and settings and is copied to the discovery space, which the
        * space's contents must never be.
        *
-       * Its own relation rather than a role (`roles`), because it is structural rather than chosen:
+       * Its own relation rather than a landmark (`landmarks`), because it is structural rather than chosen:
        * queries scope through it, and no starter can remove it.
        */
       root: { target: 'CollectionBlock', cardinality: 'one', predicate: 'we://root' },
       /**
-       * The records this space names by role — its canvas, say. One `SpaceRole` per role. Read
-       * through `spaceStore.roles`; see `SpaceRole` for why it is shaped this way.
+       * The records this space names as its landmarks — its canvas, say. One `SpaceLandmark` per landmark. Read
+       * through `spaceStore.landmarks`; see `SpaceLandmark` for why it is shaped this way.
        */
-      roles: { target: 'SpaceRole', cardinality: 'many', predicate: 'we://space_role' },
+      landmarks: { target: 'SpaceLandmark', cardinality: 'many', predicate: 'we://space_landmark' },
     },
   },
 };

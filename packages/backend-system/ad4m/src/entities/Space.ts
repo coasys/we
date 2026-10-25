@@ -9,7 +9,7 @@ import { FILE_STORAGE_LANGUAGE } from '@we/entities';
 
 import { CollectionBlock } from './CollectionBlock';
 import { LocationBlock } from './LocationBlock';
-import { SpaceRole } from './SpaceRole';
+import { SpaceLandmark } from './SpaceLandmark';
 import { TaskState } from './TaskState';
 import { TypeStyle } from './TypeStyle';
 import { WeNode } from './WeNode';
@@ -250,18 +250,18 @@ export class Space extends WeNode {
    * because this record is identity and settings and is copied to the discovery space, which the
    * space's contents must never be.
    *
-   * Its own relation rather than a role (`roles`), because it is structural rather than chosen:
+   * Its own relation rather than a landmark (`landmarks`), because it is structural rather than chosen:
    * queries scope through it, and no starter can remove it.
    */
   @HasOne(() => CollectionBlock, { through: 'we://root' })
   root?: CollectionBlock;
 
   /**
-   * The records this space names by role — its canvas, say. One `SpaceRole` per role. Read
-   * through `spaceStore.roles`; see `SpaceRole` for why it is shaped this way.
+   * The records this space names as its landmarks — its canvas, say. One `SpaceLandmark` per landmark. Read
+   * through `spaceStore.landmarks`; see `SpaceLandmark` for why it is shaped this way.
    */
-  @HasMany(() => SpaceRole, { through: 'we://space_role' })
-  roles: string[] = [];
+  @HasMany(() => SpaceLandmark, { through: 'we://space_landmark' })
+  landmarks: string[] = [];
 }
 
 export interface Space extends HasManyMethods<'taskStates'> {

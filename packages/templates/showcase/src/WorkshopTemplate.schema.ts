@@ -183,7 +183,7 @@ const CALL = { $: CALL_EXPR };
  * finds it by that name. Found rather than assumed, since a space can switch template and arrive
  * here without one — an empty string then, which the canvas reads as "nothing to load".
  */
-const SPACE_CANVAS_EXPR = "spaceStore.roles.canvas ? spaceStore.roles.canvas : ''";
+const SPACE_CANVAS_EXPR = "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''";
 const SPACE_CANVAS = { $: SPACE_CANVAS_EXPR };
 
 /**
@@ -4493,7 +4493,7 @@ const kanbanRoute: RouteSchema = {
 
             This was the call's own board, behind a "start or choose a call" gate. Every call files what
             it finds into the space collection now, so the work a call commits to is the space's work,
-            and the board for it is the space's — the one playing its `board` role, gathering from the
+            and the board for it is the space's — its `board` landmark, gathering from the
             space collection. What one call produced is a lens over it rather than a board of its
             own: see `FROM_PARAM`.
 
@@ -4505,7 +4505,7 @@ const kanbanRoute: RouteSchema = {
             {
               type: '$if',
               props: {
-                condition: { $: 'spaceStore.roles.board' },
+                condition: { $: 'spaceStore.landmarks.board' },
                 then: {
                   type: 'Column',
                   props: { width: '100%', ...ROUTE_BAND },
@@ -4513,7 +4513,7 @@ const kanbanRoute: RouteSchema = {
                     taskBoard({
                       // The space's own board, which gathers from the space collection — a fact the
                       // board carries, so nothing here has to say so.
-                      boardId: { $: 'spaceStore.roles.board' },
+                      boardId: { $: 'spaceStore.landmarks.board' },
                       // The scope lens — see `SCOPE_PARAM`.
                       onlyFrom: { record: { $: SCOPE_RECORD }, param: FROM_PARAM },
                       // Its control, beside the board's own filters.

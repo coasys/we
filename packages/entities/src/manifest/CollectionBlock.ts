@@ -250,7 +250,7 @@ export const CollectionBlock: CoreEntityDef = {
        * everything or nothing. A board that knows what it gathers can be rendered by anything that
        * has its id.
        *
-       * Distinct from `CollectionBlock.board` and the space's `board` role, which say which board is
+       * Distinct from `CollectionBlock.board` and the space's `board` landmark, which say which board is
        * the container's **canonical** one. Those stay single-valued because two boards claiming
        * to be *the* one is a race that has to converge; two boards both gathering from the same
        * container is merely two boards showing the same work, which is harmless and occasionally

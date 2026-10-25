@@ -14,7 +14,7 @@ import { render } from '@solidjs/testing-library';
 import { createInMemoryBackendPorts, type InMemoryAgentOptions, type InMemoryLifecycle } from '@we/backend-inmemory';
 import { createBlocks, registerCoreBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
-import { AgentSettings, CollectionBlock, getEntity, Space, SpaceRole } from '@we/entities';
+import { AgentSettings, CollectionBlock, getEntity, Space, SpaceLandmark } from '@we/entities';
 import { type FeedFind, readFeedWindow } from '@we/module-transcribe';
 import { createEffect, createRoot, createSignal } from 'solid-js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -118,7 +118,7 @@ import { withExtractionDefaults } from '../src/shared/collectionExtraction';
 import { createModuleStoreDeps } from '../src/shared/registries/moduleHostServices';
 import { completeResponse } from '../src/shared/responses';
 import { provideSeed } from '../src/shared/seedRegistry';
-import { writeSpaceRole } from '../src/shared/spaceRoles';
+import { writeSpaceLandmark } from '../src/shared/spaceLandmarks';
 
 provideSeed({ name: 'test', modules: [] } as never);
 
@@ -851,7 +851,7 @@ describe('what the stores actually wrote', () => {
           id: 'test',
           settings: { defaultTemplateId: 'workshop' },
           records: [{ $id: 'canvas', entity: 'CollectionBlock', fields: { kind: 'canvas' }, in: '$root' }],
-          roles: { canvas: '$canvas' },
+          landmarks: { canvas: '$canvas' },
           input: true,
         },
       ],
@@ -882,8 +882,8 @@ describe('what the stores actually wrote', () => {
       const contained = (holder as unknown as { children?: { id: string; kind: string }[] })?.children ?? [];
       expect(contained.map((c) => c.kind)).toEqual(['canvas']);
 
-      const roles = await SpaceRole.findAll(ref.handle as never);
-      expect(roles.map((r) => [r.name, Array.isArray(r.node) ? r.node[0] : r.node])).toEqual([
+      const landmarks = await SpaceLandmark.findAll(ref.handle as never);
+      expect(landmarks.map((r) => [r.name, Array.isArray(r.node) ? r.node[0] : r.node])).toEqual([
         ['canvas', contained[0].id],
       ]);
     } finally {
@@ -891,25 +891,25 @@ describe('what the stores actually wrote', () => {
     }
   }, 10000);
 
-  it('hears a role written after the space was entered', async () => {
+  it('hears a landmark written after the space was entered', async () => {
     /*
-      Roles were read once, on entering. A space entered while its starter was still writing — or
+      Landmarks were read once, on entering. A space entered while its starter was still writing — or
       one whose board a peer made afterwards — showed "make a board" beside a board that existed.
     */
     const stores = mountShell();
     await ready(stores);
 
-    await stores.spaces.createSpace('Late Roles', 'x', 'personal', 'hidden');
-    const ref = (await lifecycle.list()).find((d) => d.name === 'Late Roles')!;
+    await stores.spaces.createSpace('Late Landmarks', 'x', 'personal', 'hidden');
+    const ref = (await lifecycle.list()).find((d) => d.name === 'Late Landmarks')!;
     await stores.datasets.switchDataset(ref.id);
     await vi.waitFor(() => expect(stores.spaces.root()).not.toBe(''));
-    expect(stores.spaces.roles().board).toBeUndefined();
+    expect(stores.spaces.landmarks().board).toBeUndefined();
 
     const [space] = await Space.findAll(ref.handle as never);
     const board = await CollectionBlock.create(ref.handle as never, { kind: 'board', title: 'Board' } as never);
-    await writeSpaceRole(ref.handle as never, space.id, 'board', board.id);
+    await writeSpaceLandmark(ref.handle as never, space.id, 'board', board.id);
 
-    await vi.waitFor(() => expect(stores.spaces.roles().board).toBe(board.id));
+    await vi.waitFor(() => expect(stores.spaces.landmarks().board).toBe(board.id));
   }, 10000);
 
   it('persists sidebar order as settings, not just as store state', async () => {

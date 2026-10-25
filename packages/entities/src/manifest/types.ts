@@ -316,7 +316,7 @@ export interface SpaceRecord extends WeNodeRecord {
   taskStates: string[];
   typeStyles: string[];
   root?: CollectionBlockRecord;
-  roles: string[];
+  landmarks: string[];
   setLocation(value: Pick<LocationBlockRecord, 'id'>): Promise<unknown>;
   addTaskStates(value: string | { id: string }, batch?: string): Promise<unknown>;
   removeTaskStates(value: string | { id: string }, batch?: string): Promise<unknown>;
@@ -333,7 +333,7 @@ export interface SpacePreferenceRecord extends WeNodeRecord {
   themeId: string;
 }
 
-export interface SpaceRoleRecord extends RecordInstance {
+export interface SpaceLandmarkRecord extends RecordInstance {
   name: string;
   node?: string;
 }

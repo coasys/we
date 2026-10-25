@@ -5083,10 +5083,10 @@
           "target": "CollectionBlock"
         },
         {
-          "name": "roles",
+          "name": "landmarks",
           "kind": "HasMany",
-          "predicate": "we://space_role",
-          "target": "SpaceRole"
+          "predicate": "we://space_landmark",
+          "target": "SpaceLandmark"
         }
       ]
     },
@@ -5135,14 +5135,14 @@
       "relations": []
     },
     {
-      "name": "SpaceRole",
-      "className": "SpaceRole",
+      "name": "SpaceLandmark",
+      "className": "SpaceLandmark",
       "extends": "Ad4mModel",
       "fields": [
         {
           "name": "name",
           "type": "string",
-          "predicate": "we://role_name",
+          "predicate": "we://landmark_name",
           "required": false
         }
       ],
@@ -5150,7 +5150,7 @@
         {
           "name": "node",
           "kind": "HasOne",
-          "predicate": "we://role_node"
+          "predicate": "we://landmark_node"
         }
       ]
     },
@@ -7422,7 +7422,7 @@
         "root": {
           "type": "string"
         },
-        "roles": {
+        "landmarks": {
           "type": "object"
         },
         "extractionTargets": {

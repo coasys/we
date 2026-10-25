@@ -417,7 +417,7 @@ export const storeEntries: StoreEntry[] = [
       },
       taskStatesLoaded: { type: 'boolean' },
       root: { type: 'string' },
-      roles: { type: 'object' },
+      landmarks: { type: 'object' },
       taskWorkflowEnabled: { type: 'boolean' },
       archivedWorkflows: { type: 'array' },
       taskWorkflowRule: { type: 'string' },
@@ -1200,8 +1200,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         myMentions:
           '{ id, author, createdAt }[] — messages in this space that mention this agent — posts and transcript or Feed lines alike — newest first, the fifty most recent. createdAt is the backend’s comparable timestamp. Asked from the agent’s end through the backend’s references, one lookup per space',
         root: "string — the id of this space's collection: the one CollectionBlock (kind 'space') everything top-level hangs off — calls, loose messages, posts, channels, extracted items, the canvas. Scope a top-level read through it: { anchor: 'CollectionBlock', via: 'children', anchorId: spaceStore.root }. Empty outside a space, and in a space made before spaces had one",
-        roles:
-          "Record<name, id> — the records this space names by role, e.g. spaceStore.roles.canvas is the space's canvas. Written by the space's starter at creation. A role can be absent — a space can switch template and a template must never assume what another set up — so guard every read",
+        landmarks:
+          "Record<name, id> — the records this space names as its landmarks, e.g. spaceStore.landmarks.canvas is the space's canvas. Written by the space's starter at creation. A landmark can be absent — a space can switch template and a template must never assume what another set up — so guard every read",
         autoInterpret:
           'boolean — whether a NEW collection here (a call, a channel) starts out extracted into records as it grows. A community default, copied onto each collection when it is made — a conversation already under way keeps its own answer, read with autoExtractFor. Readable by every member; writing it is space-settings',
         spaceModuleSettings:

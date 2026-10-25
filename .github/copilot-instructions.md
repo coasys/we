@@ -2779,7 +2779,7 @@ Space extends WeNode:
   - taskStates: HasMany → TaskState [we://task_state_order]
   - typeStyles: HasMany → TypeStyle [we://type_style]
   - root: HasOne → CollectionBlock [we://root]
-  - roles: HasMany → SpaceRole [we://space_role]
+  - landmarks: HasMany → SpaceLandmark [we://space_landmark]
 
 SpacePreference extends WeNode:
   Fields:
@@ -2790,11 +2790,11 @@ SpacePreference extends WeNode:
   - templateId: string [we://template_id]
   - themeId: string [we://theme_id]
 
-SpaceRole extends Ad4mModel:
+SpaceLandmark extends Ad4mModel:
   Fields:
-  - name: string [we://role_name]
+  - name: string [we://landmark_name]
   Relations:
-  - node: HasOne [we://role_node]
+  - node: HasOne [we://landmark_node]
 
 SpaceTemplatePreference extends WeNode:
   Fields:
@@ -3491,7 +3491,7 @@ SpaceStore:
   - agentModuleSettings: SettingRow[] — the same rows, for what THIS AGENT has decided everywhere. Private. Render it in global settings, where the question is what you want in every space
   - autoInterpret: boolean — whether a NEW collection here (a call, a channel) starts out extracted into records as it grows. A community default, copied onto each collection when it is made — a conversation already under way keeps its own answer, read with autoExtractFor. Readable by every member; writing it is space-settings
   - root: string — the id of this space's collection: the one CollectionBlock (kind 'space') everything top-level hangs off — calls, loose messages, posts, channels, extracted items, the canvas. Scope a top-level read through it: { anchor: 'CollectionBlock', via: 'children', anchorId: spaceStore.root }. Empty outside a space, and in a space made before spaces had one
-  - roles: Record<name, id> — the records this space names by role, e.g. spaceStore.roles.canvas is the space's canvas. Written by the space's starter at creation. A role can be absent — a space can switch template and a template must never assume what another set up — so guard every read
+  - landmarks: Record<name, id> — the records this space names as its landmarks, e.g. spaceStore.landmarks.canvas is the space's canvas. Written by the space's starter at creation. A landmark can be absent — a space can switch template and a template must never assume what another set up — so guard every read
   - extractionTargets: string[] — the models a NEW collection here starts out extracting. The middle of three layers: shapeStore.extractionCandidates says what COULD be extracted, this says which of them a new conversation begins with, and each collection then holds its own list, which its participants change (modules.transcribe.extractionFor[id].targets). A default, copied when a collection is made. Unset falls back to the two classes that were hardcoded before the setting existed, so no space silently stops extracting. Writing it is space-settings
   - taskWorkflowRule: '' | 'next' | 'next-and-back' — how a task may move between this space's states, in their order: anywhere, on to the next only, or on and back one. Anything but '' runs the states as a workflow, so a move the rule does not allow is refused on the board — say so beside a picker of states
   - taskWorkflowEnabled: boolean — this space’s task states ask for agreement: some state needs more than one approval, or names whose approval counts. Where true, a card dragged into such a state waits instead of moving, and arrangedBoard(…).workflow[card.id] describes what it is waiting on. Gate an explanation of the waiting on it; the board needs nothing else

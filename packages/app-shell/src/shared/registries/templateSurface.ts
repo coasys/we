@@ -484,7 +484,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // Where a space's things are and which record plays which part — read by any template that
     // shows the space at all, so `content` for the reason the space's vocabulary is.
     root: state('content'),
-    roles: state('content'),
+    landmarks: state('content'),
     taskWorkflowEnabled: state('content'),
     offeredTaskStates: state('content'),
     taskStatesLoaded: state('content'),

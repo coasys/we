@@ -24,7 +24,7 @@
 import { CollectionBlock, type DatasetProxy, getEntityForDataset, runEntityTransaction, Space } from '@we/entities';
 
 import { spliceSubsetOrder } from './shapes/subsetOrder';
-import { readSpaceRoles, writeSpaceRole } from './spaceRoles';
+import { readSpaceLandmarks, writeSpaceLandmark } from './spaceLandmarks';
 import type { TaskMoveOutcome } from './taskWorkflow';
 
 /** What the board actions need from the app around them. */
@@ -41,8 +41,8 @@ export interface BoardDeps {
   offeredStates: () => { name: string; slug: string }[];
   /** How a failure reaches the person who caused it. */
   notify: (message: string) => void;
-  /** The space's roles changed — a board was made the space's — so whatever holds them reads again. */
-  rolesChanged?: () => void;
+  /** The space's landmarks changed — a board was made the space's — so whatever holds them reads again. */
+  landmarksChanged?: () => void;
   /**
    * Drop a staged suggestion for one property of one record, if extraction left one there.
    *
@@ -286,10 +286,10 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
       }
 
       /*
-        The space's own board is the record playing its `board` role — a new space's starter makes
+        The space's own board is its `board` landmark — a new space's starter makes
         one; this makes it for a space whose starter did not.
       */
-      const existing = (await readSpaceRoles(p)).board;
+      const existing = (await readSpaceLandmarks(p)).board;
       if (existing) return existing;
       const space = await Space.findOne(p, { include: { root: true } });
       if (!space) return '';
@@ -305,8 +305,8 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
         gathers: root || space.id,
       });
       if (made) {
-        await writeSpaceRole(p, space.id, 'board', made);
-        deps.rolesChanged?.();
+        await writeSpaceLandmark(p, space.id, 'board', made);
+        deps.landmarksChanged?.();
       }
       return made;
     } catch (error) {
@@ -410,7 +410,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
     const p = dataset();
     if (!p || !slug) return;
     try {
-      const boardId = (await readSpaceRoles(p)).board;
+      const boardId = (await readSpaceLandmarks(p)).board;
       const board = boardId ? await CollectionBlock.findOne(p, { where: { id: boardId } }) : undefined;
       if (!board?.id) return;
       // The board's columns cannot be hydrated through `findOne` (see `ensureBoardFor`), so ask the

@@ -1787,7 +1787,7 @@ export const contextData: ContextData = {
         { name: 'taskStates', kind: 'HasMany', predicate: 'we://task_state_order', target: 'TaskState' },
         { name: 'typeStyles', kind: 'HasMany', predicate: 'we://type_style', target: 'TypeStyle' },
         { name: 'root', kind: 'HasOne', predicate: 'we://root', target: 'CollectionBlock' },
-        { name: 'roles', kind: 'HasMany', predicate: 'we://space_role', target: 'SpaceRole' },
+        { name: 'landmarks', kind: 'HasMany', predicate: 'we://space_landmark', target: 'SpaceLandmark' },
       ],
     },
     {
@@ -1805,11 +1805,11 @@ export const contextData: ContextData = {
       relations: [],
     },
     {
-      name: 'SpaceRole',
-      className: 'SpaceRole',
+      name: 'SpaceLandmark',
+      className: 'SpaceLandmark',
       extends: 'Ad4mModel',
-      fields: [{ name: 'name', type: 'string', predicate: 'we://role_name', required: false }],
-      relations: [{ name: 'node', kind: 'HasOne', predicate: 'we://role_node' }],
+      fields: [{ name: 'name', type: 'string', predicate: 'we://landmark_name', required: false }],
+      relations: [{ name: 'node', kind: 'HasOne', predicate: 'we://landmark_node' }],
     },
     {
       name: 'SpaceTemplatePreference',
@@ -3024,7 +3024,7 @@ export const contextData: ContextData = {
         agentModuleSettings: { type: 'array' },
         autoInterpret: { type: 'boolean' },
         root: { type: 'string' },
-        roles: { type: 'object' },
+        landmarks: { type: 'object' },
         extractionTargets: { type: 'array' },
         taskWorkflowRule: { type: 'string' },
         taskWorkflowEnabled: { type: 'boolean' },

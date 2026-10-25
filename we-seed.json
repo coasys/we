@@ -192,7 +192,7 @@
           "in": "$board"
         }
       ],
-      "roles": {
+      "landmarks": {
         "canvas": "$canvas",
         "board": "$board"
       },

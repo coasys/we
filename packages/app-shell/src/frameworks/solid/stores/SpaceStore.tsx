@@ -59,7 +59,7 @@ import { completeResponse } from '@shared/responses';
 import { seedDefaultEnabledModules } from '@shared/seedModules';
 import { getSeed } from '@shared/seedRegistry';
 import { type SharingPickerOption, sharingPickerOptions } from '@shared/sharingOptions';
-import { readSpaceRoles, writeSpaceRole } from '@shared/spaceRoles';
+import { readSpaceLandmarks, writeSpaceLandmark } from '@shared/spaceLandmarks';
 import {
   applyStarterRecords,
   defaultSpaceStarter,
@@ -141,8 +141,8 @@ import {
   Signal,
   SignalType,
   Space,
+  SpaceLandmark,
   SpacePreference,
-  SpaceRole,
   TaskState,
 } from '@we/entities';
 import type { ResolvedView, TemplateSchema } from '@we/schema-shared';
@@ -882,11 +882,11 @@ export interface SpaceStore {
    */
   root: Accessor<string>;
   /**
-   * The records this space names by role, as name → id: `roles.canvas` is the space's canvas. A role
+   * The records this space names by landmark, as name → id: `landmarks.canvas` is the space's canvas. A landmark
    * the space never named is simply absent, and a template must handle that, since a space can
    * switch template and a template must never assume what another set up.
    */
-  roles: Accessor<Record<string, string>>;
+  landmarks: Accessor<Record<string, string>>;
   /**
    * Whether one collection — a call, a channel, the space's own — is extracted as it grows: its own
    * answer, copied from the space's default when it was made. False until it has been read.
@@ -1750,7 +1750,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    * collection of this kind", which is how a second one would split the space's content.
    *
    * Then the starter's records, each contained by the collection unless it names another, and a
-   * `SpaceRole` per role. A starter record that fails is reported and skipped: everything above has
+   * `SpaceLandmark` per landmark. A starter record that fails is reported and skipped: everything above has
    * been written, and the person's space exists.
    */
   async function writeSpaceStructure(dataset: DatasetProxy, space: Space, starter?: SpaceStarter): Promise<void> {
@@ -1786,7 +1786,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         );
         return (made as { id: string }).id;
       },
-      role: (name, nodeId) => writeSpaceRole(dataset, space.id, name, nodeId),
+      landmark: (name, nodeId) => writeSpaceLandmark(dataset, space.id, name, nodeId),
       linkSpace: (relations) => linkSpaceRelations(Space, dataset, space.id, relations),
       /*
         A post is seeded as the blocks inside it, and its stored document is derived from those here,
@@ -1851,7 +1851,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       trace('space', 'created', { id: spaceRecord.id });
 
       /*
-        The space collection, and then the starter: the like reaction, the canvas, the roles.
+        The space collection, and then the starter: the like reaction, the canvas, the landmarks.
 
         The like used to be written here by name, on the argument that a space arriving with no
         reaction is a blank rather than a neutral start. The argument holds and now lives with the
@@ -2336,7 +2336,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     ...boardOptimism.ports,
     offeredStates: () => offeredTaskStates(),
     notify: (message) => toastService.error(message),
-    rolesChanged: () => void reloadSpaceStructure(),
+    landmarksChanged: () => void reloadSpaceStructure(),
     // Wrapped for `offeredStates`' reason: the workflow is worked out from the states, further down.
     workflow: {
       enabled: () => taskWorkflow.enabled(),
@@ -3055,39 +3055,39 @@ export function SpaceStoreProvider(props: ParentProps) {
   /*
     ── The space's structure ────────────────────────────────────────────────────────────────────
 
-    Its collection and its roles, read on entering the space. Both are written once, at the create
-    press, so there is nothing to follow live: a role somebody adds later is picked up on the next
+    Its collection and its landmarks, read on entering the space. Both are written once, at the create
+    press, so there is nothing to follow live: a landmark somebody adds later is picked up on the next
     entry. `root` is read through the relation and never by looking for "the collection of kind
     space", which is the read a second one would silently split.
 
-    Two roles of one name are not prevented — roles are written at creation, by one person — and the
-    newest wins. A role whose record has since been deleted still reads here; a template reading it
-    finds nothing at that id and treats it as absent, which is what it must do for a missing role
+    Two landmarks of one name are not prevented — landmarks are written at creation, by one person — and the
+    newest wins. A landmark whose record has since been deleted still reads here; a template reading it
+    finds nothing at that id and treats it as absent, which is what it must do for a missing landmark
     anyway.
   */
   const [spaceRoot, setSpaceRoot] = createSignal('');
-  const [spaceRoles, setSpaceRoles] = createSignal<Record<string, string>>({});
-  /** Read the space collection and the roles again — after an action made a record the space's. */
+  const [spaceLandmarks, setSpaceLandmarks] = createSignal<Record<string, string>>({});
+  /** Read the space collection and the landmarks again — after an action made a record the space's. */
   async function reloadSpaceStructure(): Promise<void> {
     const dataset = datasetStore.currentDataset()?.handle;
     const uuid = datasetStore.currentDataset()?.id;
     if (!dataset || !datasetStore.isWeSpace()) return;
     try {
       const space = await Space.findOne(dataset, { include: { root: true } });
-      const roles = await readSpaceRoles(dataset);
+      const landmarks = await readSpaceLandmarks(dataset);
       if (datasetStore.currentDataset()?.id !== uuid) return; // navigated away while loading
-      // Roles first: `root` is what says the read has answered, so a template asking "is there a
+      // Landmarks first: `root` is what says the read has answered, so a template asking "is there a
       // board?" never hears "no" in the frame between the two.
-      setSpaceRoles(roles);
+      setSpaceLandmarks(landmarks);
       setSpaceRoot(space?.root?.id ?? '');
     } catch (error) {
-      console.warn('SpaceStore: could not read the space’s collection and roles', error);
+      console.warn('SpaceStore: could not read the space’s collection and landmarks', error);
     }
   }
   /*
-    Read on entering the space, then follow its roles.
+    Read on entering the space, then follow its landmarks.
 
-    Read once, a role written after entering never arrived: a space entered while its starter was
+    Read once, a landmark written after entering never arrived: a space entered while its starter was
     still writing showed "make a board" beside the board the starter had just made, and a board a
     peer made reached nobody until they switched space. Task states are followed for the same reason.
   */
@@ -3101,15 +3101,15 @@ export function SpaceStoreProvider(props: ParentProps) {
       watch?.dispose();
     });
     setSpaceRoot('');
-    setSpaceRoles({});
+    setSpaceLandmarks({});
     void untrack(reloadSpaceStructure).then(() => {
       if (stopped || !dataset || !weSpace) return;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      watch = (SpaceRole as any).query(dataset, {}) as typeof watch;
+      watch = (SpaceLandmark as any).query(dataset, {}) as typeof watch;
       watch
         ?.subscribe(() => void (!stopped && reloadSpaceStructure()))
         .catch((error: unknown) => {
-          console.warn('SpaceStore: could not watch the space’s roles', error);
+          console.warn('SpaceStore: could not watch the space’s landmarks', error);
         });
     });
   });
@@ -3615,7 +3615,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   */
   onCleanup(
     recordStore.provideContentHomes({
-      forCanvas: (canvas) => (canvas === spaceRoles().canvas && spaceRoot() ? spaceRoot() : canvas),
+      forCanvas: (canvas) => (canvas === spaceLandmarks().canvas && spaceRoot() ? spaceRoot() : canvas),
       root: () => spaceRoot(),
     }),
   );
@@ -5840,7 +5840,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     setModuleEnabled,
     autoInterpret,
     root: spaceRoot,
-    roles: spaceRoles,
+    landmarks: spaceLandmarks,
     autoExtractFor,
     setAutoExtractFor,
     canSetExtractionFor,
