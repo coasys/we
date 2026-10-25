@@ -142,6 +142,22 @@
           }
         },
         {
+          "entity": "Role",
+          "fields": {
+            "name": "Moderator",
+            "slug": "moderator",
+            "description": "Looks after what members post, and removes what does not belong here."
+          }
+        },
+        {
+          "entity": "Role",
+          "fields": {
+            "name": "Muted",
+            "slug": "muted",
+            "description": "Can read the space but not post in it, until a moderator or admin lifts it."
+          }
+        },
+        {
           "$id": "canvas",
           "entity": "CollectionBlock",
           "fields": {
