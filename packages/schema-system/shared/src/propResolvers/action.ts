@@ -59,10 +59,23 @@ function processArgValue(arg: unknown, callArgs: unknown[]): unknown {
   return arg;
 }
 
-// Resolves $action props: { $action: 'routeStore.navigate', args: ['/home'] }
-// An argument may be an expression about the callback: args: [{ $: 'arg.id' }]
-// Supports lifecycle callbacks: onSuccess, onError, onFinally — fired after async actions resolve.
-// Within lifecycle arrays, `result` is the action's return value (onSuccess) or error (onError).
+/**
+ * Resolves `$action` props: `{ $action: 'routeStore.navigate', args: ['/home'] }`.
+ *
+ * The method is called with exactly the `args` written, and with none when there are none. An
+ * argument may be an expression about the callback — `args: [{ $: 'event.detail' }]` — which is how a
+ * handler passes on what its element emitted.
+ *
+ * It used to be otherwise: an `$action` with no `args` was handed whatever the element emitted, and
+ * `args: []` was read as "none given" and forwarded too. So every action's signature was coupled,
+ * invisibly, to the event shape of every element that might call it, and a button wired the obvious
+ * way handed its click to any method with an optional first parameter. A call started with a mouse
+ * event as its parent record; settings opened on a mouse event instead of a tab. Nothing is passed
+ * that is not written, which is the expression language's own rule applied to handlers.
+ *
+ * Supports lifecycle callbacks: onSuccess, onError, onFinally — fired after async actions resolve.
+ * Within lifecycle arrays, `result` is the action's return value (onSuccess) or error (onError).
+ */
 export function resolveActionProp(
   value: unknown,
   context: Props,
@@ -153,14 +166,12 @@ export function resolveActionProp(
         }
       }
 
-      // Hand deferred expressions the callback argument they were waiting for.
+      // Hand deferred expressions the callback argument they were waiting for. Only what was written:
+      // the callback's own arguments reach the method through an expression or not at all.
       const finalArgs = processArgTokens(resolvedArgs, callArgs);
 
-      // Use finalArgs if any were defined in schema, otherwise use callArgs
-      const argsToUse = resolvedArgs.length > 0 ? finalArgs : callArgs;
-
       // Unwrap reactive accessors at all depths so store methods receive plain values
-      const unwrappedArgs = argsToUse.map(deepUnwrap);
+      const unwrappedArgs = finalArgs.map(deepUnwrap);
       const result = method.apply(store, unwrappedArgs);
 
       /*

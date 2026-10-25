@@ -6191,7 +6191,8 @@
         "clearError"
       ],
       "ambient": ["refresh", "requestRemoval", "cancelRemoval", "clearError"],
-      "destructive": ["removeAccount", "confirmRemoval"]
+      "destructive": ["removeAccount", "confirmRemoval"],
+      "needsArgs": ["switchAccount", "removeAccount", "requestRemoval"]
     },
     {
       "name": "appStore",
@@ -6209,7 +6210,8 @@
         }
       },
       "actions": ["activateApp", "deactivateApp"],
-      "ambient": ["activateApp", "deactivateApp"]
+      "ambient": ["activateApp", "deactivateApp"],
+      "needsArgs": ["activateApp"]
     },
     {
       "name": "bundleStore",
@@ -6241,7 +6243,8 @@
         "removeBundle"
       ],
       "ambient": ["cancelInstall", "toggleSpace", "openSetUp", "closeSetUp"],
-      "destructive": ["removeBundle"]
+      "destructive": ["removeBundle"],
+      "needsArgs": ["installFromFile", "toggleSpace", "openSetUp", "removeBundle"]
     },
     {
       "name": "clockStore",
@@ -6251,7 +6254,8 @@
         }
       },
       "actions": ["play", "pause", "toggle", "seek", "seekProgress", "setSpeed", "setLoop", "configure"],
-      "ambient": ["play", "pause", "toggle", "seek", "seekProgress", "setSpeed", "setLoop", "configure"]
+      "ambient": ["play", "pause", "toggle", "seek", "seekProgress", "setSpeed", "setLoop", "configure"],
+      "needsArgs": ["play", "pause", "toggle", "seek", "seekProgress", "setSpeed", "setLoop", "configure"]
     },
     {
       "name": "datasetStore",
@@ -6323,7 +6327,8 @@
       },
       "actions": ["switchDataset", "reorderDatasets", "removeDataset", "cleanupSpaceSdna"],
       "ambient": ["switchDataset"],
-      "destructive": ["removeDataset"]
+      "destructive": ["removeDataset"],
+      "needsArgs": ["switchDataset", "reorderDatasets", "removeDataset"]
     },
     {
       "name": "editorStore",
@@ -6478,7 +6483,8 @@
         "closeThemePanel",
         "toggleVisualPanel"
       ],
-      "destructive": ["deleteSession", "clearHistory"]
+      "destructive": ["deleteSession", "clearHistory"],
+      "needsArgs": ["switchSession", "deleteSession", "setContentMode", "confirmPicker", "sendMessage"]
     },
     {
       "name": "interpretationStore",
@@ -6530,7 +6536,8 @@
           "type": "object"
         }
       },
-      "actions": ["setFocusDepth", "setAvailability", "setActivity", "clearActivity"]
+      "actions": ["setFocusDepth", "setAvailability", "setActivity", "clearActivity"],
+      "needsArgs": ["setFocusDepth", "setAvailability", "setActivity", "clearActivity"]
     },
     {
       "name": "profileStore",
@@ -6564,7 +6571,17 @@
         "clearProfileImage",
         "updateOwnLocation"
       ],
-      "ambient": ["fetchProfile"]
+      "ambient": ["fetchProfile"],
+      "needsArgs": [
+        "setPendingAvatar",
+        "saveNameFromPrompt",
+        "completeAccountSetup",
+        "fetchProfile",
+        "updateOwnProfile",
+        "updateProfileImage",
+        "clearProfileImage",
+        "updateOwnLocation"
+      ]
     },
     {
       "name": "recordStore",
@@ -6668,7 +6685,44 @@
         "previewCardStyle",
         "createOnCanvas"
       ],
-      "destructive": ["deleteRecords"]
+      "destructive": ["deleteRecords"],
+      "needsArgs": [
+        "connectNodes",
+        "connectNodesNow",
+        "setRecordEntity",
+        "setRecordField",
+        "setRecordPlace",
+        "openRelationForm",
+        "setRelationField",
+        "pickRelation",
+        "removeRelationEntry",
+        "setRelationLocation",
+        "setRelationEntryField",
+        "addRelationImage",
+        "setRelationshipKind",
+        "placeOnCanvas",
+        "dragOnCanvas",
+        "dropOnCanvas",
+        "bringIn",
+        "updateRecordField",
+        "rekeyConnection",
+        "removeFromCanvas",
+        "deleteRecords",
+        "undoCanvas",
+        "redoCanvas",
+        "resizeOnCanvas",
+        "anchorOnCanvas",
+        "rerouteOnCanvas",
+        "retargetOnCanvas",
+        "arrangeOnTree",
+        "setCardStyle",
+        "previewCardStyle",
+        "setTypeColor",
+        "setSpaceTypeColor",
+        "setSpaceTypePresentation",
+        "createOnCanvas",
+        "createCardOnCanvas"
+      ]
     },
     {
       "name": "routeStore",
@@ -6687,7 +6741,8 @@
         }
       },
       "actions": ["navigate", "setParam", "back"],
-      "ambient": ["navigate", "setParam", "back"]
+      "ambient": ["navigate", "setParam", "back"],
+      "needsArgs": ["navigate", "setParam"]
     },
     {
       "name": "runtimeStore",
@@ -6921,6 +6976,25 @@
         "importDatabase",
         "restartExecutor",
         "approveConsent"
+      ],
+      "needsArgs": [
+        "editAiModel",
+        "setAiFormField",
+        "setAiService",
+        "removeAiModel",
+        "setDefaultAiModel",
+        "removeAiTask",
+        "installLanguage",
+        "removeLanguage",
+        "trustAgent",
+        "untrustAgent",
+        "revokeApp",
+        "removeApp",
+        "addPeerInfos",
+        "setMcpEnabled",
+        "setLogLevel",
+        "removeLogLevel",
+        "setMcpPort"
       ]
     },
     {
@@ -7013,7 +7087,8 @@
         "logout",
         "retryBoot"
       ],
-      "ambient": ["touchCredential", "clearPasswordError"]
+      "ambient": ["touchCredential", "clearPasswordError"],
+      "needsArgs": ["setDevTools"]
     },
     {
       "name": "shapeStore",
@@ -7154,7 +7229,22 @@
         "closeHintEditor",
         "setHintDraft"
       ],
-      "destructive": ["deleteShape"]
+      "destructive": ["deleteShape"],
+      "needsArgs": [
+        "setShapeField",
+        "setIdentityMember",
+        "setNameMember",
+        "setExtractable",
+        "removeMember",
+        "setMemberField",
+        "reorderMembers",
+        "toggleMemberExpanded",
+        "replaceDraft",
+        "generateShapeDraft",
+        "deleteShape",
+        "openHintEditor",
+        "setHintDraft"
+      ]
     },
     {
       "name": "shellStore",
@@ -7316,6 +7406,45 @@
         "closeModulePanel",
         "toggleModulePanel",
         "togglePanelsHidden"
+      ],
+      "needsArgs": [
+        "openShellView",
+        "setCreateSpaceOpen",
+        "setJoinSpaceOpen",
+        "chooseScreenSource",
+        "scrollToId",
+        "beginDockResize",
+        "resizeDock",
+        "resizeColumn",
+        "fitDock",
+        "beginDockMove",
+        "raiseDock",
+        "moveDock",
+        "beginTabDrag",
+        "moveTab",
+        "endTabDrag",
+        "endDockMove",
+        "resetDockToLayout",
+        "closeTemplatePanel",
+        "openTemplatePanel",
+        "toggleLane",
+        "setLaneCollapsed",
+        "saveLayout",
+        "applyLayout",
+        "deleteLayout",
+        "snapDock",
+        "insertDock",
+        "toggleMaximiseDock",
+        "toggleDockDisplace",
+        "toggleCollapseDock",
+        "toggleStowLane",
+        "revealDock",
+        "openModulePanel",
+        "closeModulePanel",
+        "toggleModulePanel",
+        "breakOut",
+        "returnHome",
+        "insertHome"
       ]
     },
     {
@@ -7625,7 +7754,86 @@
         "removeSpaceFromGlobal"
       ],
       "ambient": ["autoExtractFor", "canSetExtractionFor", "navigateToSpace", "openRecordRef", "canAdministerSpace"],
-      "destructive": ["removeSpace", "deleteCollection", "removeSpaceFromGlobal"]
+      "destructive": ["removeSpace", "deleteCollection", "removeSpaceFromGlobal"],
+      "needsArgs": [
+        "createSpace",
+        "shareSpace",
+        "joinSpace",
+        "initializeAsWeSpace",
+        "removeSpace",
+        "createPost",
+        "updatePost",
+        "moveChild",
+        "createBoard",
+        "addBoardColumn",
+        "removeBoardColumn",
+        "renameBoardColumn",
+        "reorderBoardColumns",
+        "arrangeColumn",
+        "moveCardToColumn",
+        "addTaskToColumn",
+        "setAttending",
+        "setAgentMuted",
+        "markRead",
+        "uploadFile",
+        "deleteCollection",
+        "updateSpaceImage",
+        "updateSpaceMeta",
+        "setSpaceDefaultTemplate",
+        "setSpaceDefaultTheme",
+        "setModuleEnabled",
+        "setSpaceModuleSetting",
+        "setMyModuleSetting",
+        "setAgentModuleSetting",
+        "autoExtractFor",
+        "setAutoExtractFor",
+        "canSetExtractionFor",
+        "setAutoInterpret",
+        "setThreadMode",
+        "setExtractionTarget",
+        "setModuleInstalled",
+        "setModuleVisible",
+        "setViewEnabled",
+        "reorderViews",
+        "setViewVisible",
+        "setSpaceTemplateOverride",
+        "setSpaceThemeOverride",
+        "applyTheme",
+        "launchModule",
+        "createSignalType",
+        "createRelationshipType",
+        "setSignalTypeRetired",
+        "createTaskState",
+        "updateTaskState",
+        "setTaskWorkflowRule",
+        "addTaskStateEvidence",
+        "removeTaskStateEvidence",
+        "approveTaskMove",
+        "withdrawTaskMove",
+        "setWorkflowArchived",
+        "setTaskStateRetired",
+        "reorderTaskStates",
+        "setInvolvement",
+        "respondTo",
+        "createInvolvementType",
+        "updateInvolvementType",
+        "setInvolvementTypeRetired",
+        "upsertSignal",
+        "withdrawSignal",
+        "navigateToSpace",
+        "openRecordRef",
+        "canAdministerSpace",
+        "createRole",
+        "updateRole",
+        "grantRole",
+        "revokeRole",
+        "setPolicyPreset",
+        "copyShareLink",
+        "copyGuestLink",
+        "exportCallTranscript",
+        "exportExtractionLog",
+        "removeSpaceFromGlobal"
+      ]
     },
     {
       "name": "templateStore",
@@ -7724,7 +7932,26 @@
         "leaveSafeModeInto"
       ],
       "ambient": ["cancelInstall", "refreshSpaceTemplates"],
-      "destructive": ["removeTemplate", "deleteTemplate", "deleteRefusedTemplate", "deleteMarketplaceTemplate"]
+      "destructive": ["removeTemplate", "deleteTemplate", "deleteRefusedTemplate", "deleteMarketplaceTemplate"],
+      "needsArgs": [
+        "switchTemplate",
+        "deleteTemplate",
+        "deleteRefusedTemplate",
+        "installTemplate",
+        "uninstallTemplate",
+        "installFromMarketplace",
+        "installToSpace",
+        "toggleInstalled",
+        "setDefaultTemplate",
+        "setAppTemplate",
+        "saveTemplate",
+        "saveTemplateAs",
+        "publishToSpace",
+        "deleteMarketplaceTemplate",
+        "publishToMarketplace",
+        "setFollowTemplateUpdates",
+        "leaveSafeModeInto"
+      ]
     },
     {
       "name": "themeStore",
@@ -7842,7 +8069,32 @@
         "refreshSpaceThemes"
       ],
       "ambient": ["focusRole", "previewThemeScope", "refreshSpaceThemes"],
-      "destructive": ["deleteTheme", "uninstallTheme", "deleteMarketplaceTheme"]
+      "destructive": ["deleteTheme", "uninstallTheme", "deleteMarketplaceTheme"],
+      "needsArgs": [
+        "setCurrentTheme",
+        "setDefaultTheme",
+        "focusRole",
+        "setSystemTheme",
+        "setThemeMode",
+        "setDisplayPreference",
+        "setThemeInstalled",
+        "previewThemeScope",
+        "setThemeScopeGlobal",
+        "setUseTemplateTheme",
+        "changeBasePreset",
+        "updateEditingOverrides",
+        "updateEditingCss",
+        "updateEditingMeta",
+        "createAndStartEditing",
+        "saveEditingThemeAs",
+        "deleteTheme",
+        "installFromMarketplace",
+        "installToSpace",
+        "uninstallTheme",
+        "deleteMarketplaceTheme",
+        "publishToMarketplace",
+        "publishToSpace"
+      ]
     },
     {
       "name": "workflowStore",
@@ -7934,18 +8186,46 @@
         "addEvidence",
         "removeEvidence"
       ],
-      "destructive": ["deleteWorkflow"]
+      "destructive": ["deleteWorkflow"],
+      "needsArgs": [
+        "openWorkflow",
+        "loadHistory",
+        "startWorkflow",
+        "moveRecord",
+        "withdrawRecord",
+        "newWorkflow",
+        "deleteWorkflow",
+        "setDraftLabel",
+        "setDraftHint",
+        "setDraftEntities",
+        "addStep",
+        "removeStep",
+        "moveStep",
+        "renameStep",
+        "setStepHint",
+        "updateStep",
+        "addBranch",
+        "setBranchEnd",
+        "setRule",
+        "addException",
+        "removeException",
+        "setApprovals",
+        "addEvidence",
+        "removeEvidence"
+      ]
     },
     {
       "name": "record",
       "state": {},
       "actions": ["create", "update", "delete"],
-      "destructive": ["delete"]
+      "destructive": ["delete"],
+      "needsArgs": ["create", "update", "delete"]
     },
     {
       "name": "clipboard",
       "state": {},
-      "actions": ["copy"]
+      "actions": ["copy"],
+      "needsArgs": ["copy"]
     }
   ],
   "shellComponents": [

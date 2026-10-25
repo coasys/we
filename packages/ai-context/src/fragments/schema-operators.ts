@@ -140,12 +140,12 @@ Reads a value from a named store, supporting nested paths — reactive, so the p
 Action/event:
 { "$action": "storeName.method", "args": [...] }
 Calls a method on a store, optionally with arguments (which can themselves be tokens).
-IMPORTANT — omitting "args" does NOT call the method with no arguments: the handler's own arguments are
-forwarded, so a click handler passes the DOM event as the first parameter. That is deliberate (it is how
-{ "onChange": { "$action": "store.method" } } passes a value straight through), but it means a method whose
-first parameter is OPTIONAL receives a PointerEvent from a button written the obvious way. Pass the argument
-you mean explicitly when the method has an optional leading parameter — note "args": [] does not help, since
-an empty list is treated as "no args given" and forwards the event too.
+The method is called with exactly the "args" written, and with none when there are none — what the element
+emitted is never passed on by itself. To pass it, say so: { "$": "event" } is the whole value the handler
+received, and { "$": "event.detail" } (or any path into it) a part of it:
+{ "onChange": { "$action": "spaceStore.setViewEnabled", "args": ["cards", { "$": "event.detail" }] } }
+{ "onArrange": { "$action": "modules.call.setArrangement", "args": [{ "$": "arg" }] } }
+The validator warns about an action that needs arguments called with none.
 Supports async lifecycle callbacks — fired after the store method's Promise resolves/rejects:
   onSuccess: [...actions]  — fired on resolve; { "$": "result" } (and result.<path>) in args refers to the resolved value
   onError: [...actions]    — fired on reject; { "$": "result.message" } etc. refers to the error object

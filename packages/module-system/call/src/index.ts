@@ -953,9 +953,9 @@ const stage: SchemaNode = {
             rows: { $: 'modules.call.stageRows' },
             // What the stage settled on, back to the store — see `setArrangement`. The host needs it to
             // answer "fit to content".
-            onArrange: { $action: 'modules.call.setArrangement' },
+            onArrange: { $action: 'modules.call.setArrangement', args: [{ $: 'arg' }] },
             // The box itself, for the one decision the grid cannot make: which edge the strip runs along.
-            onMeasure: { $action: 'modules.call.setStageBox' },
+            onMeasure: { $action: 'modules.call.setStageBox', args: [{ $: 'arg' }] },
           },
           // Placed rather than pasted, so a template that arranges the stage keeps the tile the
           // module's. The row binds `tile`, which is the name the part declares it needs.

@@ -411,6 +411,27 @@ describe('unknown store member', () => {
   });
 });
 
+describe('an action called with nothing', () => {
+  const needs = () =>
+    ctx({
+      storeEntries: [{ name: 'routeStore', state: {}, actions: ['navigate', 'back'], needsArgs: ['navigate'] }],
+    });
+  const warned = (token: Record<string, unknown>) =>
+    validateSemantic({ type: 'we-button', props: { onClick: token } }, needs()).errors.some(
+      (e) => e.severity === 'warning' && e.message.includes('takes arguments'),
+    );
+
+  it('warns when an action that needs arguments is given none, or an empty list', () => {
+    expect(warned({ $action: 'routeStore.navigate' })).toBe(true);
+    expect(warned({ $action: 'routeStore.navigate', args: [] })).toBe(true);
+  });
+
+  it('says nothing when the arguments are written, or the action needs none', () => {
+    expect(warned({ $action: 'routeStore.navigate', args: ['/home'] })).toBe(false);
+    expect(warned({ $action: 'routeStore.back' })).toBe(false);
+  });
+});
+
 describe('unknown action', () => {
   it('errors for $action with unknown store', () => {
     const result = validateSemantic({ type: 'we-button', props: { onClick: { $action: 'userStore.save' } } }, ctx());

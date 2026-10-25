@@ -199,11 +199,7 @@ describe('the compact bar', () => {
     // By id rather than "the first entry that does something": the menu holds more than one of
     // those now, and a positional find would silently start asserting about whichever was added last.
     const start = entries().find((entry) => entry.id === 'start-another');
-    /*
-      `args` explicitly, and the empty string is the point: a handler with none forwards the click,
-      and `startCall` takes an optional anchor id — so it would be handed a PointerEvent and the
-      write refused. `''` is how the store spells "about the space rather than about a node in it".
-    */
+    // `''` is how the store spells "about the space rather than about a node in it".
     expect(start?.onAction).toEqual({ $action: 'modules.call.startCall', args: [''] });
     // Never folded: it is the one entry the row does not show somewhere else.
     expect(start?.hidden).toBeUndefined();

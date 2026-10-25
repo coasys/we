@@ -37,6 +37,24 @@ describe('$action path resolution', () => {
     expect(deep).toHaveBeenCalled();
   });
 
+  it('calls a method with no args with nothing, whatever the element emitted', () => {
+    // An `$action` with no `args` used to be handed the callback's own arguments, so a button wired
+    // the obvious way passed its click to any method with an optional first parameter.
+    const startCall = vi.fn();
+    const handler = resolve({ $action: 'modules.call.startCall' }, { modules: { call: { startCall } } });
+
+    (handler as (e: unknown) => void)(new Event('click'));
+    expect(startCall).toHaveBeenCalledWith();
+  });
+
+  it('calls a method with an empty args list with nothing too', () => {
+    const open = vi.fn();
+    const handler = resolve({ $action: 'shellStore.open', args: [] }, { shellStore: { open } });
+
+    (handler as (e: unknown) => void)({ detail: 'ignored' });
+    expect(open).toHaveBeenCalledWith();
+  });
+
   it('passes resolved args through', () => {
     const add = vi.fn();
     const handler = resolve(

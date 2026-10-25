@@ -64,6 +64,12 @@ export type ValidationContext = {
    */
   gatedActions?: Set<string>;
   /**
+   * Action paths whose first parameter is required, from their documented signatures. Called with no
+   * `args` they are called with nothing, which is wrong whatever event the handler sits on. Only what
+   * the context knows: an action with no signature written is never warned about.
+   */
+  argsNeeded?: Set<string>;
+  /**
    * Action paths the host confirms itself before a space template's call runs — see
    * {@link checkSelfConfirmed}. Absent when judging host chrome, which renders against a bag with no
    * such confirmation and so asks its own questions: {@link asHostChrome}.
@@ -412,6 +418,11 @@ export function buildValidationContext(data: ContextData): ValidationContext {
     }
   }
 
+  // What cannot be called with nothing — see `StoreEntry.needsArgs`.
+  const argsNeeded = new Set<string>();
+  for (const store of data.storeEntries)
+    for (const action of store.needsArgs ?? []) argsNeeded.add(`${store.name}.${action}`);
+
   // What the host asks about itself, in front of a space template's call.
   const hostConfirmed = new Set<string>();
   for (const store of data.storeEntries)
@@ -430,6 +441,7 @@ export function buildValidationContext(data: ContextData): ValidationContext {
 
   return {
     gatedActions,
+    argsNeeded,
     hostConfirmed,
     pluginPlacements,
     componentNames,
@@ -1702,6 +1714,20 @@ function checkTokenValue(
   if ('$action' in obj && typeof obj.$action === 'string') {
     checkActionRef(obj.$action, `${path}.$action`, ctx, errors);
     if (Array.isArray(obj.args)) checkActionArgs(obj.args, `${path}.args`, errors);
+    /*
+      A call with nothing, to a method that needs something. The method is passed only the `args`
+      written — never what the element emitted — so this is wrong on any event: a click no longer
+      arrives as the id, and nothing else does either.
+    */
+    if (!(Array.isArray(obj.args) && obj.args.length) && ctx.argsNeeded?.has(obj.$action)) {
+      errors.push({
+        path: `${path}.$action`,
+        message:
+          `${obj.$action} takes arguments, and an $action with no "args" calls it with none. Write what it ` +
+          'needs — what the element emitted is { "$": "event" }, or a field of it such as { "$": "event.detail" }',
+        severity: 'warning',
+      });
+    }
   }
 
   // $query token — the entity is checked against the manifest's known models.
