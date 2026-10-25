@@ -307,6 +307,25 @@ const RELATIVE =
 const RELATIVE_CLAMPED =
   /^oklch\(from\s+var\((--we-role-[a-z0-9-]+)\)\s+clamp\(([\d.]+),\s*calc\(l\s*([+-])\s*([\d.]+)\),\s*([\d.]+)\)\s+c\s+h\)$/;
 
+/** `color-mix(in oklab, var(--we-role-a) 16%, var(--we-role-b))`: `a` at that share, the rest `b`. */
+const MIX = /^color-mix\(in oklab,\s*var\((--we-role-[a-z0-9-]+)\)\s+([\d.]+)%,\s*var\((--we-role-[a-z0-9-]+)\)\)$/;
+
+/** Mix two colours as `color-mix(in oklab, …)` does: straight lines in L, a and b. */
+function mixOklab(a: Rgba, b: Rgba, share: number): Rgba {
+  const lab = (c: Rgba) => {
+    const { l, c: chroma, h } = rgbToOklch(c);
+    const rad = (h * Math.PI) / 180;
+    return [l, chroma * Math.cos(rad), chroma * Math.sin(rad)];
+  };
+  const [l1, a1, b1] = lab(a);
+  const [l2, a2, b2] = lab(b);
+  const l = l1 * share + l2 * (1 - share);
+  const x = a1 * share + a2 * (1 - share);
+  const y = b1 * share + b2 * (1 - share);
+  const h = ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+  return { ...oklchToRgb(l, Math.hypot(x, y), h), a: 1 };
+}
+
 /** `--we-role-surface-sunken` → `surfaceSunken`, the one spelling change between CSS and the tokens. */
 const roleOf = (cssVar: string): ThemeRole =>
   cssVar.replace(/^--we-role-/, '').replace(/-([a-z])/g, (_, c: string) => c.toUpperCase()) as ThemeRole;
@@ -378,6 +397,17 @@ function themeColors(theme: ThemeOverrides): Map<ThemeRole, Rgba> {
       // order when the bounds cross, and a theme whose page sits below `lo` is exactly that case.
       const bounded = Math.max(parseFloat(lo), Math.min(stepped, parseFloat(hi)));
       return { ...oklchToRgb(Math.min(1, Math.max(0, bounded)), c, h), a: from.a };
+    }
+
+    // One role mixed into another — a tint drawn as a fill over the surface (Coasys Glow's).
+    const mixed = MIX.exec(value.trim());
+    if (mixed) {
+      const [, a, share, b] = mixed;
+      if (seen.has(name)) return null;
+      const next = new Set([...seen, name]);
+      const from = resolveDeclared(roleOf(a), next);
+      const into = resolveDeclared(roleOf(b), next);
+      return from && into ? mixOklab(from, into, parseFloat(share) / 100) : null;
     }
 
     const relative = RELATIVE.exec(value.trim());

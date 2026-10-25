@@ -87,6 +87,12 @@ lightness and takes only its hue and chroma budget from the theme. `familyRoles.
 everything in it — buttons, focus rings, selected rows, `shadow: 'glow'` — follow without being told.
 `variant` is never colour: it says how a component is drawn.
 
+`tone: 'accent'` restores the theme's own accent, pins and corrections included, even inside another
+tone. Every theme root declares `--we-held-accent-*: var(--we-role-accent-*)`
+(`HELD_ACCENT_VARS`); a custom property is computed where it is declared, so those hold that root's
+accent, and no tone ever re-points them. Writing the vocabulary's default definitions instead, as it
+once did, lost any accent a theme had pinned.
+
 ## How a theme becomes CSS
 
 `applyThemeVars(root, theme)` in `2-themes/src/themeStyles.ts` is the single chokepoint, called for

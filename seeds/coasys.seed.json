@@ -8,7 +8,7 @@
   "desktop": {
     "productName": "Coasys",
     "appId": "io.coasys.app",
-    "icon": "packages/templates/cartridges/src/coasys/assets/mark.svg"
+    "icon": "packages/templates/cartridges/src/coasys/assets/icon.svg"
   },
   "bundles": ["coasys"],
   "modules": ["call", "transcribe", "live", "graph"],
@@ -21,7 +21,7 @@
       "description": "Channels, calls and the work that comes out of them, laid out as one tree and one view.",
       "settings": {
         "defaultTemplateId": "coasys--space",
-        "defaultThemeId": "coasys--theme",
+        "defaultThemeId": "coasys--glow",
         "autoInterpret": true,
         "extractionTargets": ["TaskBlock", "EventBlock", "Relationship"],
         "taskStates": ["$todo", "$doing", "$done"]

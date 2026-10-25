@@ -2,7 +2,9 @@ import type { RouteSchema, SchemaNode, SchemaProp } from '@we/schema-shared';
 import { lineComposer, recordFormModal } from '@we/template-kit';
 import { FLOWS_LOCALS, flowsPage } from '@we/template-showcase';
 
+import { liveDot } from './marks.ts';
 import { CHANNEL, CHANNEL_EXPR, channelPath, IN_ROOT_EXPR, PAGE_EXPR } from './paths.ts';
+import { newChannelDialog } from './tree.ts';
 
 /**
  * What the view beside the tree draws: a channel as chat or as a canvas, the space's flows, and — as
@@ -71,7 +73,8 @@ const viewBar = (title: SchemaNode['children'], icon: string, aside: SchemaNode[
     { type: 'we-icon', props: { name: icon, color: 'text-muted' } },
     {
       type: 'we-text',
-      props: { variant: 'heading-sm', fontWeight: 'semibold', truncate: true, flex: '1', minWidth: '0' },
+      // No weight of its own, so a theme's heading weight reaches it — light in Glow.
+      props: { variant: 'heading-sm', truncate: true, flex: '1', minWidth: '0' },
       children: title,
     },
     ...aside,
@@ -98,16 +101,33 @@ const CLEAR_OF_THE_BAR = 'calc(var(--we-space-500) + var(--we-covered-bottom, 0p
 const LIFT = 'padding-bottom 300 ease';
 
 /**
- * Where to start, in a space with nothing in it yet: a hint for each first thing worth doing. Shown in
- * the root channel until the space has a call or a channel of its own.
+ * Where to start, in a space with nothing in it yet: a card for each first thing worth doing, which
+ * does it when pressed. Shown in the root channel until the space has a call or a channel of its own.
+ *
+ * Each card is a bare button around the card itself, so it is reachable from the keyboard and
+ * announced as what it does. It lights under the pointer — an accent border and a glow, as a
+ * highlighted card is in Nico's design; how bright the glow is, is the theme's.
  */
-const hint = (icon: string, title: string, body: string): SchemaNode => ({
-  type: 'Card',
-  props: { bg: 'surface', gap: '200', flex: '1 1 200px' },
+const hint = (icon: string, title: string, body: string, onClick: SchemaProp, disabled?: SchemaProp): SchemaNode => ({
+  type: 'we-button',
+  props: { variant: 'bare', label: title, flex: '1 1 200px', onClick, ...(disabled ? { disabled } : {}) },
   children: [
-    { type: 'we-icon', props: { name: icon, color: 'accent-text', size: 'md' } },
-    { type: 'we-text', props: { fontWeight: 'semibold' }, children: [title] },
-    { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: [body] },
+    {
+      type: 'Card',
+      props: {
+        bg: 'surface',
+        gap: '200',
+        width: '100%',
+        height: '100%',
+        border: '1px solid transparent',
+        hoverProps: { border: '1px solid accent-border', shadow: 'glow' },
+      },
+      children: [
+        { type: 'we-icon', props: { name: icon, color: 'accent-text', size: 'md' } },
+        { type: 'we-text', props: { fontWeight: 'semibold' }, children: [title] },
+        { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: [body] },
+      ],
+    },
   ],
 });
 
@@ -121,7 +141,24 @@ const firstSteps: SchemaNode = {
       type: 'Column',
       props: { gap: '300', px: '500', pt: '500' },
       children: [
-        { type: 'we-text', props: { variant: 'heading-sm' }, children: ['A space starts with a conversation'] },
+        { type: 'we-text', props: { variant: 'overline' }, children: ['Start here'] },
+        /*
+          The statement, then its payoff in the accent: Nico's weight contrast inside one line. The
+          payoff is a span with no size of its own, so it takes the heading's; the statement takes
+          the theme's heading weight.
+        */
+        {
+          type: 'we-text',
+          props: { variant: 'heading-md' },
+          children: [
+            'A space starts with ',
+            {
+              type: 'we-text',
+              props: { inline: true, fontWeight: 'semibold', color: 'accent-text' },
+              children: ['a conversation'],
+            },
+          ],
+        },
         {
           type: 'Row',
           props: { gap: '300', wrap: true },
@@ -130,9 +167,16 @@ const firstSteps: SchemaNode = {
               'phone',
               'Start a call',
               'Everyone here can join. What is said is written down, and what is decided becomes work you can see.',
+              { $action: 'modules.call.goToCall' },
+              { $: '!modules.call.canCall' },
             ),
-            hint('hash', 'Make a channel', 'A place for one subject, from the + beside Channels.'),
-            hint('chat-circle', 'Say hello', 'Write below. Everyone in the space reads General.'),
+            hint('hash', 'Make a channel', 'A place for one subject, also from the + beside Channels.', {
+              $setLocal: 'newChannelOpen',
+              value: true,
+            }),
+            hint('chat-circle', 'Say hello', 'Write below. Everyone in the space reads General.', {
+              $callLocal: 'focusLine',
+            }),
           ],
         },
       ],
@@ -179,12 +223,26 @@ const chatRoute: RouteSchema = {
   $queries: {
     ...channelQueries,
     anyCall: { entity: 'CollectionBlock', where: { kind: 'call' }, limit: 1 },
-    anyChannel: { entity: 'CollectionBlock', where: { kind: 'channel' }, limit: 1 },
+    // Under the root, as the tree's own list is: the root is a channel too ("General"), so asking for
+    // any channel in the space always found it, and the first steps never showed.
+    anyChannel: {
+      entity: 'CollectionBlock',
+      where: { kind: 'channel' },
+      scope: { anchor: 'CollectionBlock', via: 'children', anchorId: { $: 'spaceStore.root' } },
+      limit: 1,
+      when: { $: 'spaceStore.root' },
+    },
   },
-  $localState: { sending: { type: 'boolean', initial: false } },
+  $localState: {
+    sending: { type: 'boolean', initial: false },
+    // For the first steps: the new-channel dialog, and the composer's own focus once it is ready.
+    newChannelOpen: { type: 'boolean', initial: false },
+    focusLine: { type: 'function', initial: null },
+  },
   children: [
     viewBar([{ $: CHANNEL_TITLE }], 'hash', [channelModes]),
     firstSteps,
+    newChannelDialog('newChannelOpen'),
     {
       type: 'Column',
       props: { flex: '1', minHeight: '0', px: '500', py: '300' },
@@ -216,7 +274,12 @@ const chatRoute: RouteSchema = {
             },
           },
         },
-        lineComposer({ placeholder: 'Write a message…', sendLabel: 'Send', onSubmit: sendLine }),
+        lineComposer({
+          placeholder: 'Write a message…',
+          sendLabel: 'Send',
+          onSubmit: sendLine,
+          focusLocal: 'focusLine',
+        }),
       ],
     },
   ],
@@ -247,6 +310,8 @@ const canvasRoute: RouteSchema = {
               options: { canvas: CHANNEL, members: { id: CHANNEL, via: 'children' }, connections: 'Relationship' },
             },
             layout: { type: 'manual', options: { size: { width: 200, height: 140 } } },
+            // A dot grid, as d12's canvas has: it moves with the canvas, so a pan reads as a pan.
+            backdrop: { pattern: 'dots', gap: 24 },
             nodeStyle: [{ style: { shape: 'card', width: 200, height: 140, content: 'record', contentMinZoom: 0.4 } }],
             behaviours: [
               'node-double-click',
@@ -322,7 +387,7 @@ export const callPage: SchemaNode = {
         type: '$if',
         props: {
           condition: { $: `find(modules.call.liveCalls, { recordId: ${CALL_ID} })` },
-          then: { type: 'we-badge', props: { tone: 'success' }, children: ['Live'] },
+          then: { type: 'we-badge', props: { tone: 'success' }, children: [liveDot, 'Live'] },
         },
       },
     ]),

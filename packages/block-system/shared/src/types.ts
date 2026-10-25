@@ -30,9 +30,10 @@ export type BlockComposerProps = Omit<DesignSystemProps, 'direction'> & {
   /**
    * Hands out the composer's own actions once it is ready. `save` serialises the document for
    * `onSave`; `submit` sends a `compact` composer's line through `onSubmit`, exactly as Enter does —
-   * for a send button beside the line. An empty line sends nothing.
+   * for a send button beside the line. An empty line sends nothing. `focus` puts the caret in the
+   * composer — for something elsewhere on the page that invites somebody to write.
    */
-  onReady?: (api: { save: () => void; submit: () => void }) => void;
+  onReady?: (api: { save: () => void; submit: () => void; focus: () => void }) => void;
   /**
    * Fires when the composer starts or stops holding work the author would mind losing.
    *
