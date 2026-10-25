@@ -30,10 +30,13 @@ describe('the face the app shows', () => {
   });
 
   it('is the app this device last ran, until the agent’s settings are known', () => {
-    const device = { v: 1 as const, bundleId: 'coasys', brand: coasys.brand };
-    expect(resolveFace({ ...base, settled: false, inUseBundle: undefined, device })).toEqual({
-      bundleId: 'coasys',
-      brand: coasys.brand,
+    const device = { v: 1 as const, bundleId: 'field-guide', brand: guide.brand };
+    expect(resolveFace({ ...base, settled: false, inUseBundle: undefined, device })).toEqual(guide);
+    // A bundle the build no longer carries is drawn as the device kept it.
+    const gone = { v: 1 as const, bundleId: 'gone', brand: { name: 'Gone' } };
+    expect(resolveFace({ ...base, settled: false, device: gone })).toEqual({
+      bundleId: 'gone',
+      brand: { name: 'Gone' },
     });
     // A device that last ran WE's own says so, rather than leaving the deployment's app to guess.
     expect(resolveFace({ ...base, settled: false, inUseBundle: 'coasys', device: { v: 1, bundleId: '' } })).toEqual({
@@ -41,6 +44,12 @@ describe('the face the app shows', () => {
     });
     // Nothing remembered: the deployment's own app, which is what is in use before anybody chose.
     expect(resolveFace({ ...base, settled: false, inUseBundle: 'coasys' })).toEqual(coasys);
+  });
+
+  it('is the build’s copy of the app this device last ran, not the device’s older one', () => {
+    // The device kept the brand from the last session; the app has a new mark since.
+    const device = { v: 1 as const, bundleId: 'coasys', brand: { name: 'Coasys', mark: '<svg>old</svg>' } };
+    expect(resolveFace({ ...base, settled: false, device })).toEqual(coasys);
   });
 
   it('is always WE’s in safe mode', () => {

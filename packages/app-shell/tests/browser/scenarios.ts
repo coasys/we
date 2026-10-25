@@ -11,7 +11,11 @@ import type { SchemaNode } from '@we/schema-shared';
 import { discussionSection, foldingSectionLabel, signalDisplay } from '@we/template-kit';
 import { bundlePrompt, safeModeBanner } from '@we/template-shell';
 import { CALL_CHROME_BAND, themeLabTemplate, TREE_LOCALS, TREE_QUERIES, treeStrip } from '@we/template-showcase';
-import { THEME_PRESETS } from '@we/themes/presets';
+import { THEME_PRESETS, type ThemeOverrides, themeSides, withThemeSide } from '@we/themes/presets';
+
+import coasysBundle from '../../../../bundles/coasys.bundle.json';
+import fieldGuideBundle from '../../../../bundles/field-guide.bundle.json';
+import toolLibraryBundle from '../../../../bundles/tool-library.bundle.json';
 
 export interface Scenario {
   /** The schema to mount, exactly as the app would render it. */
@@ -425,6 +429,39 @@ const themeLab = (index = 0): Scenario => {
   };
 };
 
+/**
+ * Every theme the checked-in bundles carry, a two-sided one as each of its sides — the same list the
+ * contrast suite holds to its pairs, so what passes there can be looked at here.
+ */
+type LabBundle = {
+  id: string;
+  theme?: { id: string; overrides: unknown };
+  themes?: { id: string; overrides: unknown }[];
+};
+export const BUNDLE_LAB_THEMES: { label: string; theme: ThemeOverrides }[] = (
+  [coasysBundle, fieldGuideBundle, toolLibraryBundle] as LabBundle[]
+).flatMap((bundle) =>
+  (bundle.themes ?? (bundle.theme ? [bundle.theme] : [])).flatMap((t) => {
+    const overrides = t.overrides as ThemeOverrides;
+    if (!themeSides(overrides).length) return [{ label: `${bundle.id}-${t.id}`, theme: overrides }];
+    return (['light', 'dark'] as const).map((side) => ({
+      label: `${bundle.id}-${t.id}-${side}`,
+      theme: withThemeSide(overrides, side),
+    }));
+  }),
+);
+const bundleThemeLab = (index = 0): Scenario => {
+  const { meta: _meta, ...page } = themeLabTemplate as SchemaNode & { meta?: unknown };
+  return {
+    node: {
+      type: 'Column',
+      theme: BUNDLE_LAB_THEMES[index]?.theme ?? {},
+      children: [withoutGraphs(page as SchemaNode)],
+    },
+    tables: {},
+  };
+};
+
 /** The theme lab, `copies` times over and unthemed, as a page large enough for a theme change to cost something. */
 const themeLabPage = (copies = 4): Scenario => {
   const { meta: _meta, ...page } = themeLabTemplate as SchemaNode & { meta?: unknown };
@@ -433,6 +470,29 @@ const themeLabPage = (copies = 4): Scenario => {
     tables: {},
   };
 };
+
+/**
+ * A theme that pins its accent tint, and a soft button restored to the accent inside a purple tone —
+ * beside one toned to the accent directly. Both should be the pinned tint.
+ */
+const heldAccent = (): Scenario => ({
+  node: {
+    type: 'Column',
+    theme: { roles: { accentSoft: 'rgb(18, 52, 86)' } },
+    props: { gap: '300', p: '300' },
+    children: [
+      { type: 'we-button', props: { variant: 'soft', tone: 'accent', id: 'plain' }, children: ['Plain'] },
+      {
+        type: 'Row',
+        props: { tone: 'purple' },
+        children: [
+          { type: 'we-button', props: { variant: 'soft', tone: 'accent', id: 'restored' }, children: ['Restored'] },
+        ],
+      },
+    ],
+  },
+  tables: {},
+});
 
 const toned = (): Scenario => ({
   node: {
@@ -1684,6 +1744,8 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'ds:nested-interactive': nestedInteractive,
   'ds:tone': toned,
   'theme:lab': themeLab,
+  'theme:lab-bundle': bundleThemeLab,
+  'tone:held-accent': heldAccent,
   // Nothing of its own: for a case that mounts something else into the page, such as a panel.
   blank: () => ({ node: { type: 'Column' }, tables: {} }),
   'perf:theme-drag': themeLabPage,
