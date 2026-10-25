@@ -7362,6 +7362,8 @@
             "modules",
             "shareLink",
             "guestLink",
+            "sharing",
+            "shareError",
             "defaultTemplateId",
             "defaultThemeId",
             "templateOverride",
@@ -7524,6 +7526,7 @@
       },
       "actions": [
         "createSpace",
+        "shareSpace",
         "joinSpace",
         "initializeAsWeSpace",
         "removeSpace",

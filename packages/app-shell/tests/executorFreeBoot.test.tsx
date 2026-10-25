@@ -627,18 +627,6 @@ describe('dataset lifecycle through the real stores', () => {
     expect(rowOf()).toBe(before);
   }, 10000);
 
-  it('creates a shared space through publish', async () => {
-    const stores = mountShell();
-    await ready(stores);
-
-    await stores.spaces.createSpace('Shared Space', 'shared', 'shared', 'hidden');
-
-    const created = (await lifecycle.list()).find((d) => d.name === 'Shared Space')!;
-    expect(created.sharedUri).toMatch(/^inmemory:\/\//);
-    // The Space model stores the adapter-minted scheme-less shared id.
-    expect(stores.spaces.mySpaces()[0].url).toBe(created.sharedId);
-  }, 10000);
-
   it("joins a peer's published dataset and switches to it", async () => {
     const stores = mountShell();
     await ready(stores);
@@ -679,6 +667,91 @@ describe('dataset lifecycle through the real stores', () => {
     expect(stores.spaces.joiningSpace()).toBe('');
     expect(stores.spaces.joinError()).toBeNull();
   }, 20000);
+
+  /*
+    A join returns before the neighbourhood has synced (coasys/ad4m#1466). Installing the schema
+    then read an empty dataset, found none of the creator's shapes and wrote a second copy of every
+    one; it must wait for the backend to say the dataset has synced.
+  */
+  function holdSync(id: string) {
+    const installed: string[] = [];
+    let release!: () => void;
+    let fail!: (error: Error) => void;
+    const held = new Promise<void>((resolve, reject) => {
+      release = resolve;
+      fail = reject;
+    });
+    onPorts = (ports) => {
+      const { installSpace, hasCoreSchema, hasAnySchema } = ports.schemas;
+      const idOf = (dataset: unknown) => (dataset as { id: string }).id;
+      ports.schemas.installSpace = async (dataset, modules) => {
+        installed.push(idOf(dataset));
+        return installSpace(dataset, modules);
+      };
+      // The held dataset holds a schema only once one is installed into it — none arrives by sync
+      // here — where the in-memory backend otherwise answers that every dataset has one.
+      ports.schemas.hasCoreSchema = async (dataset) =>
+        idOf(dataset) === id ? installed.includes(id) : hasCoreSchema(dataset);
+      ports.schemas.hasAnySchema = async (dataset) =>
+        idOf(dataset) === id ? installed.includes(id) : hasAnySchema(dataset);
+      ports.lifecycle.whenSynced = (datasetId) => (datasetId === id ? held : Promise.resolve());
+    };
+    return { installed, release: () => release(), fail: (error: Error) => fail(error) };
+  }
+
+  it('installs the schema into a joined space only once it has synced', async () => {
+    const sync = holdSync('sync-ds');
+    const stores = mountShell();
+    await ready(stores);
+    lifecycle.seedShared({ id: 'sync-ds', name: 'Syncing Space', sharedUri: 'inmemory://sync-ds' });
+
+    const joined = stores.spaces.joinSpace('inmemory://sync-ds');
+    await vi.waitFor(() => expect(stores.spaces.joiningSpace()).toBe('sync-ds'));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(sync.installed, 'installed before the dataset synced').not.toContain('sync-ds');
+    expect(stores.spaces.joiningSpace(), 'the join is still in progress while it syncs').toBe('sync-ds');
+
+    sync.release();
+    await joined;
+
+    expect(sync.installed).toContain('sync-ds');
+    await vi.waitFor(() => expect(stores.datasets.currentDataset()?.name).toBe('Syncing Space'));
+    expect(stores.spaces.joiningSpace()).toBe('');
+  }, 10000);
+
+  it('fails a join whose space cannot sync, and installs nothing into it', async () => {
+    const sync = holdSync('broken-ds');
+    const stores = mountShell();
+    await ready(stores);
+    lifecycle.seedShared({ id: 'broken-ds', name: 'Broken Space', sharedUri: 'inmemory://broken-ds' });
+
+    const joined = stores.spaces.joinSpace('inmemory://broken-ds');
+    sync.fail(new Error('The space’s sync language could not be installed.'));
+
+    await expect(joined).rejects.toThrow(/sync language/);
+    expect(sync.installed).not.toContain('broken-ds');
+    expect(stores.spaces.joinError()).toEqual(expect.objectContaining({ spaceId: 'broken-ds' }));
+    expect(stores.spaces.joiningSpace()).toBe('');
+  }, 10000);
+
+  it('does not judge a dataset empty, and make it a WE space, before it has synced', async () => {
+    // The dataset-added event can switch to a just-joined dataset before the join has finished.
+    // Holding no schema then says nothing about what it is: a Flux community looks the same.
+    seededDatasets = [{ id: 'unsynced-ds', name: 'Unsynced' }];
+    const sync = holdSync('unsynced-ds');
+    const stores = mountShell();
+    await ready(stores);
+
+    const switched = stores.datasets.switchDataset('unsynced-ds');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(sync.installed).not.toContain('unsynced-ds');
+
+    sync.release();
+    await switched;
+
+    expect(sync.installed).toContain('unsynced-ds');
+    expect(stores.datasets.isWeSpace()).toBe(true);
+  }, 10000);
 
   it('reports a backend that answered, rather than waiting out the recovery window', async () => {
     const stores = mountShell();
@@ -860,6 +933,8 @@ describe('what the stores actually wrote', () => {
 
     await stores.spaces.createSpace('Public', 'x', 'shared', 'listed');
     await stores.spaces.createSpace('Private', 'x', 'personal', 'hidden');
+    // Sharing follows the create; see 'creating a shared space in stages'.
+    await vi.waitFor(() => expect(stores.spaces.spaceList().find((s) => s.name === 'Public')?.kind).toBe('shared'));
 
     const shared = (await lifecycle.list()).find((d) => d.name === 'Public')!;
     const personal = (await lifecycle.list()).find((d) => d.name === 'Private')!;
@@ -871,6 +946,138 @@ describe('what the stores actually wrote', () => {
     expect(publicSpace.url).toBe(shared.sharedId);
     expect(privateSpace.url).toBeFalsy();
     expect(publicSpace.discovery).toBe('listed');
+  }, 10000);
+});
+
+/**
+ * Creating a shared space is two stages: the local space, which is what the person waits for, and
+ * sharing it, which talks to the network and runs after. Each test holds `publish` open to look at
+ * the space between the two.
+ */
+describe('creating a shared space in stages', () => {
+  /** Replaces the backend's publish with one each call of which the test settles by hand. */
+  function holdPublish() {
+    const calls: { resolve: () => void; reject: (err: Error) => void }[] = [];
+    onPorts = (ports) => {
+      const publish = ports.lifecycle.publish.bind(ports.lifecycle);
+      ports.lifecycle.publish = (id: string, options?: { sharing?: string }) =>
+        new Promise<{ uri: string; sharedId: string }>((resolve, reject) => {
+          calls.push({ resolve: () => void publish(id, options).then(resolve, reject), reject });
+        });
+    };
+    return calls;
+  }
+  const row = (stores: Stores, name: string) => stores.spaces.spaceList().find((s) => s.name === name)!;
+
+  it('is ready before it is shared, and shares in the background', async () => {
+    const publish = holdPublish();
+    const stores = mountShell();
+    await ready(stores);
+
+    await stores.spaces.createSpace('Garden', 'x', 'shared', 'hidden');
+
+    // Resolved with publish still open: the space is here, local, and says it is being shared.
+    expect(publish).toHaveLength(1);
+    expect(row(stores, 'Garden')).toMatchObject({ sharing: 'sharing', shareLink: '', kind: 'personal' });
+    const created = (await lifecycle.list()).find((d) => d.name === 'Garden')!;
+    const [before] = await Space.findAll(created.handle as never);
+    expect(before.url).toBeFalsy();
+
+    publish[0].resolve();
+
+    await vi.waitFor(() => expect(row(stores, 'Garden')).toMatchObject({ sharing: '', kind: 'shared' }));
+    const shared = (await lifecycle.list()).find((d) => d.name === 'Garden')!;
+    expect(shared.sharedUri).toMatch(/^inmemory:\/\//);
+    expect(row(stores, 'Garden').shareLink).toContain(shared.sharedId);
+    const [after] = await Space.findAll(shared.handle as never);
+    expect(after.url).toBe(shared.sharedId);
+  }, 10000);
+
+  it('keeps the space when sharing fails, and shares it on a retry', async () => {
+    const publish = holdPublish();
+    const stores = mountShell();
+    await ready(stores);
+
+    await stores.spaces.createSpace('Workbench', 'x', 'shared', 'hidden');
+    publish[0].reject(new Error('the network said no'));
+
+    await vi.waitFor(() =>
+      expect(row(stores, 'Workbench')).toMatchObject({ sharing: 'failed', shareError: 'the network said no' }),
+    );
+    // Still a space: listed, in mySpaces, and local.
+    expect(stores.spaces.mySpaces().map((s) => s.name)).toContain('Workbench');
+    expect(row(stores, 'Workbench')).toMatchObject({ kind: 'personal', shareLink: '' });
+
+    const retry = stores.spaces.shareSpace(row(stores, 'Workbench').uuid);
+    await vi.waitFor(() => expect(row(stores, 'Workbench').sharing).toBe('sharing'));
+    publish[1].resolve();
+    await retry;
+
+    expect(row(stores, 'Workbench')).toMatchObject({ sharing: '', shareError: '', kind: 'shared' });
+    expect(row(stores, 'Workbench').shareLink).not.toBe('');
+  }, 10000);
+
+  it('a retry after a step that follows the publish does not publish again', async () => {
+    let publishes = 0;
+    let failGetOnce = false;
+    onPorts = (ports) => {
+      const publish = ports.lifecycle.publish.bind(ports.lifecycle);
+      const get = ports.lifecycle.get.bind(ports.lifecycle);
+      ports.lifecycle.publish = async (id: string, options?: { sharing?: string }) => {
+        publishes += 1;
+        const result = await publish(id, options);
+        failGetOnce = true;
+        return result;
+      };
+      ports.lifecycle.get = async (id: string) => {
+        if (failGetOnce) {
+          failGetOnce = false;
+          throw new Error('lost the executor after publishing');
+        }
+        return get(id);
+      };
+    };
+    const stores = mountShell();
+    await ready(stores);
+
+    await stores.spaces.createSpace('Kiln', 'x', 'shared', 'hidden');
+    await vi.waitFor(() => expect(row(stores, 'Kiln').sharing).toBe('failed'));
+
+    await stores.spaces.shareSpace(row(stores, 'Kiln').uuid);
+
+    expect(publishes).toBe(1);
+    expect(row(stores, 'Kiln')).toMatchObject({ sharing: '', kind: 'shared' });
+  }, 10000);
+
+  it('lists a space in global discovery only once it has the address it is listed under', async () => {
+    provideSeed({ name: 'test', modules: [], globalSpaceUrl: 'inmemory://global' } as never);
+    try {
+      const publish = holdPublish();
+      const seedGlobal = onPorts!;
+      onPorts = (ports) => {
+        seedGlobal(ports);
+        ports.lifecycle.seedShared({ id: 'global', name: 'Global', sharedUri: 'inmemory://global' });
+      };
+      const stores = mountShell();
+      await ready(stores);
+      await stores.spaces.joinSpace('inmemory://global', false);
+      const global = stores.datasets.globalDataset()!;
+      expect(global).not.toBeNull();
+
+      await stores.spaces.createSpace('Listed', 'x', 'shared', 'listed');
+      expect(await Space.findAll(global.handle as never, { where: { name: 'Listed' } })).toEqual([]);
+
+      publish[0].resolve();
+
+      await vi.waitFor(() => expect(row(stores, 'Listed').kind).toBe('shared'));
+      const shared = (await lifecycle.list()).find((d) => d.name === 'Listed')!;
+      await vi.waitFor(async () => {
+        const [listing] = await Space.findAll(global.handle as never, { where: { name: 'Listed' } });
+        expect(listing?.url).toBe(shared.sharedId);
+      });
+    } finally {
+      provideSeed({ name: 'test', modules: [] } as never);
+    }
   }, 10000);
 });
 
