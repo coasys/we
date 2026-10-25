@@ -1577,7 +1577,13 @@
               }
             },
             "anyCall": { "entity": "CollectionBlock", "where": { "kind": "call" }, "limit": 1 },
-            "anyChannel": { "entity": "CollectionBlock", "where": { "kind": "channel" }, "limit": 1 }
+            "anyChannel": {
+              "entity": "CollectionBlock",
+              "where": { "kind": "channel" },
+              "scope": { "anchor": "CollectionBlock", "via": "children", "anchorId": { "$": "spaceStore.root" } },
+              "limit": 1,
+              "when": { "$": "spaceStore.root" }
+            }
           },
           "$localState": { "sending": { "type": "boolean", "initial": false } },
           "children": [

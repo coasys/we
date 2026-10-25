@@ -207,7 +207,15 @@ const chatRoute: RouteSchema = {
   $queries: {
     ...channelQueries,
     anyCall: { entity: 'CollectionBlock', where: { kind: 'call' }, limit: 1 },
-    anyChannel: { entity: 'CollectionBlock', where: { kind: 'channel' }, limit: 1 },
+    // Under the root, as the tree's own list is: the root is a channel too ("General"), so asking for
+    // any channel in the space always found it, and the first steps never showed.
+    anyChannel: {
+      entity: 'CollectionBlock',
+      where: { kind: 'channel' },
+      scope: { anchor: 'CollectionBlock', via: 'children', anchorId: { $: 'spaceStore.root' } },
+      limit: 1,
+      when: { $: 'spaceStore.root' },
+    },
   },
   $localState: { sending: { type: 'boolean', initial: false } },
   children: [
