@@ -21,7 +21,7 @@
       "description": "Channels, calls and the work that comes out of them, laid out as one tree and one view.",
       "settings": {
         "defaultTemplateId": "coasys--space",
-        "defaultThemeId": "coasys--theme",
+        "defaultThemeId": "coasys--glow",
         "autoInterpret": true,
         "extractionTargets": ["TaskBlock", "EventBlock", "Relationship"],
         "taskStates": ["$todo", "$doing", "$done"]
