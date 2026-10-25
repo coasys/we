@@ -1,9 +1,11 @@
-//! The custody item, and sealing it under a passphrase (Linux).
+//! The custody item, and sealing it under a passphrase (every store but the macOS keychain).
 //!
-//! On Linux the Secret Service opens with the login session, so it alone is no per-use unlock: the
-//! item is sealed with XChaCha20-Poly1305 under `Argon2id(passphrase, salt, m = 64 MiB, t = 3,
-//! p = 4)` before it is stored, and the passphrase is typed in the identity window for each flow.
-//! On macOS the keychain item's access control is the unlock, and the item is stored as it is.
+//! On Linux the Secret Service opens with the login session, so it alone is no per-use unlock, and
+//! a file is none at all: the item is sealed with XChaCha20-Poly1305 under `Argon2id(passphrase,
+//! salt, m = 64 MiB, t = 3, p = 4)` before it is stored, and the passphrase is typed in the
+//! identity window for each flow. The same holds for the file a macOS build without the keychain
+//! entitlement keeps. In the macOS keychain the item's access control is the unlock, and the item
+//! is stored as it is.
 //!
 //! The item's bytes are written by hand rather than through serde, so nothing derives a
 //! serialisation of the master key that could be reached from elsewhere.

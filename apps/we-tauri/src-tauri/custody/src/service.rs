@@ -522,7 +522,7 @@ async fn run_create(
         }
     }
 
-    // macOS: the keychain asks when the item is written. Linux: the passphrase comes first.
+    // The macOS keychain asks when the item is written. A sealed item: the passphrase comes first.
     let mut passphrase: Option<Secret<String>> = None;
     if vault.needs_passphrase() {
         answer(reply, Ok(Screen::SetPassphrase { error: None }));

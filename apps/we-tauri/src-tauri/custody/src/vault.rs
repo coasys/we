@@ -1,7 +1,8 @@
 //! `DesktopVault`: the identity client's [`Vault`] over this computer's store.
 //!
-//! The client's flows call `Vault::unlock(scid, why, now)`, which has no passphrase in it: on macOS
-//! there is none (the keychain asks), and on Linux the identity window collects one for the flow.
+//! The client's flows call `Vault::unlock(scid, why, now)`, which has no passphrase in it: with the
+//! macOS keychain there is none (the keychain asks), and with a sealed item — the Linux Secret
+//! Service, or a file on either OS — the identity window collects one for the flow.
 //! So the vault a flow is given is a [`Unlocking`] — the desktop vault together with that flow's
 //! passphrase — and it lives exactly as long as the flow step that needs it.
 //!

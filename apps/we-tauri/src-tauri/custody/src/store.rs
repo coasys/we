@@ -1,10 +1,12 @@
-//! Where a custody item rests: the macOS keychain, the Linux Secret Service, or a
-//! file in the data folder where Linux has no Secret Service. One item per identity, named
-//! `coasys.identity/<scid>`. No Windows: the desktop app does not ship there.
+//! Where a custody item rests: the macOS keychain, the Linux Secret Service, or a file in the data
+//! folder — where Linux has no Secret Service, and where a macOS build lacks the keychain
+//! entitlement. One item per identity, named `coasys.identity/<scid>`. No Windows: the desktop app
+//! does not ship there.
 //!
-//! A store keeps bytes; it does not know what they are. On Linux they are already sealed under the
-//! passphrase ([`crate::seal`]); on macOS the keychain item's access control is the unlock, so the
-//! keychain store is the one that may hold the item as it is ([`StoreKind::unlocks_itself`]).
+//! A store keeps bytes; it does not know what they are. In the Secret Service and in a file they
+//! are already sealed under the passphrase ([`crate::seal`]); the keychain item's access control is
+//! the unlock, so the keychain store is the one that may hold the item as it is
+//! ([`StoreKind::unlocks_itself`]).
 
 use std::path::PathBuf;
 
@@ -17,7 +19,8 @@ pub enum StoreKind {
     Keychain,
     /// Linux: the Secret Service, holding the item sealed under a passphrase.
     SecretService,
-    /// Linux without a Secret Service: a 0600 file holding the sealed item.
+    /// Linux without a Secret Service, or macOS without the keychain entitlement: a 0600 file
+    /// holding the sealed item.
     File,
     /// Tests.
     Memory,
@@ -317,8 +320,9 @@ mod keychain_store {
     /// A data-protection keychain item, generic password, service `org.coasys.app`, account the item
     /// name, readable only after the user is present (Touch ID or the login password).
     ///
-    /// Needs a signed app with a keychain access group entitlement. An
-    /// unsigned build gets `errSecMissingEntitlement` and the caller falls back to the file store.
+    /// Needs an app signed with a `keychain-access-groups` entitlement. A build without one gets
+    /// `errSecMissingEntitlement` from every call; [`system_store`](super::system_store) probes for
+    /// that once and gives such a build the [`FileStore`] instead.
     pub struct KeychainStore;
 
     const SERVICE: &str = "org.coasys.app";
@@ -330,6 +334,11 @@ mod keychain_store {
     fn unavailable(e: Error) -> VaultError {
         if e.code() == ERR_SEC_USER_CANCELED {
             VaultError::Cancelled
+        } else if e.code() == ERR_SEC_MISSING_ENTITLEMENT {
+            VaultError::Unavailable(format!(
+                "keychain: this build lacks the keychain entitlement (keychain-access-groups), so \
+                 the data-protection keychain refuses it ({e})"
+            ))
         } else {
             VaultError::Unavailable(format!("keychain: {e}"))
         }
@@ -367,48 +376,7 @@ mod keychain_store {
         }
 
         fn contains(&self, name: &str) -> Result<bool, VaultError> {
-            // Attributes only, never the data, and never UI: an item that exists but would need the
-            // person to read even this much answers errSecInteractionNotAllowed, which is still a yes.
-            let pairs: Vec<(CFString, CFType)> = unsafe {
-                vec![
-                    (
-                        CFString::wrap_under_get_rule(kSecClass),
-                        CFString::wrap_under_get_rule(kSecClassGenericPassword).into_CFType(),
-                    ),
-                    (
-                        CFString::wrap_under_get_rule(kSecAttrService),
-                        CFString::new(SERVICE).into_CFType(),
-                    ),
-                    (
-                        CFString::wrap_under_get_rule(kSecAttrAccount),
-                        CFString::new(name).into_CFType(),
-                    ),
-                    (
-                        CFString::wrap_under_get_rule(kSecUseDataProtectionKeychain),
-                        CFBoolean::true_value().into_CFType(),
-                    ),
-                    (
-                        CFString::wrap_under_get_rule(kSecReturnAttributes),
-                        CFBoolean::true_value().into_CFType(),
-                    ),
-                    (
-                        CFString::wrap_under_get_rule(kSecMatchLimit),
-                        CFNumber::from(1i64).into_CFType(),
-                    ),
-                    (
-                        CFString::wrap_under_get_rule(kSecUseAuthenticationUI),
-                        CFString::wrap_under_get_rule(kSecUseAuthenticationUIFail).into_CFType(),
-                    ),
-                ]
-            };
-            let query = CFDictionary::from_CFType_pairs(&pairs);
-            let mut found: CFTypeRef = std::ptr::null();
-            let status = unsafe { SecItemCopyMatching(query.as_concrete_TypeRef(), &mut found) };
-            if !found.is_null() {
-                // A +1 reference to the attributes dictionary; dropping the wrapper releases it.
-                drop(unsafe { CFType::wrap_under_create_rule(found) });
-            }
-            match status {
+            match probe_status(name) {
                 0 | ERR_SEC_INTERACTION_NOT_ALLOWED => Ok(true),
                 ERR_SEC_ITEM_NOT_FOUND => Ok(false),
                 code => Err(unavailable(Error::from_code(code))),
@@ -422,15 +390,89 @@ mod keychain_store {
             }
         }
     }
+
+    /// What the keychain answers when asked whether `name` is kept: the raw `OSStatus` of an
+    /// attributes-only, no-UI `SecItemCopyMatching`. Never the data, and never a prompt: an item
+    /// that exists but would need the person to read even this much answers
+    /// errSecInteractionNotAllowed. Also how [`system_store`](super::system_store) finds out
+    /// whether this build may use the data-protection keychain at all.
+    pub(super) fn probe_status(name: &str) -> i32 {
+        let pairs: Vec<(CFString, CFType)> = unsafe {
+            vec![
+                (
+                    CFString::wrap_under_get_rule(kSecClass),
+                    CFString::wrap_under_get_rule(kSecClassGenericPassword).into_CFType(),
+                ),
+                (
+                    CFString::wrap_under_get_rule(kSecAttrService),
+                    CFString::new(SERVICE).into_CFType(),
+                ),
+                (
+                    CFString::wrap_under_get_rule(kSecAttrAccount),
+                    CFString::new(name).into_CFType(),
+                ),
+                (
+                    CFString::wrap_under_get_rule(kSecUseDataProtectionKeychain),
+                    CFBoolean::true_value().into_CFType(),
+                ),
+                (
+                    CFString::wrap_under_get_rule(kSecReturnAttributes),
+                    CFBoolean::true_value().into_CFType(),
+                ),
+                (
+                    CFString::wrap_under_get_rule(kSecMatchLimit),
+                    CFNumber::from(1i64).into_CFType(),
+                ),
+                (
+                    CFString::wrap_under_get_rule(kSecUseAuthenticationUI),
+                    CFString::wrap_under_get_rule(kSecUseAuthenticationUIFail).into_CFType(),
+                ),
+            ]
+        };
+        let query = CFDictionary::from_CFType_pairs(&pairs);
+        let mut found: CFTypeRef = std::ptr::null();
+        let status = unsafe { SecItemCopyMatching(query.as_concrete_TypeRef(), &mut found) };
+        if !found.is_null() {
+            // A +1 reference to the attributes dictionary; dropping the wrapper releases it.
+            drop(unsafe { CFType::wrap_under_create_rule(found) });
+        }
+        status
+    }
 }
 
-/// The store this computer offers: the keychain on macOS; on Linux the Secret Service, else a file
-/// under `fallback_dir`. A file on macOS only if the keychain cannot be reached at all.
+/// `errSecMissingEntitlement`: the data-protection keychain refuses a build signed without a
+/// `keychain-access-groups` entitlement — and an unsigned build — on every call.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+const ERR_SEC_MISSING_ENTITLEMENT: i32 = -34018;
+
+/// An item name no identity can have (a scid is base58, never `probe`), asked about once to learn
+/// whether the keychain answers this build at all.
+#[cfg(target_os = "macos")]
+const PROBE_NAME: &str = "coasys.identity/probe";
+
+/// Whether the keychain may hold the item, from what it answered the probe. Only a missing
+/// entitlement says no: it is a fact about how the build was signed and stays true for the life of
+/// the process. Any other answer — found, not found, needs interaction, or an error that may pass
+/// (a locked keychain, a busy daemon) — keeps the keychain, whose calls then report the error where
+/// it happens rather than the master key moving to a file for a reason that would not last.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn keychain_usable(probe_status: i32) -> bool {
+    probe_status != ERR_SEC_MISSING_ENTITLEMENT
+}
+
+/// The store this computer offers. macOS: the keychain, unless this build lacks the keychain
+/// entitlement (an unsigned or ad-hoc-signed build), then a file under `fallback_dir` holding the
+/// item sealed under a passphrase. Linux: the Secret Service, else that file.
 pub fn system_store(fallback_dir: PathBuf) -> Box<dyn SecretStore> {
     #[cfg(target_os = "macos")]
     {
-        let _ = fallback_dir;
-        return Box::new(KeychainStore);
+        if keychain_usable(keychain_store::probe_status(PROBE_NAME)) {
+            return Box::new(KeychainStore);
+        }
+        log::warn!(
+            "custody: the data-protection keychain needs an entitlement this build lacks; keeping \
+             the master key sealed in a file behind a passphrase"
+        );
     }
     #[cfg(target_os = "linux")]
     {
@@ -441,7 +483,6 @@ pub fn system_store(fallback_dir: PathBuf) -> Box<dyn SecretStore> {
             }
         }
     }
-    #[allow(unreachable_code)]
     Box::new(FileStore::new(fallback_dir))
 }
 
@@ -498,6 +539,22 @@ mod tests {
         }
         store.delete(&name).unwrap();
         assert!(!store.contains(&name).unwrap());
+    }
+
+    #[test]
+    fn only_a_missing_entitlement_moves_macos_off_the_keychain() {
+        // errSecMissingEntitlement: the build cannot use the data-protection keychain at all.
+        assert!(!keychain_usable(ERR_SEC_MISSING_ENTITLEMENT));
+        assert!(!keychain_usable(-34018));
+        // errSecSuccess, errSecItemNotFound, errSecInteractionNotAllowed: the keychain answered.
+        for status in [0, -25300, -25308] {
+            assert!(keychain_usable(status), "{status}");
+        }
+        // Any other error (errSecAuthFailed, errSecNotAvailable, errSecUserCanceled, errSecParam)
+        // keeps the keychain: none is known to be permanent, and its calls report it as it comes.
+        for status in [-25293, -25291, -128, -50] {
+            assert!(keychain_usable(status), "{status}");
+        }
     }
 
     #[test]

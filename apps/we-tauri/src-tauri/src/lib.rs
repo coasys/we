@@ -191,7 +191,8 @@ pub fn run() {
 
     // The custody service: the person's master key, behind the OS unlock, in this process but never
     // in the executor's code (it is its own crate, `custody/`, and reaches the executor over RPC with
-    // the admin credential only). The sealed file is the fallback for Linux without a Secret Service.
+    // the admin credential only). The sealed file is the fallback for Linux without a Secret Service,
+    // and for a macOS build without the keychain entitlement.
     // The same folder keeps the incept of an identity made here until its publish is confirmed.
     let custody_dir = dirs::data_dir()
         .unwrap_or_else(|| home.join(".local/share"))

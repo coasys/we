@@ -1,8 +1,9 @@
 //! `we-custody`: the desktop app's master-key custody.
 //!
 //! - [`vault::DesktopVault`] keeps master keys in this computer's store ([`store`]): the macOS
-//!   keychain behind Touch ID, or on Linux sealed under a passphrase ([`seal`]) in the Secret
-//!   Service, or in a 0600 file where there is none.
+//!   keychain behind Touch ID, or sealed under a passphrase ([`seal`]) in the Linux Secret
+//!   Service, or in a 0600 file — on Linux where there is no Secret Service, and on macOS where
+//!   the build lacks the keychain entitlement.
 //! - [`pending`] keeps the incept of an identity made here until its publish is confirmed, so a
 //!   create the app did not see finish is completed on the next start rather than stranded.
 //! - [`service`] runs the identity client's flows — create, add a device, revoke — for the identity

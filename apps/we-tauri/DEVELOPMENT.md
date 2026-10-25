@@ -50,10 +50,13 @@ and lines marked `HOST` from `src/lib.rs`. A bare `println!` reaches the termina
 ## The identity: custody and the identity window
 
 The person's master key never rests in the executor or in a web view. The shell keeps it in
-`src-tauri/custody` (crate `we-custody`): `DesktopVault` over the macOS keychain, or on Linux sealed
-under a passphrase (Argon2id, XChaCha20-Poly1305) in the Secret Service, or in
-`$XDG_DATA_HOME/coasys/custody/<scid>.bin` (mode 0600) where there is none. It runs the identity
-client's flows — make the identity, add a device, revoke one — and reaches the executor only over
+`src-tauri/custody` (crate `we-custody`): `DesktopVault` over the macOS keychain, or sealed under a
+passphrase (Argon2id, XChaCha20-Poly1305) in the Linux Secret Service, or in
+`<data dir>/coasys/custody/<scid>.bin` (mode 0600) — on Linux where there is no Secret Service
+(`$XDG_DATA_HOME`), and on macOS where the build lacks the `keychain-access-groups` entitlement
+(`~/Library/Application Support`), which the data-protection keychain requires: an unsigned or
+ad-hoc-signed build, as a dev build is (the app asks the keychain once at start, and a file holds
+the key behind a passphrase from then on). The crate runs the identity client's flows — make the identity, add a device, revoke one — and reaches the executor only over
 its RPC with the admin credential. It is its own crate so nothing of it links the executor;
 `custody/tests/boundary.rs` keeps it so.
 
