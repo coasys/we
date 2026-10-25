@@ -3851,7 +3851,7 @@ Needs: kernels records, presence, ephemeral, media, peerConnection, call; permis
 - Parts: `call.anchoredCallButton` (needs node — the record the call is about — anything with an id), `call.continueCallButton`, `call.deviceSettings`, `call.startCallButton`, `call.tile` (needs tile — the participant to show — one of modules.call.tiles)
 - Panels (`meta.panels[].dock`): `stage` "Call" (module-owned openness)
 - Settings: `iceServers` (string; deployment, space, agent) — ICE servers
-- Presence activities: `call` { id: string, anchor: object, media: object, record: string, continued: boolean }
+- Presence activities: `call` { id: string, anchor: object, media: object, record: string, continued: boolean, topology: object }
 
 ### Transcription (`transcribe`)
 Turns what is said in a call into text blocks in the space.
