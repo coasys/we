@@ -35,6 +35,8 @@ import { Placement } from './Placement';
 import { ReadMarker } from './ReadMarker';
 import { Relationship } from './Relationship';
 import { RelationshipType } from './RelationshipType';
+import { Role } from './Role';
+import { RoleGrant } from './RoleGrant';
 import { Shape } from './Shape';
 import { WE_NODE_ENTITY, WE_NODE_RELATIONS } from './shared';
 import { Signal } from './Signal';
@@ -78,6 +80,8 @@ export const CORE_DEFS: Record<string, CoreEntityDef> = {
   ReadMarker,
   Relationship,
   RelationshipType,
+  Role,
+  RoleGrant,
   Shape,
   Signal,
   SignalType,

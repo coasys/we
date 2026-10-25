@@ -21,6 +21,10 @@ import type { CoreEntityDef } from './defs';
  * Community-level removal needs the governance layer and the validation rules underneath it;
  * conflating the two would promise a protection this cannot deliver.
  *
+ * Nor is it the space's `muted` {@link Role}. That is a standing a community gives somebody, which
+ * everybody in the space can see; this is one agent's own filter, which nobody else knows
+ * exists. A person can be both, and the two never stand in for each other.
+ *
  * Global rather than per-space, deliberately. Muting is a judgement about a person, and the common
  * case — someone who is unpleasant in one community and turns up in another — is exactly the case a
  * per-space list would fail. Per-space scoping can be added as an optional field later without

@@ -2722,6 +2722,17 @@ RelationshipType extends WeNode:
   - directed: boolean = true [we://directed]
   - schemaVersion: number = 1 [we://schema_version]
 
+Role extends Ad4mModel:
+  Fields:
+  - slug: string [we://slug]
+  - name: string (required) [we://name]
+  - description: string [we://description]
+
+RoleGrant extends Ad4mModel:
+  Fields:
+  - role: string (required) [we://granted_role]
+  - agent: string (required) [we://granted_to]
+
 Shape extends WeNode:
   Fields:
   - name: string (required) [we://name]
