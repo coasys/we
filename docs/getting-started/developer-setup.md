@@ -29,10 +29,10 @@ git clone https://github.com/coasys/ad4m.git
 ### 2. Build External Dependencies
 
 ```bash
-# Build AD4M executor (required for Electron and Tauri)
-cd ad4m
-cargo build --release
-# This creates: target/release/ad4m-executor (~350MB)
+# Download the AD4M executor WE is pinned to (required for Electron and Tauri)
+cd we
+pnpm ad4m:executor
+# This writes: ~/.cache/we/ad4m-executor/<commit>/ad4m-executor, built by ad4m's CI for the pinned commit
 
 # Build Flux app (required for all platforms)
 cd ../flux/app
@@ -40,6 +40,12 @@ yarn install
 yarn build
 # This creates: dist/ folder with built app
 ```
+
+`pnpm dev:electron` runs the same command on every start, so a pin that moves — after pulling
+`dev`, or on a branch that pins another ad4m commit — fetches its executor by itself. Build the
+executor with `cargo build --release --bin ad4m-executor` only when you are changing ad4m, or on
+macOS, where ad4m publishes none, and point `ad4m.executorPath` at it — see "The executor you run
+locally" in [ad4m-and-deploys.md](../contributing/ad4m-and-deploys.md#the-executor-you-run-locally).
 
 ### 3. Configure WE Seed File
 
@@ -53,8 +59,7 @@ nano we-seed.json  # Or use your favorite editor
 ```json
 {
   "ad4m": {
-    "repoPath": "../ad4m", // Path to AD4M repo
-    "executorPath": "../ad4m/target/release/ad4m-executor"
+    "repoPath": "../ad4m" // Path to AD4M repo
   },
   "apps": [
     {
@@ -183,11 +188,11 @@ All platform-specific files are **auto-generated** from this seed file:
 
 ### "AD4M executor not found"
 
-Build AD4M first:
+Download the pinned executor:
 
 ```bash
-cd ad4m
-cargo build --release
+cd we
+pnpm ad4m:executor
 ```
 
 ### "Flux dist not found"
@@ -263,11 +268,11 @@ we/
 
    ```bash
    # Build external deps
-   cd ad4m && cargo build --release
-   cd ../flux/app && yarn install && yarn build
+   cd flux/app && yarn install && yarn build
 
    # Setup WE
    cd ../../we
+   pnpm ad4m:executor
    pnpm install
    nano we-seed.json  # Configure paths
    pnpm setup-workspace
