@@ -128,6 +128,7 @@ export { aggregateSignals } from './utils/signalAggregate';
 export { decodeFileAsString, decodeFileAsJson, encodeJsonFileData } from './utils/fileTransforms';
 export { createJsonShapeStore } from './shapeStore';
 export { decodeTemplateFile, encodeTemplateFile, type StoredSchema, TEMPLATE_FILE_NAME } from './utils/templateFile';
+export { completeResponse, respondsThrough } from './utils/responses';
 
 /**
  * The dataset handle model statics accept — opaque on purpose. Which kind of handle "a dataset"

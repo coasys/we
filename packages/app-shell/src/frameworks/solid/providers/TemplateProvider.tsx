@@ -12,12 +12,12 @@ import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry'
 import { onSlotRegistryChanged, slotRegistry } from '@shared/registries/slotRegistry';
 import { provideChromeBag, provideTemplateBag } from '@shared/registries/templateBag';
 import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/templateSurface';
-import { completeResponse, respondsThrough } from '@shared/responses';
 import { installRenderSettleOnExit, installSafeModeShortcut } from '@shared/safeMode';
 import { hostSourceBag } from '@shared/sources';
 import { workflowStateOf } from '@shared/taskWorkflow';
 import { taskWorkflowLive } from '@shared/taskWorkflowLive';
 import { copyText } from '@shared/utils';
+import { completeResponse, respondsThrough } from '@we/entities';
 
 import { signalOptimism } from '../../../shared/signalOptimism';
 import { signalOrder } from '../../../shared/signalOrder';
@@ -244,7 +244,7 @@ export default function TemplateProvider() {
   }
 
   /**
-   * A record written as a response is linked into its thread — see `@shared/responses`. Not awaited:
+   * A record written as a response is linked into its thread — see `completeResponse` in `@we/entities`. Not awaited:
    * the response exists, and the press that wrote it should not wait on the thread link.
    */
   function threadResponse(perspective: DatasetProxy, created: { id?: string } | undefined, options: unknown): void {

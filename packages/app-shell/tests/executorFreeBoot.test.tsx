@@ -104,6 +104,8 @@ vi.mock('../src/frameworks/solid/stores/ThemeStore', () => ({
 }));
 
 // ── Harness ───────────────────────────────────────────────────────────────────
+import { completeResponse } from '@we/entities';
+
 import { BootController } from '../src/frameworks/solid/providers/BootController';
 import { AccountStoreProvider } from '../src/frameworks/solid/stores/AccountStore';
 import { AppStoreProvider } from '../src/frameworks/solid/stores/AppStore';
@@ -116,7 +118,6 @@ import { ShellStoreProvider } from '../src/frameworks/solid/stores/ShellStore';
 import { type SpaceStore, SpaceStoreProvider, useSpaceStore } from '../src/frameworks/solid/stores/SpaceStore';
 import { withExtractionDefaults } from '../src/shared/collectionExtraction';
 import { createModuleStoreDeps } from '../src/shared/registries/moduleHostServices';
-import { completeResponse } from '../src/shared/responses';
 import { provideSeed } from '../src/shared/seedRegistry';
 import { writeSpaceLandmark } from '../src/shared/spaceLandmarks';
 

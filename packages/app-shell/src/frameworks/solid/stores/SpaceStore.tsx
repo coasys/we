@@ -55,7 +55,6 @@ import {
   moduleSurface,
 } from '@shared/registries/moduleRegistry';
 import { defaultViewOrder, viewRegistry } from '@shared/registries/viewRegistry';
-import { completeResponse } from '@shared/responses';
 import { seedDefaultEnabledModules } from '@shared/seedModules';
 import { getSeed } from '@shared/seedRegistry';
 import { type SharingPickerOption, sharingPickerOptions } from '@shared/sharingOptions';
@@ -147,6 +146,7 @@ import {
 } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
 import { saveFile, type SaveOutcome } from '@we/design-utils';
+import { completeResponse } from '@we/entities';
 import {
   AGENT_DEFAULT,
   CollectionBlock,
@@ -2323,7 +2323,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         anchor: { id: parentId, relation, ...(relation === 'children' && { entity: 'CollectionBlock' }) },
       }),
     });
-    // A reply is linked into its thread, and is a child of nothing — see `@shared/responses`.
+    // A reply is linked into its thread, and is a child of nothing — see `completeResponse` in `@we/entities`.
     if (root?.id && parentId && relation === 'responses') void completeResponse(p, root.id, parentId);
     return root?.id;
   }

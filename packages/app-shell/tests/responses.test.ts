@@ -2,15 +2,14 @@
  * A response goes into its thread, and nowhere else — against the in-memory backend, so the walk runs
  * over real records and real links rather than a fake that agrees with it.
  *
- * The two rules being pinned, from `@shared/responses`:
+ * The two rules being pinned, from `completeResponse` in `@we/entities`:
  * - the thread's subject is the first thing above a response that is not itself one;
  * - a response is never a child of anything — where it was said is derived from its subject.
  */
 import { createInMemoryBackendPorts } from '@we/backend-inmemory';
 import { getEntity } from '@we/entities';
+import { completeResponse, respondsThrough } from '@we/entities';
 import { beforeEach, describe, expect, it } from 'vitest';
-
-import { completeResponse, respondsThrough } from '../src/shared/responses';
 
 interface Node {
   id: string;
