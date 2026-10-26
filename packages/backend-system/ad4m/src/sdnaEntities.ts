@@ -26,6 +26,8 @@ import {
   ReadMarker,
   Relationship,
   RelationshipType,
+  Role,
+  RoleGrant,
   Shape,
   Signal,
   SignalType,
@@ -707,6 +709,12 @@ export const SPACE_MODELS = [
   */
   Involvement,
   InvolvementType,
+  /*
+    The standings people hold across the space, and who holds them. Shared: a moderator is a fact
+    about the community, and a grant held privately would make nobody one.
+  */
+  Role,
+  RoleGrant,
 ] as const;
 
 /**

@@ -245,6 +245,8 @@ export type {
 } from './workflows';
 export type { CallPort, CallSessionOptions } from './call';
 export { NO_IDENTITY_CAPABILITIES, readKeyLogEvent } from './identity';
+export { SELF_PERSONS } from './persons';
+export type { PersonPort } from './persons';
 export type {
   DeviceKeyView,
   IdentityCapabilities,

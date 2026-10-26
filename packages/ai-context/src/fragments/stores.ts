@@ -430,6 +430,10 @@ export const storeEntries: StoreEntry[] = [
         properties: ['id', 'name', 'slug', 'semantic', 'reflexive', 'appliesTo', 'icon', 'color', 'retired'],
       },
       involvementTypesLoaded: { type: 'boolean' },
+      roles: { type: 'array', properties: ['id', 'slug', 'name', 'description', 'holders'] },
+      myRoles: { type: 'array' },
+      memberRoles: { type: 'object' },
+      rolesLoaded: { type: 'boolean' },
       unreadNodeIds: { type: 'array' },
       myMentions: { type: 'array', properties: ['id', 'author', 'createdAt'] },
     },
@@ -471,6 +475,10 @@ export const storeEntries: StoreEntry[] = [
       'setInvolvement',
       'respondTo',
       'createInvolvementType',
+      'createRole',
+      'updateRole',
+      'grantRole',
+      'revokeRole',
       'updateInvolvementType',
       'setInvolvementTypeRetired',
       'upsertSignal',
@@ -1299,6 +1307,13 @@ export function generateStoresText(entries: StoreEntry[]): string {
         offeredInvolvementTypes:
           '{ id, name, slug, semantic, reflexive, appliesTo, icon, color, retired }[] — the same list without the withdrawn ones. What an assign menu or an RSVP control should offer',
         involvementTypesLoaded: 'boolean — the space has been asked for its kinds of involvement',
+        roles:
+          "{ id, slug, name, description, holders }[] — the standings people hold across this space, admin first: its Role records, with `holders` the people granted each. Not the same thing as an involvement kind, which is a part in one record; a role is a part in the space. `slug` is what a grant and a rule name it by. `admin` is the role administering the space takes. A role a grant names that no record describes is listed under its slug, so nobody's standing is hidden",
+        myRoles: "string[] — the slugs of the roles the viewer holds here: `'moderator' in spaceStore.myRoles`",
+        memberRoles:
+          'Record<did, string[]> — by person, the slugs of the roles they hold, for a badge beside a member: `spaceStore.memberRoles[member.did] ?? []`. A person here is who a member speaks for, so a member on two devices holds one set of roles',
+        rolesLoaded:
+          'boolean — the space has been asked for its roles. An empty `roles` before then is not yet an answer',
         templateOverrideOptions:
           '{ label, value }[] — options for the per-space template override picker: "Use the space\u2019s default" (space-default), "Use my default" (agent-default), then every template. Each of the first two names what it resolves to. Pre-built because a schema can map a store array into options but cannot prepend one, and without those entries overriding would be one-way',
         themeOverrideOptions: '{ label, value }[] — the same, for themes',
@@ -1421,6 +1436,14 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(nodeId: string, agent: string, kind: string, on: boolean): puts somebody on a record as a kind one member says about another — assigning a task, asking for a review — or takes them off. `on` is the state wanted rather than a toggle, so a menu passes the opposite of the tick it shows and a double press cannot undo itself. Every copy of the pair goes on removal. A reflexive kind is routed to respondTo, and refused for anybody but the agent it is about. Pair with a DropdownMenu of toggle entries: `onSelect: { $action: "spaceStore.setInvolvement", args: [{ $: "card.id" }, { $: "arg.id" }, "assignee", { $: "!arg.checked" }] }`',
         respondTo:
           '(nodeId: string, kind: string): gives this agent\u2019s own answer to a record — "going", "maybe", "not-going" — replacing any other answer it held there, in one transaction. Pass an empty kind to withdraw the answer. Refuses a kind that is not reflexive. Shown on the click, before the write lands',
+        createRole:
+          '(config: { name, description? }): names a role this community holds — "Moderator", "Steward". Its slug is derived from the name and fixed: grants and rules hold it. A name already used is refused, in a toast. Only whoever administers the space; rejects otherwise',
+        updateRole:
+          '(slug: string, updates: { name?, description? }): renames a role or changes what it says it means; the slug stays. Only whoever administers the space',
+        grantRole:
+          '(slug: string, agent: string): gives a member the role. Holding it already changes nothing. Only whoever administers the space; rejects otherwise',
+        revokeRole:
+          '(slug: string, agent: string): takes the role from a member. The last admin cannot lose `admin` — somebody else has to be made one first — and is told so in a toast. Only whoever administers the space',
         createInvolvementType:
           '(config: { name, semantic?, reflexive?, appliesTo?, icon?, color? }): names a kind of part a person can have — "Shepherd", "Second pair of eyes". `appliesTo` is entity names joined with commas. `reflexive` is fixed once made. A slug the space already has is refused',
         updateInvolvementType:
@@ -1453,7 +1476,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         copyGuestLink:
           "(uuid: string): copies that space's guest invite link — a URL that creates an account on the space's host and joins, with no sign-up and no download. Empty, and the control hidden, unless BOTH this app's origin and the node's URL are addresses a recipient could reach: a loopback address on either half resolves to the reader's own machine. Read `spaceList[].guestLink` to decide whether to offer it; `shareLink` is the one for somebody who already has WE",
         canAdministerSpace:
-          '(uuid: string): whether this agent may change what every member of that space sees — true for a personal space, and for a shared one they authored. A UI affordance for deciding whether to offer the controls, NOT enforcement: a shared space is a neighbourhood every member can write to. Ask by name rather than comparing author to me.did, so the answer can grow (multiple admins, roles) without every template changing',
+          '(uuid: string): whether this agent may change what every member of that space sees — true for a personal space; for the shared space on screen, for whoever holds its `admin` role (its author, while nobody does); for any other shared space, for its author, since its roles are read once it is open. A UI affordance for deciding whether to offer the controls, NOT enforcement: a shared space is a neighbourhood every member can write to. Ask by name rather than comparing author to me.did, so the answer follows the space\u2019s roles without every template changing',
         exportCallTranscript:
           "(callId: string): writes the call's transcript to a .txt file (one line per utterance: name, timestamp, text) and downloads it. Read-only and client-side — it reads the shared record and writes to the caller's own device",
         exportExtractionLog:

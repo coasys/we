@@ -18,6 +18,7 @@ import type { AgentSessionPort, DatasetLifecyclePort } from './lifecycle';
 import type { EntityManifest } from './manifest';
 import type { EntityManifestEntry } from './manifestEntry';
 import type { ModelAdminPort } from './modelAdmin';
+import type { PersonPort } from './persons';
 import type { AgentProfileSummary, PublishProfileFields } from './profileTypes';
 import type { RuntimeAdminPort } from './runtimeAdmin';
 import type { TranscriptionPort } from './transcription';
@@ -255,6 +256,11 @@ export interface BackendPorts {
    * {@link IdentityPort}.
    */
   identity?: IdentityPort;
+  /**
+   * Who a signing key speaks for. Optional: absent, every key is its own person — see
+   * {@link PersonPort} and `SELF_PERSONS`.
+   */
+  persons?: PersonPort;
 }
 
 /**

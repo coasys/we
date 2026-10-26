@@ -4768,6 +4768,52 @@
       "relations": []
     },
     {
+      "name": "Role",
+      "className": "Role",
+      "extends": "Ad4mModel",
+      "fields": [
+        {
+          "name": "slug",
+          "type": "string",
+          "predicate": "we://slug",
+          "required": false
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "predicate": "we://name",
+          "required": true
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "predicate": "we://description",
+          "required": false
+        }
+      ],
+      "relations": []
+    },
+    {
+      "name": "RoleGrant",
+      "className": "RoleGrant",
+      "extends": "Ad4mModel",
+      "fields": [
+        {
+          "name": "role",
+          "type": "string",
+          "predicate": "we://granted_role",
+          "required": true
+        },
+        {
+          "name": "agent",
+          "type": "string",
+          "predicate": "we://granted_to",
+          "required": true
+        }
+      ],
+      "relations": []
+    },
+    {
       "name": "Shape",
       "className": "Shape",
       "extends": "WeNode",
@@ -7418,6 +7464,19 @@
         "involvementTypesLoaded": {
           "type": "boolean"
         },
+        "roles": {
+          "type": "array",
+          "properties": ["id", "slug", "name", "description", "holders"]
+        },
+        "myRoles": {
+          "type": "array"
+        },
+        "memberRoles": {
+          "type": "object"
+        },
+        "rolesLoaded": {
+          "type": "boolean"
+        },
         "templateOverrideOptions": {
           "type": "array",
           "properties": ["label", "value"]
@@ -7590,6 +7649,10 @@
         "navigateToSpace",
         "openRecordRef",
         "canAdministerSpace",
+        "createRole",
+        "updateRole",
+        "grantRole",
+        "revokeRole",
         "copyShareLink",
         "copyGuestLink",
         "exportCallTranscript",

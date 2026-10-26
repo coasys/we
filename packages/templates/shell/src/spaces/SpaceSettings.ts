@@ -3,6 +3,7 @@ import { expr } from '@we/schema-shared';
 import { attributeRow } from '@we/template-kit';
 
 import { spaceDefaultsSection } from './SpaceDefaults.ts';
+import { spacePeopleSection } from './SpacePeople.ts';
 import { spaceSectionsSection } from './SpaceSections.ts';
 import { spaceVocabularySection } from './SpaceVocabulary.ts';
 
@@ -1321,14 +1322,15 @@ const audienceNote = (text: string, editableWhen?: SchemaProp): SchemaNode => ({
 });
 
 /**
- * The tabs, in the order somebody works through a new space: what it is, how it looks, what it has,
- * what its words mean.
+ * The tabs, in the order somebody works through a new space: what it is, who looks after it, how it
+ * looks, what it has, what its words mean.
  *
  * Vocabulary is last because it is the deepest and the least often visited — and because it is
  * enormous, which is most of why these are tabs at all.
  */
 const TABS = [
   { key: 'about', label: 'About' },
+  { key: 'people', label: 'People' },
   { key: 'appearance', label: 'Appearance' },
   { key: 'features', label: 'Features' },
   { key: 'vocabulary', label: 'Vocabulary' },
@@ -1455,6 +1457,19 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
                           audienceNote('Everyone in this space sees these.', { $: 'space.canAdminister' }),
                           communitySection,
                           shareSection,
+                        ],
+                        fill,
+                      ),
+
+                      /*
+                    People — who is here and who looks after the space. Community-owned, like About,
+                    and read from the space itself, like Vocabulary — see `SpacePeople.ts`.
+                  */
+                      tabPanel(
+                        'people',
+                        [
+                          audienceNote('Everyone in this space sees these.', { $: 'space.canAdminister' }),
+                          spacePeopleSection,
                         ],
                         fill,
                       ),

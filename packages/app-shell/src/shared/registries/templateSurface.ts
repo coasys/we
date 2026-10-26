@@ -505,6 +505,12 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     involvementTypes: state('content'),
     offeredInvolvementTypes: state('content'),
     involvementTypesLoaded: state('content'),
+    // Who holds which standing in the space — read by any template that shows a member's badge, so
+    // `content` for the reason the space's vocabulary is.
+    roles: state('content'),
+    myRoles: state('content'),
+    memberRoles: state('content'),
+    rolesLoaded: state('content'),
     setInvolvement: action('content'),
     respondTo: action('content'),
     mutedDids: state('content'),
@@ -568,6 +574,15 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     createInvolvementType: action('signals'),
     updateInvolvementType: action('signals'),
     setInvolvementTypeRetired: action('signals'),
+    /*
+      Who holds which role is who may change the space, so naming roles and granting them are the
+      space's own settings: the same tier as renaming it. They act on the space on screen and take no
+      space id, so there is nothing to truncate.
+    */
+    createRole: action('space-settings'),
+    updateRole: action('space-settings'),
+    grantRole: action('space-settings'),
+    revokeRole: action('space-settings'),
 
     // ── navigation ──
     spaceList: state('navigation'),
