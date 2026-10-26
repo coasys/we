@@ -1778,8 +1778,46 @@ const appRail = (): Scenario => {
   };
 };
 
+/**
+ * The top of the Coasys tree under Glow: a rounded-square space face, a two-line description, and a
+ * tree with one row selected — the pieces whose look is the theme's or the primitive's to get right.
+ */
+const coasysTreeTop = (): Scenario => {
+  const glow = BUNDLE_LAB_THEMES.find((t) => t.label === 'coasys-glow')?.theme ?? {};
+  const item = (value: string, label: string): SchemaNode => ({
+    type: 'we-tree-item',
+    props: { value },
+    children: [{ type: 'we-text', children: [label] }],
+  });
+  return {
+    node: {
+      type: 'Column',
+      theme: glow,
+      props: { width: '280px', gap: '300', p: '300', bg: 'chrome' },
+      children: [
+        { type: 'we-avatar', props: { id: 'space-face', size: 'md', r: '500', initials: 'Coasys', hash: 'c1' } },
+        { type: 'we-avatar', props: { id: 'person-face', size: 'md', initials: 'Ada', hash: 'p1' } },
+        {
+          type: 'we-text',
+          props: { id: 'purpose', variant: 'footnote', lines: 2 },
+          children: [
+            'A space for the people building Coasys: its calls, the channels where the work is talked through, and the flows that carry it from a proposal to a release.',
+          ],
+        },
+        {
+          type: 'we-tree',
+          props: { label: 'This space', selected: 'b' },
+          children: [item('a', 'General'), item('b', 'Design')],
+        },
+      ],
+    },
+    tables: {},
+  };
+};
+
 export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'rail:app': appRail,
+  'coasys:tree-top': coasysTreeTop,
   'bundle:prompt': bundleInstallPrompt,
   'safe-mode:leaving': safeModeLeaving,
   'bundle:update-asks-more': bundleUpdatePrompt({

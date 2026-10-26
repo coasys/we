@@ -105,10 +105,8 @@
                             },
                             "children": [
                               {
-                                "type": "we-button",
+                                "type": "Row",
                                 "props": {
-                                  "variant": "bare",
-                                  "size": "sm",
                                   "flex": "1",
                                   "minWidth": "0",
                                   "ax": "start",
@@ -116,22 +114,9 @@
                                   "gap": "200",
                                   "py": "200",
                                   "px": { "$": "local.railInset" },
-                                  "height": "auto",
-                                  "color": "text-faint",
-                                  "hoverProps": { "color": "text-muted" },
-                                  "expanded": { "$": "!('spaces' in local.collapsedGroups)" },
-                                  "onClick": { "$toggleLocalIn": "collapsedGroups", "value": "spaces" }
+                                  "color": "text-faint"
                                 },
                                 "children": [
-                                  {
-                                    "type": "we-icon",
-                                    "props": {
-                                      "name": {
-                                        "$": "('spaces' in local.collapsedGroups) ? 'caret-right' : 'caret-down'"
-                                      },
-                                      "size": "xs"
-                                    }
-                                  },
                                   {
                                     "type": "we-text",
                                     "props": { "fontSize": "200", "fontWeight": "600", "truncate": true },
@@ -142,262 +127,241 @@
                             ]
                           },
                           {
-                            "type": "$animate",
-                            "props": {
-                              "condition": { "$": "!('spaces' in local.collapsedGroups)" },
-                              "enterTransition": [
-                                { "type": "reveal", "duration": 300, "easing": "ease-in-out" },
-                                { "type": "fade", "duration": 180, "easing": "ease-in-out" }
-                              ],
-                              "exitTransition": [
-                                { "type": "reveal", "duration": 300, "easing": "ease-in-out" },
-                                { "type": "fade", "duration": 180, "easing": "ease-in-out" }
-                              ]
-                            },
+                            "type": "Column",
+                            "props": { "width": "100%", "gap": "200" },
                             "children": [
                               {
-                                "type": "Column",
-                                "props": { "width": "100%", "gap": "200" },
+                                "type": "we-sortable",
+                                "props": {
+                                  "direction": "vertical",
+                                  "gap": "var(--we-space-200)",
+                                  "width": "100%",
+                                  "onReorder": {
+                                    "$invoke": "datasetStore.reorderDatasets",
+                                    "args": [{ "$": "arg.detail" }]
+                                  }
+                                },
                                 "children": [
                                   {
-                                    "type": "we-sortable",
-                                    "props": {
-                                      "direction": "vertical",
-                                      "gap": "var(--we-space-200)",
-                                      "width": "100%",
-                                      "onReorder": {
-                                        "$invoke": "datasetStore.reorderDatasets",
-                                        "args": [{ "$": "arg.detail" }]
-                                      }
-                                    },
+                                    "type": "$each",
+                                    "props": { "items": { "$": "spaceStore.orderedSidebarItems" }, "as": "space" },
                                     "children": [
                                       {
-                                        "type": "$each",
-                                        "props": { "items": { "$": "spaceStore.orderedSidebarItems" }, "as": "space" },
+                                        "type": "div",
+                                        "props": { "data-we-id": { "$": "space.uuid" }, "style": { "width": "100%" } },
                                         "children": [
                                           {
-                                            "type": "div",
+                                            "type": "we-button",
                                             "props": {
-                                              "data-we-id": { "$": "space.uuid" },
-                                              "style": { "width": "100%" }
+                                              "variant": "ghost",
+                                              "size": "lg",
+                                              "width": "100%",
+                                              "height": "auto",
+                                              "ax": "start",
+                                              "ay": "center",
+                                              "gap": "200",
+                                              "py": "300",
+                                              "px": { "$": "local.railInset" },
+                                              "label": { "$": "space.name" },
+                                              "onClick": [
+                                                { "$invoke": "shellStore.closeShellView" },
+                                                {
+                                                  "$invoke": "spaceStore.navigateToSpace",
+                                                  "args": [{ "$": "space.spaceId" }]
+                                                }
+                                              ],
+                                              "bg": {
+                                                "$": "(space.spaceId == routeStore.segments[1] && !shellStore.activeShellView) ? 'accent-soft' : ''"
+                                              },
+                                              "color": {
+                                                "$": "(space.spaceId == routeStore.segments[1] && !shellStore.activeShellView) ? 'accent-text' : 'text-muted'"
+                                              },
+                                              "hoverProps": {
+                                                "$": "(space.spaceId == routeStore.segments[1] && !shellStore.activeShellView) ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-hover', color: 'text' }"
+                                              },
+                                              "activeProps": {
+                                                "$": "(space.spaceId == routeStore.segments[1] && !shellStore.activeShellView) ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-active', color: 'text' }"
+                                              }
                                             },
                                             "children": [
                                               {
-                                                "type": "we-button",
+                                                "type": "$if",
                                                 "props": {
-                                                  "variant": "ghost",
-                                                  "size": "lg",
-                                                  "width": "100%",
-                                                  "height": "auto",
-                                                  "ax": "start",
-                                                  "ay": "center",
-                                                  "gap": "200",
-                                                  "py": "300",
-                                                  "px": { "$": "local.railInset" },
-                                                  "label": { "$": "space.name" },
-                                                  "onClick": [
-                                                    { "$invoke": "shellStore.closeShellView" },
-                                                    {
-                                                      "$invoke": "spaceStore.navigateToSpace",
-                                                      "args": [{ "$": "space.spaceId" }]
-                                                    }
-                                                  ],
-                                                  "bg": {
-                                                    "$": "(space.spaceId == routeStore.segments[1] && !shellStore.activeShellView) ? 'accent-soft' : ''"
+                                                  "condition": {
+                                                    "$": "modules.call.active && `neighbourhood://${space.spaceId}` == modules.call.callSpace.uri"
                                                   },
-                                                  "color": {
-                                                    "$": "(space.spaceId == routeStore.segments[1] && !shellStore.activeShellView) ? 'accent-text' : 'text-muted'"
-                                                  },
-                                                  "hoverProps": {
-                                                    "$": "(space.spaceId == routeStore.segments[1] && !shellStore.activeShellView) ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-hover', color: 'text' }"
-                                                  },
-                                                  "activeProps": {
-                                                    "$": "(space.spaceId == routeStore.segments[1] && !shellStore.activeShellView) ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-active', color: 'text' }"
-                                                  }
-                                                },
-                                                "children": [
-                                                  {
-                                                    "type": "$if",
+                                                  "then": {
+                                                    "type": "Column",
                                                     "props": {
-                                                      "condition": {
-                                                        "$": "modules.call.active && `neighbourhood://${space.spaceId}` == modules.call.callSpace.uri"
-                                                      },
-                                                      "then": {
-                                                        "type": "Column",
-                                                        "props": {
-                                                          "position": "relative",
-                                                          "flex": "0 0 auto",
-                                                          "flexShrink": "0"
-                                                        },
-                                                        "children": [
-                                                          {
-                                                            "type": "we-avatar",
-                                                            "props": {
-                                                              "image": { "$": "space.avatar" },
-                                                              "initials": { "$": "space.name" },
-                                                              "hash": { "$": "space.uuid" },
-                                                              "size": "sm",
-                                                              "ringColor": "success",
-                                                              "ringWidth": "2.5px"
-                                                            }
-                                                          },
-                                                          {
-                                                            "type": "Column",
-                                                            "props": {
-                                                              "position": "absolute",
-                                                              "bottom": "calc(var(--we-avatar-size-sm) * -0.1348)",
-                                                              "right": "calc(var(--we-avatar-size-sm) * -0.1348)",
-                                                              "bg": "var(--we-role-success)",
-                                                              "r": "full",
-                                                              "p": "calc(var(--we-avatar-size-sm) * 0.125)",
-                                                              "ax": "center",
-                                                              "ay": "center"
-                                                            },
-                                                            "children": [
-                                                              {
-                                                                "type": "we-icon",
-                                                                "props": {
-                                                                  "name": "phone-call",
-                                                                  "size": "calc(var(--we-avatar-size-sm) * 0.3125)",
-                                                                  "color": "on-success"
-                                                                }
-                                                              }
-                                                            ]
-                                                          }
-                                                        ]
-                                                      },
-                                                      "else": {
+                                                      "position": "relative",
+                                                      "flex": "0 0 auto",
+                                                      "flexShrink": "0"
+                                                    },
+                                                    "children": [
+                                                      {
                                                         "type": "we-avatar",
                                                         "props": {
                                                           "image": { "$": "space.avatar" },
                                                           "initials": { "$": "space.name" },
                                                           "hash": { "$": "space.uuid" },
                                                           "size": "sm",
-                                                          "flexShrink": "0"
+                                                          "ringColor": "success",
+                                                          "ringWidth": "2.5px"
                                                         }
-                                                      }
-                                                    }
-                                                  },
-                                                  {
-                                                    "type": "$if",
-                                                    "props": {
-                                                      "condition": { "$": "local.expanded" },
-                                                      "enterTransition": [
-                                                        { "type": "reveal", "axis": "inline", "duration": 250 },
-                                                        { "type": "fade", "duration": 150 }
-                                                      ],
-                                                      "exitTransition": [
-                                                        { "type": "reveal", "axis": "inline", "duration": 250 },
-                                                        { "type": "fade", "duration": 150 }
-                                                      ],
-                                                      "then": {
-                                                        "type": "Row",
-                                                        "props": { "gap": "200", "ay": "center", "minWidth": "0" },
+                                                      },
+                                                      {
+                                                        "type": "Column",
+                                                        "props": {
+                                                          "position": "absolute",
+                                                          "bottom": "calc(var(--we-avatar-size-sm) * -0.1348)",
+                                                          "right": "calc(var(--we-avatar-size-sm) * -0.1348)",
+                                                          "bg": "var(--we-role-success)",
+                                                          "r": "full",
+                                                          "p": "calc(var(--we-avatar-size-sm) * 0.125)",
+                                                          "ax": "center",
+                                                          "ay": "center"
+                                                        },
                                                         "children": [
                                                           {
-                                                            "type": "we-text",
-                                                            "props": { "truncate": true, "fontSize": "300" },
-                                                            "children": [{ "$": "space.name" }]
+                                                            "type": "we-icon",
+                                                            "props": {
+                                                              "name": "phone-call",
+                                                              "size": "calc(var(--we-avatar-size-sm) * 0.3125)",
+                                                              "color": "on-success"
+                                                            }
                                                           }
                                                         ]
                                                       }
+                                                    ]
+                                                  },
+                                                  "else": {
+                                                    "type": "we-avatar",
+                                                    "props": {
+                                                      "image": { "$": "space.avatar" },
+                                                      "initials": { "$": "space.name" },
+                                                      "hash": { "$": "space.uuid" },
+                                                      "size": "sm",
+                                                      "flexShrink": "0"
                                                     }
                                                   }
-                                                ]
+                                                }
+                                              },
+                                              {
+                                                "type": "$if",
+                                                "props": {
+                                                  "condition": { "$": "local.expanded" },
+                                                  "enterTransition": [
+                                                    { "type": "reveal", "axis": "inline", "duration": 250 },
+                                                    { "type": "fade", "duration": 150 }
+                                                  ],
+                                                  "exitTransition": [
+                                                    { "type": "reveal", "axis": "inline", "duration": 250 },
+                                                    { "type": "fade", "duration": 150 }
+                                                  ],
+                                                  "then": {
+                                                    "type": "Row",
+                                                    "props": { "gap": "200", "ay": "center", "minWidth": "0" },
+                                                    "children": [
+                                                      {
+                                                        "type": "we-text",
+                                                        "props": { "truncate": true, "fontSize": "300" },
+                                                        "children": [{ "$": "space.name" }]
+                                                      }
+                                                    ]
+                                                  }
+                                                }
                                               }
                                             ]
                                           }
                                         ]
                                       }
                                     ]
-                                  },
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "DropdownMenu",
+                                "props": {
+                                  "placement": "right-start",
+                                  "itemSize": "sm",
+                                  "items": [
+                                    { "id": "create", "label": "Create a space", "icon": "plus" },
+                                    { "id": "join", "label": "Join a space", "icon": "link" }
+                                  ],
+                                  "onSelect": [
+                                    {
+                                      "$if": {
+                                        "condition": { "$": "arg.id == 'create'" },
+                                        "then": { "$invoke": "shellStore.setCreateSpaceOpen", "args": [true] }
+                                      }
+                                    },
+                                    {
+                                      "$if": {
+                                        "condition": { "$": "arg.id == 'join'" },
+                                        "then": { "$invoke": "shellStore.setJoinSpaceOpen", "args": [true] }
+                                      }
+                                    }
+                                  ]
+                                },
+                                "children": [
                                   {
-                                    "type": "DropdownMenu",
+                                    "type": "we-button",
                                     "props": {
-                                      "placement": "right-start",
-                                      "itemSize": "sm",
-                                      "items": [
-                                        { "id": "create", "label": "Create a space", "icon": "plus" },
-                                        { "id": "join", "label": "Join a space", "icon": "link" }
-                                      ],
-                                      "onSelect": [
-                                        {
-                                          "$if": {
-                                            "condition": { "$": "arg.id == 'create'" },
-                                            "then": { "$invoke": "shellStore.setCreateSpaceOpen", "args": [true] }
-                                          }
-                                        },
-                                        {
-                                          "$if": {
-                                            "condition": { "$": "arg.id == 'join'" },
-                                            "then": { "$invoke": "shellStore.setJoinSpaceOpen", "args": [true] }
-                                          }
-                                        }
-                                      ]
+                                      "variant": "ghost",
+                                      "size": "lg",
+                                      "width": "100%",
+                                      "height": "auto",
+                                      "ax": "start",
+                                      "ay": "center",
+                                      "gap": "200",
+                                      "py": "300",
+                                      "px": { "$": "local.railInset" },
+                                      "label": "Add a space",
+                                      "bg": { "$": "false ? 'accent-soft' : ''" },
+                                      "color": { "$": "false ? 'accent-text' : 'text-muted'" },
+                                      "hoverProps": {
+                                        "$": "false ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-hover', color: 'text' }"
+                                      },
+                                      "activeProps": {
+                                        "$": "false ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-active', color: 'text' }"
+                                      }
                                     },
                                     "children": [
                                       {
-                                        "type": "we-button",
+                                        "type": "Row",
                                         "props": {
-                                          "variant": "ghost",
-                                          "size": "lg",
-                                          "width": "100%",
-                                          "height": "auto",
-                                          "ax": "start",
+                                          "width": "2rem",
+                                          "height": "2rem",
+                                          "ax": "center",
                                           "ay": "center",
-                                          "gap": "200",
-                                          "py": "300",
-                                          "px": { "$": "local.railInset" },
-                                          "label": "Add a space",
-                                          "bg": { "$": "false ? 'accent-soft' : ''" },
-                                          "color": { "$": "false ? 'accent-text' : 'text-muted'" },
-                                          "hoverProps": {
-                                            "$": "false ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-hover', color: 'text' }"
-                                          },
-                                          "activeProps": {
-                                            "$": "false ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-active', color: 'text' }"
-                                          }
+                                          "flexShrink": "0"
                                         },
-                                        "children": [
-                                          {
+                                        "children": [{ "type": "we-icon", "props": { "name": "plus", "size": "sm" } }]
+                                      },
+                                      {
+                                        "type": "$if",
+                                        "props": {
+                                          "condition": { "$": "local.expanded" },
+                                          "enterTransition": [
+                                            { "type": "reveal", "axis": "inline", "duration": 250 },
+                                            { "type": "fade", "duration": 150 }
+                                          ],
+                                          "exitTransition": [
+                                            { "type": "reveal", "axis": "inline", "duration": 250 },
+                                            { "type": "fade", "duration": 150 }
+                                          ],
+                                          "then": {
                                             "type": "Row",
-                                            "props": {
-                                              "width": "2rem",
-                                              "height": "2rem",
-                                              "ax": "center",
-                                              "ay": "center",
-                                              "flexShrink": "0"
-                                            },
+                                            "props": { "gap": "200", "ay": "center", "minWidth": "0" },
                                             "children": [
-                                              { "type": "we-icon", "props": { "name": "plus", "size": "sm" } }
-                                            ]
-                                          },
-                                          {
-                                            "type": "$if",
-                                            "props": {
-                                              "condition": { "$": "local.expanded" },
-                                              "enterTransition": [
-                                                { "type": "reveal", "axis": "inline", "duration": 250 },
-                                                { "type": "fade", "duration": 150 }
-                                              ],
-                                              "exitTransition": [
-                                                { "type": "reveal", "axis": "inline", "duration": 250 },
-                                                { "type": "fade", "duration": 150 }
-                                              ],
-                                              "then": {
-                                                "type": "Row",
-                                                "props": { "gap": "200", "ay": "center", "minWidth": "0" },
-                                                "children": [
-                                                  {
-                                                    "type": "we-text",
-                                                    "props": { "truncate": true, "fontSize": "300" },
-                                                    "children": ["Add a space"]
-                                                  }
-                                                ]
+                                              {
+                                                "type": "we-text",
+                                                "props": { "truncate": true, "fontSize": "300" },
+                                                "children": ["Add a space"]
                                               }
-                                            }
+                                            ]
                                           }
-                                        ]
+                                        }
                                       }
                                     ]
                                   }
@@ -710,27 +674,39 @@
               "children": [
                 {
                   "type": "Row",
-                  "props": { "gap": "200", "ay": "center", "px": "300", "pt": "400", "pb": "200" },
+                  "props": { "gap": "300", "ay": "center", "px": "300", "pt": "400", "pb": "300" },
                   "children": [
                     {
                       "type": "we-avatar",
                       "props": {
-                        "size": "sm",
+                        "size": "md",
+                        "r": "500",
                         "image": { "$": "spaceStore.currentSpace.avatar" },
                         "initials": { "$": "spaceStore.currentSpace.name" },
                         "hash": { "$": "spaceStore.currentSpace.uuid" }
                       }
                     },
                     {
-                      "type": "we-text",
-                      "props": {
-                        "variant": "body",
-                        "fontWeight": "semibold",
-                        "truncate": true,
-                        "flex": "1",
-                        "minWidth": "0"
-                      },
-                      "children": [{ "$": "spaceStore.currentSpace.name" }]
+                      "type": "Column",
+                      "props": { "flex": "1", "minWidth": "0" },
+                      "children": [
+                        {
+                          "type": "we-text",
+                          "props": { "variant": "body", "fontWeight": "semibold", "truncate": true },
+                          "children": [{ "$": "spaceStore.currentSpace.name" }]
+                        },
+                        {
+                          "type": "$if",
+                          "props": {
+                            "condition": { "$": "spaceStore.currentSpace.description" },
+                            "then": {
+                              "type": "we-text",
+                              "props": { "variant": "footnote", "color": "text-muted", "lines": 2 },
+                              "children": [{ "$": "spaceStore.currentSpace.description" }]
+                            }
+                          }
+                        }
+                      ]
                     },
                     {
                       "type": "we-tooltip",
@@ -769,46 +745,42 @@
                   ]
                 },
                 {
+                  "type": "$if",
+                  "props": {
+                    "condition": {
+                      "$": "!spaceStore.currentSpace.description && spaceStore.canAdministerCurrentSpace"
+                    },
+                    "then": {
+                      "type": "Column",
+                      "props": { "px": "300", "pb": "300" },
+                      "children": [
+                        {
+                          "type": "we-button",
+                          "props": {
+                            "variant": "bare",
+                            "ax": "start",
+                            "width": "100%",
+                            "p": "300",
+                            "r": "surface",
+                            "border": "1px dashed border-strong",
+                            "onClick": { "$invoke": "shellStore.openSpaceSettings", "args": ["about"] }
+                          },
+                          "children": [
+                            {
+                              "type": "we-text",
+                              "props": { "variant": "overline", "color": "accent-text" },
+                              "children": ["What is this space for?"]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
                   "type": "Column",
                   "props": { "px": "300", "pb": "300" },
-                  "children": [
-                    {
-                      "type": "$if",
-                      "props": {
-                        "condition": { "$": "spaceStore.currentSpace.description" },
-                        "then": {
-                          "type": "we-text",
-                          "props": { "variant": "footnote", "color": "text-muted" },
-                          "children": [{ "$": "spaceStore.currentSpace.description" }]
-                        },
-                        "else": {
-                          "type": "$if",
-                          "props": {
-                            "condition": { "$": "spaceStore.canAdministerCurrentSpace" },
-                            "then": {
-                              "type": "we-button",
-                              "props": {
-                                "variant": "bare",
-                                "ax": "start",
-                                "width": "100%",
-                                "p": "300",
-                                "r": "surface",
-                                "border": "1px dashed border-strong",
-                                "onClick": { "$invoke": "shellStore.openSpaceSettings", "args": ["about"] }
-                              },
-                              "children": [
-                                {
-                                  "type": "we-text",
-                                  "props": { "variant": "overline", "color": "accent-text" },
-                                  "children": ["What is this space for?"]
-                                }
-                              ]
-                            }
-                          }
-                        }
-                      }
-                    }
-                  ]
+                  "children": [{ "type": "Search", "props": { "placeholder": "Find or ask" } }]
                 },
                 {
                   "type": "$if",
@@ -6548,7 +6520,15 @@
           "page": "radial-gradient(45vmax 40vmax at 32% -12%, rgba(117, 255, 190, 0.15), transparent 70%), radial-gradient(50vmax 45vmax at 104% 112%, rgba(109, 38, 183, 0.24), transparent 70%), radial-gradient(40vmax 36vmax at -8% 110%, rgba(37, 40, 125, 0.3), transparent 70%)",
           "chrome": "radial-gradient(40vmax 40vmax at 0% 0%, rgba(117, 255, 190, 0.05), transparent 70%)"
         },
-        "components": { "button": { "variants": { "outline": { "borderWidth": "1.5px", "border": "text-muted" } } } },
+        "components": {
+          "button": { "variants": { "outline": { "borderWidth": "1.5px", "border": "text-muted" } } },
+          "tree": {
+            "radius": "10px",
+            "variants": {
+              "selected": { "fill": "surfaceRaised", "text": "text", "border": "accent", "borderWidth": "3px" }
+            }
+          }
+        },
         "roles": {
           "page": "#131533",
           "chrome": "#0d0f26",

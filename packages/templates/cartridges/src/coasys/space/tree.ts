@@ -220,24 +220,46 @@ const onSelect: SchemaProp = [
   },
 ];
 
-/** The space's name, the way to its settings, and the way to fold the tree away. */
+/**
+ * The space's face, its name and what it is for, the way to its settings, and the way to fold the
+ * tree away. d12's header: a rounded-square avatar — the space's, where other avatars are people's
+ * circles — with the name beside it and the description under the name.
+ */
 const header: SchemaNode = {
   type: 'Row',
-  props: { gap: '200', ay: 'center', px: '300', pt: '400', pb: '200' },
+  props: { gap: '300', ay: 'center', px: '300', pt: '400', pb: '300' },
   children: [
     {
       type: 'we-avatar',
       props: {
-        size: 'sm',
+        size: 'md',
+        r: '500',
         image: { $: 'spaceStore.currentSpace.avatar' },
         initials: { $: 'spaceStore.currentSpace.name' },
         hash: { $: 'spaceStore.currentSpace.uuid' },
       },
     },
     {
-      type: 'we-text',
-      props: { variant: 'body', fontWeight: 'semibold', truncate: true, flex: '1', minWidth: '0' },
-      children: [{ $: 'spaceStore.currentSpace.name' }],
+      type: 'Column',
+      props: { flex: '1', minWidth: '0' },
+      children: [
+        {
+          type: 'we-text',
+          props: { variant: 'body', fontWeight: 'semibold', truncate: true },
+          children: [{ $: 'spaceStore.currentSpace.name' }],
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $: 'spaceStore.currentSpace.description' },
+            then: {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-muted', lines: 2 },
+              children: [{ $: 'spaceStore.currentSpace.description' }],
+            },
+          },
+        },
+      ],
     },
     {
       type: 'we-tooltip',
@@ -276,49 +298,50 @@ const header: SchemaNode = {
   ],
 };
 
-/** What the space is for: its description, or the way to write one. */
+/**
+ * The way to say what the space is for, while nobody has: d12's dashed box, not yet written and a
+ * press away from being. Once there is a description the header carries it.
+ */
 const purpose: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: '!spaceStore.currentSpace.description && spaceStore.canAdministerCurrentSpace' },
+    then: {
+      type: 'Column',
+      props: { px: '300', pb: '300' },
+      children: [
+        {
+          type: 'we-button',
+          props: {
+            variant: 'bare',
+            ax: 'start',
+            width: '100%',
+            p: '300',
+            r: 'surface',
+            border: '1px dashed border-strong',
+            onClick: { $invoke: 'shellStore.openSpaceSettings', args: ['about'] },
+          },
+          children: [
+            {
+              type: 'we-text',
+              props: { variant: 'overline', color: 'accent-text' },
+              children: ['What is this space for?'],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
+/**
+ * d12's "Find or ask": one field for finding something in the space and asking the space's assistant.
+ * Drawn and not yet answered — what it searches, and how a question becomes one, are still to come.
+ */
+const findOrAsk: SchemaNode = {
   type: 'Column',
   props: { px: '300', pb: '300' },
-  children: [
-    {
-      type: '$if',
-      props: {
-        condition: { $: 'spaceStore.currentSpace.description' },
-        then: {
-          type: 'we-text',
-          props: { variant: 'footnote', color: 'text-muted' },
-          children: [{ $: 'spaceStore.currentSpace.description' }],
-        },
-        else: {
-          type: '$if',
-          props: {
-            condition: { $: 'spaceStore.canAdministerCurrentSpace' },
-            then: {
-              // d12's dashed box: not yet written, and a press away from being.
-              type: 'we-button',
-              props: {
-                variant: 'bare',
-                ax: 'start',
-                width: '100%',
-                p: '300',
-                r: 'surface',
-                border: '1px dashed border-strong',
-                onClick: { $invoke: 'shellStore.openSpaceSettings', args: ['about'] },
-              },
-              children: [
-                {
-                  type: 'we-text',
-                  props: { variant: 'overline', color: 'accent-text' },
-                  children: ['What is this space for?'],
-                },
-              ],
-            },
-          },
-        },
-      },
-    },
-  ],
+  children: [{ type: 'Search', props: { placeholder: 'Find or ask' } }],
 };
 
 /** Start a call here, or join the one running — whichever there is to do. */
@@ -440,6 +463,7 @@ export const treeSection: SchemaNode = {
   children: [
     header,
     purpose,
+    findOrAsk,
     callRunning,
     {
       type: 'Column',

@@ -162,6 +162,8 @@ const rail: SchemaNode = railShell({
     railGroup({
       id: 'spaces',
       label: 'Spaces',
+      // The rail's only group: folded, it would leave the rail empty. See `railGroup`'s `foldable`.
+      foldable: false,
       reorderable: true,
       onReorder: { $invoke: 'datasetStore.reorderDatasets', args: [{ $: 'arg.detail' }] },
       after: [addSpace],
