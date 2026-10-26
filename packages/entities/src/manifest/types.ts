@@ -270,6 +270,11 @@ export interface RoleRecord extends RecordInstance {
 export interface RoleGrantRecord extends RecordInstance {
   role: string;
   agent: string;
+  revokedAt: string;
+}
+
+export interface PolicyRecord extends RecordInstance {
+  document: string;
 }
 
 export interface ShapeRecord extends WeNodeRecord {

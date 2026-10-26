@@ -434,6 +434,7 @@ export const storeEntries: StoreEntry[] = [
       myRoles: { type: 'array' },
       memberRoles: { type: 'object' },
       rolesLoaded: { type: 'boolean' },
+      policy: { type: 'object', properties: ['loaded', 'preset', 'permissions', 'frozen', 'me', 'roles', 'sentences'] },
       unreadNodeIds: { type: 'array' },
       myMentions: { type: 'array', properties: ['id', 'author', 'createdAt'] },
     },
@@ -479,6 +480,7 @@ export const storeEntries: StoreEntry[] = [
       'updateRole',
       'grantRole',
       'revokeRole',
+      'setPolicyPreset',
       'updateInvolvementType',
       'setInvolvementTypeRetired',
       'upsertSignal',
@@ -1314,6 +1316,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           'Record<did, string[]> — by person, the slugs of the roles they hold, for a badge beside a member: `spaceStore.memberRoles[member.did] ?? []`. A person here is who a member speaks for, so a member on two devices holds one set of roles',
         rolesLoaded:
           'boolean — the space has been asked for its roles. An empty `roles` before then is not yet an answer',
+        policy:
+          "{ loaded, preset, permissions, frozen, me, roles, sentences } — the space's policy in force: who may do what to its records. Pass it whole to can() to decide whether to offer a control: { $: \"can({ policy: spaceStore.policy, action: 'CollectionBlock.delete', record: post })\" }. `preset` is 'open', 'community', or null for rules the community wrote itself; `sentences` is each permission in words, for a page that explains the rules; `roles` are the viewer's, admin included while they administer the space. A write the policy does not allow is refused when it is made whatever a template offered — its handler's onError receives the reason as result.message",
         templateOverrideOptions:
           '{ label, value }[] — options for the per-space template override picker: "Use the space\u2019s default" (space-default), "Use my default" (agent-default), then every template. Each of the first two names what it resolves to. Pre-built because a schema can map a store array into options but cannot prepend one, and without those entries overriding would be one-way',
         themeOverrideOptions: '{ label, value }[] — the same, for themes',
@@ -1442,6 +1446,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(slug: string, updates: { name?, description? }): renames a role or changes what it says it means; the slug stays. Only whoever administers the space',
         grantRole:
           '(slug: string, agent: string): gives a member the role. Holding it already changes nothing. Only whoever administers the space; rejects otherwise',
+        setPolicyPreset:
+          "(preset: 'open' | 'community'): replaces the space's policy with a preset — a new version of it, judged like any change to the rules by the version in force, so it rejects for anybody that version does not let change them. Choosing the preset already in force changes nothing",
         revokeRole:
           '(slug: string, agent: string): takes the role from a member. The last admin cannot lose `admin` — somebody else has to be made one first — and is told so in a toast. Only whoever administers the space',
         createInvolvementType:

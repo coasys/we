@@ -79,6 +79,12 @@ export interface SpaceStarter {
   /** Landmark name → `$<id>` of the record that is it. One `SpaceLandmark` record each. */
   landmarks?: Record<string, string>;
   /**
+   * The policy a new space starts from: `community` (members make things and look after their own,
+   * moderators delete anything, admins look after the space) or `open` (everybody who has joined may
+   * do anything). Absent, nothing is written and the space reads as `open`.
+   */
+  policy?: 'open' | 'community';
+  /**
    * Whether the space collection — the messages typed outside any call — is extracted as it grows.
    * Written onto that collection when it is made (`CollectionBlock.autoExtract`); absent, it starts
    * with the space's default like any other new collection.

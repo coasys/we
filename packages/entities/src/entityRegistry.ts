@@ -175,6 +175,63 @@ export function runEntityTransaction<R>(
   return transactionRunner(dataset, fn);
 }
 
+// ─── Write checks ─────────────────────────────────────────────────────────────
+
+/** A record as it stands before a write, with who made it — what a check may need to read. */
+export interface WrittenRecord {
+  author?: string;
+  [field: string]: unknown;
+}
+
+/**
+ * One write a backend is about to make, described before it makes it.
+ *
+ * `record` is lazy because most checks never read it: whether a member may create a post does not
+ * depend on any record, and a backend that had to load one before every write would pay a read per
+ * write for nothing.
+ */
+export interface EntityWrite {
+  dataset: unknown;
+  entity: string;
+  kind: 'create' | 'edit' | 'delete' | 'add' | 'remove';
+  /** The record written; absent for a create, which has none yet. */
+  id?: string;
+  /** For `add` and `remove`: the relation. */
+  relation?: string;
+  /** For a create, its fields; for an edit, the changed fields' new values. */
+  data?: Record<string, unknown>;
+  /** The record as it stands, or `null` when there is none. */
+  record?: () => Promise<WrittenRecord | null> | WrittenRecord | null;
+}
+
+/** Throws when a write is not allowed, and returns when it is. */
+export type EntityWriteCheck = (write: EntityWrite) => Promise<void> | void;
+
+const WRITE_CHECK_KEY = Symbol.for('we.models.writeCheck');
+type GlobalWriteCheck = { [WRITE_CHECK_KEY]?: EntityWriteCheck | null };
+const globalWriteCheck = globalThis as unknown as GlobalWriteCheck;
+
+/**
+ * The host registers what decides whether a write is allowed; every backend asks it before writing.
+ *
+ * The one place every record write passes, whatever made it — a store, a template's `record.*`, a
+ * module, a relation accessor called on an instance. Each backend calls {@link checkEntityWrite} from
+ * its own write path (where a create, an edit, a delete and a relation write actually happen), so a
+ * caller cannot reach a write that skips it, and nothing above the backend has to remember to.
+ *
+ * The decision itself is the host's, because it needs what only the host knows: which space a
+ * dataset is, who is signed in, which roles they hold. One check at a time; registering replaces,
+ * and `null` removes it.
+ */
+export function registerEntityWriteCheck(check: EntityWriteCheck | null): void {
+  globalWriteCheck[WRITE_CHECK_KEY] = check;
+}
+
+/** What a backend calls before a write. Resolves when the write may go ahead; rejects with why not. */
+export async function checkEntityWrite(write: EntityWrite): Promise<void> {
+  await globalWriteCheck[WRITE_CHECK_KEY]?.(write);
+}
+
 // ─── File storage ─────────────────────────────────────────────────────────────
 
 /** The payload a file-format property stores — structurally FileData, declared here to stay import-cycle-free. */

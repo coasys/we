@@ -79,6 +79,7 @@ const VOCABULARY = new Set([
   'SpaceLandmark',
   'Role',
   'RoleGrant',
+  'Policy',
   'Shape',
   'Template',
   'Theme',

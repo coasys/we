@@ -190,6 +190,12 @@ the entity's own declaration, so a community's newest entity is creatable with n
 it. Reach for record.create when the template knows the fields, recordStore when a person is filling
 them in.
 
+A space's policy can refuse a write — a member deleting a post they did not write, a muted member
+posting. The refusal arrives at the handler's onError with the reason as result.message, and the person
+is told in a toast either way. To hide a control the viewer may not use, ask can():
+{ "$": "can({ policy: spaceStore.policy, action: 'CollectionBlock.delete', record: post })" }
+Actions are "Entity.create", "Entity.edit", "Entity.delete" and "Entity.relation.add" / ".remove".
+
 Expressions:
 { "$": "<expression>" }
 Every computed value — a condition, a label, a number, a filtered list — is one expression string in a

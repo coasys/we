@@ -32,6 +32,7 @@ import {
   type InMemoryRelation,
   type Row,
 } from '@we/backend-shared';
+import { checkEntityWrite } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 
 /** The dataset handle the in-memory lifecycle mints — its `tables` are the store. */
@@ -197,13 +198,26 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
     return null;
   };
 
+  /*
+    Instances whose relation writes are part of a create rather than writes of their own: the new
+    record's relations named in its data, and the link to its parent. The create was checked as a
+    whole, which is what the production adapter does too — its parent link is written with the record.
+  */
+  const writingCreate = new WeakSet<object>();
+
   const linkUnder = async (dataset: DatasetEntry, parent: ParentRef, childId: string) => {
     const under = relationUnder(dataset, parent);
     if (!under) return;
     const parentClass = classes[under.entity] as unknown as { hydrate(d: DatasetEntry, r: AnyRow): AnyRow };
     const instance = parentClass.hydrate(dataset, under.row);
     const add = instance[`add${under.relation.charAt(0).toUpperCase()}${under.relation.slice(1)}`];
-    if (typeof add === 'function') await (add as (id: string) => Promise<void>).call(instance, childId);
+    if (typeof add !== 'function') return;
+    writingCreate.add(instance);
+    try {
+      await (add as (id: string) => Promise<void>).call(instance, childId);
+    } finally {
+      writingCreate.delete(instance);
+    }
   };
 
   /**
@@ -341,6 +355,29 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
     /** Instances remember where they came from, so `save()` and `delete()` need no argument. */
     const homes = new WeakMap<object, DatasetEntry>();
 
+    /** The row as it stands now, for a check to read — copied before the write changes it. */
+    const copied = (row: AnyRow | null) => {
+      const before = row ? { ...row } : null;
+      return () => before;
+    };
+
+    const checkDelete = (dataset: DatasetEntry, row: AnyRow) =>
+      checkEntityWrite({ dataset, entity: name, kind: 'delete', id: row.id as string, record: copied(row) });
+
+    /** A relation write on `instance`, unless it is part of the create that made it. */
+    const checkRelation = (dataset: DatasetEntry, instance: AnyRow, relation: string, kind: 'add' | 'remove') => {
+      if (writingCreate.has(instance)) return;
+      const row = tableOf(dataset, name).find((r) => r.id === instance.id);
+      return checkEntityWrite({
+        dataset,
+        entity: name,
+        kind,
+        id: instance.id as string,
+        relation,
+        record: copied(row ?? null),
+      });
+    };
+
     class Entity {
       static entityName = name;
 
@@ -354,12 +391,23 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         if (!dataset) throw new Error(`${name}.save(): this instance was never loaded from a dataset`);
         const row = tableOf(dataset, name).find((r) => r.id === (this as unknown as AnyRow).id);
         if (!row) throw new Error(`${name}.save(): row ${(this as unknown as AnyRow).id} no longer exists`);
+        const changed: Record<string, unknown> = {};
         for (const [key, value] of Object.entries(this as unknown as Record<string, unknown>)) {
           if (typeof value === 'function' || key.startsWith('$')) continue;
           // Only what changed: an unchanged `''` from creation is a value, not a clear.
           if (row[key] === value || (value === '' && !(key in row))) continue;
-          writeField(row, key, value);
+          changed[key] = value;
         }
+        if (!Object.keys(changed).length) return;
+        await checkEntityWrite({
+          dataset: dataset,
+          entity: name,
+          kind: 'edit',
+          id: row.id as string,
+          data: changed,
+          record: copied(row),
+        });
+        for (const [key, value] of Object.entries(changed)) writeField(row, key, value);
         notify(dataset);
       }
 
@@ -368,7 +416,10 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         if (!dataset) throw new Error(`${name}.delete(): this instance was never loaded from a dataset`);
         const rows = tableOf(dataset, name);
         const index = rows.findIndex((r) => r.id === (this as unknown as AnyRow).id);
-        if (index >= 0) rows.splice(index, 1);
+        if (index >= 0) {
+          await checkDelete(dataset, rows[index]);
+          rows.splice(index, 1);
+        }
         forgetLinksTo(dataset, (this as unknown as AnyRow).id as string);
         notify(dataset);
       }
@@ -472,6 +523,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         options?: { parent?: ParentRef },
       ): Promise<Entity> {
         const dataset = datasetOf(handle);
+        await checkEntityWrite({ dataset: handle, entity: name, kind: 'create', data, record: () => null });
         const now = new Date().toISOString();
         const row: AnyRow = {
           id: (data.id as string) ?? crypto.randomUUID(),
@@ -488,6 +540,17 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         tableOf(dataset, name).push(row);
         notify(dataset);
         const instance = Entity.hydrate(dataset, row);
+        writingCreate.add(instance);
+        try {
+          await Entity.linkNamedRelations(instance, data);
+        } finally {
+          writingCreate.delete(instance);
+        }
+        if (options?.parent) await linkUnder(dataset, options.parent, row.id as string);
+        return instance;
+      }
+
+      private static async linkNamedRelations(instance: Entity, data: Record<string, unknown>): Promise<void> {
         /*
           Relations named in the data are linked, not dropped.
 
@@ -508,18 +571,15 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
             if (typeof id === 'string' && id) await (add as (target: string) => Promise<void>).call(instance, id);
           }
         }
-        if (options?.parent) await linkUnder(dataset, options.parent, row.id as string);
-        return instance;
       }
 
       static async update(handle: unknown, id: string, data: Record<string, unknown>): Promise<Entity | null> {
         const dataset = datasetOf(handle);
         const row = tableOf(dataset, name).find((r) => r.id === id);
         if (!row) return null;
-        for (const [key, value] of Object.entries(data)) {
-          if (relationNames.has(key)) continue;
-          writeField(row, key, value);
-        }
+        const changed = Object.fromEntries(Object.entries(data).filter(([key]) => !relationNames.has(key)));
+        await checkEntityWrite({ dataset: handle, entity: name, kind: 'edit', id, data: changed, record: copied(row) });
+        for (const [key, value] of Object.entries(changed)) writeField(row, key, value);
         row.updatedAt = new Date().toISOString();
         notify(dataset);
         return Entity.hydrate(dataset, row);
@@ -595,7 +655,10 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         const dataset = datasetOf(handle);
         const rows = tableOf(dataset, name);
         const index = rows.findIndex((r) => r.id === id);
-        if (index >= 0) rows.splice(index, 1);
+        if (index >= 0) {
+          await checkDelete(dataset, rows[index]);
+          rows.splice(index, 1);
+        }
         forgetLinksTo(dataset, id);
         notify(dataset);
       }
@@ -642,6 +705,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         if (!dataset) throw new Error(`${name}.add${suffix}(): this instance was never loaded from a dataset`);
         const relatedId = typeof related === 'string' ? related : (related as AnyRow)?.id;
         if (!relatedId) throw new Error(`${name}.add${suffix}(): expected a related instance or its id`);
+        await checkRelation(dataset, this, relation.name, 'add');
 
         if (relation.cardinality === 'one') {
           const row = tableOf(dataset, name).find((r) => r.id === this.id);
@@ -684,6 +748,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         const dataset = homes.get(this);
         if (!dataset) return;
         const relatedId = typeof related === 'string' ? related : (related as AnyRow)?.id;
+        await checkRelation(dataset, this, relation.name, 'remove');
         const row = tableOf(dataset, name).find((r) => r.id === this.id);
 
         if (relation.cardinality === 'one') {
@@ -724,6 +789,9 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
             .map((entry) => (typeof entry === 'string' ? entry : (entry as AnyRow)?.id))
             .filter((id): id is string => typeof id === 'string' && id.length > 0);
           const current = Array.isArray(this[relation.name]) ? (this[relation.name] as string[]) : [];
+          // Setting the list adds what is new and removes what is gone, so it is checked as each.
+          if (next.some((id) => !current.includes(id))) await checkRelation(dataset, this, relation.name, 'add');
+          if (current.some((id) => !next.includes(id))) await checkRelation(dataset, this, relation.name, 'remove');
           const rowsOf = (id: string): AnyRow | undefined =>
             relation.target
               ? tableOf(dataset, relation.target).find((r) => r.id === id)

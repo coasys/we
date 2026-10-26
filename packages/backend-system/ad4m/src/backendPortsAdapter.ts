@@ -62,6 +62,7 @@ import {
 } from './sdnaEntities';
 import { createAd4mTranscriptionPort } from './transcriptionAdapter';
 import { createAd4mWorkflowPort } from './workflowPort';
+import { installWriteChecks } from './writeChecks';
 
 const proxy = (dataset: DatasetHandle) => dataset as PerspectiveProxy;
 
@@ -179,6 +180,9 @@ export function createAd4mBackendPorts(
   // "this relation's membership is now that list", and every model class — generated, compiled
   // or built from foreign SHACL — inherits the ability to carry it out. See `relationWrites.ts`.
   installRelationWrites(Ad4mModel);
+  // And the host's write check, asked before every create, edit, delete and relation write any model
+  // makes — the one place none of them can go around. See `writeChecks.ts`.
+  installWriteChecks(Ad4mModel);
   // And containment: AD4M stores it as `has_child`, so a `parent` scope that names the neutral key
   // is translated before any model sees it. See `containment.ts`.
   installContainmentPredicate(Ad4mModel);

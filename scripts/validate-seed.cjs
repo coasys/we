@@ -451,6 +451,8 @@ function validateSpaceStarter(seed) {
       if (!target || target === 'root' || target === 'space' || !defined.has(target))
         error(`${p}.landmarks.${name} must name a record's $id: ${ref}`);
     }
+    if (starter.policy !== undefined && !['open', 'community'].includes(starter.policy))
+      error(`${p}.policy must be "open" or "community": ${JSON.stringify(starter.policy)}`);
     if (errors.length === before) success(`space starter "${starter.id}" is valid`);
     /*
       What nothing contains, by entity. Right for vocabulary — found by type — and a forgotten `in`

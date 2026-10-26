@@ -23,6 +23,7 @@ import {
   LocationBlock,
   MutedAgent,
   Placement,
+  Policy,
   ReadMarker,
   Relationship,
   RelationshipType,
@@ -739,6 +740,11 @@ export const SPACE_MODELS = [
   */
   Role,
   RoleGrant,
+  /*
+    The space's rules, a version per record. Shared, for the same reason: rules one member kept to
+    themselves would govern nobody.
+  */
+  Policy,
 ] as const;
 
 /**

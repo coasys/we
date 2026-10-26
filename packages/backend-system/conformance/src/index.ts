@@ -32,7 +32,7 @@ import {
   type WorkflowDefinition,
   type WorkflowView,
 } from '@we/backend-shared';
-import { getEntity } from '@we/entities';
+import { type EntityWrite, getEntity, registerEntityWriteCheck } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -145,6 +145,7 @@ export const CONFORMANCE_CASES = [
   'relations.replace-whole',
   'relations.member-type',
   'relations.member-counts',
+  'writes.checked-first',
   'queries.several-entities',
   'live.pushes-writes',
   'live.dispose-stops',
@@ -190,6 +191,7 @@ interface Model {
   update(dataset: DatasetHandle, id: string, data: Record<string, unknown>): Promise<unknown>;
   setRelation(dataset: DatasetHandle, id: string, relation: string, ids: readonly string[]): Promise<void>;
   addRelation(dataset: DatasetHandle, id: string, relation: string, targetId: string): Promise<void>;
+  delete(dataset: DatasetHandle, id: string): Promise<void>;
 }
 
 /** The read half: what `$getEntity` hands a template. */
@@ -653,6 +655,55 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
             include: { children: true },
           });
           expect((row.children as Row[]).map((r) => r.id)).toEqual([c.id, a.id]);
+        },
+      );
+
+      /*
+        Every write asks the host's check first, and a refused one writes nothing.
+
+        What a space's rules are enforced through: the host registers one check, and each backend asks
+        it from its own write path. A write path that skipped it would be a way round every rule, so
+        each kind of write is refused here and the record read back unchanged.
+      */
+      test(
+        'writes.checked-first',
+        'asks the write check before each kind of write, and writes nothing it refuses',
+        async () => {
+          const Collection = model('CollectionBlock');
+          const asked: EntityWrite[] = [];
+          let refuse: (write: EntityWrite) => boolean = () => false;
+          registerEntityWriteCheck((write) => {
+            if (write.entity !== 'CollectionBlock') return;
+            asked.push(write);
+            if (refuse(write)) throw new Error(`refused ${write.kind}`);
+          });
+          try {
+            const post = await Collection.create(subject.dataset, { kind: 'post' });
+            const child = await Collection.create(subject.dataset, { kind: 'text' });
+            expect(asked.map((w) => w.kind)).toEqual(['create', 'create']);
+            expect(asked[0].data).toMatchObject({ kind: 'post' });
+
+            refuse = (w) => w.kind === 'create';
+            await expect(Collection.create(subject.dataset, { kind: 'refused' })).rejects.toThrow('refused create');
+            refuse = (w) => w.kind === 'edit';
+            await expect(Collection.update(subject.dataset, post.id, { kind: 'edited' })).rejects.toThrow(
+              'refused edit',
+            );
+            refuse = (w) => w.kind === 'add';
+            await expect(post.addChildren(child.id)).rejects.toThrow('refused add');
+            refuse = (w) => w.kind === 'delete';
+            await expect(Collection.delete(subject.dataset, post.id)).rejects.toThrow('refused delete');
+
+            const edit = asked.find((w) => w.kind === 'edit')!;
+            expect(edit).toMatchObject({ id: post.id, data: { kind: 'edited' } });
+            expect(await edit.record?.()).toMatchObject({ kind: 'post' });
+
+            const rows = await reader('CollectionBlock').findAll(subject.dataset, { include: { children: true } });
+            expect(rows.map((r) => r.kind).sort()).toEqual(['post', 'text']);
+            expect(rows.find((r) => r.id === post.id)?.children).toEqual([]);
+          } finally {
+            registerEntityWriteCheck(null);
+          }
         },
       );
 

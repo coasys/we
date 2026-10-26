@@ -511,6 +511,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     myRoles: state('content'),
     memberRoles: state('content'),
     rolesLoaded: state('content'),
+    // What the space's policy allows — read by any template deciding what to offer, through `can()`.
+    policy: state('content'),
     setInvolvement: action('content'),
     respondTo: action('content'),
     mutedDids: state('content'),
@@ -583,6 +585,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     updateRole: action('space-settings'),
     grantRole: action('space-settings'),
     revokeRole: action('space-settings'),
+    setPolicyPreset: action('space-settings'),
 
     // ── navigation ──
     spaceList: state('navigation'),

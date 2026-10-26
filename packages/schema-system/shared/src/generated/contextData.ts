@@ -1717,7 +1717,15 @@ export const contextData: ContextData = {
       fields: [
         { name: 'role', type: 'string', predicate: 'we://granted_role', required: true },
         { name: 'agent', type: 'string', predicate: 'we://granted_to', required: true },
+        { name: 'revokedAt', type: 'string', predicate: 'we://revoked_at', required: false },
       ],
+      relations: [],
+    },
+    {
+      name: 'Policy',
+      className: 'Policy',
+      extends: 'Ad4mModel',
+      fields: [{ name: 'document', type: 'string', predicate: 'we://policy_document', required: true }],
       relations: [],
     },
     {
@@ -3100,6 +3108,10 @@ export const contextData: ContextData = {
         taskWorkflowEnabled: { type: 'boolean' },
         archivedWorkflows: { type: 'array' },
         canAdministerCurrentSpace: { type: 'boolean' },
+        policy: {
+          type: 'object',
+          properties: ['loaded', 'preset', 'permissions', 'frozen', 'me', 'roles', 'sentences'],
+        },
       },
       actions: [
         'createSpace',
@@ -3175,6 +3187,7 @@ export const contextData: ContextData = {
         'updateRole',
         'grantRole',
         'revokeRole',
+        'setPolicyPreset',
         'copyShareLink',
         'copyGuestLink',
         'exportCallTranscript',
@@ -3393,6 +3406,12 @@ export const contextData: ContextData = {
     'WeCube',
   ],
   sources: [
+    {
+      name: 'can',
+      params: ['options'],
+      doc: 'Whether the viewer may take an action under the space\'s policy — for hiding what they may not do. Actions are "Entity.create", "Entity.edit", "Entity.delete", and "Entity.relation.add" or ".remove". Pass the record acted on for an edit or a delete, since the answer often depends on who made it. It decides only what to offer: the write is checked again when it is made, and a refused one fails with the reason. Options: policy (spaceStore.policy), action, record.',
+      example: "can({ policy: spaceStore.policy, action: 'CollectionBlock.delete', record: post })",
+    },
     {
       name: 'requirementLabel',
       params: ['options'],

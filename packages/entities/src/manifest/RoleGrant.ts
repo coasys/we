@@ -17,9 +17,10 @@ import type { CoreEntityDef } from './defs';
  *
  * ## Taking a role away
  *
- * Deleting the grant. Nothing is kept on the record about having held it, because the role's history
- * is the grants' own: who made each one and when, and who removed it, is what the backend already
- * records about writes.
+ * Marking the grant revoked (`revokedAt`), not deleting it. The space's policy is judged by who held
+ * which role when each version of it was written — a version an admin wrote stays in force after
+ * they step down — and that needs the grants a deletion would have taken with it. A grant with no
+ * `revokedAt` is held; one deleted outright is read as never having been made.
  *
  * ## Why the plain base rather than `WeNode`
  *
@@ -36,6 +37,8 @@ export const RoleGrant: CoreEntityDef = {
       role: { type: 'string', predicate: 'we://granted_role', required: true, default: '' },
       /** The person it is granted to, as their identifier. Profiles resolve separately, as every DID in WE does. */
       agent: { type: 'string', predicate: 'we://granted_to', required: true, default: '' },
+      /** When it was taken back, as an ISO moment — empty while it is held. */
+      revokedAt: { type: 'string', predicate: 'we://revoked_at', default: '' },
     },
     relations: {},
   },
