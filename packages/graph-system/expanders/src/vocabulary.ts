@@ -3,14 +3,14 @@
  *
  * A space's own words live in records nothing on its canvas points at: the signal types a starter
  * wrote, its task states, the kinds of part somebody can have in a record, its connection kinds, its
- * models, its flows. They are found by type, never by containment, so a canvas seeded from the space's
+ * models, its workflows. They are found by type, never by containment, so a canvas seeded from the space's
  * collection cannot reach them. This draws them in **buckets** — one per kind of vocabulary, in the
  * order and words the interface names — and each bucket opens into what is in it.
  *
  * ## A seed and an expander, sharing what the seed was told
  *
  * The buckets are given, not discovered: which kinds of vocabulary there are, what each is called,
- * and — for the two that are not records here — the models and flows themselves. An expander receives
+ * and — for the two that are not records here — the models and workflows themselves. An expander receives
  * an id and nothing else, so the pair is made together and the expander reads what the seed last
  * received. Made per graph, like every plugin (`defaultExpanders`), so two graphs on a page cannot see
  * each other's buckets.
@@ -19,7 +19,7 @@
  *
  * - **Records of an entity** — `entity: 'SignalType'`. Opened by asking for them.
  * - **Models** — `models: [{ name }]`, opened into type nodes, which `schema-properties` opens in turn.
- * - **Flows** — `flows: [{ name, steps, moves }]`, opened into one node per flow, and each flow into its
+ * - **Workflows** — `workflows: [{ name, steps, moves }]`, opened into one node per workflow, and each workflow into its
  *   steps, with a line for each move between them.
  */
 import type { Expander, GraphEdge, GraphNode, SeedSource } from '@we/graph-protocol';
@@ -28,12 +28,12 @@ import { clusterAddress, entityAddress, parseAddress } from '@we/graph-protocol'
 import { edgeId, rowToNode } from './nodes';
 import { SCHEMA_TYPE } from './schema';
 
-/** The node type of a bucket, a flow and one of its steps. */
+/** The node type of a bucket, a workflow and one of its steps. */
 export const VOCABULARY_TYPE = 'vocabulary';
-export const FLOW_TYPE = 'flow';
-export const FLOW_STEP_TYPE = 'flow-step';
+export const WORKFLOW_TYPE = 'workflow';
+export const WORKFLOW_STATE_TYPE = 'workflow-step';
 
-export interface VocabularyFlow {
+export interface VocabularyWorkflow {
   name: string;
   label: string;
   steps: { name: string; label: string; final?: boolean }[];
@@ -55,8 +55,8 @@ export interface VocabularyBucket {
   opens?: { entity: string; field: string; key: string };
   /** Or these models. */
   models?: { name: string; label?: string }[];
-  /** Or these flows. */
-  flows?: VocabularyFlow[];
+  /** Or these workflows. */
+  workflows?: VocabularyWorkflow[];
 }
 
 export interface VocabularySeedOptions {
@@ -66,8 +66,8 @@ export interface VocabularySeedOptions {
   limit?: number;
 }
 
-/** A flow step's address. The flow's name and the step's are both part of it, so steps of two flows never meet. */
-const stepAddress = (flow: string, step: string) => clusterAddress(FLOW_STEP_TYPE, `${flow}\u0000${step}`);
+/** A workflow step's address. The workflow's name and the step's are both part of it, so steps of two workflows never meet. */
+const stepAddress = (workflow: string, step: string) => clusterAddress(WORKFLOW_STATE_TYPE, `${workflow}\u0000${step}`);
 
 export function vocabularyPlugins(): { seed: SeedSource; expander: Expander; records: Expander } {
   /** What the seed was last told, per dataset, for the expander to answer from. */
@@ -78,7 +78,7 @@ export function vocabularyPlugins(): { seed: SeedSource; expander: Expander; rec
   const seed: SeedSource = {
     id: 'vocabulary',
     description:
-      'Draws what a space has defined — its signal types, states, kinds, models and flows — in buckets that open.',
+      'Draws what a space has defined — its signal types, states, kinds, models and workflows — in buckets that open.',
     async seed(rawOptions, context) {
       const options = (rawOptions ?? { buckets: [] }) as VocabularySeedOptions;
       const dataset = datasetOf(options, context.defaultDataset());
@@ -93,7 +93,7 @@ export function vocabularyPlugins(): { seed: SeedSource; expander: Expander; rec
       const counts = await Promise.all(
         buckets.map(async (bucket) => {
           if (bucket.models) return bucket.models.length;
-          if (bucket.flows) return bucket.flows.length;
+          if (bucket.workflows) return bucket.workflows.length;
           if (!bucket.entity) return 0;
           const rows = await context.query({ entity: bucket.entity, dataset, limit }).catch(() => null);
           // Unreadable is not empty: it keeps its caret, and says why when opened.
@@ -168,9 +168,9 @@ export function vocabularyPlugins(): { seed: SeedSource; expander: Expander; rec
   }
 
   /*
-    A separate expander, because what it claims is a different question. The buckets and the flows are
+    A separate expander, because what it claims is a different question. The buckets and the workflows are
     two cluster types; a word's records hang off records of any type at all. One expander claiming both
-    had to claim every cluster to reach the records, and offered a caret on a flow's steps that opened
+    had to claim every cluster to reach the records, and offered a caret on a workflow's steps that opened
     nothing — a caret is offered wherever an expander says it can open.
   */
   const records: Expander = {
@@ -188,8 +188,8 @@ export function vocabularyPlugins(): { seed: SeedSource; expander: Expander; rec
   const expander: Expander = {
     id: 'vocabulary',
     kinds: ['cluster'],
-    types: [VOCABULARY_TYPE, FLOW_TYPE],
-    description: 'Opens a vocabulary bucket into what is in it, and a flow into its steps and moves.',
+    types: [VOCABULARY_TYPE, WORKFLOW_TYPE],
+    description: 'Opens a vocabulary bucket into what is in it, and a workflow into its steps and moves.',
     async expand(request, context) {
       const address = parseAddress(request.id);
       if (!address || address.kind !== 'cluster' || !address.id || request.direction === 'in') {
@@ -209,42 +209,42 @@ export function vocabularyPlugins(): { seed: SeedSource; expander: Expander; rec
         });
       };
 
-      if (address.type === FLOW_TYPE) {
-        const flow = options?.buckets.flatMap((b) => b.flows ?? []).find((f) => f.name === address.id);
-        if (!flow) return { nodes, edges };
-        for (const step of flow.steps) {
+      if (address.type === WORKFLOW_TYPE) {
+        const workflow = options?.buckets.flatMap((b) => b.workflows ?? []).find((f) => f.name === address.id);
+        if (!workflow) return { nodes, edges };
+        for (const step of workflow.steps) {
           contain({
-            id: stepAddress(flow.name, step.name),
+            id: stepAddress(workflow.name, step.name),
             kind: 'cluster',
-            type: FLOW_STEP_TYPE,
+            type: WORKFLOW_STATE_TYPE,
             label: step.label,
-            data: { flow: flow.name, step: step.name, final: step.final ?? false },
+            data: { workflow: workflow.name, step: step.name, final: step.final ?? false },
             source: 'vocabulary',
           });
         }
-        for (const move of flow.moves) {
-          const source = stepAddress(flow.name, move.from);
-          const target = stepAddress(flow.name, move.to);
+        for (const move of workflow.moves) {
+          const source = stepAddress(workflow.name, move.from);
+          const target = stepAddress(workflow.name, move.to);
           edges.push({ id: edgeId(source, 'move', target), source, target, type: 'move' });
         }
-        return { nodes, edges, total: flow.steps.length };
+        return { nodes, edges, total: workflow.steps.length };
       }
 
       const bucket = options?.buckets.find((b) => b.key === address.id);
       if (!bucket) return { nodes, edges };
 
-      if (bucket.flows) {
-        for (const flow of bucket.flows) {
+      if (bucket.workflows) {
+        for (const workflow of bucket.workflows) {
           contain({
-            id: clusterAddress(FLOW_TYPE, flow.name),
+            id: clusterAddress(WORKFLOW_TYPE, workflow.name),
             kind: 'cluster',
-            type: FLOW_TYPE,
-            label: flow.label,
-            data: { flow: flow.name, steps: flow.steps.length },
+            type: WORKFLOW_TYPE,
+            label: workflow.label,
+            data: { workflow: workflow.name, steps: workflow.steps.length },
             source: 'vocabulary',
           });
         }
-        return { nodes, edges, total: bucket.flows.length };
+        return { nodes, edges, total: bucket.workflows.length };
       }
 
       if (bucket.models) {

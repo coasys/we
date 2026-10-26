@@ -27,7 +27,7 @@ const seed = weSeed as unknown as WeSeedFile;
 
 function recorder() {
   const created: { entity: string; fields: Record<string, unknown>; parent: string | null; id: string }[] = [];
-  const roles: { name: string; node: string }[] = [];
+  const landmarks: { name: string; node: string }[] = [];
   const links: Record<string, string | string[]>[] = [];
   const composed: string[] = [];
   const writer: StarterWriter = {
@@ -36,11 +36,11 @@ function recorder() {
       created.push({ entity, fields, parent, id });
       return id;
     },
-    role: async (name, node) => void roles.push({ name, node }),
+    landmark: async (name, node) => void landmarks.push({ name, node }),
     linkSpace: async (relations) => void links.push(relations),
     compose: async (id) => void composed.push(id),
   };
-  return { created, roles, links, composed, writer };
+  return { created, landmarks, links, composed, writer };
 }
 
 const TARGET = { rootId: 'root-1', spaceId: 'space-1', space: { name: 'Acme', description: 'Makers' } };
@@ -67,7 +67,7 @@ const STARTER: SpaceStarter = {
       in: '$post',
     },
   ],
-  roles: { canvas: '$canvas', board: '$board' },
+  landmarks: { canvas: '$canvas', board: '$board' },
   input: true,
 };
 
@@ -141,10 +141,10 @@ describe('applying a starter', () => {
     ]);
   });
 
-  it('records the roles last, and answers them', async () => {
-    const { roles, writer } = recorder();
+  it('records the landmarks last, and answers them', async () => {
+    const { landmarks, writer } = recorder();
     const written = await applyStarterRecords(STARTER, TARGET, writer);
-    expect(roles).toEqual([
+    expect(landmarks).toEqual([
       { name: 'canvas', node: 'CollectionBlock-4' },
       { name: 'board', node: 'CollectionBlock-5' },
     ]);
@@ -152,7 +152,7 @@ describe('applying a starter', () => {
   });
 
   it('skips a record whose container or reference failed, and whatever refers to it, but writes the rest', async () => {
-    const { created, roles, writer } = recorder();
+    const { created, landmarks, writer } = recorder();
     const failing: StarterWriter = {
       ...writer,
       create: async (entity, fields, parent) => {
@@ -171,8 +171,8 @@ describe('applying a starter', () => {
       'post',
       'TextBlock',
     ]);
-    expect(roles.map((r) => r.name)).toEqual(['canvas']);
-    // The board, the column inside it, and the role naming it.
+    expect(landmarks.map((r) => r.name)).toEqual(['canvas']);
+    // The board, the column inside it, and the landmark naming it.
     expect(reported).toHaveLength(3);
   });
 });
@@ -208,7 +208,7 @@ describe('checking a starter', () => {
           { entity: 'CollectionBlock', fields: { kind: 'column', slug: 'blocked' } },
           { $id: 'after', entity: 'CollectionBlock', in: null as unknown as string },
         ],
-        roles: { canvas: '$missing', home: '$root' },
+        landmarks: { canvas: '$missing', home: '$root' },
       },
       vocabulary,
     );
@@ -226,12 +226,12 @@ describe('checking a starter', () => {
       'records[5] is a column for a task state the starter does not define: blocked',
       'records[6].in is null — leave it out for a record nothing contains',
       'settings.taskStates refers to $nowhere, which no record defines',
-      "roles.canvas must name a record's $id: $missing",
-      "roles.home must name a record's $id: $root",
+      "landmarks.canvas must name a record's $id: $missing",
+      "landmarks.home must name a record's $id: $root",
     ]);
   });
 
-  it('names the $ids nothing refers to, through any of in, fields, settings or roles', () => {
+  it('names the $ids nothing refers to, through any of in, fields, settings or landmarks', () => {
     expect(
       unreferencedIds({
         id: 'ids',
@@ -245,7 +245,7 @@ describe('checking a starter', () => {
           { entity: 'CollectionBlock', fields: { gathers: ['$gathered'] }, in: '$root' },
           { $id: 'lonely', entity: 'SignalType' },
         ],
-        roles: { canvas: '$canvas' },
+        landmarks: { canvas: '$canvas' },
       }),
     ).toEqual(['lonely']);
   });

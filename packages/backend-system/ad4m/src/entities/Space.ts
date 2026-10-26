@@ -9,7 +9,7 @@ import { FILE_STORAGE_LANGUAGE } from '@we/entities';
 
 import { CollectionBlock } from './CollectionBlock';
 import { LocationBlock } from './LocationBlock';
-import { SpaceRole } from './SpaceRole';
+import { SpaceLandmark } from './SpaceLandmark';
 import { TaskState } from './TaskState';
 import { TypeStyle } from './TypeStyle';
 import { WeNode } from './WeNode';
@@ -181,26 +181,26 @@ export class Space extends WeNode {
   moduleSettings: string = '';
 
   /**
-   * The flows this space has put away, by name — a JSON list. An archived flow is kept, so the
+   * The workflows this space has put away, by name — a JSON list. An archived workflow is kept, so the
    * records going through it still show and can still finish, but it is not offered for starting
    * on anything new and is listed apart.
    *
-   * A property of the space rather than of the flow, because archiving is how this community
-   * arranges its flows, not part of what a flow is: the backend holds the definition, and a
+   * A property of the space rather than of the workflow, because archiving is how this community
+   * arranges its workflows, not part of what a workflow is: the backend holds the definition, and a
    * definition knows nothing about being put away. A JSON string for `enabledViews`' reason —
    * the values are names, not entities.
    */
-  @Property({ through: 'we://archived_flows' })
-  archivedFlows: string = '';
+  @Property({ through: 'we://archived_workflows' })
+  archivedWorkflows: string = '';
 
   /**
    * How a task may move between this space's states, in their order: empty for anywhere (a board
    * lets a card go to any column), `next` for on to the next state only, `next-and-back` for on or
-   * back one. Anything but empty runs the states as a flow, so a move it does not allow is refused
+   * back one. Anything but empty runs the states as a workflow, so a move it does not allow is refused
    * on the board rather than made.
    */
-  @Property({ through: 'we://task_flow_rule' })
-  taskFlowRule: string = '';
+  @Property({ through: 'we://task_workflow_rule' })
+  taskWorkflowRule: string = '';
 
   @HasOne(() => LocationBlock, { through: 'we://location' })
   location?: LocationBlock;
@@ -250,18 +250,18 @@ export class Space extends WeNode {
    * because this record is identity and settings and is copied to the discovery space, which the
    * space's contents must never be.
    *
-   * Its own relation rather than a role (`roles`), because it is structural rather than chosen:
+   * Its own relation rather than a landmark (`landmarks`), because it is structural rather than chosen:
    * queries scope through it, and no starter can remove it.
    */
   @HasOne(() => CollectionBlock, { through: 'we://root' })
   root?: CollectionBlock;
 
   /**
-   * The records this space names by role — its canvas, say. One `SpaceRole` per role. Read
-   * through `spaceStore.roles`; see `SpaceRole` for why it is shaped this way.
+   * The records this space names as its landmarks — its canvas, say. One `SpaceLandmark` per landmark. Read
+   * through `spaceStore.landmarks`; see `SpaceLandmark` for why it is shaped this way.
    */
-  @HasMany(() => SpaceRole, { through: 'we://space_role' })
-  roles: string[] = [];
+  @HasMany(() => SpaceLandmark, { through: 'we://space_landmark' })
+  landmarks: string[] = [];
 }
 
 export interface Space extends HasManyMethods<'taskStates'> {

@@ -48,13 +48,13 @@ import { chromeBag } from '../../../shared/registries/templateBag';
 import { CANVAS_RECORD_CARD, type CanvasCard, canvasCard } from '../../../shared/shapes/canvasCard';
 import { componentRegistry } from '../registries/componentRegistry';
 import { useDatasetStore } from '../stores/DatasetStore';
-import { useFlowStore } from '../stores/FlowStore';
 import { useProfileStore } from '../stores/ProfileStore';
 import { useRecordStore } from '../stores/RecordStore';
 import { useSessionStore } from '../stores/SessionStore';
 import { useShapeStore } from '../stores/ShapeStore';
 import { useShellStore } from '../stores/ShellStore';
 import { useSpaceStore } from '../stores/SpaceStore';
+import { useWorkflowStore } from '../stores/WorkflowStore';
 import { nodeControls } from './graphControls';
 import { liveSurfaceMarks, liveSurfaceRegion, registerLiveCanvas } from './LiveView';
 import { ReactionBadge } from './ReactionBadge';
@@ -108,32 +108,32 @@ interface ScopeRequest {
 function BlockCard(props: { node: GraphNode }) {
   return (
     <>
-      <FlowBadges node={props.node} />
+      <WorkflowBadges node={props.node} />
       <DocumentCard node={props.node} fallback={<span class="we-graph__card-text">{props.node.label}</span>} />
     </>
   );
 }
 
 /**
- * The flows a card's record is going through, one badge each — the same badges a board's cards carry,
+ * The workflows a card's record is going through, one badge each — the same badges a board's cards carry,
  * so a record reads the same wherever it is drawn. Above the card's contents rather than below them,
  * because a card is clipped: the end of a long note is exactly what does not show.
  */
-function FlowBadges(props: { node: GraphNode }) {
-  const flowStore = useFlowStore();
-  const flows = createMemo(() => {
+function WorkflowBadges(props: { node: GraphNode }) {
+  const workflowStore = useWorkflowStore();
+  const workflows = createMemo(() => {
     const id = parseAddress(props.node.id)?.id;
-    return (id && flowStore.recordFlows()[id]) || [];
+    return (id && workflowStore.recordWorkflows()[id]) || [];
   });
   return (
-    <Show when={flows().length}>
+    <Show when={workflows().length}>
       <Row gap="100" wrap pb="100">
-        <For each={flows()}>
-          {(inFlow) => (
-            <we-badge size="xs" tone={inFlow.waiting || inFlow.stalled ? 'warning' : undefined}>
+        <For each={workflows()}>
+          {(inWorkflow) => (
+            <we-badge size="xs" tone={inWorkflow.waiting || inWorkflow.stalled ? 'warning' : undefined}>
               <Row gap="100" ay="center">
                 <we-icon name="flow-arrow" size="xs" />
-                {inFlow.stateLabel ? `${inFlow.label} · ${inFlow.stateLabel}` : inFlow.label}
+                {inWorkflow.stateLabel ? `${inWorkflow.label} · ${inWorkflow.stateLabel}` : inWorkflow.label}
               </Row>
             </we-badge>
           )}
@@ -252,7 +252,7 @@ function RecordCard(props: { node: GraphNode }) {
 
   return (
     <>
-      <FlowBadges node={props.node} />
+      <WorkflowBadges node={props.node} />
       <DocumentCard
         node={props.node}
         fallback={RenderSchema({

@@ -22,7 +22,7 @@ describe('the task board', () => {
     expect(queries.boardOnlySource.when).toEqual({ $: 'false' });
     // Declared so every list can name it. On a board that does not read people it is asked only where
     // the space's states ask for agreement, since whose approval counts can be read off it.
-    expect(queries.involvements.when).toEqual({ $: 'spaceStore.taskFlowEnabled' });
+    expect(queries.involvements.when).toEqual({ $: 'spaceStore.taskWorkflowEnabled' });
     expect(queries.board.include).toEqual({ children: true });
     expect(queries.pool.entity).toBe('TaskBlock');
     // A limit here was the one place the design broke its own rule: the card past it did not land
@@ -247,15 +247,15 @@ describe('selecting a card, and adding a column', () => {
 
 describe('a task board in a space that asks for agreement', () => {
   it('reads each card’s waiting move off the board once, and offers Approve and Withdraw on it', () => {
-    expect(json).toContain('.flow[card.id]].filter(w, w)');
+    expect(json).toContain('.workflow[card.id]].filter(w, w)');
     expect(json).toContain('"$action":"spaceStore.approveTaskMove"');
     expect(json).toContain('"$action":"spaceStore.withdrawTaskMove"');
     expect(json).toContain('"condition":{"$":"wait.canApprove"}');
     expect(json).toContain('"condition":{"$":"wait.mine"}');
   });
 
-  it('can draw only the cards waiting on the viewer, and offers that only in a space with a flow', () => {
+  it('can draw only the cards waiting on the viewer, and offers that only in a space with a workflow', () => {
     expect(json).toContain('awaitingMe: local.boardAwaiting');
-    expect(json).toContain('spaceStore.taskFlowEnabled && (count(');
+    expect(json).toContain('spaceStore.taskWorkflowEnabled && (count(');
   });
 });

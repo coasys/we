@@ -6,7 +6,6 @@ import type {
   DatasetStore,
   DeviceStore,
   EditorStore,
-  FlowStore,
   IdentityStore,
   InterpretationStore,
   PresenceStore,
@@ -20,6 +19,7 @@ import type {
   SpaceStore,
   TemplateStore,
   ThemeStore,
+  WorkflowStore,
 } from '@solid/stores';
 import type { RendererStores } from '@we/backend-shared';
 import type { RecordInstance } from '@we/backend-shared';
@@ -77,7 +77,7 @@ export interface Stores extends RendererStores {
   interpretationStore: InterpretationStore;
   bundleStore: BundleStore;
   clockStore: ClockStore;
-  flowStore: FlowStore;
+  workflowStore: WorkflowStore;
   identityStore: IdentityStore;
   deviceStore: DeviceStore;
   record?: RecordActions;

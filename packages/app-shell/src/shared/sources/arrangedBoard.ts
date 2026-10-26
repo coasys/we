@@ -79,7 +79,7 @@
  */
 import { fillForSemantic, iconForSemantic } from '@we/template-kit';
 
-import { flowStateOf, type TaskFlowView, type TaskMoveCard, taskMoveCard } from '../taskFlow';
+import { type TaskMoveCard, taskMoveCard, type TaskWorkflowView, workflowStateOf } from '../taskWorkflow';
 import {
   involvement,
   type InvolvementKindInput,
@@ -127,13 +127,13 @@ export interface ArrangedBoardOptions {
   /** Involvements written and not yet seen — see `involvementOptimism`. Supplied by the host. */
   pendingInvolvements?: readonly PendingInvolvement[] | null;
   /**
-   * The space's task flow, where its states ask for agreement — supplied by the host.
+   * The space's task workflow, where its states ask for agreement — supplied by the host.
    *
    * A card with a run is read as being in its run's state rather than its `status`, substituted with
    * the optimistic overlay at the one place a state is read, so every count follows. See
-   * `shared/taskFlow.ts` for why the two can differ at all.
+   * `shared/taskWorkflow.ts` for why the two can differ at all.
    */
-  flow?: TaskFlowView | null;
+  workflow?: TaskWorkflowView | null;
   /** Draw only the cards waiting on the viewer's approval. */
   awaitingMe?: boolean | null;
 }
@@ -283,7 +283,7 @@ export interface ArrangedBoard {
    * The move each card is waiting on, by card id — only cards waiting on one. Empty where the space
    * asks for no agreement.
    */
-  flow: Record<string, TaskMoveCard>;
+  workflow: Record<string, TaskMoveCard>;
   /** Cards on the board whose waiting move the viewer's approval would help. */
   awaiting: string[];
   /** Whether only those are being drawn. */
@@ -348,8 +348,8 @@ export function arrangedBoard(options: ArrangedBoardOptions | null | undefined):
     orderOf(record?.id, 'children', record?.children);
   // The stored state is the run's where the task has one, and `status` otherwise — then the overlay,
   // so a drop into a column that asks for nothing still lands before the round trip does.
-  const flow = options?.flow ?? null;
-  const storedStatusOf = (record: CardRow): string | undefined => flowStateOf(flow, record.id) ?? record.status;
+  const workflow = options?.workflow ?? null;
+  const storedStatusOf = (record: CardRow): string | undefined => workflowStateOf(workflow, record.id) ?? record.status;
   const statusOf = (record: CardRow): string | undefined =>
     pending?.status?.(record.id, storedStatusOf(record)) ?? storedStatusOf(record);
 
@@ -480,17 +480,17 @@ export function arrangedBoard(options: ArrangedBoardOptions | null | undefined):
 
   // The move each card is waiting on. Who counts toward it is whoever holds the state's kind on
   // that card, read off the same involvement rows the people filter uses.
-  const flowCards: Record<string, TaskMoveCard> = {};
+  const workflowCards: Record<string, TaskMoveCard> = {};
   const awaiting: string[] = [];
-  if (flow) {
+  if (workflow) {
     for (const record of onBoard.values()) {
       const holders = (kind: string) =>
         (on[record.id]?.pairs ?? [])
           .filter((pair) => pair.endsWith(`|${kind}`))
           .map((pair) => pair.slice(0, -kind.length - 1));
-      const card = taskMoveCard(flow, record.id, holders, options?.me ?? null);
+      const card = taskMoveCard(workflow, record.id, holders, options?.me ?? null);
       if (!card) continue;
-      flowCards[record.id] = card;
+      workflowCards[record.id] = card;
       if (card.canApprove) awaiting.push(record.id);
     }
   }
@@ -599,7 +599,7 @@ export function arrangedBoard(options: ArrangedBoardOptions | null | undefined):
     rows,
     cells,
     rowCounts,
-    flow: flowCards,
+    workflow: workflowCards,
     awaiting,
     awaitingOnly,
   };

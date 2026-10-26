@@ -133,13 +133,13 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       id: 'vocabulary',
       category: 'seed',
       description:
-        "What a space has DEFINED rather than what it holds — its signal types, task states, kinds of part, connection kinds, models and flows — drawn as buckets that open. These records are found by type, never by containment, so a canvas seeded from a space's collection cannot reach them; this is how a map of the vocabulary does. Each bucket opens through the `vocabulary` expander: a bucket of records into those records, a bucket of models into type nodes (which `schema-properties` opens into their fields), a bucket of flows into one node per flow and each flow into its steps and moves. Pair with layout: forest, buckets as roots.",
+        "What a space has DEFINED rather than what it holds — its signal types, task states, kinds of part, connection kinds, models and workflows — drawn as buckets that open. These records are found by type, never by containment, so a canvas seeded from a space's collection cannot reach them; this is how a map of the vocabulary does. Each bucket opens through the `vocabulary` expander: a bucket of records into those records, a bucket of models into type nodes (which `schema-properties` opens into their fields), a bucket of workflows into one node per workflow and each workflow into its steps and moves. Pair with layout: forest, buckets as roots.",
       options: [
         {
           name: 'buckets',
-          type: '{ key, label, entity? | models? | flows?, opens? }[]',
+          type: '{ key, label, entity? | models? | workflows?, opens? }[]',
           description:
-            "The buckets, in order. `entity` names a record type whose records fill it; `models` is `[{ name, label? }]`; `flows` is `[{ name, label, steps: [{ name, label, final? }], moves: [{ from, to }] }]`. `opens` — `{ entity, field, key }` beside an `entity` — is what one of its records opens into: the records of `entity` whose `field` holds the record's `key`, so a task state opens into its tasks with `{ entity: 'TaskBlock', field: 'status', key: 'slug' }`. `key` must stay the same between loads — it is part of the bucket's address.",
+            "The buckets, in order. `entity` names a record type whose records fill it; `models` is `[{ name, label? }]`; `workflows` is `[{ name, label, steps: [{ name, label, final? }], moves: [{ from, to }] }]`. `opens` — `{ entity, field, key }` beside an `entity` — is what one of its records opens into: the records of `entity` whose `field` holds the record's `key`, so a task state opens into its tasks with `{ entity: 'TaskBlock', field: 'status', key: 'slug' }`. `key` must stay the same between loads — it is part of the bucket's address.",
         },
         { name: 'limit', type: 'number', description: 'Records read per entity bucket. Default 200.' },
       ],
@@ -205,7 +205,7 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       id: 'vocabulary',
       category: 'expander',
       description:
-        'Opens a bucket the `vocabulary` seed drew into what is in it, and a flow into its steps, with a line for each move between them.',
+        'Opens a bucket the `vocabulary` seed drew into what is in it, and a workflow into its steps, with a line for each move between them.',
       options: [],
       example: `"seeds": { "source": "vocabulary", "options": { "buckets": [] } }, "expansion": { "expanders": ["vocabulary"] }`,
     },
@@ -213,7 +213,7 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       id: 'vocabulary-records',
       category: 'expander',
       description:
-        'Opens a record in a vocabulary bucket that names `opens` into the records that use it — a task state into its tasks. A line from each says the field that put it there ("status"). Separate from `vocabulary` so a flow\'s steps are not offered a caret that opens nothing.',
+        'Opens a record in a vocabulary bucket that names `opens` into the records that use it — a task state into its tasks. A line from each says the field that put it there ("status"). Separate from `vocabulary` so a workflow\'s steps are not offered a caret that opens nothing.',
       options: [],
       example: `"expansion": { "expanders": ["vocabulary", "vocabulary-records"] }`,
     },

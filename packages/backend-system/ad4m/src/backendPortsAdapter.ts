@@ -33,7 +33,6 @@ import { createAd4mCallPort } from './callPort';
 import { installClearOnEmpty } from './clearOnEmpty';
 import { installContainmentPredicate } from './containment';
 import { Space } from './entities';
-import { createAd4mFlowPort } from './flowPort';
 import { createAd4mIdentityPort } from './identityPort';
 import { createAd4mInterpretationPort } from './interpretationAdapter';
 import { readInterpretationHints, resetInterpretationHints, writeInterpretationHints } from './interpretationHints';
@@ -61,6 +60,7 @@ import {
   warmStoredShapes,
 } from './sdnaEntities';
 import { createAd4mTranscriptionPort } from './transcriptionAdapter';
+import { createAd4mWorkflowPort } from './workflowPort';
 
 const proxy = (dataset: DatasetHandle) => dataset as PerspectiveProxy;
 
@@ -214,7 +214,7 @@ export function createAd4mBackendPorts(
     // Takes no client: interpretation is entirely a per-dataset operation, and every call already
     // carries the dataset handle it needs.
     interpretation: createAd4mInterpretationPort(ctx.selfId),
-    flows: createAd4mFlowPort(ctx.selfId),
+    workflows: createAd4mWorkflowPort(ctx.selfId),
     references: createAd4mReferencePort(),
     // The key log and the device list, as the executor's identity module holds them.
     identity: createAd4mIdentityPort(backendClient),

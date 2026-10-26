@@ -6,10 +6,10 @@
  * What the engine then does with the links is the engine's business and is not tested here.
  */
 import { SHACLFlow } from '@coasys/ad4m';
-import type { FlowDefinition } from '@we/backend-shared';
+import type { WorkflowDefinition } from '@we/backend-shared';
 import { describe, expect, it } from 'vitest';
 
-import { createAd4mFlowPort, fromShaclFlow, isEditable, moveRefusal, toShaclFlow } from '../src/flowPort';
+import { createAd4mWorkflowPort, fromShaclFlow, isEditable, moveRefusal, toShaclFlow } from '../src/workflowPort';
 
 interface Stored {
   data: { source: string; predicate?: string; target: string };
@@ -46,11 +46,11 @@ function fakePerspective(initial: Stored['data'][] = []) {
   return { perspective, added, removed, all: () => links.map((l) => l.data) };
 }
 
-const REVIEWING = { entity: 'Involvement', agentField: 'agent', where: { kind: 'reviewing' }, subjectField: 'node' };
+const REVIEWING = { entity: 'Involvement', agentField: 'agent', where: { kind: 'reviewing' }, recordField: 'node' };
 
-const FLOW: FlowDefinition = {
+const FLOW: WorkflowDefinition = {
   name: 'Tasks',
-  subjects: ['TaskBlock'],
+  entities: ['TaskBlock'],
   states: [
     { name: 'todo' },
     { name: 'done', requires: [{ kind: 'approvals', count: 2 }] },
@@ -58,7 +58,7 @@ const FLOW: FlowDefinition = {
     {
       name: 'shipped',
       requires: [
-        { kind: 'guard', entity: 'TextBlock', where: { text: 'release note' }, tie: { relation: 'responses' } },
+        { kind: 'evidence', entity: 'TextBlock', where: { text: 'release note' }, via: { relation: 'responses' } },
       ],
     },
   ],
@@ -70,7 +70,7 @@ const FLOW: FlowDefinition = {
   ],
 };
 
-const rules = (definition: FlowDefinition) =>
+const rules = (definition: WorkflowDefinition) =>
   Object.fromEntries(toShaclFlow(definition).states.map((s) => [s.name, s.consensusRule ?? null]));
 
 describe('toShaclFlow', () => {
@@ -119,7 +119,9 @@ describe('toShaclFlow', () => {
     expect(() =>
       toShaclFlow({
         ...FLOW,
-        states: [{ name: 'todo', requires: [{ kind: 'guard', entity: 'TextBlock', tie: { relation: 'respondsTo' } }] }],
+        states: [
+          { name: 'todo', requires: [{ kind: 'evidence', entity: 'TextBlock', via: { relation: 'respondsTo' } }] },
+        ],
         transitions: [],
       }),
     ).toThrow('read backwards');
@@ -151,7 +153,7 @@ describe('fromShaclFlow', () => {
 describe('install', () => {
   it('writes the definition and the name register into an empty dataset', async () => {
     const fake = fakePerspective();
-    await createAd4mFlowPort().install(fake.perspective as never, FLOW);
+    await createAd4mWorkflowPort().install(fake.perspective as never, FLOW);
     expect(fake.removed).toEqual([]);
     expect(fake.added.length).toBeGreaterThan(0);
     expect(fake.all()).toEqual(
@@ -164,7 +166,7 @@ describe('install', () => {
 
   it('writes nothing when the dataset already says what the definition says', async () => {
     const fake = fakePerspective();
-    const port = createAd4mFlowPort();
+    const port = createAd4mWorkflowPort();
     await port.install(fake.perspective as never, FLOW);
     fake.added.length = 0;
     await port.install(fake.perspective as never, FLOW);
@@ -174,9 +176,9 @@ describe('install', () => {
 
   it('replaces a changed rule rather than adding a second one beside it', async () => {
     const fake = fakePerspective();
-    const port = createAd4mFlowPort();
+    const port = createAd4mWorkflowPort();
     await port.install(fake.perspective as never, FLOW);
-    const three: FlowDefinition = {
+    const three: WorkflowDefinition = {
       ...FLOW,
       states: FLOW.states.map((s) =>
         s.name === 'done' ? { ...s, requires: [{ kind: 'approvals' as const, count: 3 }] } : s,
@@ -193,7 +195,7 @@ describe('install', () => {
 
   it('takes away a state and its moves that the new definition no longer has', async () => {
     const fake = fakePerspective();
-    const port = createAd4mFlowPort();
+    const port = createAd4mWorkflowPort();
     await port.install(fake.perspective as never, FLOW);
     await port.install(fake.perspective as never, {
       ...FLOW,
@@ -214,11 +216,11 @@ describe('install', () => {
       predicate: 'ad4m://flow/flow_receipt',
       target: 'ad4m://flow/receipt/1',
     };
-    const otherFlow = { source: 'ad4m://self', predicate: 'ad4m://has_flow', target: 'literal:string:Other' };
-    const fake = fakePerspective([receiptIndex, otherFlow]);
-    await createAd4mFlowPort().install(fake.perspective as never, FLOW);
+    const otherWorkflow = { source: 'ad4m://self', predicate: 'ad4m://has_flow', target: 'literal:string:Other' };
+    const fake = fakePerspective([receiptIndex, otherWorkflow]);
+    await createAd4mWorkflowPort().install(fake.perspective as never, FLOW);
     expect(fake.removed).toEqual([]);
-    expect(fake.all()).toEqual(expect.arrayContaining([receiptIndex, otherFlow]));
+    expect(fake.all()).toEqual(expect.arrayContaining([receiptIndex, otherWorkflow]));
   });
 });
 
@@ -226,7 +228,7 @@ describe('moveRefusal', () => {
   it('reads "not reachable from where you asked to go" as already there', () => {
     // The board showed Done; a rule change had the engine re-judge the run into Doing.
     const error = new Error('RPC error 500: `doing` is not reachable from `doing` — no proposal written');
-    expect(moveRefusal(error, 'doing', 'done')).toEqual({ outcome: 'moved', state: 'doing', steps: [] });
+    expect(moveRefusal(error, 'doing', 'done')).toEqual({ outcome: 'moved', state: 'doing', moves: [] });
   });
 
   it('reads an unreachable move as not allowed, naming where the record stands — none at the entry', () => {

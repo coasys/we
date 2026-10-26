@@ -446,10 +446,10 @@ function validateSpaceStarter(seed) {
         if (!defined.has(ref)) error(`${p}.settings.${name} refers to $${ref}, which no record defines`);
       }
     }
-    for (const [name, ref] of Object.entries(starter.roles || {})) {
+    for (const [name, ref] of Object.entries(starter.landmarks || {})) {
       const target = refOf(ref);
       if (!target || target === 'root' || target === 'space' || !defined.has(target))
-        error(`${p}.roles.${name} must name a record's $id: ${ref}`);
+        error(`${p}.landmarks.${name} must name a record's $id: ${ref}`);
     }
     if (errors.length === before) success(`space starter "${starter.id}" is valid`);
     /*
@@ -467,7 +467,7 @@ function validateSpaceStarter(seed) {
       Object.values(record.fields || {}).forEach((v) => refsIn(v).forEach((r) => referred.add(r)));
     }
     Object.values(starter.settings || {}).forEach((v) => refsIn(v).forEach((r) => referred.add(r)));
-    Object.values(starter.roles || {}).forEach((v) => refsIn(v).forEach((r) => referred.add(r)));
+    Object.values(starter.landmarks || {}).forEach((v) => refsIn(v).forEach((r) => referred.add(r)));
     (starter.records || []).forEach((record, index) => {
       if (record.$id && !referred.has(record.$id)) {
         warn(`${p}.records[${index}].$id "${record.$id}" is never referred to — leave it out`);

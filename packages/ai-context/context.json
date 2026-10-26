@@ -5045,15 +5045,15 @@
           "required": false
         },
         {
-          "name": "archivedFlows",
+          "name": "archivedWorkflows",
           "type": "string",
-          "predicate": "we://archived_flows",
+          "predicate": "we://archived_workflows",
           "required": false
         },
         {
-          "name": "taskFlowRule",
+          "name": "taskWorkflowRule",
           "type": "string",
-          "predicate": "we://task_flow_rule",
+          "predicate": "we://task_workflow_rule",
           "required": false
         }
       ],
@@ -5083,10 +5083,10 @@
           "target": "CollectionBlock"
         },
         {
-          "name": "roles",
+          "name": "landmarks",
           "kind": "HasMany",
-          "predicate": "we://space_role",
-          "target": "SpaceRole"
+          "predicate": "we://space_landmark",
+          "target": "SpaceLandmark"
         }
       ]
     },
@@ -5135,14 +5135,14 @@
       "relations": []
     },
     {
-      "name": "SpaceRole",
-      "className": "SpaceRole",
+      "name": "SpaceLandmark",
+      "className": "SpaceLandmark",
       "extends": "Ad4mModel",
       "fields": [
         {
           "name": "name",
           "type": "string",
-          "predicate": "we://role_name",
+          "predicate": "we://landmark_name",
           "required": false
         }
       ],
@@ -5150,7 +5150,7 @@
         {
           "name": "node",
           "kind": "HasOne",
-          "predicate": "we://role_node"
+          "predicate": "we://landmark_node"
         }
       ]
     },
@@ -5315,9 +5315,9 @@
           "required": false
         },
         {
-          "name": "guards",
+          "name": "evidence",
           "type": "string",
-          "predicate": "we://guards",
+          "predicate": "we://evidence",
           "required": false
         },
         {
@@ -6420,98 +6420,6 @@
       "destructive": ["deleteSession", "clearHistory"]
     },
     {
-      "name": "flowStore",
-      "state": {
-        "available": {
-          "type": "boolean"
-        },
-        "capabilities": {
-          "type": "object"
-        },
-        "canEdit": {
-          "type": "boolean"
-        },
-        "flows": {
-          "type": "array",
-          "properties": ["name", "label", "editable", "records", "managedBy", "archived", "steps", "moves"]
-        },
-        "flowsLoaded": {
-          "type": "boolean"
-        },
-        "startable": {
-          "type": "array",
-          "properties": ["name", "label", "subjects"]
-        },
-        "open": {
-          "type": "object"
-        },
-        "draft": {
-          "type": "object"
-        },
-        "recordFlows": {
-          "type": "object"
-        }
-      },
-      "actions": [
-        "refreshFlows",
-        "openFlow",
-        "closeFlow",
-        "loadHistory",
-        "startFlow",
-        "moveRecord",
-        "withdrawRecord",
-        "newFlow",
-        "editFlow",
-        "cancelDraft",
-        "saveDraft",
-        "deleteFlow",
-        "setDraftLabel",
-        "setDraftHint",
-        "setDraftSubjects",
-        "addStep",
-        "removeStep",
-        "moveStep",
-        "renameStep",
-        "setStepHint",
-        "updateStep",
-        "addBranch",
-        "setBranchEnd",
-        "setRule",
-        "addException",
-        "removeException",
-        "setApprovals",
-        "addGuard",
-        "removeGuard"
-      ],
-      "ambient": [
-        "refreshFlows",
-        "openFlow",
-        "closeFlow",
-        "loadHistory",
-        "newFlow",
-        "editFlow",
-        "cancelDraft",
-        "setDraftLabel",
-        "setDraftHint",
-        "setDraftSubjects",
-        "addStep",
-        "removeStep",
-        "moveStep",
-        "renameStep",
-        "setStepHint",
-        "updateStep",
-        "addBranch",
-        "setBranchEnd",
-        "setRule",
-        "addException",
-        "removeException",
-        "setApprovals",
-        "addGuard",
-        "removeGuard"
-      ],
-      "destructive": ["deleteFlow"]
-    },
-    {
       "name": "identityStore",
       "state": {
         "available": {
@@ -7593,19 +7501,19 @@
         "root": {
           "type": "string"
         },
-        "roles": {
+        "landmarks": {
           "type": "object"
         },
         "extractionTargets": {
           "type": "array"
         },
-        "taskFlowRule": {
+        "taskWorkflowRule": {
           "type": "string"
         },
-        "taskFlowEnabled": {
+        "taskWorkflowEnabled": {
           "type": "boolean"
         },
-        "archivedFlows": {
+        "archivedWorkflows": {
           "type": "array"
         },
         "canAdministerCurrentSpace": {
@@ -7664,12 +7572,12 @@
         "setSignalTypeRetired",
         "createTaskState",
         "updateTaskState",
-        "setTaskFlowRule",
-        "addTaskStateGuard",
-        "removeTaskStateGuard",
+        "setTaskWorkflowRule",
+        "addTaskStateEvidence",
+        "removeTaskStateEvidence",
         "approveTaskMove",
         "withdrawTaskMove",
-        "setFlowArchived",
+        "setWorkflowArchived",
         "setTaskStateRetired",
         "reorderTaskStates",
         "setInvolvement",
@@ -7909,6 +7817,98 @@
       "destructive": ["deleteTheme", "uninstallTheme", "deleteMarketplaceTheme"]
     },
     {
+      "name": "workflowStore",
+      "state": {
+        "available": {
+          "type": "boolean"
+        },
+        "capabilities": {
+          "type": "object"
+        },
+        "canEdit": {
+          "type": "boolean"
+        },
+        "workflows": {
+          "type": "array",
+          "properties": ["name", "label", "editable", "records", "managedBy", "archived", "steps", "moves"]
+        },
+        "workflowsLoaded": {
+          "type": "boolean"
+        },
+        "startable": {
+          "type": "array",
+          "properties": ["name", "label", "entities"]
+        },
+        "open": {
+          "type": "object"
+        },
+        "draft": {
+          "type": "object"
+        },
+        "recordWorkflows": {
+          "type": "object"
+        }
+      },
+      "actions": [
+        "refreshWorkflows",
+        "openWorkflow",
+        "closeWorkflow",
+        "loadHistory",
+        "startWorkflow",
+        "moveRecord",
+        "withdrawRecord",
+        "newWorkflow",
+        "editWorkflow",
+        "cancelDraft",
+        "saveDraft",
+        "deleteWorkflow",
+        "setDraftLabel",
+        "setDraftHint",
+        "setDraftEntities",
+        "addStep",
+        "removeStep",
+        "moveStep",
+        "renameStep",
+        "setStepHint",
+        "updateStep",
+        "addBranch",
+        "setBranchEnd",
+        "setRule",
+        "addException",
+        "removeException",
+        "setApprovals",
+        "addEvidence",
+        "removeEvidence"
+      ],
+      "ambient": [
+        "refreshWorkflows",
+        "openWorkflow",
+        "closeWorkflow",
+        "loadHistory",
+        "newWorkflow",
+        "editWorkflow",
+        "cancelDraft",
+        "setDraftLabel",
+        "setDraftHint",
+        "setDraftEntities",
+        "addStep",
+        "removeStep",
+        "moveStep",
+        "renameStep",
+        "setStepHint",
+        "updateStep",
+        "addBranch",
+        "setBranchEnd",
+        "setRule",
+        "addException",
+        "removeException",
+        "setApprovals",
+        "addEvidence",
+        "removeEvidence"
+      ],
+      "destructive": ["deleteWorkflow"]
+    },
+    {
       "name": "record",
       "state": {},
       "actions": ["create", "update", "delete"],
@@ -7937,8 +7937,8 @@
     {
       "name": "requirementLabel",
       "params": ["options"],
-      "doc": "What a step or a task state asks to be there first, in the words the app uses for it (\"at least 1 comment in response to it\"). For a form holding requirements it has not saved yet. Options: entity (comment, call, task, file, link, image, or an entity name), tie (\"responses\", or empty for anywhere in the space), min.",
-      "example": "requirementLabel({ entity: local.guardEntity, tie: local.guardTie, min: local.guardMin })"
+      "doc": "What a step or a task state asks to be there first, in the words the app uses for it (\"at least 1 comment in response to it\"). For a form holding requirements it has not saved yet. Options: entity (comment, call, task, file, link, image, or an entity name), via (\"responses\", or empty for anywhere in the space), min.",
+      "example": "requirementLabel({ entity: local.evidenceEntity, via: local.evidenceVia, min: local.evidenceMin })"
     },
     {
       "name": "calendarMonth",
@@ -7967,7 +7967,7 @@
     {
       "name": "arrangedBoard",
       "params": ["options"],
-      "doc": "A board worked out from its three subscriptions — { ready, gathers, columns, contents, unplaced, unplacedStates, available, total, involved, filtering, show, dimmed, cardCount, matchedCount, unplacedTotal, rows, cells, rowCounts, flow, awaiting, awaitingOnly }. columns are the caller’s own column records in the board’s order; contents[columnId] is { label, icon, color, lane, arranged, unarranged, count, shown, matched, order }; unplaced is work no column here shows. Options: board (the record with children hydrated), columns (its kind: \"column\" children), records (everything in scope), states (spaceStore.taskStates). To read it by who is on the work, also pass involvements (an Involvement query), kinds (spaceStore.involvementTypes), people (the chosen DIDs), me (me.did — involved is everyone on a card here, the viewer first) and show: \"dim\" lists the others in dimmed and moves nothing; \"hide\" drops them from arranged, unarranged and unplaced while count stays true and shown says how many are drawn; \"rows\" adds a row per person plus \"nobody\" — rows are keys, cells[row][columnId] is { arranged, unarranged, count }. A drag in a column showing only part of itself passes contents[columnId].order to arrangeColumn, so the hidden cards keep their places. Where the space’s states ask for agreement (spaceStore.taskFlowEnabled) a card is drawn where its run is, and three more fields answer: flow[cardId] is { to, voters, counted, needs, mine, canApprove, approverKind } for a card waiting on a move — counted is how many of voters count toward needs; awaiting is the cards whose waiting move the viewer’s approval would help; pass awaitingMe: true to draw only those (awaitingOnly says it is on).",
+      "doc": "A board worked out from its three subscriptions — { ready, gathers, columns, contents, unplaced, unplacedStates, available, total, involved, filtering, show, dimmed, cardCount, matchedCount, unplacedTotal, rows, cells, rowCounts, workflow, awaiting, awaitingOnly }. columns are the caller’s own column records in the board’s order; contents[columnId] is { label, icon, color, lane, arranged, unarranged, count, shown, matched, order }; unplaced is work no column here shows. Options: board (the record with children hydrated), columns (its kind: \"column\" children), records (everything in scope), states (spaceStore.taskStates). To read it by who is on the work, also pass involvements (an Involvement query), kinds (spaceStore.involvementTypes), people (the chosen DIDs), me (me.did — involved is everyone on a card here, the viewer first) and show: \"dim\" lists the others in dimmed and moves nothing; \"hide\" drops them from arranged, unarranged and unplaced while count stays true and shown says how many are drawn; \"rows\" adds a row per person plus \"nobody\" — rows are keys, cells[row][columnId] is { arranged, unarranged, count }. A drag in a column showing only part of itself passes contents[columnId].order to arrangeColumn, so the hidden cards keep their places. Where the space’s states ask for agreement (spaceStore.taskWorkflowEnabled) a card is drawn where its run is, and three more fields answer: workflow[cardId] is { to, approvers, counted, needs, mine, canApprove, approverKind } for a card waiting on a move — counted is how many of approvers count toward needs; awaiting is the cards whose waiting move the viewer’s approval would help; pass awaitingMe: true to draw only those (awaitingOnly says it is on).",
       "example": "arrangedBoard({ board: first(local.board), columns: local.columns, records: local.pool, states: spaceStore.taskStates }).columns"
     },
     {

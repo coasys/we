@@ -417,10 +417,10 @@ export const storeEntries: StoreEntry[] = [
       },
       taskStatesLoaded: { type: 'boolean' },
       root: { type: 'string' },
-      roles: { type: 'object' },
-      taskFlowEnabled: { type: 'boolean' },
-      archivedFlows: { type: 'array' },
-      taskFlowRule: { type: 'string' },
+      landmarks: { type: 'object' },
+      taskWorkflowEnabled: { type: 'boolean' },
+      archivedWorkflows: { type: 'array' },
+      taskWorkflowRule: { type: 'string' },
       involvementTypes: {
         type: 'array',
         properties: ['id', 'name', 'slug', 'semantic', 'reflexive', 'appliesTo', 'icon', 'color', 'retired'],
@@ -464,10 +464,10 @@ export const storeEntries: StoreEntry[] = [
       'reorderTaskStates',
       'approveTaskMove',
       'withdrawTaskMove',
-      'setFlowArchived',
-      'setTaskFlowRule',
-      'addTaskStateGuard',
-      'removeTaskStateGuard',
+      'setWorkflowArchived',
+      'setTaskWorkflowRule',
+      'addTaskStateEvidence',
+      'removeTaskStateEvidence',
       'setInvolvement',
       'respondTo',
       'createInvolvementType',
@@ -647,36 +647,36 @@ export const storeEntries: StoreEntry[] = [
     actions: ['create', 'update', 'delete'],
   },
   {
-    name: 'flowStore',
+    name: 'workflowStore',
     state: {
       available: { type: 'boolean' },
       capabilities: { type: 'object' },
       canEdit: { type: 'boolean' },
-      flows: {
+      workflows: {
         type: 'array',
         properties: ['name', 'label', 'editable', 'records', 'managedBy', 'archived', 'steps', 'moves'],
       },
-      startable: { type: 'array', properties: ['name', 'label', 'subjects'] },
+      startable: { type: 'array', properties: ['name', 'label', 'entities'] },
       open: { type: 'object' },
       draft: { type: 'object' },
-      recordFlows: { type: 'object' },
+      recordWorkflows: { type: 'object' },
     },
     actions: [
-      'refreshFlows',
-      'openFlow',
-      'closeFlow',
+      'refreshWorkflows',
+      'openWorkflow',
+      'closeWorkflow',
       'loadHistory',
-      'startFlow',
+      'startWorkflow',
       'moveRecord',
       'withdrawRecord',
-      'newFlow',
-      'editFlow',
+      'newWorkflow',
+      'editWorkflow',
       'cancelDraft',
       'saveDraft',
-      'deleteFlow',
+      'deleteWorkflow',
       'setDraftLabel',
       'setDraftHint',
-      'setDraftSubjects',
+      'setDraftEntities',
       'addStep',
       'removeStep',
       'moveStep',
@@ -689,8 +689,8 @@ export const storeEntries: StoreEntry[] = [
       'addException',
       'removeException',
       'setApprovals',
-      'addGuard',
-      'removeGuard',
+      'addEvidence',
+      'removeEvidence',
     ],
   },
   {
@@ -1239,8 +1239,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         myMentions:
           '{ id, author, createdAt }[] — messages in this space that mention this agent — posts and transcript or Feed lines alike — newest first, the fifty most recent. createdAt is the backend’s comparable timestamp. Asked from the agent’s end through the backend’s references, one lookup per space',
         root: "string — the id of this space's collection: the one CollectionBlock (kind 'space') everything top-level hangs off — calls, loose messages, posts, channels, extracted items, the canvas. Scope a top-level read through it: { anchor: 'CollectionBlock', via: 'children', anchorId: spaceStore.root }. Empty outside a space, and in a space made before spaces had one",
-        roles:
-          "Record<name, id> — the records this space names by role, e.g. spaceStore.roles.canvas is the space's canvas. Written by the space's starter at creation. A role can be absent — a space can switch template and a template must never assume what another set up — so guard every read",
+        landmarks:
+          "Record<name, id> — the records this space names as its landmarks, e.g. spaceStore.landmarks.canvas is the space's canvas. Written by the space's starter at creation. A landmark can be absent — a space can switch template and a template must never assume what another set up — so guard every read",
         autoInterpret:
           'boolean — whether a NEW collection here (a call, a channel) starts out extracted into records as it grows. A community default, copied onto each collection when it is made — a conversation already under way keeps its own answer, read with autoExtractFor. Readable by every member; writing it is space-settings',
         spaceModuleSettings:
@@ -1283,17 +1283,17 @@ export function generateStoresText(entries: StoreEntry[]): string {
         installedModules:
           'string[] — ids of the feature modules THIS AGENT wants available anywhere. Personal, held in the root dataset; unset means "not decided" and falls back to every registered module',
         taskStates:
-          '{ id, name, slug, semantic, color, retired, approvals, approverKind }[] — the states this community\u2019s work moves through: its TaskState records, which a new space\u2019s starter writes. A space with none has none. Ordered by the community’s own arrangement where it has one, otherwise by what each state counts as — what is coming, what is happening, what is stuck, what is finished, what was dropped. `slug` is what TaskBlock.status holds; `semantic` is the closed fact underneath a community\u2019s own word, so "is this outstanding?" stays answerable after a rename. Includes withdrawn states, because a task sitting in one still has to resolve — offer offeredTaskStates instead. `approvals` is how many distinct people must agree before a task enters the state (1 is a plain drop) and `approverKind` the involvement kind whose holders\u2019 agreement counts (empty: anybody\u2019s) — see taskFlowEnabled. `guards` ({ entity, tie, min, label }[]) is what must be there first — `label` says it in words',
+          '{ id, name, slug, semantic, color, retired, approvals, approverKind }[] — the states this community\u2019s work moves through: its TaskState records, which a new space\u2019s starter writes. A space with none has none. Ordered by the community’s own arrangement where it has one, otherwise by what each state counts as — what is coming, what is happening, what is stuck, what is finished, what was dropped. `slug` is what TaskBlock.status holds; `semantic` is the closed fact underneath a community\u2019s own word, so "is this outstanding?" stays answerable after a rename. Includes withdrawn states, because a task sitting in one still has to resolve — offer offeredTaskStates instead. `approvals` is how many distinct people must agree before a task enters the state (1 is a plain drop) and `approverKind` the involvement kind whose holders\u2019 agreement counts (empty: anybody\u2019s) — see taskWorkflowEnabled. `evidence` ({ entity, via, min, label }[]) is what must be there first — `label` says it in words',
         offeredTaskStates:
           '{ id, name, slug, semantic, color, retired, approvals, approverKind }[] — the same list without the withdrawn ones. What a state picker or a new board column should offer',
         taskStatesLoaded:
           'boolean — the space has been asked for its states. An empty list is otherwise indistinguishable from "not fetched yet"; gate an empty state on it',
-        taskFlowEnabled:
-          'boolean — this space\u2019s task states ask for agreement: some state needs more than one approval, or names whose approval counts. Where true, a card dragged into such a state waits instead of moving, and arrangedBoard(…).flow[card.id] describes what it is waiting on. Gate an explanation of the waiting on it; the board needs nothing else',
-        taskFlowRule:
-          "'' | 'next' | 'next-and-back' — how a task may move between this space's states, in their order: anywhere, on to the next only, or on and back one. Anything but '' runs the states as a flow, so a move the rule does not allow is refused on the board — say so beside a picker of states",
-        archivedFlows:
-          'string[] — the names of the flows this space has put away. An archived flow keeps its records, which still show and can still finish, but is not offered for starting on anything new; flowStore.flows marks each one `archived`',
+        taskWorkflowEnabled:
+          'boolean — this space\u2019s task states ask for agreement: some state needs more than one approval, or names whose approval counts. Where true, a card dragged into such a state waits instead of moving, and arrangedBoard(…).workflow[card.id] describes what it is waiting on. Gate an explanation of the waiting on it; the board needs nothing else',
+        taskWorkflowRule:
+          "'' | 'next' | 'next-and-back' — how a task may move between this space's states, in their order: anywhere, on to the next only, or on and back one. Anything but '' runs the states as a workflow, so a move the rule does not allow is refused on the board — say so beside a picker of states",
+        archivedWorkflows:
+          'string[] — the names of the workflows this space has put away. An archived workflow keeps its records, which still show and can still finish, but is not offered for starting on anything new; workflowStore.workflows marks each one `archived`',
         involvementTypes:
           '{ id, name, slug, semantic, reflexive, appliesTo, icon, color, retired }[] — the kinds of part a person can have in a record: "Assigned" and "Reviewing" on a task, "Going", "Maybe" and "Not going" on an event, plus whatever this community has named: its InvolvementType records, which a new space\u2019s starter writes. `slug` is what Involvement.kind holds. `semantic` is the closed meaning underneath the name — responsible, reviewing, committed, interested, declined — so a board still finds the assignee after "Assigned" is renamed. `reflexive` kinds are an agent\u2019s own answer, which nobody else may give, and an agent holds one per record. `appliesTo` is the entity names the kind is offered on, empty for all — filter with `\'TaskBlock\' in kind.appliesTo || !count(kind.appliesTo)`. Includes withdrawn kinds; offer offeredInvolvementTypes. Read who holds them through the `involvement` host function',
         offeredInvolvementTypes:
@@ -1402,21 +1402,21 @@ export function generateStoresText(entries: StoreEntry[]): string {
         createTaskState:
           '(config: { name, semantic?, color?, icon? }): names a state this community\u2019s work moves through — "Blocked", "In review". The counterpart to createSignalType one concept along. A slug the space already has is refused. The space\u2019s own board gains a column for the new state in the same act. Slug derived from the name; it is what tasks store, so it is not editable afterwards',
         updateTaskState:
-          '(slug: string, updates: { name?, icon?, color?, semantic?, approvals?, approverKind?, guards? }): changes a state the community already has — what it is called, the glyph and colour it is drawn with, and what the rest of the app reads it as. The counterpart createTaskState had no pair for, and the only way a state gets a colour after it is made. An empty string CLEARS a field, which is how a colour goes back to the template’s default without deleting the state. The slug is deliberately absent — every task stores it, so changing it would leave the work holding a word nothing defines; renaming is what `name` is for and it carries. `approvals` (a whole number, 1–20) and `approverKind` (an involvement kind\u2019s slug, or empty) set what agreement the state asks for, and `guards` ({ entity, tie?, min? }[], the whole list) what must be there first — the first state that asks for either turns the space\u2019s states into a flow, see taskFlowEnabled. By slug, which is what a task and a screen both hold',
+          '(slug: string, updates: { name?, icon?, color?, semantic?, approvals?, approverKind?, evidence? }): changes a state the community already has — what it is called, the glyph and colour it is drawn with, and what the rest of the app reads it as. The counterpart createTaskState had no pair for, and the only way a state gets a colour after it is made. An empty string CLEARS a field, which is how a colour goes back to the template’s default without deleting the state. The slug is deliberately absent — every task stores it, so changing it would leave the work holding a word nothing defines; renaming is what `name` is for and it carries. `approvals` (a whole number, 1–20) and `approverKind` (an involvement kind\u2019s slug, or empty) set what agreement the state asks for, and `evidence` ({ entity, via?, min? }[], the whole list) what must be there first — the first state that asks for either turns the space\u2019s states into a workflow, see taskWorkflowEnabled. By slug, which is what a task and a screen both hold',
         setTaskStateRetired:
           '(slug: string, retired: boolean): withdraws a state from use, or brings it back. Never touches the work sitting in it — a task names its state by slug, so deleting the state would leave the work holding a word nothing defines. The same decision setSignalTypeRetired makes. By slug, which is what a task and a screen both hold',
         approveTaskMove:
-          '(taskId: string): agrees with the move a task is waiting on — the same as dragging the card there yourself, so it counts toward the state\u2019s approvals when the agent is one whose approval counts. Offer it where arrangedBoard(…).flow[card.id].canApprove',
+          '(taskId: string): agrees with the move a task is waiting on — the same as dragging the card there yourself, so it counts toward the state\u2019s approvals when the agent is one whose approval counts. Offer it where arrangedBoard(…).workflow[card.id].canApprove',
         withdrawTaskMove:
-          '(taskId: string): takes back this agent\u2019s own vote on the move a task is waiting on, never anybody else\u2019s. Offer it where arrangedBoard(…).flow[card.id].mine',
-        setTaskFlowRule:
-          "(rule: '' | 'next' | 'next-and-back'): how a task may move between this space's states — see taskFlowRule. Only whoever administers the space; rejects otherwise",
-        addTaskStateGuard:
-          "(slug: string, guard: { entity, tie?, min? }): something that must be there before a task enters the state — at least `min` of `entity`, held by the task through the relation `tie` ('responses' for what was made in response to it), or anywhere when `tie` is empty. `entity` is 'comment', 'call', 'task', 'file', 'link' or 'image' — a comment is a reply post, not the text inside one — or an entity name. The first guard turns the space's states into a flow",
-        removeTaskStateGuard:
-          '(slug: string, index: number): takes away the state\u2019s guard at that position in its `guards`',
-        setFlowArchived:
-          '(name: string, archived: boolean): puts a flow away, or brings it back. Only whoever administers the space; rejects otherwise. Archiving never touches the records going through the flow — offer it in place of deleting one that has any',
+          '(taskId: string): takes back this agent\u2019s own vote on the move a task is waiting on, never anybody else\u2019s. Offer it where arrangedBoard(…).workflow[card.id].mine',
+        setTaskWorkflowRule:
+          "(rule: '' | 'next' | 'next-and-back'): how a task may move between this space's states — see taskWorkflowRule. Only whoever administers the space; rejects otherwise",
+        addTaskStateEvidence:
+          "(slug: string, evidence: { entity, via?, min? }): something that must be there before a task enters the state — at least `min` of `entity`, held by the task through the relation `via` ('responses' for what was made in response to it), or anywhere when `via` is empty. `entity` is 'comment', 'call', 'task', 'file', 'link' or 'image' — a comment is a reply post, not the text inside one — or an entity name. The first evidence requirement turns the space's states into a workflow",
+        removeTaskStateEvidence:
+          '(slug: string, index: number): takes away the state\u2019s evidence requirement at that position in its `evidence`',
+        setWorkflowArchived:
+          '(name: string, archived: boolean): puts a workflow away, or brings it back. Only whoever administers the space; rejects otherwise. Archiving never touches the records going through the workflow — offer it in place of deleting one that has any',
         setInvolvement:
           '(nodeId: string, agent: string, kind: string, on: boolean): puts somebody on a record as a kind one member says about another — assigning a task, asking for a review — or takes them off. `on` is the state wanted rather than a toggle, so a menu passes the opposite of the tick it shows and a double press cannot undo itself. Every copy of the pair goes on removal. A reflexive kind is routed to respondTo, and refused for anybody but the agent it is about. Pair with a DropdownMenu of toggle entries: `onSelect: { $action: "spaceStore.setInvolvement", args: [{ $: "card.id" }, { $: "arg.id" }, "assignee", { $: "!arg.checked" }] }`',
         respondTo:
@@ -1995,48 +1995,49 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(keyId: string): opens the identity window on revoking that key, which signs the `revoke`. Resolves with the outcome',
       },
     },
-    flowStore: {
+    workflowStore: {
       state: {
         available:
-          'boolean — this space has flows at all: its backend offers them and it is a WE space. Gate a Flows route or a "Start flow" control on it',
+          'boolean — this space has workflows at all: its backend offers them and it is a WE space. Gate a Workflows route or a "Start workflow" control on it',
         capabilities:
-          "{ requirements, enforcement, sealedEvidence, contention } | null — what this backend can do with flows. `requirements` lists the kinds of rule it enforces ('approvals', 'guard'); `enforcement` is 'server' (one authority applies every rule) or 'peers' (every member's software applies them, so a member running other software can write past one — say so beside a rule); `contention` is 'stall' when two moves out of one step both agreed leave a record stuck until somebody withdraws, or 'first' when the earlier wins",
-        canEdit: 'boolean — the viewer may save, delete and archive flows here: whoever administers the space',
-        flows:
-          "{ name, label, editable, records, managedBy, archived, steps, moves }[] — every flow in the space, archived ones included. `editable` is false for one written by something that uses more than this editor shows, and for the task-state flow; `managedBy` is 'task-states' for the flow the board's task states write, which is edited in the space's settings and moved on the board, never here; `records` is how many records are going through it; `steps` ({ name, label, final }[]) and `moves` ({ from, to }[]) are its definition once read — what a map of the space's flows draws",
-        flowsLoaded:
-          'boolean — the backend has answered with this space\'s flows. An empty `flows` before then is not yet an answer: gate a "no flows" sentence on it and draw the list as loading until it is true',
+          "{ requirements, enforcement, sealedEvidence, contention } | null — what this backend can do with workflows. `requirements` lists the kinds of rule it enforces ('approvals', 'evidence'); `enforcement` is 'server' (one authority applies every rule) or 'peers' (every member's software applies them, so a member running other software can write past one — say so beside a rule); `contention` is 'stall' when two moves out of one step both agreed leave a record stuck until somebody withdraws, or 'first' when the earlier wins",
+        canEdit: 'boolean — the viewer may save, delete and archive workflows here: whoever administers the space',
+        workflows:
+          "{ name, label, editable, records, managedBy, archived, steps, moves }[] — every workflow in the space, archived ones included. `editable` is false for one written by something that uses more than this editor shows, and for the task-state workflow; `managedBy` is 'task-states' for the workflow the board's task states write, which is edited in the space's settings and moved on the board, never here; `records` is how many records are going through it; `steps` ({ name, label, final }[]) and `moves` ({ from, to }[]) are its definition once read — what a map of the space's workflows draws",
+        workflowsLoaded:
+          'boolean — the backend has answered with this space\'s workflows. An empty `workflows` before then is not yet an answer: gate a "no workflows" sentence on it and draw the list as loading until it is true',
         startable:
-          '{ name, label, subjects }[] — flows a record can be put through: not archived, not written by something else. `subjects` are the entity names a flow is for, empty for any record — filter with `card.__subjectClass in flow.subjects || !count(flow.subjects)`',
-        open: "{ name, label, hint, subjects, rule, fits, editable, managedBy, archived, lanes, exceptions, steps, records, history } | null — the flow opened with openFlow. `lanes` is the flow as a main line and branches: each { index, main, leaves, leavesLabel, rejoins, rejoinsLabel, ends, steps }, every step { name, label, final, approvals, approverKind, approverLabel, guards, requires, hint }, `requires` being each thing entering it takes as a short phrase. `rule` is 'next', 'next-and-back' or 'any'; `exceptions` the moves nothing else covers, { from, to, fromLabel, toLabel, name }. `records` are what is going through it, newest first: { subject, title, startedAt, state, stateLabel, stalled, waiting, walk, next }, `startedAt` an ISO date for a we-timestamp (empty when unknown), `walk` its path as { name, label, at } with `at` 'done', 'current' or 'ahead' — a stepper — and `next` where it may be asked to go, `waiting` each move asked for { to, toLabel, voters, needs, note, mine }. `recordsLoaded` says the records have been read — gate anything offered only for a flow with none on it. `history[subject]` is filled by loadHistory: { from, to, fromLabel, toLabel, voters, at, when, evidence, note }[], `when` being `at` as an ISO date",
+          '{ name, label, entities }[] — workflows a record can be put through: not archived, not written by something else. `entities` are the entity names a workflow is for, empty for any record — filter with `card.__subjectClass in workflow.entities || !count(workflow.entities)`',
+        open: "{ name, label, hint, entities, rule, fits, editable, managedBy, archived, lanes, exceptions, steps, records, history } | null — the workflow opened with openWorkflow. `lanes` is the workflow as a main line and branches: each { index, main, leaves, leavesLabel, rejoins, rejoinsLabel, ends, steps }, every step { name, label, final, approvals, approverKind, approverLabel, evidence, requires, hint }, `requires` being each thing entering it takes as a short phrase. `rule` is 'next', 'next-and-back' or 'any'; `exceptions` the moves nothing else covers, { from, to, fromLabel, toLabel, name }. `records` are what is going through it, newest first: { record, title, startedAt, state, stateLabel, stalled, waiting, walk, next }, `startedAt` an ISO date for a we-timestamp (empty when unknown), `walk` its path as { name, label, at } with `at` 'done', 'current' or 'ahead' — a stepper — and `next` where it may be asked to go, `waiting` each move asked for { to, toLabel, approvers, needs, note, mine }. `recordsLoaded` says the records have been read — gate anything offered only for a workflow with none on it. `history[record]` is filled by loadHistory: { from, to, fromLabel, toLabel, approvers, at, when, evidence, note }[], `when` being `at` as an ISO date",
         draft:
-          '{ …the shape of open’s lanes, label, isNew, dirty, problems } | null — the flow being written, after newFlow or editFlow. `problems` are sentences saying what saving would be refused for; saveDraft refuses while there are any, so show them beside the button',
-        recordFlows:
-          'Record<recordId, { flow, label, state, stateLabel, waiting, stalled, next, asks }[]> — by record, every startable flow it is going through and where it stands: what a chip on a card shows. `next` ({ name, label }[]) is where it may be asked to go, for moveRecord; `asks` ({ to, toLabel, voters, needs, note, mine }[]) the moves waiting on agreement — offer withdrawRecord where `mine`, moveRecord to the same `to` to agree. Read as `flowStore.recordFlows[card.id]`, which is undefined for a record in none',
+          '{ …the shape of open’s lanes, label, isNew, dirty, problems } | null — the workflow being written, after newWorkflow or editWorkflow. `problems` are sentences saying what saving would be refused for; saveDraft refuses while there are any, so show them beside the button',
+        recordWorkflows:
+          'Record<recordId, { workflow, label, state, stateLabel, waiting, stalled, next, asks }[]> — by record, every startable workflow it is going through and where it stands: what a chip on a card shows. `next` ({ name, label }[]) is where it may be asked to go, for moveRecord; `asks` ({ to, toLabel, approvers, needs, note, mine }[]) the moves waiting on agreement — offer withdrawRecord where `mine`, moveRecord to the same `to` to agree. Read as `workflowStore.recordWorkflows[card.id]`, which is undefined for a record in none',
       },
       actions: {
-        refreshFlows: '(): asks the backend for the flow list again — after something another member did',
-        openFlow: '(name: string): opens a flow — its lanes and the records going through it fill `open`',
-        closeFlow: '(): closes the flow on screen',
+        refreshWorkflows: '(): asks the backend for the workflow list again — after something another member did',
+        openWorkflow: '(name: string): opens a workflow — its lanes and the records going through it fill `open`',
+        closeWorkflow: '(): closes the workflow on screen',
         loadHistory:
-          '(subject: string): reads the moves a record made in the open flow into open.history[subject] — for an expanded row',
-        startFlow: '(flow: string, recordId: string): puts a record through a flow, at its first step. Anybody may',
+          '(record: string): reads the moves a record made in the open workflow into open.history[record] — for an expanded row',
+        startWorkflow:
+          '(workflow: string, recordId: string): puts a record through a workflow, at its first step. Anybody may',
         moveRecord:
-          "(flow: string, recordId: string, to: string, note?: string): asks for a record to move — the same call whether the viewer is first to ask or agreeing with somebody who did. Resolves with 'moved', 'waiting', 'not-allowed', 'unmet', 'stalled' or 'pending', and says the unhappy ones in a toast itself. Refused for the task-state flow, which moves on the board",
+          "(workflow: string, recordId: string, to: string, note?: string): asks for a record to move — the same call whether the viewer is first to ask or agreeing with somebody who did. Resolves with 'moved', 'waiting', 'not-allowed', 'unmet', 'stalled' or 'pending', and says the unhappy ones in a toast itself. Refused for the task-state workflow, which moves on the board",
         withdrawRecord:
-          "(flow: string, recordId: string): takes back the viewer's own asks on a record's waiting moves, never anybody else's, never a move that happened",
-        newFlow:
-          "(preset: 'blank' | 'review' | 'proposal', label: string, subjects?: string[]): starts writing a new flow from a preset into `draft`. Nothing is written into the space until saveDraft",
-        editFlow: '(): starts editing the open flow, when it is `editable`',
+          "(workflow: string, recordId: string): takes back the viewer's own asks on a record's waiting moves, never anybody else's, never a move that happened",
+        newWorkflow:
+          "(preset: 'blank' | 'review' | 'proposal', label: string, entities?: string[]): starts writing a new workflow from a preset into `draft`. Nothing is written into the space until saveDraft",
+        editWorkflow: '(): starts editing the open workflow, when it is `editable`',
         cancelDraft: '(): throws the draft away',
         saveDraft:
           '(): writes the draft into the space and opens it. Only whoever administers the space; rejects while draft.problems has anything, and on failure, so an onSuccess after it means it saved',
-        deleteFlow:
-          '(name: string): takes a flow out of the space. Refused while any record is going through it — offer spaceStore.setFlowArchived instead then',
-        setDraftLabel: '(label: string): names a new flow. A saved flow keeps its name',
-        setDraftHint: '(hint: string): one sentence on what the flow is about',
-        setDraftSubjects:
-          '(subjects: string[]): which kinds of record the flow is for, by entity name; empty for any record',
+        deleteWorkflow:
+          '(name: string): takes a workflow out of the space. Refused while any record is going through it — offer spaceStore.setWorkflowArchived instead then',
+        setDraftLabel: '(label: string): names a new workflow. A saved workflow keeps its name',
+        setDraftHint: '(hint: string): one sentence on what the workflow is about',
+        setDraftEntities:
+          '(entities: string[]): which kinds of record the workflow is for, by entity name; empty for any record',
         addStep:
           '(lane: number, label: string, after?: string): a new step on a lane (0 is the main line), after the step named, or first. Refused, with a toast, for a name already used',
         removeStep:
@@ -2055,9 +2056,10 @@ export function generateStoresText(entries: StoreEntry[]): string {
         removeException: '(from: string, to: string): takes such a move away',
         setApprovals:
           "(name: string, count: number, kind?: string): how many people must agree before a record enters the step, and whose agreement counts — an involvement kind's slug, or '' for anybody's. 1 and '' is a plain ask",
-        addGuard:
-          "(name: string, entity: string, tie?: string, min?: number): something that must be there before a record enters the step — at least `min` of `entity`, held by the record through the relation `tie` ('responses' for what was made in response to it), or anywhere when `tie` is ''. `entity` is 'comment', 'call', 'task', 'file', 'link' or 'image' — a comment is a reply post, not the text inside one — or an entity name",
-        removeGuard: "(name: string, index: number): takes away the step's guard at that position in its `guards`",
+        addEvidence:
+          "(name: string, entity: string, via?: string, min?: number): something that must be there before a record enters the step — at least `min` of `entity`, held by the record through the relation `via` ('responses' for what was made in response to it), or anywhere when `via` is ''. `entity` is 'comment', 'call', 'task', 'file', 'link' or 'image' — a comment is a reply post, not the text inside one — or an entity name",
+        removeEvidence:
+          "(name: string, index: number): takes away the step's evidence requirement at that position in its `evidence`",
       },
     },
     clockStore: {

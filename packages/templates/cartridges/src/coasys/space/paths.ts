@@ -34,7 +34,7 @@ export const PAGE_EXPR = "routeStore.templateSegments[0] ? routeStore.templateSe
  */
 export const SELECTED_EXPR = [
   `(${PAGE_EXPR}) == 'record' ? 'call|' + routeStore.params.id`,
-  `: (${PAGE_EXPR}) == 'flows' ? (flowStore.open ? 'flow|' + flowStore.open.name : 'group|flows')`,
+  `: (${PAGE_EXPR}) == 'workflows' ? (workflowStore.open ? 'workflow|' + workflowStore.open.name : 'group|workflows')`,
   `: 'channel|' + (${CHANNEL_EXPR})`,
 ].join(' ');
 

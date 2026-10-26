@@ -1,8 +1,8 @@
 import type { SchemaNode } from '@we/schema-shared';
 import {
+  evidenceModal,
   field,
   formModal,
-  guardModal,
   sectionCard,
   stateFill,
   stateFillFor,
@@ -197,8 +197,8 @@ const EDITING = 'find(spaceStore.taskStates, { slug: local.editTaskStateSlug })'
 /**
  * What agreement a state asks for before work enters it — offered to whoever administers the space.
  *
- * The first state that asks for any turns the space's states into a flow: a card dragged into it
- * waits, showing who has agreed, until enough people have. See `shared/taskFlow.ts` in the app shell.
+ * The first state that asks for any turns the space's states into a workflow: a card dragged into it
+ * waits, showing who has agreed, until enough people have. See `shared/taskWorkflow.ts` in the app shell.
  *
  * Administrators only, because the rules become one definition the whole space's boards are derived
  * from, and it is installed by the person the space's other shared settings answer to. Offered to
@@ -218,7 +218,7 @@ const agreementFields: SchemaNode = {
       props: { gap: '300', width: '100%' },
       children: [
         { type: 'we-divider' },
-        // The same fields a flow's step shows in the Flows editor — see `stepRequirementFields`.
+        // The same fields a workflow's step shows in the Workflows editor — see `stepRequirementFields`.
         ...stepRequirementFields({
           approvals: {
             value: { $: 'local.editApprovals' },
@@ -237,13 +237,13 @@ const agreementFields: SchemaNode = {
             Removed by its words rather than its position: two requirements that read the same are the
             same requirement, and `filter` has no index to compare.
           */
-          guards: {
-            items: 'local.editTaskStateGuards',
+          evidence: {
+            items: 'local.editTaskStateEvidence',
             onRemove: {
-              $setLocal: 'editTaskStateGuards',
-              value: { $: 'local.editTaskStateGuards.filter(g, g.label != guard.label)' },
+              $setLocal: 'editTaskStateEvidence',
+              value: { $: 'local.editTaskStateEvidence.filter(g, g.label != requirement.label)' },
             },
-            onAdd: { $setLocal: 'guardTaskStateSlug', value: { $: 'local.editTaskStateSlug' } },
+            onAdd: { $setLocal: 'evidenceTaskStateSlug', value: { $: 'local.editTaskStateSlug' } },
           },
         }),
       ],
@@ -280,7 +280,7 @@ const editModal: SchemaNode = formModal({
       `local.editName != ${EDITING}.name || local.editSemantic != ${EDITING}.semantic || ` +
       `local.editIcon != ${EDITING}.icon || local.editColor != ${EDITING}.color || ` +
       `local.editApprovals != (${EDITING}.approvals ?? 1) || local.editApproverKind != (${EDITING}.approverKind ?? '') || ` +
-      `join(local.editTaskStateGuards.map(g, g.label), '|') != join((${EDITING}.guards ?? []).map(g, g.label), '|')`,
+      `join(local.editTaskStateEvidence.map(g, g.label), '|') != join((${EDITING}.evidence ?? []).map(g, g.label), '|')`,
   },
   submitLabel: 'Save',
   submit: {
@@ -294,7 +294,9 @@ const editModal: SchemaNode = formModal({
         icon: { $: 'local.editIcon' },
         approvals: { $: 'local.editApprovals' },
         approverKind: { $: 'local.editApproverKind' },
-        guards: { $: 'local.editTaskStateGuards.map(g, { entity: g.entity, where: g.where, tie: g.tie, min: g.min })' },
+        evidence: {
+          $: 'local.editTaskStateEvidence.map(g, { entity: g.entity, where: g.where, via: g.via, min: g.min })',
+        },
       },
     ],
   },
@@ -376,11 +378,11 @@ const stateRow: SchemaNode = {
               // What must be there first, where the state asks for anything.
               type: '$if',
               props: {
-                condition: { $: 'count(state.guards ?? [])' },
+                condition: { $: 'count(state.evidence ?? [])' },
                 then: {
                   type: 'we-badge',
                   props: { size: 'xs', tone: 'warning' },
-                  children: [{ $: "join((state.guards ?? []).map(g, g.label), ' · ')" }],
+                  children: [{ $: "join((state.evidence ?? []).map(g, g.label), ' · ')" }],
                 },
               },
             },
@@ -430,7 +432,7 @@ const stateRow: SchemaNode = {
             variant: 'ghost',
             onClick: [
               // Its requirements first, so the form opens holding them — see `agreementFields`.
-              { $setLocal: 'editTaskStateGuards', value: { $: 'state.guards ?? []' } },
+              { $setLocal: 'editTaskStateEvidence', value: { $: 'state.evidence ?? []' } },
               { $setLocal: 'editTaskStateSlug', value: { $: 'state.slug' } },
             ],
           },
@@ -496,11 +498,11 @@ export const taskStatesSection: SchemaNode = sectionCard({
             {
               type: 'we-select',
               props: {
-                value: { $: 'spaceStore.taskFlowRule' },
+                value: { $: 'spaceStore.taskWorkflowRule' },
                 options: {
                   $: "[{ label: 'To any state', value: '' }, { label: 'On to the next state', value: 'next' }, { label: 'On, or back one', value: 'next-and-back' }]",
                 },
-                onChange: { $action: 'spaceStore.setTaskFlowRule', args: [{ $: 'event.detail' }] },
+                onChange: { $action: 'spaceStore.setTaskWorkflowRule', args: [{ $: 'event.detail' }] },
               },
             },
           ],
@@ -541,16 +543,16 @@ export const taskStatesSection: SchemaNode = sectionCard({
     createModal,
     // One modal for the whole list, opened by whichever row's pencil was pressed — see `editModal`.
     editModal,
-    guardModal({
-      open: { $: 'local.guardTaskStateSlug' },
-      close: { $setLocal: 'guardTaskStateSlug', value: '' },
+    evidenceModal({
+      open: { $: 'local.evidenceTaskStateSlug' },
+      close: { $setLocal: 'evidenceTaskStateSlug', value: '' },
       // Into the edit form's list, which Save writes — not straight onto the state.
       submit: () => ({
-        $setLocal: 'editTaskStateGuards',
+        $setLocal: 'editTaskStateEvidence',
         value: {
           $:
-            'distinct(local.editTaskStateGuards, [{ entity: local.guardEntity, tie: local.guardTie, min: local.guardMin, ' +
-            'label: requirementLabel({ entity: local.guardEntity, tie: local.guardTie, min: local.guardMin }) }])',
+            'distinct(local.editTaskStateEvidence, [{ entity: local.evidenceEntity, via: local.evidenceVia, min: local.evidenceMin, ' +
+            'label: requirementLabel({ entity: local.evidenceEntity, via: local.evidenceVia, min: local.evidenceMin }) }])',
         },
       }),
     }),

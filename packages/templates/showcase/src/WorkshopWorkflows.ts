@@ -1,40 +1,40 @@
 /**
- * The Flows page — every flow in the space, the records going through each, and the editor.
+ * The Workflows page — every workflow in the space, the records going through each, and the editor.
  *
- * A flow is drawn as lanes: the main line across the top, each branch below it saying where it leaves
+ * A workflow is drawn as lanes: the main line across the top, each branch below it saying where it leaves
  * and whether it rejoins or ends, and any move the rest does not cover listed as an exception. A
  * record going through it is drawn as a **walk** — the steps it has taken, the one it is at, the ones
- * ahead — because a record never branches: it takes one path, whatever the flow allows.
+ * ahead — because a record never branches: it takes one path, whatever the workflow allows.
  *
- * Everything shown is computed by `flowStore` (lanes, requirements in words, the walk); this file
+ * Everything shown is computed by `workflowStore` (lanes, requirements in words, the walk); this file
  * arranges it and names the actions. The editor works on a draft the store holds, so nothing reaches
  * the space until Save, and every edit that cannot be made says why in a toast rather than half
  * happening.
  *
- * ## The task-state flow
+ * ## The task-state workflow
  *
  * Listed, and shown read-only: the board's task states write it, and tasks move on the board. "Edit in
  * Task states" goes where it is edited.
  */
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
-import { foldingBody, foldingSectionLabel, formModal, guardModal, stepRequirementFields } from '@we/template-kit';
+import { evidenceModal, foldingBody, foldingSectionLabel, formModal, stepRequirementFields } from '@we/template-kit';
 
-const OPEN = 'flowStore.open';
-const DRAFT = 'flowStore.draft';
+const OPEN = 'workflowStore.open';
+const DRAFT = 'workflowStore.draft';
 
 /** The locals the page declares: which modal is open, and what it is about. */
 export const FLOWS_LOCALS = {
-  newFlowOpen: { type: 'boolean', initial: false },
+  newWorkflowOpen: { type: 'boolean', initial: false },
   addStepLane: { type: 'number', initial: -1 },
   addStepAfter: { type: 'string', initial: '' },
   branchFrom: { type: 'string', initial: '' },
   editStep: { type: 'string', initial: '' },
-  guardStep: { type: 'string', initial: '' },
+  evidenceStep: { type: 'string', initial: '' },
   excFrom: { type: 'string', initial: '' },
   excTo: { type: 'string', initial: '' },
   historyOf: { type: 'string', initial: '' },
   showArchived: { type: 'boolean', initial: false },
-  flowAsGraph: { type: 'boolean', initial: false },
+  workflowAsGraph: { type: 'boolean', initial: false },
 } as const;
 
 const text = (content: string | { $: string }, props: Record<string, SchemaProp> = {}): SchemaNode => ({
@@ -139,8 +139,14 @@ function stepCard(editing: boolean): SchemaNode {
               type: 'Row',
               props: { gap: '100', wrap: true },
               children: [
-                iconButton('arrow-left', 'Earlier', { $action: 'flowStore.moveStep', args: [{ $: 'step.name' }, -1] }),
-                iconButton('arrow-right', 'Later', { $action: 'flowStore.moveStep', args: [{ $: 'step.name' }, 1] }),
+                iconButton('arrow-left', 'Earlier', {
+                  $action: 'workflowStore.moveStep',
+                  args: [{ $: 'step.name' }, -1],
+                }),
+                iconButton('arrow-right', 'Later', {
+                  $action: 'workflowStore.moveStep',
+                  args: [{ $: 'step.name' }, 1],
+                }),
                 iconButton('plus', 'Add a step after this one', [
                   { $setLocal: 'addStepLane', value: { $: 'lane.index' } },
                   { $setLocal: 'addStepAfter', value: { $: 'step.name' } },
@@ -148,7 +154,7 @@ function stepCard(editing: boolean): SchemaNode {
                 iconButton('git-branch', 'Branch from here', { $setLocal: 'branchFrom', value: { $: 'step.name' } }),
                 iconButton('pencil-simple', 'Edit this step', { $setLocal: 'editStep', value: { $: 'step.name' } }),
                 iconButton('trash', 'Remove this step', {
-                  $action: 'flowStore.removeStep',
+                  $action: 'workflowStore.removeStep',
                   args: [{ $: 'step.name' }],
                 }),
               ],
@@ -178,7 +184,7 @@ const link: SchemaNode = {
 };
 
 /**
- * Every lane of a flow, as lines on a map — `source` is `flowStore.open` or `flowStore.draft`.
+ * Every lane of a workflow, as lines on a map — `source` is `workflowStore.open` or `workflowStore.draft`.
  *
  * The main line across the top, and each branch under it, joined to the step it leaves by a line that
  * drops from that step's foot and turns into the branch's first. A branch that rejoins further along
@@ -316,7 +322,7 @@ function lanes(source: string, editing: boolean): SchemaNode {
                                   $: `distinct([{ label: 'Ends here', value: '' }], ${source}.steps.map(s, { label: 'Rejoins at ' + s.label, value: s.name }))`,
                                 },
                                 onChange: {
-                                  $action: 'flowStore.setBranchEnd',
+                                  $action: 'workflowStore.setBranchEnd',
                                   args: [{ $: 'lane.index' }, { $: 'event.detail' }],
                                 },
                               },
@@ -360,7 +366,7 @@ function exceptions(source: string, editing: boolean): SchemaNode {
               ...(editing
                 ? [
                     iconButton('x', 'Remove this move', {
-                      $action: 'flowStore.removeException',
+                      $action: 'workflowStore.removeException',
                       args: [{ $: 'move.from' }, { $: 'move.to' }],
                     }),
                   ]
@@ -405,7 +411,7 @@ function exceptions(source: string, editing: boolean): SchemaNode {
                     variant: 'soft',
                     disabled: { $: '!local.excFrom || !local.excTo' },
                     onClick: [
-                      { $action: 'flowStore.addException', args: [{ $: 'local.excFrom' }, { $: 'local.excTo' }] },
+                      { $action: 'workflowStore.addException', args: [{ $: 'local.excFrom' }, { $: 'local.excTo' }] },
                       { $setLocal: 'excFrom', value: '' },
                       { $setLocal: 'excTo', value: '' },
                     ],
@@ -420,7 +426,7 @@ function exceptions(source: string, editing: boolean): SchemaNode {
   };
 }
 
-/** The sequence rule of a flow, in a sentence. */
+/** The sequence rule of a workflow, in a sentence. */
 const ruleWords = (source: string) =>
   `${source}.rule == 'any' ? 'Any step can move to any other.' : ${source}.rule == 'next-and-back' ? 'Each step moves on to the next, or back to the one before.' : 'Each step moves on to the next.'`;
 
@@ -484,11 +490,11 @@ const walk: SchemaNode = {
   ],
 };
 
-/** Who agreed to a move, as faces — `step.voters` are DIDs, and the space's members carry the faces. */
+/** Who agreed to a move, as faces — `step.approvers` are DIDs, and the space's members carry the faces. */
 const VOTER_FACES =
-  'step.voters.map(d, { image: find(spaceStore.members, { did: d }).avatar, hash: d, initials: find(spaceStore.members, { did: d }).name })';
+  'step.approvers.map(d, { image: find(spaceStore.members, { did: d }).avatar, hash: d, initials: find(spaceStore.members, { did: d }).name })';
 /** The same people as a sentence, for the tooltip over the faces. */
-const VOTER_NAMES = "join(step.voters.map(d, find(spaceStore.members, { did: d }).name ?? 'Someone'), ', ')";
+const VOTER_NAMES = "join(step.approvers.map(d, find(spaceStore.members, { did: d }).name ?? 'Someone'), ', ')";
 
 /**
  * What has happened to a record: one row per move, saying where it went, who agreed and when.
@@ -499,7 +505,7 @@ const VOTER_NAMES = "join(step.voters.map(d, find(spaceStore.members, { did: d }
 const historyList: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $: 'local.historyOf == rec.subject' },
+    condition: { $: 'local.historyOf == rec.record' },
     enterTransition: [
       { type: 'reveal', duration: 250 },
       { type: 'fade', duration: 150 },
@@ -510,7 +516,7 @@ const historyList: SchemaNode = {
       children: [
         {
           type: '$each',
-          props: { items: { $: `${OPEN}.history[rec.subject] ?? []` }, as: 'step' },
+          props: { items: { $: `${OPEN}.history[rec.record] ?? []` }, as: 'step' },
           children: [
             {
               type: 'Row',
@@ -556,7 +562,7 @@ const historyList: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $: `!count(${OPEN}.history[rec.subject] ?? [])` },
+            condition: { $: `!count(${OPEN}.history[rec.record] ?? [])` },
             then: text('Nothing has moved it yet.', { variant: 'footnote', color: 'text-faint' }),
           },
         },
@@ -565,7 +571,7 @@ const historyList: SchemaNode = {
   },
 };
 
-/** One record going through the open flow. */
+/** One record going through the open workflow. */
 const recordRow: SchemaNode = {
   type: 'Column',
   props: { gap: '200', p: '300', r: 'card', border: '1px solid border', bg: 'surface' },
@@ -578,7 +584,7 @@ const recordRow: SchemaNode = {
           type: 'we-button',
           props: {
             variant: 'bare',
-            onClick: { $action: 'routeStore.setParam', args: ['card', { $: 'rec.subject' }] },
+            onClick: { $action: 'routeStore.setParam', args: ['card', { $: 'rec.record' }] },
           },
           children: [text({ $: "rec.title ? rec.title : 'Untitled'" }, { truncate: true, maxWidth: '360px' })],
         },
@@ -608,8 +614,8 @@ const recordRow: SchemaNode = {
         },
         { type: 'Row', props: { flex: '1' } },
         iconButton('clock-counter-clockwise', 'What has happened to it', [
-          { $action: 'flowStore.loadHistory', args: [{ $: 'rec.subject' }] },
-          { $setLocal: 'historyOf', value: { $: "local.historyOf == rec.subject ? '' : rec.subject" } },
+          { $action: 'workflowStore.loadHistory', args: [{ $: 'rec.record' }] },
+          { $setLocal: 'historyOf', value: { $: "local.historyOf == rec.record ? '' : rec.record" } },
         ]),
       ],
     },
@@ -623,7 +629,7 @@ const recordRow: SchemaNode = {
           props: { gap: '200', ay: 'center', wrap: true },
           children: [
             text(
-              { $: '`Asked to move to ${move.toLabel} · ${count(move.voters)} of ${move.needs}`' },
+              { $: '`Asked to move to ${move.toLabel} · ${count(move.approvers)} of ${move.needs}`' },
               { variant: 'footnote' },
             ),
             {
@@ -640,8 +646,8 @@ const recordRow: SchemaNode = {
                         size: 'sm',
                         variant: 'ghost',
                         onClick: {
-                          $action: 'flowStore.withdrawRecord',
-                          args: [{ $: `${OPEN}.name` }, { $: 'rec.subject' }],
+                          $action: 'workflowStore.withdrawRecord',
+                          args: [{ $: `${OPEN}.name` }, { $: 'rec.record' }],
                         },
                       },
                       children: [text('Withdraw')],
@@ -652,8 +658,8 @@ const recordRow: SchemaNode = {
                         size: 'sm',
                         variant: 'soft',
                         onClick: {
-                          $action: 'flowStore.moveRecord',
-                          args: [{ $: `${OPEN}.name` }, { $: 'rec.subject' }, { $: 'move.to' }],
+                          $action: 'workflowStore.moveRecord',
+                          args: [{ $: `${OPEN}.name` }, { $: 'rec.record' }, { $: 'move.to' }],
                         },
                       },
                       children: [text('Agree')],
@@ -685,8 +691,8 @@ const recordRow: SchemaNode = {
                     size: 'sm',
                     variant: 'ghost',
                     onClick: {
-                      $action: 'flowStore.moveRecord',
-                      args: [{ $: `${OPEN}.name` }, { $: 'rec.subject' }, { $: 'to.name' }],
+                      $action: 'workflowStore.moveRecord',
+                      args: [{ $: `${OPEN}.name` }, { $: 'rec.record' }, { $: 'to.name' }],
                     },
                   },
                   children: [text({ $: 'to.label' })],
@@ -701,7 +707,7 @@ const recordRow: SchemaNode = {
   ],
 };
 
-// ─── The open flow ─────────────────────────────────────────────────────────────
+// ─── The open workflow ─────────────────────────────────────────────────────────────
 
 const openHeader: SchemaNode = {
   type: 'Column',
@@ -732,7 +738,7 @@ const openHeader: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $: `flowStore.canEdit && !${OPEN}.managedBy` },
+            condition: { $: `workflowStore.canEdit && !${OPEN}.managedBy` },
             then: {
               type: 'Row',
               props: { gap: '200' },
@@ -743,7 +749,7 @@ const openHeader: SchemaNode = {
                     condition: { $: `${OPEN}.editable` },
                     then: {
                       type: 'we-button',
-                      props: { size: 'sm', variant: 'soft', onClick: { $action: 'flowStore.editFlow' } },
+                      props: { size: 'sm', variant: 'soft', onClick: { $action: 'workflowStore.editWorkflow' } },
                       children: [text('Edit')],
                     },
                   },
@@ -754,7 +760,7 @@ const openHeader: SchemaNode = {
                     size: 'sm',
                     variant: 'ghost',
                     onClick: {
-                      $action: 'spaceStore.setFlowArchived',
+                      $action: 'spaceStore.setWorkflowArchived',
                       args: [{ $: `${OPEN}.name` }, { $: `!${OPEN}.archived` }],
                     },
                   },
@@ -763,7 +769,7 @@ const openHeader: SchemaNode = {
                 {
                   type: '$if',
                   props: {
-                    // Only once the records are read: before then the count is 0 for every flow,
+                    // Only once the records are read: before then the count is 0 for every workflow,
                     // and Delete showed for a moment on one that had records.
                     condition: { $: `${OPEN}.recordsLoaded && !count(${OPEN}.records)` },
                     then: {
@@ -771,7 +777,7 @@ const openHeader: SchemaNode = {
                       props: {
                         size: 'sm',
                         variant: 'ghost',
-                        onClick: { $action: 'flowStore.deleteFlow', args: [{ $: `${OPEN}.name` }] },
+                        onClick: { $action: 'workflowStore.deleteWorkflow', args: [{ $: `${OPEN}.name` }] },
                       },
                       children: [text('Delete')],
                     },
@@ -793,7 +799,7 @@ const openHeader: SchemaNode = {
       props: {
         condition: { $: `!${OPEN}.fits` },
         then: text(
-          'This flow was not written as lanes, so it is shown as one line with every other move listed below it.',
+          'This workflow was not written as lanes, so it is shown as one line with every other move listed below it.',
           {
             variant: 'footnote',
             color: 'text-faint',
@@ -804,17 +810,17 @@ const openHeader: SchemaNode = {
   ],
 };
 
-/** The open flow's steps and moves, as `flowStore.flows` holds them once its definition is read. */
-const OPEN_DEFINITION = `flowStore.flows.find(f, f.name == ${OPEN}.name)`;
+/** The open workflow's steps and moves, as `workflowStore.workflows` holds them once its definition is read. */
+const OPEN_DEFINITION = `workflowStore.workflows.find(f, f.name == ${OPEN}.name)`;
 
 /**
- * The open flow as a graph: one node per step, a line per move, laid out as a tree from the first.
+ * The open workflow as a graph: one node per step, a line per move, laid out as a tree from the first.
  *
- * Read-only, and a second way of looking rather than a second editor: lanes are where a flow is
- * written. What a graph shows that lanes do not is a flow that does not fit them — one written by
+ * Read-only, and a second way of looking rather than a second editor: lanes are where a workflow is
+ * written. What a graph shows that lanes do not is a workflow that does not fit them — one written by
  * another app, all moves and no line — and the shape of the wiring at a glance.
  */
-const flowGraph: SchemaNode = {
+const workflowGraph: SchemaNode = {
   type: 'Column',
   props: { width: '100%', height: '480px', r: 'card', border: '1px solid border', overflow: 'hidden' },
   children: [
@@ -825,10 +831,10 @@ const flowGraph: SchemaNode = {
           literal: true,
           nodes: {
             /*
-              From the open flow's own steps, which say what entering each takes and what it means — the
+              From the open workflow's own steps, which say what entering each takes and what it means — the
               same lines a step's card carries in the lanes. The list's steps carried only their names.
             */
-            $: `(${OPEN}.steps ?? []).map(s, { id: 'step:' + s.name, kind: 'cluster', type: 'flow-step', label: s.label + (count(s.requires) ? '\\n' + join(s.requires, '\\n') : '') + (s.hint ? '\\n' + s.hint : ''), data: { final: s.final } })`,
+            $: `(${OPEN}.steps ?? []).map(s, { id: 'step:' + s.name, kind: 'cluster', type: 'workflow-step', label: s.label + (count(s.requires) ? '\\n' + join(s.requires, '\\n') : '') + (s.hint ? '\\n' + s.hint : ''), data: { final: s.final } })`,
           },
           edges: {
             $: `(${OPEN_DEFINITION}.moves ?? []).map(m, { id: m.from + '>' + m.to, source: 'step:' + m.from, target: 'step:' + m.to, type: 'move' })`,
@@ -853,7 +859,7 @@ const flowGraph: SchemaNode = {
   ],
 };
 
-const openFlow: SchemaNode = {
+const openWorkflow: SchemaNode = {
   type: 'Column',
   props: { gap: '500', width: '100%' },
   children: [
@@ -866,8 +872,8 @@ const openFlow: SchemaNode = {
           type: 'we-button',
           props: {
             size: 'sm',
-            variant: { $: "local.flowAsGraph ? 'ghost' : 'soft'" },
-            onClick: { $setLocal: 'flowAsGraph', value: false },
+            variant: { $: "local.workflowAsGraph ? 'ghost' : 'soft'" },
+            onClick: { $setLocal: 'workflowAsGraph', value: false },
           },
           children: [text('Lanes')],
         },
@@ -875,8 +881,8 @@ const openFlow: SchemaNode = {
           type: 'we-button',
           props: {
             size: 'sm',
-            variant: { $: "local.flowAsGraph ? 'soft' : 'ghost'" },
-            onClick: { $setLocal: 'flowAsGraph', value: true },
+            variant: { $: "local.workflowAsGraph ? 'soft' : 'ghost'" },
+            onClick: { $setLocal: 'workflowAsGraph', value: true },
           },
           children: [text('Graph')],
         },
@@ -885,8 +891,8 @@ const openFlow: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $: 'local.flowAsGraph' },
-        then: flowGraph,
+        condition: { $: 'local.workflowAsGraph' },
+        then: workflowGraph,
         else: {
           type: 'Column',
           props: { gap: '500', width: '100%' },
@@ -922,7 +928,7 @@ const openFlow: SchemaNode = {
         },
         else: text(
           {
-            $: `${OPEN}.managedBy ? 'Tasks join this flow the first time somebody moves them on the board.' : 'Nothing yet. Start this flow on a record from its inspector.'`,
+            $: `${OPEN}.managedBy ? 'Tasks join this workflow the first time somebody moves them on the board.' : 'Nothing yet. Start this workflow on a record from its inspector.'`,
           },
           {
             variant: 'footnote',
@@ -953,7 +959,7 @@ const draftHeader: SchemaNode = {
               props: {
                 label: 'Name',
                 value: { $: `${DRAFT}.label` },
-                onChange: { $action: 'flowStore.setDraftLabel', args: [{ $: 'event.detail' }] },
+                onChange: { $action: 'workflowStore.setDraftLabel', args: [{ $: 'event.detail' }] },
               },
             },
             else: text({ $: `${DRAFT}.label` }, { variant: 'heading-sm' }),
@@ -962,7 +968,7 @@ const draftHeader: SchemaNode = {
         { type: 'Row', props: { flex: '1' } },
         {
           type: 'we-button',
-          props: { variant: 'ghost', onClick: { $action: 'flowStore.cancelDraft' } },
+          props: { variant: 'ghost', onClick: { $action: 'workflowStore.cancelDraft' } },
           children: [text('Cancel')],
         },
         {
@@ -970,7 +976,7 @@ const draftHeader: SchemaNode = {
           props: {
             variant: 'solid',
             disabled: { $: `count(${DRAFT}.problems) > 0 || !${DRAFT}.dirty` },
-            onClick: { $action: 'flowStore.saveDraft' },
+            onClick: { $action: 'workflowStore.saveDraft' },
           },
           children: [text('Save')],
         },
@@ -981,7 +987,7 @@ const draftHeader: SchemaNode = {
       props: {
         label: 'What it is for',
         value: { $: `${DRAFT}.hint` },
-        onChange: { $action: 'flowStore.setDraftHint', args: [{ $: 'event.detail' }] },
+        onChange: { $action: 'workflowStore.setDraftHint', args: [{ $: 'event.detail' }] },
       },
     },
     {
@@ -995,17 +1001,17 @@ const draftHeader: SchemaNode = {
             {
               type: 'we-select',
               props: {
-                value: { $: `${DRAFT}.subjects[0] ?? ''` },
+                value: { $: `${DRAFT}.entities[0] ?? ''` },
                 /*
                   A note and a post are each a collection (`CollectionBlock`), not the text inside one
-                  (`TextBlock`), which is what this used to name — so a flow for "notes and posts" was
+                  (`TextBlock`), which is what this used to name — so a workflow for "notes and posts" was
                   offered on none of them. "Collections" picked the same records, and goes.
                 */
                 options: {
                   $: "[{ label: 'Any record', value: '' }, { label: 'Tasks', value: 'TaskBlock' }, { label: 'Notes and posts', value: 'CollectionBlock' }, { label: 'Events', value: 'EventBlock' }]",
                 },
                 onChange: {
-                  $action: 'flowStore.setDraftSubjects',
+                  $action: 'workflowStore.setDraftEntities',
                   args: [{ $: 'event.detail ? [event.detail] : []' }],
                 },
               },
@@ -1023,7 +1029,7 @@ const draftHeader: SchemaNode = {
                 options: {
                   $: "[{ label: 'On to the next', value: 'next' }, { label: 'On, or back one', value: 'next-and-back' }, { label: 'Anywhere', value: 'any' }]",
                 },
-                onChange: { $action: 'flowStore.setRule', args: [{ $: 'event.detail' }] },
+                onChange: { $action: 'workflowStore.setRule', args: [{ $: 'event.detail' }] },
               },
             },
           ],
@@ -1040,9 +1046,9 @@ const draftHeader: SchemaNode = {
       // choose between them.
       type: '$if',
       props: {
-        condition: { $: "flowStore.capabilities.contention == 'stall'" },
+        condition: { $: "workflowStore.capabilities.contention == 'stall'" },
         then: text(
-          'If two moves out of one step are both agreed, the record stops there until somebody withdraws — so give the ends of a vote different numbers, or expect to settle a tie.',
+          'If two moves out of one step are both agreed, the record stops there until somebody withdraws — so give the ends of a vote different numbers, or expect to settle a via.',
           { variant: 'footnote', color: 'text-faint' },
         ),
       },
@@ -1050,7 +1056,7 @@ const draftHeader: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $: "flowStore.capabilities.enforcement == 'peers'" },
+        condition: { $: "workflowStore.capabilities.enforcement == 'peers'" },
         then: text(
           'These rules are kept by every member’s app. Somebody running other software could write past them, and nobody else’s screen would show it.',
           { variant: 'footnote', color: 'text-faint' },
@@ -1074,8 +1080,8 @@ const draftEditor: SchemaNode = {
   its param once, when it mounts, and the page is kept alive, so going to `?new=1` a second time
   opened nothing. Closing it takes the param away again.
 */
-const newFlowModal: SchemaNode = formModal({
-  open: { $: "local.newFlowOpen || routeStore.params.new == '1'" },
+const newWorkflowModal: SchemaNode = formModal({
+  open: { $: "local.newWorkflowOpen || routeStore.params.new == '1'" },
   /*
     One handler rather than a list: `we-modal`'s `close` is a prop, not an event, and a list there is
     read as a value, so the ✕ and the backdrop did nothing. A `$if` is a handler and may run a list.
@@ -1085,24 +1091,24 @@ const newFlowModal: SchemaNode = formModal({
       condition: { $: "routeStore.params.new == '1'" },
       then: [
         { $action: 'routeStore.setParam', args: ['new', null] },
-        { $setLocal: 'newFlowOpen', value: false },
+        { $setLocal: 'newWorkflowOpen', value: false },
       ],
-      else: { $setLocal: 'newFlowOpen', value: false },
+      else: { $setLocal: 'newWorkflowOpen', value: false },
     },
   },
-  title: 'New flow',
+  title: 'New workflow',
   size: 'sm',
   localState: {
-    flowLabel: { type: 'string', initial: '' },
-    flowPreset: { type: 'string', initial: 'proposal' },
+    workflowLabel: { type: 'string', initial: '' },
+    workflowPreset: { type: 'string', initial: 'proposal' },
   },
   children: [
     {
       type: 'we-input',
       props: {
         label: 'Name',
-        value: { $: 'local.flowLabel' },
-        onChange: { $setLocal: 'flowLabel', value: { $: 'event.detail' } },
+        value: { $: 'local.workflowLabel' },
+        onChange: { $setLocal: 'workflowLabel', value: { $: 'event.detail' } },
       },
     },
     {
@@ -1112,24 +1118,24 @@ const newFlowModal: SchemaNode = formModal({
         {
           type: 'we-select',
           props: {
-            value: { $: 'local.flowPreset' },
+            value: { $: 'local.workflowPreset' },
             options: {
-              $: "[{ label: 'A proposal: discussed, voted on, adopted or rejected', value: 'proposal' }, { label: 'A review: drafted, checked, published', value: 'review' }, { label: 'Two steps, to build on', value: 'blank' }]",
+              $: "[{ label: 'A proposal: discussed, approved on, adopted or rejected', value: 'proposal' }, { label: 'A review: drafted, checked, published', value: 'review' }, { label: 'Two steps, to build on', value: 'blank' }]",
             },
-            onChange: { $setLocal: 'flowPreset', value: { $: 'event.detail' } },
+            onChange: { $setLocal: 'workflowPreset', value: { $: 'event.detail' } },
           },
         },
       ],
     },
   ],
-  disabled: { $: '!local.flowLabel' },
+  disabled: { $: '!local.workflowLabel' },
   submitLabel: 'Start writing',
   submit: {
-    $action: 'flowStore.newFlow',
+    $action: 'workflowStore.newWorkflow',
     args: [
-      { $: 'local.flowPreset' },
-      { $: 'local.flowLabel' },
-      { $: "local.flowPreset == 'proposal' ? ['CollectionBlock'] : ['TaskBlock']" },
+      { $: 'local.workflowPreset' },
+      { $: 'local.workflowLabel' },
+      { $: "local.workflowPreset == 'proposal' ? ['CollectionBlock'] : ['TaskBlock']" },
     ],
   },
 });
@@ -1153,7 +1159,7 @@ const addStepModal: SchemaNode = formModal({
   disabled: { $: '!local.stepLabel' },
   submitLabel: 'Add',
   submit: {
-    $action: 'flowStore.addStep',
+    $action: 'workflowStore.addStep',
     args: [{ $: 'local.addStepLane' }, { $: 'local.stepLabel' }, { $: 'local.addStepAfter' }],
   },
 });
@@ -1196,7 +1202,7 @@ const branchModal: SchemaNode = formModal({
   disabled: { $: '!local.branchLabel' },
   submitLabel: 'Add branch',
   submit: {
-    $action: 'flowStore.addBranch',
+    $action: 'workflowStore.addBranch',
     args: [{ $: 'local.branchFrom' }, { $: 'local.branchLabel' }, { $: 'local.branchRejoins' }],
   },
 });
@@ -1239,17 +1245,17 @@ const editStepModal: SchemaNode = formModal({
         onChange: { $setLocal: 'stepApprovals', value: { $: 'event.detail' } },
       },
       kind: { value: { $: 'local.stepKind' }, onChange: { $setLocal: 'stepKind', value: { $: 'event.detail' } } },
-      guards: {
-        items: `${EDITING}.guards ?? []`,
-        onRemove: { $action: 'flowStore.removeGuard', args: [{ $: 'local.editStep' }, { $: 'index' }] },
-        onAdd: { $setLocal: 'guardStep', value: { $: 'local.editStep' } },
+      evidence: {
+        items: `${EDITING}.evidence ?? []`,
+        onRemove: { $action: 'workflowStore.removeEvidence', args: [{ $: 'local.editStep' }, { $: 'index' }] },
+        onAdd: { $setLocal: 'evidenceStep', value: { $: 'local.editStep' } },
       },
     }),
   ],
   disabled: { $: '!local.stepName' },
   submitLabel: 'Save step',
   submit: {
-    $action: 'flowStore.updateStep',
+    $action: 'workflowStore.updateStep',
     args: [
       { $: 'local.editStep' },
       {
@@ -1262,38 +1268,41 @@ const editStepModal: SchemaNode = formModal({
   },
 });
 
-const guardStepModal: SchemaNode = guardModal({
-  open: { $: 'local.guardStep' },
-  close: { $setLocal: 'guardStep', value: '' },
-  submit: ({ entity, tie, min }) => ({
-    $action: 'flowStore.addGuard',
-    args: [{ $: 'local.guardStep' }, entity, tie, min],
+const evidenceStepModal: SchemaNode = evidenceModal({
+  open: { $: 'local.evidenceStep' },
+  close: { $setLocal: 'evidenceStep', value: '' },
+  submit: ({ entity, via, min }) => ({
+    $action: 'workflowStore.addEvidence',
+    args: [{ $: 'local.evidenceStep' }, entity, via, min],
   }),
 });
 
 // ─── The list ──────────────────────────────────────────────────────────────────
 
-const flowButton: SchemaNode = {
+const workflowButton: SchemaNode = {
   type: 'we-button',
   props: {
-    variant: { $: `${OPEN}.name == flow.name && !${DRAFT} ? 'soft' : 'ghost'` },
+    variant: { $: `${OPEN}.name == workflow.name && !${DRAFT} ? 'soft' : 'ghost'` },
     width: '100%',
-    onClick: [{ $action: 'flowStore.cancelDraft' }, { $action: 'flowStore.openFlow', args: [{ $: 'flow.name' }] }],
+    onClick: [
+      { $action: 'workflowStore.cancelDraft' },
+      { $action: 'workflowStore.openWorkflow', args: [{ $: 'workflow.name' }] },
+    ],
   },
   children: [
     {
       type: 'Row',
       props: { gap: '200', ay: 'center', width: '100%' },
       children: [
-        { type: 'we-icon', props: { name: { $: "flow.managedBy ? 'kanban' : 'flow-arrow'" }, size: 'sm' } },
-        text({ $: 'flow.label' }, { truncate: true, flex: '1' }),
-        text({ $: 'flow.records' }, { variant: 'footnote', color: 'text-faint' }),
+        { type: 'we-icon', props: { name: { $: "workflow.managedBy ? 'kanban' : 'flow-arrow'" }, size: 'sm' } },
+        text({ $: 'workflow.label' }, { truncate: true, flex: '1' }),
+        text({ $: 'workflow.records' }, { variant: 'footnote', color: 'text-faint' }),
       ],
     },
   ],
 };
 
-const flowList: SchemaNode = {
+const workflowList: SchemaNode = {
   type: 'Column',
   props: { gap: '200', width: '240px', flexShrink: '0' },
   children: [
@@ -1301,35 +1310,35 @@ const flowList: SchemaNode = {
       type: 'Row',
       props: { gap: '200', ay: 'center' },
       children: [
-        text('Flows', { variant: 'label', flex: '1' }),
+        text('Workflows', { variant: 'label', flex: '1' }),
         {
           type: '$if',
           props: {
-            condition: { $: 'flowStore.canEdit' },
-            then: iconButton('plus', 'New flow', { $setLocal: 'newFlowOpen', value: true }),
+            condition: { $: 'workflowStore.canEdit' },
+            then: iconButton('plus', 'New workflow', { $setLocal: 'newWorkflowOpen', value: true }),
           },
         },
       ],
     },
     {
       type: '$each',
-      props: { items: { $: 'flowStore.flows.filter(f, !f.archived)' }, as: 'flow' },
-      children: [flowButton],
+      props: { items: { $: 'workflowStore.workflows.filter(f, !f.archived)' }, as: 'workflow' },
+      children: [workflowButton],
     },
     /*
-      Loading, then the list or "No flows yet." — never "No flows yet." while the list is still being
+      Loading, then the list or "No workflows yet." — never "No workflows yet." while the list is still being
       read. On a shared node the read takes seconds, and the empty sentence said the space had lost
-      its flows until they arrived.
+      its workflows until they arrived.
     */
     {
       type: '$if',
       props: {
-        condition: { $: 'flowStore.flowsLoaded' },
+        condition: { $: 'workflowStore.workflowsLoaded' },
         then: {
           type: '$if',
           props: {
-            condition: { $: '!count(flowStore.flows)' },
-            then: text('No flows yet.', { variant: 'footnote', color: 'text-faint' }),
+            condition: { $: '!count(workflowStore.workflows)' },
+            then: text('No workflows yet.', { variant: 'footnote', color: 'text-faint' }),
           },
         },
         else: {
@@ -1345,7 +1354,7 @@ const flowList: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $: 'flowStore.flows.exists(f, f.archived)' },
+        condition: { $: 'workflowStore.workflows.exists(f, f.archived)' },
         then: {
           type: 'Column',
           props: { gap: '100' },
@@ -1365,8 +1374,8 @@ const flowList: SchemaNode = {
                   children: [
                     {
                       type: '$each',
-                      props: { items: { $: 'flowStore.flows.filter(f, f.archived)' }, as: 'flow' },
-                      children: [flowButton],
+                      props: { items: { $: 'workflowStore.workflows.filter(f, f.archived)' }, as: 'workflow' },
+                      children: [workflowButton],
                     },
                   ],
                 },
@@ -1382,7 +1391,7 @@ const flowList: SchemaNode = {
 /**
  * The page. `band` is the route's padding below the pinned chrome, which the workshop owns.
  */
-export function flowsPage(band: Record<string, string>): SchemaNode {
+export function workflowsPage(band: Record<string, string>): SchemaNode {
   return {
     type: 'Column',
     props: { width: '100%', minHeight: '100%', ax: 'center', px: '400' },
@@ -1390,12 +1399,12 @@ export function flowsPage(band: Record<string, string>): SchemaNode {
       {
         type: '$if',
         props: {
-          condition: { $: 'flowStore.available' },
+          condition: { $: 'workflowStore.available' },
           then: {
             type: 'Row',
             props: { width: '100%', maxWidth: 'var(--we-layout-lg)', gap: '600', ay: 'start', ...band },
             children: [
-              flowList,
+              workflowList,
               {
                 type: 'Column',
                 props: { flex: '1', minWidth: '0', gap: '400' },
@@ -1409,8 +1418,8 @@ export function flowsPage(band: Record<string, string>): SchemaNode {
                         type: '$if',
                         props: {
                           condition: { $: OPEN },
-                          then: openFlow,
-                          else: text('Choose a flow to see what is going through it.', { color: 'text-faint' }),
+                          then: openWorkflow,
+                          else: text('Choose a workflow to see what is going through it.', { color: 'text-faint' }),
                         },
                       },
                     },
@@ -1422,15 +1431,15 @@ export function flowsPage(band: Record<string, string>): SchemaNode {
           else: {
             type: 'Column',
             props: { width: '100%', maxWidth: 'var(--we-layout-md)', ...band },
-            children: [text('Flows are not available in this space.', { color: 'text-faint' })],
+            children: [text('Workflows are not available in this space.', { color: 'text-faint' })],
           },
         },
       },
-      newFlowModal,
+      newWorkflowModal,
       addStepModal,
       branchModal,
       editStepModal,
-      guardStepModal,
+      evidenceStepModal,
     ],
   };
 }
@@ -1438,8 +1447,8 @@ export function flowsPage(band: Record<string, string>): SchemaNode {
 // ─── The inspector's section ───────────────────────────────────────────────────
 
 /**
- * What can be done to a record in one flow from its inspector: the moves waiting on agreement, with
- * Agree or Withdraw, and where it may be asked to go next. `inFlow` is one of its `recordFlows`.
+ * What can be done to a record in one workflow from its inspector: the moves waiting on agreement, with
+ * Agree or Withdraw, and where it may be asked to go next. `inWorkflow` is one of its `recordWorkflows`.
  */
 const inspectorMoves: SchemaNode = {
   type: 'Column',
@@ -1447,14 +1456,14 @@ const inspectorMoves: SchemaNode = {
   children: [
     {
       type: '$each',
-      props: { items: { $: 'inFlow.asks' }, as: 'ask' },
+      props: { items: { $: 'inWorkflow.asks' }, as: 'ask' },
       children: [
         {
           type: 'Row',
           props: { gap: '200', ay: 'center', wrap: true },
           children: [
             text(
-              { $: '`Asked to move to ${ask.toLabel} · ${count(ask.voters)} of ${ask.needs}`' },
+              { $: '`Asked to move to ${ask.toLabel} · ${count(ask.approvers)} of ${ask.needs}`' },
               { variant: 'footnote', color: 'text-muted' },
             ),
             {
@@ -1466,7 +1475,10 @@ const inspectorMoves: SchemaNode = {
                   props: {
                     size: 'xs',
                     variant: 'ghost',
-                    onClick: { $action: 'flowStore.withdrawRecord', args: [{ $: 'inFlow.flow' }, { $: 'row.id' }] },
+                    onClick: {
+                      $action: 'workflowStore.withdrawRecord',
+                      args: [{ $: 'inWorkflow.workflow' }, { $: 'row.id' }],
+                    },
                   },
                   children: [text('Withdraw')],
                 },
@@ -1476,8 +1488,8 @@ const inspectorMoves: SchemaNode = {
                     size: 'xs',
                     variant: 'soft',
                     onClick: {
-                      $action: 'flowStore.moveRecord',
-                      args: [{ $: 'inFlow.flow' }, { $: 'row.id' }, { $: 'ask.to' }],
+                      $action: 'workflowStore.moveRecord',
+                      args: [{ $: 'inWorkflow.workflow' }, { $: 'row.id' }, { $: 'ask.to' }],
                     },
                   },
                   children: [text('Agree')],
@@ -1491,7 +1503,7 @@ const inspectorMoves: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $: 'count(inFlow.next)' },
+        condition: { $: 'count(inWorkflow.next)' },
         then: {
           type: 'Row',
           props: { gap: '100', ay: 'center', wrap: true },
@@ -1499,7 +1511,7 @@ const inspectorMoves: SchemaNode = {
             text('Move to', { variant: 'footnote', color: 'text-muted' }),
             {
               type: '$each',
-              props: { items: { $: 'inFlow.next' }, as: 'to' },
+              props: { items: { $: 'inWorkflow.next' }, as: 'to' },
               children: [
                 {
                   type: 'we-button',
@@ -1507,8 +1519,8 @@ const inspectorMoves: SchemaNode = {
                     size: 'xs',
                     variant: 'ghost',
                     onClick: {
-                      $action: 'flowStore.moveRecord',
-                      args: [{ $: 'inFlow.flow' }, { $: 'row.id' }, { $: 'to.name' }],
+                      $action: 'workflowStore.moveRecord',
+                      args: [{ $: 'inWorkflow.workflow' }, { $: 'row.id' }, { $: 'to.name' }],
                     },
                   },
                   children: [text({ $: 'to.label' })],
@@ -1523,46 +1535,50 @@ const inspectorMoves: SchemaNode = {
 };
 
 /**
- * The flows a record is going through, in its inspector, and the one control that starts another.
+ * The workflows a record is going through, in its inspector, and the one control that starts another.
  *
- * Shown wherever the space has flows. `row` is the record the inspector's loop binds, `type` the
- * expression naming its entity. Where it stands in each is read from `flowStore.recordFlows`, which
- * watches every startable flow, so a card and its inspector agree without either asking.
+ * Shown wherever the space has workflows. `row` is the record the inspector's loop binds, `type` the
+ * expression naming its entity. Where it stands in each is read from `workflowStore.recordWorkflows`, which
+ * watches every startable workflow, so a card and its inspector agree without either asking.
  *
- * Each flow offers what can be done to the record from here — move it on, agree with a move somebody
+ * Each workflow offers what can be done to the record from here — move it on, agree with a move somebody
  * asked for, or take back one's own ask — so moving a record does not mean leaving it. "Open" goes to
- * the Flows page with that flow open, where its whole walk and its history are read: the inspector
+ * the Workflows page with that workflow open, where its whole walk and its history are read: the inspector
  * does not grow a second copy of the stepper.
  */
-export function flowsSection(opts: { type: string; open: { field: string }; flowsPath: SchemaProp }): SchemaNode {
-  const mine = 'flowStore.recordFlows[row.id] ?? []';
+export function workflowsSection(opts: {
+  type: string;
+  open: { field: string };
+  workflowsPath: SchemaProp;
+}): SchemaNode {
+  const mine = 'workflowStore.recordWorkflows[row.id] ?? []';
   return {
     type: '$if',
     props: {
       condition: {
-        $: 'flowStore.available && (count(flowStore.startable) || count(flowStore.recordFlows[row.id] ?? []))',
+        $: 'workflowStore.available && (count(workflowStore.startable) || count(workflowStore.recordWorkflows[row.id] ?? []))',
       },
       then: {
         type: 'Column',
         props: { gap: '100' },
         children: [
           foldingSectionLabel({
-            label: 'Flows',
+            label: 'Workflows',
             count: `count(${mine})`,
             open: opts.open,
             action: {
               type: 'DropdownMenu',
               props: {
                 triggerIcon: 'flow-arrow',
-                triggerTitle: 'Start a flow on this',
+                triggerTitle: 'Start a workflow on this',
                 triggerVariant: 'ghost',
                 size: 'xs',
                 itemSize: 'sm',
                 placement: 'bottom-end',
                 items: {
-                  $: `flowStore.startable.filter(f, (${opts.type} in f.subjects || !count(f.subjects)) && !(${mine}).exists(c, c.flow == f.name)).map(f, { id: f.name, label: f.label })`,
+                  $: `workflowStore.startable.filter(f, (${opts.type} in f.entities || !count(f.entities)) && !(${mine}).exists(c, c.workflow == f.name)).map(f, { id: f.name, label: f.label })`,
                 },
-                onSelect: { $action: 'flowStore.startFlow', args: [{ $: 'arg.id' }, { $: 'row.id' }] },
+                onSelect: { $action: 'workflowStore.startWorkflow', args: [{ $: 'arg.id' }, { $: 'row.id' }] },
               },
             },
           }),
@@ -1575,7 +1591,7 @@ export function flowsSection(opts: { type: string; open: { field: string }; flow
                 children: [
                   {
                     type: '$each',
-                    props: { items: { $: mine }, as: 'inFlow' },
+                    props: { items: { $: mine }, as: 'inWorkflow' },
                     children: [
                       {
                         type: 'Column',
@@ -1586,21 +1602,21 @@ export function flowsSection(opts: { type: string; open: { field: string }; flow
                             props: { gap: '200', ay: 'center', wrap: true },
                             children: [
                               { type: 'we-icon', props: { name: 'flow-arrow', size: 'sm' } },
-                              text({ $: 'inFlow.label' }, { variant: 'label' }),
+                              text({ $: 'inWorkflow.label' }, { variant: 'label' }),
                               text(
-                                { $: "inFlow.stateLabel ? inFlow.stateLabel : 'Not placed yet'" },
+                                { $: "inWorkflow.stateLabel ? inWorkflow.stateLabel : 'Not placed yet'" },
                                 { variant: 'footnote', color: 'text-muted' },
                               ),
                               {
                                 type: '$if',
                                 props: {
-                                  condition: { $: 'inFlow.waiting' },
-                                  then: chip({ $: '`${inFlow.waiting} waiting`' }, 'warning-soft'),
+                                  condition: { $: 'inWorkflow.waiting' },
+                                  then: chip({ $: '`${inWorkflow.waiting} waiting`' }, 'warning-soft'),
                                 },
                               },
                               {
                                 type: '$if',
-                                props: { condition: { $: 'inFlow.stalled' }, then: chip('Stuck', 'warning-soft') },
+                                props: { condition: { $: 'inWorkflow.stalled' }, then: chip('Stuck', 'warning-soft') },
                               },
                               { type: 'Row', props: { flex: '1' } },
                               {
@@ -1609,8 +1625,8 @@ export function flowsSection(opts: { type: string; open: { field: string }; flow
                                   size: 'xs',
                                   variant: 'ghost',
                                   onClick: [
-                                    { $action: 'flowStore.openFlow', args: [{ $: 'inFlow.flow' }] },
-                                    { $action: 'routeStore.navigate', args: [opts.flowsPath] },
+                                    { $action: 'workflowStore.openWorkflow', args: [{ $: 'inWorkflow.workflow' }] },
+                                    { $action: 'routeStore.navigate', args: [opts.workflowsPath] },
                                   ],
                                 },
                                 children: [text('Open')],
@@ -1626,7 +1642,7 @@ export function flowsSection(opts: { type: string; open: { field: string }; flow
                     type: '$if',
                     props: {
                       condition: { $: `!count(${mine})` },
-                      then: text('Not going through any flow.', { variant: 'footnote', color: 'text-faint' }),
+                      then: text('Not going through any workflow.', { variant: 'footnote', color: 'text-faint' }),
                     },
                   },
                 ],

@@ -427,7 +427,7 @@ describe('clearance at the source end', () => {
  *
  * Where a connection leaves and arrives is normally derived from where the two nodes are, which is
  * right until somebody wants it otherwise — a line that would run straight through a third card, or
- * a flow whose steps should leave rightwards whatever the layout did with them. An anchor is that
+ * a workflow whose steps should leave rightwards whatever the layout did with them. An anchor is that
  * decision, and it has to beat every rule the geometry would otherwise apply.
  */
 describe('anchors', () => {

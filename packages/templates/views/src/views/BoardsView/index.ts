@@ -41,11 +41,11 @@ import { ANCHOR_ID, anchorBanner, anchorScope, emptyState, field, formModal, tas
  * The board its container calls its own — the space's, or the anchored container's.
  *
  * Which board is canonical is a fact about the **container**, not a marker on the board: the space's
- * is the record playing its `board` role, an anchored container's is its `CollectionBlock.board`.
+ * is its `board` landmark, an anchored container's is its `CollectionBlock.board`.
  * A marker could not stop two boards claiming it; one name resolves to one record, and the board
  * that loses a race is simply an ordinary one in the list.
  */
-const CANONICAL = `(${ANCHOR_ID.$} ? first(local.anchorRow).board.id : spaceStore.roles.board)`;
+const CANONICAL = `(${ANCHOR_ID.$} ? first(local.anchorRow).board.id : spaceStore.landmarks.board)`;
 
 /** The boards to choose from. Anchored, this is one container's; otherwise the space's. */
 const boardsQuery = {
@@ -135,7 +135,7 @@ const boardList: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $: `!(${ANCHOR_ID.$}) && !spaceStore.roles.board` },
+        condition: { $: `!(${ANCHOR_ID.$}) && !spaceStore.landmarks.board` },
         then: {
           type: 'we-button',
           props: {
@@ -256,7 +256,7 @@ export const boardsView: TemplateSchema = {
   /*
     The boards to choose from, and which of them their container calls its own.
 
-    The space's own board is `spaceStore.roles.board`. `anchorRow` is the same question for the
+    The space's own board is `spaceStore.landmarks.board`. `anchorRow` is the same question for the
     container a narrowed view is anchored to, and is only *read* while anchored: an
     unresolved `where` is pruned rather than sent, so unanchored it answers with an arbitrary
     collection, which the `ANCHOR_ID &&` guard below keeps harmless.

@@ -122,7 +122,7 @@ describe('the heading', () => {
   });
 
   /*
-    The regression this guards is a silent one, and it ran for a while: the defaults were a second
+    The regression this evidence is a silent one, and it ran for a while: the defaults were a second
     table living here, so a state nobody had coloured was drawn one way on its column and another in
     the key and on the canvas — and editing the state hid it, since both sides then read the stored
     colour. Asserting against the kit's tables rather than against literals is the point: a new
@@ -593,15 +593,15 @@ describe('a board over task states that ask for agreement', () => {
   const todoCol: Col = { id: 'c1', slug: 'todo', arranges: [] };
   const doingCol: Col = { id: 'c2', slug: 'doing', arranges: [] };
   const doneCol: Col = { id: 'c3', slug: 'done', arranges: [] };
-  // `status` still says todo; the flow has moved on. The flow is what the board shows.
+  // `status` still says todo; the workflow has moved on. The workflow is what the board shows.
   const moved = { id: 't1', status: 'todo' };
   const waitingCard = { id: 't2', status: 'doing' };
-  const flow = {
+  const workflow = {
     view: {
-      flow: 'TaskStates',
+      workflow: 'TaskStates',
       items: [
-        { subject: 't1', state: 'doing', since: 1, waiting: [], stalled: false },
-        { subject: 't2', state: 'doing', since: 2, waiting: [{ to: 'done', voters: [ANA] }], stalled: false },
+        { record: 't1', state: 'doing', since: 1, waiting: [], stalled: false },
+        { record: 't2', state: 'doing', since: 2, waiting: [{ to: 'done', approvers: [ANA] }], stalled: false },
       ],
     },
     rules: { done: { approvals: 1, approverKind: 'reviewer' } },
@@ -612,10 +612,10 @@ describe('a board over task states that ask for agreement', () => {
     states,
     kinds,
     involvements: [{ node: 't2', agent: BEN, kind: 'reviewer' }],
-    flow,
+    workflow,
   };
 
-  it('puts a card in the column the flow has it in, whatever its status says', () => {
+  it('puts a card in the column the workflow has it in, whatever its status says', () => {
     const view = arrangedBoard({ ...base, me: ANA });
     expect(view.contents.c2.unarranged.map((r) => r.id)).toEqual(['t1', 't2']);
     expect(view.contents.c1.count).toBe(0);
@@ -623,15 +623,15 @@ describe('a board over task states that ask for agreement', () => {
 
   it('describes a waiting move on its card, counting only whoever holds the kind on it', () => {
     const view = arrangedBoard({ ...base, me: ANA });
-    expect(view.flow.t2).toMatchObject({
+    expect(view.workflow.t2).toMatchObject({
       to: 'done',
-      voters: [ANA],
+      approvers: [ANA],
       counted: 0,
       needs: 1,
       mine: true,
       canApprove: false,
     });
-    expect(view.flow.t1).toBeUndefined();
+    expect(view.workflow.t1).toBeUndefined();
     expect(arrangedBoard({ ...base, me: BEN }).awaiting).toEqual(['t2']);
     expect(view.awaiting).toEqual([]);
   });
@@ -644,9 +644,9 @@ describe('a board over task states that ask for agreement', () => {
     expect(view.contents.c2.shown).toBe(1);
   });
 
-  it('reads status, and describes nothing, where the space has no flow', () => {
-    const view = arrangedBoard({ ...base, flow: null, me: BEN });
+  it('reads status, and describes nothing, where the space has no workflow', () => {
+    const view = arrangedBoard({ ...base, workflow: null, me: BEN });
     expect(view.contents.c1.unarranged.map((r) => r.id)).toEqual(['t1']);
-    expect(view.flow).toEqual({});
+    expect(view.workflow).toEqual({});
   });
 });

@@ -16,8 +16,8 @@ file in Settings.
 | `app.ts`                                | The chrome around every space: one rail, no module rail                                              |
 | `firstRun.ts`                           | "Welcome to Coasys": make your identity here, or start without one                                   |
 | `space/shell.ts`                        | A space as one tree and one view, on a home lane                                                     |
-| `space/tree.ts`                         | The tree: channels, calls, flows, people, Social DNA                                                 |
-| `space/views.ts`                        | A channel as chat or canvas, the flows, and a call's own page                                        |
+| `space/tree.ts`                         | The tree: channels, calls, workflows, people, Social DNA                                             |
+| `space/views.ts`                        | A channel as chat or canvas, the workflows, and a call's own page                                    |
 | `space/paths.ts`                        | The addresses the tree and the views share                                                           |
 | `space/marks.ts`                        | The live dot and the count pill the tree and the views share                                         |
 

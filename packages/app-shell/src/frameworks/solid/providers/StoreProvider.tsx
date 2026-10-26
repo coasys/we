@@ -6,7 +6,6 @@ import {
   DatasetStoreProvider,
   DeviceStoreProvider,
   EditorStoreProvider,
-  FlowStoreProvider,
   IdentityStoreProvider,
   InterpretationStoreProvider,
   PresenceStoreProvider,
@@ -20,6 +19,7 @@ import {
   SpaceStoreProvider,
   TemplateStoreProvider,
   ThemeStoreProvider,
+  WorkflowStoreProvider,
 } from '@solid/stores';
 import { ParentProps } from 'solid-js';
 
@@ -77,14 +77,14 @@ export default function StoreProvider(props: ParentProps) {
                                         <InterpretationStoreProvider>
                                           {/* Beneath the space store, whose task states, involvement kinds,
                                         archive list and administrator it reads. */}
-                                          <FlowStoreProvider>
+                                          <WorkflowStoreProvider>
                                             {/* Beneath every store an install writes through — templates,
                                           themes, record types, modules, settings — none of which has
                                           to know what a bundle is. */}
                                             <BundleStoreProvider>
                                               <EditorHostAdapter>{props.children}</EditorHostAdapter>
                                             </BundleStoreProvider>
-                                          </FlowStoreProvider>
+                                          </WorkflowStoreProvider>
                                         </InterpretationStoreProvider>
                                       </PresenceStoreProvider>
                                     </SpaceStoreProvider>

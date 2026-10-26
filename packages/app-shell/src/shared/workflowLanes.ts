@@ -1,10 +1,10 @@
 /**
- * A flow as lanes — the shape a person edits — and the plain definition it compiles to.
+ * A workflow as lanes — the shape a person edits — and the plain definition it compiles to.
  *
- * A free-form wiring diagram scales badly for the flows people actually write: a board that lets every
- * state reach every other is thirty arrows for six states. So a flow is edited as a **main line** (the
+ * A free-form wiring diagram scales badly for the workflows people actually write: a board that lets every
+ * state reach every other is thirty arrows for six states. So a workflow is edited as a **main line** (the
  * happy path), **branches** (each leaves the line at a state and either rejoins it later or ends), a
- * **sequence rule** for the whole flow, and **exceptions** for any move the rest does not cover:
+ * **sequence rule** for the whole workflow, and **exceptions** for any move the rest does not cover:
  *
  * - `next` — each state moves to the one after it in its lane.
  * - `next-and-back` — and back to the one before. A final state still has no way out.
@@ -16,11 +16,11 @@
  * does not read back as lanes and compile to itself — another app's, or one hand-written — is shown
  * as it is and not offered for editing as lanes (`fits: false`).
  */
-import type { FlowDefinition, FlowStateDefinition, FlowTransitionDefinition } from '@we/backend-shared';
+import type { WorkflowDefinition, WorkflowState, WorkflowTransition } from '@we/backend-shared';
 
-export type FlowSequenceRule = 'next' | 'next-and-back' | 'any';
+export type WorkflowSequenceRule = 'next' | 'next-and-back' | 'any';
 
-export interface FlowLane {
+export interface WorkflowLane {
   /** The lane's states, in order. */
   states: string[];
   /** Where a branch leaves the main line or another branch. Absent on the main line. */
@@ -29,12 +29,12 @@ export interface FlowLane {
   rejoins?: string;
 }
 
-export interface FlowLanes {
-  rule: FlowSequenceRule;
+export interface WorkflowLanes {
+  rule: WorkflowSequenceRule;
   /** The main line first. */
-  lanes: FlowLane[];
+  lanes: WorkflowLane[];
   /** Moves nothing else covers. */
-  exceptions: FlowTransitionDefinition[];
+  exceptions: WorkflowTransition[];
 }
 
 const edge = (from: string, to: string) => `${from}\u0000${to}`;
@@ -46,12 +46,12 @@ const edge = (from: string, to: string) => `${from}\u0000${to}`;
 const lastOf = <T>(list: readonly T[]): T | undefined => list[list.length - 1];
 
 /** The moves lanes and a rule make, before exceptions — in a fixed order, so one model always writes the same definition. */
-function laneMoves(model: FlowLanes): FlowTransitionDefinition[] {
+function laneMoves(model: WorkflowLanes): WorkflowTransition[] {
   const all = model.lanes.flatMap((lane) => lane.states);
   if (model.rule === 'any') {
     return all.flatMap((from) => all.filter((to) => to !== from).map((to) => ({ from, to })));
   }
-  const moves: FlowTransitionDefinition[] = [];
+  const moves: WorkflowTransition[] = [];
   const seen = new Set<string>();
   const add = (from: string, to: string) => {
     const key = edge(from, to);
@@ -89,10 +89,10 @@ function laneMoves(model: FlowLanes): FlowTransitionDefinition[] {
  * decide only which states there are, their order and the moves between them.
  */
 export function toDefinition(
-  base: Pick<FlowDefinition, 'name' | 'subjects' | 'hint'>,
-  model: FlowLanes,
-  states: Record<string, Omit<FlowStateDefinition, 'name'>>,
-): FlowDefinition {
+  base: Pick<WorkflowDefinition, 'name' | 'entities' | 'hint'>,
+  model: WorkflowLanes,
+  states: Record<string, Omit<WorkflowState, 'name'>>,
+): WorkflowDefinition {
   const order = model.lanes.flatMap((lane) => lane.states);
   const moves = laneMoves(model);
   const covered = new Set(moves.map((m) => edge(m.from, m.to)));
@@ -107,7 +107,7 @@ export function toDefinition(
   ];
   return {
     name: base.name,
-    subjects: [...base.subjects],
+    entities: [...base.entities],
     states: order.map((name) => ({ name, ...(states[name] ?? {}) })),
     transitions,
     ...(base.hint ? { hint: base.hint } : {}),
@@ -115,17 +115,17 @@ export function toDefinition(
 }
 
 /** Lanes read out of a definition's state order and moves, under one rule. */
-function readLanes(definition: FlowDefinition, rule: FlowSequenceRule): FlowLanes | null {
+function readLanes(definition: WorkflowDefinition, rule: WorkflowSequenceRule): WorkflowLanes | null {
   const order = definition.states.map((s) => s.name);
   if (!order.length) return { rule, lanes: [{ states: [] }], exceptions: [] };
   if (rule === 'any') return { rule, lanes: [{ states: order }], exceptions: [] };
   const moves = new Set(definition.transitions.map((t) => edge(t.from, t.to)));
   const has = (from: string, to: string) => moves.has(edge(from, to));
 
-  const lanes: FlowLane[] = [];
+  const lanes: WorkflowLane[] = [];
   let i = 0;
   while (i < order.length) {
-    const lane: FlowLane = { states: [order[i]] };
+    const lane: WorkflowLane = { states: [order[i]] };
     i += 1;
     while (i < order.length && has(lastOf(lane.states)!, order[i])) {
       lane.states.push(order[i]);
@@ -155,7 +155,7 @@ function readLanes(definition: FlowDefinition, rule: FlowSequenceRule): FlowLane
     }
     for (const state of lane.states) placed.add(state);
   }
-  const model: FlowLanes = { rule, lanes, exceptions: [] };
+  const model: WorkflowLanes = { rule, lanes, exceptions: [] };
   const covered = new Set(laneMoves(model).map((m) => edge(m.from, m.to)));
   if ([...covered].some((key) => !moves.has(key))) return null;
   // In step order, not the order the backend answered with: moves are a set, and a list that
@@ -173,11 +173,11 @@ function readLanes(definition: FlowDefinition, rule: FlowSequenceRule): FlowLane
  * lanes do not compile back to exactly this definition — the state order or a move would change —
  * in which case `model` is still the closest reading, for showing it, but not for editing it.
  */
-export function toLanes(definition: FlowDefinition): { model: FlowLanes; fits: boolean } {
+export function toLanes(definition: WorkflowDefinition): { model: WorkflowLanes; fits: boolean } {
   const order = definition.states.map((s) => s.name);
   const moves = new Set(definition.transitions.map((t) => edge(t.from, t.to)));
   const everyPair = order.every((from) => order.every((to) => from === to || moves.has(edge(from, to))));
-  const rules: FlowSequenceRule[] = everyPair && order.length > 1 ? ['any'] : ['next', 'next-and-back'];
+  const rules: WorkflowSequenceRule[] = everyPair && order.length > 1 ? ['any'] : ['next', 'next-and-back'];
   const states = Object.fromEntries(definition.states.map(({ name, ...rest }) => [name, rest]));
   /*
     Every rule that reads back exactly, then the one that leaves the fewest moves as exceptions — the
@@ -185,7 +185,7 @@ export function toLanes(definition: FlowDefinition): { model: FlowLanes; fits: b
     take (every lane ends at a final step), `next` and `next-and-back` write the same moves, and
     `next` is what was meant.
   */
-  let best: FlowLanes | undefined;
+  let best: WorkflowLanes | undefined;
   for (const rule of rules) {
     const model = readLanes(definition, rule);
     if (!model) continue;
@@ -205,7 +205,7 @@ export function toLanes(definition: FlowDefinition): { model: FlowLanes; fits: b
 }
 
 /** The states no move leaves. */
-export function finalStates(definition: FlowDefinition): string[] {
+export function finalStates(definition: WorkflowDefinition): string[] {
   const leaving = new Set(definition.transitions.map((t) => t.from));
   return definition.states.map((s) => s.name).filter((name) => !leaving.has(name));
 }
@@ -216,8 +216,8 @@ export function finalStates(definition: FlowDefinition): string[] {
  * branch leaves, then the branch. `next` is where it may be asked to go from here.
  */
 export function walkOf(
-  definition: FlowDefinition,
-  model: FlowLanes,
+  definition: WorkflowDefinition,
+  model: WorkflowLanes,
   state: string | null,
 ): { steps: { name: string; at: 'done' | 'current' | 'ahead' }[]; next: string[] } {
   const next = state === null ? definition.states.slice(0, 1).map((s) => s.name) : allowedFrom(definition, state);
@@ -240,5 +240,5 @@ export function walkOf(
   };
 }
 
-const allowedFrom = (definition: FlowDefinition, state: string) =>
+const allowedFrom = (definition: WorkflowDefinition, state: string) =>
   definition.transitions.filter((t) => t.from === state).map((t) => t.to);

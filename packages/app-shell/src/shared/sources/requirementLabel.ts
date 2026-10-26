@@ -2,13 +2,18 @@
  * A step's requirement in words, as the store says it — for a form that holds requirements it has not
  * saved yet, and so cannot read their words off a saved record.
  */
-import { guardLabel } from '../flowViews';
-import { guardSubjectOf } from '../guardSubjects';
+import { evidenceSubjectOf } from '../evidenceSubjects';
+import { evidenceLabel } from '../workflowViews';
 
-export function requirementLabel(options: { entity?: unknown; tie?: unknown; min?: unknown }): string {
+export function requirementLabel(options: { entity?: unknown; via?: unknown; min?: unknown }): string {
   const entity = typeof options?.entity === 'string' ? options.entity : '';
   if (!entity) return '';
-  const tie = typeof options.tie === 'string' && options.tie ? { relation: options.tie } : undefined;
+  const via = typeof options.via === 'string' && options.via ? { relation: options.via } : undefined;
   const min = typeof options.min === 'number' && options.min >= 1 ? Math.floor(options.min) : undefined;
-  return guardLabel({ kind: 'guard', ...guardSubjectOf(entity), ...(tie ? { tie } : {}), ...(min ? { min } : {}) });
+  return evidenceLabel({
+    kind: 'evidence',
+    ...evidenceSubjectOf(entity),
+    ...(via ? { via } : {}),
+    ...(min ? { min } : {}),
+  });
 }
