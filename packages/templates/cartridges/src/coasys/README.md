@@ -42,9 +42,9 @@ theme decides how strong they are, so the same templates read quietly under Josh
 - a dot grid on the canvas;
 - page titles in the heading role, with no weight of their own.
 
-Some of Nico's design is not reachable yet: the mint bar on the selected tree row (the tree's own
-styling), and the d12 flow diagrams and proposal cards, which are features of their own rather than a
-look.
+The mint bar on the selected tree row is the tree's `selected` variant, which Glow sets
+(`components.tree.variants.selected`). Not reachable yet: the d12 flow diagrams and proposal cards,
+which are features of their own rather than a look.
 
 ## What is drawn and what waits
 
