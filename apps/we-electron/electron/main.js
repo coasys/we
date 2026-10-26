@@ -80,16 +80,18 @@ function seedDataPath() {
 }
 
 /**
- * The executor binary to run in development, from the seed.
+ * The executor binary to run in development, as `scripts/ad4m-executor.mjs` chose it when the
+ * seed's runtime settings were generated: AD4M_EXECUTOR, the seed's own `executorPath`, or the
+ * pinned commit's cached download.
  *
  * A packaged build has the binary copied in beside it and reads it from `resourcesPath`; an
- * unpackaged run has to find it in the workspace. That path used to be hardcoded here, which meant
+ * unpackaged run has to find it outside the app. That path used to be hardcoded here, which meant
  * a seed pointing `executorPath` at a different checkout was silently ignored — the app went on
  * running whichever executor happened to be built next door, and every symptom of that appears
  * somewhere else entirely: a WS method that does not exist, a call that hangs, a feature that is
  * present in the code and absent at runtime.
  *
- * Falls back to the historical location, so a workspace with no `executorPath` behaves as before.
+ * Falls back to a sibling ad4m checkout's build only when the generated settings are missing.
  */
 function seedExecutorPath() {
   try {
