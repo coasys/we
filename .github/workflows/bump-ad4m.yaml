@@ -6,7 +6,9 @@ name: Bump ad4m
 # Every run starts from `dev`, runs `pnpm bump:ad4m dev`, and force-pushes the result to one branch,
 # so there is at most one bump PR at a time and it always names the newest commit. Merging it ends
 # that PR; the next run after ad4m `dev` moves opens a new one. When the pin is already current, or
-# the snapshot is not published yet, the run does nothing.
+# the snapshot is not published yet, the run does nothing to the pin. It still looks after an open
+# PR: one that conflicts with `dev` is rebuilt on it, and one whose commit `dev`'s pin already
+# contains, because a feature PR moved the pin past it, is closed.
 #
 # Once a day rather than on every ad4m push: until ad4m publishes executor binaries, each new commit
 # costs an executor build, and each bump is a lockfile change that conflicts with every open PR that
@@ -70,36 +72,102 @@ jobs:
             echo "commit=$(node scripts/ad4m-pin.mjs --commit)" >> "$GITHUB_OUTPUT"
           fi
 
-      # The branch already holding this commit means the PR is up to date: pushing it again would
-      # only start CI for nothing.
+      # Decides what the open bump PR needs: `push` (a new commit, or the same one rebuilt on `dev`),
+      # `close`, or nothing. The bump above finding nothing does not mean the PR is done with: the
+      # newest commit may only be waiting for its executor, while the PR's commit is still ahead of
+      # `dev`. So the PR is closed only once `dev`'s own pin contains its commit, which happens when a
+      # feature PR moves the pin past it. And a PR on the right commit is rebuilt when it conflicts
+      # with `dev`, which every pin move on `dev` makes it do: nothing else would rebase it until ad4m
+      # `dev` moved again. Otherwise the branch already holding the commit means the PR is up to date,
+      # and pushing it again would only start CI for nothing.
       - name: Check the open bump
         id: current
-        if: steps.bump.outputs.changed == 'true'
         env:
+          GH_TOKEN: ${{ github.token }}
+          CHANGED: ${{ steps.bump.outputs.changed }}
           COMMIT: ${{ steps.bump.outputs.commit }}
         run: |
+          NUMBER="$(gh api "repos/$GITHUB_REPOSITORY/pulls?head=${GITHUB_REPOSITORY_OWNER}:$BRANCH&state=open" -q '.[0].number // empty')"
           PINNED=''
           if git fetch -q --depth 1 origin "$BRANCH" 2>/dev/null; then
             PINNED="$(git show FETCH_HEAD:package.json | node scripts/ad4m-pin.mjs --from - | sed -n 's/^commit=//p')" || PINNED=''
           fi
-          if [ "$PINNED" = "$COMMIT" ]; then
-            echo "$BRANCH is already on $COMMIT"
-            echo "stale=false" >> "$GITHUB_OUTPUT"
+          echo "number=$NUMBER" >> "$GITHUB_OUTPUT"
+
+          if [ "$CHANGED" = 'true' ]; then
+            TARGET="$COMMIT"
+          elif [ -n "$NUMBER" ] && [ -n "$PINNED" ]; then
+            DEV_PIN="$(git show HEAD:package.json | node scripts/ad4m-pin.mjs --from - --commit)"
+            STATUS="$(gh api "repos/coasys/ad4m/compare/$PINNED...$DEV_PIN" -q .status)"
+            if [ "$STATUS" = 'identical' ] || [ "$STATUS" = 'ahead' ]; then
+              echo "dev's pin (${DEV_PIN:0:9}) already contains ${PINNED:0:9}: closing #$NUMBER"
+              echo "action=close" >> "$GITHUB_OUTPUT"
+              echo "pinned=$PINNED" >> "$GITHUB_OUTPUT"
+              echo "dev_pin=$DEV_PIN" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            TARGET="$PINNED"
           else
-            echo "stale=true" >> "$GITHUB_OUTPUT"
+            echo "action=none" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          echo "target=$TARGET" >> "$GITHUB_OUTPUT"
+
+          if [ "$PINNED" != "$TARGET" ]; then
+            echo "action=push" >> "$GITHUB_OUTPUT"
+            echo "fresh=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # GitHub works out whether a PR merges on request, so the first answer can be null.
+          MERGEABLE=''
+          if [ -n "$NUMBER" ]; then
+            for _ in 1 2 3 4 5; do
+              MERGEABLE="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$NUMBER" -q .mergeable)"
+              [ "$MERGEABLE" != 'null' ] && break
+              sleep 5
+            done
+          fi
+          if [ "$MERGEABLE" = 'false' ]; then
+            echo "#$NUMBER conflicts with dev: rebuilding it on ${TARGET:0:9}"
+            echo "action=push" >> "$GITHUB_OUTPUT"
+          else
+            echo "$BRANCH is already on $TARGET"
+            echo "action=none" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Close the bump that dev has passed
+        if: steps.current.outputs.action == 'close'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ steps.current.outputs.number }}
+          PINNED: ${{ steps.current.outputs.pinned }}
+          DEV_PIN: ${{ steps.current.outputs.dev_pin }}
+        run: |
+          gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$NUMBER/comments" -q .html_url \
+            -f body="\`dev\` now pins coasys/ad4m@$DEV_PIN, which already contains coasys/ad4m@$PINNED, so this bump has nothing left to do. The next run after ad4m \`dev\` moves opens a new one."
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/pulls/$NUMBER" -f state=closed -q .html_url
+          gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH"
+
+      # The bump above moved to nothing, so the working tree is still `dev`'s: move it to the commit
+      # the PR already pins.
+      - name: Rebuild the bump on dev
+        if: steps.current.outputs.action == 'push' && steps.bump.outputs.changed != 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TARGET: ${{ steps.current.outputs.target }}
+        run: node scripts/bump-ad4m.mjs "$TARGET" --lockfile-only --pr-body "$RUNNER_TEMP/body.md"
 
       # Before anything starts CI on the branch: the fetch takes the commit's concurrency group first,
       # so the bump PR's own run waits for it and restores rather than building a copy only that PR
       # can read — and the push to `dev` after the bump merges finds it already cached. See
       # `ad4m-executor.yaml`.
       # Usually a download of the executor ad4m's CI built, in seconds; a build only where it
-      # published none.
+      # published none. A rebuild on the commit the PR already pins fetched it the first time.
       - name: Fetch the new executor on dev
-        if: steps.current.outputs.stale == 'true'
+        if: steps.current.outputs.fresh == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          SHA: ${{ steps.bump.outputs.commit }}
+          SHA: ${{ steps.current.outputs.target }}
         run: |
           # Only saves time, so it never stops the bump: without it, the first run that needs the
           # executor builds it, as before.
@@ -108,9 +176,9 @@ jobs:
           fi
 
       - name: Push the branch
-        if: steps.current.outputs.stale == 'true'
+        if: steps.current.outputs.action == 'push'
         env:
-          COMMIT: ${{ steps.bump.outputs.commit }}
+          COMMIT: ${{ steps.current.outputs.target }}
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
@@ -119,17 +187,17 @@ jobs:
           git push -f origin "$BRANCH"
 
       - name: Open or update the PR
-        if: steps.current.outputs.stale == 'true'
+        if: steps.current.outputs.action == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
-          COMMIT: ${{ steps.bump.outputs.commit }}
+          COMMIT: ${{ steps.current.outputs.target }}
         run: |
           {
             cat "$RUNNER_TEMP/body.md"
             echo
             echo "---"
             echo
-            echo "Opened by the [Bump ad4m]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/workflows/bump-ad4m.yaml) workflow, which updates this PR once a day while ad4m \`dev\` has moved. CI runs on each update."
+            echo "Opened by the [Bump ad4m]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/workflows/bump-ad4m.yaml) workflow, which updates this PR once a day while ad4m \`dev\` has moved, rebuilds it when it conflicts with \`dev\`, and closes it once \`dev\`'s pin contains its commit. CI runs on each update."
           } > "$RUNNER_TEMP/pr.md"
           TITLE="chore(deps): bump ad4m to ${COMMIT:0:9}"
 
@@ -143,7 +211,7 @@ jobs:
           fi
 
       - name: Start CI on the branch
-        if: steps.current.outputs.stale == 'true'
+        if: steps.current.outputs.action == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
         # And the live tests, which are the point of a bump: they run against an executor built from
