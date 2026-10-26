@@ -370,7 +370,8 @@ A schema is a tree of nodes. Each node can have:
 The ROOT node carries one more, and it is required:
 
 - meta: { name, description, icon } — what the template is called and how it is listed. Optional
-  keys: role: 'view' for a section rather than a shell (absent means shell), themeId for a theme the
+  keys: role: 'view' for a section rather than a shell (absent means shell; 'page' is an app's own
+  page, which only a bundle brings and which opens with shellStore.openShellView), themeId for a theme the
   template was designed with, panels for the surfaces the interface has (see Panels), and
   chromeReserve for a band the shell pins over the content. A root node without meta is refused.
 
@@ -2234,6 +2235,7 @@ we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
 | minHeight | string | Minimum height |
 | maxWidth | string | Maximum width |
 | maxHeight | string | Maximum height |
+| aspectRatio | string | Width to height, as CSS writes it ('16 / 9', '1'): the box keeps that shape at any width, before what is inside has loaded |
 | position | "relative" \| "absolute" \| "fixed" \| "sticky" | CSS position |
 | top | SpaceValue | Top offset — space token or CSS length |
 | right | SpaceValue | Right offset — space token or CSS length |
