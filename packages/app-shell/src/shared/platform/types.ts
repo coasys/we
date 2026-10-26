@@ -255,6 +255,12 @@ export interface CustodyPublic {
   holdsMaster: { index: number } | null;
   /** How the custody is unlocked on this computer: the OS prompt, or a passphrase it asks for. */
   unlock: 'touch-id-or-password' | 'passphrase' | null;
+  /**
+   * Why no identity step can run on this computer, in words a person reads — a build with no
+   * identity store key, whose executor would refuse everything it publishes. Absent or null when
+   * steps can run.
+   */
+  blocked?: string | null;
 }
 
 export interface IdentityHost {

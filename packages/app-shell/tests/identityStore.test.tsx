@@ -196,6 +196,33 @@ describe('identityStore', () => {
     expect(deviceStore.devices().map((d) => d.label)).toEqual(['This computer']);
   });
 
+  it('on a build with no identity store, asks the question but opens no window, and says why', async () => {
+    setPorts({ identity: backend({ did: null, events: [], devices: [] }).port });
+    const why = 'This build of Coasys has no identity store set up, so it cannot make or change an identity yet.';
+    const opened: IdentityStep[] = [];
+    identityHost = {
+      async open(step) {
+        opened.push(step);
+        return 'done';
+      },
+      async publicState() {
+        return { did: null, holdsMaster: null, unlock: 'passphrase', blocked: why };
+      },
+    };
+    const { identity, devices: deviceStore } = mount();
+    await flush();
+    await flush();
+    // The first run still comes up, so the person learns why; "Make my identity here" is off.
+    expect(identity.needsFirstRun()).toBe(true);
+    expect(identity.changeBlocked()).toBe(why);
+    expect(identity.canChange()).toBe(false);
+    expect(deviceStore.canManage()).toBe(false);
+    await expect(identity.makeIdentity()).rejects.toThrow(why);
+    await expect(identity.open({ kind: 'add-device' })).rejects.toThrow(why);
+    expect(opened).toEqual([]);
+    expect(identity.busy()).toBe(false);
+  });
+
   it('"Start now" puts the question away on this computer', async () => {
     setPorts({ identity: backend({ did: null, events: [], devices: [] }).port });
     identityHost = custody(() => {}).host;

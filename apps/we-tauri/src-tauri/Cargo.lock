@@ -69,6 +69,7 @@ dependencies = [
  "holochain",
  "holochain_cli_bundle",
  "holochain_types",
+ "hyper 0.14.32",
  "include_dir",
  "json5",
  "jsonwebtoken",

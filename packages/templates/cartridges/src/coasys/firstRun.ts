@@ -13,6 +13,10 @@ import type { OperatorToken, SchemaNode, SchemaProp } from '@we/schema-shared';
  * - **Start now** uses the app with no identity, remembered on this computer; Settings → Security
  *   offers "Make my identity here" again.
  *
+ * On a build that cannot make an identity yet (`identityStore.changeBlocked`: no identity store is
+ * set up), the first door is drawn disabled with that reason in place of its detail, and "Start now"
+ * is the way in.
+ *
  * The three other doors — log in with a Coasys account, link to an identity from another app,
  * restore from the 12 words — need flows that later changes add, and are drawn as "Coming soon"
  * rather than left out, so the screen keeps its order when they arrive.
@@ -26,7 +30,10 @@ function door(options: {
   onClick?: SchemaProp;
   soon?: boolean;
   busy?: boolean;
+  /** An expression: while it holds, the door is drawn but cannot be opened, and its detail says why. */
+  off?: string;
 }): SchemaNode {
+  const off = options.off;
   const text: SchemaNode[] = [{ type: 'we-text', children: [options.title] }];
   if (options.detail) {
     text.push({ type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: [options.detail] });
@@ -36,7 +43,13 @@ function door(options: {
     props: {
       variant: 'bare',
       width: '100%',
-      disabled: options.soon ? true : options.busy ? { $: 'identityStore.busy' } : false,
+      disabled: options.soon
+        ? true
+        : off
+          ? { $: `identityStore.busy || ${off}` }
+          : options.busy
+            ? { $: 'identityStore.busy' }
+            : false,
       ...(options.onClick ? { onClick: options.onClick } : {}),
     },
     children: [
@@ -49,7 +62,7 @@ function door(options: {
           px: '400',
           py: '400',
           borderBottom: '1px solid border',
-          opacity: options.soon ? 0.55 : 1,
+          opacity: options.soon ? 0.55 : off ? { $: `${off} ? 0.55 : 1` } : 1,
           hoverProps: options.soon ? {} : { bg: 'surface-hover' },
         },
         children: [
@@ -76,9 +89,12 @@ function door(options: {
   };
 }
 
-/** What the person's master key will rest behind on this computer, as the custody service says. */
+/**
+ * What the person's master key will rest behind on this computer, as the custody service says; or,
+ * on a build that cannot make an identity yet, why.
+ */
 const keepsLine: OperatorToken = {
-  $: "identityStore.custody.unlock == 'touch-id-or-password' ? 'Your 12 words, no email needed. This computer keeps your master key behind Touch ID' : 'Your 12 words, no email needed. This computer keeps your master key behind your passphrase'",
+  $: "identityStore.changeBlocked ? identityStore.changeBlocked : identityStore.custody.unlock == 'touch-id-or-password' ? 'Your 12 words, no email needed. This computer keeps your master key behind Touch ID' : 'Your 12 words, no email needed. This computer keeps your master key behind your passphrase'",
 };
 
 export const coasysFirstRun: SchemaNode = {
@@ -126,6 +142,7 @@ export const coasysFirstRun: SchemaNode = {
                   title: 'Make my identity here',
                   detail: keepsLine,
                   busy: true,
+                  off: "identityStore.changeBlocked != ''",
                   onClick: { $invoke: 'identityStore.makeIdentity' },
                 }),
                 door({

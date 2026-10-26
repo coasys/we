@@ -54,6 +54,13 @@ impl DesktopVault {
         self.pending.list()
     }
 
+    /// Forgets the kept incept of `scid` without publishing it: for an incept that can never be
+    /// published. The master key stays where it rests.
+    pub fn forget_pending(&self, scid: &str) -> Result<(), VaultError> {
+        log::info!("custody: forget an incept that cannot be published");
+        self.pending.forget(scid)
+    }
+
     /// Whether the identity window must ask for a passphrase before making a NEW identity here:
     /// false where the OS's own prompt will unlock the item (the keychain), true where it will be
     /// sealed with a passphrase. For an identity already kept here ask

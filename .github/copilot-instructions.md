@@ -3135,7 +3135,8 @@ EditorStore:
 IdentityStore:
 - State:
   - available: boolean — the backend keeps a key log, so it can say who this device speaks for
-  - canChange: boolean — this app keeps master keys (the desktop app’s custody service), so the identity can be changed from here. False on the web and in Electron: Settings shows the log and devices and offers no change
+  - canChange: boolean — this app keeps master keys (the desktop app’s custody service), so the identity can be changed from here. False on the web and in Electron: Settings shows the log and devices and offers no change. False too where changeBlocked says why
+  - changeBlocked: string — why the identity cannot be made or changed on this computer although the app keeps master keys (a build with no identity store set up), ready to show; empty when it can. Show it beside a disabled "Make my identity here" rather than hiding the door
   - status: { did, deviceKey, keyId, revoked, head, fork } | null — what this device’s key speaks for, as the executor reports it
   - statusLoaded: boolean — the backend has answered `status` once. Gate a "no identity yet" sentence on it
   - did: string — the person’s `did:scid:coasys:1:…`, or empty while this device speaks for nobody
@@ -3145,8 +3146,8 @@ IdentityStore:
   - keyLogLoaded: boolean — the log has been read once
   - forked: boolean — the backend found two different logs for this identity
   - fork: { seq, ours, theirs } | null — where they part
-  - custody: { did, holdsMaster, unlock } | null — the custody service's public state: whether this computer keeps a master key (`holdsMaster.index`) and how it unlocks ('touch-id-or-password' or 'passphrase'). Null where the app keeps none
-  - needsFirstRun: boolean — ask the first-run question now: this app keeps master keys, this device speaks for nobody, and "Start now" was not chosen on this computer
+  - custody: { did, holdsMaster, unlock, blocked } | null — the custody service's public state: whether this computer keeps a master key (`holdsMaster.index`), how it unlocks ('touch-id-or-password' or 'passphrase'), and why no step can run, if one cannot (`blocked`). Null where the app keeps none
+  - needsFirstRun: boolean — ask the first-run question now: this app keeps master keys, this device speaks for nobody, and "Start now" was not chosen on this computer. Still true where changeBlocked is set, so the person learns why; offer "Start now" then
   - busy: boolean — a step is open in the identity window
   - lastOutcome: 'done' | 'cancelled' | 'failed' | '' — how the last step ended
   - error: string — why the last read failed, or empty

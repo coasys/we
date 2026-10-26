@@ -340,6 +340,8 @@ async fn make_link_and_revoke_through_the_custody_service() {
             url: a.url(),
             admin_credential: Arc::from(credential),
             store_url: Some(world.store_url.clone()),
+            // The executors here are started with the store's key (`AD4M_IDENTITY_STORE_KEYS`).
+            store_trusted: true,
         },
     );
     let mut shown = Shown::default();

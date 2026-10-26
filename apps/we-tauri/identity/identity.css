@@ -67,6 +67,10 @@ p {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
+
+  /* Not selectable, so a stray select-all and copy cannot put the words on a synced clipboard. */
+  user-select: none;
+  user-select: none;
 }
 
 .word {

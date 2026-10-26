@@ -56,15 +56,19 @@ pub async fn identity_open(
     step: IdentityStep,
 ) -> Result<Value, String> {
     check("identity_open", &window)?;
+    // The step's slot stays locked from the check to the window existing, so two calls racing
+    // here cannot both find no window and the second overwrite the first's step. Nothing below
+    // awaits while it is held.
+    let mut slot = state.step.lock().map_err(|e| e.to_string())?;
     if let Some(open) = app.get_webview_window(IDENTITY) {
         // One identity window at a time: the step already in it goes on.
         let _ = open.set_focus();
         return Ok(json!({ "opened": false }));
     }
-    *state.step.lock().map_err(|e| e.to_string())? = Some(step);
+    *slot = Some(step);
     *state.outcome.lock().map_err(|e| e.to_string())? = None;
 
-    let identity = WebviewWindowBuilder::new(
+    let built = WebviewWindowBuilder::new(
         &app,
         IDENTITY,
         WebviewUrl::App("identity/index.html".into()),
@@ -75,9 +79,18 @@ pub async fn identity_open(
     .focused(true)
     .center()
     // Its own bundle only; nothing a template or a post can point it at.
-    .on_navigation(|url| rule::identity_may_navigate(url.as_str()))
-    .build()
-    .map_err(|e| format!("could not open the identity window: {e}"))?;
+    // `tauri::is_dev()`, not `debug_assertions`: `pnpm tauri:dev` builds `--release` and still
+    // serves the bundle from the dev server; a packaged build never does.
+    .on_navigation(|url| rule::identity_may_navigate(url.as_str(), tauri::is_dev()))
+    .build();
+    let identity = match built {
+        Ok(identity) => identity,
+        Err(e) => {
+            *slot = None;
+            return Err(format!("could not open the identity window: {e}"));
+        }
+    };
+    drop(slot);
 
     // Closing the window ends the step: an unfinished one is cancelled and wiped, and the main
     // window hears how it ended either way.

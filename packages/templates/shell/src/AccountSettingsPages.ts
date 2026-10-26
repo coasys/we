@@ -87,7 +87,12 @@ const identifier: SchemaNode = {
     {
       type: 'we-text',
       props: { variant: 'footnote', color: 'text-muted' },
-      children: ['The same on every device you use. Anyone can check what it signed.'],
+      // Only what is true today: spaces still name each device by its own key, not the identity.
+      children: [
+        {
+          $: "identityStore.did ? 'The identity your devices speak for. Spaces still show each of your devices by its own key, for now.' : 'This device’s own key. Spaces show you by it.'",
+        },
+      ],
     },
   ],
 };

@@ -183,6 +183,16 @@ function body(screen: Screen): Child[] {
         el('div', { className: 'row' }, button('Revoke', go, 'danger'), button('Cancel', cancel)),
       ];
     }
+    case 'pending-refused':
+      return [
+        el('div', { className: 'link', textContent: screen.did }),
+        el(
+          'div',
+          { className: 'row' },
+          button('Discard it', () => step({ kind: 'discard' }), 'danger'),
+          button('Cancel', cancel),
+        ),
+      ];
     case 'identity-ready':
       return [
         el('div', { className: 'link', textContent: screen.did }),

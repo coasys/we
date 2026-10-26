@@ -1377,6 +1377,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
   identityStore: {
     available: state('keys'),
     canChange: state('keys'),
+    changeBlocked: state('keys'),
     status: state('keys'),
     statusLoaded: state('keys'),
     did: state('keys'),

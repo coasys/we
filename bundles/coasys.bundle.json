@@ -643,7 +643,7 @@
                                 "props": {
                                   "variant": "bare",
                                   "width": "100%",
-                                  "disabled": { "$": "identityStore.busy" },
+                                  "disabled": { "$": "identityStore.busy || identityStore.changeBlocked != ''" },
                                   "onClick": { "$invoke": "identityStore.makeIdentity" }
                                 },
                                 "children": [
@@ -656,7 +656,7 @@
                                       "px": "400",
                                       "py": "400",
                                       "borderBottom": "1px solid border",
-                                      "opacity": 1,
+                                      "opacity": { "$": "identityStore.changeBlocked != '' ? 0.55 : 1" },
                                       "hoverProps": { "bg": "surface-hover" }
                                     },
                                     "children": [
@@ -685,7 +685,7 @@
                                             "props": { "variant": "footnote", "color": "text-muted" },
                                             "children": [
                                               {
-                                                "$": "identityStore.custody.unlock == 'touch-id-or-password' ? 'Your 12 words, no email needed. This computer keeps your master key behind Touch ID' : 'Your 12 words, no email needed. This computer keeps your master key behind your passphrase'"
+                                                "$": "identityStore.changeBlocked ? identityStore.changeBlocked : identityStore.custody.unlock == 'touch-id-or-password' ? 'Your 12 words, no email needed. This computer keeps your master key behind Touch ID' : 'Your 12 words, no email needed. This computer keeps your master key behind your passphrase'"
                                               }
                                             ]
                                           }

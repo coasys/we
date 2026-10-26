@@ -29,6 +29,23 @@ describe('the identity window', () => {
     expect(heading({ screen: 'match', code: 'R7K Q2M', hint: null }).title).toBe('Add this device?');
   });
 
+  it('says what the words do today, and promises no restore or replacement this app cannot run', () => {
+    const lead = heading({ screen: 'show-words', words: [] }).lead;
+    expect(lead).toContain('adds and removes your devices');
+    expect(lead).not.toMatch(/stolen|replace|restore everything/);
+  });
+
+  it('names why a kept identity can never be published, and waits for the person to discard it', () => {
+    const refused = {
+      screen: 'pending-refused' as const,
+      did: 'did:scid:coasys:1:Qm',
+      message: 'The identity store holds a different log for did:scid:coasys:1:Qm.',
+    };
+    expect(heading(refused).lead).toContain('different log');
+    expect(heading(refused).lead).toContain('Trying again will not change that');
+    expect(isLast(refused)).toBe(false);
+  });
+
   it('ends on the screens that end a step', () => {
     expect(isLast({ screen: 'identity-ready', did: 'did:scid:coasys:1:Qm', keyId: 'd1' })).toBe(true);
     expect(isLast({ screen: 'revoked', keyId: 'd2', seq: 2 })).toBe(true);

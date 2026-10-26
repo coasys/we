@@ -17,6 +17,7 @@ export type Screen =
   | { screen: 'linked'; seq: number }
   | { screen: 'revoke-confirm'; keyId: string; passphrase: boolean; error: string | null }
   | { screen: 'revoked'; keyId: string; seq: number }
+  | { screen: 'pending-refused'; did: string; message: string }
   | { screen: 'failed'; message: string };
 
 /** What the window sends back (`we_custody::StepInput`). */
@@ -26,7 +27,8 @@ export type StepInput =
   | { kind: 'passphrase'; passphrase: string; confirm?: string }
   | { kind: 'wait-claim' }
   | { kind: 'confirm' }
-  | { kind: 'revoke'; passphrase?: string };
+  | { kind: 'revoke'; passphrase?: string }
+  | { kind: 'discard' };
 
 /** "4:52" — how long an offer still works. */
 export function remaining(expires: number, nowSeconds: number): string {
@@ -45,7 +47,7 @@ export function heading(screen: Screen): { title: string; lead: string } {
     case 'show-words':
       return {
         title: 'Your 12 words',
-        lead: 'These words make your master key: they add and remove your devices, replace a stolen key and restore everything. Write them on paper. You see them only during this setup, and nobody at Coasys ever sees them.',
+        lead: 'These words make your master key: it adds and removes your devices. Write them on paper and keep them: your identity can only ever be restored from them. You see them only during this setup, and nobody at Coasys ever sees them.',
       };
     case 'confirm-words':
       return {
@@ -86,6 +88,11 @@ export function heading(screen: Screen): { title: string; lead: string } {
       };
     case 'revoked':
       return { title: `${screen.keyId} revoked`, lead: `Your key log records it as entry #${screen.seq}.` };
+    case 'pending-refused':
+      return {
+        title: 'Your identity could not be published',
+        lead: `${screen.message} Trying again will not change that. Discard it, and this computer stops trying and goes on to make a new identity where it can. Its master key stays on this computer.`,
+      };
     case 'failed':
       return { title: 'That did not work', lead: screen.message };
   }

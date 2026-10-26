@@ -6519,6 +6519,9 @@
         "canChange": {
           "type": "boolean"
         },
+        "changeBlocked": {
+          "type": "string"
+        },
         "status": {
           "type": "object"
         },

@@ -42,6 +42,11 @@ export interface IdentityStore {
   available: Accessor<boolean>;
   /** This computer's shell keeps master keys, so the identity can be changed from here. */
   canChange: Accessor<boolean>;
+  /**
+   * Why the identity cannot be made or changed here although the shell keeps master keys (a build
+   * with no identity store key), in words a person reads; empty when it can.
+   */
+  changeBlocked: Accessor<string>;
   status: Accessor<IdentityStatusView | null>;
   /** The backend has answered `status` once. */
   statusLoaded: Accessor<boolean>;
@@ -59,7 +64,11 @@ export interface IdentityStore {
   fork: Accessor<KeyLogFork | null>;
   /** What the custody service says, public facts only; null where the host has none. */
   custody: Accessor<CustodyPublic | null>;
-  /** The first-run question is due: a shell that keeps keys, a device speaking for nobody, no "Start now". */
+  /**
+   * The first-run question is due: a shell that keeps keys, a device speaking for nobody, no "Start
+   * now". Asked even where `changeBlocked` says the identity cannot be made yet, so the person
+   * learns why; the screen offers "Start now" then.
+   */
   needsFirstRun: Accessor<boolean>;
   /** A step is open in the identity window. */
   busy: Accessor<boolean>;
@@ -110,6 +119,7 @@ export function IdentityStoreProvider(props: ParentProps) {
   const available = createMemo(() => !!port()?.status);
   const did = createMemo(() => status()?.did ?? '');
   const keyId = createMemo(() => status()?.keyId ?? '');
+  const changeBlocked = createMemo(() => custody()?.blocked ?? '');
 
   async function refresh(): Promise<void> {
     const identity = port();
@@ -162,6 +172,8 @@ export function IdentityStoreProvider(props: ParentProps) {
 
   async function open(step: IdentityStep): Promise<IdentityStepOutcome> {
     if (!host) throw new Error('This app cannot change your identity: no app here keeps your master key.');
+    // Refused here as well as in the custody service, so no window opens on a step that cannot run.
+    if (changeBlocked()) throw new Error(changeBlocked());
     setBusy(true);
     try {
       const outcome = await host.open(step);
@@ -175,7 +187,8 @@ export function IdentityStoreProvider(props: ParentProps) {
 
   const store: IdentityStore = {
     available,
-    canChange: () => !!host,
+    canChange: () => !!host && !changeBlocked(),
+    changeBlocked,
     status,
     statusLoaded,
     did,
@@ -187,7 +200,14 @@ export function IdentityStoreProvider(props: ParentProps) {
     fork,
     custody,
     needsFirstRun: createMemo(
-      () => !!host && available() && statusLoaded() && !did() && !startNow() && !custody()?.holdsMaster,
+      () =>
+        !!host &&
+        custody() !== null &&
+        available() &&
+        statusLoaded() &&
+        !did() &&
+        !startNow() &&
+        !custody()?.holdsMaster,
     ),
     busy,
     lastOutcome,

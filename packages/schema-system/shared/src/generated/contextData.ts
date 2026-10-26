@@ -2451,6 +2451,7 @@ export const contextData: ContextData = {
       state: {
         available: { type: 'boolean' },
         canChange: { type: 'boolean' },
+        changeBlocked: { type: 'string' },
         status: { type: 'object' },
         statusLoaded: { type: 'boolean' },
         did: { type: 'string' },

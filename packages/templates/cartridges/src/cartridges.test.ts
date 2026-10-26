@@ -9,9 +9,17 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { buildValidationContext, bundleThemes, readBundle, validateSemantic, withEntities } from '@we/schema-shared';
+import {
+  buildValidationContext,
+  bundleThemes,
+  readBundle,
+  type SchemaNode,
+  validateSemantic,
+  withEntities,
+} from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
+import { coasysFirstRun } from './coasys/firstRun.ts';
 import { bundleFileName, type Cartridge, cartridgeBundles, coasys, fieldGuide, toolLibrary } from './index.ts';
 
 const contextData = JSON.parse(readFileSync(resolve(import.meta.dirname, '../../../ai-context/context.json'), 'utf-8'));
@@ -79,6 +87,25 @@ describe('the Coasys cartridge', () => {
     expect(faces.every((f) => f.src.startsWith('data:font/woff2;base64,'))).toBe(true);
     // Nothing in it reaches out: no stylesheet carrying a url(), and no face that is not data.
     expect(glow.css ?? '').not.toMatch(/url\(/);
+  });
+
+  it('draws "Make my identity here" disabled, with the reason, on a build that cannot make one', () => {
+    const doors: SchemaNode[] = [];
+    const walk = (node: unknown): void => {
+      if (!node || typeof node !== 'object') return;
+      if (Array.isArray(node)) return node.forEach(walk);
+      const n = node as SchemaNode;
+      if (n.type === 'we-button' && JSON.stringify(n.children ?? []).includes('identityStore.custody.unlock')) {
+        doors.push(n);
+      }
+      Object.values(n).forEach(walk);
+    };
+    walk(coasysFirstRun);
+    expect(doors).toHaveLength(1);
+    const [makeHere] = doors;
+    expect((makeHere.props?.disabled as { $: string }).$).toContain("identityStore.changeBlocked != ''");
+    // The detail line reads the reason first.
+    expect(JSON.stringify(makeHere.children)).toContain('identityStore.changeBlocked ? identityStore.changeBlocked');
   });
 });
 

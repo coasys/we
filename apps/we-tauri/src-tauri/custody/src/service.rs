@@ -22,6 +22,7 @@ use ad4m_identity_client::{
     ClientError, ExecutorRpc, OsRandom, Secret, SystemClock, VaultError, ViaExecutor,
 };
 use ad4m_identity_core::link::OfferKind;
+use ad4m_identity_core::{Event, Op};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, oneshot};
 
@@ -90,6 +91,9 @@ pub enum Screen {
         key_id: String,
         seq: u64,
     },
+    /// An identity made here earlier that the store refused for good: why, and the way out —
+    /// discard it ([`StepInput::Discard`]) or cancel.
+    PendingRefused { did: String, message: String },
     /// The step stopped. Nothing was published unless the message says so.
     Failed { message: String },
 }
@@ -135,6 +139,8 @@ pub enum StepInput {
     Revoke {
         passphrase: Option<String>,
     },
+    /// Forget the identity on `PendingRefused`, which can never be published.
+    Discard,
 }
 
 impl std::fmt::Debug for StepInput {
@@ -147,6 +153,7 @@ impl std::fmt::Debug for StepInput {
             StepInput::WaitClaim => "wait-claim",
             StepInput::Confirm => "confirm",
             StepInput::Revoke { .. } => "revoke",
+            StepInput::Discard => "discard",
         };
         f.write_str(name)
     }
@@ -159,6 +166,9 @@ pub struct CustodyPublic {
     pub did: Option<String>,
     pub holds_master: Option<HoldsMaster>,
     pub unlock: &'static str,
+    /// Why no identity step can run on this computer, in words a person reads; `None` when they
+    /// can. Set when the executor trusts no identity store key, so nothing it publishes could take.
+    pub blocked: Option<&'static str>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -174,6 +184,9 @@ pub struct ExecutorAddress {
     pub admin_credential: Arc<str>,
     /// The identity store the executor's agent language uses: the offer link names it.
     pub store_url: Option<String>,
+    /// The executor was started with at least one identity store key (`identity.storeKeys`). With
+    /// none it accepts no head from the store, so every step that publishes is refused up front.
+    pub store_trusted: bool,
 }
 
 impl std::fmt::Debug for ExecutorAddress {
@@ -181,6 +194,7 @@ impl std::fmt::Debug for ExecutorAddress {
         f.debug_struct("ExecutorAddress")
             .field("url", &self.url)
             .field("store_url", &self.store_url)
+            .field("store_trusted", &self.store_trusted)
             .finish_non_exhaustive()
     }
 }
@@ -264,9 +278,29 @@ async fn connect(address: &ExecutorAddress) -> Result<ViaExecutor<WsRpcClient>, 
         .map_err(|_| "Coasys is starting on this computer. Try again in a moment.".to_string())
 }
 
+/// What a build with no identity store key says, before any step starts and whenever the executor
+/// refuses for that reason.
+pub const NO_STORE: &str =
+    "This build of Coasys has no identity store set up, so it cannot make or \
+     change an identity yet. Nothing was changed.";
+
+/// The step's refusal on a build whose executor trusts no store key: before words are made, an
+/// offer is opened or a key is unlocked. `None` where the store is trusted.
+fn no_store(address: &ExecutorAddress) -> Option<Screen> {
+    (!address.store_trusted).then(|| Screen::Failed {
+        message: NO_STORE.into(),
+    })
+}
+
+/// The executor refused because it trusts no identity store key (`identity.storeKeys`).
+fn names_no_store(e: &ClientError) -> bool {
+    matches!(e, ClientError::Rpc(e) if e.code == 503 && e.message.starts_with("no-store-keys"))
+}
+
 /// Words a person reads, for each way a flow stops.
 fn failed(e: &ClientError) -> Screen {
     let message = match e {
+        e if names_no_store(e) => NO_STORE.into(),
         ClientError::Vault(VaultError::Cancelled) => {
             "The unlock was cancelled. Nothing changed.".into()
         }
@@ -320,7 +354,12 @@ async fn serve(vault: DesktopVault, address: ExecutorAddress, mut rx: Rx) {
 
 /// Finishes an identity whose `create` kept its incept here and did not see the publish answered
 /// (the app stopped, or the publish failed): publishes that incept again, which needs no unlock.
-/// `None` when nothing is pending. Asks the executor nothing when nothing is kept.
+/// `None` when nothing is pending for this executor. Asks the executor nothing when nothing is kept.
+///
+/// Only the incept listing this executor's device key is touched (the identity client's `resume`
+/// picks it): the custody folder is shared by every account on the computer, and another
+/// account's incept is that account's to finish. An incept this executor can never publish,
+/// because it already speaks for another identity, is forgotten.
 async fn finish_pending<R: ExecutorRpc>(
     executor: &ViaExecutor<R>,
     vault: &DesktopVault,
@@ -329,7 +368,60 @@ async fn finish_pending<R: ExecutorRpc>(
         return Ok(None);
     }
     log::info!("custody: finishing an identity whose publish was not confirmed");
-    resume(executor, &vault.unlocking(None)).await
+    match resume(executor, &vault.unlocking(None)).await {
+        Err(ClientError::HasIdentity(held)) => {
+            let status = executor.status().await?;
+            if let Some(incept) = own_pending(vault, &status.device_key)? {
+                log::warn!(
+                    "custody: this computer speaks for {held}; forgetting the incept of {} it can \
+                     never publish",
+                    ad4m_identity_core::did_of(&incept.scid)
+                );
+                vault.forget_pending(&incept.scid)?;
+            }
+            Ok(None)
+        }
+        other => other,
+    }
+}
+
+/// The kept incept that lists `device_key` — this executor's, when it is the executor's own key.
+fn own_pending(vault: &DesktopVault, device_key: &str) -> Result<Option<Event>, VaultError> {
+    Ok(vault.pending_incepts()?.into_iter().find(|incept| {
+        matches!(&incept.op, Op::Incept { add, .. } if add.iter().any(|d| d.sign == device_key))
+    }))
+}
+
+/// How a refused publish of a kept incept stands: `None` when trying again may work (the store or
+/// the executor did not answer, a rate limit, a head signed by a key this build does not trust);
+/// else the sentence that says why it never will, and whether this computer's key is the reason.
+fn refused_for_good(e: &ClientError, did: &str) -> Option<(String, bool)> {
+    match e {
+        ClientError::Rpc(e) if e.code == 409 && e.message.starts_with("key-taken") => Some((
+            format!(
+                "The identity store refused {did}: this computer's key is already in a key log, \
+                 so publishing it again cannot work."
+            ),
+            true,
+        )),
+        ClientError::Rpc(e) if e.code == 409 && e.message.starts_with("conflict") => Some((
+            format!(
+                "The identity store holds a different log for {did}, so publishing this one \
+                 cannot work."
+            ),
+            false,
+        )),
+        ClientError::Rpc(e) if e.code == 400 || e.code == 403 => Some((
+            format!("The identity store refused {did}: {}", e.message),
+            false,
+        )),
+        ClientError::Fold(why) => Some((
+            format!("The identity kept here for {did} does not check out ({why})."),
+            false,
+        )),
+        ClientError::Protocol(why) => Some((format!("{did} cannot be published: {why}"), false)),
+        _ => None,
+    }
 }
 
 /// [`finish_pending`] where a step does not depend on it: a failure is logged, and the next
@@ -373,6 +465,7 @@ async fn public_state(vault: &DesktopVault, address: &ExecutorAddress) -> Custod
         did,
         holds_master,
         unlock,
+        blocked: (!address.store_trusted).then_some(NO_STORE),
     }
 }
 
@@ -427,6 +520,9 @@ fn unfinished(e: &ClientError) -> Screen {
     let Screen::Failed { message } = failed(e) else {
         unreachable!("failed() answers Failed")
     };
+    if names_no_store(e) {
+        return Screen::Failed { message };
+    }
     Screen::Failed {
         message: format!(
             "Your identity was made on this computer but is not published yet. {message} \
@@ -447,13 +543,28 @@ async fn run_create(
     rx: &mut Rx,
     reply: &mut Reply,
 ) {
+    // Before anything: words shown for an identity the store could never take would be a lie.
+    if let Some(refused) = no_store(address) {
+        return answer(reply, Ok(refused));
+    }
     let executor = match connect(address).await {
         Ok(e) => e,
         Err(message) => return answer(reply, Ok(Screen::Failed { message })),
     };
+    create_on(&executor, vault, address, rx, reply).await
+}
+
+/// [`run_create`] once the executor answers.
+async fn create_on<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    vault: &DesktopVault,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+) {
     // An identity made here earlier whose publish was not confirmed is finished, never replaced:
     // its master key is already kept, and its words are the ones the person wrote down.
-    match finish_pending(&executor, vault).await {
+    match finish_pending(executor, vault).await {
         Ok(Some(created)) => {
             return answer(
                 reply,
@@ -464,10 +575,14 @@ async fn run_create(
             )
         }
         Ok(None) => {}
-        Err(e) => return answer(reply, Ok(unfinished(&e))),
+        Err(e) => {
+            if !offer_discard(executor, vault, address, rx, reply, &e).await {
+                return;
+            }
+        }
     }
     // Refuse before showing words that would make nothing: this device speaks for someone already.
-    match executor.status().await {
+    let device_key = match executor.status().await {
         Ok(status) if status.did.is_some() => {
             return answer(
                 reply,
@@ -477,8 +592,8 @@ async fn run_create(
             )
         }
         Err(e) => return answer(reply, Ok(failed(&ClientError::Rpc(e)))),
-        Ok(_) => {}
-    }
+        Ok(status) => status.device_key,
+    };
     let (mut flow, first) = CreateFlow::start(&RANDOM);
     let CreateScreen::ShowWords(words) = first else {
         return answer(
@@ -568,16 +683,83 @@ async fn run_create(
 
     // incept, the executor's co-signature, the vault keeps master #0 and the incept, publish.
     let unlocking = vault.unlocking(passphrase);
-    let screen = match flow.finish(&executor, &unlocking).await {
+    let screen = match flow.finish(executor, &unlocking).await {
         Ok(created) => Screen::IdentityReady {
             did: created.did,
             key_id: created.device_key_id,
         },
-        // Custody came first, so a publish that failed left an identity to finish, not a loss.
-        Err(e) if !vault.pending_incepts().unwrap_or_default().is_empty() => unfinished(&e),
+        // Custody came first, so a publish that failed left an identity to finish, not a loss —
+        // when the incept kept is this executor's. Another account's is not this step's.
+        Err(e) if own_pending(vault, &device_key).ok().flatten().is_some() => unfinished(&e),
         Err(e) => failed(&e),
     };
     answer(reply, Ok(screen));
+}
+
+/// After `finish_pending` failed in a create: whether the create goes on to new words.
+///
+/// A failure that trying again may fix ends the step with [`unfinished`]: the same identity is
+/// finished on the next attempt. One that never will (the store refused this incept for good)
+/// names the cause and offers to discard it; the person's answer decides. Discarding forgets the
+/// incept only — the master key stays where it rests, since nothing here can be sure the store
+/// holds no log that names it.
+async fn offer_discard<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    vault: &DesktopVault,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+    e: &ClientError,
+) -> bool {
+    let incept = match executor.status().await {
+        Ok(status) => own_pending(vault, &status.device_key).ok().flatten(),
+        Err(_) => None,
+    };
+    // Nothing of this executor's is pending (another account's incept, or no answer): say what
+    // failed, and claim no identity made here.
+    let Some(incept) = incept else {
+        answer(reply, Ok(failed(e)));
+        return false;
+    };
+    let did = ad4m_identity_core::did_of(&incept.scid);
+    let Some((message, key_taken)) = refused_for_good(e, &did) else {
+        answer(reply, Ok(unfinished(e)));
+        return false;
+    };
+    answer(
+        reply,
+        Ok(Screen::PendingRefused {
+            did: did.clone(),
+            message,
+        }),
+    );
+    loop {
+        let Some(input) = next_input(vault, address, rx, reply).await else {
+            return false;
+        };
+        let StepInput::Discard = input else {
+            answer(reply, Err(CustodyError::WrongInput));
+            continue;
+        };
+        if let Err(e) = vault.forget_pending(&incept.scid) {
+            answer(reply, Ok(failed(&ClientError::Vault(e))));
+            return false;
+        }
+        if key_taken {
+            // New words would list the same key, and be refused the same way.
+            answer(
+                reply,
+                Ok(Screen::Failed {
+                    message: format!(
+                        "{did} is discarded. This computer's key is already in a key log, so the \
+                         identity store would refuse a new identity made with it too."
+                    ),
+                }),
+            );
+            return false;
+        }
+        return true;
+    }
 }
 
 // ─── link (the holder's side) ───────────────────────────────────────────────────
@@ -590,6 +772,9 @@ fn passphrase_for(vault: &DesktopVault, did: &str) -> Result<bool, ClientError> 
 }
 
 async fn run_link(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, reply: &mut Reply) {
+    if let Some(refused) = no_store(address) {
+        return answer(reply, Ok(refused));
+    }
     let Some(store_url) = address.store_url.clone() else {
         return answer(
             reply,
@@ -760,6 +945,9 @@ async fn run_revoke(
     reply: &mut Reply,
     key_id: String,
 ) {
+    if let Some(refused) = no_store(address) {
+        return answer(reply, Ok(refused));
+    }
     let executor = match connect(address).await {
         Ok(e) => e,
         Err(message) => return answer(reply, Ok(Screen::Failed { message })),
@@ -868,6 +1056,9 @@ mod tests {
         device: KeySigner,
         held: RefCell<Option<String>>,
         refuse_publish: Cell<bool>,
+        /// A refusal every publish answers with, as a store that never takes this incept.
+        refuse_for_good: RefCell<Option<(u16, String)>>,
+        refuse_cosign: Cell<bool>,
         publishes: Cell<u32>,
         calls: Cell<u32>,
     }
@@ -878,6 +1069,8 @@ mod tests {
                 device: KeySigner::new(&[5u8; 32], 0),
                 held: RefCell::new(None),
                 refuse_publish: Cell::new(false),
+                refuse_for_good: RefCell::new(None),
+                refuse_cosign: Cell::new(false),
                 publishes: Cell::new(0),
                 calls: Cell::new(0),
             }
@@ -902,11 +1095,20 @@ mod tests {
                     }))
                 }
                 "identity.cosignIncept" => {
+                    if self.refuse_cosign.get() {
+                        return Err(RpcError {
+                            code: 500,
+                            message: "the keystore is locked".into(),
+                        });
+                    }
                     let mut event = Event::from_json(&p["event"]).unwrap();
                     cosign(&mut event, "d1", &self.device).unwrap();
                     Ok(serde_json::to_value(&event).unwrap())
                 }
                 "identity.publish" => {
+                    if let Some((code, message)) = self.refuse_for_good.borrow().clone() {
+                        return Err(RpcError { code, message });
+                    }
                     if self.refuse_publish.replace(false) {
                         return Err(RpcError {
                             code: 503,
@@ -1052,9 +1254,19 @@ mod tests {
             did: Some("did:scid:coasys:1:Qm".into()),
             holds_master: Some(HoldsMaster { index: 0 }),
             unlock: "passphrase",
+            blocked: Some(NO_STORE),
         })
         .unwrap();
         assert_eq!(public["holdsMaster"]["index"], 0);
+        assert_eq!(public["blocked"], NO_STORE);
+        let screen = serde_json::to_value(Screen::PendingRefused {
+            did: "did:scid:coasys:1:Qm".into(),
+            message: "refused".into(),
+        })
+        .unwrap();
+        assert_eq!(screen["screen"], "pending-refused");
+        let input: StepInput = serde_json::from_str(r#"{"kind":"discard"}"#).unwrap();
+        assert!(matches!(input, StepInput::Discard));
     }
 
     #[test]
@@ -1099,6 +1311,7 @@ mod tests {
                 url: "http://127.0.0.1:9".into(),
                 admin_credential: Arc::from("x"),
                 store_url: None,
+                store_trusted: true,
             },
         );
         assert_eq!(
@@ -1112,8 +1325,288 @@ mod tests {
         // With no executor there is no identity to report.
         let public = handle.public_state().await.unwrap();
         assert_eq!(
-            (public.did, public.holds_master, public.unlock),
-            (None, None, "passphrase")
+            (
+                public.did,
+                public.holds_master,
+                public.unlock,
+                public.blocked
+            ),
+            (None, None, "passphrase", None)
         );
+    }
+
+    #[tokio::test]
+    async fn a_build_with_no_store_key_refuses_every_step_before_words_are_made() {
+        let pending = PendingIncepts::memory();
+        let vault = DesktopVault::new(Box::new(crate::store::MemoryStore::new()), pending);
+        let handle = spawn(
+            vault,
+            ExecutorAddress {
+                url: "http://127.0.0.1:9".into(),
+                admin_credential: Arc::from("x"),
+                store_url: Some("https://store.example".into()),
+                store_trusted: false,
+            },
+        );
+        let no_store = Screen::Failed {
+            message: NO_STORE.into(),
+        };
+        // The refusal comes before the executor is asked anything: port 9 would answer
+        // "Coasys is starting" instead.
+        for step in [
+            IdentityStep::Create,
+            IdentityStep::AddDevice,
+            IdentityStep::Revoke {
+                key_id: "d2".into(),
+            },
+        ] {
+            assert_eq!(handle.start(step).await.unwrap(), no_store);
+        }
+        assert_eq!(handle.public_state().await.unwrap().blocked, Some(NO_STORE));
+    }
+
+    #[test]
+    fn the_executors_no_store_refusal_reads_as_the_same_sentence() {
+        let refusal = ClientError::Rpc(RpcError {
+            code: 503,
+            // As the executor answers it (`IdentityService::refuse_without_store_keys`).
+            message: "no-store-keys: identity.storeKeys is not set, so this executor accepts no \
+                      head from the identity store and cannot bind an agent to a log; set \
+                      identity.storeKeys first"
+                .into(),
+        });
+        let expected = Screen::Failed {
+            message: NO_STORE.into(),
+        };
+        assert_eq!(failed(&refusal), expected);
+        assert_eq!(unfinished(&refusal), expected);
+        // Not a refusal for good: a build with a key finishes the same identity.
+        assert!(refused_for_good(&refusal, "did:scid:coasys:1:Qm").is_none());
+    }
+
+    #[test]
+    fn only_refusals_that_retrying_cannot_fix_count_as_for_good() {
+        let rpc = |code, message: &str| {
+            ClientError::Rpc(RpcError {
+                code,
+                message: message.into(),
+            })
+        };
+        let did = "did:scid:coasys:1:Qm";
+        for transient in [
+            rpc(503, "unavailable: the store did not answer"),
+            rpc(429, "rate-limited: Ip, retry after 30 s"),
+            rpc(502, "bad-head-signature: the store's head is not signed"),
+            ClientError::Vault(VaultError::Unavailable("locked".into())),
+        ] {
+            assert!(refused_for_good(&transient, did).is_none(), "{transient:?}");
+        }
+        let (_, key) = refused_for_good(&rpc(409, "key-taken: z6Mk sits in a log"), did).unwrap();
+        assert!(key);
+        for permanent in [
+            rpc(409, "conflict: the store's head is seq 3 (h)"),
+            rpc(400, "invalid: bad proof"),
+            rpc(403, "forbidden: \"pow\""),
+        ] {
+            let (message, key) = refused_for_good(&permanent, did).unwrap();
+            assert!(!key && message.contains(did), "{message}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_pending_incept_this_computer_can_never_publish_is_forgotten() {
+        let dir = tempfile::tempdir().unwrap();
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        let vault = open_vault(dir.path());
+        executor.rpc().refuse_publish.set(true);
+        let _ = confirmed(31)
+            .finish(&executor, &vault.unlocking(pass()))
+            .await;
+        let scid = vault.pending_incepts().unwrap()[0].scid.clone();
+
+        // Meanwhile this computer came to speak for another identity.
+        *executor.rpc().held.borrow_mut() = Some("QmAnotherIdentity".into());
+        assert!(finish_pending(&executor, &vault).await.unwrap().is_none());
+        assert!(vault.pending_incepts().unwrap().is_empty());
+        assert_eq!(executor.rpc().publishes.get(), 0);
+        // Only the incept is forgotten: the master key stays where it rests.
+        assert!(vault.holds(&scid).unwrap());
+    }
+
+    #[tokio::test]
+    async fn a_pending_incept_the_store_refused_for_good_can_be_discarded_for_new_words() {
+        let dir = tempfile::tempdir().unwrap();
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        let vault = open_vault(dir.path());
+        *executor.rpc().refuse_for_good.borrow_mut() =
+            Some((409, "conflict: the store's head is seq 2 (h)".into()));
+        let _ = confirmed(32)
+            .finish(&executor, &vault.unlocking(pass()))
+            .await;
+        let scid = vault.pending_incepts().unwrap()[0].scid.clone();
+        let did = did_of(&scid);
+
+        let screens = run_create_on(&executor, &vault, |window, first| async move {
+            let mut seen = vec![first];
+            seen.push(window.step(StepInput::Discard).await);
+            seen
+        })
+        .await;
+        let Screen::PendingRefused {
+            did: refused,
+            message,
+        } = &screens[0]
+        else {
+            panic!("{screens:?}");
+        };
+        assert_eq!(*refused, did);
+        assert!(message.contains("different log"), "{message}");
+        // Discarded: the create goes on to new words, and nothing is pending.
+        assert!(
+            matches!(&screens[1], Screen::ShowWords { words } if words.len() == 12),
+            "{screens:?}"
+        );
+        assert!(vault.pending_incepts().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_refusal_for_good_is_not_discarded_unless_asked() {
+        let dir = tempfile::tempdir().unwrap();
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        let vault = open_vault(dir.path());
+        *executor.rpc().refuse_for_good.borrow_mut() =
+            Some((409, "key-taken: z6Mk sits in a log".into()));
+        let _ = confirmed(33)
+            .finish(&executor, &vault.unlocking(pass()))
+            .await;
+
+        // Cancelled on the refusal screen: the incept is still kept.
+        let screens = run_create_on(&executor, &vault, |_, first| async move { vec![first] }).await;
+        assert!(matches!(&screens[0], Screen::PendingRefused { .. }));
+        assert_eq!(vault.pending_incepts().unwrap().len(), 1);
+
+        // Discarded where the key is taken: no new words, since they would be refused the same way.
+        let screens = run_create_on(&executor, &vault, |window, first| async move {
+            vec![first, window.step(StepInput::Discard).await]
+        })
+        .await;
+        let Screen::Failed { message } = &screens[1] else {
+            panic!("{screens:?}");
+        };
+        assert!(
+            message.contains("discarded") && message.contains("key log"),
+            "{message}"
+        );
+        assert!(vault.pending_incepts().unwrap().is_empty());
+    }
+
+    /// A co-signed-shape incept of fixed words listing another executor's device key: what another
+    /// account on this computer keeps in the shared custody folder.
+    fn foreign_incept(entropy: u8) -> Event {
+        use ad4m_identity_core::build::incept_human;
+        use ad4m_identity_core::{DeviceKey, KeyLife};
+        let seed = words::seed(&words::from_entropy(&[entropy; 16]));
+        let master = words::master_key(&seed, 0).unwrap();
+        let (next, _) = words::next_commitment(&seed, 1).unwrap();
+        let device = DeviceKey {
+            id: "d1".into(),
+            sign: Signer::key(&KeySigner::new(&[7u8; 32], 0)),
+            enc: ad4m_identity_core::encode_x25519_multikey(&[8u8; 32]),
+            life: KeyLife::Standing,
+        };
+        incept_human(&master, next, vec![device]).unwrap()
+    }
+
+    #[tokio::test]
+    async fn another_accounts_pending_incept_is_neither_finished_nor_reported() {
+        let dir = tempfile::tempdir().unwrap();
+        let foreign = foreign_incept(34);
+        PendingIncepts::file(dir.path()).keep(&foreign).unwrap();
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        let vault = open_vault(dir.path());
+
+        // Not this executor's to publish.
+        assert!(finish_pending(&executor, &vault).await.unwrap().is_none());
+        assert_eq!(executor.rpc().publishes.get(), 0);
+        assert_eq!(vault.pending_incepts().unwrap(), vec![foreign.clone()]);
+
+        // A create here goes on to words, and a failure before custody is not reported as an
+        // identity made here and still being finished.
+        executor.rpc().refuse_cosign.set(true);
+        let screens = run_create_on(&executor, &vault, |window, first| async move {
+            vec![write_down(&window, first).await]
+        })
+        .await;
+        let Screen::Failed { message } = &screens[0] else {
+            panic!("{screens:?}");
+        };
+        assert!(!message.contains("made on this computer"), "{message}");
+        assert_eq!(vault.pending_incepts().unwrap(), vec![foreign]);
+    }
+
+    /// The identity window's side of a step, sending inputs to the flow as the app does.
+    struct Window {
+        tx: mpsc::UnboundedSender<Request>,
+    }
+
+    impl Window {
+        async fn step(&self, input: StepInput) -> Screen {
+            let (tx, rx) = oneshot::channel();
+            self.tx.send(Request::Step(input, tx)).unwrap();
+            rx.await.unwrap().unwrap()
+        }
+    }
+
+    /// Runs [`create_on`] against `executor`, with `window` driving it from its first screen.
+    /// The step ends when the driver returns (the window closes).
+    async fn run_create_on<F, Fut>(
+        executor: &ViaExecutor<FakeExecutor>,
+        vault: &DesktopVault,
+        window: F,
+    ) -> Vec<Screen>
+    where
+        F: FnOnce(Window, Screen) -> Fut,
+        Fut: std::future::Future<Output = Vec<Screen>>,
+    {
+        let address = ExecutorAddress {
+            url: "http://127.0.0.1:9".into(),
+            admin_credential: Arc::from("x"),
+            store_url: None,
+            store_trusted: true,
+        };
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let (first_tx, first_rx) = oneshot::channel();
+        let mut reply = Some(first_tx);
+        let ((), screens) = tokio::join!(
+            create_on(executor, vault, &address, &mut rx, &mut reply),
+            async move {
+                let first = first_rx.await.unwrap().unwrap();
+                window(Window { tx }, first).await
+            }
+        );
+        screens
+    }
+
+    /// From the words to the passphrase, as a person does it: the screen after the passphrase.
+    async fn write_down(window: &Window, first: Screen) -> Screen {
+        let Screen::ShowWords { words } = first else {
+            panic!("{first:?}");
+        };
+        let Screen::ConfirmWords { positions, .. } = window.step(StepInput::WordsWritten).await
+        else {
+            panic!("expected the confirm screen");
+        };
+        let answers = [
+            words[positions[0] - 1].clone(),
+            words[positions[1] - 1].clone(),
+        ];
+        let next = window.step(StepInput::Words { answers }).await;
+        assert!(matches!(next, Screen::SetPassphrase { .. }), "{next:?}");
+        window
+            .step(StepInput::Passphrase {
+                passphrase: PASSPHRASE.into(),
+                confirm: Some(PASSPHRASE.into()),
+            })
+            .await
     }
 }

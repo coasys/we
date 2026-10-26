@@ -39,8 +39,16 @@ pub fn require(command: &str, label: &str) -> Result<(), WrongWindow> {
     }
 }
 
+/// Where `tauri dev` serves both bundles from: `build.devUrl` in `tauri.conf.json`.
+pub const DEV_HOST: &str = "localhost:1420";
+
 /// Whether the identity window may navigate to `url`: its own bundle only.
-pub fn identity_may_navigate(url: &str) -> bool {
+///
+/// `dev_served` says the app is served from the Vite dev server (`tauri::is_dev()`: true under
+/// `tauri dev`, whichever cargo profile it runs — `pnpm tauri:dev` runs `--release` — and false in
+/// a packaged build, which serves its bundle over its own protocol). Only then is the dev origin
+/// the bundle's; a packaged build refuses every `http://localhost` page.
+pub fn identity_may_navigate(url: &str, dev_served: bool) -> bool {
     let Some((scheme, rest)) = url.split_once("://") else {
         return false;
     };
@@ -48,9 +56,10 @@ pub fn identity_may_navigate(url: &str) -> bool {
         .split_once('/')
         .map(|(h, p)| (h, format!("/{p}")))
         .unwrap_or((rest, "/".into()));
-    let own_origin = matches!((scheme, host), ("tauri", "localhost") | ("http", "tauri.localhost") | ("https", "tauri.localhost"))
-        // `tauri dev` serves both bundles from Vite.
-        || (cfg!(debug_assertions) && scheme == "http" && host == "localhost:1420");
+    let own_origin = matches!(
+        (scheme, host),
+        ("tauri", "localhost") | ("http", "tauri.localhost") | ("https", "tauri.localhost")
+    ) || (dev_served && scheme == "http" && host == DEV_HOST);
     own_origin && path.starts_with("/identity/") && !path.contains("..")
 }
 
@@ -79,19 +88,58 @@ mod tests {
 
     #[test]
     fn the_identity_window_stays_in_its_bundle() {
-        assert!(identity_may_navigate(
-            "tauri://localhost/identity/index.html"
-        ));
-        assert!(identity_may_navigate(
-            "http://tauri.localhost/identity/index.html"
-        ));
-        assert!(!identity_may_navigate("tauri://localhost/index.html"));
+        // Packaged and dev-served alike: the app's own origin, the identity bundle only.
+        for dev in [false, true] {
+            assert!(identity_may_navigate(
+                "tauri://localhost/identity/index.html",
+                dev
+            ));
+            assert!(identity_may_navigate(
+                "http://tauri.localhost/identity/index.html",
+                dev
+            ));
+            assert!(!identity_may_navigate("tauri://localhost/index.html", dev));
+            assert!(!identity_may_navigate(
+                "https://example.org/identity/index.html",
+                dev
+            ));
+            assert!(!identity_may_navigate(
+                "tauri://localhost/identity/../index.html",
+                dev
+            ));
+            assert!(!identity_may_navigate("javascript:alert(1)", dev));
+        }
+    }
+
+    #[test]
+    fn the_dev_server_is_the_bundles_origin_only_when_the_app_is_served_from_it() {
+        let dev_page = "http://localhost:1420/identity/index.html";
+        // `tauri dev`, in either cargo profile: exactly the dev identity origin.
+        assert!(identity_may_navigate(dev_page, true));
         assert!(!identity_may_navigate(
-            "https://example.org/identity/index.html"
+            "http://localhost:1420/index.html",
+            true
         ));
         assert!(!identity_may_navigate(
-            "tauri://localhost/identity/../index.html"
+            "http://localhost:1421/identity/index.html",
+            true
         ));
-        assert!(!identity_may_navigate("javascript:alert(1)"));
+        assert!(!identity_may_navigate(
+            "https://localhost:1420/identity/index.html",
+            true
+        ));
+        assert!(!identity_may_navigate(
+            "http://localhost/identity/index.html",
+            true
+        ));
+        // A packaged build: no localhost page at all.
+        assert!(!identity_may_navigate(dev_page, false));
+    }
+
+    #[test]
+    fn the_dev_host_is_the_one_tauri_dev_serves_from() {
+        let conf: serde_json::Value =
+            serde_json::from_str(include_str!("../../tauri.conf.json")).unwrap();
+        assert_eq!(conf["build"]["devUrl"], format!("http://{DEV_HOST}"));
     }
 }

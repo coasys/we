@@ -72,13 +72,43 @@ Only the **identity window** runs a flow. It is a separate bundle (`identity/`, 
 custody state (`identity_open`, `identity_public_state`); `build.rs` declares every command in an app
 manifest so none is callable without a capability.
 
-The executor's identity store comes from the environment the executor's own CLI reads:
+### The identity store
+
+The executor's identity store is two settings, named as the executor's own CLI names them:
+`AD4M_IDENTITY_STORE_URL` (where the store is) and `AD4M_IDENTITY_STORE_KEYS` (the store's signing
+keys, comma-separated multikeys — the executor accepts a head from the store only when one of
+these signed it). The app reads each from its run-time environment, and otherwise from the value
+the build was compiled with (`option_env!` in `src-tauri/src/lib.rs`), so a build handed to
+somebody carries them:
 
 ```sh
-AD4M_IDENTITY_STORE_URL=https://store-staging.coasys.org AD4M_IDENTITY_STORE_KEYS=<store key> pnpm tauri:dev
+# A demo build that carries its store. Set both while compiling; cargo rebuilds when they change.
+AD4M_IDENTITY_STORE_URL=<store url> AD4M_IDENTITY_STORE_KEYS=<store key> pnpm tauri:build
+
+# Development, or to point a built app at another store for one run (overrides what it carries):
+AD4M_IDENTITY_STORE_URL=<store url> AD4M_IDENTITY_STORE_KEYS=<store key> pnpm tauri:dev
 ```
 
-Unset, the agent language keeps its own store setting and Add a device cannot make an offer link.
+No store is deployed for the app yet, so there are no values to give here; use those of the store
+you run (`custody/tests/live.rs` starts a local one).
+
+**A build with no store key cannot make or change an identity, and says so.** The executor would
+refuse every publish (it trusts no head the store could answer), so the custody service refuses
+make, add-device and revoke before anything starts — before any words are made — and reports
+`blocked` in its public state. The first-run screen then draws "Make my identity here" disabled with
+the reason, and "Start now" is the way in. Without a URL the agent language keeps its own store
+setting, and Add a device cannot make an offer link.
+
+### Pending identities
+
+`create` keeps the identity's incept in `<custody dir>/pending-incepts.json` until its publish is
+confirmed, and the next attempt publishes it again. That folder is shared by every account on the
+computer, so an account only finishes — or reports — an incept that lists its own executor's device
+key. An incept that can never be published is not retried forever: one whose executor already
+speaks for another identity is forgotten, and one the store refused for good (its key already in a
+key log, a different log under its identifier, an event it calls invalid) is shown with its cause
+when the person next makes an identity, with "Discard it" to forget it. Discarding forgets the
+incept only; the master key stays where it rests.
 
 ### Testing the custody crate
 
