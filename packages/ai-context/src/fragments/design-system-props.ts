@@ -166,6 +166,7 @@ we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
 | minHeight | string | Minimum height |
 | maxWidth | string | Maximum width |
 | maxHeight | string | Maximum height |
+| aspectRatio | string | Width to height, as CSS writes it ('16 / 9', '1'): the box keeps that shape at any width, before what is inside has loaded |
 | position | "relative" \\| "absolute" \\| "fixed" \\| "sticky" | CSS position |
 | top | SpaceValue | Top offset — space token or CSS length |
 | right | SpaceValue | Right offset — space token or CSS length |

@@ -64,6 +64,7 @@ export const layoutKeys = [
   'minHeight',
   'maxWidth',
   'maxHeight',
+  'aspectRatio',
   'position',
   'top',
   'right',
@@ -766,6 +767,7 @@ export const HOST_LAYOUT_SPECS: PropSpec[] = [
   ['min-height', 'min-height'],
   ['max-width', 'max-width'],
   ['max-height', 'max-height'],
+  ['aspect-ratio', 'aspect-ratio'],
   ['position', 'position'],
   ['top', 'top'],
   ['right', 'right'],
@@ -1229,6 +1231,7 @@ export function buildLayoutStyles(props: LayoutStyleProps, direction: 'row' | 'c
   if (props.minHeight) style['min-height'] = props.minHeight;
   if (props.maxWidth) style['max-width'] = props.maxWidth;
   if (props.maxHeight) style['max-height'] = props.maxHeight;
+  if (props.aspectRatio) style['aspect-ratio'] = props.aspectRatio;
   const { main, cross } = mapFlexAxes(props, props.reverse ? `${direction}-reverse` : direction);
   if (main !== undefined) style['justify-content'] = main;
   if (cross !== undefined) style['align-items'] = cross;

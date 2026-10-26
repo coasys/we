@@ -664,6 +664,7 @@ function updateCustomVars(
   setProperty(el, `${prefix}min-height`, props.minHeight);
   setProperty(el, `${prefix}max-width`, props.maxWidth);
   setProperty(el, `${prefix}max-height`, props.maxHeight);
+  setProperty(el, `${prefix}aspect-ratio`, props.aspectRatio);
   setProperty(el, `${prefix}position`, props.position);
   /*
     Offsets resolve space tokens, exactly as margin, padding and gap do.

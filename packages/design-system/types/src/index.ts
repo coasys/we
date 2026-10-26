@@ -218,6 +218,11 @@ export interface DesignSystemProps {
   minWidth?: string;
   minHeight?: string;
   maxWidth?: string;
+  /**
+   * Width to height, as CSS writes it — `'16 / 9'`, `'1'`. The box keeps that shape at whatever width
+   * it is given, before anything inside it has loaded: a film's frame, a square tile.
+   */
+  aspectRatio?: string;
   maxHeight?: string;
   display?: Display;
   direction?: FlexDirection;
