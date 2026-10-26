@@ -121,6 +121,19 @@ function rebuildBundlesOnChange(server) {
     server.ws.send({ type: 'full-reload' });
   };
 
+  /*
+    Once at start as well. The watcher only sees what changes while the server runs, so a cartridge
+    edited, committed or pulled while it was down left the last run's registry in place — a restart
+    drew the old app and looked like the edit had not happened. The bundles are written first and the
+    registry after, so both are current before anybody has a reason to reload.
+  */
+  queue = queue
+    .then(writeBundles)
+    .then(regenerate)
+    .catch((error) => {
+      log.error(`[we-seed] start-up rebuild failed:\n${error.stderr || error.message}`, { timestamp: true });
+    });
+
   server.watcher.add([...CARTRIDGE_SOURCES, BUNDLES_DIR]);
   const onFile = (file) => {
     if (isBundle(file)) schedule('regenerate', regenerate);
