@@ -855,13 +855,26 @@
                       "props": {
                         "label": "This space",
                         "selected": {
-                          "$": "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' ? 'call|' + routeStore.params.id : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' ? (workflowStore.open ? 'workflow|' + workflowStore.open.name : 'group|workflows') : 'channel|' + (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)"
+                          "$": "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' ? 'call|' + routeStore.params.id : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' ? (workflowStore.open ? 'workflow|' + workflowStore.open.name : 'group|workflows') : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') in ['channels', 'calls', 'people'] ? 'group|' + (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') : 'channel|' + (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)"
                         },
                         "onSelect": [
                           {
                             "$if": {
-                              "condition": { "$": "startsWith(event.detail.value, 'group|')" },
+                              "condition": {
+                                "$": "startsWith(event.detail.value, 'group|') && !(event.detail.value in local.openRows)"
+                              },
                               "then": { "$toggleLocalIn": "openRows", "value": { "$": "event.detail.value" } }
+                            }
+                          },
+                          {
+                            "$if": {
+                              "condition": {
+                                "$": "event.detail.value in ['group|channels', 'group|calls', 'group|people']"
+                              },
+                              "then": {
+                                "$invoke": "routeStore.navigate",
+                                "args": [{ "$": "spaceStore.spacePath + '/' + split(event.detail.value, '|')[1]" }]
+                              }
                             }
                           },
                           {
@@ -874,6 +887,12 @@
                                   "args": [{ "$": "spaceStore.spacePath + '/workflows'" }]
                                 }
                               ]
+                            }
+                          },
+                          {
+                            "$if": {
+                              "condition": { "$": "event.detail.value == 'group|dna'" },
+                              "then": { "$invoke": "shellStore.openSpaceSettings", "args": ["vocabulary"] }
                             }
                           },
                           {
@@ -6518,6 +6537,470 @@
                       }
                     }
                   ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "path": "/channels",
+          "type": "Column",
+          "props": { "width": "100%", "height": "100%" },
+          "$queries": {
+            "subChannels": {
+              "entity": "CollectionBlock",
+              "where": { "kind": "channel" },
+              "scope": { "anchor": "CollectionBlock", "via": "children", "anchorId": { "$": "spaceStore.root" } },
+              "order": { "createdAt": "asc" },
+              "limit": 100,
+              "when": { "$": "spaceStore.root" }
+            }
+          },
+          "children": [
+            {
+              "type": "Row",
+              "props": {
+                "gap": "300",
+                "ay": "center",
+                "px": "500",
+                "py": "300",
+                "borderBottom": "1px solid border",
+                "minHeight": "56px"
+              },
+              "children": [
+                {
+                  "type": "$if",
+                  "props": {
+                    "condition": { "$": "'tree' in shellStore.collapsedLanes" },
+                    "then": {
+                      "type": "we-tooltip",
+                      "props": { "content": "Show the sidebar", "placement": "bottom" },
+                      "children": [
+                        {
+                          "type": "we-button",
+                          "props": {
+                            "variant": "ghost",
+                            "size": "md",
+                            "square": true,
+                            "label": "Show the sidebar",
+                            "onClick": { "$invoke": "shellStore.setLaneCollapsed", "args": ["tree", false] }
+                          },
+                          "children": [{ "type": "we-icon", "props": { "name": "sidebar-simple" } }]
+                        }
+                      ]
+                    }
+                  }
+                },
+                { "type": "we-icon", "props": { "name": "chats-circle", "color": "text-muted" } },
+                {
+                  "type": "we-text",
+                  "props": { "variant": "heading-sm", "truncate": true, "flex": "1", "minWidth": "0" },
+                  "children": ["Channels"]
+                }
+              ]
+            },
+            {
+              "type": "Column",
+              "props": { "flex": "1", "minHeight": "0", "overflowY": "auto", "px": "500", "py": "500" },
+              "children": [
+                {
+                  "type": "Grid",
+                  "props": { "minChildWidth": "240px", "gap": "300" },
+                  "children": [
+                    {
+                      "type": "we-button",
+                      "props": {
+                        "variant": "bare",
+                        "width": "100%",
+                        "onClick": {
+                          "$invoke": "routeStore.navigate",
+                          "args": [{ "$": "spaceStore.spacePath + '?channel=' + (spaceStore.root)" }]
+                        }
+                      },
+                      "children": [
+                        {
+                          "type": "Card",
+                          "props": {
+                            "bg": "surface",
+                            "gap": "300",
+                            "width": "100%",
+                            "height": "100%",
+                            "direction": "row",
+                            "ay": "center",
+                            "border": "1px solid transparent",
+                            "hoverProps": { "border": "1px solid accent-border", "shadow": "glow" }
+                          },
+                          "children": [
+                            { "type": "we-icon", "props": { "name": "hash", "color": "accent-text", "size": "md" } },
+                            {
+                              "type": "Column",
+                              "props": { "flex": "1", "minWidth": "0", "gap": "100" },
+                              "children": [
+                                {
+                                  "type": "we-text",
+                                  "props": { "fontWeight": "semibold", "truncate": true },
+                                  "children": ["General"]
+                                },
+                                {
+                                  "type": "we-text",
+                                  "props": { "variant": "footnote", "color": "text-muted", "truncate": true },
+                                  "children": ["Everyone in the space"]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "$each",
+                      "props": { "items": { "$": "local.subChannels" }, "as": "channel" },
+                      "children": [
+                        {
+                          "type": "we-button",
+                          "props": {
+                            "variant": "bare",
+                            "width": "100%",
+                            "onClick": {
+                              "$invoke": "routeStore.navigate",
+                              "args": [{ "$": "spaceStore.spacePath + '?channel=' + (channel.id)" }]
+                            }
+                          },
+                          "children": [
+                            {
+                              "type": "Card",
+                              "props": {
+                                "bg": "surface",
+                                "gap": "300",
+                                "width": "100%",
+                                "height": "100%",
+                                "direction": "row",
+                                "ay": "center",
+                                "border": "1px solid transparent",
+                                "hoverProps": { "border": "1px solid accent-border", "shadow": "glow" }
+                              },
+                              "children": [
+                                {
+                                  "type": "we-icon",
+                                  "props": { "name": "hash", "color": "accent-text", "size": "md" }
+                                },
+                                {
+                                  "type": "Column",
+                                  "props": { "flex": "1", "minWidth": "0", "gap": "100" },
+                                  "children": [
+                                    {
+                                      "type": "we-text",
+                                      "props": { "fontWeight": "semibold", "truncate": true },
+                                      "children": [{ "$": "channel.title ? channel.title : 'Untitled channel'" }]
+                                    },
+                                    {
+                                      "type": "we-timestamp",
+                                      "props": {
+                                        "value": { "$": "channel.createdAt" },
+                                        "dateStyle": "medium",
+                                        "color": "text-muted",
+                                        "fontSize": "100"
+                                      }
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "path": "/calls",
+          "type": "Column",
+          "props": { "width": "100%", "height": "100%" },
+          "$queries": {
+            "calls": {
+              "entity": "CollectionBlock",
+              "where": { "kind": "call" },
+              "order": { "createdAt": "desc" },
+              "limit": 100
+            }
+          },
+          "children": [
+            {
+              "type": "Row",
+              "props": {
+                "gap": "300",
+                "ay": "center",
+                "px": "500",
+                "py": "300",
+                "borderBottom": "1px solid border",
+                "minHeight": "56px"
+              },
+              "children": [
+                {
+                  "type": "$if",
+                  "props": {
+                    "condition": { "$": "'tree' in shellStore.collapsedLanes" },
+                    "then": {
+                      "type": "we-tooltip",
+                      "props": { "content": "Show the sidebar", "placement": "bottom" },
+                      "children": [
+                        {
+                          "type": "we-button",
+                          "props": {
+                            "variant": "ghost",
+                            "size": "md",
+                            "square": true,
+                            "label": "Show the sidebar",
+                            "onClick": { "$invoke": "shellStore.setLaneCollapsed", "args": ["tree", false] }
+                          },
+                          "children": [{ "type": "we-icon", "props": { "name": "sidebar-simple" } }]
+                        }
+                      ]
+                    }
+                  }
+                },
+                { "type": "we-icon", "props": { "name": "phone", "color": "text-muted" } },
+                {
+                  "type": "we-text",
+                  "props": { "variant": "heading-sm", "truncate": true, "flex": "1", "minWidth": "0" },
+                  "children": ["Calls"]
+                }
+              ]
+            },
+            {
+              "type": "Column",
+              "props": { "flex": "1", "minHeight": "0", "overflowY": "auto", "px": "500", "py": "500" },
+              "children": [
+                {
+                  "type": "$if",
+                  "props": {
+                    "condition": { "$": "local.callsLoaded && !count(local.calls)" },
+                    "then": {
+                      "type": "we-text",
+                      "props": { "variant": "footnote", "color": "text-muted", "italic": true },
+                      "children": ["No calls yet. Start one from the sidebar."]
+                    },
+                    "else": {
+                      "type": "Grid",
+                      "props": { "minChildWidth": "240px", "gap": "300" },
+                      "children": [
+                        {
+                          "type": "$each",
+                          "props": { "items": { "$": "local.calls" }, "as": "call" },
+                          "children": [
+                            {
+                              "type": "we-button",
+                              "props": {
+                                "variant": "bare",
+                                "width": "100%",
+                                "onClick": {
+                                  "$invoke": "routeStore.navigate",
+                                  "args": [
+                                    {
+                                      "$": "spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (call.id)"
+                                    }
+                                  ]
+                                }
+                              },
+                              "children": [
+                                {
+                                  "type": "Card",
+                                  "props": {
+                                    "bg": "surface",
+                                    "gap": "300",
+                                    "width": "100%",
+                                    "height": "100%",
+                                    "direction": "row",
+                                    "ay": "center",
+                                    "border": "1px solid transparent",
+                                    "hoverProps": { "border": "1px solid accent-border", "shadow": "glow" }
+                                  },
+                                  "children": [
+                                    {
+                                      "type": "we-icon",
+                                      "props": {
+                                        "name": {
+                                          "$": "find(modules.call.liveCalls, { recordId: call.id }) ? 'phone-call' : 'phone'"
+                                        },
+                                        "color": "accent-text",
+                                        "size": "md"
+                                      }
+                                    },
+                                    {
+                                      "type": "Column",
+                                      "props": { "flex": "1", "minWidth": "0", "gap": "100" },
+                                      "children": [
+                                        {
+                                          "type": "we-text",
+                                          "props": { "fontWeight": "semibold", "truncate": true },
+                                          "children": [{ "$": "call.title ? call.title : 'Call'" }]
+                                        },
+                                        {
+                                          "type": "we-timestamp",
+                                          "props": {
+                                            "value": { "$": "call.createdAt" },
+                                            "relative": true,
+                                            "color": "text-muted",
+                                            "fontSize": "100"
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "$if",
+                                      "props": {
+                                        "condition": { "$": "find(modules.call.liveCalls, { recordId: call.id })" },
+                                        "then": {
+                                          "type": "we-badge",
+                                          "props": { "tone": "success", "size": "xs" },
+                                          "children": [
+                                            {
+                                              "type": "Column",
+                                              "props": {
+                                                "width": "7px",
+                                                "height": "7px",
+                                                "r": "full",
+                                                "bg": "success",
+                                                "tone": "success",
+                                                "shadow": "glow",
+                                                "flex": "0 0 auto"
+                                              }
+                                            },
+                                            "Live"
+                                          ]
+                                        }
+                                      }
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "path": "/people",
+          "type": "Column",
+          "props": { "width": "100%", "height": "100%" },
+          "children": [
+            {
+              "type": "Row",
+              "props": {
+                "gap": "300",
+                "ay": "center",
+                "px": "500",
+                "py": "300",
+                "borderBottom": "1px solid border",
+                "minHeight": "56px"
+              },
+              "children": [
+                {
+                  "type": "$if",
+                  "props": {
+                    "condition": { "$": "'tree' in shellStore.collapsedLanes" },
+                    "then": {
+                      "type": "we-tooltip",
+                      "props": { "content": "Show the sidebar", "placement": "bottom" },
+                      "children": [
+                        {
+                          "type": "we-button",
+                          "props": {
+                            "variant": "ghost",
+                            "size": "md",
+                            "square": true,
+                            "label": "Show the sidebar",
+                            "onClick": { "$invoke": "shellStore.setLaneCollapsed", "args": ["tree", false] }
+                          },
+                          "children": [{ "type": "we-icon", "props": { "name": "sidebar-simple" } }]
+                        }
+                      ]
+                    }
+                  }
+                },
+                { "type": "we-icon", "props": { "name": "users", "color": "text-muted" } },
+                {
+                  "type": "we-text",
+                  "props": { "variant": "heading-sm", "truncate": true, "flex": "1", "minWidth": "0" },
+                  "children": ["People"]
+                }
+              ]
+            },
+            {
+              "type": "Column",
+              "props": { "flex": "1", "minHeight": "0", "overflowY": "auto", "px": "500", "py": "500" },
+              "children": [
+                {
+                  "type": "$if",
+                  "props": {
+                    "condition": { "$": "!count(spaceStore.members)" },
+                    "then": {
+                      "type": "we-text",
+                      "props": { "variant": "footnote", "color": "text-muted", "italic": true },
+                      "children": ["Nobody here yet."]
+                    },
+                    "else": {
+                      "type": "Grid",
+                      "props": { "minChildWidth": "240px", "gap": "300" },
+                      "children": [
+                        {
+                          "type": "$each",
+                          "props": { "items": { "$": "spaceStore.members" }, "as": "person" },
+                          "children": [
+                            {
+                              "type": "Card",
+                              "props": {
+                                "bg": "surface",
+                                "gap": "300",
+                                "width": "100%",
+                                "height": "100%",
+                                "direction": "row",
+                                "ay": "center",
+                                "border": "1px solid transparent"
+                              },
+                              "children": [
+                                {
+                                  "type": "we-avatar",
+                                  "props": {
+                                    "size": "md",
+                                    "image": { "$": "person.avatar" },
+                                    "initials": { "$": "person.name" },
+                                    "hash": { "$": "person.did" }
+                                  }
+                                },
+                                {
+                                  "type": "Column",
+                                  "props": { "flex": "1", "minWidth": "0", "gap": "100" },
+                                  "children": [
+                                    {
+                                      "type": "we-text",
+                                      "props": { "fontWeight": "semibold", "truncate": true },
+                                      "children": [{ "$": "person.name" }]
+                                    },
+                                    {
+                                      "type": "we-text",
+                                      "props": { "variant": "footnote", "color": "text-muted", "truncate": true },
+                                      "children": [{ "$": "person.handle ? '@' + person.handle : ''" }]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
                 }
               ]
             }

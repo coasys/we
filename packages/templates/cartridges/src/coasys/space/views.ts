@@ -2,6 +2,8 @@ import type { RouteSchema, SchemaNode, SchemaProp } from '@we/schema-shared';
 import { lineComposer, recordFormModal } from '@we/template-kit';
 import { FLOWS_LOCALS, workflowsPage } from '@we/template-showcase';
 
+import { viewBar } from './bar.ts';
+import { groupRoutes } from './groups.ts';
 import { liveDot } from './marks.ts';
 import { CHANNEL, CHANNEL_EXPR, channelPath, IN_ROOT_EXPR, PAGE_EXPR } from './paths.ts';
 import { newChannelDialog } from './tree.ts';
@@ -38,51 +40,6 @@ const channelModes: SchemaNode = {
     children: [{ type: 'we-icon', props: { name: icon } }, label],
   })),
 };
-
-/**
- * The way back to a folded sidebar, where its own button cannot be. "Sidebar" rather than "tree":
- * the lane holds the space's header, its search and the call beside the tree.
- */
-const showTree: SchemaNode = {
-  type: '$if',
-  props: {
-    condition: { $: "'tree' in shellStore.collapsedLanes" },
-    then: {
-      type: 'we-tooltip',
-      props: { content: 'Show the sidebar', placement: 'bottom' },
-      children: [
-        {
-          type: 'we-button',
-          props: {
-            variant: 'ghost',
-            size: 'md',
-            square: true,
-            label: 'Show the sidebar',
-            onClick: { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', false] },
-          },
-          children: [{ type: 'we-icon', props: { name: 'sidebar-simple' } }],
-        },
-      ],
-    },
-  },
-};
-
-/** A view's bar: the way back to the tree, what this is, and whatever the view offers. */
-const viewBar = (title: SchemaNode['children'], icon: string, aside: SchemaNode[] = []): SchemaNode => ({
-  type: 'Row',
-  props: { gap: '300', ay: 'center', px: '500', py: '300', borderBottom: '1px solid border', minHeight: '56px' },
-  children: [
-    showTree,
-    { type: 'we-icon', props: { name: icon, color: 'text-muted' } },
-    {
-      type: 'we-text',
-      // No weight of its own, so a theme's heading weight reaches it — light in Glow.
-      props: { variant: 'heading-sm', truncate: true, flex: '1', minWidth: '0' },
-      children: title,
-    },
-    ...aside,
-  ],
-});
 
 const channelQueries = {
   channelRecord: {
@@ -363,7 +320,13 @@ const workflowsRoute: RouteSchema = {
   ],
 };
 
-export const spaceRoutes: RouteSchema[] = [chatRoute, canvasRoute, workflowsRoute, { path: '*', redirect: './' }];
+export const spaceRoutes: RouteSchema[] = [
+  chatRoute,
+  canvasRoute,
+  workflowsRoute,
+  ...groupRoutes,
+  { path: '*', redirect: './' },
+];
 
 /** The call on its own page is the record the address names. */
 const CALL_ID = 'routeStore.params.id';

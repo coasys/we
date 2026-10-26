@@ -2,7 +2,7 @@ import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 import { field, formModal, treeRow } from '@we/template-kit';
 
 import { countPill, liveDot } from './marks.ts';
-import { callPath, channelPath, ROW_ID, SELECTED_EXPR } from './paths.ts';
+import { callPath, channelPath, GROUP_PAGES, ROW_ID, SELECTED_EXPR } from './paths.ts';
 
 /**
  * The space as a tree: its channels, its calls, its workflows, its people and its Social DNA, under the
@@ -102,7 +102,7 @@ const channels = group(
 );
 
 /** A call still running carries a Live tag, so the way back into it is on the row. */
-const LIVE = 'find(modules.call.liveCalls, { recordId: call.id })';
+export const LIVE = 'find(modules.call.liveCalls, { recordId: call.id })';
 
 const calls = group(
   'calls',
@@ -212,19 +212,42 @@ const socialDna = group(
   { count: 'count(shapeStore.spaceShapes)' },
 );
 
-/** What choosing a row does, by the kind its value names. */
+/**
+ * What choosing a row does, by the kind its value names.
+ *
+ * Every row is a place. A group's row opens its page — Channels, Calls, Workflows and People are full
+ * views of what the group lists — and opens the group too, so the tree shows where you are. It never
+ * closes it: only the caret folds a group, so a press can never take rows away from under the
+ * pointer. Social DNA's page is the space's vocabulary settings until it has one of its own.
+ */
 const onSelect: SchemaProp = [
   {
     $if: {
-      condition: { $: "startsWith(event.detail.value, 'group|')" },
+      condition: { $: "startsWith(event.detail.value, 'group|') && !(event.detail.value in local.openRows)" },
       then: { $toggleLocalIn: 'openRows', value: { $: 'event.detail.value' } },
     },
   },
-  // Workflows is a place as well as a group: its page lists every workflow and makes new ones.
+  {
+    $if: {
+      condition: {
+        $: `event.detail.value in [${GROUP_PAGES.filter((p) => p !== 'workflows')
+          .map((p) => `'group|${p}'`)
+          .join(', ')}]`,
+      },
+      then: { $invoke: 'routeStore.navigate', args: [{ $: `spaceStore.spacePath + '/' + ${ROW_ID}` }] },
+    },
+  },
+  // Workflows' page shows every workflow until one is chosen, so choosing the group closes the one open.
   {
     $if: {
       condition: { $: "event.detail.value == 'group|workflows'" },
       then: [{ $invoke: 'workflowStore.closeWorkflow' }, { $invoke: 'routeStore.navigate', args: [{ $: FLOWS_PAGE }] }],
+    },
+  },
+  {
+    $if: {
+      condition: { $: "event.detail.value == 'group|dna'" },
+      then: { $invoke: 'shellStore.openSpaceSettings', args: ['vocabulary'] },
     },
   },
   {
@@ -469,6 +492,19 @@ export const newChannelDialog = (openLocal: string): SchemaNode =>
     },
   });
 
+/** The channels under the space's root, oldest first — General is the root itself. Shared with the Channels page. */
+export const SUB_CHANNELS = {
+  entity: 'CollectionBlock',
+  where: { kind: 'channel' },
+  scope: { anchor: 'CollectionBlock', via: 'children', anchorId: { $: 'spaceStore.root' } },
+  order: { createdAt: 'asc' },
+  limit: 100,
+  when: { $: 'spaceStore.root' },
+};
+
+/** The space's calls, newest first. The tree lists the latest few; the Calls page more. */
+export const CALLS = { entity: 'CollectionBlock', where: { kind: 'call' }, order: { createdAt: 'desc' } };
+
 /** The tree section, as the space template's left lane holds it. */
 export const treeSection: SchemaNode = {
   type: 'Column',
@@ -481,22 +517,7 @@ export const treeSection: SchemaNode = {
     },
     newChannelOpen: { type: 'boolean', initial: false },
   },
-  $queries: {
-    subChannels: {
-      entity: 'CollectionBlock',
-      where: { kind: 'channel' },
-      scope: { anchor: 'CollectionBlock', via: 'children', anchorId: { $: 'spaceStore.root' } },
-      order: { createdAt: 'asc' },
-      limit: 100,
-      when: { $: 'spaceStore.root' },
-    },
-    calls: {
-      entity: 'CollectionBlock',
-      where: { kind: 'call' },
-      order: { createdAt: 'desc' },
-      limit: 12,
-    },
-  },
+  $queries: { subChannels: SUB_CHANNELS, calls: { ...CALLS, limit: 12 } },
   children: [
     header,
     purpose,
