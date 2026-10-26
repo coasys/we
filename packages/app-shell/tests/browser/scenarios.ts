@@ -1819,6 +1819,15 @@ const coasysTreeTop = (): Scenario => {
             }),
             // A group with nothing in it yet: no caret, nothing to open.
             { type: 'we-tree-item', props: { value: 'empty', expandable: false }, children: ['Social DNA'] },
+            // An open group with a child, whose content must sit a step in from a top-level leaf's.
+            {
+              type: 'we-tree-item',
+              props: { value: 'group', open: true },
+              children: [
+                'Calls',
+                { type: 'we-tree-item', slot: 'children', props: { value: 'kid' }, children: ['Standup'] },
+              ],
+            },
           ],
         },
         { type: 'Search', props: { placeholder: 'Find or ask' } },

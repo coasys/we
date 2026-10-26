@@ -14,7 +14,7 @@ export const widths = [900];
 /** An `oklch(L C H)` colour's hue, or NaN. */
 const hue = (colour) => Number(/oklch\([\d.]+ [\d.]+ ([\d.]+)/.exec(colour ?? '')?.[1]);
 
-export async function check({ measure, measurePart, measureParts, partStyle }) {
+export async function check({ measure, measureAll, measurePart, measureParts, partStyle }) {
   const problems = [];
   const bar = (nth) => ({
     width: partStyle('we-tree-item', 'width', 'row::before', nth),
@@ -77,6 +77,18 @@ export async function check({ measure, measurePart, measureParts, partStyle }) {
   // Glow sizes every eyebrow through its overline role, so a template draws one with no size of its own.
   const eyebrow = await measurePart('#eyebrow', 'base');
   if (eyebrow?.fontSize !== '14px') problems.push(`an eyebrow is ${eyebrow?.fontSize}, not Glow's 14px`);
+
+  // A child sits a step in from a top-level row with no children, rather than in line with it —
+  // otherwise an open group's children and the next group cannot be told apart.
+  const at = async (value) => {
+    const items = await measureAll('we-tree-item');
+    const nth = items.findIndex((b) => b.text.startsWith(value));
+    return (await measureParts('we-tree-item', 'content', nth))[0];
+  };
+  const leaf = await at('Social DNA');
+  const kid = await at('Standup');
+  if (!(kid && leaf && kid.x >= leaf.x + 16))
+    problems.push(`a child starts at x=${kid?.x}, in line with a leaf at x=${leaf?.x}`);
 
   return problems;
 }

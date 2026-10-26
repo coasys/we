@@ -271,26 +271,34 @@ const ITEM_STYLES = css`
     flex: 0 0 auto;
     color: var(--we-role-text-faint);
     transition: transform var(--we-transition-200, 150ms) ease;
+    position: relative;
+    cursor: pointer;
+  }
+  /*
+    The caret is the only way to fold a row whose press goes somewhere, so it is a target worth
+    hitting: the glyph stays 16px, and this invisible box around it takes the press across the row's
+    height and 24px of its width, without moving anything.
+  */
+  [part='caret']::before {
+    content: '';
+    position: absolute;
+    inset: -8px -4px;
   }
   :host([open]) [part='caret'] {
     transform: rotate(90deg);
   }
   /*
-    A leaf at the top keeps the caret's space with nothing in it, so it lines up with the rows beside
-    it that have one. Not the hidden attribute: the shared sheet makes that display: none !important,
+    A leaf keeps the caret's space with nothing in it, at every depth, so its glyph lines up with
+    the glyphs of the rows beside it that have a caret. Each level then indents by a caret and its
+    gap, so a row's children start under its label: a child is one step in from its parent, never in
+    line with the next row along. A nested leaf used to drop the slot, which put its glyph in the same
+    column as a top-level leaf's — under an open group, its children and the group after it could not
+    be told apart. Not the hidden attribute: the shared sheet makes that display: none !important,
     which takes the space away.
   */
   [part='caret'][data-leaf] {
     visibility: hidden;
     pointer-events: none;
-  }
-  /*
-    A nested leaf has no caret at all, and its level's indent is that caret's width: so its glyph
-    sits under its parent's glyph, and its label under its parent's label. A nested row with rows of
-    its own keeps its caret there instead, and its own rows line up under it the same way.
-  */
-  [part='caret'][data-nested-leaf] {
-    display: none;
   }
   [part='content'] {
     display: flex;
@@ -369,6 +377,23 @@ export class TreeItem extends DesignSystemElement {
     return this.childItems()[0];
   }
 
+  /*
+    Rows under this one can arrive after it has drawn — a query answering, a channel being made — and
+    whether it has any decides its caret and whether an open row draws its group. So it draws again
+    when what is under it changes, rather than only when one of its own properties does.
+  */
+  private readonly rowsUnder = new MutationObserver(() => this.requestUpdate());
+
+  override connectedCallback() {
+    super.connectedCallback();
+    this.rowsUnder.observe(this, { childList: true, subtree: true });
+  }
+
+  override disconnectedCallback() {
+    super.disconnectedCallback();
+    this.rowsUnder.disconnect();
+  }
+
   hasChildren(): boolean {
     return this.expandable || this.childItems().length > 0;
   }
@@ -435,14 +460,7 @@ export class TreeItem extends DesignSystemElement {
           @click=${this.onRowClick}
           @focus=${this.onRowFocus}
         >
-          <button
-            part="caret"
-            tabindex="-1"
-            aria-hidden="true"
-            ?data-leaf=${!expandable}
-            ?data-nested-leaf=${!expandable && this.level > 0}
-            @click=${this.onCaretClick}
-          >
+          <button part="caret" tabindex="-1" aria-hidden="true" ?data-leaf=${!expandable} @click=${this.onCaretClick}>
             <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
               <path
                 d="M3 1.5 L7 5 L3 8.5"
@@ -456,7 +474,14 @@ export class TreeItem extends DesignSystemElement {
           </button>
           <span part="content"><slot></slot></span>
         </div>
-        ${this.open ? html`<div role="group" part="children"><slot name="children"></slot></div>` : ''}
+        ${
+          /*
+            Only while open and with something to show. Open with nothing under it drew an empty group,
+            and the row's gap above it: a press on a row with no children appeared to open it onto
+            a sliver of space.
+          */
+          this.open && expandable ? html`<div role="group" part="children"><slot name="children"></slot></div>` : ''
+        }
       </div>
     `;
   }
