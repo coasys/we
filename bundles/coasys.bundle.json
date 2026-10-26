@@ -679,8 +679,8 @@
                     {
                       "type": "we-avatar",
                       "props": {
-                        "size": "md",
-                        "r": "500",
+                        "size": "xl",
+                        "r": "600",
                         "image": { "$": "spaceStore.currentSpace.avatar" },
                         "initials": { "$": "spaceStore.currentSpace.name" },
                         "hash": { "$": "spaceStore.currentSpace.uuid" }
@@ -716,7 +716,7 @@
                           "type": "we-button",
                           "props": {
                             "variant": "ghost",
-                            "size": "sm",
+                            "size": "md",
                             "square": true,
                             "label": "Space settings",
                             "onClick": { "$invoke": "shellStore.toggleSpaceSettings" }
@@ -727,15 +727,15 @@
                     },
                     {
                       "type": "we-tooltip",
-                      "props": { "content": "Hide the tree", "placement": "bottom" },
+                      "props": { "content": "Hide the sidebar", "placement": "bottom" },
                       "children": [
                         {
                           "type": "we-button",
                           "props": {
                             "variant": "ghost",
-                            "size": "sm",
+                            "size": "md",
                             "square": true,
-                            "label": "Hide the tree",
+                            "label": "Hide the sidebar",
                             "onClick": { "$invoke": "shellStore.setLaneCollapsed", "args": ["tree", true] }
                           },
                           "children": [{ "type": "we-icon", "props": { "name": "sidebar-simple" } }]
@@ -779,7 +779,7 @@
                 },
                 {
                   "type": "Column",
-                  "props": { "px": "300", "pb": "300" },
+                  "props": { "px": "300", "pb": "500" },
                   "children": [{ "type": "Search", "props": { "placeholder": "Find or ask" } }]
                 },
                 {
@@ -1472,15 +1472,15 @@
                       "condition": { "$": "'tree' in shellStore.collapsedLanes" },
                       "then": {
                         "type": "we-tooltip",
-                        "props": { "content": "Show the tree", "placement": "bottom" },
+                        "props": { "content": "Show the sidebar", "placement": "bottom" },
                         "children": [
                           {
                             "type": "we-button",
                             "props": {
                               "variant": "ghost",
-                              "size": "sm",
+                              "size": "md",
                               "square": true,
-                              "label": "Show the tree",
+                              "label": "Show the sidebar",
                               "onClick": { "$invoke": "shellStore.setLaneCollapsed", "args": ["tree", false] }
                             },
                             "children": [{ "type": "we-icon", "props": { "name": "sidebar-simple" } }]
@@ -1662,15 +1662,15 @@
                     "condition": { "$": "'tree' in shellStore.collapsedLanes" },
                     "then": {
                       "type": "we-tooltip",
-                      "props": { "content": "Show the tree", "placement": "bottom" },
+                      "props": { "content": "Show the sidebar", "placement": "bottom" },
                       "children": [
                         {
                           "type": "we-button",
                           "props": {
                             "variant": "ghost",
-                            "size": "sm",
+                            "size": "md",
                             "square": true,
-                            "label": "Show the tree",
+                            "label": "Show the sidebar",
                             "onClick": { "$invoke": "shellStore.setLaneCollapsed", "args": ["tree", false] }
                           },
                           "children": [{ "type": "we-icon", "props": { "name": "sidebar-simple" } }]
@@ -2116,15 +2116,15 @@
                     "condition": { "$": "'tree' in shellStore.collapsedLanes" },
                     "then": {
                       "type": "we-tooltip",
-                      "props": { "content": "Show the tree", "placement": "bottom" },
+                      "props": { "content": "Show the sidebar", "placement": "bottom" },
                       "children": [
                         {
                           "type": "we-button",
                           "props": {
                             "variant": "ghost",
-                            "size": "sm",
+                            "size": "md",
                             "square": true,
-                            "label": "Show the tree",
+                            "label": "Show the sidebar",
                             "onClick": { "$invoke": "shellStore.setLaneCollapsed", "args": ["tree", false] }
                           },
                           "children": [{ "type": "we-icon", "props": { "name": "sidebar-simple" } }]
@@ -3701,15 +3701,15 @@
                     "condition": { "$": "'tree' in shellStore.collapsedLanes" },
                     "then": {
                       "type": "we-tooltip",
-                      "props": { "content": "Show the tree", "placement": "bottom" },
+                      "props": { "content": "Show the sidebar", "placement": "bottom" },
                       "children": [
                         {
                           "type": "we-button",
                           "props": {
                             "variant": "ghost",
-                            "size": "sm",
+                            "size": "md",
                             "square": true,
-                            "label": "Show the tree",
+                            "label": "Show the sidebar",
                             "onClick": { "$invoke": "shellStore.setLaneCollapsed", "args": ["tree", false] }
                           },
                           "children": [{ "type": "we-icon", "props": { "name": "sidebar-simple" } }]

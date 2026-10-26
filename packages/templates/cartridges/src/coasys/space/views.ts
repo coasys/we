@@ -39,22 +39,25 @@ const channelModes: SchemaNode = {
   })),
 };
 
-/** The way back to a folded tree, where the tree's own button cannot be. */
+/**
+ * The way back to a folded sidebar, where its own button cannot be. "Sidebar" rather than "tree":
+ * the lane holds the space's header, its search and the call beside the tree.
+ */
 const showTree: SchemaNode = {
   type: '$if',
   props: {
     condition: { $: "'tree' in shellStore.collapsedLanes" },
     then: {
       type: 'we-tooltip',
-      props: { content: 'Show the tree', placement: 'bottom' },
+      props: { content: 'Show the sidebar', placement: 'bottom' },
       children: [
         {
           type: 'we-button',
           props: {
             variant: 'ghost',
-            size: 'sm',
+            size: 'md',
             square: true,
-            label: 'Show the tree',
+            label: 'Show the sidebar',
             onClick: { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', false] },
           },
           children: [{ type: 'we-icon', props: { name: 'sidebar-simple' } }],

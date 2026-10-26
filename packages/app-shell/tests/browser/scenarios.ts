@@ -1795,8 +1795,8 @@ const coasysTreeTop = (): Scenario => {
       theme: glow,
       props: { width: '280px', gap: '300', p: '300', bg: 'chrome' },
       children: [
-        { type: 'we-avatar', props: { id: 'space-face', size: 'md', r: '500', initials: 'Coasys', hash: 'c1' } },
-        { type: 'we-avatar', props: { id: 'person-face', size: 'md', initials: 'Ada', hash: 'p1' } },
+        { type: 'we-avatar', props: { id: 'space-face', size: 'xl', r: '600', initials: 'Coasys', hash: 'c1' } },
+        { type: 'we-avatar', props: { id: 'person-face', size: 'xl', initials: 'Ada', hash: 'p1' } },
         {
           type: 'we-text',
           props: { id: 'purpose', variant: 'footnote', lines: 2 },

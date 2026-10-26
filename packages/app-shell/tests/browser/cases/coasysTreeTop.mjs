@@ -14,7 +14,7 @@ export const widths = [900];
 /** An `oklch(L C H)` colour's hue, or NaN. */
 const hue = (colour) => Number(/oklch\([\d.]+ [\d.]+ ([\d.]+)/.exec(colour ?? '')?.[1]);
 
-export async function check({ measure, measurePart, partStyle }) {
+export async function check({ measure, measurePart, measureParts, partStyle }) {
   const problems = [];
   const bar = (nth) => ({
     width: partStyle('we-tree-item', 'width', 'row::before', nth),
@@ -48,6 +48,12 @@ export async function check({ measure, measurePart, partStyle }) {
   if (!(purpose.h <= lineHeight * 2 + 1)) problems.push(`the description is ${purpose.h}px tall, more than two lines`);
   if (!(purpose.h > lineHeight * 1.5))
     problems.push(`the description is ${purpose.h}px tall — clamped below two lines`);
+
+  // Rows stand apart rather than touching, so two lit at once do not read as one block.
+  const [first] = await measureParts('we-tree-item', 'row', 0);
+  const [second] = await measureParts('we-tree-item', 'row', 1);
+  const gap = second && first ? second.y - (first.y + first.h) : NaN;
+  if (!(gap >= 3.5)) problems.push(`tree rows are ${gap}px apart — touching`);
 
   return problems;
 }

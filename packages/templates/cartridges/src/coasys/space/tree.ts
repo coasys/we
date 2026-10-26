@@ -232,8 +232,9 @@ const header: SchemaNode = {
     {
       type: 'we-avatar',
       props: {
-        size: 'md',
-        r: '500',
+        // Large enough to stand beside the name and two lines of what the space is for.
+        size: 'xl',
+        r: '600',
         image: { $: 'spaceStore.currentSpace.avatar' },
         initials: { $: 'spaceStore.currentSpace.name' },
         hash: { $: 'spaceStore.currentSpace.uuid' },
@@ -269,7 +270,7 @@ const header: SchemaNode = {
           type: 'we-button',
           props: {
             variant: 'ghost',
-            size: 'sm',
+            size: 'md',
             square: true,
             label: 'Space settings',
             onClick: { $invoke: 'shellStore.toggleSpaceSettings' },
@@ -280,15 +281,15 @@ const header: SchemaNode = {
     },
     {
       type: 'we-tooltip',
-      props: { content: 'Hide the tree', placement: 'bottom' },
+      props: { content: 'Hide the sidebar', placement: 'bottom' },
       children: [
         {
           type: 'we-button',
           props: {
             variant: 'ghost',
-            size: 'sm',
+            size: 'md',
             square: true,
-            label: 'Hide the tree',
+            label: 'Hide the sidebar',
             onClick: { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', true] },
           },
           children: [{ type: 'we-icon', props: { name: 'sidebar-simple' } }],
@@ -340,7 +341,7 @@ const purpose: SchemaNode = {
  */
 const findOrAsk: SchemaNode = {
   type: 'Column',
-  props: { px: '300', pb: '300' },
+  props: { px: '300', pb: '500' },
   children: [{ type: 'Search', props: { placeholder: 'Find or ask' } }],
 };
 
