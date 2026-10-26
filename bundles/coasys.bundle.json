@@ -7012,6 +7012,344 @@
       ]
     }
   ],
+  "pages": [
+    {
+      "id": "about",
+      "meta": {
+        "name": "About Coasys",
+        "description": "What Coasys is building, and the film that tells it",
+        "icon": "info",
+        "role": "page"
+      },
+      "type": "Column",
+      "$localState": {
+        "playing": { "type": "boolean", "initial": false },
+        "transcript": { "type": "boolean", "initial": false }
+      },
+      "props": { "width": "100%", "minHeight": "100%", "bg": "page", "ax": "center" },
+      "children": [
+        {
+          "type": "Column",
+          "props": {
+            "width": "100%",
+            "maxWidth": "1200px",
+            "px": "500",
+            "pt": "800",
+            "pb": "800",
+            "gap": "400",
+            "mdUpProps": { "px": "700", "pt": "1000" }
+          },
+          "children": [
+            { "type": "we-text", "props": { "variant": "overline", "color": "accent-text" }, "children": ["Coasys"] },
+            {
+              "type": "we-text",
+              "props": {
+                "variant": "heading-xl",
+                "tag": "h1",
+                "maxWidth": "1000px",
+                "mdUpProps": { "fontSize": "900" }
+              },
+              "children": [
+                {
+                  "type": "we-typewriter",
+                  "props": {
+                    "text": "We are building",
+                    "phrases": [
+                      "a global brain.",
+                      "a nervous system for society.",
+                      "intelligence no one owns.",
+                      "a counterweight to big AI."
+                    ],
+                    "phraseColor": "accent-text"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "we-text",
+              "props": { "variant": "ingress", "tag": "p", "maxWidth": "800px", "color": "text" },
+              "children": [
+                "Groups of people and AI agents, each keeping their own rules, learning as one network. Our bet: together they out-learn any centralized system."
+              ]
+            },
+            {
+              "type": "Row",
+              "props": { "gap": "400", "wrap": true },
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": { "variant": "solid", "size": "lg", "onClick": { "$setLocal": "playing", "value": true } },
+                  "children": [{ "type": "we-icon", "props": { "name": "play", "weight": "fill" } }, "Watch the film"]
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "variant": "outline",
+                    "size": "lg",
+                    "onClick": { "$invoke": "shellStore.closeShellView", "args": [] }
+                  },
+                  "children": ["See the app"]
+                }
+              ]
+            },
+            {
+              "type": "Column",
+              "props": { "width": "100%", "maxWidth": "920px", "gap": "200", "mt": "300" },
+              "children": [
+                {
+                  "type": "Column",
+                  "props": {
+                    "width": "100%",
+                    "aspectRatio": "16 / 9",
+                    "r": "18px",
+                    "overflow": "hidden",
+                    "border": "1px solid accent-border",
+                    "bg": "chrome",
+                    "shadow": "lg"
+                  },
+                  "children": [
+                    {
+                      "type": "$if",
+                      "props": {
+                        "condition": { "$": "local.playing" },
+                        "then": {
+                          "type": "we-video",
+                          "props": {
+                            "src": "https://coasys.org/v10/coasys-overview-nico2-720p.mp4",
+                            "poster": "https://coasys.org/v8/film-poster-r13.webp",
+                            "controls": true,
+                            "autoplay": true,
+                            "playsinline": true,
+                            "preload": "metadata",
+                            "fit": "contain",
+                            "width": "100%",
+                            "height": "100%",
+                            "tracks": [
+                              {
+                                "src": "https://coasys.org/v10/coasys-overview-nico2.en.vtt",
+                                "srclang": "en",
+                                "label": "English",
+                                "kind": "captions",
+                                "default": true
+                              }
+                            ],
+                            "crossorigin": "anonymous"
+                          }
+                        },
+                        "else": {
+                          "type": "we-button",
+                          "props": {
+                            "variant": "bare",
+                            "width": "100%",
+                            "height": "100%",
+                            "label": "Play: The Coasys film · 4 min · with sound",
+                            "onClick": { "$setLocal": "playing", "value": true }
+                          },
+                          "children": [
+                            {
+                              "type": "Column",
+                              "props": { "position": "relative", "width": "100%", "height": "100%" },
+                              "children": [
+                                {
+                                  "type": "we-image",
+                                  "props": {
+                                    "src": "https://coasys.org/v8/film-poster-r13.webp",
+                                    "alt": "",
+                                    "fit": "cover",
+                                    "width": "100%",
+                                    "height": "100%"
+                                  }
+                                },
+                                {
+                                  "type": "Row",
+                                  "props": {
+                                    "position": "absolute",
+                                    "left": "600",
+                                    "bottom": "500",
+                                    "gap": "300",
+                                    "ay": "center"
+                                  },
+                                  "children": [
+                                    {
+                                      "type": "Row",
+                                      "props": {
+                                        "width": "72px",
+                                        "height": "72px",
+                                        "r": "full",
+                                        "bg": "accent",
+                                        "ax": "center",
+                                        "ay": "center"
+                                      },
+                                      "children": [
+                                        {
+                                          "type": "we-icon",
+                                          "props": {
+                                            "name": "play",
+                                            "weight": "fill",
+                                            "size": "lg",
+                                            "color": "on-accent"
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "we-text",
+                                      "props": { "variant": "label", "color": "text" },
+                                      "children": ["The Coasys film · 4 min · with sound"]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "Row",
+                  "props": { "gap": "100", "ay": "center", "wrap": true },
+                  "children": [
+                    {
+                      "type": "we-text",
+                      "props": { "variant": "footnote", "color": "text-muted" },
+                      "children": ["Captions on ·"]
+                    },
+                    {
+                      "type": "we-button",
+                      "props": {
+                        "variant": "ghost",
+                        "size": "xs",
+                        "expanded": { "$": "local.transcript" },
+                        "onClick": { "$toggleLocal": "transcript" }
+                      },
+                      "children": [{ "$": "local.transcript ? 'Hide the transcript' : 'Transcript'" }]
+                    }
+                  ]
+                },
+                {
+                  "type": "we-text",
+                  "props": { "variant": "footnote", "color": "text-faint" },
+                  "children": [
+                    "Forest photo: ",
+                    {
+                      "type": "we-link",
+                      "props": {
+                        "href": "https://www.flickr.com/photos/hollystar47/30763457786/",
+                        "target": "_blank",
+                        "rel": "noopener noreferrer"
+                      },
+                      "children": ["“Autumn magic”"]
+                    },
+                    " by Holly Victoria Norval, ",
+                    {
+                      "type": "we-link",
+                      "props": {
+                        "href": "https://creativecommons.org/licenses/by/2.0/",
+                        "target": "_blank",
+                        "rel": "noopener noreferrer"
+                      },
+                      "children": ["CC BY 2.0"]
+                    },
+                    ", modified (cropped, colour-graded, graphic overlay added)"
+                  ]
+                },
+                {
+                  "type": "$if",
+                  "props": {
+                    "condition": { "$": "local.transcript" },
+                    "enterTransition": [
+                      { "type": "reveal", "duration": 250 },
+                      { "type": "fade", "duration": 180 }
+                    ],
+                    "then": {
+                      "type": "Column",
+                      "props": {
+                        "gap": "300",
+                        "p": "400",
+                        "mt": "200",
+                        "maxHeight": "320px",
+                        "overflowY": "auto",
+                        "r": "12px",
+                        "border": "1px solid border",
+                        "bg": "surface-sunken"
+                      },
+                      "children": [
+                        {
+                          "type": "we-text",
+                          "props": { "tag": "p", "color": "text-muted" },
+                          "children": [
+                            "Every system has to hold together, and still let its parts be free. In a forest, every tree grows its own way, and roots and fungi hold it together. More than trees: a forest, where other life can grow. Small groups do it too: they make their own rules, and change them as they go."
+                          ]
+                        },
+                        {
+                          "type": "we-text",
+                          "props": { "tag": "p", "color": "text-muted" },
+                          "children": [
+                            "To grow, we locked them down: tribe, city, empire, company, platform. Now AI could finish the job: one giant model, owned by a few, fed by all of us, and soon thinking for all of us. Or it breaks us apart: anyone can make an app, a video, a whole game, in an afternoon, and none of them fit together. In a body, that is cancer: cells that stopped talking to their neighbours."
+                          ]
+                        },
+                        {
+                          "type": "we-text",
+                          "props": { "tag": "p", "color": "text-muted" },
+                          "children": [
+                            "Life holds together and stays free: coherence and sovereignty. But AI squeezes the middle path, and pushes us to get right a problem as old as life. How can we cohere at scale without losing our sovereignty?"
+                          ]
+                        },
+                        {
+                          "type": "we-text",
+                          "props": { "tag": "p", "color": "text-muted" },
+                          "children": [
+                            "There is a third way, and life found it long ago: DNA, inside a membrane. A group has social DNA too: its rules, its governance, its culture. Each group writes its own, and no one else has to agree. Around each group is a membrane: what crosses is checked at the edge, against its DNA. Inside, everyone is free: any app, any screen, any AI bot. Sovereignty stays inside. Coherence is made at the crossing."
+                          ]
+                        },
+                        {
+                          "type": "we-text",
+                          "props": { "tag": "p", "color": "text-muted" },
+                          "children": [
+                            "Isn’t that the web already, you may ask? Well, it was meant to be. But it grew around servers, and servers serve their owners. Together, social DNA and membranes make a spanning layer across all our groups. Groups stack into groups of groups. No one DNA is forced on all, so each keeps adapting and evolving."
+                          ]
+                        },
+                        {
+                          "type": "we-text",
+                          "props": { "tag": "p", "color": "text-muted" },
+                          "children": [
+                            "That is what we at Coasys build, in three pieces. The first is AD4M. It lays one layer over our networks, with you at the centre, not a server. Centralized, peer-to-peer, or federated: they all plug in. Your identity, your data, your groups: they go with you from app to app. We built it close to today’s web standards, and we’re extending them. We call it the Living Web."
+                          ]
+                        },
+                        {
+                          "type": "we-text",
+                          "props": { "tag": "p", "color": "text-muted" },
+                          "children": [
+                            "We is the interface layer. Each space’s rules come with a screen that fits them. Anyone can change it, extend it, and share the UI pieces with other groups."
+                          ]
+                        },
+                        {
+                          "type": "we-text",
+                          "props": { "tag": "p", "color": "text-muted" },
+                          "children": [
+                            "And Synergy gives the value of the created work back to the groups who do it. Every group turns its members’ work into one shared result, and backs it with its own weight. So do groups of groups. Then the world answers, and the answer is passed back down to everyone who fed it. What held up gains backing. What didn’t loses weight, like a brain learning which connections to trust, and for what. Not everyone has to join. Taking part is a free choice. But it’s built so that honesty, and work that fits the whole, comes out ahead. No single party or AI decides what fits. The whole does. It grows from the bottom up, as people connect and their groups join into larger ones. That’s why we call it Synergy."
+                          ]
+                        },
+                        {
+                          "type": "we-text",
+                          "props": { "tag": "p", "color": "text-muted" },
+                          "children": [
+                            "Add it all up, and you get a global brain: many minds, people and AI, each still themselves. Our alternative to one giant model in a lab. Free and together. Sovereignty and coherence, one group at a time."
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
   "themes": [
     {
       "id": "glow",
@@ -7170,6 +7508,7 @@
   "brand": {
     "name": "Coasys",
     "mark": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 61 60\"><path fill=\"#88f3b4\" d=\"M60.8132 26.4402C60.8132 17.8176 54.0842 10.7408 45.5898 10.1311C43.1321 4.19363 37.2563 0 30.42 0C23.5837 0 17.7133 4.18829 15.2503 10.1257C6.73973 10.7248 0 17.8123 0 26.4402C0 31.7999 2.59716 36.5606 6.60022 39.5507C8.69297 50.9281 18.604 59.2832 30.42 59.2832C42.236 59.2832 52.1524 50.9067 54.2398 39.5293C58.2268 36.5445 60.8132 31.7892 60.8132 26.4402ZM41.9999 16.3573C41.9999 21.8829 38.0881 26.5098 32.883 27.6384C32.8401 27.2426 32.8186 26.8468 32.8186 26.4402C32.8186 20.9147 36.7305 16.2878 41.9355 15.1591C41.9784 15.555 41.9999 15.9508 41.9999 16.3573ZM30.4039 50.6553C28.4882 48.5477 27.4204 45.8144 27.4204 42.9206C27.4204 40.0267 28.5526 37.2399 30.4039 35.1912C32.2606 37.2399 33.3874 39.9519 33.3874 42.9206C33.3874 45.8893 32.3196 48.5531 30.4039 50.6553ZM18.8992 15.1698C24.0935 16.3092 27.9892 20.9307 27.9892 26.4456C27.9892 26.8468 27.9677 27.2426 27.9302 27.6384C22.7359 26.4991 18.8401 21.8775 18.8401 16.3627C18.8401 15.9615 18.8616 15.5657 18.8992 15.1698ZM21.8075 31.3774C23.4281 31.3774 24.9735 31.7144 26.374 32.3135C24.3564 35.7047 20.6431 37.9834 16.4093 37.9834C14.7834 37.9834 13.238 37.6464 11.8321 37.042C13.8873 33.5812 17.6596 31.372 21.8075 31.372V31.3774ZM34.4338 32.3135C35.8343 31.7144 37.3798 31.3774 39.0003 31.3774C43.1482 31.3774 46.9206 33.5865 48.9757 37.0473C47.5698 37.6518 46.0244 37.9888 44.4039 37.9888C40.1701 37.9888 36.4568 35.7101 34.4392 32.3135H34.4338ZM30.4146 4.81412C34.686 4.81412 38.4208 7.13025 40.4277 10.5697C36.2046 11.6181 32.6201 14.3033 30.3986 17.9085C28.1824 14.3086 24.6086 11.6288 20.3963 10.575C22.4032 7.1356 26.1379 4.81412 30.4146 4.81412ZM14.0536 15.1377C14.0214 15.5443 14.0053 15.9508 14.0053 16.3627C14.0053 20.4279 15.5078 24.1508 17.9762 27.0179C13.7961 28.0182 10.1633 30.6232 7.8827 34.2551C5.98312 32.1958 4.81869 29.4571 4.81869 26.4456C4.81869 20.8826 8.78419 16.2236 14.0483 15.1377H14.0536ZM12.3848 42.3054C13.6726 42.6317 15.0195 42.8029 16.4039 42.8029C18.6148 42.8029 20.7182 42.3643 22.6446 41.5726C22.6071 42.0219 22.5856 42.4712 22.5856 42.9259C22.5856 47.173 24.2115 51.1634 27.0984 54.1856C20.3963 53.0463 14.8478 48.5049 12.3848 42.3054ZM33.704 54.191C36.5963 51.1741 38.2169 47.1891 38.2169 42.9259C38.2169 42.4712 38.1954 42.0166 38.1578 41.5726C40.0842 42.3643 42.1931 42.8082 44.4039 42.8082C45.7991 42.8082 47.1513 42.6317 48.4445 42.3054C45.9761 48.5103 40.4062 53.057 33.7094 54.1963L33.704 54.191ZM52.9144 34.2605C50.6392 30.6339 47.0171 28.0289 42.8477 27.0233C45.3215 24.1562 46.824 20.4333 46.824 16.3627C46.824 15.9508 46.8025 15.5496 46.7757 15.1484C52.0236 16.245 55.9784 20.8933 55.9784 26.4456C55.9784 29.4571 54.814 32.2011 52.9144 34.2551V34.2605Z\"/></svg>",
+    "aboutPage": "about",
     "about": "# Coasys\n\nCoasys is where a community keeps its conversations, calls and the work that comes out of them —\non devices its members run, not on someone else's servers.\n\nEverything you write is signed by a key that is yours. Spaces you share are held by the people in\nthem, and you can take your keys and your private spaces with you whenever you choose.\n\nCoasys runs on [WE](https://github.com/coasys/we), an open interface layer for community software,\nand [AD4M](https://github.com/coasys/ad4m), the agent-centric data layer beneath it."
   },
   "bootScreen": {

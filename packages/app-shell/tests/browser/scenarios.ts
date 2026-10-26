@@ -1893,7 +1893,34 @@ const treeCaretEnd = (): Scenario => {
   };
 };
 
+/**
+ * The Coasys bundle's About page under Glow, as the bundle carries it: the site's first screen, with
+ * the typing headline and the film's frame. The film's addresses are taken out: the harness serves
+ * the default seed's policy, which does not allow coasys.org, and it is offline anyway — so the frame
+ * is measured with nothing in it, which is the case it must hold its shape in.
+ */
+const coasysAbout = (): Scenario => {
+  const glow = BUNDLE_LAB_THEMES.find((t) => t.label === 'coasys-glow')?.theme ?? {};
+  const [page] = JSON.parse(
+    JSON.stringify((coasysBundle as unknown as { pages: SchemaNode[] }).pages).replace(
+      /https:\/\/coasys\.org\/[^"]*/g,
+      '',
+    ),
+  ) as SchemaNode[];
+  return {
+    // A surface of its own, as the overlay that opens it is one, so its `mdUpProps` answer to the width.
+    node: {
+      type: 'Column',
+      theme: glow,
+      props: { width: '100%', bg: 'page' },
+      children: [{ type: '$surface', children: [page] }],
+    },
+    tables: {},
+  };
+};
+
 export const scenarios: Record<string, (scale?: number) => Scenario> = {
+  'coasys:about': coasysAbout,
   'tree:caret-end': treeCaretEnd,
   'rail:app': appRail,
   'coasys:tree-top': coasysTreeTop,

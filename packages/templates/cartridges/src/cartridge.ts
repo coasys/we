@@ -38,6 +38,8 @@ export interface Cartridge {
   theme: FixtureTheme;
   /** More themes the app offers beside `theme`, which stays its default. */
   themes?: BundleTheme[];
+  /** Pages of the app's own (`meta.role: 'page'`) — its About page, a guide. */
+  pages?: Array<TemplateSchema & { id: string }>;
   /** What the app calls itself — its name, mark and About page — when it is not WE. */
   brand?: BundleBrand;
   /** Its own sign-in screen, around the host's password field. */
@@ -169,6 +171,7 @@ export function toBundle(cartridge: Cartridge, version = '1.0.0'): Bundle {
       { ...shell, meta: { ...shell.meta, themeId: theme.id, ...themeIds } },
       ...cartridge.sections.map((section) => ({ ...section, id: piece(section.id) })),
     ],
+    ...(cartridge.pages?.length ? { pages: cartridge.pages } : {}),
     ...(extra.length ? { themes: [theme, ...extra] } : { theme }),
     recordTypes: cartridge.shapes.map((shape) => ({
       name: shape.name,

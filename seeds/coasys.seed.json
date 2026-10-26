@@ -11,6 +11,10 @@
     "icon": "packages/templates/cartridges/src/coasys/assets/icon.svg"
   },
   "bundles": ["coasys"],
+  "contentSecurity": {
+    "images": ["https://coasys.org"],
+    "media": ["https://coasys.org"]
+  },
   "modules": ["call", "transcribe", "live", "graph"],
   "templates": ["default", "workshop"],
   "views": ["about", "cards", "graph", "boards", "calendar"],

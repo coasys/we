@@ -46,11 +46,12 @@ describe.each([fieldGuide, toolLibrary])('the $name cartridge', (cartridge) => {
 describe('the Coasys cartridge', () => {
   /*
     It defines no kinds of record of its own, so there is no gap to record: every template it brings
-    must validate as it stands — the app around every space and the space template with its pages.
+    must validate as it stands — the app around every space, the space template with its pages, and
+    the pages of the app's own.
   */
   it('is valid as it stands', () => {
     const context = buildValidationContext(contextData);
-    const errors = [coasys.app!, coasys.shell].flatMap((template) =>
+    const errors = [coasys.app!, coasys.shell, ...(coasys.pages ?? [])].flatMap((template) =>
       validateSemantic(template, context)
         .errors.filter((e) => e.severity === 'error')
         .map((e) => `${template.id}: ${e.path}: ${e.message}`),
@@ -63,6 +64,9 @@ describe('the Coasys cartridge', () => {
     expect(bundle.brand?.name).toBe('Coasys');
     expect(bundle.brand?.mark).toMatch(/^<svg/);
     expect(JSON.stringify(bundle.bootScreen)).toContain('CredentialField');
+    // Its About is a page of its own, which the bundle carries; the Markdown stays as the fallback.
+    expect(bundle.pages?.map((page) => page.id)).toEqual([bundle.brand?.aboutPage]);
+    expect(bundle.brand?.about).toBeTruthy();
     const [glowTheme, coasysTheme] = bundleThemes(bundle);
     expect(bundle.app?.meta.themeId).toBe(glowTheme.id);
     expect(Object.keys(coasysTheme.overrides)).toEqual(expect.arrayContaining(['light', 'dark']));
