@@ -125,6 +125,33 @@ committing. Nothing in \`.gitignore\` catches one, whatever it is called.
 respect, add a record to \`docs/architecture/decisions/\` in the same PR — the bar and the format are
 in that folder's README. Most PRs make no such decision; a few a month is the expected rate.
 
+**Fix a problem in the layer that causes it.** When a template, a module or a feature runs into
+something awkward — a primitive that ignores a prop, a theme that cannot express a look, a component
+that wraps what it was given, a generated file nothing regenerates — trace it to where it comes from
+and fix it there, in the same PR when it is in reach. A workaround in the layer above solves one
+caller and teaches the next one to work around it too; the fix upstream improves every caller,
+including the ones nobody has written yet. This is not speculative extraction: "three real uses
+before abstracting" is about inventing a shared shape, and a defect has a cause whether one caller
+has met it or ten.
+
+**Put a styling change at the level it belongs to.** Before adjusting how something looks, decide
+which of three it is:
+
+| Level | When | Where |
+|---|---|---|
+| Template | It is about this content or this arrangement — what sits beside what, how a header is laid out | DS props on the template's nodes |
+| Theme | It is a look another theme might choose differently — density, a selected row's mark, how strong a label is | colour roles, type roles, \`components.<name>\` (and \`.variants\`) |
+| Design system or kit | The default is wrong or missing everywhere — rows that touch, a count narrower than it is tall | the primitive, component or fragment |
+
+Signs a template change is really a patch: the same adjustment in a second place, a value that
+overrides something a theme already controls, reaching for \`styles\`, or fighting a primitive's own
+behaviour. When the vocabulary cannot say it — a theme setting that does not exist, a prop a
+primitive does not take — that missing piece is the fix, not the local value.
+
+**Say what you worked around.** When a problem in the architecture cannot be fixed in the PR that met
+it, a workaround is fine — but name it, in the PR description or an issue, with where the real fix
+belongs, so it is resolved rather than walked around again.
+
 ---
 
 ### The executor must match the pin (CRITICAL)
