@@ -2529,7 +2529,7 @@ AgentSettings extends Ad4mModel:
   - installedModules: string [we://installed_modules]
   - moduleSettings: string [we://module_settings]
   Relations:
-  - installedTemplates: HasMany → Template [we://installed_template]
+  - hiddenTemplates: HasMany → Template [we://hidden_template]
   - installedThemes: HasMany → Theme [we://installed_theme]
   - spaceTemplatePreferences: HasMany → SpaceTemplatePreference [we://space_template_preference]
 

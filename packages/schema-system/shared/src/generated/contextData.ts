@@ -1380,7 +1380,7 @@ export const contextData: ContextData = {
         { name: 'moduleSettings', type: 'string', predicate: 'we://module_settings', required: false },
       ],
       relations: [
-        { name: 'installedTemplates', kind: 'HasMany', predicate: 'we://installed_template', target: 'Template' },
+        { name: 'hiddenTemplates', kind: 'HasMany', predicate: 'we://hidden_template', target: 'Template' },
         { name: 'installedThemes', kind: 'HasMany', predicate: 'we://installed_theme', target: 'Theme' },
         {
           name: 'spaceTemplatePreferences',
