@@ -2148,6 +2148,12 @@
           "type": "number",
           "optional": false,
           "default": "0"
+        },
+        {
+          "name": "scope",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
         }
       ]
     },

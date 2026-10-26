@@ -90,5 +90,15 @@ export async function check({ measure, measureAll, measurePart, measureParts, pa
   if (!(kid && leaf && kid.x >= leaf.x + 16))
     problems.push(`a child starts at x=${kid?.x}, in line with a leaf at x=${leaf?.x}`);
 
+  // A faint guide runs down an open group's children, centred under the group's caret.
+  const groupIndex = (await measureAll('we-tree-item')).findIndex((b) => b.text.startsWith('Calls'));
+  const guide = await partStyle('we-tree-item', 'width', 'children::before', groupIndex);
+  const [groupCaret] = await measureParts('we-tree-item', 'caret', groupIndex);
+  const [children] = await measureParts('we-tree-item', 'children', groupIndex);
+  const left = Number.parseFloat(await partStyle('we-tree-item', 'left', 'children::before', groupIndex));
+  if (guide !== '1px') problems.push(`an open group's guide is ${guide} wide, not a 1px hairline`);
+  if (groupCaret && children && Math.abs(children.x + left + 0.5 - groupCaret.cx) > 1)
+    problems.push(`the guide is at x=${children.x + left}, not under the caret at x=${groupCaret.cx}`);
+
   return problems;
 }

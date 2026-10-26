@@ -119,6 +119,9 @@ export class Tree extends DesignSystemElement {
       item.selected = !!this.selected && item.value === this.selected;
       item.level = item.depthInTree();
     }
+    // The row whose children hold the selected one: its guide draws a little stronger.
+    const holder = this.items.find((item) => item.selected)?.parentItem();
+    for (const item of this.items) item.scope = item === holder;
     const stop =
       visible.find((item) => item.value === this.focusedValue) ?? visible.find((item) => item.selected) ?? visible[0];
     for (const item of this.items) item.tabStop = item === stop;
@@ -211,11 +214,43 @@ export class Tree extends DesignSystemElement {
 const SELECTED = (key: string, fallback: string) =>
   unsafeCSS(`var(${componentThemeVar('tree', key, 'selected')}, ${fallback})`);
 
+const GUIDE_WIDTH = unsafeCSS(`var(${componentThemeVar('tree', 'borderWidth')}, 1px)`);
+const GUIDE_COLOR = unsafeCSS(`var(${componentThemeVar('tree', 'border')}, var(--we-role-border))`);
+const SCOPE_COLOR = unsafeCSS(`var(${componentThemeVar('tree', 'border', 'selected')}, var(--we-role-border-strong))`);
+
 const ITEM_STYLES = css`
   :host {
     display: block;
   }
+  /*
+    The guide: a hairline down an open row's children, centred under its caret, from just below the
+    row to its last descendant. The indent already says a row is a child; the line says whose, so an
+    open group's rows and the group after it cannot be mistaken for one another. Indent guides
+    rather than branch connectors: a tick into every row would meet the rows' rounding and the
+    selected row's bar, and in a tree mostly one level deep it repeats what the indent says.
+
+    A theme draws it with the tree's own border and borderWidth (components.tree), faint by default.
+    The guide around the selected row is the active scope, a little stronger: the selected variant's
+    border colour where a theme sets one (Glow's mint), at about half strength, so it reads as the
+    same mark.
+  */
+  [part='children']::before {
+    content: '';
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: calc(
+      var(--we-tree-indent, calc(16px + var(--we-space-200))) * var(--we-tree-level, 0) + var(--we-space-200) + 8px -
+        ${GUIDE_WIDTH} / 2
+    );
+    width: ${GUIDE_WIDTH};
+    background: ${GUIDE_COLOR};
+    pointer-events: none;
+  }
+  :host([scope]) [part='children']::before {
+    background: color-mix(in oklab, ${SCOPE_COLOR} 55%, transparent);
+  }
   [part='children'] {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: ${unsafeCSS(ROW_GAP_VALUE)};
@@ -344,6 +379,8 @@ export class TreeItem extends DesignSystemElement {
   @property({ type: Boolean }) tabStop = false;
   /** Set by the tree: how deep the row is, for indentation and `aria-level`. */
   @property({ type: Number }) level = 0;
+  /** Its children hold the selected row, so its guide is the active scope. Set by the tree. */
+  @property({ type: Boolean, reflect: true }) scope = false;
 
   /** Whether every row above this one is open, so this one is on screen. */
   isVisibleInTree(): boolean {
@@ -480,7 +517,11 @@ export class TreeItem extends DesignSystemElement {
             and the row's gap above it: a press on a row with no children appeared to open it onto
             a sliver of space.
           */
-          this.open && expandable ? html`<div role="group" part="children"><slot name="children"></slot></div>` : ''
+          this.open && expandable
+            ? html`<div role="group" part="children" style=${`--we-tree-level: ${this.level}`}>
+                <slot name="children"></slot>
+              </div>`
+            : ''
         }
       </div>
     `;

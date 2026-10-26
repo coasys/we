@@ -739,6 +739,7 @@ export const contextData: ContextData = {
         { name: 'selected', type: 'boolean', optional: false, default: 'false' },
         { name: 'tabStop', type: 'boolean', optional: false, default: 'false' },
         { name: 'level', type: 'number', optional: false, default: '0' },
+        { name: 'scope', type: 'boolean', optional: false, default: 'false' },
       ],
     },
     {

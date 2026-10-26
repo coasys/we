@@ -1639,7 +1639,7 @@ inside an `$if` on the same open state, so nothing is read for a row nobody has 
 `open` is the template's to hold, as `selected` is the tree's: the row asks (`openchange`, `{ open }`,
 bound as `onOpenChange`) and the template answers by setting it, so a row's open state can live in the address, in local
 state or anywhere else.
-  Props: value: string = '', open: boolean = false, expandable: boolean = false, selected: boolean = false, tabStop: boolean = false, level: number = 0
+  Props: value: string = '', open: boolean = false, expandable: boolean = false, selected: boolean = false, tabStop: boolean = false, level: number = 0, scope: boolean = false
 - we-video (LayoutVisualElement)
   Props: src: string = '', poster?: string | undefined, controls: boolean = false, preload: 'none' | 'metadata' | 'auto' = 'metadata', fit: '' | 'cover' | 'contain' | 'fill' | 'none' | 'scale-down' = '', autoplay: boolean = false, loop: boolean = false, muted: boolean = false, playsinline: boolean = false, stream?: MediaStream | null | undefined
 

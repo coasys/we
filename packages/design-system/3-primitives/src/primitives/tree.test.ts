@@ -208,6 +208,18 @@ describe('a tree', () => {
     expect(rowOf(late).getAttribute('aria-expanded')).toBe('true');
   });
 
+  it('marks the row whose children hold the selected one as the active scope, and no other', async () => {
+    const tree = await makeTree(rows, 'a1');
+    const scoped = [...tree.querySelectorAll<ItemEl & { scope: boolean }>('we-tree-item')].filter((el) => el.scope);
+    expect(scoped.map((el) => el.value)).toEqual(['a']);
+    tree.selected = 'people';
+    await settle(tree);
+    // A top-level row is in no group, so nothing is the scope.
+    expect([...tree.querySelectorAll<ItemEl & { scope: boolean }>('we-tree-item')].filter((el) => el.scope)).toEqual(
+      [],
+    );
+  });
+
   it('keeps the caret slot on a leaf at every depth, so children sit a step in from their parent', async () => {
     // A nested leaf dropped the slot, and its glyph landed in the same column as a top-level leaf's.
     const tree = await makeTree(rows);
