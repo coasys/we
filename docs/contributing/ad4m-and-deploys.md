@@ -222,10 +222,10 @@ in that file with what is wrong, and run inverted — they pass while the gap is
 an ad4m change closes it, which is the cue to delete the entry.
 
 Both start one executor in a temporary directory, on free ports and with no network, and remove it
-afterwards. By default it is `../ad4m/target/release/ad4m-executor`; `AD4M_EXECUTOR=<path>` names
-another, and `AD4M_LIVE_URL` with `AD4M_LIVE_TOKEN` uses one already running, its agent unlocked.
-Build that executor from the commit the pin stands for (`node scripts/ad4m-pin.mjs --commit`), with
-`cargo build --release --bin ad4m-executor`.
+afterwards. Which binary is chosen as for the app (see
+[The executor you run locally](#the-executor-you-run-locally)): the pinned one by default, which
+`pnpm ad4m:executor` downloads. `AD4M_LIVE_URL` with `AD4M_LIVE_TOKEN` uses one already running
+instead, its agent unlocked.
 
 It also runs in CI, as the `AD4M live` workflow (`.github/workflows/ad4m-live.yaml`): on a PR that
 touches the backend packages, the entities or the pin, on `dev` after such a merge, and on the bump
@@ -250,6 +250,41 @@ Once cached, nothing depends on ad4m's artifacts lasting: it fetches each commit
 minutes of pinning it. A PR pinning an ad4m PR's head fetches that commit's executor for itself on
 its first run, and the live tests then run against the ad4m change the PR needs. It is not a required check: read it before merging a
 bump, or a PR pinning an ad4m change, the way you would the run here.
+
+### The executor you run locally
+
+The pin installs the client, and the executor has to come from the same ad4m commit. A binary from
+another one starts without complaint, and the mismatch shows up somewhere else: a WS method that
+does not exist, a call that hangs, a feature that is in the code and absent at runtime. So
+`scripts/ad4m-executor.mjs` chooses the executor for the Electron app, the live tests and
+`pnpm setup-workspace` alike, first match wins:
+
+| Source                                 | When                                                    |
+| -------------------------------------- | ------------------------------------------------------- |
+| `AD4M_EXECUTOR=<path>`                 | CI's packaging, or a one-off run against another binary |
+| The seed's `ad4m.executorPath`         | You are changing ad4m and run your own build            |
+| The pinned commit's download (default) | Everything else                                         |
+
+```sh
+pnpm ad4m:executor                       # make sure it is there, downloading the pinned one if not
+node scripts/ad4m-executor.mjs --path    # print which binary would run
+```
+
+The pinned one is the executor ad4m's CI built for that commit (the same files as above), kept in
+a cache outside the repositories, one directory per commit:
+`~/.cache/we/ad4m-executor/<commit>/ad4m-executor` (under `$XDG_CACHE_HOME` when that is set).
+Keyed by commit, a file there is that commit's executor, so nothing has to be checked: switching to
+a branch that pins another commit finds it, or downloads it once, and every WE checkout on the
+machine shares the cache. The five most recently used commits are kept. `pnpm dev:electron` runs the
+same command first, without failing: it downloads what is missing and otherwise says what is wrong
+and starts the app anyway.
+
+Build from source only when you are changing ad4m itself, or where nothing can be downloaded (macOS,
+or a commit too old to have a published executor): in the ad4m checkout, check out the commit
+`node scripts/ad4m-pin.mjs --commit` prints, or your own branch, run
+`cargo build --release --bin ad4m-executor`, and point a seed's `ad4m.executorPath` at
+`target/release/ad4m-executor` — for one run, `AD4M_EXECUTOR` does the same without editing the
+seed. Nothing checks that build against the pin; the command says so each time it runs one.
 
 ## Why this shape
 
