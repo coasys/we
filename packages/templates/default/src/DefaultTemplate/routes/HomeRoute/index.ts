@@ -51,7 +51,7 @@ export const homeRoute: RouteSchema = {
                         bg: 'surface',
                         width: '160px',
                         cursor: 'pointer',
-                        onClick: { $action: 'spaceStore.navigateToSpace', args: [{ $: 'space.spaceId' }] },
+                        onClick: { $invoke: 'spaceStore.navigateToSpace', args: [{ $: 'space.spaceId' }] },
                       },
                       children: [
                         {

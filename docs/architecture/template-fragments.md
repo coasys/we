@@ -262,7 +262,7 @@ Nothing in `@we/schema-solid`, nothing in the backend, nothing in the module con
    flip that fails silently.
 2. **An eject/detach operation** in the editor, so a tagged instance is never a dead end.
 3. **Action disclosure at install.** Expansion makes installed fragments inert — they cannot act
-   until inserted — but insert is the moment `$action`s enter your template, and an installed
+   until inserted — but insert is the moment `$invoke`s enter your template, and an installed
    fragment runs with the template's full ambient authority. "It's data, so it's safe" is true of
    presentation and false of actions.
 

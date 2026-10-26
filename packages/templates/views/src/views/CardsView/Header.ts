@@ -27,7 +27,7 @@ const startCallButton: SchemaNode = {
         text: { $: "modules.call.active ? 'Go to call' : 'Call'" },
         variant: 'solid',
         /*
-          A handler array so the branch is taken at click time. Written as a single `$action` with a
+          A handler array so the branch is taken at click time. Written as a single `$invoke` with a
           `$if` in its args it would resolve when the header painted and freeze whichever answer was
           true then — the trap named in the schema docs, and the reason the two states are two
           entries rather than one conditional action.
@@ -36,13 +36,13 @@ const startCallButton: SchemaNode = {
           {
             $if: {
               condition: { $: 'modules.call.active' },
-              then: { $action: 'modules.call.goToCall' },
+              then: { $invoke: 'modules.call.goToCall' },
             },
           },
           {
             $if: {
               condition: { $: '!modules.call.active' },
-              then: { $action: 'modules.call.startCall', args: [''] },
+              then: { $invoke: 'modules.call.startCall', args: [''] },
             },
           },
         ],
@@ -256,7 +256,7 @@ export const cardsHeader: SchemaNode = {
                 // Opens the shell-chrome mount (slot 'core:createSpace'), which exists once and
                 // closes itself via the same shell flag. A route-local copy of the modal used to
                 // live here, gated on a local flag its close never cleared — unclosable.
-                onClick: { $action: 'shellStore.setCreateSpaceOpen', args: [true] },
+                onClick: { $invoke: 'shellStore.setCreateSpaceOpen', args: [true] },
               },
             },
           ],

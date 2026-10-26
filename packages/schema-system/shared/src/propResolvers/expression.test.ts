@@ -59,11 +59,11 @@ describe('{ $: … } through the dispatcher', () => {
     expect(run("arg.detail.value == 'y'", { ...context, event: { detail: { value: 'y' } } })).toBe(true);
   });
 
-  it('feeds a deferred argument to an $action with the callback argument', () => {
+  it('feeds a deferred argument to an $invoke with the callback argument', () => {
     const calls: unknown[][] = [];
     const bag = { ...stores, routeStore: { navigate: (...args: unknown[]) => calls.push(args) } };
     const handler = resolveProp(
-      { $action: 'routeStore.navigate', args: [{ $: '`/space/${event.detail.uuid}`' }] },
+      { $invoke: 'routeStore.navigate', args: [{ $: '`/space/${event.detail.uuid}`' }] },
       bag,
       context,
       noMemo,

@@ -45,15 +45,15 @@ describe('the task board', () => {
     // thing that knows the difference. Only a record a pass *created* is provisional.
     expect(json).toContain('card.id in (modules.transcribe.unconfirmedIds)');
     expect(json).not.toContain('modules.transcribe.pendingIds');
-    expect(json).toContain('"$action":"modules.transcribe.acceptProposal"');
-    expect(json).toContain('"$action":"modules.transcribe.rejectProposal"');
+    expect(json).toContain('"$invoke":"modules.transcribe.acceptProposal"');
+    expect(json).toContain('"$invoke":"modules.transcribe.rejectProposal"');
   });
 
   it('shows a change suggested to an agreed card as lines on it, answered per field', () => {
     // Not faded and not "suggested": the record is settled, and only the change is waiting.
     expect(json).toContain('modules.transcribe.changedIds');
-    expect(json).toContain('"$action":"modules.transcribe.applyChange"');
-    expect(json).toContain('"$action":"modules.transcribe.dismissChange"');
+    expect(json).toContain('"$invoke":"modules.transcribe.applyChange"');
+    expect(json).toContain('"$invoke":"modules.transcribe.dismissChange"');
   });
 
   it('draws from the pool less what nobody has kept, while the reader hides it', () => {
@@ -164,7 +164,7 @@ describe('a board read by who is on the work', () => {
   it('hands every drag the column’s whole order, so a filtered column cannot reorder what it hides', () => {
     // Both the reorder inside a column and the move into one.
     expect(text).toContain(
-      '"$action":"spaceStore.arrangeColumn","args":[{"$":"col.id"},{"$":"arg.detail"},{"$":"arrangedBoard(',
+      '"$invoke":"spaceStore.arrangeColumn","args":[{"$":"col.id"},{"$":"arg.detail"},{"$":"arrangedBoard(',
     );
     expect(text.match(/\.contents\[arg\.detail\.to\]\.order/g)?.length).toBeGreaterThanOrEqual(2);
   });
@@ -174,7 +174,7 @@ describe('a board read by who is on the work', () => {
   });
 
   it('draws who is on a card as one stack of three that opens the picker, and never the creator', () => {
-    expect(text).toContain('"$action":"spaceStore.setInvolvement"');
+    expect(text).toContain('"$invoke":"spaceStore.setInvolvement"');
     expect(text).toContain('involvementMenu({');
     expect(text).toContain('"max":3');
     // A reviewer is told apart by the ring the host gives the part, not by a second glyph.
@@ -220,12 +220,12 @@ describe('a board read by who is on the work', () => {
 describe('selecting a card, and adding a column', () => {
   const select = {
     selected: 'routeStore.params.card',
-    onSelect: { $action: 'routeStore.setParam', args: ['card', { $: 'card.id' }] },
+    onSelect: { $invoke: 'routeStore.setParam', args: ['card', { $: 'card.id' }] },
   };
   const selectable = JSON.stringify(taskBoard({ boardId: { $: 'local.boardId' }, empty: { type: 'Column' }, select }));
 
   it('selects on a press and draws the selected card in the accent', () => {
-    expect(selectable).toContain('"onClick":{"$action":"routeStore.setParam","args":["card",{"$":"card.id"}]}');
+    expect(selectable).toContain('"onClick":{"$invoke":"routeStore.setParam","args":["card",{"$":"card.id"}]}');
     expect(selectable).toContain("(card.id == routeStore.params.card) ? '1px solid accent'");
     // And a board that selects nothing has no press to answer.
     expect(json).not.toContain('routeStore.params.card');
@@ -248,8 +248,8 @@ describe('selecting a card, and adding a column', () => {
 describe('a task board in a space that asks for agreement', () => {
   it('reads each card’s waiting move off the board once, and offers Approve and Withdraw on it', () => {
     expect(json).toContain('.workflow[card.id]].filter(w, w)');
-    expect(json).toContain('"$action":"spaceStore.approveTaskMove"');
-    expect(json).toContain('"$action":"spaceStore.withdrawTaskMove"');
+    expect(json).toContain('"$invoke":"spaceStore.approveTaskMove"');
+    expect(json).toContain('"$invoke":"spaceStore.withdrawTaskMove"');
     expect(json).toContain('"condition":{"$":"wait.canApprove"}');
     expect(json).toContain('"condition":{"$":"wait.mine"}');
   });

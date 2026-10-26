@@ -18,7 +18,7 @@
  *
  * Every function on a store used to be tagged reactive, so `{ $: 'modules.call.leave' }` *called*
  * during paint. A marked state member is tagged reactive and read like any store value; a marked
- * action is callable only through `$action`, exactly as a host store's actions are. The module says
+ * action is callable only through `$invoke`, exactly as a host store's actions are. The module says
  * which is which, because nothing else can.
  *
  * ## The description is required
@@ -70,7 +70,7 @@ export function markState<T>(accessor: T, doc: string): T extends (...args: neve
 }
 
 /**
- * Publish an action. Templates call it through `$action`; an expression reading it gets nothing.
+ * Publish an action. Templates call it through `$invoke`; an expression reading it gets nothing.
  *
  * A template's action runs only while somebody is doing something — a press, a key, typing — so one
  * wired to an image loading does nothing. `ambient: true` lifts that, and is a claim the action is

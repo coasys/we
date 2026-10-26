@@ -20,7 +20,7 @@ tokens:
 | --------- | --------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
 | Structure | Node types `$each`, `$if`, `$routes`, `$animate`, `$single`, `$surface`, `$slot`, `$agent`; `$localState`, `$queries` | Arrangement — what section-level remixing operates on                 |
 | Query     | `{ $query }`, `$queries`                                                                                              | An IR the backend pushes down                                         |
-| Handlers  | `$action`, `$setLocal`, `$toggleLocal`, `$toggleLocalIn`, `$callLocal`, `$touch`, `$resetLocal`                       | A closed set of verbs; grants and `destructive` flags attach to verbs |
+| Handlers  | `$invoke`, `$setLocal`, `$toggleLocal`, `$toggleLocalIn`, `$callLocal`, `$touch`, `$resetLocal`                       | A closed set of verbs; grants and `destructive` flags attach to verbs |
 | Values    | `{ $: "count(local.rows) > 0 && local.search != ''" }`                                                                | One expression language — closed grammar, open function library       |
 
 The value layer lives in `shared/src/expressions/`: `ast.ts` (the grammar and why it is closed),
@@ -34,7 +34,7 @@ inert, reactive), `check.ts` (column-precise static checking), `functions.ts` (t
   computation is a function (below) or a host source.
 - Handler tokens use the `$` prefix followed by a **single lowercase word**.
 - Renderer-level operators appear as `node.type` values and are handled in `SchemaRenderer.tsx`.
-- **Strings are text.** A plain string in a prop, in `children` or in an `$action` argument is a
+- **Strings are text.** A plain string in a prop, in `children` or in an `$invoke` argument is a
   literal; a reference is always `{ $: '…' }`. The validator rejects the old string spelling
   (`'$item.name'`), and `dispatcher.ts` resolves nothing from a string.
 
@@ -89,7 +89,7 @@ return markReactive(
 );
 ```
 
-Resolvers that produce **static values** or **functions** (like `$action`) can return plain values.
+Resolvers that produce **static values** or **functions** (like `$invoke`) can return plain values.
 
 **Rule:** If the resolved value could change when a store signal updates, it must be wrapped in `markReactive(memo(...))`.
 
@@ -152,6 +152,6 @@ The renderer resolves `node.type` to a component using these rules (in order):
 
 - `SchemaProp` — the recursive base type for all prop values. Kept as `string | number | boolean | Record<string, unknown> | SchemaProp[] | undefined` for Zod compatibility.
 - `OperatorToken` — union of all typed operator tokens. Opt-in for schema authors who want autocomplete; not enforced at the `SchemaNode.props` level.
-- Individual token types (`ExpressionToken`, `ActionToken`, `SetLocalToken`, etc.) are exported for use in utility functions and type guards.
+- Individual token types (`ExpressionToken`, `InvokeToken`, `SetLocalToken`, etc.) are exported for use in utility functions and type guards.
 
 **Rule:** New operator types are added to the `OperatorToken` union but `SchemaProp` stays generic — the Zod validation layer handles structural validation separately.

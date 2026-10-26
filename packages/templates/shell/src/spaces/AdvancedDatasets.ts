@@ -81,7 +81,7 @@ const datasetCard: SchemaNode = {
             variant: 'soft',
             size: 'sm',
             onClick: {
-              $action: 'datasetStore.cleanupSpaceSdna',
+              $invoke: 'datasetStore.cleanupSpaceSdna',
               args: [{ $: 'dataset.id' }],
               onSuccess: [{ $setLocal: 'sdnaCleanupResult', value: { $: 'result' } }],
             },
@@ -132,7 +132,7 @@ const datasetCard: SchemaNode = {
           detail: { $: '`ID: ${dataset.id}`' },
           confirmLabel: 'Delete',
           busyLocal: 'deleting',
-          confirm: { $action: 'spaceStore.removeSpace', args: [{ $: 'dataset.id' }] },
+          confirm: { $invoke: 'spaceStore.removeSpace', args: [{ $: 'dataset.id' }] },
         }),
       ],
     },

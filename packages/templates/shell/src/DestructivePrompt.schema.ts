@@ -31,13 +31,13 @@ export const destructivePrompt: SchemaNode = confirmModal({
   open: { $: 'shellStore.pendingDestructive' },
   // Dismissing is declining. The backdrop, Escape, the close button and Cancel all land here, and
   // all of them resolve the waiting action with "no" rather than leaving it hanging.
-  close: { $action: 'shellStore.cancelDestructive' },
+  close: { $invoke: 'shellStore.cancelDestructive' },
   title: { $: 'shellStore.pendingDestructive.title' },
   body: { $: 'shellStore.pendingDestructive.body' },
   // The action being confirmed, verbatim. Small print rather than the body, because the body is
   // what the reader needs and this is what an author or a suspicious reader needs.
   detail: { $: 'shellStore.pendingDestructive.path' },
   confirmLabel: 'Delete',
-  confirm: { $action: 'shellStore.confirmDestructive' },
+  confirm: { $invoke: 'shellStore.confirmDestructive' },
   cancelLabel: 'Cancel',
 });

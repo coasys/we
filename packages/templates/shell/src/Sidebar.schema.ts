@@ -79,7 +79,7 @@ const rail: SchemaNode = railShell({
           ax: 'center',
           ay: 'center',
           cursor: 'pointer',
-          onClick: { $action: 'shellStore.openShellView', args: ['landing-page'] },
+          onClick: { $invoke: 'shellStore.openShellView', args: ['landing-page'] },
         },
         children: [brandMark({ width: '38px', height: '38px', gradient: 'var(--we-gradient-accent)' })],
       },
@@ -109,8 +109,8 @@ const rail: SchemaNode = railShell({
             label: 'Schema Tests',
             active: { $: "shellStore.activeShellView == 'schema-tests'" },
             onClick: [
-              { $action: 'appStore.deactivateApp' },
-              { $action: 'shellStore.openShellView', args: ['schema-tests'] },
+              { $invoke: 'appStore.deactivateApp' },
+              { $invoke: 'shellStore.openShellView', args: ['schema-tests'] },
             ],
           }),
         },
@@ -135,7 +135,7 @@ const rail: SchemaNode = railShell({
           $if: {
             condition: { $: 'sessionStore.isGuest' },
             then: { $setLocal: 'confirmGuestLogout', value: true },
-            else: { $action: 'sessionStore.logout' },
+            else: { $invoke: 'sessionStore.logout' },
           },
         },
       }),
@@ -147,7 +147,7 @@ const rail: SchemaNode = railShell({
         detail: 'To keep it, stay signed in on this browser.',
         confirmLabel: 'Sign out anyway',
         cancelLabel: 'Stay signed in',
-        confirm: { $action: 'sessionStore.logout' },
+        confirm: { $invoke: 'sessionStore.logout' },
       }),
     ],
   },
@@ -156,13 +156,13 @@ const rail: SchemaNode = railShell({
       icon: 'user',
       label: 'Profile',
       active: { $: "shellStore.activeShellView == 'profile'" },
-      onClick: [{ $action: 'appStore.deactivateApp' }, { $action: 'shellStore.openShellView', args: ['profile'] }],
+      onClick: [{ $invoke: 'appStore.deactivateApp' }, { $invoke: 'shellStore.openShellView', args: ['profile'] }],
     }),
     railItem({
       icon: 'gear',
       label: 'Settings',
       active: { $: "shellStore.activeShellView == 'settings'" },
-      onClick: [{ $action: 'appStore.deactivateApp' }, { $action: 'shellStore.openShellView', args: ['settings'] }],
+      onClick: [{ $invoke: 'appStore.deactivateApp' }, { $invoke: 'shellStore.openShellView', args: ['settings'] }],
     }),
     // Only where the seed names a marketplace: without one the overlay is a dead end saying so.
     {
@@ -174,8 +174,8 @@ const rail: SchemaNode = railShell({
           label: 'Marketplace',
           active: { $: "shellStore.activeShellView == 'marketplace'" },
           onClick: [
-            { $action: 'appStore.deactivateApp' },
-            { $action: 'shellStore.openShellView', args: ['marketplace'] },
+            { $invoke: 'appStore.deactivateApp' },
+            { $invoke: 'shellStore.openShellView', args: ['marketplace'] },
           ],
         }),
       },
@@ -187,7 +187,7 @@ const rail: SchemaNode = railShell({
       reorderable: true,
       // `$arg.detail` is where we-sortable puts the reordered ids. The event is `reorder`, which
       // Solid reaches from `onReorder` by lowercasing — a listener named `we-reorder` never fires.
-      onReorder: { $action: 'datasetStore.reorderDatasets', args: [{ $: 'arg.detail' }] },
+      onReorder: { $invoke: 'datasetStore.reorderDatasets', args: [{ $: 'arg.detail' }] },
       /*
         The two ways a space gets into this list, behind one `+`.
 
@@ -227,13 +227,13 @@ const rail: SchemaNode = railShell({
             {
               $if: {
                 condition: { $: "arg.id == 'create'" },
-                then: { $action: 'shellStore.setCreateSpaceOpen', args: [true] },
+                then: { $invoke: 'shellStore.setCreateSpaceOpen', args: [true] },
               },
             },
             {
               $if: {
                 condition: { $: "arg.id == 'join'" },
-                then: { $action: 'shellStore.setJoinSpaceOpen', args: [true] },
+                then: { $invoke: 'shellStore.setJoinSpaceOpen', args: [true] },
               },
             },
           ],
@@ -251,7 +251,7 @@ const rail: SchemaNode = railShell({
               avatar: { src: { $: 'space.avatar' }, name: { $: 'space.name' }, hash: { $: 'space.uuid' } },
               label: { $: 'space.name' },
               active: { $: 'space.spaceId == routeStore.segments[1]' },
-              onClick: { $action: 'spaceStore.navigateToSpace', args: [{ $: 'space.spaceId' }] },
+              onClick: { $invoke: 'spaceStore.navigateToSpace', args: [{ $: 'space.spaceId' }] },
               /*
                 Which space the call is in — now that a call outlives leaving its space, that is a
                 question the rail has to be able to answer.
@@ -320,10 +320,10 @@ const rail: SchemaNode = railShell({
                   onClick: {
                     $if: {
                       condition: { $: "app.id == 'we'" },
-                      then: [{ $action: 'appStore.deactivateApp' }, { $action: 'shellStore.closeShellView' }],
+                      then: [{ $invoke: 'appStore.deactivateApp' }, { $invoke: 'shellStore.closeShellView' }],
                       else: [
-                        { $action: 'shellStore.closeShellView' },
-                        { $action: 'appStore.activateApp', args: [{ $: 'app.id' }] },
+                        { $invoke: 'shellStore.closeShellView' },
+                        { $invoke: 'appStore.activateApp', args: [{ $: 'app.id' }] },
                       ],
                     },
                   },

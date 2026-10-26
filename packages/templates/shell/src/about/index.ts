@@ -365,7 +365,7 @@ function ctaCard(card: (typeof CTA_CARDS)[0], imageLeft: boolean) {
           variant: 'outline',
           // gradient: true,
           // size: 'sm',
-          onClick: { $action: 'shellStore.scrollToId', args: [card.id] },
+          onClick: { $invoke: 'shellStore.scrollToId', args: [card.id] },
         },
       },
     ],
@@ -1503,7 +1503,7 @@ const weAboutPage: SchemaNode = {
               props: {
                 text: 'Back to WE',
                 variant: 'soft',
-                onClick: { $action: 'shellStore.closeShellView', args: [] },
+                onClick: { $invoke: 'shellStore.closeShellView', args: [] },
               },
             },
           ],

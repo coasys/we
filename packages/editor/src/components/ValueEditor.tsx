@@ -13,7 +13,7 @@ import { OperandInput } from './ValueRefPicker';
  *
  * Picks the narrowest editor the token allows: a reference/literal picker for plain
  * values, a nested condition + two branches for the prop-level `$if`, and the raw JSON
- * editor for expressions with no direct equivalent ($concat, $map, $plural, $action).
+ * editor for expressions with no direct equivalent ($concat, $map, $plural, $invoke).
  */
 
 /** Depth cap for nested `$if` branches — past this the JSON editor is clearer. */

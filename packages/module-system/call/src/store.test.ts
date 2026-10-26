@@ -589,7 +589,7 @@ describe('transport and device lifetime', () => {
   }
 
   /*
-    A button wired the obvious way — `{ $action: 'modules.call.startCall' }`, no args — hands the store
+    A button wired the obvious way — `{ $invoke: 'modules.call.startCall' }`, no args — hands the store
     the click, and the optional first parameter took it for the record the call is about. The write
     then failed at the backend ("invalid type: map, expected a string") and the call never started.
     Placing the start button as a part made it easy to hit, so it is refused where every caller lands.

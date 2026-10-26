@@ -84,6 +84,12 @@ export interface StoreEntry {
    * delete, an uninstall. A template asking first as well puts two questions in front of one click.
    */
   destructive?: string[];
+  /**
+   * Actions whose first parameter is required, read from their documented signatures. An `$invoke`
+   * passes only the `args` it writes, so one of these called with none is called wrong — and the
+   * validator can say so before anybody presses the button.
+   */
+  needsArgs?: string[];
 }
 
 /** A token category (e.g. space, color, size) */

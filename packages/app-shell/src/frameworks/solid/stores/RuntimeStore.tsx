@@ -829,7 +829,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
    * fails, and what gets pasted is whatever the other machine printed — a JSON array, or one
    * record per line. Accepting both here means the user is not asked to reformat it first.
    *
-   * Resolves whether the records were added. An `$action`'s `onSuccess` fires whenever the call
+   * Resolves whether the records were added. An `$invoke`'s `onSuccess` fires whenever the call
    * settles, and this one never rejects — `run` catches — so a template that cleared the paste box
    * in `onSuccess` threw away somebody's pasted records on exactly the attempt that failed and they
    * would want to retry. It reads `result` instead.

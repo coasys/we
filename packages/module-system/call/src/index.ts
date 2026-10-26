@@ -631,7 +631,7 @@ const tile: SchemaNode = {
                     left: '0',
                     width: '100%',
                     height: '100%',
-                    onClick: { $action: 'modules.call.focusTile', args: [{ $: 'tile.id' }] },
+                    onClick: { $invoke: 'modules.call.focusTile', args: [{ $: 'tile.id' }] },
                   },
                 },
                 /**
@@ -696,7 +696,7 @@ const tile: SchemaNode = {
                             // A repair already running is not a reason to hide it, but it is a reason to
                             // say something is happening rather than inviting a second press.
                             loading: stateOf('retrying'),
-                            onClick: { $action: 'modules.call.reconnectPeer', args: [{ $: 'tile.id' }] },
+                            onClick: { $invoke: 'modules.call.reconnectPeer', args: [{ $: 'tile.id' }] },
                           },
                           children: [{ type: 'we-icon', props: { name: 'arrows-clockwise' } }],
                         },
@@ -953,9 +953,9 @@ const stage: SchemaNode = {
             rows: { $: 'modules.call.stageRows' },
             // What the stage settled on, back to the store — see `setArrangement`. The host needs it to
             // answer "fit to content".
-            onArrange: { $action: 'modules.call.setArrangement' },
+            onArrange: { $invoke: 'modules.call.setArrangement', args: [{ $: 'arg' }] },
             // The box itself, for the one decision the grid cannot make: which edge the strip runs along.
-            onMeasure: { $action: 'modules.call.setStageBox' },
+            onMeasure: { $invoke: 'modules.call.setStageBox', args: [{ $: 'arg' }] },
           },
           // Placed rather than pasted, so a template that arranges the stage keeps the tile the
           // module's. The row binds `tile`, which is the name the part declares it needs.
@@ -1018,7 +1018,7 @@ const devPeerControls: SchemaNode = {
             disabled: { $: '!modules.call.fakePeerCount' },
             // Zero-argument, because the schema layer has no arithmetic: there is no way to write
             // "the current count minus one" as a token, so the step belongs in the store.
-            onClick: { $action: 'modules.call.removeFakePeer' },
+            onClick: { $invoke: 'modules.call.removeFakePeer' },
           },
           children: [{ type: 'we-icon', props: { name: 'minus' } }],
         },
@@ -1039,7 +1039,7 @@ const devPeerControls: SchemaNode = {
             square: true,
             size: 'sm',
             variant: 'ghost',
-            onClick: { $action: 'modules.call.addFakePeer' },
+            onClick: { $invoke: 'modules.call.addFakePeer' },
           },
           children: [{ type: 'we-icon', props: { name: 'plus' } }],
         },
@@ -1086,7 +1086,7 @@ function mediaToggle(opts: {
         props: {
           square: true,
           variant: toggled('soft', 'ghost'),
-          onClick: { $action: opts.action },
+          onClick: { $invoke: opts.action },
         },
         children: [{ type: 'we-icon', props: { name: toggled(opts.on, opts.off) } }],
       },
@@ -1271,7 +1271,7 @@ function menuToggle(opts: CallToggle) {
     label: opts.label,
     icon: opts.on,
     checked: { $: opts.enabled },
-    onToggle: { $action: opts.action },
+    onToggle: { $invoke: opts.action },
   };
 }
 
@@ -1343,7 +1343,7 @@ const moreMenu: SchemaNode = {
         id: 'devices',
         label: 'Camera and microphone…',
         icon: 'sliders-horizontal',
-        onAction: { $action: 'modules.call.openDeviceSettings' },
+        onAction: { $invoke: 'modules.call.openDeviceSettings' },
       },
       {
         /*
@@ -1362,7 +1362,7 @@ const moreMenu: SchemaNode = {
         id: 'start-another',
         label: 'Leave and start a new call',
         icon: 'plus',
-        onAction: { $action: 'modules.call.startCall', args: [''] },
+        onAction: { $invoke: 'modules.call.startCall', args: [''] },
       },
     ],
   },
@@ -1443,7 +1443,7 @@ const qualitySelector: SchemaNode = {
           props: {
             square: true,
             variant: expr`${{ $: 'modules.call.qualityPreference' }} == "high" ? "ghost" : "soft"`,
-            onClick: { $action: 'modules.call.cycleQuality' },
+            onClick: { $invoke: 'modules.call.cycleQuality' },
           },
           children: [
             {
@@ -1514,7 +1514,7 @@ const topologySwitch: SchemaNode = {
                     onClick: [
                       { $setLocal: 'confirmSwitch', value: false },
                       {
-                        $action: 'modules.call.switchTopology',
+                        $invoke: 'modules.call.switchTopology',
                         args: [{ $: "modules.call.topology == 'sfu' ? 'mesh' : 'sfu'" }],
                       },
                     ],
@@ -1681,7 +1681,7 @@ const callSettingsPopover: SchemaNode = {
                             size: 'sm',
                             flex: '1',
                             variant: expr`${{ $: 'modules.call.qualityPreference' }} == "high" ? "solid" : "ghost"`,
-                            onClick: { $action: 'modules.call.setQualityPreference', args: ['high'] },
+                            onClick: { $invoke: 'modules.call.setQualityPreference', args: ['high'] },
                           },
                           children: ['High'],
                         },
@@ -1691,7 +1691,7 @@ const callSettingsPopover: SchemaNode = {
                             size: 'sm',
                             flex: '1',
                             variant: expr`${{ $: 'modules.call.qualityPreference' }} == "medium" ? "solid" : "ghost"`,
-                            onClick: { $action: 'modules.call.setQualityPreference', args: ['medium'] },
+                            onClick: { $invoke: 'modules.call.setQualityPreference', args: ['medium'] },
                           },
                           children: ['Medium'],
                         },
@@ -1701,7 +1701,7 @@ const callSettingsPopover: SchemaNode = {
                             size: 'sm',
                             flex: '1',
                             variant: expr`${{ $: 'modules.call.qualityPreference' }} == "low" ? "solid" : "ghost"`,
-                            onClick: { $action: 'modules.call.setQualityPreference', args: ['low'] },
+                            onClick: { $invoke: 'modules.call.setQualityPreference', args: ['low'] },
                           },
                           children: ['Low'],
                         },
@@ -1781,7 +1781,7 @@ const returnToCall: SchemaNode = {
       children: [
         {
           type: 'we-button',
-          props: { variant: 'soft', gap: '200', onClick: { $action: 'modules.call.returnToCall' } },
+          props: { variant: 'soft', gap: '200', onClick: { $invoke: 'modules.call.returnToCall' } },
           children: [
             { type: 'we-icon', props: { name: 'arrow-bend-up-left' } },
             {
@@ -1867,7 +1867,7 @@ const bar: SchemaNode = {
                       type: 'we-button',
                       props: {
                         size: 'sm',
-                        onClick: { $action: 'modules.call.joinCall', args: [{ $: 'live.id' }] },
+                        onClick: { $invoke: 'modules.call.joinCall', args: [{ $: 'live.id' }] },
                       },
                       children: ['Join'],
                     },
@@ -1888,7 +1888,7 @@ const bar: SchemaNode = {
                     label: 'Start another call',
                     variant: 'ghost',
                     size: 'sm',
-                    onClick: { $action: 'modules.call.startCall', args: [''] },
+                    onClick: { $invoke: 'modules.call.startCall', args: [''] },
                   },
                   children: [{ type: 'we-icon', props: { name: 'plus' } }],
                 },
@@ -2091,7 +2091,7 @@ const bar: SchemaNode = {
                 {
                   // Square like the toggles at the other end, being an icon and nothing else.
                   type: 'we-button',
-                  props: { square: true, variant: 'solid', tone: 'danger', onClick: { $action: 'modules.call.leave' } },
+                  props: { square: true, variant: 'solid', tone: 'danger', onClick: { $invoke: 'modules.call.leave' } },
                   children: [{ type: 'we-icon', props: { name: 'phone-x' } }],
                 },
               ],
@@ -2173,7 +2173,7 @@ const problem: SchemaNode = {
       children: [
         {
           type: 'we-alert',
-          props: { tone: 'warning', dismissible: true, onClose: { $action: 'modules.call.dismissProblem' } },
+          props: { tone: 'warning', dismissible: true, onClose: { $invoke: 'modules.call.dismissProblem' } },
           children: [{ $: 'modules.call.problem' }],
         },
       ],
@@ -2193,7 +2193,7 @@ const anchoredCallButton: SchemaNode = {
   props: {
     variant: 'ghost',
     size: 'sm',
-    onClick: { $action: 'modules.call.joinAnchoredCall', args: [{ $: 'node.id' }] },
+    onClick: { $invoke: 'modules.call.joinAnchoredCall', args: [{ $: 'node.id' }] },
   },
   children: [{ type: 'we-icon', props: { name: 'phone-call' } }],
 };
@@ -2314,11 +2314,11 @@ const continueCallButton: SchemaNode = {
               first drew in. The calls list branches its own phone button the same way.
             */
             onClick: [
-              { $if: { condition: { $: IN_THIS_CALL }, then: { $action: 'modules.call.goToCall' } } },
+              { $if: { condition: { $: IN_THIS_CALL }, then: { $invoke: 'modules.call.goToCall' } } },
               {
                 $if: {
                   condition: { $: '!modules.call.active' },
-                  then: { $action: 'modules.call.continueCall', args: [{ $: CALL_ON_SCREEN }] },
+                  then: { $invoke: 'modules.call.continueCall', args: [{ $: CALL_ON_SCREEN }] },
                 },
               },
             ],
@@ -2362,7 +2362,7 @@ const continueCallButton: SchemaNode = {
 /** A bare "start a call here" trigger, for templates that want one in their own chrome. */
 const startCallButton: SchemaNode = {
   type: 'we-button',
-  props: { variant: 'ghost', size: 'sm', onClick: { $action: 'modules.call.startCall', args: [''] } },
+  props: { variant: 'ghost', size: 'sm', onClick: { $invoke: 'modules.call.startCall', args: [''] } },
   children: [{ type: 'we-icon', props: { name: 'phone-call' } }],
 };
 

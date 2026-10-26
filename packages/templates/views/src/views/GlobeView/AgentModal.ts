@@ -101,7 +101,7 @@ export const agentModal = {
                         signals: [],
                         myDid: { $: 'me.did' },
                         onSignal: {
-                          $action: 'spaceStore.upsertSignal',
+                          $invoke: 'spaceStore.upsertSignal',
                           args: [{ $: 'agent.did' }, { $: 'sig.id' }, { $: 'arg' }],
                         },
                       },

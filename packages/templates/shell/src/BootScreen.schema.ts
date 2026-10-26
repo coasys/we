@@ -262,7 +262,7 @@ function accountSwitcher(): SchemaNode {
                 bg: 'accent-soft',
               },
             },
-            { $action: 'accountStore.switchAccount', args: [{ $: 'account.id' }] },
+            { $invoke: 'accountStore.switchAccount', args: [{ $: 'account.id' }] },
           ),
         ],
       },
@@ -282,7 +282,7 @@ function accountSwitcher(): SchemaNode {
             // action and should be quieter. Not `surface-sunken`, which is what the boot screen's
             // own ground is painted — the disc was the same colour as the thing behind it.
             { type: 'we-avatar', props: { icon: 'plus', size: 'lg', bg: 'surface' } },
-            { $action: 'accountStore.createAccount' },
+            { $invoke: 'accountStore.createAccount' },
           ),
         },
       },
@@ -474,10 +474,10 @@ const unlockForm: SchemaNode = {
                 // Editing the password retracts the verdict on it. "Incorrect password" is about
                 // the string that was submitted, so it has nothing to say about the one being
                 // typed to replace it — left up, it reads as a running judgement of the new one.
-                onEdit: { $action: 'sessionStore.clearPasswordError' },
+                onEdit: { $invoke: 'sessionStore.clearPasswordError' },
                 // Enter only fires with something typed, so an empty field cannot reach the
                 // executor and come back as "Incorrect password" for a password never entered.
-                onSubmit: { $action: 'sessionStore.unlock' },
+                onSubmit: { $invoke: 'sessionStore.unlock' },
               },
             },
             {
@@ -489,7 +489,7 @@ const unlockForm: SchemaNode = {
                 // OS sign-in screens this follows all hold the button until there is.
                 disabled: { $: '!sessionStore.credentialEntered' },
                 loading: { $: 'sessionStore.loginLoading' },
-                onClick: { $action: 'sessionStore.unlock' },
+                onClick: { $invoke: 'sessionStore.unlock' },
               },
               children: ['Login'],
             },
@@ -594,7 +594,7 @@ const bootFailure: SchemaNode = {
         },
         {
           type: 'we-button',
-          props: { text: 'Try again', variant: 'solid', onClick: { $action: 'sessionStore.retryBoot' } },
+          props: { text: 'Try again', variant: 'solid', onClick: { $invoke: 'sessionStore.retryBoot' } },
         },
       ],
     },
@@ -775,7 +775,7 @@ export const bootScreen: SchemaNode = {
                                 r: 'avatar',
                                 alignSelf: 'center',
                                 // mb: '100',
-                                onImageChange: { $action: 'profileStore.setPendingAvatar', args: [{ $: 'arg' }] },
+                                onImageChange: { $invoke: 'profileStore.setPendingAvatar', args: [{ $: 'arg' }] },
                               },
                             },
                             // The profile's name, not a separate local label. One DID, one
@@ -802,12 +802,12 @@ export const bootScreen: SchemaNode = {
                             onClick: [
                               { $touch: '$all' },
                               // The password field's errors, which `$touch` cannot reach.
-                              { $action: 'sessionStore.touchCredential' },
+                              { $invoke: 'sessionStore.touchCredential' },
                               {
                                 $if: {
                                   condition: { $: 'formValid() && sessionStore.credentialConfirmed' },
                                   then: {
-                                    $action: 'profileStore.completeAccountSetup',
+                                    $invoke: 'profileStore.completeAccountSetup',
                                     args: [{ $: 'local.name' }],
                                   },
                                 },

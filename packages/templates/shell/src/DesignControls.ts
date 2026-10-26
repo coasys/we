@@ -253,18 +253,18 @@ function appsSection(): SchemaNode {
         icon: iconOr('app.icon', 'app-window'),
         label: { $: 'app.label' },
         selected: { $: 'app.value == templateStore.appTemplateId' },
-        select: [{ $action: 'templateStore.setAppTemplate', args: [{ $: 'app.value' }] }, closeTemplatePicker],
+        select: [{ $invoke: 'templateStore.setAppTemplate', args: [{ $: 'app.value' }] }, closeTemplatePicker],
         actions: [
           {
             icon: 'pencil-simple',
             tooltip: 'Edit this app',
             when: { $: 'app.editable' },
-            onClick: [{ $action: 'editorStore.editApp', args: [{ $: 'app.value' }] }, closeTemplatePicker],
+            onClick: [{ $invoke: 'editorStore.editApp', args: [{ $: 'app.value' }] }, closeTemplatePicker],
           },
           {
             icon: 'git-fork',
             tooltip: 'Fork this app',
-            onClick: [{ $action: 'editorStore.forkApp', args: [{ $: 'app.value' }] }, closeTemplatePicker],
+            onClick: [{ $invoke: 'editorStore.forkApp', args: [{ $: 'app.value' }] }, closeTemplatePicker],
           },
         ],
       }),
@@ -305,12 +305,12 @@ function layoutsSection(): SchemaNode {
                 icon: 'bookmark-simple',
                 label: { $: 'layout' },
                 selected: { $: 'layout == shellStore.activeLayout' },
-                select: { $action: 'shellStore.applyLayout', args: [{ $: 'layout' }] },
+                select: { $invoke: 'shellStore.applyLayout', args: [{ $: 'layout' }] },
                 actions: [
                   {
                     icon: 'trash',
                     tooltip: 'Forget this layout',
-                    onClick: { $action: 'shellStore.deleteLayout', args: [{ $: 'layout' }] },
+                    onClick: { $invoke: 'shellStore.deleteLayout', args: [{ $: 'layout' }] },
                   },
                 ],
               }),
@@ -354,7 +354,7 @@ function layoutsSection(): SchemaNode {
                   width: '100%',
                   ax: 'start',
                   gap: '200',
-                  onClick: [{ $action: 'shellStore.saveArrangementAsTemplate' }, closeTemplatePicker],
+                  onClick: [{ $invoke: 'shellStore.saveArrangementAsTemplate' }, closeTemplatePicker],
                 },
                 children: [
                   { type: 'we-icon', props: { name: 'git-fork' } },
@@ -393,7 +393,7 @@ function saveLayoutDialog(): SchemaNode {
                 props: {
                   size: 'sm',
                   disabled: { $: '!local.layoutName' },
-                  onClick: [{ $action: 'shellStore.saveLayout', args: [{ $: 'local.layoutName' }] }, close],
+                  onClick: [{ $invoke: 'shellStore.saveLayout', args: [{ $: 'local.layoutName' }] }, close],
                 },
                 children: ['Save'],
               },
@@ -448,7 +448,7 @@ export function templatePicker(): SchemaNode {
                       selected: { $: 'template.id == templateStore.currentSwitcherId' },
                       isDefault: { $: 'template.id == spaceStore.spaceDefaultTemplateId' },
                       select: [
-                        { $action: 'templateStore.switchTemplate', args: [{ $: 'template.id' }] },
+                        { $invoke: 'templateStore.switchTemplate', args: [{ $: 'template.id' }] },
                         closeTemplatePicker,
                       ],
                       actions: [
@@ -473,7 +473,7 @@ export function templatePicker(): SchemaNode {
                           // Deliberately does not close the picker: the panels move behind it, which is
                           // the confirmation that the click landed, and the row's control disappearing
                           // is the other half of that. Same argument as the theme rows below.
-                          onClick: { $action: 'shellStore.resetTemplateLayout' },
+                          onClick: { $invoke: 'shellStore.resetTemplateLayout' },
                         },
                         {
                           icon: 'pencil-simple',
@@ -498,8 +498,8 @@ export function templatePicker(): SchemaNode {
                           // over whatever is current, so editing a row you are not on has to make it
                           // current before entering.
                           onClick: [
-                            { $action: 'templateStore.switchTemplate', args: [{ $: 'template.id' }] },
-                            { $action: 'editorStore.enterTemplateEditing', args: ['edit'] },
+                            { $invoke: 'templateStore.switchTemplate', args: [{ $: 'template.id' }] },
+                            { $invoke: 'editorStore.enterTemplateEditing', args: ['edit'] },
                             closeTemplatePicker,
                           ],
                         },
@@ -509,8 +509,8 @@ export function templatePicker(): SchemaNode {
                           // Switch first: a fork is seeded from whatever is current, so forking a row you
                           // are not on has to make it current before asking for a name.
                           onClick: [
-                            { $action: 'templateStore.switchTemplate', args: [{ $: 'template.id' }] },
-                            { $action: 'editorStore.startFork' },
+                            { $invoke: 'templateStore.switchTemplate', args: [{ $: 'template.id' }] },
+                            { $invoke: 'editorStore.startFork' },
                             closeTemplatePicker,
                           ],
                         },
@@ -529,7 +529,7 @@ export function templatePicker(): SchemaNode {
             width: '100%',
             ax: 'start',
             gap: '200',
-            onClick: [{ $action: 'editorStore.startFresh' }, closeTemplatePicker],
+            onClick: [{ $invoke: 'editorStore.startFresh' }, closeTemplatePicker],
           },
           children: [
             { type: 'we-icon', props: { name: 'plus' } },
@@ -554,14 +554,14 @@ export function templatePicker(): SchemaNode {
  */
 export const templateNameDialog: SchemaNode = nameDialog({
   open: { $: 'editorStore.pickerOpen' },
-  close: { $action: 'editorStore.cancelPicker' },
+  close: { $invoke: 'editorStore.cancelPicker' },
   title: { $: "editorStore.pickerAction == 'fresh' ? 'New template' : 'Fork template'" },
   initialName: { $: 'editorStore.pickerDefaultName' },
   initialIcon: { $: 'editorStore.pickerDefaultIcon' },
   showDestination: { $: 'editorStore.pickerShowDestination' },
   confirmLabel: { $: "editorStore.pickerAction == 'fresh' ? 'Create' : 'Fork'" },
   confirm: ({ name, icon, destination }) => ({
-    $action: 'editorStore.confirmPicker',
+    $invoke: 'editorStore.confirmPicker',
     args: [name, icon, destination],
     onFinally: [{ $setLocal: 'saving', value: false }],
   }),
@@ -592,7 +592,7 @@ function themeSection(label: string, storePath: string): SchemaNode {
         // a theme repaints the whole window, this popover included, so the click is self-evidently
         // landed — and choosing a theme is the one thing here people do by comparison, trying three
         // in a row. Closing after each turned that into three round trips through the rail button.
-        select: { $action: 'spaceStore.applyTheme', args: [{ $: 'theme.id' }] },
+        select: { $invoke: 'spaceStore.applyTheme', args: [{ $: 'theme.id' }] },
         actions: [
           /*
             The pin — a state, not an offer, which is why it is filled and why it appears on exactly
@@ -609,7 +609,7 @@ function themeSection(label: string, storePath: string): SchemaNode {
             weight: 'fill',
             tooltip: "Pinned to this space — unpin to follow the space's theme",
             when: { $: 'spaceStore.spaceThemePinned && theme.id == themeStore.currentThemeId' },
-            onClick: { $action: 'spaceStore.clearSpaceThemePin' },
+            onClick: { $invoke: 'spaceStore.clearSpaceThemePin' },
           },
           {
             icon: 'pencil-simple',
@@ -617,9 +617,9 @@ function themeSection(label: string, storePath: string): SchemaNode {
             // A built-in has no stored overrides to edit — forking is the way in, as it always was.
             when: { $: "theme.origin != 'built-in'" },
             onClick: [
-              { $action: 'themeStore.setCurrentTheme', args: [{ $: 'theme.id' }] },
-              { $action: 'themeStore.startEditing', args: [{ $: 'theme.id' }] },
-              { $action: 'editorStore.enterThemeEditing' },
+              { $invoke: 'themeStore.setCurrentTheme', args: [{ $: 'theme.id' }] },
+              { $invoke: 'themeStore.startEditing', args: [{ $: 'theme.id' }] },
+              { $invoke: 'editorStore.enterThemeEditing' },
               closeThemePicker,
             ],
           },
@@ -707,7 +707,7 @@ export function themePicker(): SchemaNode {
                         size: 'sm',
                         options: { $: 'themeStore.systemThemeOptions' },
                         value: { $: 'themeStore.systemThemes.light' },
-                        onChange: { $action: 'themeStore.setSystemTheme', args: ['light', { $: 'arg.detail' }] },
+                        onChange: { $invoke: 'themeStore.setSystemTheme', args: ['light', { $: 'arg.detail' }] },
                       },
                     },
                   ],
@@ -722,7 +722,7 @@ export function themePicker(): SchemaNode {
                         size: 'sm',
                         options: { $: 'themeStore.systemThemeOptions' },
                         value: { $: 'themeStore.systemThemes.dark' },
-                        onChange: { $action: 'themeStore.setSystemTheme', args: ['dark', { $: 'arg.detail' }] },
+                        onChange: { $invoke: 'themeStore.setSystemTheme', args: ['dark', { $: 'arg.detail' }] },
                       },
                     },
                   ],
@@ -778,7 +778,7 @@ export function themePicker(): SchemaNode {
                     checked: { $: 'themeStore.themeScopeGlobal' },
                     // Passed bare: the switch emits the boolean, and wrapping it in an operator would
                     // resolve at render time and send a constant.
-                    onChange: { $action: 'themeStore.setThemeScopeGlobal', args: [{ $: 'event.detail' }] },
+                    onChange: { $invoke: 'themeStore.setThemeScopeGlobal', args: [{ $: 'event.detail' }] },
                   },
                 },
               ],
@@ -796,7 +796,7 @@ export function themePicker(): SchemaNode {
         showDestination: true,
         confirmLabel: { $: "local.forkSource ? 'Fork' : 'Create'" },
         confirm: ({ name, icon, destination }) => ({
-          $action: 'themeStore.createAndStartEditing',
+          $invoke: 'themeStore.createAndStartEditing',
           args: [name, icon, { $: 'local.forkSource' }, destination],
           // Resolves `false` when the create failed rather than rejecting, so the close and the mode
           // switch are guarded on the result — otherwise a failed create closes over its own error.
@@ -811,13 +811,13 @@ export function themePicker(): SchemaNode {
             {
               $if: {
                 condition: { $: 'result && datasetStore.currentDataset' },
-                then: { $action: 'spaceStore.applyTheme', args: [{ $: 'themeStore.currentThemeId' }] },
+                then: { $invoke: 'spaceStore.applyTheme', args: [{ $: 'themeStore.currentThemeId' }] },
               },
             },
             {
               $if: {
                 condition: { $: 'result' },
-                then: { $action: 'editorStore.enterThemeEditing' },
+                then: { $invoke: 'editorStore.enterThemeEditing' },
               },
             },
             { $if: { condition: { $: 'result' }, then: { $setLocal: 'forkOpen', value: false } } },

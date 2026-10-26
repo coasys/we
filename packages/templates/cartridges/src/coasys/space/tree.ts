@@ -136,7 +136,7 @@ const workflows = group(
       ],
     },
   ],
-  addButton('New workflow', { $action: 'routeStore.navigate', args: [{ $: `${FLOWS_PAGE} + '?new=1'` }] }),
+  addButton('New workflow', { $invoke: 'routeStore.navigate', args: [{ $: `${FLOWS_PAGE} + '?new=1'` }] }),
 );
 
 const people = group(
@@ -188,34 +188,34 @@ const onSelect: SchemaProp = [
   {
     $if: {
       condition: { $: "event.detail.value == 'group|workflows'" },
-      then: [{ $action: 'workflowStore.closeWorkflow' }, { $action: 'routeStore.navigate', args: [{ $: FLOWS_PAGE }] }],
+      then: [{ $invoke: 'workflowStore.closeWorkflow' }, { $invoke: 'routeStore.navigate', args: [{ $: FLOWS_PAGE }] }],
     },
   },
   {
     $if: {
       condition: { $: "startsWith(event.detail.value, 'channel|')" },
-      then: { $action: 'routeStore.navigate', args: [{ $: channelPath(ROW_ID) }] },
+      then: { $invoke: 'routeStore.navigate', args: [{ $: channelPath(ROW_ID) }] },
     },
   },
   {
     $if: {
       condition: { $: "startsWith(event.detail.value, 'call|')" },
-      then: { $action: 'routeStore.navigate', args: [{ $: callPath(ROW_ID) }] },
+      then: { $invoke: 'routeStore.navigate', args: [{ $: callPath(ROW_ID) }] },
     },
   },
   {
     $if: {
       condition: { $: "startsWith(event.detail.value, 'workflow|')" },
       then: [
-        { $action: 'workflowStore.openWorkflow', args: [{ $: ROW_ID }] },
-        { $action: 'routeStore.navigate', args: [{ $: "spaceStore.spacePath + '/workflows'" }] },
+        { $invoke: 'workflowStore.openWorkflow', args: [{ $: ROW_ID }] },
+        { $invoke: 'routeStore.navigate', args: [{ $: "spaceStore.spacePath + '/workflows'" }] },
       ],
     },
   },
   {
     $if: {
       condition: { $: "startsWith(event.detail.value, 'dna|')" },
-      then: { $action: 'shellStore.openSpaceSettings', args: ['vocabulary', { $: ROW_ID }] },
+      then: { $invoke: 'shellStore.openSpaceSettings', args: ['vocabulary', { $: ROW_ID }] },
     },
   },
 ];
@@ -250,7 +250,7 @@ const header: SchemaNode = {
             size: 'sm',
             square: true,
             label: 'Space settings',
-            onClick: { $action: 'shellStore.toggleSpaceSettings' },
+            onClick: { $invoke: 'shellStore.toggleSpaceSettings' },
           },
           children: [{ type: 'we-icon', props: { name: 'gear-six' } }],
         },
@@ -267,7 +267,7 @@ const header: SchemaNode = {
             size: 'sm',
             square: true,
             label: 'Hide the tree',
-            onClick: { $action: 'shellStore.setLaneCollapsed', args: ['tree', true] },
+            onClick: { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', true] },
           },
           children: [{ type: 'we-icon', props: { name: 'sidebar-simple' } }],
         },
@@ -304,7 +304,7 @@ const purpose: SchemaNode = {
                 p: '300',
                 r: 'surface',
                 border: '1px dashed border-strong',
-                onClick: { $action: 'shellStore.openSpaceSettings', args: ['about'] },
+                onClick: { $invoke: 'shellStore.openSpaceSettings', args: ['about'] },
               },
               children: [
                 {
@@ -333,7 +333,7 @@ const callButton: SchemaNode = {
       children: [
         {
           type: 'we-button',
-          props: { variant: 'soft', onClick: { $action: 'modules.call.goToCall' } },
+          props: { variant: 'soft', onClick: { $invoke: 'modules.call.goToCall' } },
           children: [{ type: 'we-icon', props: { name: 'phone' } }, 'Start a call'],
         },
       ],
@@ -372,8 +372,8 @@ const callRunning: SchemaNode = {
               {
                 $if: {
                   condition: { $: IN_IT },
-                  then: { $action: 'routeStore.navigate', args: [{ $: callPath('modules.call.callRecordId') }] },
-                  else: { $action: 'modules.call.goToCall' },
+                  then: { $invoke: 'routeStore.navigate', args: [{ $: callPath('modules.call.callRecordId') }] },
+                  else: { $invoke: 'modules.call.goToCall' },
                 },
               },
             ],
@@ -400,7 +400,7 @@ export const newChannelDialog = (openLocal: string): SchemaNode =>
     disabled: { $: '!trim(local.channelName)' },
     submitLabel: 'Make channel',
     submit: {
-      $action: 'record.create',
+      $invoke: 'record.create',
       args: [
         'CollectionBlock',
         { kind: 'channel', title: { $: 'trim(local.channelName)' } },

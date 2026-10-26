@@ -235,7 +235,7 @@ the host's own field, `CredentialField`, which keeps what is typed out of
 template state, so a screen cannot keep or forward a password:
 
 ```json
-{ "type": "CredentialField", "props": { "purpose": "unlock", "onSubmit": { "$action": "sessionStore.unlock" } } }
+{ "type": "CredentialField", "props": { "purpose": "unlock", "onSubmit": { "$invoke": "sessionStore.unlock" } } }
 ```
 
 Gate the Sign in button on `sessionStore.credentialEntered` and call

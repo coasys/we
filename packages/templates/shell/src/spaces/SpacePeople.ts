@@ -50,7 +50,7 @@ const openSpaceFirst: SchemaNode = {
         variant: 'soft',
         size: 'sm',
         alignSelf: 'start',
-        onClick: { $action: 'spaceStore.navigateToSpace', args: [{ $: 'space.uuid' }] },
+        onClick: { $invoke: 'spaceStore.navigateToSpace', args: [{ $: 'space.uuid' }] },
       },
       children: [
         { type: 'we-text', props: { variant: 'label' }, children: ['Open this space'] },
@@ -84,7 +84,7 @@ const createRoleModal: SchemaNode = formModal({
   discardWhen: { $: 'local.roleName || local.roleDescription' },
   submitLabel: 'Create',
   submit: {
-    $action: 'spaceStore.createRole',
+    $invoke: 'spaceStore.createRole',
     args: [{ name: { $: 'local.roleName' }, description: { $: 'local.roleDescription' } }],
   },
 });
@@ -177,7 +177,7 @@ const presetOption = (preset: 'community' | 'open', name: string, description: s
           props: {
             variant: 'soft',
             size: 'sm',
-            onClick: { $action: 'spaceStore.setPolicyPreset', args: [preset] },
+            onClick: { $invoke: 'spaceStore.setPolicyPreset', args: [preset] },
           },
           children: [{ type: 'we-text', children: ['Use these'] }],
         },
@@ -259,8 +259,8 @@ const memberRoleMenu: SchemaNode = {
         onSelect: {
           $if: {
             condition: { $: 'arg.checked' },
-            then: { $action: 'spaceStore.revokeRole', args: [{ $: 'arg.id' }, { $: 'member.did' }] },
-            else: { $action: 'spaceStore.grantRole', args: [{ $: 'arg.id' }, { $: 'member.did' }] },
+            then: { $invoke: 'spaceStore.revokeRole', args: [{ $: 'arg.id' }, { $: 'member.did' }] },
+            else: { $invoke: 'spaceStore.grantRole', args: [{ $: 'arg.id' }, { $: 'member.did' }] },
           },
         },
       },

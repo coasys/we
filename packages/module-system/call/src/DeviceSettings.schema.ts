@@ -53,7 +53,7 @@ function devicePicker(options: {
                 in a call, swaps the track without renegotiating — so the change is immediate and
                 outlives the call, which is the whole point of choosing rather than being assigned.
               */
-              onChange: { $action: 'modules.call.setDevice', args: [options.kind, { $: 'event.detail' }] },
+              onChange: { $invoke: 'modules.call.setDevice', args: [options.kind, { $: 'event.detail' }] },
             },
           },
         ],
@@ -146,7 +146,7 @@ export const deviceSettings: SchemaNode = {
                 variant: 'soft',
                 size: 'sm',
                 alignSelf: 'start',
-                onClick: { $action: 'modules.call.nameDevices' },
+                onClick: { $invoke: 'modules.call.nameDevices' },
               },
               children: ['Allow access to list devices'],
             },
@@ -171,7 +171,7 @@ export const deviceSettingsModal: SchemaNode = {
     condition: { $: 'modules.call.deviceSettingsOpen' },
     then: {
       type: 'we-modal',
-      props: { size: 'sm', close: { $action: 'modules.call.closeDeviceSettings' } },
+      props: { size: 'sm', close: { $invoke: 'modules.call.closeDeviceSettings' } },
       children: [
         {
           type: 'we-text',
@@ -187,7 +187,7 @@ export const deviceSettingsModal: SchemaNode = {
           children: [
             {
               type: 'we-button',
-              props: { variant: 'solid', onClick: { $action: 'modules.call.closeDeviceSettings' } },
+              props: { variant: 'solid', onClick: { $invoke: 'modules.call.closeDeviceSettings' } },
               children: ['Done'],
             },
           ],

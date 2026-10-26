@@ -195,7 +195,7 @@ const lazyToken = z.lazy((): z.ZodType<unknown> => zPropToken);
 const lazyHandler = z.lazy((): z.ZodType<unknown> => z.union([zPropToken, z.array(zPropToken)]));
 const zActionToken = z
   .object({
-    $action: z.string().min(1),
+    $invoke: z.string().min(1),
     args: z.array(z.unknown()).optional(),
     onSuccess: z.array(lazyToken).optional(),
     onError: z.array(lazyToken).optional(),

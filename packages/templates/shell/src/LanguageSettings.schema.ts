@@ -54,7 +54,7 @@ const languageRow: SchemaNode = {
           props: {
             variant: 'ghost',
             size: 'sm',
-            onClick: { $action: 'runtimeStore.removeLanguage', args: [{ $: 'language.address' }] },
+            onClick: { $invoke: 'runtimeStore.removeLanguage', args: [{ $: 'language.address' }] },
           },
           children: [{ type: 'we-icon', props: { name: 'trash' } }],
         },
@@ -115,7 +115,7 @@ export const languagesSection: SchemaNode = {
                 loading: { $: "'installLanguage' in runtimeStore.pending" },
                 disabled: { $: '!local.newLanguageAddress' },
                 onClick: {
-                  $action: 'runtimeStore.installLanguage',
+                  $invoke: 'runtimeStore.installLanguage',
                   args: [{ $: 'local.newLanguageAddress' }],
                   onSuccess: [{ $setLocal: 'newLanguageAddress', value: '' }],
                 },

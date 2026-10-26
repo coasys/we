@@ -156,13 +156,13 @@ const CSS_STYLES = css`
 /**
  * Anything a `we-draggable` can be dropped into.
  *
- * The receiving half of the pair, and the same rung: two custom elements and an existing `$action`,
+ * The receiving half of the pair, and the same rung: two custom elements and an existing `$invoke`,
  * so a template can make a region a drop target without a code change.
  *
  * ```json
  * { "type": "we-drop-zone",
  *   "props": { "accepts": "CollectionBlock,Space,Agent",
- *              "onDropped": { "$action": "modules.pocket.gather", "args": [{ "$": "event.detail" }] } },
+ *              "onDropped": { "$invoke": "modules.pocket.gather", "args": [{ "$": "event.detail" }] } },
  *   "children": [ "…the panel…" ] }
  * ```
  *

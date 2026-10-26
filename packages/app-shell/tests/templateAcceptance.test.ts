@@ -53,7 +53,7 @@ describe('a schema that would take the app down', () => {
 
 describe('a schema reaching past its tier', () => {
   const signOutButton = wellFormed([
-    { type: 'we-button', props: { onClick: { $action: 'sessionStore.logout' } }, children: ['Sign out'] },
+    { type: 'we-button', props: { onClick: { $invoke: 'sessionStore.logout' } }, children: ['Sign out'] },
   ]);
 
   it('admits it rather than refusing, and names what will not work', () => {
@@ -92,7 +92,7 @@ describe('finding the references at all', () => {
               type: 'we-button',
               props: {
                 disabled: { $: 'runtimeStore.loading ? true : null' },
-                onClick: [{ $setLocal: 'x', value: 1 }, { $action: 'runtimeStore.restartExecutor' }],
+                onClick: [{ $setLocal: 'x', value: 1 }, { $invoke: 'runtimeStore.restartExecutor' }],
               },
             },
           ],
@@ -144,7 +144,7 @@ describe('finding the references at all', () => {
   it('reports the groups a template actually uses, for an install prompt', () => {
     const schema = wellFormed([
       { type: 'we-text', props: { text: { $: 'spaceStore.currentSpace.name' } } },
-      { type: 'we-button', props: { onClick: { $action: 'routeStore.navigate', args: ['/'] } } },
+      { type: 'we-button', props: { onClick: { $invoke: 'routeStore.navigate', args: ['/'] } } },
     ]);
 
     expect(inspectTemplateSurface(schema, SPACE_TIER).groups.sort()).toEqual(['content', 'navigation']);
@@ -189,7 +189,7 @@ describe('the one line a refused template is listed with', () => {
     // The shape `formModal` wrote before October: a close on a `$if`, which nothing reads.
     const button = {
       type: 'we-button',
-      props: { onClick: { $if: { condition: { $: 'local.x' }, then: { $action: 'store.go' } }, onSuccess: [] } },
+      props: { onClick: { $if: { condition: { $: 'local.x' }, then: { $invoke: 'store.go' } }, onSuccess: [] } },
       children: ['Go'],
     };
     const deep = { type: 'Column', children: [{ type: 'Column', children: [{ type: 'Column', children: [button] }] }] };

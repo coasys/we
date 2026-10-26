@@ -47,7 +47,7 @@ const subgroupMessagesToggle: SchemaNode = {
         $if: {
           condition: { $: '!local.subgroupMessages' },
           then: {
-            $action: 'modules.flux.subgroupMessages',
+            $invoke: 'modules.flux.subgroupMessages',
             args: [{ $: 'subgroup.id' }],
             onSuccess: [{ $setLocal: 'subgroupMessages', value: { $: 'result' } }],
           },

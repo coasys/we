@@ -125,12 +125,12 @@ const panelsToggle: SchemaNode = {
           icon: 'eye',
           tooltip: 'Show panels (Ctrl+\\)',
           active: true,
-          onClick: { $action: 'shellStore.togglePanelsHidden' },
+          onClick: { $invoke: 'shellStore.togglePanelsHidden' },
         }),
         else: railButton({
           icon: 'eye-slash',
           tooltip: 'Hide panels (Ctrl+\\)',
-          onClick: { $action: 'shellStore.togglePanelsHidden' },
+          onClick: { $invoke: 'shellStore.togglePanelsHidden' },
         }),
       },
     },
@@ -146,7 +146,7 @@ const spaceSettingsLauncher: SchemaNode = {
       tooltip: 'Space settings',
       // Lit while its panel is up, exactly as a module launcher is — see `activeWhen` on those.
       active: { $: 'shellStore.spaceSettingsOpen' },
-      onClick: { $action: 'shellStore.toggleSpaceSettings' },
+      onClick: { $invoke: 'shellStore.toggleSpaceSettings' },
     }),
   },
 };
@@ -185,9 +185,9 @@ const spaceSection: SchemaNode = {
               // somebody else started. This replaced a square in the call bar, which only existed
               // during a call; the rail is where the panel is opened from and outlives the call.
               busy: { $: 'mod.busy' },
-              // The id is passed rather than a path: `$action` resolves a literal string, so a rail
+              // The id is passed rather than a path: `$invoke` resolves a literal string, so a rail
               // iterating over modules cannot build `modules.<id>.<method>` itself.
-              onClick: { $action: 'spaceStore.launchModule', args: [{ $: 'mod.id' }] },
+              onClick: { $invoke: 'spaceStore.launchModule', args: [{ $: 'mod.id' }] },
             }),
           ],
         },

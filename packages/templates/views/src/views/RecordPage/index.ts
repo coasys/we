@@ -495,7 +495,7 @@ export const recordPage: SchemaNode = {
           alignSelf: 'start',
           color: 'text-muted',
           hoverProps: { color: 'text' },
-          onClick: { $action: 'routeStore.back' },
+          onClick: { $invoke: 'routeStore.back' },
         },
         children: [
           { type: 'we-icon', props: { name: 'arrow-left' } },

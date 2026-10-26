@@ -452,8 +452,8 @@ export type RendererOutput<NodeType = unknown> = NodeType | null;
  * value is one of these; a plain string is text.
  */
 export type ExpressionToken = { $: string };
-export type ActionToken = {
-  $action: string;
+export type InvokeToken = {
+  $invoke: string;
   args?: unknown[];
   onSuccess?: unknown[];
   onError?: unknown[];
@@ -667,7 +667,7 @@ export type QueryDescriptor = {
 /** Union of every token a schema writes in a value or handler position. */
 export type OperatorToken =
   | ExpressionToken
-  | ActionToken
+  | InvokeToken
   | IfToken
   | QueryToken
   | SetLocalToken

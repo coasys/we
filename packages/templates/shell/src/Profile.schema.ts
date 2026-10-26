@@ -34,7 +34,7 @@ export const profileEditor: SchemaNode = {
                 placeholder: 'First name',
                 value: { $: 'profileStore.ownProfile.firstName' },
                 onChange: {
-                  $action: 'profileStore.updateOwnProfile',
+                  $invoke: 'profileStore.updateOwnProfile',
                   args: [{ firstName: { $: 'arg.detail' } }],
                 },
               },
@@ -51,7 +51,7 @@ export const profileEditor: SchemaNode = {
                 placeholder: 'Last name',
                 value: { $: 'profileStore.ownProfile.lastName' },
                 onChange: {
-                  $action: 'profileStore.updateOwnProfile',
+                  $invoke: 'profileStore.updateOwnProfile',
                   args: [{ lastName: { $: 'arg.detail' } }],
                 },
               },
@@ -70,7 +70,7 @@ export const profileEditor: SchemaNode = {
             placeholder: 'yourhandle',
             value: { $: 'profileStore.ownProfile.handle' },
             onChange: {
-              $action: 'profileStore.updateOwnProfile',
+              $invoke: 'profileStore.updateOwnProfile',
               args: [{ handle: { $: 'arg.detail' } }],
             },
           },
@@ -87,7 +87,7 @@ export const profileEditor: SchemaNode = {
             placeholder: 'Tell us about yourself...',
             value: { $: 'profileStore.ownProfile.bio' },
             onChange: {
-              $action: 'profileStore.updateOwnProfile',
+              $invoke: 'profileStore.updateOwnProfile',
               args: [{ bio: { $: 'arg.detail' } }],
             },
           },
@@ -105,7 +105,7 @@ export const profileEditor: SchemaNode = {
             longitude: { $: 'profileStore.ownProfile.location.longitude' },
             placeholder: 'Pin your location on the globe…',
             onChange: {
-              $action: 'profileStore.updateOwnLocation',
+              $invoke: 'profileStore.updateOwnLocation',
               args: [
                 {
                   latitude: { $: 'arg.detail.latitude' },
@@ -138,7 +138,7 @@ export const profileEditor: SchemaNode = {
                     placeholder: 'City',
                     value: { $: 'profileStore.ownProfile.location.city' },
                     onChange: {
-                      $action: 'profileStore.updateOwnLocation',
+                      $invoke: 'profileStore.updateOwnLocation',
                       args: [{ city: { $: 'arg.detail' } }],
                     },
                   },
@@ -155,7 +155,7 @@ export const profileEditor: SchemaNode = {
                     placeholder: 'Country',
                     value: { $: 'profileStore.ownProfile.location.country' },
                     onChange: {
-                      $action: 'profileStore.updateOwnLocation',
+                      $invoke: 'profileStore.updateOwnLocation',
                       args: [{ country: { $: 'arg.detail' } }],
                     },
                   },
@@ -187,8 +187,8 @@ export const profileTemplate: TemplateSchema = {
         placeholderIcon: 'panorama',
         uploadLabel: 'Upload cover image',
         editLabel: 'Change cover image',
-        onImageChange: { $action: 'profileStore.updateProfileImage', args: ['coverImage', { $: 'arg' }] },
-        onImageRemove: { $action: 'profileStore.clearProfileImage', args: ['coverImage'] },
+        onImageChange: { $invoke: 'profileStore.updateProfileImage', args: ['coverImage', { $: 'arg' }] },
+        onImageRemove: { $invoke: 'profileStore.clearProfileImage', args: ['coverImage'] },
       },
     },
 
@@ -222,8 +222,8 @@ export const profileTemplate: TemplateSchema = {
             uploadLabel: 'Add photo',
             editLabel: 'Change photo',
             fontSize: '200',
-            onImageChange: { $action: 'profileStore.updateProfileImage', args: ['avatar', { $: 'arg' }] },
-            onImageRemove: { $action: 'profileStore.clearProfileImage', args: ['avatar'] },
+            onImageChange: { $invoke: 'profileStore.updateProfileImage', args: ['avatar', { $: 'arg' }] },
+            onImageRemove: { $invoke: 'profileStore.clearProfileImage', args: ['avatar'] },
           },
         },
 

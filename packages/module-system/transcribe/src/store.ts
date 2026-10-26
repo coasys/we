@@ -3272,7 +3272,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * same reason as `toggleExtractionTarget`.
      */
     toggleAutoExtract: action(async (collection?: unknown) => {
-      // A string only: an `$action` written without `args` hands the click event over in its place.
+      // A string only: an `$invoke` written without `args` hands the click event over in its place.
       const named = typeof collection === 'string' ? collection : '';
       const live = named || collectionId() || myCall()?.recordId || '';
       if (!live || typeof interpretation?.setAuto !== 'function') return;

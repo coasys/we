@@ -358,7 +358,7 @@ export function messageLine(opts: {
                       color: 'text-faint',
                       opacity: { $: 'local.pointerOnRow ? 1 : 0' },
                       onClick: {
-                        $action: 'modules.transcribe.startReply',
+                        $invoke: 'modules.transcribe.startReply',
                         args: [
                           {
                             $: `{ id: ${as}.id, text: ${as}.text, author: ${as}.author, surface: '${opts.surface}' }`,
@@ -455,7 +455,7 @@ export function messageLine(opts: {
                       value: { $: 'local.draft' },
                       onInput: { $setLocal: 'draft', value: { $: 'event.detail' } },
                       'on:submit': {
-                        $action: 'modules.transcribe.editUtterance',
+                        $invoke: 'modules.transcribe.editUtterance',
                         args: [{ $: `${as}.id` }, { $: 'local.draft' }, { $: `${as}.source` }],
                         onSuccess: [{ $setLocal: 'mending', value: false }],
                       },
@@ -479,7 +479,7 @@ export function messageLine(opts: {
                           variant: 'solid',
                           disabled: { $: '!trim(local.draft)' },
                           onClick: {
-                            $action: 'modules.transcribe.editUtterance',
+                            $invoke: 'modules.transcribe.editUtterance',
                             args: [{ $: `${as}.id` }, { $: 'local.draft' }, { $: `${as}.source` }],
                             // Closed on success only: a failed write leaves the words on
                             // screen to try again with, rather than discarding them and

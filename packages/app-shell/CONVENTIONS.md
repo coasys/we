@@ -24,13 +24,13 @@ contract, and product meet. These are the rules that keep it navigable.
   `provideInstalledModules`, `setNavigateFunction`) are tolerated debt, not
   a pattern to extend.
 - A store's public surface is schema-facing API. Every state member and
-  action is reachable from templates through an expression or `$action`, extracted into
+  action is reachable from templates through an expression or `$invoke`, extracted into
   the generated reference by `@we/ai-context` — so name members for template
   authors, document them in `ai-context/src/fragments/stores.ts`, and treat
   removals as breaking (a stale fragment entry fails the build).
 - No scratch members on stores. A debug helper on the store surface is
   template-reachable vocabulary (`spaceStore.test` existed; it is gone).
-- Async actions that schemas await (`$action` + `onSuccess`) must reject on
+- Async actions that schemas await (`$invoke` + `onSuccess`) must reject on
   failure — `onSuccess` firing on a failed join is a lie in the UI.
 
 ## Schemas

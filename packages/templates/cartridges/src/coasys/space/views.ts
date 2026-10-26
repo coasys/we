@@ -27,7 +27,7 @@ const channelModes: SchemaNode = {
       size: 'sm',
       variant: { $: `(${PAGE_EXPR}) == '${page}' ? 'soft' : 'ghost'` },
       onClick: {
-        $action: 'routeStore.navigate',
+        $invoke: 'routeStore.navigate',
         args: [
           {
             $: page ? `spaceStore.spacePath + '/${page}?channel=' + (${CHANNEL_EXPR})` : channelPath(CHANNEL_EXPR),
@@ -55,7 +55,7 @@ const showTree: SchemaNode = {
             size: 'sm',
             square: true,
             label: 'Show the tree',
-            onClick: { $action: 'shellStore.setLaneCollapsed', args: ['tree', false] },
+            onClick: { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', false] },
           },
           children: [{ type: 'we-icon', props: { name: 'sidebar-simple' } }],
         },
@@ -167,7 +167,7 @@ const firstSteps: SchemaNode = {
               'phone',
               'Start a call',
               'Everyone here can join. What is said is written down, and what is decided becomes work you can see.',
-              { $action: 'modules.call.goToCall' },
+              { $invoke: 'modules.call.goToCall' },
               { $: '!modules.call.canCall' },
             ),
             hint('hash', 'Make a channel', 'A place for one subject, also from the + beside Channels.', {
@@ -193,12 +193,12 @@ const sendLine: SchemaProp = {
         $if: {
           condition: { $: "modules.transcribe.replyingTo.surface == 'transcript'" },
           then: {
-            $action: 'modules.transcribe.reply',
+            $invoke: 'modules.transcribe.reply',
             args: [{ $: 'modules.transcribe.replyingTo.id' }, { $: 'event.text' }, { $: 'event.marks' }],
             onFinally: [{ $setLocal: 'sending', value: false }],
           },
           else: {
-            $action: 'modules.transcribe.addMessage',
+            $invoke: 'modules.transcribe.addMessage',
             args: [CHANNEL, { $: 'event.text' }, { $: 'event.marks' }],
             onFinally: [{ $setLocal: 'sending', value: false }],
           },
@@ -267,7 +267,7 @@ const chatRoute: RouteSchema = {
                 },
                 {
                   type: 'we-button',
-                  props: { size: 'xs', variant: 'ghost', onClick: { $action: 'modules.transcribe.cancelReply' } },
+                  props: { size: 'xs', variant: 'ghost', onClick: { $invoke: 'modules.transcribe.cancelReply' } },
                   children: ['Cancel'],
                 },
               ],
@@ -322,14 +322,14 @@ const canvasRoute: RouteSchema = {
             ],
             empty: 'Nothing here yet. Double-click to make something, or drop something in from Pocket.',
             emptyIcon: 'squares-four',
-            onNodeDragEnd: { $action: 'recordStore.dragOnCanvas', args: [CHANNEL, { $: 'event' }] },
-            onDrop: { $action: 'recordStore.dropOnCanvas', args: [CHANNEL, { $: 'event' }] },
+            onNodeDragEnd: { $invoke: 'recordStore.dragOnCanvas', args: [CHANNEL, { $: 'event' }] },
+            onDrop: { $invoke: 'recordStore.dropOnCanvas', args: [CHANNEL, { $: 'event' }] },
             onCanvasDoubleClick: {
-              $action: 'recordStore.createOnCanvas',
+              $invoke: 'recordStore.createOnCanvas',
               args: [CHANNEL, { $: 'event.x' }, { $: 'event.y' }],
             },
             onNodeDoubleClick: {
-              $action: 'routeStore.navigate',
+              $invoke: 'routeStore.navigate',
               args: [{ $: "spaceStore.spacePath + '/record/' + event.recordType + '?id=' + event.recordId" }],
             },
           },
@@ -427,7 +427,7 @@ export const callPage: SchemaNode = {
             },
             {
               type: 'we-button',
-              props: { variant: 'solid', onClick: { $action: 'modules.call.continueCall', args: [{ $: CALL_ID }] } },
+              props: { variant: 'solid', onClick: { $invoke: 'modules.call.continueCall', args: [{ $: CALL_ID }] } },
               children: [
                 { type: 'we-icon', props: { name: 'phone' } },
                 { $: `find(modules.call.liveCalls, { recordId: ${CALL_ID} }) ? 'Join' : 'Pick it back up'` },

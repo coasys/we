@@ -104,7 +104,7 @@ const openButton = (label: string, icon: string, kind: string): SchemaNode => ({
  * itself; two numbers in a panel would be the same act with the answer hidden.
  */
 const setStyle = (field: string, value: unknown) => ({
-  $action: 'recordStore.setCardStyle',
+  $invoke: 'recordStore.setCardStyle',
   args: [{ $: 'local.canvasId' }, { $: 'local.selected.recordId' }, field, value],
   // The graph re-reads and merges, so the change lands on the card rather than at the next reload.
   onSuccess: [{ $setLocal: 'revision', value: { $: 'local.revision + 1' } }],
@@ -175,7 +175,7 @@ const cardStyle: SchemaNode = {
                   map, so the card never jumps between the last preview and the write.
                 */
                 onInput: {
-                  $action: 'recordStore.previewCardStyle',
+                  $invoke: 'recordStore.previewCardStyle',
                   args: [{ $: 'local.selected.recordId' }, 'contentScale', { $: 'event.detail' }],
                 },
                 onChange: setStyle('contentScale', { $: 'event.detail' }),
@@ -291,7 +291,7 @@ const actions: SchemaNode = {
                     color: 'danger-text',
                     // Recursive, and kind-agnostic: the one delete that serves every collection.
                     onClick: {
-                      $action: 'spaceStore.deleteCollection',
+                      $invoke: 'spaceStore.deleteCollection',
                       args: [{ $: 'local.selected.recordId' }],
                       onSuccess: [
                         { $setLocal: 'selected', value: null },
@@ -323,7 +323,7 @@ const actions: SchemaNode = {
                     color: 'danger-text',
                     ml: 'auto',
                     onClick: {
-                      $action: 'recordStore.removeFromCanvas',
+                      $invoke: 'recordStore.removeFromCanvas',
                       args: [{ $: 'local.canvasId' }, { $: 'local.selected.recordId' }],
                       onSuccess: [
                         { $setLocal: 'selected', value: null },

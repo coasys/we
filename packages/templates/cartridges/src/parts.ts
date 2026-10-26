@@ -11,7 +11,7 @@ export const addButton = (label: string, entity: string, icon: string): SchemaNo
     variant: 'solid',
     size: 'sm',
     flexShrink: '0',
-    onClick: { $action: 'recordStore.openRecordForm', args: [entity] },
+    onClick: { $invoke: 'recordStore.openRecordForm', args: [entity] },
   },
   children: [
     { type: 'we-icon', props: { name: icon } },

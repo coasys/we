@@ -129,7 +129,7 @@ const WIRING = 'wiring' as const;
 
 interface MemberSpec {
   group: CapabilityGroup;
-  /** `state` is read in expressions and tagged reactive; `action` is called through `$action`. */
+  /** `state` is read in expressions and tagged reactive; `action` is called through `$invoke`. */
   kind: 'state' | 'action';
   /**
    * Irreversible, or expensive to reverse. Not a grant of its own — a flag the host reads to decide
@@ -1030,7 +1030,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     publishToSpace: action('library'),
     deleteMarketplaceTemplate: destructive('library'),
     publishToMarketplace: action('library'),
-    // Queries that answer with a value, which $action cannot read: templateManagementList carries
+    // Queries that answer with a value, which $invoke cannot read: templateManagementList carries
     // isBuiltIn and isInstalled per row, which is the form a template can use.
     isBuiltInTemplateId: WIRING,
     isInstalled: WIRING,
@@ -1187,7 +1187,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       driven by a resize handle it owns". The arithmetic is the host's; the handle is not code. Docks
       are built as *schema* by `dockRegistry.dockFrame` — the geometry arrives through
       `{ $: 'shellStore.dockGeometry.<id>.<field>' }` and the drag through
-      `{ $action: 'shellStore.beginDockResize' }` — so marking them wiring removed them from every
+      `{ $invoke: 'shellStore.beginDockResize' }` — so marking them wiring removed them from every
       bag, chrome's included. Every docked panel rendered as empty space with no resize rail.
 
       That is the gap `WIRING` had: it conflated "no schema may have this" with "no *template* may
@@ -1555,7 +1555,7 @@ const ALWAYS_PRESENT = new Set<string>([
  * only marked members are present at all: **private by default**, which is the default a second
  * author needs, and the inverse of the opt-out list it replaces. A marked state member is tagged
  * reactive so `{ $: 'modules.transcribe.level' }` reads it; a marked action is left untagged so
- * `{ $: 'modules.call.leave' }` reads a function rather than *calling* it during paint, and `$action`
+ * `{ $: 'modules.call.leave' }` reads a function rather than *calling* it during paint, and `$invoke`
  * still calls it.
  *
  * The chrome tier — the module's own panels, and the host's — sees every member. An unmarked
@@ -1597,7 +1597,7 @@ export interface BuildBagOptions {
    * unqualified click.
    *
    * Awaiting it makes a destructive action async from the template's point of view, which costs
-   * nothing: `$action` already awaits, and `onSuccess`/`onError`/`onFinally` are defined in terms
+   * nothing: `$invoke` already awaits, and `onSuccess`/`onError`/`onFinally` are defined in terms
    * of the returned promise. A refusal resolves `undefined` — the same nothing a blocked action
    * resolves — so `onSuccess` does not fire on a cancel.
    */
@@ -1755,7 +1755,7 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
 export interface SurfaceReference {
   /** The store path as written — `sessionStore.logout`. */
   path: string;
-  /** How it was reached: read in an expression, or called through `$action`. */
+  /** How it was reached: read in an expression, or called through `$invoke`. */
   via: 'store' | 'action';
   /** The group it belongs to, or null when the member is not classified at all. */
   group: CapabilityGroup | null;
@@ -1794,7 +1794,7 @@ function classify(path: string): { store: string; member: string; spec: Classifi
 }
 
 /**
- * Walk any schema-shaped value, collecting every store read in an expression and every `$action`.
+ * Walk any schema-shaped value, collecting every store read in an expression and every `$invoke`.
  *
  * Structural rather than typed on `SchemaNode`, because references live in props, in nested
  * operator objects, in `$each` items, in route trees and in handler arrays — everywhere. A walk
@@ -1809,7 +1809,7 @@ function collectReferences(value: unknown, into: { path: string; via: 'store' | 
   if (!value || typeof value !== 'object') return;
 
   const node = value as Record<string, unknown>;
-  if (typeof node.$action === 'string') into.push({ path: node.$action, via: 'action' });
+  if (typeof node.$invoke === 'string') into.push({ path: node.$invoke, via: 'action' });
   /*
     An expression names stores as bare paths — `spaceStore.members`, `modules.notes.open`. Every
     dotted root the expression reads is reported as a store reference; roots that are not stores

@@ -615,7 +615,7 @@ export const moduleRegistry = {
         // The module's own close where it owns the flag; the host's where it does not. A panel that
         // owns its flag and names no close gets no button, as before.
         ...(controls.hostOwned
-          ? { closeAction: { $action: 'shellStore.closeModulePanel', args: [dockId] } }
+          ? { closeAction: { $invoke: 'shellStore.closeModulePanel', args: [dockId] } }
           : panel.close
             ? { close: panel.close }
             : {}),

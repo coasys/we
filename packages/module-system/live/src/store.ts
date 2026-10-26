@@ -615,7 +615,7 @@ export function createLiveStore(deps: ModuleStoreDeps) {
   /**
    * Take the wheel or give it up, whichever this press means.
    *
-   * One action rather than two, because a schema cannot choose between two handlers: `$action` is a
+   * One action rather than two, because a schema cannot choose between two handlers: `$invoke` is a
    * token and an expression resolves to a value, so the obvious ternary typechecks, validates, renders
    * — and always takes the same branch. Only the store can ask which state it is in at the moment of
    * the click, which is the same reason the call module's `goToCall` is one action for four states.

@@ -3,7 +3,7 @@
  *
  * Every field is JSON — this is the surface a template writes and an LLM edits, so a value that could
  * only be a function would be a value no community member can author. Interaction results come back
- * as events (`onNodeClick` and friends), which a schema binds to `$action` handlers with the payload
+ * as events (`onNodeClick` and friends), which a schema binds to `$invoke` handlers with the payload
  * on `$event.detail`.
  *
  * The plugin contracts — expanders, layouts, renderers, behaviours, metrics — live in

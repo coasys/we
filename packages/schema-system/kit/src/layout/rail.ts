@@ -296,7 +296,7 @@ export function railButton(opts: RailButtonOptions): SchemaNode {
  * One row of a `railShell`. Every row on a rail is one of these, including a module's launcher: a
  * module's own button part (`notes.toggleButton`) is a plain icon button for anywhere, and placed on a
  * rail it neither labels itself when the rail opens nor matches the rows around it. Draw the launcher
- * as a row instead — `onClick: { $action: 'spaceStore.launchModule', args: ['notes:main'] }`.
+ * as a row instead — `onClick: { $invoke: 'spaceStore.launchModule', args: ['notes:main'] }`.
  */
 export interface RailItemOptions {
   label: Content;

@@ -119,7 +119,7 @@ export function anchorBanner(opts: AnchorBannerOptions): SchemaNode {
               ml: 'auto',
               // `null` clears the parameter; `push: true` because leaving a narrowed view is a
               // navigation somebody may want to undo with Back.
-              onClick: { $action: 'routeStore.setParam', args: [ANCHOR_PARAM, null, { push: true }] },
+              onClick: { $invoke: 'routeStore.setParam', args: [ANCHOR_PARAM, null, { push: true }] },
             },
             children: ['Show all'],
           },

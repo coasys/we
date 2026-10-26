@@ -262,7 +262,7 @@ const pageWithCall = (callExpr: string): SchemaProp => ({
     The key's lens comes along — an explicit `?` drops whatever the address held, so a navigation
     that spelt only the call would turn the lens back to its default on every change of call.
   */
-  $action: 'routeStore.navigate',
+  $invoke: 'routeStore.navigate',
   args: [
     {
       $: `\`\${spaceStore.spacePath}/\${${PAGE_EXPR}}?call=\${${callExpr}}${LENS_QUERY}${FOLD_QUERY}${OPEN_QUERY}${VOCAB_QUERY}\``,
@@ -614,7 +614,7 @@ const callPill: SchemaNode = {
             $: 'local.titleDraft != first(local.callRecord).title || local.descriptionDraft != first(local.callRecord).description',
           },
           submit: {
-            $action: 'record.update',
+            $invoke: 'record.update',
             args: [
               'CollectionBlock',
               CALL,
@@ -664,8 +664,8 @@ const fromLensControl: SchemaNode = {
         $if: {
           condition: { $: "arg.id == 'scope:all'" },
           then: [
-            { $action: 'routeStore.setParam', args: [SCOPE_PARAM, ''] },
-            { $action: 'routeStore.setParam', args: [FROM_PARAM, ''] },
+            { $invoke: 'routeStore.setParam', args: [SCOPE_PARAM, ''] },
+            { $invoke: 'routeStore.setParam', args: [FROM_PARAM, ''] },
           ],
         },
       },
@@ -674,13 +674,13 @@ const fromLensControl: SchemaNode = {
           condition: { $: "arg.id == 'scope:space' || arg.id == 'scope:call'" },
           then: [
             {
-              $action: 'routeStore.setParam',
+              $invoke: 'routeStore.setParam',
               args: [SCOPE_PARAM, { $: "arg.id == 'scope:space' ? 'space' : 'call'" }],
             },
             {
               $if: {
                 condition: { $: `!${FROM_MODE}` },
-                then: { $action: 'routeStore.setParam', args: [FROM_PARAM, 'dim'] },
+                then: { $invoke: 'routeStore.setParam', args: [FROM_PARAM, 'dim'] },
               },
             },
           ],
@@ -689,7 +689,7 @@ const fromLensControl: SchemaNode = {
       {
         $if: {
           condition: { $: "arg.id == 'mode:dim' || arg.id == 'mode:hide'" },
-          then: { $action: 'routeStore.setParam', args: [FROM_PARAM, { $: "arg.id == 'mode:hide' ? 'hide' : 'dim'" }] },
+          then: { $invoke: 'routeStore.setParam', args: [FROM_PARAM, { $: "arg.id == 'mode:hide' ? 'hide' : 'dim'" }] },
         },
       },
     ],
@@ -736,7 +736,7 @@ const switcher: SchemaNode = {
             r: 'control',
             gap: '200',
             variant: { $: "nav.segment in routeStore.segments ? 'soft' : 'ghost'" },
-            onClick: { $action: 'routeStore.navigate', args: [navPath] },
+            onClick: { $invoke: 'routeStore.navigate', args: [navPath] },
           },
           children: [
             { type: 'we-icon', props: { name: { $: 'nav.icon' } } },
@@ -802,7 +802,7 @@ const IN_A_CALL_HERE = 'modules.call.active && !modules.call.elsewhere';
  * `''` is falsy, which is how `startCall` already spells "no anchor" — a call about the space rather
  * than about some node in it.
  */
-const NEW_CALL_ACTION: SchemaProp = { $action: 'modules.call.startCall', args: [''] };
+const NEW_CALL_ACTION: SchemaProp = { $invoke: 'modules.call.startCall', args: [''] };
 
 /**
  * Start a second call, beside the one already running here.
@@ -975,7 +975,7 @@ const startCallButton = (size: 'sm' | 'md'): SchemaNode => ({
                   that happened to be current when the panel opened.
                 */
                 onClick: [
-                  { $if: { condition: { $: IN_A_CALL_HERE }, then: { $action: 'modules.call.goToCall' } } },
+                  { $if: { condition: { $: IN_A_CALL_HERE }, then: { $invoke: 'modules.call.goToCall' } } },
                   {
                     $if: {
                       condition: { $: `!(${IN_A_CALL_HERE}) && ${CALL_RUNNING_HERE}` },
@@ -983,7 +983,7 @@ const startCallButton = (size: 'sm' | 'md'): SchemaNode => ({
                       // Which call, where there are several, is the list's question — see
                       // `callsPanel`.
                       then: {
-                        $action: 'modules.call.joinCall',
+                        $invoke: 'modules.call.joinCall',
                         args: [{ $: 'first(modules.call.liveCalls).id' }],
                       },
                     },
@@ -1146,7 +1146,7 @@ const historyPill: SchemaNode = {
                 square: true,
                 label: 'Undo',
                 disabled: { $: '!recordStore.canvasHistory.canUndo' },
-                onClick: { $action: 'recordStore.undoCanvas', args: [SPACE_CANVAS] },
+                onClick: { $invoke: 'recordStore.undoCanvas', args: [SPACE_CANVAS] },
               },
               children: [{ type: 'we-icon', props: { name: 'arrow-u-up-left' } }],
             },
@@ -1168,7 +1168,7 @@ const historyPill: SchemaNode = {
                 square: true,
                 label: 'Redo',
                 disabled: { $: '!recordStore.canvasHistory.canRedo' },
-                onClick: { $action: 'recordStore.redoCanvas', args: [SPACE_CANVAS] },
+                onClick: { $invoke: 'recordStore.redoCanvas', args: [SPACE_CANVAS] },
               },
               children: [{ type: 'we-icon', props: { name: 'arrow-u-up-right' } }],
             },
@@ -1356,7 +1356,7 @@ const relationshipKind: SchemaNode = {
                         // field, value coerced by the field's declared kind. `relationshipTypeId` is
                         // a plain string property, so nothing special happens to it on the way.
                         onChange: {
-                          $action: 'recordStore.updateRecordField',
+                          $invoke: 'recordStore.updateRecordField',
                           args: [
                             'Relationship',
                             { $: 'routeStore.params.card' },
@@ -1388,7 +1388,7 @@ const relationshipKind: SchemaNode = {
                                 // property" — see `clearOnEmpty`. Not null or undefined: those still
                                 // skip, so that an ordinary partial save is not data loss.
                                 onClick: {
-                                  $action: 'recordStore.updateRecordField',
+                                  $invoke: 'recordStore.updateRecordField',
                                   args: ['Relationship', { $: 'routeStore.params.card' }, 'relationshipTypeId', ''],
                                 },
                               },
@@ -1506,7 +1506,7 @@ const composedContent: SchemaNode = {
           saveLabel: 'Save',
           editorState: { $: COMPOSED },
           // `arg` second: `updatePost(postId, json)`.
-          saveAction: { $action: 'spaceStore.updatePost', args: [{ $: 'row.id' }, { $: 'arg' }] },
+          saveAction: { $invoke: 'spaceStore.updatePost', args: [{ $: 'row.id' }, { $: 'arg' }] },
         }),
       ],
     },
@@ -1645,8 +1645,8 @@ const LINK_END_ROWS = [
  */
 function openRecord(id: string, type: SchemaProp): SchemaProp[] {
   return [
-    { $action: 'routeStore.setParam', args: ['cardType', type] },
-    { $action: 'routeStore.setParam', args: ['card', { $: id }] },
+    { $invoke: 'routeStore.setParam', args: ['cardType', type] },
+    { $invoke: 'routeStore.setParam', args: ['card', { $: id }] },
   ];
 }
 
@@ -1924,7 +1924,7 @@ const peopleSection: SchemaNode = {
                     $: `involvementMenu({ node: row.id, entity: ${CARD_TYPE}, rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did, said: row.assignee })`,
                   },
                   onSelect: {
-                    $action: 'spaceStore.setInvolvement',
+                    $invoke: 'spaceStore.setInvolvement',
                     args: [{ $: 'row.id' }, { $: 'arg.id' }, { $: 'arg.kind' }, { $: '!arg.checked' }],
                   },
                 },
@@ -2008,9 +2008,9 @@ const peopleSection: SchemaNode = {
                                             onClick: {
                                               $if: {
                                                 condition: { $: 'holder.reflexive' },
-                                                then: { $action: 'spaceStore.respondTo', args: [{ $: 'row.id' }, ''] },
+                                                then: { $invoke: 'spaceStore.respondTo', args: [{ $: 'row.id' }, ''] },
                                                 else: {
-                                                  $action: 'spaceStore.setInvolvement',
+                                                  $invoke: 'spaceStore.setInvolvement',
                                                   args: [
                                                     { $: 'row.id' },
                                                     { $: 'holder.did' },
@@ -2575,7 +2575,7 @@ const inspectorPanel: SchemaNode = {
                         delete makes the same non-choice, one surface along.
                       */
                       onClick: {
-                        $action: 'record.delete',
+                        $invoke: 'record.delete',
                         args: [{ $: CARD_TYPE }, { $: 'routeStore.params.card' }],
                       },
                     },
@@ -2692,12 +2692,12 @@ const inspectorPanel: SchemaNode = {
                             answerButton({
                               tone: 'success',
                               label: 'Accept',
-                              onClick: { $action: 'modules.transcribe.acceptProposal', args: [{ $: 'row.id' }] },
+                              onClick: { $invoke: 'modules.transcribe.acceptProposal', args: [{ $: 'row.id' }] },
                             }),
                             answerButton({
                               tone: 'danger',
                               label: 'Reject — removes it',
-                              onClick: { $action: 'modules.transcribe.rejectProposal', args: [{ $: 'row.id' }] },
+                              onClick: { $invoke: 'modules.transcribe.rejectProposal', args: [{ $: 'row.id' }] },
                             }),
                           ],
                         },
@@ -3341,7 +3341,7 @@ const callsPanel: SchemaNode = {
                                     */
                                     onClick: [
                                       {
-                                        $action: 'modules.call.joinCall',
+                                        $invoke: 'modules.call.joinCall',
                                         args: [{ $: `${ROW_LIVE_CALL}.id` }],
                                       },
                                       // And point every other surface at it, which is what clicking
@@ -3401,7 +3401,7 @@ const callsPanel: SchemaNode = {
                                 onClick: [
                                   { $setLocal: 'deletingIsCurrent', value: { $: `call.id == (${CALL_EXPR})` } },
                                   {
-                                    $action: 'spaceStore.deleteCollection',
+                                    $invoke: 'spaceStore.deleteCollection',
                                     args: [{ $: 'call.id' }],
                                     // Only when the record just deleted is the one every other
                                     // surface is reading. Deleting some other call must not move you
@@ -3780,7 +3780,7 @@ const canvas: SchemaNode = {
       selected on the canvas too, as soon as the canvas has re-read and drawn it.
     */
     onEdgeCreate: {
-      $action: 'recordStore.connectNodesNow',
+      $invoke: 'recordStore.connectNodesNow',
       args: [{ $: 'event' }],
       onSuccess: [
         { $setLocal: 'inspecting', value: { $: 'result' } },
@@ -3800,11 +3800,11 @@ const canvas: SchemaNode = {
 
       The whole payload rather than four values picked out of it: a folded card arrives carrying a
       placement for each card hidden under it, and a schema cannot loop over a list whose length it
-      does not know — `$action` calls a method once. Without it, folding a cluster and carrying it
+      does not know — `$invoke` calls a method once. Without it, folding a cluster and carrying it
       into a corner would scatter everything back where it was the moment you unfolded, which makes
       a fold a way of hiding things rather than of tidying them.
     */
-    onNodeDragEnd: { $action: 'recordStore.dragOnCanvas', args: [SPACE_CANVAS, { $: 'event' }] },
+    onNodeDragEnd: { $invoke: 'recordStore.dragOnCanvas', args: [SPACE_CANVAS, { $: 'event' }] },
     /*
       The same gesture in the tree, where what a drag means is different.
 
@@ -3818,10 +3818,10 @@ const canvas: SchemaNode = {
       The spine goes with it, and has to: what makes a parent a parent is this community's own
       vocabulary and this reader's current choice, neither of which a store can know.
     */
-    onNodeArrange: { $action: 'recordStore.arrangeOnTree', args: [SPACE_CANVAS, { $: 'local.spine' }, { $: 'event' }] },
+    onNodeArrange: { $invoke: 'recordStore.arrangeOnTree', args: [SPACE_CANVAS, { $: 'local.spine' }, { $: 'event' }] },
     // Who answered with the reaction the tree is weighed by, for the strip's list of voices.
     onSeedSummary: TREE_VOICE_SUMMARY,
-    onNodeResize: { $action: 'recordStore.resizeOnCanvas', args: [SPACE_CANVAS, { $: 'event' }] },
+    onNodeResize: { $invoke: 'recordStore.resizeOnCanvas', args: [SPACE_CANVAS, { $: 'event' }] },
     // Not in the tree, which gives every card one box: a resize there would change nothing on screen, and
     // its handles would sit over the card's reaction badge on the same edge.
     resizable: { $: `!${TREE_ON}` },
@@ -3834,8 +3834,8 @@ const canvas: SchemaNode = {
       `EdgeRoute` parented to this canvas rather than on the `Relationship` — how a claim is *drawn*
       is a fact about a view, and the same claim on another canvas is untouched.
     */
-    onEdgeAnchor: { $action: 'recordStore.anchorOnCanvas', args: [SPACE_CANVAS, { $: 'event' }] },
-    onEdgeReroute: { $action: 'recordStore.rerouteOnCanvas', args: [SPACE_CANVAS, { $: 'event' }] },
+    onEdgeAnchor: { $invoke: 'recordStore.anchorOnCanvas', args: [SPACE_CANVAS, { $: 'event' }] },
+    onEdgeReroute: { $invoke: 'recordStore.rerouteOnCanvas', args: [SPACE_CANVAS, { $: 'event' }] },
     /*
       And the same handle dropped on a *different* card, which re-attaches the connection.
 
@@ -3844,7 +3844,7 @@ const canvas: SchemaNode = {
       relationship is shown. That end's anchor is cleared with it, a side pinned against the card
       that used to be there deciding nothing about the one that arrived.
     */
-    onEdgeRetarget: { $action: 'recordStore.retargetOnCanvas', args: [SPACE_CANVAS, { $: 'event' }] },
+    onEdgeRetarget: { $invoke: 'recordStore.retargetOnCanvas', args: [SPACE_CANVAS, { $: 'event' }] },
     /*
       What is selected, in the address — because the inspector is a *panel*.
 
@@ -3885,7 +3885,7 @@ const canvas: SchemaNode = {
       A placement is the canvas's membership, so the store's one action is enough — and it refuses
       a record from another space, which this canvas could not draw, with a sentence saying so.
     */
-    onDrop: { $action: 'recordStore.dropOnCanvas', args: [SPACE_CANVAS, { $: 'event' }] },
+    onDrop: { $invoke: 'recordStore.dropOnCanvas', args: [SPACE_CANVAS, { $: 'event' }] },
     /*
       A line is a record here too, so clicking one inspects it.
 
@@ -3927,7 +3927,7 @@ const canvas: SchemaNode = {
       {
         $if: {
           condition: { $: 'count(event.records)' },
-          then: { $action: 'recordStore.deleteRecords', args: [{ $: 'event.records' }] },
+          then: { $invoke: 'recordStore.deleteRecords', args: [{ $: 'event.records' }] },
         },
       },
       {
@@ -3939,7 +3939,7 @@ const canvas: SchemaNode = {
             Destructive either way, so the host asks the same question it always did.
           */
           then: {
-            $action: 'recordStore.deleteRecords',
+            $invoke: 'recordStore.deleteRecords',
             args: [{ $: '[{ recordId: event.recordId, recordType: event.recordType }]' }],
           },
         },
@@ -3956,8 +3956,8 @@ const canvas: SchemaNode = {
       Scoped to the call this canvas is about, so walking to another call's canvas does not leave a
       press that would move cards on a canvas nobody is looking at.
     */
-    onUndo: { $action: 'recordStore.undoCanvas', args: [SPACE_CANVAS] },
-    onRedo: { $action: 'recordStore.redoCanvas', args: [SPACE_CANVAS] },
+    onUndo: { $invoke: 'recordStore.undoCanvas', args: [SPACE_CANVAS] },
+    onRedo: { $invoke: 'recordStore.redoCanvas', args: [SPACE_CANVAS] },
     /*
       Cards can be carried off this canvas — into the Pocket, and from there into any other space.
 
@@ -3982,7 +3982,7 @@ const canvas: SchemaNode = {
       {
         $if: {
           condition: { $: "event.action == 'delete'" },
-          then: { $action: 'recordStore.deleteRecords', args: [{ $: 'event.records' }] },
+          then: { $invoke: 'recordStore.deleteRecords', args: [{ $: 'event.records' }] },
         },
       },
       /*
@@ -3996,7 +3996,7 @@ const canvas: SchemaNode = {
         $if: {
           condition: { $: "event.action == 'color' && event.preview" },
           then: {
-            $action: 'recordStore.previewCardStyle',
+            $invoke: 'recordStore.previewCardStyle',
             args: [{ $: 'event.records.map(r, r.recordId)' }, 'color', { $: 'event.value' }],
           },
         },
@@ -4005,7 +4005,7 @@ const canvas: SchemaNode = {
         $if: {
           condition: { $: "event.action == 'color' && !event.preview" },
           then: {
-            $action: 'recordStore.setCardStyle',
+            $invoke: 'recordStore.setCardStyle',
             args: [SPACE_CANVAS, { $: 'event.records.map(r, r.recordId)' }, 'color', { $: 'event.value' }],
           },
         },
@@ -4126,9 +4126,9 @@ const canvas: SchemaNode = {
             parked, somewhere new on every reload. Keeping it is the moment it joins the arrangement.
           */
           then: [
-            { $action: 'modules.transcribe.acceptProposal', args: [{ $: 'event.recordId' }] },
+            { $invoke: 'modules.transcribe.acceptProposal', args: [{ $: 'event.recordId' }] },
             {
-              $action: 'recordStore.placeOnCanvas',
+              $invoke: 'recordStore.placeOnCanvas',
               args: [
                 SPACE_CANVAS,
                 { $: 'event.recordId' },
@@ -4143,13 +4143,13 @@ const canvas: SchemaNode = {
       {
         $if: {
           condition: { $: "event.action == 'reject'" },
-          then: { $action: 'modules.transcribe.rejectProposal', args: [{ $: 'event.recordId' }] },
+          then: { $invoke: 'modules.transcribe.rejectProposal', args: [{ $: 'event.recordId' }] },
         },
       },
       {
         $if: {
           condition: { $: "event.action == 'delete'" },
-          then: { $action: 'record.delete', args: [{ $: 'event.recordType' }, { $: 'event.recordId' }] },
+          then: { $invoke: 'record.delete', args: [{ $: 'event.recordType' }, { $: 'event.recordId' }] },
         },
       },
       /*
@@ -4161,7 +4161,7 @@ const canvas: SchemaNode = {
         $if: {
           condition: { $: "event.action in ['color', 'cardShape', 'contentScale'] && event.preview" },
           then: {
-            $action: 'recordStore.previewCardStyle',
+            $invoke: 'recordStore.previewCardStyle',
             args: [{ $: 'event.recordId' }, { $: 'event.action' }, { $: 'event.value' }],
           },
         },
@@ -4170,7 +4170,7 @@ const canvas: SchemaNode = {
         $if: {
           condition: { $: "event.action in ['color', 'cardShape', 'contentScale'] && !event.preview" },
           then: {
-            $action: 'recordStore.setCardStyle',
+            $invoke: 'recordStore.setCardStyle',
             args: [SPACE_CANVAS, { $: 'event.recordId' }, { $: 'event.action' }, { $: 'event.value' }],
           },
         },
@@ -4185,7 +4185,7 @@ const canvas: SchemaNode = {
       {
         $if: {
           condition: { $: `event.action == 'color' && !event.preview && !(${NO_LENS})` },
-          then: { $action: 'routeStore.setParam', args: [LENS_PARAM, 'none'] },
+          then: { $invoke: 'routeStore.setParam', args: [LENS_PARAM, 'none'] },
         },
       },
     ],
@@ -4451,8 +4451,8 @@ const kanbanRoute: RouteSchema = {
             $if: {
               condition: { $: 'routeStore.params.card' },
               then: [
-                { $action: 'routeStore.setParam', args: ['card', null] },
-                { $action: 'routeStore.setParam', args: ['cardType', null] },
+                { $invoke: 'routeStore.setParam', args: ['card', null] },
+                { $invoke: 'routeStore.setParam', args: ['cardType', null] },
               ],
             },
           },
@@ -4588,8 +4588,8 @@ const kanbanRoute: RouteSchema = {
                         selected: 'routeStore.params.card',
                         onSelect: [
                           { $setLocal: 'pressedCard', value: true },
-                          { $action: 'routeStore.setParam', args: ['cardType', 'TaskBlock'] },
-                          { $action: 'routeStore.setParam', args: ['card', { $: 'card.id' }] },
+                          { $invoke: 'routeStore.setParam', args: ['cardType', 'TaskBlock'] },
+                          { $invoke: 'routeStore.setParam', args: ['card', { $: 'card.id' }] },
                         ],
                       },
                       empty: emptyState({
@@ -4618,7 +4618,7 @@ const kanbanRoute: RouteSchema = {
                         props: {
                           gap: '200',
                           mt: '400',
-                          onClick: { $action: 'spaceStore.openBoardFor', args: ['', 'Everything'] },
+                          onClick: { $invoke: 'spaceStore.openBoardFor', args: ['', 'Everything'] },
                         },
                         children: [{ type: 'we-icon', props: { name: 'kanban' } }, 'Make a board for this space'],
                       },
@@ -4709,7 +4709,7 @@ const rsvp: SchemaNode = {
                 size: 'xs',
                 variant: { $: `${ON_EVENTS}.answers[event.id] == answer.slug ? 'soft' : 'ghost'` },
                 onClick: {
-                  $action: 'spaceStore.respondTo',
+                  $invoke: 'spaceStore.respondTo',
                   args: [{ $: 'event.id' }, { $: `${ON_EVENTS}.answers[event.id] == answer.slug ? '' : answer.slug` }],
                 },
               },
@@ -4938,7 +4938,7 @@ const eventList: SchemaNode = {
       discardWhen: { $: 'local.draftTitle || local.draftDescription' },
       submitLabel: 'Add event',
       submit: {
-        $action: 'record.create',
+        $invoke: 'record.create',
         args: [
           'EventBlock',
           {
@@ -5113,12 +5113,12 @@ const eventList: SchemaNode = {
                                 answerButton({
                                   tone: 'success',
                                   label: 'Accept',
-                                  onClick: { $action: 'modules.transcribe.acceptProposal', args: [{ $: 'event.id' }] },
+                                  onClick: { $invoke: 'modules.transcribe.acceptProposal', args: [{ $: 'event.id' }] },
                                 }),
                                 answerButton({
                                   tone: 'danger',
                                   label: 'Reject — removes it',
-                                  onClick: { $action: 'modules.transcribe.rejectProposal', args: [{ $: 'event.id' }] },
+                                  onClick: { $invoke: 'modules.transcribe.rejectProposal', args: [{ $: 'event.id' }] },
                                 }),
                               ],
                             },
@@ -5225,8 +5225,8 @@ const calendarRoute: RouteSchema = {
             $if: {
               condition: { $: 'routeStore.params.card' },
               then: [
-                { $action: 'routeStore.setParam', args: ['card', null] },
-                { $action: 'routeStore.setParam', args: ['cardType', null] },
+                { $invoke: 'routeStore.setParam', args: ['card', null] },
+                { $invoke: 'routeStore.setParam', args: ['cardType', null] },
               ],
             },
           },

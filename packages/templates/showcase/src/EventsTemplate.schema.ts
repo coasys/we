@@ -35,7 +35,7 @@ const rsvpButton = (as: string): SchemaNode => ({
         variant: 'soft',
         size: 'sm',
         // Removes this agent's own entry and nothing else — see the note on add-only rosters.
-        onClick: { $action: 'spaceStore.setAttending', args: [{ $: `${as}.id` }, false] },
+        onClick: { $invoke: 'spaceStore.setAttending', args: [{ $: `${as}.id` }, false] },
       },
       children: [{ type: 'we-icon', props: { name: 'check' } }, 'Going'],
     },
@@ -44,7 +44,7 @@ const rsvpButton = (as: string): SchemaNode => ({
       props: {
         variant: 'solid',
         size: 'sm',
-        onClick: { $action: 'spaceStore.setAttending', args: [{ $: `${as}.id` }, true] },
+        onClick: { $invoke: 'spaceStore.setAttending', args: [{ $: `${as}.id` }, true] },
       },
       children: ['RSVP'],
     },

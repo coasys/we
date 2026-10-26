@@ -766,7 +766,7 @@ export interface SpaceStore {
    * Create a composed artifact, and return its id.
    *
    * The id is what makes "and then do something with it" possible from a schema — placing a new card
-   * where somebody double-clicked, scrolling to it, selecting it — since `$action`'s `onSuccess`
+   * where somebody double-clicked, scrolling to it, selecting it — since `$invoke`'s `onSuccess`
    * reads the resolved value as `$result`. `createBlocks` has always returned the model; this simply
    * stopped throwing the id away.
    */
@@ -5604,7 +5604,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   /**
    * Invoke a module's launcher.
    *
-   * Here rather than in the schema because `$action` resolves a *literal* path, so a rail iterating
+   * Here rather than in the schema because `$invoke` resolves a *literal* path, so a rail iterating
    * over modules cannot build `modules.<id>.<method>` per entry. The rail passes the id instead and
    * this dereferences it.
    */
