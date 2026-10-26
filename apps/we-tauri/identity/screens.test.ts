@@ -13,6 +13,13 @@ import screensSource from './screens.ts?raw';
 const IDENTITY_CSP = policy.trim();
 
 describe('the identity window', () => {
+  it('says what a revocation does, and promises nothing about earlier signatures', () => {
+    const lead = heading({ screen: 'revoke-confirm', keyId: 'd2', passphrase: false, error: null }).lead;
+    expect(lead).toContain('when they next read your key log');
+    expect(lead).toContain('can also stop counting as yours');
+    expect(lead).not.toContain('stays valid');
+  });
+
   it('asks for the two words the custody service chose', () => {
     expect(heading({ screen: 'confirm-words', positions: [3, 11], error: null }).lead).toContain('words 3 and 11');
   });
