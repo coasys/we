@@ -729,6 +729,11 @@ export interface SpaceStore {
   defaultSharing: Accessor<string>;
 
   // Actions
+  /**
+   * Create a space and resolve with its id once the local space exists — sharing a shared one
+   * follows on the network, reported on `spaceList`. It does not navigate: the create dialog goes
+   * to the space with `navigateToSpace`, and a caller making one as part of something else need not.
+   */
   createSpace: (
     name: string,
     description: string,
@@ -738,7 +743,7 @@ export interface SpaceStore {
     coverImageFile?: File,
     location?: LocationData | null,
     sharing?: string,
-  ) => Promise<void>;
+  ) => Promise<string | undefined>;
   /**
    * Share a space that is still local — what retries a share that failed. Uses the sharing option
    * and listing the failed attempt had. Watch `spaceList[].sharing` for how it is going.
@@ -1883,9 +1888,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     coverImageFile?: File,
     location?: LocationData | null,
     sharing?: string,
-  ): Promise<void> {
+  ): Promise<string | undefined> {
     const lifecycle = session.lifecycle();
-    if (!lifecycle) return;
+    if (!lifecycle) return undefined;
     setCreatingSpace(true);
 
     try {
@@ -1963,6 +1968,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       } else if (listing) {
         await listInGlobal(spaceRecord, listing);
       }
+      return spaceRef.id;
     } catch (error) {
       console.error('SpaceStore: createSpace error', error);
       toastService.error('Could not create the space.');

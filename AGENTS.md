@@ -456,8 +456,8 @@ Supports async lifecycle callbacks — fired after the store method's Promise re
 Non-promise (synchronous) methods are unaffected — lifecycle keys are ignored.
 Example — close modal after async submission:
 { "$invoke": "spaceStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }] }
-Example — navigate to newly created item:
-{ "$invoke": "spaceStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }, { "$invoke": "routeStore.navigate", "args": [{ "$": "`/space/${result.uuid}`" }] }] }
+Example — navigate to newly created item (createSpace resolves with the new space's id):
+{ "$invoke": "spaceStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }, { "$invoke": "spaceStore.navigateToSpace", "args": [{ "$": "result" }] }] }
 
 An action runs only when somebody asked for it. A press, a key, typing, a drop or a paste that reaches
 the element whose handler calls it counts as asking — and so does whatever the element does in answer,
