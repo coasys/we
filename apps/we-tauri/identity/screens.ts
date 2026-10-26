@@ -84,7 +84,7 @@ export function heading(screen: Screen): { title: string; lead: string } {
     case 'revoke-confirm':
       return {
         title: `Revoke the key ${screen.keyId}?`,
-        lead: 'Do this for a device you lost or no longer use. Its key stops working, and it can no longer act as you. What it signed before stays valid; what it signs after is refused.',
+        lead: 'Do this for a device you lost or no longer use. Your key log then records that it must no longer act as you, and you cannot undo that. Other computers apply it when they next fetch your key log, so one that is offline can keep trusting the device until it does. Some things the device signed before can stop counting as yours too.',
       };
     case 'revoked':
       return { title: `${screen.keyId} revoked`, lead: `Your key log records it as entry #${screen.seq}.` };
