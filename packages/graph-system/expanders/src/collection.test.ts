@@ -156,6 +156,14 @@ describe('propertyExpander', () => {
     expect(literals[0].label).toBe('blocked');
   });
 
+  it('opens a card into every field, the one that captions it included', async () => {
+    // A card shows several fields, its caption among them, and that caption is often a guess — the
+    // first text field. Skipped, it was the one field a card could not open.
+    const { context } = contextWith(() => [{ id: 'task-1', title: 'Ship it', status: 'blocked' }]);
+    const result = await propertyExpander().expand({ id: TASK, direction: 'out' }, context);
+    expect(result.nodes.map((n) => n.type).sort()).toEqual(['status', 'title']);
+  });
+
   it('two instances converge on one literal node for the same value', async () => {
     const { context } = contextWith((request) => [{ id: String(request.where?.id), status: 'blocked' }]);
 
