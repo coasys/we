@@ -180,6 +180,9 @@ that declares \`backends: ['ad4m']\` — nothing else. See \`docs/architecture/p
 - What no template may replace — the password field, the safety prompts, safe mode — and the one
   place each is enforced → docs/architecture/protected-pieces.md. Read it before touching the boot
   screen, a confirmation the host raises, or how a template becomes the live one.
+- What a language model can do with WE — which rules are WE's to ship as tools and which are the
+  backend's, where a new template or theme goes, and who runs the conversation →
+  docs/architecture/agents.md; the tools themselves → \`packages/agent-tools/\`.
 
 **Where a new thing goes** — module or host store, panel or fragment, who decides placement, and how
 two capabilities cooperate without depending on each other — is
