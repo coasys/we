@@ -48,6 +48,7 @@
                 "$localState": {
                   "expanded": { "type": "boolean", "initial": false },
                   "collapsedGroups": { "type": "array", "initial": [] },
+                  "railInset": { "type": "string", "initial": "calc((72px - 1px - 2rem) / 2 - var(--we-space-200))" },
                   "confirmGuestLogout": { "type": "boolean", "initial": false }
                 },
                 "children": [
@@ -80,7 +81,8 @@
                       "flex": "1",
                       "width": "100%",
                       "gap": "200",
-                      "p": "300",
+                      "px": "200",
+                      "py": "300",
                       "ay": "center",
                       "overflowY": "auto",
                       "overflowX": "hidden"
@@ -105,7 +107,7 @@
                               {
                                 "type": "we-button",
                                 "props": {
-                                  "variant": "ghost",
+                                  "variant": "bare",
                                   "size": "sm",
                                   "flex": "1",
                                   "minWidth": "0",
@@ -113,8 +115,11 @@
                                   "ay": "center",
                                   "gap": "200",
                                   "py": "200",
-                                  "px": "300",
+                                  "px": { "$": "local.railInset" },
                                   "height": "auto",
+                                  "color": "text-faint",
+                                  "hoverProps": { "color": "text-muted" },
+                                  "expanded": { "$": "!('spaces' in local.collapsedGroups)" },
                                   "onClick": { "$toggleLocalIn": "collapsedGroups", "value": "spaces" }
                                 },
                                 "children": [
@@ -124,18 +129,12 @@
                                       "name": {
                                         "$": "('spaces' in local.collapsedGroups) ? 'caret-right' : 'caret-down'"
                                       },
-                                      "size": "xs",
-                                      "color": "text-faint"
+                                      "size": "xs"
                                     }
                                   },
                                   {
                                     "type": "we-text",
-                                    "props": {
-                                      "fontSize": "200",
-                                      "fontWeight": "600",
-                                      "color": "text-faint",
-                                      "truncate": true
-                                    },
+                                    "props": { "fontSize": "200", "fontWeight": "600", "truncate": true },
                                     "children": ["Spaces"]
                                   }
                                 ]
@@ -192,8 +191,10 @@
                                                   "height": "auto",
                                                   "ax": "start",
                                                   "ay": "center",
-                                                  "gap": "300",
-                                                  "p": "300",
+                                                  "gap": "200",
+                                                  "py": "300",
+                                                  "px": { "$": "local.railInset" },
+                                                  "label": { "$": "space.name" },
                                                   "onClick": [
                                                     { "$invoke": "shellStore.closeShellView" },
                                                     {
@@ -344,8 +345,10 @@
                                           "height": "auto",
                                           "ax": "start",
                                           "ay": "center",
-                                          "gap": "300",
-                                          "p": "300",
+                                          "gap": "200",
+                                          "py": "300",
+                                          "px": { "$": "local.railInset" },
+                                          "label": "Add a space",
                                           "bg": { "$": "false ? 'accent-soft' : ''" },
                                           "color": { "$": "false ? 'accent-text' : 'text-muted'" },
                                           "hoverProps": {
@@ -356,7 +359,19 @@
                                           }
                                         },
                                         "children": [
-                                          { "type": "we-icon", "props": { "name": "plus", "flexShrink": "0" } },
+                                          {
+                                            "type": "Row",
+                                            "props": {
+                                              "width": "2rem",
+                                              "height": "2rem",
+                                              "ax": "center",
+                                              "ay": "center",
+                                              "flexShrink": "0"
+                                            },
+                                            "children": [
+                                              { "type": "we-icon", "props": { "name": "plus", "size": "sm" } }
+                                            ]
+                                          },
                                           {
                                             "type": "$if",
                                             "props": {
@@ -396,7 +411,7 @@
                   },
                   {
                     "type": "Column",
-                    "props": { "width": "100%", "gap": "200", "p": "300" },
+                    "props": { "width": "100%", "gap": "200", "px": "200", "py": "300" },
                     "children": [
                       {
                         "type": "Column",
@@ -411,8 +426,10 @@
                               "height": "auto",
                               "ax": "start",
                               "ay": "center",
-                              "gap": "300",
-                              "p": "300",
+                              "gap": "200",
+                              "py": "300",
+                              "px": { "$": "local.railInset" },
+                              "label": "Settings",
                               "onClick": [
                                 { "$invoke": "appStore.deactivateApp" },
                                 { "$invoke": "shellStore.openShellView", "args": ["settings"] }
@@ -429,7 +446,17 @@
                               }
                             },
                             "children": [
-                              { "type": "we-icon", "props": { "name": "gear-six", "flexShrink": "0" } },
+                              {
+                                "type": "Row",
+                                "props": {
+                                  "width": "2rem",
+                                  "height": "2rem",
+                                  "ax": "center",
+                                  "ay": "center",
+                                  "flexShrink": "0"
+                                },
+                                "children": [{ "type": "we-icon", "props": { "name": "gear-six", "size": "sm" } }]
+                              },
                               {
                                 "type": "$if",
                                 "props": {
@@ -503,8 +530,10 @@
                                   "height": "auto",
                                   "ax": "start",
                                   "ay": "center",
-                                  "gap": "300",
-                                  "p": "300",
+                                  "gap": "200",
+                                  "py": "300",
+                                  "px": { "$": "local.railInset" },
+                                  "label": { "$": "profileStore.ownProfile.name" },
                                   "bg": { "$": "(shellStore.activeShellView == 'profile') ? 'accent-soft' : ''" },
                                   "color": {
                                     "$": "(shellStore.activeShellView == 'profile') ? 'accent-text' : 'text-muted'"

@@ -6,6 +6,7 @@
  * the panel is opened from and outlives the call, so the glance moved here — and it is asserted on
  * the expansion because the failure mode is silent: a button with no busy state simply never spins.
  */
+import type { SchemaNode } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
 import { railButton, railGroup } from './rail.ts';
@@ -91,8 +92,8 @@ describe('a rail group’s heading action', () => {
  * screen when the group is folded. `after` is the place between.
  */
 describe('rows after a rail group’s own', () => {
-  const add: Node = { type: 'we-button', props: { label: 'Add a space' } };
-  const row: Node = { type: 'div', props: { 'data-we-id': 's1' } };
+  const add: SchemaNode = { type: 'we-button', props: { label: 'Add a space' } };
+  const row: SchemaNode = { type: 'div', props: { 'data-we-id': 's1' } };
   /** What the group folds: the single child of its `$animate`. */
   const folded = (group: Node) => (group.children?.[1] as Node).children?.[0] as Node;
 

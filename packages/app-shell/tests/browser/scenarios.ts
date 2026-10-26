@@ -6,7 +6,17 @@
  * the assertions live beside the cases, so one scenario can be measured several ways.
  */
 import { transcriptLines } from '@we/module-transcribe';
-import { cardShell, lineComposer, panelScroll, timeline, timelineMoreAt, timelineOrder } from '@we/schema-kit';
+import {
+  cardShell,
+  lineComposer,
+  panelScroll,
+  railGroup,
+  railItem,
+  railShell,
+  timeline,
+  timelineMoreAt,
+  timelineOrder,
+} from '@we/schema-kit';
 import type { SchemaNode } from '@we/schema-shared';
 import { discussionSection, foldingSectionLabel, signalDisplay } from '@we/template-kit';
 import { bundlePrompt, safeModeBanner } from '@we/template-shell';
@@ -1717,7 +1727,59 @@ const safeModeLeaving = (): Scenario => ({
   },
 });
 
+/**
+ * A rail shaped like the Coasys app's: 72px closed with a border, a reorderable group of spaces with
+ * a row at its foot that opens a menu, and a footer holding an icon row and a person behind a menu.
+ * Every kind of row the rail draws, in each of the two places a row can sit.
+ */
+const appRail = (): Scenario => {
+  const space = (id: string, name: string) =>
+    railItem({ id, avatar: { src: '', name, hash: id }, label: name, onClick: { $setLocal: 'picked', value: id } });
+  const menu = (label: string, row: SchemaNode): SchemaNode => ({
+    type: 'DropdownMenu',
+    props: { placement: 'right-start', items: [{ id: 'one', label }] },
+    children: [row],
+  });
+  return {
+    node: {
+      type: 'Column',
+      props: { id: 'rail-host', height: '640px' },
+      children: [
+        railShell({
+          collapsedWidth: '72px',
+          expandedWidth: '256px',
+          position: 'static',
+          border: '1px solid border',
+          localState: { picked: { type: 'string', initial: '' } },
+          footer: {
+            type: 'Column',
+            props: { width: '100%', gap: '200' },
+            children: [
+              railItem({ icon: 'gear-six', label: 'Settings' }),
+              menu(
+                'Profile',
+                railItem({ avatar: { src: '', name: 'Ada Lovelace', hash: 'did:ada' }, label: 'Ada Lovelace' }),
+              ),
+            ],
+          },
+          children: [
+            railGroup({
+              id: 'spaces',
+              label: 'Spaces',
+              reorderable: true,
+              children: [space('s1', 'Garden'), space('s2', 'A space with a name long enough to truncate')],
+              after: [menu('Create a space', railItem({ icon: 'plus', label: 'Add a space' }))],
+            }),
+          ],
+        }),
+      ],
+    },
+    tables: {},
+  };
+};
+
 export const scenarios: Record<string, (scale?: number) => Scenario> = {
+  'rail:app': appRail,
   'bundle:prompt': bundleInstallPrompt,
   'safe-mode:leaving': safeModeLeaving,
   'bundle:update-asks-more': bundleUpdatePrompt({
