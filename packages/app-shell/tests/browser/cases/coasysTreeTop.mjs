@@ -55,5 +55,24 @@ export async function check({ measure, measurePart, measureParts, partStyle }) {
   const gap = second && first ? second.y - (first.y + first.h) : NaN;
   if (!(gap >= 3.5)) problems.push(`tree rows are ${gap}px apart — touching`);
 
+  // Glow's rows have the sidebar's 8px vertical padding (d12 `.nav-item`), not the default 4px.
+  const padding = await partStyle('we-tree-item', 'padding-top', 'row', 0);
+  if (padding !== '8px') problems.push(`a tree row's padding is ${padding}, not Glow's 8px`);
+
+  // A row with nothing under it has no caret.
+  const caret = await partStyle('we-tree-item', 'visibility', 'caret', 2);
+  if (caret !== 'hidden') problems.push(`an empty row's caret is ${caret}`);
+
+  // A count is at least square, rather than a lozenge narrower than it is tall. A 1, the narrowest
+  // digit, came out 20x24 at the end of a row.
+  const count = await measure('#row-count');
+  if (!(count.w >= count.h)) problems.push(`a one-digit count is ${count.w}x${count.h} — narrower than it is tall`);
+
+  // A field's words, placeholder included, are body text, not a button's strong label.
+  for (const pseudo of ['', '::placeholder']) {
+    const weight = Number(await partStyle('we-input', 'font-weight', `input${pseudo}`));
+    if (!(weight <= 500)) problems.push(`the search field${pseudo ? "'s placeholder" : ''} is set at ${weight}`);
+  }
+
   return problems;
 }

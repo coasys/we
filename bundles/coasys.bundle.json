@@ -692,7 +692,7 @@
                       "children": [
                         {
                           "type": "we-text",
-                          "props": { "variant": "body", "fontWeight": "semibold", "truncate": true },
+                          "props": { "variant": "body", "fontSize": "400", "fontWeight": "semibold", "truncate": true },
                           "children": [{ "$": "spaceStore.currentSpace.name" }]
                         },
                         {
@@ -701,7 +701,7 @@
                             "condition": { "$": "spaceStore.currentSpace.description" },
                             "then": {
                               "type": "we-text",
-                              "props": { "variant": "footnote", "color": "text-muted", "lines": 2 },
+                              "props": { "variant": "footnote", "fontSize": "200", "color": "text-muted", "lines": 2 },
                               "children": [{ "$": "spaceStore.currentSpace.description" }]
                             }
                           }
@@ -847,7 +847,7 @@
                   "children": [
                     {
                       "type": "we-text",
-                      "props": { "variant": "overline", "px": "200", "pb": "100" },
+                      "props": { "variant": "overline", "fontSize": "200", "px": "200", "pb": "100" },
                       "children": ["Space"]
                     },
                     {
@@ -933,7 +933,7 @@
                             "value": "group|channels",
                             "open": { "$": "'group|channels' in local.openRows" },
                             "onOpenChange": { "$toggleLocalIn": "openRows", "value": "group|channels" },
-                            "expandable": true
+                            "expandable": { "$": "1 + count(local.subChannels) > 0" }
                           },
                           "children": [
                             {
@@ -950,19 +950,36 @@
                                   "children": ["Channels"]
                                 },
                                 {
-                                  "type": "we-tooltip",
-                                  "props": { "content": "New channel", "placement": "right" },
+                                  "type": "Row",
+                                  "props": { "gap": "100", "ay": "center" },
                                   "children": [
                                     {
-                                      "type": "we-button",
+                                      "type": "$if",
                                       "props": {
-                                        "variant": "ghost",
-                                        "size": "xs",
-                                        "square": true,
-                                        "label": "New channel",
-                                        "onClick": { "$setLocal": "newChannelOpen", "value": true }
-                                      },
-                                      "children": [{ "type": "we-icon", "props": { "name": "plus" } }]
+                                        "condition": { "$": "1 + count(local.subChannels)" },
+                                        "then": {
+                                          "type": "we-badge",
+                                          "props": { "variant": "soft", "size": "xs" },
+                                          "children": [{ "$": "1 + count(local.subChannels)" }]
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "type": "we-tooltip",
+                                      "props": { "content": "New channel", "placement": "right" },
+                                      "children": [
+                                        {
+                                          "type": "we-button",
+                                          "props": {
+                                            "variant": "ghost",
+                                            "size": "xs",
+                                            "square": true,
+                                            "label": "New channel",
+                                            "onClick": { "$setLocal": "newChannelOpen", "value": true }
+                                          },
+                                          "children": [{ "type": "we-icon", "props": { "name": "plus" } }]
+                                        }
+                                      ]
                                     }
                                   ]
                                 }
@@ -1026,7 +1043,7 @@
                             "value": "group|calls",
                             "open": { "$": "'group|calls' in local.openRows" },
                             "onOpenChange": { "$toggleLocalIn": "openRows", "value": "group|calls" },
-                            "expandable": true
+                            "expandable": { "$": "count(local.calls) > 0" }
                           },
                           "children": [
                             {
@@ -1043,15 +1060,25 @@
                                   "children": ["Calls"]
                                 },
                                 {
-                                  "type": "$if",
-                                  "props": {
-                                    "condition": { "$": "count(modules.call.liveCalls)" },
-                                    "then": {
-                                      "type": "we-badge",
-                                      "props": { "variant": "soft", "size": "xs", "tone": "success" },
-                                      "children": [{ "$": "count(modules.call.liveCalls)" }]
+                                  "type": "Row",
+                                  "props": { "gap": "100", "ay": "center" },
+                                  "children": [
+                                    {
+                                      "type": "$if",
+                                      "props": {
+                                        "condition": { "$": "count(local.calls)" },
+                                        "then": {
+                                          "type": "we-badge",
+                                          "props": {
+                                            "variant": "soft",
+                                            "size": "xs",
+                                            "tone": { "$": "count(modules.call.liveCalls) ? 'success' : ''" }
+                                          },
+                                          "children": [{ "$": "count(local.calls)" }]
+                                        }
+                                      }
                                     }
-                                  }
+                                  ]
                                 }
                               ]
                             },
@@ -1132,7 +1159,7 @@
                             "value": "group|workflows",
                             "open": { "$": "'group|workflows' in local.openRows" },
                             "onOpenChange": { "$toggleLocalIn": "openRows", "value": "group|workflows" },
-                            "expandable": true
+                            "expandable": { "$": "count(workflowStore.workflows.filter(f, !f.archived)) > 0" }
                           },
                           "children": [
                             {
@@ -1149,22 +1176,39 @@
                                   "children": ["Workflows"]
                                 },
                                 {
-                                  "type": "we-tooltip",
-                                  "props": { "content": "New workflow", "placement": "right" },
+                                  "type": "Row",
+                                  "props": { "gap": "100", "ay": "center" },
                                   "children": [
                                     {
-                                      "type": "we-button",
+                                      "type": "$if",
                                       "props": {
-                                        "variant": "ghost",
-                                        "size": "xs",
-                                        "square": true,
-                                        "label": "New workflow",
-                                        "onClick": {
-                                          "$invoke": "routeStore.navigate",
-                                          "args": [{ "$": "spaceStore.spacePath + '/workflows' + '?new=1'" }]
+                                        "condition": { "$": "count(workflowStore.workflows.filter(f, !f.archived))" },
+                                        "then": {
+                                          "type": "we-badge",
+                                          "props": { "variant": "soft", "size": "xs" },
+                                          "children": [{ "$": "count(workflowStore.workflows.filter(f, !f.archived))" }]
                                         }
-                                      },
-                                      "children": [{ "type": "we-icon", "props": { "name": "plus" } }]
+                                      }
+                                    },
+                                    {
+                                      "type": "we-tooltip",
+                                      "props": { "content": "New workflow", "placement": "right" },
+                                      "children": [
+                                        {
+                                          "type": "we-button",
+                                          "props": {
+                                            "variant": "ghost",
+                                            "size": "xs",
+                                            "square": true,
+                                            "label": "New workflow",
+                                            "onClick": {
+                                              "$invoke": "routeStore.navigate",
+                                              "args": [{ "$": "spaceStore.spacePath + '/workflows' + '?new=1'" }]
+                                            }
+                                          },
+                                          "children": [{ "type": "we-icon", "props": { "name": "plus" } }]
+                                        }
+                                      ]
                                     }
                                   ]
                                 }
@@ -1220,7 +1264,7 @@
                             "value": "group|people",
                             "open": { "$": "'group|people' in local.openRows" },
                             "onOpenChange": { "$toggleLocalIn": "openRows", "value": "group|people" },
-                            "expandable": true
+                            "expandable": { "$": "count(spaceStore.members) > 0" }
                           },
                           "children": [
                             {
@@ -1237,15 +1281,21 @@
                                   "children": ["People"]
                                 },
                                 {
-                                  "type": "$if",
-                                  "props": {
-                                    "condition": { "$": "count(spaceStore.members)" },
-                                    "then": {
-                                      "type": "we-badge",
-                                      "props": { "variant": "soft", "size": "xs" },
-                                      "children": [{ "$": "count(spaceStore.members)" }]
+                                  "type": "Row",
+                                  "props": { "gap": "100", "ay": "center" },
+                                  "children": [
+                                    {
+                                      "type": "$if",
+                                      "props": {
+                                        "condition": { "$": "count(spaceStore.members)" },
+                                        "then": {
+                                          "type": "we-badge",
+                                          "props": { "variant": "soft", "size": "xs" },
+                                          "children": [{ "$": "count(spaceStore.members)" }]
+                                        }
+                                      }
                                     }
-                                  }
+                                  ]
                                 }
                               ]
                             },
@@ -1290,7 +1340,7 @@
                             "value": "group|dna",
                             "open": { "$": "'group|dna' in local.openRows" },
                             "onOpenChange": { "$toggleLocalIn": "openRows", "value": "group|dna" },
-                            "expandable": true
+                            "expandable": { "$": "count(shapeStore.spaceShapes) > 0" }
                           },
                           "children": [
                             {
@@ -1302,6 +1352,23 @@
                                   "type": "we-text",
                                   "props": { "truncate": true, "flex": "1", "minWidth": "0" },
                                   "children": ["Social DNA"]
+                                },
+                                {
+                                  "type": "Row",
+                                  "props": { "gap": "100", "ay": "center" },
+                                  "children": [
+                                    {
+                                      "type": "$if",
+                                      "props": {
+                                        "condition": { "$": "count(shapeStore.spaceShapes)" },
+                                        "then": {
+                                          "type": "we-badge",
+                                          "props": { "variant": "soft", "size": "xs" },
+                                          "children": [{ "$": "count(shapeStore.spaceShapes)" }]
+                                        }
+                                      }
+                                    }
+                                  ]
                                 }
                               ]
                             },
@@ -6524,6 +6591,7 @@
           "button": { "variants": { "outline": { "borderWidth": "1.5px", "border": "text-muted" } } },
           "tree": {
             "radius": "10px",
+            "padding": "200 10px",
             "variants": {
               "selected": { "fill": "surfaceRaised", "text": "text", "border": "accent", "borderWidth": "3px" }
             }

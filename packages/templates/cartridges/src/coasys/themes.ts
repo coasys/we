@@ -182,10 +182,11 @@ export const glowTheme: BundleTheme = {
     surfaceImages: { page: ORBS, chrome: CHROME_HAZE },
     components: {
       button: { variants: { outline: { borderWidth: '1.5px', border: 'text-muted' } } },
-      // d12's tree: rows rounded at 10px, and the one you are on lifted to --surface-2 with a 3px mint
-      // bar on its leading edge.
+      // d12's tree: rows rounded at 10px with the sidebar's 8px/10px padding (style.css `.nav-item`),
+      // and the one you are on lifted to --surface-2 with a 3px mint bar on its leading edge.
       tree: {
         radius: '10px',
+        padding: '200 10px',
         variants: { selected: { fill: 'surfaceRaised', text: 'text', border: 'accent', borderWidth: '3px' } },
       },
     },

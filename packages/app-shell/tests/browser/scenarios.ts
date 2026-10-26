@@ -18,7 +18,7 @@ import {
   timelineOrder,
 } from '@we/schema-kit';
 import type { SchemaNode } from '@we/schema-shared';
-import { discussionSection, foldingSectionLabel, signalDisplay } from '@we/template-kit';
+import { discussionSection, foldingSectionLabel, signalDisplay, treeRow } from '@we/template-kit';
 import { bundlePrompt, safeModeBanner } from '@we/template-shell';
 import { CALL_CHROME_BAND, themeLabTemplate, TREE_LOCALS, TREE_QUERIES, treeStrip } from '@we/template-showcase';
 import { THEME_PRESETS, type ThemeOverrides, themeSides, withThemeSide } from '@we/themes/presets';
@@ -1807,8 +1807,21 @@ const coasysTreeTop = (): Scenario => {
         {
           type: 'we-tree',
           props: { label: 'This space', selected: 'b' },
-          children: [item('a', 'General'), item('b', 'Design')],
+          children: [
+            item('a', 'General'),
+            item('b', 'Design'),
+            // A group row with its count, as the tree draws it.
+            treeRow({
+              value: 'people',
+              label: 'People',
+              icon: 'users',
+              badge: { type: 'we-badge', props: { id: 'row-count', variant: 'soft', size: 'xs' }, children: ['1'] },
+            }),
+            // A group with nothing in it yet: no caret, nothing to open.
+            { type: 'we-tree-item', props: { value: 'empty', expandable: false }, children: ['Social DNA'] },
+          ],
         },
+        { type: 'Search', props: { placeholder: 'Find or ask' } },
       ],
     },
     tables: {},

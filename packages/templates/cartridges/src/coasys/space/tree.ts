@@ -26,16 +26,31 @@ const toggle = (value: SchemaProp): SchemaProp => ({ $toggleLocalIn: 'openRows',
  * A group: one of the space's kinds of thing, with its glyph, opened or closed by a press anywhere on
  * its row — a group is not a place to go, so choosing it is opening it (see `onSelect`). Workflows is the
  * exception: its row opens the Workflows page as well as the group.
+ *
+ * `count` is how many rows it holds, as an expression. Every group says it at the end of its row, and
+ * only a group with something in it has a caret and opens: an empty one has nothing to show, and a
+ * caret on it promised rows that were not there. `tone` colours the count — Calls goes green while
+ * one is running. `action` is a control beside the count, the + that makes one more.
  */
-const group = (key: string, label: string, icon: string, children: SchemaNode[], badge?: SchemaNode): SchemaNode =>
+const group = (
+  key: string,
+  label: string,
+  icon: string,
+  children: SchemaNode[],
+  opts: { count: string; tone?: SchemaProp; action?: SchemaNode },
+): SchemaNode =>
   treeRow({
     value: `group|${key}`,
     label,
     icon,
     open: isOpen(`group|${key}`),
     onOpenChange: toggle(`group|${key}`),
-    expandable: true,
-    ...(badge ? { badge } : {}),
+    expandable: { $: `${opts.count} > 0` },
+    badge: {
+      type: 'Row',
+      props: { gap: '100', ay: 'center' },
+      children: [countPill(opts.count, opts.tone), ...(opts.action ? [opts.action] : [])],
+    },
     children,
   });
 
@@ -71,7 +86,11 @@ const channels = group(
       ],
     },
   ],
-  addButton('New channel', { $setLocal: 'newChannelOpen', value: true }),
+  {
+    // General, the space's root, and the channels under it.
+    count: '1 + count(local.subChannels)',
+    action: addButton('New channel', { $setLocal: 'newChannelOpen', value: true }),
+  },
 );
 
 /** A call still running carries a Live tag, so the way back into it is on the row. */
@@ -112,7 +131,7 @@ const calls = group(
       ],
     },
   ],
-  countPill('count(modules.call.liveCalls)', 'success'),
+  { count: 'count(local.calls)', tone: { $: "count(modules.call.liveCalls) ? 'success' : ''" } },
 );
 
 const FLOWS_PAGE = "spaceStore.spacePath + '/workflows'";
@@ -136,7 +155,10 @@ const workflows = group(
       ],
     },
   ],
-  addButton('New workflow', { $invoke: 'routeStore.navigate', args: [{ $: `${FLOWS_PAGE} + '?new=1'` }] }),
+  {
+    count: 'count(workflowStore.workflows.filter(f, !f.archived))',
+    action: addButton('New workflow', { $invoke: 'routeStore.navigate', args: [{ $: `${FLOWS_PAGE} + '?new=1'` }] }),
+  },
 );
 
 const people = group(
@@ -157,24 +179,30 @@ const people = group(
       ],
     },
   ],
-  countPill('count(spaceStore.members)'),
+  { count: 'count(spaceStore.members)' },
 );
 
 /** The kinds of record this space defines — what it is about, as data. */
-const socialDna = group('dna', 'Social DNA', 'dna', [
-  {
-    type: '$each',
-    props: { items: { $: 'shapeStore.spaceShapes' }, as: 'shape' },
-    children: [
-      treeRow({
-        nested: true,
-        value: { $: "'dna|' + shape.id" },
-        label: { $: 'shape.name' },
-        icon: { $: "shape.icon ? shape.icon : 'dna'" },
-      }),
-    ],
-  },
-]);
+const socialDna = group(
+  'dna',
+  'Social DNA',
+  'dna',
+  [
+    {
+      type: '$each',
+      props: { items: { $: 'shapeStore.spaceShapes' }, as: 'shape' },
+      children: [
+        treeRow({
+          nested: true,
+          value: { $: "'dna|' + shape.id" },
+          label: { $: 'shape.name' },
+          icon: { $: "shape.icon ? shape.icon : 'dna'" },
+        }),
+      ],
+    },
+  ],
+  { count: 'count(shapeStore.spaceShapes)' },
+);
 
 /** What choosing a row does, by the kind its value names. */
 const onSelect: SchemaProp = [
@@ -246,7 +274,7 @@ const header: SchemaNode = {
       children: [
         {
           type: 'we-text',
-          props: { variant: 'body', fontWeight: 'semibold', truncate: true },
+          props: { variant: 'body', fontSize: '400', fontWeight: 'semibold', truncate: true },
           children: [{ $: 'spaceStore.currentSpace.name' }],
         },
         {
@@ -255,7 +283,7 @@ const header: SchemaNode = {
             condition: { $: 'spaceStore.currentSpace.description' },
             then: {
               type: 'we-text',
-              props: { variant: 'footnote', color: 'text-muted', lines: 2 },
+              props: { variant: 'footnote', fontSize: '200', color: 'text-muted', lines: 2 },
               children: [{ $: 'spaceStore.currentSpace.description' }],
             },
           },
@@ -470,7 +498,7 @@ export const treeSection: SchemaNode = {
       type: 'Column',
       props: { flex: '1', minHeight: '0', overflowY: 'auto', px: '200' },
       children: [
-        { type: 'we-text', props: { variant: 'overline', px: '200', pb: '100' }, children: ['Space'] },
+        { type: 'we-text', props: { variant: 'overline', fontSize: '200', px: '200', pb: '100' }, children: ['Space'] },
         {
           type: 'we-tree',
           props: { label: 'This space', selected: { $: SELECTED_EXPR }, onSelect },

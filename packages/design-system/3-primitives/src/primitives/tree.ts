@@ -224,7 +224,8 @@ const ITEM_STYLES = css`
     display: flex;
     align-items: center;
     gap: var(--we-space-200);
-    padding: var(--we-tree-row-padding, var(--we-space-100) var(--we-space-200));
+    /* A theme sets a tree's density as its padding (components.tree.padding); the start is the indent's. */
+    padding: var(--we-theme-tree-padding, var(--we-tree-row-padding, var(--we-space-100) var(--we-space-200)));
     /* A level indents by one caret and the gap after it — see the nested leaf below. */
     padding-inline-start: calc(
       var(--we-tree-indent, calc(16px + var(--we-space-200))) * var(--we-tree-level, 0) + var(--we-space-200)
