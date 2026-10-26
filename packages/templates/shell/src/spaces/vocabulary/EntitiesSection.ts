@@ -434,6 +434,23 @@ const propertyRow: SchemaNode = {
               },
               children: [{ type: 'we-text', props: { variant: 'label' }, children: ['Required'] }],
             },
+            /*
+              Which field heads a card, said on the field itself. The naming picker can leave it to be
+              worked out, and the rule that works it out (a field called name or title, else the
+              first text field) is invisible from the list, so a field was treated specially with
+              nothing on screen saying which.
+            */
+            {
+              type: '$if',
+              props: {
+                condition: { $: 'member.rowId == shapeStore.draftNameMember' },
+                then: {
+                  type: 'we-badge',
+                  props: { size: 'xs', tone: 'accent' },
+                  children: ['Names the record'],
+                },
+              },
+            },
           ],
         },
         /*
@@ -964,7 +981,7 @@ const shapeWizardModal: SchemaNode = {
           props: {
             label: 'Naming field',
             description:
-              'The field that says what one of these is called — shown as the heading on a card, and as the label on a canvas. Leave as Work it out and a field called name or title will be used.',
+              'The field that says what one of these is called — shown as the heading on a card, and as the label on a canvas. Work it out uses a field called name or title, or else the first text field; the field it picks is marked in the list above.',
           },
           children: [
             {

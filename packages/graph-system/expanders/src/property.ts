@@ -35,10 +35,20 @@ export interface PropertyExpanderOptions {
   valueNodes?: boolean;
   /** Skip empty values rather than drawing a field with nothing in it. */
   hideEmpty?: boolean;
+  /**
+   * Leave out the field that captions the instance. Default: only with `valueNodes`.
+   *
+   * On a map of a vocabulary an instance is a dot with its label beside it, and the label again as a
+   * child is noise. On a canvas of cards it is not: a card shows several fields, the caption among
+   * them, and opening it is asking for all of them. Left out there, the field that names a record
+   * was the one field a card could not open — and which field that is is often a guess (the first
+   * text field), so a person saw a field vanish for a reason nothing on screen explained.
+   */
+  skipLabel?: boolean;
 }
 
 export function propertyExpander(options: PropertyExpanderOptions = {}): Expander {
-  const { valueNodes = false, hideEmpty = true } = options;
+  const { valueNodes = false, hideEmpty = true, skipLabel = valueNodes } = options;
   const ID = options.id ?? 'property';
 
   return {
@@ -61,8 +71,8 @@ export function propertyExpander(options: PropertyExpanderOptions = {}): Expande
       const fields = shape.properties.filter((property) => {
         if (options.exclude?.includes(property.name)) return false;
         if (options.properties && !options.properties.includes(property.name)) return false;
-        // The label is already drawn on the instance node; repeating it as a child is noise.
-        return property.name !== labelProperty(shape);
+        // See `skipLabel`: where an instance is its label, repeating it as a child is noise.
+        return !skipLabel || property.name !== labelProperty(shape);
       });
       if (!fields.length) return { nodes: [], edges: [] };
 

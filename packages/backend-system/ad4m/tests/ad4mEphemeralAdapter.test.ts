@@ -222,8 +222,11 @@ describe('createAd4mEphemeralPort', () => {
       // heartbeat.
       const env = fakePerspective();
       let registered = false;
+      // Registration finishes when the test says, not after a timer: a 5 ms wait raced the first
+      // check on a loaded CI runner, and the test failed with nothing wrong.
+      let finishRegistering!: () => void;
       env.neighbourhood.addSignalHandler.mockImplementationOnce(async (h: Handler) => {
-        await new Promise((resolve) => setTimeout(resolve, 5));
+        await new Promise<void>((resolve) => (finishRegistering = resolve));
         env.handlers.push(h);
         registered = true;
       });
@@ -234,7 +237,7 @@ describe('createAd4mEphemeralPort', () => {
       await flush();
       expect(env.sent).toHaveLength(0);
 
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      finishRegistering();
       await flush();
       expect(registered).toBe(true);
       expect(env.sent).toHaveLength(1);

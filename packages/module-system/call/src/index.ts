@@ -2545,7 +2545,15 @@ export const callModule = defineModule({
       participant's mute/camera/share for the roster to render.
     */
     activities: {
-      call: { id: 'string', anchor: 'object', media: 'object', record: 'string', continued: 'boolean' },
+      call: {
+        id: 'string',
+        anchor: 'object',
+        media: 'object',
+        record: 'string',
+        continued: 'boolean',
+        // The topology the call runs on, which a joiner adopts — see `callTopology` in the store.
+        topology: 'object',
+      },
     },
 
     /**

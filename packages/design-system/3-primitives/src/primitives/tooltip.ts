@@ -10,7 +10,7 @@ import {
 import type { Placement } from '@we/design-types';
 import { typeRoleDeclarations } from '@we/tokens';
 import { css, html, type PropertyValues, unsafeCSS } from 'lit';
-import { customElement, property, query, state } from 'lit/decorators.js';
+import { customElement, property, query } from 'lit/decorators.js';
 
 import { anchorInSlot, DEV_BUILD, warnAboutBoxlessLayoutProps } from '../shared/boxless';
 import { LayoutElement } from '../shared/design-system-element';
@@ -205,7 +205,11 @@ export default class Tooltip extends LayoutElement {
     return anchorInSlot(this.renderRoot?.querySelector('slot:not([name])') as HTMLSlotElement | null, this);
   }
 
-  @state() private cleanup?: () => void;
+  /**
+   * Stops following the trigger. A plain field, not `@state`: nothing renders from it, and it is set
+   * inside `updated()` when the tooltip opens, where a reactive field schedules a second update.
+   */
+  private cleanup?: () => void;
 
   firstUpdated() {
     /*

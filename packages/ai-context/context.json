@@ -7232,6 +7232,9 @@
           "type": "array",
           "properties": ["label", "value"]
         },
+        "draftNameMember": {
+          "type": "string"
+        },
         "hintEditor": {
           "type": "object",
           "properties": ["entity", "classHint", "defaultClassHint", "rows", "customized"]
@@ -7481,7 +7484,14 @@
         "openSpaceSettings",
         "closeSpaceSettings",
         "scrollToId",
+        "resizeDock",
+        "resizeColumn",
+        "endDockResize",
         "raiseDock",
+        "moveDock",
+        "moveTab",
+        "endTabDrag",
+        "endDockMove",
         "toggleLane",
         "setLaneCollapsed",
         "toggleCustomiseLayout",
@@ -8815,7 +8825,8 @@
           "anchor": "object",
           "media": "object",
           "record": "string",
-          "continued": "boolean"
+          "continued": "boolean",
+          "topology": "object"
         }
       },
       "components": [],
