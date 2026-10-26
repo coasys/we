@@ -42,6 +42,10 @@ WE_EVAL_MODELS=claude-sonnet-5,qwen3.6:35b \
 pnpm --filter @we/app-shell eval:context
 ```
 
+**Build `@we/agent-tools` first** (`pnpm --filter @we/agent-tools build`) after changing it. The
+eval imports the package's `dist/`, not its source, so a run on a stale build measures the code as
+it was, and nothing says so.
+
 | Variable             | Default                  |                                                                                                                  |
 | -------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------- |
 | `WE_EVAL_URL`        | `http://localhost:12000` | The executor's HTTP base.                                                                                        |
