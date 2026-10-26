@@ -5,7 +5,7 @@
  * records and nothing a bundle brings can take the id of a built-in or of somebody's own template;
  * every template is stamped with where it came from; and every reference a bundle makes to its own
  * pieces is rewritten to match — a template's `meta.themeId`, and the template the display policy
- * names, and the themes a template lists. One function for both routes, so a seed bundle and an installed one cannot drift apart in
+ * names, the themes a template lists, and the page a brand's About opens. One function for both routes, so a seed bundle and an installed one cannot drift apart in
  * what they put where.
  */
 import {
@@ -29,6 +29,8 @@ export interface BundlePieces {
   shells: Array<TemplateSchema & { id: string }>;
   /** Sections, which a space switches on. */
   sections: Array<TemplateSchema & { id: string }>;
+  /** Pages of the app's own, each opened above everything by its id here. */
+  pages: Array<TemplateSchema & { id: string }>;
   /** The themes it offers, its default first, each under the bundle's id. */
   themes: BundleTheme[];
   recordTypes: BundleRecordType[];
@@ -64,6 +66,7 @@ export function bundlePieces(bundle: Bundle): BundlePieces {
     ...(bundle.app ? { app: land(bundle.app) } : {}),
     shells: templates.filter((t) => t.meta.role !== 'view'),
     sections: templates.filter((t) => t.meta.role === 'view'),
+    pages: (bundle.pages ?? []).map(land),
     themes: themes.map((theme) => ({ ...theme, id: id(theme.id) })),
     recordTypes: bundle.recordTypes ?? [],
     ...(bundle.display
@@ -74,7 +77,14 @@ export function bundlePieces(bundle: Bundle): BundlePieces {
           },
         }
       : {}),
-    ...(bundle.brand ? { brand: bundle.brand } : {}),
+    ...(bundle.brand
+      ? {
+          brand: {
+            ...bundle.brand,
+            ...(bundle.brand.aboutPage ? { aboutPage: id(bundle.brand.aboutPage) } : {}),
+          },
+        }
+      : {}),
     ...(bundle.bootScreen ? { bootScreen: bundle.bootScreen } : {}),
   };
 }

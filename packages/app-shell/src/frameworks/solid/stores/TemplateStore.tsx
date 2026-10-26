@@ -14,7 +14,7 @@ import { bootScreenTemplate, placesNode } from '@shared/bundles/judgeBundle';
 import { appTemplateRegistry, DEFAULT_APP_ID, resolveAppTemplate } from '@shared/registries/appTemplates';
 import { withDerivedIds } from '@shared/registries/derivedIds';
 import { reservedTemplateIds } from '@shared/registries/reservedTemplateIds';
-import { seedBundleAppId, seedBundlePieces } from '@shared/registries/seedBundles';
+import { seedBundleAppId, seedBundlePages, seedBundlePieces } from '@shared/registries/seedBundles';
 import { slotRegistry } from '@shared/registries/slotRegistry';
 import { templateRegistry } from '@shared/registries/templateRegistry';
 import { profileTemplate, settingsTemplate } from '@shared/schemas';
@@ -164,6 +164,8 @@ export interface AppBrand {
   wordmark: string;
   /** The About page, as Markdown; empty for WE's. */
   about: string;
+  /** The bundle's own page that "About" opens, by the id it is opened at; empty when it has none. */
+  aboutPage: string;
 }
 
 export interface TemplateStore {
@@ -224,6 +226,12 @@ export interface TemplateStore {
    * brings its own. Before anybody has signed in, the app this device last ran. See `bundles/brand.ts`.
    */
   brand: Accessor<AppBrand>;
+  /**
+   * A bundle's page by the id it is opened at (`coasys--about`), or undefined — for an id no bundle
+   * here brings, and for every id in safe mode, since a page is the app's own chrome. A seed bundle's
+   * pages are built in; an installed bundle's are in the library, accepted at the chrome tier.
+   */
+  bundlePage: (id: string) => TemplateSchema | undefined;
   saveTemplate: (name: string) => Promise<void>;
   /**
    * Save a schema as a template of its own, in the agent's library or the current space. By default it
@@ -488,7 +496,9 @@ export function TemplateStoreProvider(props: ParentProps) {
     It is stored like any template, so every list a space's template is chosen from leaves it out.
   */
   const isApp = (t: TemplateSchema) => t.meta?.role === 'app';
-  const spaceChoosable = () => allTemplates().filter((t) => !isApp(t));
+  // A bundle's page is the app's own as well: opened by the host, never chosen for a space.
+  const isPage = (t: TemplateSchema) => t.meta?.role === 'page';
+  const spaceChoosable = () => allTemplates().filter((t) => !isApp(t) && !isPage(t));
 
   const personalTemplates = () => {
     const installed = installedIds();
@@ -606,8 +616,15 @@ export function TemplateStoreProvider(props: ParentProps) {
       mark: svgDataUrl(own?.mark),
       wordmark: svgDataUrl(own?.wordmark),
       about: own?.about ?? '',
+      aboutPage: own?.aboutPage ?? '',
     };
   });
+  const bundlePage = (id: string): TemplateSchema | undefined => {
+    if (safe.on) return undefined;
+    return (
+      seedBundlePages[id] ?? allTemplates().find((t) => t.id === id && isPage(t) && !t._fromSpace && !!t.source?.bundle)
+    );
+  };
 
   // The app's first theme stands in for the agent's default until they choose one.
   themeStore.provideAppTheme(() =>
@@ -2458,6 +2475,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     appTemplateOptions,
     setAppTemplate,
     brand,
+    bundlePage,
     openDraft,
     updateDraft,
     closeDraft,

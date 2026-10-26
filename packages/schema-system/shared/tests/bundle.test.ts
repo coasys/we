@@ -120,6 +120,29 @@ describe('a brand', () => {
   });
 });
 
+describe('pages of the app’s own', () => {
+  const about = { id: 'about', type: 'Column', meta: meta('page') };
+
+  it('reads a page, and a brand whose About is one', () => {
+    expect(paths({ ...minimal(), pages: [about], brand: { name: 'X', aboutPage: 'about' } })).toEqual([]);
+  });
+
+  it('keeps pages and templates apart', () => {
+    expect(paths({ ...minimal(), pages: [{ ...about, meta: meta() }] })).toContain('pages.0.meta.role');
+    expect(paths({ ...minimal(), templates: [about], display: undefined })).toContain('templates.0.meta.role');
+  });
+
+  it('refuses an About page the bundle does not have', () => {
+    expect(paths({ ...minimal(), brand: { name: 'X', aboutPage: 'about' } })).toContain('brand.aboutPage');
+    expect(paths({ ...minimal(), pages: [about, about] })).toContain('pages.1.id');
+  });
+
+  it('counts a page as something to install', () => {
+    const { app: _app, templates: _templates, theme: _theme, display: _display, ...empty } = minimal();
+    expect(paths({ ...empty, pages: [about] })).toEqual([]);
+  });
+});
+
 describe('a sign-in screen', () => {
   it('is a node, and nothing else', () => {
     expect(paths({ ...minimal(), bootScreen: { type: 'Column' } })).toEqual([]);

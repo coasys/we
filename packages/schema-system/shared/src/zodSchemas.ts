@@ -437,7 +437,7 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
     /** How this template draws one record, by type. See `TemplateMeta.recordViews`. */
     recordViews: z.record(z.string(), z.union([z.string(), lazySchemaNode])).optional(),
     /** Whole interface, a section inside one, or the app around them. See `TemplateMeta.role`. Absent means shell. */
-    role: z.enum(['shell', 'view', 'app']).optional(),
+    role: z.enum(['shell', 'view', 'app', 'page']).optional(),
     /** A view's default URL segment. See `TemplateMeta.segment`. */
     segment: z.string().optional(),
     /** A view that stays mounted across sibling navigation. See `TemplateMeta.keepAlive`. */

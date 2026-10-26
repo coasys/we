@@ -45,6 +45,8 @@ export interface BundleJudgement {
     app?: string;
     spaceTemplates: string[];
     sections: string[];
+    /** Its own pages — an About page, a guide. */
+    pages: string[];
     themes: string[];
     recordTypes: string[];
     /** The name it goes by, when it brings its own brand. */
@@ -126,6 +128,8 @@ export function judgeBundle(bundle: Bundle, deps: BundleJudgeDeps): BundleJudgem
   }
   for (const template of [...shells, ...sections])
     judge(template, SPACE_TIER, `"${template.meta?.name ?? template.id}"`);
+  // A page is the app's own, drawn above everything as the app's chrome is: the same tier.
+  for (const page of bundle.pages ?? []) judge(page, CHROME_TIER, `Its page "${page.meta?.name ?? page.id}"`);
 
   // A record type is validated against the core vocabulary and the bundle's other record types — so
   // a sighting may point at a species the same bundle brings.
@@ -153,6 +157,7 @@ export function judgeBundle(bundle: Bundle, deps: BundleJudgeDeps): BundleJudgem
       ...(bundle.app ? { app: bundle.app.meta?.name ?? bundle.name } : {}),
       spaceTemplates: shells.map((t) => t.meta?.name ?? t.id),
       sections: sections.map((t) => t.meta?.name ?? t.id),
+      pages: (bundle.pages ?? []).map((t) => t.meta?.name ?? t.id),
       themes: bundleThemes(bundle).map((theme) => theme.name),
       recordTypes: recordNames,
       ...(bundle.brand ? { brand: bundle.brand.name } : {}),

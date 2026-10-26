@@ -71,6 +71,18 @@ describe('the pieces a bundle lands as', () => {
     expect(offering.app?.meta.themeIds).toEqual(['field-guide--flat', 'field-guide--glow', 'dark']);
   });
 
+  it('lands its pages under the bundle’s id, and points the brand’s About at the landed one', () => {
+    const paged = bundlePieces({
+      ...bundle,
+      pages: [{ id: 'about', type: 'Column', meta: meta('About', 'page') }],
+      brand: { name: 'Field Guide', aboutPage: 'about' },
+    } as unknown as Bundle);
+    expect(paged.pages.map((t) => t.id)).toEqual(['field-guide--about']);
+    expect(paged.pages[0].source).toEqual({ bundle: 'field-guide', version: '1.2.0', piece: 'about' });
+    expect(paged.brand?.aboutPage).toBe('field-guide--about');
+    expect(paged.shells.map((t) => t.id)).not.toContain('field-guide--about');
+  });
+
   it('carries the brand and the sign-in screen as they are', () => {
     const branded = bundlePieces({
       ...bundle,

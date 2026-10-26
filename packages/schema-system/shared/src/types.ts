@@ -228,8 +228,12 @@ export type TemplateMeta = {
    *
    * Optional and defaulted rather than required, so every template that predates this keeps working
    * unchanged and unannotated: absent means shell, which is what they all are.
+   *
+   * A `'page'` is a page of an app's own — its About page, a guide — opened above everything as the
+   * host's settings and profile are, never as a space's template. Only a bundle brings one, in its
+   * `pages`; see `Bundle.pages`.
    */
-  role?: 'shell' | 'view' | 'app';
+  role?: 'shell' | 'view' | 'app' | 'page';
   /**
    * For a `'view'`: the URL segment it renders at, and the identity a space enables or disables it
    * by. Ignored on a shell.

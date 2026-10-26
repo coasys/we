@@ -55,8 +55,13 @@ export interface BundleBrand {
   mark?: string;
   /** The name drawn as type, where there is room. SVG source. */
   wordmark?: string;
-  /** What the About page says, as Markdown. */
+  /** What the About page says, as Markdown. The host draws it on a page of its own. */
   about?: string;
+  /**
+   * The bundle's own page to open wherever the host offers "About" — by its id in `pages`. Wins
+   * over `about` when both are given; `about` is then what a build that cannot open pages shows.
+   */
+  aboutPage?: string;
 }
 
 /** A kind of record the app is about, as the model wizard would save it: one entity, by name. */
@@ -94,6 +99,13 @@ export interface Bundle {
   app?: TemplateSchema & { id: string };
   /** Space templates (no role) and sections (`meta.role: 'view'`). */
   templates?: Array<TemplateSchema & { id: string }>;
+  /**
+   * Pages of the app's own (`meta.role: 'page'`): its About page, a guide, anything it wants to say
+   * that is not about a space. Each opens above everything, as the host's settings do, at
+   * `shellStore.openShellView('<bundle id>--<page id>')`, and routes inside itself like any template.
+   * Judged at the chrome tier, as the app is, and never drawn in safe mode.
+   */
+  pages?: Array<TemplateSchema & { id: string }>;
   /** One theme. A bundle offering several lists them in `themes` instead. */
   theme?: BundleTheme;
   /**
@@ -195,7 +207,7 @@ export function readBundle(
   if (input.author !== undefined && !isObject(input.author)) problem('author', 'author must be an object');
 
   const ids = new Set<string>();
-  const checkTemplate = (value: unknown, path: string, role: 'app' | 'space' | 'any') => {
+  const checkTemplate = (value: unknown, path: string, role: 'app' | 'page' | 'any') => {
     if (!isObject(value)) return problem(path, 'Not a template');
     const id = value.id;
     if (typeof id !== 'string' || !ID.test(id))
@@ -205,14 +217,26 @@ export function readBundle(
     const meta = value.meta;
     if (!isObject(meta)) return problem(`${path}.meta`, 'A template needs meta');
     if (role === 'app' && meta.role !== 'app') problem(`${path}.meta.role`, 'The app must have role "app"');
+    if (role === 'page' && meta.role !== 'page') problem(`${path}.meta.role`, 'A page must have role "page"');
     if (role === 'any' && meta.role === 'app')
       problem(`${path}.meta.role`, 'An app goes in "app", not among the templates');
+    if (role === 'any' && meta.role === 'page')
+      problem(`${path}.meta.role`, 'A page goes in "pages", not among the templates');
   };
 
   if (input.app !== undefined) checkTemplate(input.app, 'app', 'app');
   if (input.templates !== undefined) {
     if (!Array.isArray(input.templates)) problem('templates', 'templates must be a list');
     else input.templates.forEach((template, index) => checkTemplate(template, `templates.${index}`, 'any'));
+  }
+  const pageIds = new Set<string>();
+  if (input.pages !== undefined) {
+    if (!Array.isArray(input.pages)) problem('pages', 'pages must be a list');
+    else
+      input.pages.forEach((page, index) => {
+        checkTemplate(page, `pages.${index}`, 'page');
+        if (isObject(page) && typeof page.id === 'string') pageIds.add(page.id);
+      });
   }
 
   const themeIds = new Set<string>();
@@ -248,6 +272,8 @@ export function readBundle(
         }
       }
       if (brand.about !== undefined && typeof brand.about !== 'string') problem('brand.about', 'about must be text');
+      if (brand.aboutPage !== undefined && !(typeof brand.aboutPage === 'string' && pageIds.has(brand.aboutPage)))
+        problem('brand.aboutPage', `Names "${String(brand.aboutPage)}", which is not one of this bundle's pages`);
     }
   }
 
@@ -300,10 +326,11 @@ export function readBundle(
   if (
     input.app === undefined &&
     !(Array.isArray(input.templates) && input.templates.length) &&
+    !(Array.isArray(input.pages) && input.pages.length) &&
     input.theme === undefined &&
     !(Array.isArray(input.themes) && input.themes.length)
   )
-    problem('', 'A bundle with no app, no templates and no theme has nothing to install');
+    problem('', 'A bundle with no app, no templates, no pages and no theme has nothing to install');
 
   return problems.length ? { bundle: null, problems } : { bundle: input as unknown as Bundle, problems: [] };
 }

@@ -1002,6 +1002,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // Appearance, so every template can name the app it is in — WE's own, or a bundle's brand.
     brand: state('appearance'),
     appTemplate: WIRING,
+    // The overlay opens a bundle's page through this; a template opens one with `openShellView`.
+    bundlePage: WIRING,
     operationLoading: state('appearance'),
     switchTemplate: action('appearance'),
     removeTemplate: destructive('library'),

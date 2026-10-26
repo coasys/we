@@ -553,7 +553,10 @@ export function TemplateLayout(
             // `null` means this build has no such view — an unknown id, or the schema-test harness
             // in a production build. Otherwise an accessor: already filled for the ordinary views,
             // and filled a frame later for one whose chunk is being fetched. See `resolveShellView`.
-            const view = resolveShellView(shellViewId);
+            const view = resolveShellView(shellViewId, {
+              page: stores.templateStore.bundlePage,
+              aboutPage: stores.templateStore.brand().aboutPage,
+            });
             if (!view) return null;
             return (
               <Column

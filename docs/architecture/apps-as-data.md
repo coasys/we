@@ -13,23 +13,24 @@ data the host already understands.
 
 `readBundle` in `@we/schema-shared` (`src/bundle.ts`) is the reader and the definition:
 
-| Field                                   | What it is                                                                                      |
-| --------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `format`, `formatVersion`               | `we-bundle`, `1`. Checked before anything else.                                                 |
-| `id`, `version`                         | The app's own. Lowercase with single dashes; an install is recognised by the id.                |
-| `name`, `description`, `icon`, `author` | `author` is a claim — a file attests nothing.                                                   |
-| `app`                                   | A template with `meta.role: 'app'`: the chrome around every space (see `chrome-and-panels.md`). |
-| `templates`                             | Space templates (no role) and sections (`meta.role: 'view'`).                                   |
-| `theme`                                 | `{ id, name, icon?, overrides, css? }`, the parameter object a theme is.                        |
-| `themes`                                | The same, for an app offering several looks, its default first. A bundle uses one or the other. |
-| `brand`                                 | `{ name, mark?, wordmark?, about? }`: what the app calls itself. See "Whitelabelling".          |
-| `bootScreen`                            | A node: the app's own sign-in screen, placing the host's `CredentialField`. See below.          |
-| `recordTypes`                           | `{ name, icon?, description?, manifest }`, one entity each, as the model wizard writes it.      |
-| `display`                               | `{ spaces: 'ours' \| 'theirs', template? }` — see "How an app shows spaces".                    |
+| Field                                   | What it is                                                                                         |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `format`, `formatVersion`               | `we-bundle`, `1`. Checked before anything else.                                                    |
+| `id`, `version`                         | The app's own. Lowercase with single dashes; an install is recognised by the id.                   |
+| `name`, `description`, `icon`, `author` | `author` is a claim — a file attests nothing.                                                      |
+| `app`                                   | A template with `meta.role: 'app'`: the chrome around every space (see `chrome-and-panels.md`).    |
+| `templates`                             | Space templates (no role) and sections (`meta.role: 'view'`).                                      |
+| `pages`                                 | Pages of the app's own (`meta.role: 'page'`) — an About page, a guide. See "Pages".                |
+| `theme`                                 | `{ id, name, icon?, overrides, css? }`, the parameter object a theme is.                           |
+| `themes`                                | The same, for an app offering several looks, its default first. A bundle uses one or the other.    |
+| `brand`                                 | `{ name, mark?, wordmark?, about?, aboutPage? }`: what the app calls itself. See "Whitelabelling". |
+| `bootScreen`                            | A node: the app's own sign-in screen, placing the host's `CredentialField`. See below.             |
+| `recordTypes`                           | `{ name, icon?, description?, manifest }`, one entity each, as the model wizard writes it.         |
+| `display`                               | `{ spaces: 'ours' \| 'theirs', template? }` — see "How an app shows spaces".                       |
 
 **What a bundle needs and what it can do are not in it.** `judgeBundle`
 (`app-shell/src/shared/bundles/judgeBundle.ts`) works both out from its templates — the app at the
-chrome tier it is drawn with, everything else at the space tier — and validates its record types. A
+chrome tier it is drawn with, and its pages with it, everything else at the space tier — and validates its record types. A
 list an author writes is a claim; an install prompt shows only what the walk found.
 
 `bundles/` at the repository root holds the two checked in, the field guide and the tool library,
@@ -40,7 +41,8 @@ written by `pnpm --filter @we/template-cartridges bundle` from the spike's cartr
 `bundlePieces` (`shared/bundles/bundlePieces.ts`) is the one function both routes go through. Every
 piece is put under the bundle's id (`field-guide--species`), so a second install updates the same
 records and nothing can take a built-in's id; every template is stamped `source: { bundle, version,
-piece }`; and references to the bundle's own pieces (`meta.themeId`, `display.template`) are rewritten.
+piece }`; and references to the bundle's own pieces (`meta.themeId`, `display.template`,
+`brand.aboutPage`) are rewritten.
 
 **Built in, from the seed.** `bundles: ["field-guide"]` in `we-seed.json`, and `generate-bundles`
 writes them into the build. Their app, templates, sections and theme join the built-in registries —
@@ -111,6 +113,23 @@ of exactly those pieces is kept on the device per agent (`shared/bundles/bootSna
 answer. Each template in it goes through the same acceptance as the library's, and safe mode ignores
 it. When the display policy decides a space's template, that template is shown at once; reading the
 space's own templates and the agent's override for it still has the last word.
+
+## Pages
+
+A page is what an app wants to say that is not about a space: its About page, a guide, a changelog.
+It is a template with `meta.role: 'page'`, listed in `pages`, and it opens above everything as the
+host's own settings and profile do — `shellStore.openShellView('<bundle id>--<page id>')`, from any
+template — with its own router inside, so one page can hold sub-pages at paths of its own.
+
+- **It is the app's chrome.** Judged and drawn at the chrome tier, as the app is; never offered as a
+  space's template; never drawn in safe mode, where the id opens nothing.
+- **Its id carries the bundle's**, so a page can never take one of the host's views.
+- **`brand.aboutPage`** names the one the host's "About" opens (`landing-page`), in place of WE's
+  About page or the brand's Markdown `about`. Give both and `about` is what a build without pages
+  shows.
+- A built-in bundle's pages join the registries (`seedBundlePages`); an installed one's are written
+  to the library with its other templates and removed with them. `templateStore.bundlePage` finds
+  either, and `resolveShellView` asks it first.
 
 ## Whitelabelling
 
