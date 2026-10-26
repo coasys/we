@@ -15,7 +15,13 @@ import { describe, expect, it } from 'vitest';
 
 import type { RecordInput } from '../src/core/toolset';
 import { prepareForModel } from '../src/templates/nodeAliases';
-import { TEMPLATE_CREATE, TEMPLATE_READ, TEMPLATE_UPDATE, templateToolset } from '../src/templates/templateToolset';
+import {
+  READ_REFERENCE_BUDGET,
+  TEMPLATE_CREATE,
+  TEMPLATE_READ,
+  TEMPLATE_UPDATE,
+  templateToolset,
+} from '../src/templates/templateToolset';
 import { toolsets } from '../src/toolsets';
 
 const schema = ensureNodeIds({
@@ -258,5 +264,22 @@ describe('the template documentation', () => {
     expect(await templateToolset.docs.read('template/components/we-button')).toMatch(/- we-button/);
     expect(await templateToolset.docs.read('template/stores/spaceStore')).toContain('SpaceStore:');
     expect(await templateToolset.docs.read('template/nothing')).toBeUndefined();
+  });
+});
+
+describe('what a read brings beside the template', () => {
+  it('carries the entries for the components it uses and the ones the request names', async () => {
+    const answer = JSON.parse(await read({ about: 'make the button bigger' }));
+    expect(answer.reference).toContain('- we-text');
+    expect(answer.reference).toContain('- we-button');
+  });
+
+  it('keeps the entries within their budget on a large template, and names what it left out', async () => {
+    const big = record({}, kanbanTemplate as TemplateSchema);
+    const answer = JSON.parse(
+      (await templateToolset.call(TEMPLATE_READ, { record: big, args: { about: 'restyle the card' } })).text,
+    );
+    expect(answer.reference.length).toBeLessThan(READ_REFERENCE_BUDGET + 2_000);
+    expect(answer.reference).toContain('- Card');
   });
 });
