@@ -14,7 +14,7 @@ import { render } from '@solidjs/testing-library';
 import { createInMemoryBackendPorts, type InMemoryAgentOptions, type InMemoryLifecycle } from '@we/backend-inmemory';
 import { createBlocks, registerCoreBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
-import { AgentSettings, CollectionBlock, getEntity, Space, SpaceLandmark } from '@we/entities';
+import { AgentSettings, CollectionBlock, getEntity, Policy, Space, SpaceLandmark } from '@we/entities';
 import { type FeedFind, readFeedWindow } from '@we/module-transcribe';
 import { createEffect, createRoot, createSignal } from 'solid-js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -966,6 +966,53 @@ describe('what the stores actually wrote', () => {
     expect(stores.spaces.canAdministerCurrentSpace()).toBe(false);
     await expect(stores.spaces.grantRole('admin', me)).rejects.toThrow(/administers/);
   }, 10000);
+
+  it('starts a shared space open, and once it is on community, refuses at the write what that does not allow', async () => {
+    /*
+      End to end through the real check: the store registers it, the backend asks it, and a write the
+      space's rules do not allow is refused with nothing written — whichever caller made it.
+    */
+    const stores = mountShell();
+    await ready(stores);
+    const me = stores.session.me()?.did ?? '';
+    await stores.spaces.createSpace('Ruled', 'x', 'shared', 'hidden');
+    const ref = (await lifecycle.list()).find((d) => d.name === 'Ruled')!;
+    await stores.datasets.switchDataset(ref.id);
+    const handle = ref.handle as never;
+    // Nothing written: a space with no policy reads as open, as every space did before.
+    await vi.waitFor(() => expect(stores.spaces.policy()).toMatchObject({ loaded: true, preset: 'open' }));
+    expect(await Policy.count(handle as never)).toBe(0);
+    expect(stores.spaces.policy().roles).toEqual(['admin']);
+
+    // An admin may change the rules; choosing what is in force already writes nothing.
+    await stores.spaces.setPolicyPreset('open');
+    await stores.spaces.setPolicyPreset('community');
+    await vi.waitFor(() => expect(stores.spaces.policy().preset).toBe('community'));
+    await stores.spaces.setPolicyPreset('open');
+    await vi.waitFor(() => expect(stores.spaces.policy().preset).toBe('open'));
+    await stores.spaces.setPolicyPreset('community');
+    await vi.waitFor(() => expect(stores.spaces.policy().preset).toBe('community'));
+    expect(await Policy.count(handle as never)).toBe(3);
+
+    // Somebody else administers it now; this agent is a member.
+    await stores.spaces.grantRole('admin', 'did:test:somebody-else');
+    await stores.spaces.revokeRole('admin', me);
+    await vi.waitFor(() => expect(stores.spaces.policy().roles).toEqual([]));
+
+    const refused = vi.spyOn(toastService, 'error');
+    const [space] = await Space.findAll(handle as never, { where: { name: 'Ruled' } });
+    await expect(Space.update(handle as never, space.id, { description: 'mine now' } as never)).rejects.toMatchObject({
+      name: 'PolicyRefusal',
+    });
+    expect(refused).toHaveBeenCalledWith(expect.stringContaining('Space.edit'));
+    expect((await Space.findOne(handle as never, { where: { id: space.id } }))?.description).toBe('x');
+    await expect(stores.spaces.setPolicyPreset('open')).rejects.toMatchObject({ name: 'PolicyRefusal' });
+    expect(stores.spaces.policy().preset).toBe('community');
+
+    // What members make is still theirs to make.
+    await expect(CollectionBlock.create(handle, { kind: 'post' } as never)).resolves.toBeDefined();
+    refused.mockRestore();
+  }, 15000);
 
   it('persists sidebar order as settings, not just as store state', async () => {
     const stores = mountShell();

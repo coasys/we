@@ -61,6 +61,18 @@ import { getSeed } from '@shared/seedRegistry';
 import { type SharingPickerOption, sharingPickerOptions } from '@shared/sharingOptions';
 import { readSpaceLandmarks, writeSpaceLandmark } from '@shared/spaceLandmarks';
 import {
+  createPolicyCheck,
+  type GovernedSpace,
+  POLICY_PRESETS,
+  policyInForce,
+  type PolicyPreset,
+  type PolicyVersion,
+  policyView,
+  presetOf,
+  type SpacePolicyView,
+  type SpaceStanding,
+} from '@shared/spacePolicy';
+import {
   ADMIN_ROLE,
   ADMIN_ROLE_RECORD,
   administers,
@@ -122,7 +134,7 @@ import {
 } from '@shared/viewResolution';
 import { evidenceLabel, refusalWords } from '@shared/workflowViews';
 import type { AgentProfileSummary, DatasetRef, WorkflowView } from '@we/backend-shared';
-import { displayName, SELF_PERSONS, trace } from '@we/backend-shared';
+import { displayName, isPolicyRefusal, SELF_PERSONS, trace, validatePolicy } from '@we/backend-shared';
 import type { ContentInput } from '@we/block-shared';
 import {
   contentHash,
@@ -148,7 +160,9 @@ import {
   InvolvementType,
   LocationBlock,
   MutedAgent,
+  Policy,
   ReadMarker,
+  registerEntityWriteCheck,
   RelationshipType,
   Role,
   RoleGrant,
@@ -1082,6 +1096,13 @@ export interface SpaceStore {
   grantRole: (slug: string, agent: string) => Promise<void>;
   /** Take the role from `agent`. Refused for the last admin — see `cannotRevoke`. */
   revokeRole: (slug: string, agent: string) => Promise<void>;
+  /**
+   * The space's policy in force — who may do what to its records — as a template reads it:
+   * `{ loaded, preset, permissions, frozen, me, roles, sentences }`. Pass it to `can()`.
+   */
+  policy: Accessor<SpacePolicyView>;
+  /** Replace the space's policy with a preset: `open` or `community`. Only whoever may change the rules. */
+  setPolicyPreset: (preset: PolicyPreset) => Promise<void>;
   /** Copy a space's share link to the clipboard. No-op for a space that has none. */
   copyShareLink: (uuid: string) => Promise<void>;
   /** Copy a guest invite link — auto-creates account, auto-joins the space. No-op without a host. */
@@ -1920,6 +1941,11 @@ export function SpaceStoreProvider(props: ParentProps) {
       */
       await writeAdminGrant(spaceHandle).catch((error) =>
         console.error('SpaceStore: could not make the space’s creator its admin', error),
+      );
+      // After the grant, since writing the first version is an admin's to do; before sharing, so the
+      // space is never shared without it.
+      await writeStartingPolicy(spaceHandle, starter).catch((error) =>
+        console.error('SpaceStore: could not write the space’s starting policy', error),
       );
 
       // Track locally so the sidebar updates with the action rather than with the backend's
@@ -4041,7 +4067,15 @@ export function SpaceStoreProvider(props: ParentProps) {
       const [roles, grants] = await Promise.all([Role.findAll(dataset), RoleGrant.findAll(dataset)]);
       if (datasetStore.currentDataset()?.id !== uuid) return;
       setRoleRows(roles.map((r) => ({ id: r.id, slug: r.slug, name: r.name, description: r.description })));
-      setGrantRows(grants.map((g) => ({ id: g.id, role: g.role, agent: g.agent })));
+      setGrantRows(
+        grants.map((g) => ({
+          id: g.id,
+          role: g.role,
+          agent: g.agent,
+          createdAt: g.createdAt as GrantRow['createdAt'],
+          revokedAt: g.revokedAt,
+        })),
+      );
     } catch (error) {
       console.warn('SpaceStore: could not read the space’s roles', error);
     } finally {
@@ -4150,10 +4184,211 @@ export function SpaceStoreProvider(props: ParentProps) {
       toastService.error(refused);
       return;
     }
-    for (const grant of grantRows().filter((g) => g.role === slug && g.agent === person)) {
-      await RoleGrant.delete(p, grant.id);
+    // Marked rather than deleted: the policy's history is judged by who held what when. See `RoleGrant`.
+    const revokedAt = new Date().toISOString();
+    for (const grant of grantRows().filter((g) => g.role === slug && g.agent === person && !g.revokedAt)) {
+      await RoleGrant.update(p, grant.id, { revokedAt });
     }
     await reloadRoles();
+  }
+
+  /*
+    ── Policy ───────────────────────────────────────────────────────────────────────────────────
+
+    The space's rules: who may do what to its records. A version per `Policy` record, the one in
+    force worked out by `policyInForce`, and read live for the reason roles are — a rule an admin
+    changed holds from the next write, not the next space switch.
+
+    The same rules are what the write check judges every write by. It is registered here, once,
+    because only this store knows which dataset is which space and who holds what in it; every
+    backend asks it from its own write path. See `shared/spacePolicy.ts`.
+  */
+  const [policyRows, setPolicyRows] = createSignal<PolicyVersion[]>([]);
+  const [policyLoaded, setPolicyLoaded] = createSignal(false);
+
+  const currentStanding = (): SpaceStanding => ({
+    roles: roleViews(),
+    creator: authorPerson() ?? currentSpace()?.author ?? null,
+    history: { roles: roleRows(), grants: grantRows() },
+  });
+  const currentPolicy = createMemo(() => policyInForce(policyRows(), currentStanding()));
+  const currentPolicyView = createMemo<SpacePolicyView>(() =>
+    policyView(
+      currentPolicy(),
+      currentStanding(),
+      mePerson() ?? session.me()?.did ?? null,
+      policyLoaded() && rolesLoaded(),
+    ),
+  );
+
+  /** Every version, with its author as a person. */
+  async function readPolicyVersions(dataset: DatasetProxy): Promise<PolicyVersion[]> {
+    const rows = (await Policy.findAll(dataset).catch(() => [])) as Policy[];
+    return Promise.all(
+      rows.map(async (row) => ({
+        id: row.id,
+        document: row.document,
+        createdAt: row.createdAt as PolicyVersion['createdAt'],
+        author: row.author ? await personOf(row.author) : null,
+      })),
+    );
+  }
+
+  async function reloadPolicy(): Promise<void> {
+    const dataset = datasetStore.currentDataset()?.handle;
+    const uuid = datasetStore.currentDataset()?.id;
+    if (!dataset || !datasetStore.isWeSpace()) {
+      setPolicyRows([]);
+      setPolicyLoaded(true);
+      return;
+    }
+    try {
+      const versions = await readPolicyVersions(dataset);
+      if (datasetStore.currentDataset()?.id === uuid) setPolicyRows(versions);
+    } finally {
+      if (datasetStore.currentDataset()?.id === uuid) setPolicyLoaded(true);
+    }
+  }
+
+  createEffect(() => {
+    const dataset = datasetStore.currentDataset()?.handle;
+    const weSpace = datasetStore.isWeSpace();
+    let stopped = false;
+    let watch: { subscribe(cb: () => void): Promise<unknown>; dispose(): void } | undefined;
+    onCleanup(() => {
+      stopped = true;
+      watch?.dispose();
+    });
+    setPolicyRows([]);
+    setPolicyLoaded(false);
+    void (async () => {
+      const schemas = session.backendPorts()?.schemas;
+      // A space made before policies existed has the entity uninstalled; see the roles effect above.
+      if (dataset && weSpace && schemas) await schemas.ensure(dataset, Policy as never).catch(() => undefined);
+      await untrack(reloadPolicy);
+      if (stopped || !dataset || !weSpace) return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      watch = (Policy as any).query(dataset, {}) as { subscribe(cb: () => void): Promise<unknown>; dispose(): void };
+      watch
+        ?.subscribe(() => void (!stopped && reloadPolicy()))
+        .catch((error: unknown) => console.warn('SpaceStore: could not watch the space’s policy', error));
+    })();
+  });
+
+  /** The dataset a write names, among the ones this agent has open. */
+  function datasetOfHandle(handle: unknown) {
+    const known = [
+      ...datasetStore.datasets(),
+      datasetStore.rootDataset(),
+      datasetStore.personalDataset(),
+      datasetStore.testDataset(),
+    ].filter((d): d is NonNullable<typeof d> => Boolean(d));
+    const byHandle = known.find((d) => d.handle === handle);
+    if (byHandle) return byHandle;
+    // A backend may hand a model a handle object of its own for the same dataset. `uuid` first: the
+    // production handle also carries an unrelated `id`.
+    const id = (handle as { uuid?: string; id?: string } | null)?.uuid ?? (handle as { id?: string } | null)?.id;
+    return id ? known.find((d) => d.id === id) : undefined;
+  }
+
+  /*
+    Spaces other than the one on screen, read when a write reaches one and kept a few seconds — long
+    enough that a write of several records reads them once, short enough that a change to another
+    space's rules is not held over.
+  */
+  const governedElsewhere = new Map<string, { at: number; space: Promise<GovernedSpace | null> }>();
+  const GOVERNED_TTL_MS = 5_000;
+
+  async function readGovernedSpace(ds: { id: string; sharedId?: string; handle: DatasetProxy }) {
+    const [self] = (await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) }).catch(() => [])) as Space[];
+    if (!self) return null;
+    const [roles, grants, versions] = await Promise.all([
+      Role.findAll(ds.handle).catch(() => []) as Promise<Role[]>,
+      RoleGrant.findAll(ds.handle).catch(() => []) as Promise<RoleGrant[]>,
+      readPolicyVersions(ds.handle),
+    ]);
+    const grantRows: GrantRow[] = grants.map((g) => ({
+      id: g.id,
+      role: g.role,
+      agent: g.agent,
+      createdAt: g.createdAt as GrantRow['createdAt'],
+      revokedAt: g.revokedAt,
+    }));
+    const standing: SpaceStanding = {
+      roles: rolesView(roles, grantRows),
+      creator: self.author ? await personOf(self.author) : null,
+      history: { roles, grants: grantRows },
+    };
+    return { ...standing, policy: policyInForce(versions, standing) };
+  }
+
+  /** The space a dataset is, with its rules — `null` for anything that is not a space. */
+  async function governedSpace(handle: unknown): Promise<GovernedSpace | null> {
+    const ds = datasetOfHandle(handle);
+    if (!ds || isSystemDataset(ds.name) || datasetStore.systemDatasetUuids().includes(ds.id)) return null;
+    if (ds.id === datasetStore.currentDataset()?.id && policyLoaded() && rolesLoaded() && currentSpace()) {
+      return { ...currentStanding(), policy: currentPolicy() };
+    }
+    const cached = governedElsewhere.get(ds.id);
+    if (cached && Date.now() - cached.at < GOVERNED_TTL_MS) return cached.space;
+    const space = readGovernedSpace(ds);
+    // Nothing is remembered about a dataset that is not a space yet: the first record a new space
+    // is given is its own `Space`, and every write after it is the space's.
+    governedElsewhere.set(ds.id, { at: Date.now(), space });
+    void space.then((found) => {
+      if (!found) governedElsewhere.delete(ds.id);
+    });
+    return space;
+  }
+
+  const policyCheck = createPolicyCheck({
+    me: async () => {
+      const did = session.me()?.did;
+      return did ? (mePerson() ?? (await personOf(did))) : null;
+    },
+    personOf,
+    space: governedSpace,
+  });
+  registerEntityWriteCheck(async (write) => {
+    try {
+      await policyCheck(write);
+    } catch (error) {
+      // Said here, once, for every write — a store that swallows its own errors still tells the person
+      // why nothing happened.
+      if (isPolicyRefusal(error)) toastService.error(error.message);
+      throw error;
+    }
+  });
+  onCleanup(() => registerEntityWriteCheck(null));
+
+  /**
+   * The starting policy, written by the space's creator before it is shared — and only by them, as
+   * the admin grant is: a member joining later must never write a first version of their own, which
+   * would compete with the creator's. A starter's `policy` names the preset.
+   *
+   * Without one nothing is written, and the space reads as `open`: what every space did before it had
+   * a policy. `community` is offered in People rather than chosen for everybody, because some shared
+   * work is edited by members who did not make it — a call's extraction switch, a transcript line
+   * from another participant's device, a suggested change to somebody else's record, a board's
+   * columns — and `community` keeps editing to a record's author and the space's admins.
+   */
+  async function writeStartingPolicy(dataset: DatasetProxy, starter: SpaceStarter | undefined): Promise<void> {
+    const preset = starter?.policy;
+    if (!preset) return;
+    await Policy.create(dataset, { document: JSON.stringify(POLICY_PRESETS[preset].policy) });
+  }
+
+  async function setPolicyPreset(preset: PolicyPreset): Promise<void> {
+    const chosen = POLICY_PRESETS[preset];
+    if (!chosen) return;
+    const p = datasetStore.currentDataset()?.handle;
+    if (!p) throw new Error('No space is open');
+    if (presetOf(currentPolicy()) === preset) return;
+    const problems = validatePolicy(chosen.policy);
+    if (problems.length) throw new Error(problems.join(' '));
+    // Judged by the write check like any other write: `Policy.edit` under the version in force.
+    await Policy.create(p, { document: JSON.stringify(chosen.policy) });
+    await reloadPolicy();
   }
 
   /** The record behind a kind, by slug — or null when there is none. See `taskStateRecord`. */
@@ -6118,6 +6353,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     updateRole,
     grantRole,
     revokeRole,
+    policy: currentPolicyView,
+    setPolicyPreset,
     copyShareLink,
     copyGuestLink,
     exportCallTranscript,

@@ -19,6 +19,7 @@
  */
 import { arrangedBoard } from './arrangedBoard';
 import { calendarMonth, calendarMonths, monthLabel, yearLabel } from './calendarMonth';
+import { can } from './can';
 import { formatJson } from './formatJson';
 import { involvement } from './involvement';
 import { involvementMenu } from './involvementMenu';
@@ -45,6 +46,13 @@ export interface HostSource {
  * them: `monthLabel({ offset: local.offset })`.
  */
 export const hostSources: readonly HostSource[] = [
+  {
+    name: 'can',
+    params: ['options'],
+    doc: 'Whether the viewer may take an action under the space\'s policy — for hiding what they may not do. Actions are "Entity.create", "Entity.edit", "Entity.delete", and "Entity.relation.add" or ".remove". Pass the record acted on for an edit or a delete, since the answer often depends on who made it. It decides only what to offer: the write is checked again when it is made, and a refused one fails with the reason. Options: policy (spaceStore.policy), action, record.',
+    example: "can({ policy: spaceStore.policy, action: 'CollectionBlock.delete', record: post })",
+    fn: can,
+  },
   {
     name: 'requirementLabel',
     params: ['options'],

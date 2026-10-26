@@ -210,6 +210,9 @@ A starter has four parts:
     A list of them is a to-many relation.
 - **`landmarks`:** how templates find what the starter made, e.g. `"canvas": "$canvas"`.
 - **`input`:** whether messages typed straight into the space are extracted.
+- **`policy`:** the rules a new space starts from, `"community"` or `"open"`. Without it, nothing is
+  written and the space is open. See
+  [the policy doc](../architecture/space-policy.md).
 
 Two further rules:
 

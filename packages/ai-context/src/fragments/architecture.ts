@@ -223,4 +223,10 @@ rules and moves — a state's \`requires\`, \`move\` answering moved, waiting, r
 and never in how a backend enforces them: runs, proposals and an entry state stay in the AD4M
 adapter, and where backends differ they say so in \`WorkflowPort.capabilities\`. A workflow is edited as lanes
 that are read back out of the stored definition, never stored themselves.
+
+**Before changing who may write what, read docs/architecture/space-policy.md.** A space's policy is an
+allow-list held in the space as versioned \`Policy\` records, and every write is judged by it at one
+point: the write check in \`@we/entities\`, which every backend asks from its own write path. Never add a
+permission check in a store or a template instead — a caller that forgets is a way round every rule.
+\`can()\` lets a template decide what to offer; the write is judged again when it is made.
 `;

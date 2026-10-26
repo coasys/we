@@ -30,6 +30,29 @@ export interface GrantRow {
   id: string;
   role?: string;
   agent?: string;
+  /** When it was granted. */
+  createdAt?: string | number;
+  /** When it was taken back; empty while it is held. */
+  revokedAt?: string;
+}
+
+/** A moment as milliseconds, or `null` for one that does not read as a moment. */
+export function momentOf(value: string | number | undefined | null): number | null {
+  if (value === undefined || value === null || value === '') return null;
+  const ms = typeof value === 'number' ? value : Date.parse(value);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/**
+ * Whether a grant was held at `at` (milliseconds; now when absent): made by then, and not yet taken
+ * back. A grant with no readable creation time counts as always made, so a grant is never lost to a
+ * missing timestamp.
+ */
+export function heldAt(grant: GrantRow, at?: number): boolean {
+  const revoked = momentOf(grant.revokedAt);
+  if (at === undefined) return revoked === null;
+  const made = momentOf(grant.createdAt);
+  return (made === null || made <= at) && (revoked === null || revoked > at);
 }
 
 /** One role as a template draws it. */
@@ -49,8 +72,10 @@ export interface RoleView {
  * Ordered with `admin` first and the rest as the community wrote them. A grant naming a role no record
  * describes still shows, under its slug: somebody holds it, and hiding that would hide a standing
  * somebody was given.
+ *
+ * As things stand now, or with `at`, as they stood then — see {@link heldAt}.
  */
-export function rolesView(roles: readonly RoleRow[], grants: readonly GrantRow[]): RoleView[] {
+export function rolesView(roles: readonly RoleRow[], grants: readonly GrantRow[], at?: number): RoleView[] {
   const bySlug = new Map<string, RoleView>();
   for (const role of roles) {
     const slug = role.slug?.trim();
@@ -64,6 +89,7 @@ export function rolesView(roles: readonly RoleRow[], grants: readonly GrantRow[]
     });
   }
   for (const grant of grants) {
+    if (!heldAt(grant, at)) continue;
     const slug = grant.role?.trim();
     const agent = grant.agent?.trim();
     if (!slug || !agent) continue;

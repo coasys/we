@@ -27,6 +27,7 @@ export * from './LinkBlock';
 export * from './LocationBlock';
 export * from './MutedAgent';
 export * from './Placement';
+export * from './Policy';
 export * from './ReadMarker';
 export * from './Relationship';
 export * from './RelationshipType';

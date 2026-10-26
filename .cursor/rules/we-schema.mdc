@@ -222,6 +222,12 @@ and never in how a backend enforces them: runs, proposals and an entry state sta
 adapter, and where backends differ they say so in `WorkflowPort.capabilities`. A workflow is edited as lanes
 that are read back out of the stored definition, never stored themselves.
 
+**Before changing who may write what, read docs/architecture/space-policy.md.** A space's policy is an
+allow-list held in the space as versioned `Policy` records, and every write is judged by it at one
+point: the write check in `@we/entities`, which every backend asks from its own write path. Never add a
+permission check in a store or a template instead — a caller that forgets is a way round every rule.
+`can()` lets a template decide what to offer; the write is judged again when it is made.
+
 ---
 
 ## Contribution Surfaces (codebase work — not for JSON schema authoring)
@@ -486,6 +492,12 @@ the entity's own declaration, so a community's newest entity is creatable with n
 it. Reach for record.create when the template knows the fields, recordStore when a person is filling
 them in.
 
+A space's policy can refuse a write — a member deleting a post they did not write, a muted member
+posting. The refusal arrives at the handler's onError with the reason as result.message, and the person
+is told in a toast either way. To hide a control the viewer may not use, ask can():
+{ "$": "can({ policy: spaceStore.policy, action: 'CollectionBlock.delete', record: post })" }
+Actions are "Entity.create", "Entity.edit", "Entity.delete" and "Entity.relation.add" / ".remove".
+
 Expressions:
 { "$": "<expression>" }
 Every computed value — a condition, a label, a number, a filtered list — is one expression string in a
@@ -560,6 +572,7 @@ registers (listed last). Wrong-typed input answers with the empty value of its k
     touched(field) — Whether the field has been blurred or marked with $touch.  e.g. touched('email')
     valid(field) — Whether every validation rule on the field passes, touched or not. True for a field with no rules.  e.g. valid('email')
   Host functions (this deployment registers them):
+    can(options) — Whether the viewer may take an action under the space's policy — for hiding what they may not do. Actions are "Entity.create", "Entity.edit", "Entity.delete", and "Entity.relation.add" or ".remove". Pass the record acted on for an edit or a delete, since the answer often depends on who made it. It decides only what to offer: the write is checked again when it is made, and a refused one fails with the reason. Options: policy (spaceStore.policy), action, record.  e.g. can({ policy: spaceStore.policy, action: 'CollectionBlock.delete', record: post })
     requirementLabel(options) — What a step or a task state asks to be there first, in the words the app uses for it ("at least 1 comment in response to it"). For a form holding requirements it has not saved yet. Options: entity (comment, call, task, file, link, image, or an entity name), via ("responses", or empty for anywhere in the space), min.  e.g. requirementLabel({ entity: local.evidenceEntity, via: local.evidenceVia, min: local.evidenceMin })
     calendarMonth(options?) — The days of a month as rows — { date, day, inMonth, isToday, weekday } — padded to whole weeks. Options: month (YYYY-MM-DD, default today), offset (months from it), weekStartsOn (0 Sunday … 6), fixedWeeks (six rows, default on).  e.g. calendarMonth({ offset: local.monthOffset, weekStartsOn: 1 })
     calendarMonths(options?) — The twelve months of the year an offset lands in — { label, month, year, offset, isThisMonth, isShown } — each carrying its own offset from today, for a jump-to-month picker.  e.g. calendarMonths({ offset: local.monthOffset })
@@ -2732,6 +2745,11 @@ RoleGrant extends Ad4mModel:
   Fields:
   - role: string (required) [we://granted_role]
   - agent: string (required) [we://granted_to]
+  - revokedAt: string [we://revoked_at]
+
+Policy extends Ad4mModel:
+  Fields:
+  - document: string (required) [we://policy_document]
 
 Shape extends WeNode:
   Fields:
@@ -3516,6 +3534,7 @@ SpaceStore:
   - taskWorkflowEnabled: boolean — this space’s task states ask for agreement: some state needs more than one approval, or names whose approval counts. Where true, a card dragged into such a state waits instead of moving, and arrangedBoard(…).workflow[card.id] describes what it is waiting on. Gate an explanation of the waiting on it; the board needs nothing else
   - archivedWorkflows: string[] — the names of the workflows this space has put away. An archived workflow keeps its records, which still show and can still finish, but is not offered for starting on anything new; workflowStore.workflows marks each one `archived`
   - canAdministerCurrentSpace: boolean — whether this agent may change what every member of the space on screen sees. The readable form of canAdministerSpace, which an expression cannot call. Gate an admin-only control on this rather than on `x.author == me.did`, which asks who made the row and not who runs the space
+  - policy: { loaded, preset, permissions, frozen, me, roles, sentences } — the space's policy in force: who may do what to its records. Pass it whole to can() to decide whether to offer a control: { $: "can({ policy: spaceStore.policy, action: 'CollectionBlock.delete', record: post })" }. `preset` is 'open', 'community', or null for rules the community wrote itself; `sentences` is each permission in words, for a page that explains the rules; `roles` are the viewer's, admin included while they administer the space. A write the policy does not allow is refused when it is made whatever a template offered — its handler's onError receives the reason as result.message
 - Actions:
   - createSpace(name, description, access: 'personal' | 'shared', discovery: 'hidden' | 'listed', avatarFile?, coverImageFile?, location?, sharing?): creates a new space with full setup. sharing is a value from sharingOptions and only matters for a shared space; empty uses the backend's default. Resolves once the local space exists; sharing a shared one follows in the background, reported on `spaceList[].sharing`, and the space stays local if it fails
   - shareSpace(uuid: string): shares a space that is still local — what retries a share that failed, with the sharing option and listing it was asked for. Watch `spaceList[].sharing`
@@ -3590,6 +3609,7 @@ SpaceStore:
   - updateRole(slug: string, updates: { name?, description? }): renames a role or changes what it says it means; the slug stays. Only whoever administers the space
   - grantRole(slug: string, agent: string): gives a member the role. Holding it already changes nothing. Only whoever administers the space; rejects otherwise
   - revokeRole(slug: string, agent: string): takes the role from a member. The last admin cannot lose `admin` — somebody else has to be made one first — and is told so in a toast. Only whoever administers the space
+  - setPolicyPreset(preset: 'open' | 'community'): replaces the space's policy with a preset — a new version of it, judged like any change to the rules by the version in force, so it rejects for anybody that version does not let change them. Choosing the preset already in force changes nothing
   - copyShareLink(uuid: string): copies that space's share link to the clipboard, with a toast either way. No-op for a personal space, which has no global id and so no shareable link — read `spaceList[].shareLink` to decide whether to offer the control at all
   - copyGuestLink(uuid: string): copies that space's guest invite link — a URL that creates an account on the space's host and joins, with no sign-up and no download. Empty, and the control hidden, unless BOTH this app's origin and the node's URL are addresses a recipient could reach: a loopback address on either half resolves to the reader's own machine. Read `spaceList[].guestLink` to decide whether to offer it; `shareLink` is the one for somebody who already has WE
   - exportCallTranscript(callId: string): writes the call's transcript to a .txt file (one line per utterance: name, timestamp, text) and downloads it. Read-only and client-side — it reads the shared record and writes to the caller's own device
