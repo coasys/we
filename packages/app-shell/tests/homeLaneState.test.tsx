@@ -5,6 +5,7 @@
 import { cleanup, render } from '@solidjs/testing-library';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import PanelLane from '../src/frameworks/solid/components/PanelLane';
 import type { ShellStore } from '../src/frameworks/solid/stores/ShellStore';
 import { ShellStoreProvider, useShellStore } from '../src/frameworks/solid/stores/ShellStore';
 import { setTemplatePanels } from '../src/shared/registries/templatePanels';
@@ -98,5 +99,57 @@ describe('customising the layout', () => {
     expect(shell.customisingLayout()).toBe(true);
     shell.toggleCustomiseLayout();
     expect(shell.customisingLayout()).toBe(false);
+  });
+});
+
+/*
+  Folding slides: the lane narrows to nothing while what is in it keeps its width, so it moves out
+  past the edge rather than being squeezed — and a folded lane can be neither seen nor tabbed into.
+  It was `display: none`, which cannot be animated: the tree vanished and the view jumped across.
+  The motion itself is the browser's; this pins the arrangement that makes it a slide.
+*/
+describe('a home lane folding', () => {
+  function mountLane() {
+    let store!: ShellStore;
+    const Grab = () => {
+      store = useShellStore();
+      return null;
+    };
+    const { container } = render(() => (
+      <ShellStoreProvider>
+        <Grab />
+        <PanelLane lane="side" width="280px" resize="end" />
+      </ShellStoreProvider>
+    ));
+    const lane = container.firstElementChild as HTMLElement;
+    const content = lane.firstElementChild!.firstElementChild as HTMLElement;
+    return { store, lane, content };
+  }
+
+  it('narrows to nothing around content that keeps its width, and is inert once folded', () => {
+    const { store, lane, content } = mountLane();
+    expect(lane.style.width).toBe('280px');
+    expect(lane.inert).toBe(false);
+
+    store.setLaneCollapsed('side', true);
+
+    expect(lane.style.width).toBe('0px');
+    expect(content.style.width).toBe('280px');
+    expect(lane.inert).toBe(true);
+    expect(lane.style.visibility).toBe('hidden');
+    // Width animates, and visibility waits for it, so the lane is seen leaving.
+    expect(lane.style.transition).toContain('width');
+    expect(lane.style.transition).toMatch(/visibility 0s linear var\(--we-transition-300\)/);
+  });
+
+  it('is shown at once on the way back, so it is seen arriving', () => {
+    const { store, lane } = mountLane();
+    store.setLaneCollapsed('side', true);
+    store.setLaneCollapsed('side', false);
+
+    expect(lane.style.width).toBe('280px');
+    expect(lane.inert).toBe(false);
+    expect(lane.style.visibility).toBe('visible');
+    expect(lane.style.transition).toMatch(/visibility 0s linear 0s/);
   });
 });

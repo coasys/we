@@ -37,6 +37,11 @@
  * between the template's `minWidth` and `maxWidth`. And a lane can be folded away
  * (`shellStore.toggleLane`): its sections stay mounted and hidden, so a feed keeps its place.
  *
+ * Folding slides. The lane's own width goes to nothing while what is in it keeps its width, held to
+ * the lane's inner edge and cut off at the outer one, so the column moves out past the edge rather
+ * than being squeezed — and the view beside it takes the room as it goes. Folded, the lane is inert
+ * and hidden once the slide ends, so nothing in it can be tabbed to.
+ *
  * Below `NARROW_VIEWPORT_PX` a kept width means nothing — a phone has no room for a 280px column
  * beside anything — so the lane takes the width its parent gives it and the handle goes. How the page
  * stacks there is the template's, through its own layout (`mdUpProps`).
@@ -175,28 +180,66 @@ export function PanelLane(props: {
     });
   });
 
+  /*
+    How long the fold slides: the medium motion token, which a theme's animationSpeed and a
+    reduced-motion setting both move. None while a resize drag is under way, which the lane must
+    follow exactly.
+  */
+  const slide = () => (dragWidth() !== undefined ? 'none' : 'var(--we-transition-300) var(--we-ease-standard)');
+
   return (
     <div
       ref={(node: HTMLDivElement) => {
         el = node;
         register();
       }}
+      inert={collapsed()}
       style={{
-        // Folded away rather than unmounted: its sections keep their state.
-        display: collapsed() ? 'none' : 'flex',
-        'flex-direction': direction(),
-        gap: 'var(--we-space-400)',
+        display: 'flex',
         position: 'relative',
-        width: width(),
-        'min-width': narrow() ? '0' : (props.minWidth ?? '0'),
+        // Folded away rather than unmounted: its sections keep their state. To nothing, by sliding.
+        width: collapsed() ? '0px' : width(),
+        'min-width': collapsed() || narrow() ? '0' : (props.minWidth ?? '0'),
         'max-width': narrow() ? 'none' : (props.maxWidth ?? 'none'),
         flex: narrow() ? undefined : (props.flex ?? (props.width || props.resize ? '0 0 auto' : undefined)),
         'box-sizing': 'border-box',
+        /*
+          Hidden only once the slide is over, so it is seen leaving; shown at once on the way back,
+          so it is seen arriving.
+        */
+        visibility: collapsed() ? 'hidden' : 'visible',
+        transition:
+          slide() === 'none'
+            ? 'none'
+            : `width ${slide()}, min-width ${slide()}, visibility 0s linear ${collapsed() ? 'var(--we-transition-300)' : '0s'}`,
       }}
     >
-      <For each={here()}>{(panel) => <Section panel={panel} direction={direction()} />}</For>
-      <For each={away()}>{(panel) => <Placeholder panel={panel} />}</For>
-      <Show when={props.resize && !narrow()}>
+      {/* Cuts off what has slid past the lane's edge, leaving the handle outside it free to overhang. */}
+      <div
+        style={{
+          display: 'flex',
+          'justify-content': props.resize === 'start' ? 'flex-start' : 'flex-end',
+          width: '100%',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            'flex-direction': direction(),
+            gap: 'var(--we-space-400)',
+            // The lane's own width, held while the lane narrows, so its content moves rather than squeezes.
+            width: narrow() ? '100%' : width(),
+            'min-width': narrow() ? '0' : (props.minWidth ?? '0'),
+            'flex-shrink': '0',
+            'box-sizing': 'border-box',
+          }}
+        >
+          <For each={here()}>{(panel) => <Section panel={panel} direction={direction()} />}</For>
+          <For each={away()}>{(panel) => <Placeholder panel={panel} />}</For>
+        </div>
+      </div>
+      <Show when={props.resize && !narrow() && !collapsed()}>
         <we-resize-handle
           ref={handle}
           orientation="vertical"
