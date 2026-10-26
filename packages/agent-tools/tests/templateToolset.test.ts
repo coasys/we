@@ -204,6 +204,13 @@ describe('the template tools', () => {
     expect(await read('{not json')).toMatch(/^Error: The arguments/);
   });
 
+  it('take the patches as the JSON text of the list, which a model sometimes sends instead', async () => {
+    expect((await update({ version: 3, patches: JSON.stringify(world.patches) })).properties?.version).toBe(4);
+    const broken = (await update({ version: 3, patches: '[{"targetId":""' })).text;
+    expect(broken).toMatch(/patches must be an array\. It arrived as text that is not valid JSON \(.+\)/);
+    expect((await update({ version: 3, patches: { targetId: '' } })).text).toMatch(/patches must be an array$/);
+  });
+
   it('refuse a tool they do not have rather than throwing', async () => {
     expect((await templateToolset.call('delete_everything', { record: record(), args: {} })).text).toBe(
       'Error: Unknown tool: delete_everything',
