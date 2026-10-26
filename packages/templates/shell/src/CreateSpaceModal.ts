@@ -1,7 +1,7 @@
 import type { SchemaNode } from '@we/schema-shared';
 import { discardGuard, field } from '@we/template-kit';
 
-const close = { $action: 'shellStore.setCreateSpaceOpen', args: [false] };
+const close = { $invoke: 'shellStore.setCreateSpaceOpen', args: [false] };
 
 /**
  * Written out rather than through `formModal`, because this is the validating form — a `required`
@@ -448,7 +448,7 @@ export const createSpaceModal = {
                 $if: {
                   condition: { $: 'formValid()' },
                   then: {
-                    $action: 'spaceStore.createSpace',
+                    $invoke: 'spaceStore.createSpace',
                     args: [
                       { $: 'local.name' },
                       { $: 'local.description' },
@@ -459,7 +459,7 @@ export const createSpaceModal = {
                       { $: 'local.location' },
                       { $: 'local.sharing' },
                     ],
-                    onSuccess: [{ $action: 'shellStore.setCreateSpaceOpen', args: [false] }],
+                    onSuccess: [{ $invoke: 'shellStore.setCreateSpaceOpen', args: [false] }],
                     onFinally: [{ $setLocal: 'submitting', value: false }],
                   },
                   else: { $setLocal: 'submitting', value: false },

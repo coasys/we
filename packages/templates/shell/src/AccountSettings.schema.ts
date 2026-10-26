@@ -58,7 +58,7 @@ const accountRow: SchemaNode = {
               props: {
                 variant: 'ghost',
                 size: 'sm',
-                onClick: { $action: 'accountStore.requestRemoval', args: [{ $: 'account.id' }] },
+                onClick: { $invoke: 'accountStore.requestRemoval', args: [{ $: 'account.id' }] },
               },
               children: [{ type: 'we-icon', props: { name: 'trash' } }],
             },
@@ -123,7 +123,7 @@ export const accountSettings: SchemaNode = {
  */
 export const removeAccountModal: SchemaNode = confirmModal({
   open: { $: 'accountStore.pendingRemoval' },
-  close: { $action: 'accountStore.cancelRemoval' },
+  close: { $invoke: 'accountStore.cancelRemoval' },
   title: { $: '`Delete ${accountStore.pendingRemoval.name}?`' },
   body: 'This permanently deletes the account and everything in it — its identity, its spaces, and its data. It cannot be undone.',
   detail: 'Close Flux and the ADAM launcher first if they use this account.',
@@ -148,5 +148,5 @@ export const removeAccountModal: SchemaNode = confirmModal({
   // The store runs the removal and already knows it is running — a `busyLocal` beside it could only
   // disagree with it.
   busy: { $: 'accountStore.busy' },
-  confirm: { $action: 'accountStore.confirmRemoval' },
+  confirm: { $invoke: 'accountStore.confirmRemoval' },
 });

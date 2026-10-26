@@ -54,7 +54,7 @@ const routeSpaceUuid = { $: 'routeStore.segments[1]' };
 
 const backLink: SchemaNode = {
   type: 'we-button',
-  props: { variant: 'ghost', size: 'sm', ax: 'start', onClick: { $action: 'routeStore.navigate', args: ['/spaces'] } },
+  props: { variant: 'ghost', size: 'sm', ax: 'start', onClick: { $invoke: 'routeStore.navigate', args: ['/spaces'] } },
   children: [
     { type: 'we-icon', props: { name: 'arrow-left' } },
     { type: 'we-text', props: { variant: 'label' }, children: ['All spaces'] },
@@ -102,7 +102,7 @@ const pageHeader: SchemaNode = {
       props: {
         variant: 'soft',
         size: 'sm',
-        onClick: { $action: 'spaceStore.navigateToSpace', args: [{ $: 'space.uuid' }] },
+        onClick: { $invoke: 'spaceStore.navigateToSpace', args: [{ $: 'space.uuid' }] },
       },
       children: [
         { type: 'we-text', props: { variant: 'label' }, children: ['Open'] },
@@ -148,7 +148,7 @@ const saveMetaOnBlur = [
       then: [
         { $setLocal: 'saving', value: true },
         {
-          $action: 'spaceStore.updateSpaceMeta',
+          $invoke: 'spaceStore.updateSpaceMeta',
           args: [{ name: { $: 'local.editName' }, description: { $: 'local.editDescription' } }, { $: 'space.uuid' }],
           onFinally: [
             { $setLocal: 'metaDirty', value: false },
@@ -185,7 +185,7 @@ const discoveryRow: SchemaNode = attributeRow({
       labelOn: 'Listed',
       labelOff: 'Hidden',
       onChange: {
-        $action: 'spaceStore.updateSpaceMeta',
+        $invoke: 'spaceStore.updateSpaceMeta',
         args: [{ discovery: expr`${isListed} ? 'hidden' : 'listed'` }, { $: 'space.uuid' }],
       },
     },
@@ -197,7 +197,7 @@ const saveLocationOnBlur = [
     $if: {
       condition: { $: 'local.locationDirty' },
       then: {
-        $action: 'spaceStore.updateSpaceMeta',
+        $invoke: 'spaceStore.updateSpaceMeta',
         args: [{ location: { $: 'local.location' } }, { $: 'space.uuid' }],
         onFinally: [{ $setLocal: 'locationDirty', value: false }],
       },
@@ -233,7 +233,7 @@ const locationRow: SchemaNode = attributeRow({
               tone: 'danger',
               onClick: [
                 { $setLocal: 'location', value: null },
-                { $action: 'spaceStore.updateSpaceMeta', args: [{ location: null }, { $: 'space.uuid' }] },
+                { $invoke: 'spaceStore.updateSpaceMeta', args: [{ location: null }, { $: 'space.uuid' }] },
               ],
             },
             children: [
@@ -270,7 +270,7 @@ const locationEditor: SchemaNode = {
                 onChange: [
                   { $setLocal: 'location', value: { $: 'event.detail' } },
                   {
-                    $action: 'spaceStore.updateSpaceMeta',
+                    $invoke: 'spaceStore.updateSpaceMeta',
                     args: [{ location: { $: 'local.location' } }, { $: 'space.uuid' }],
                   },
                 ],
@@ -504,7 +504,7 @@ const shareSection: SchemaNode = {
               props: {
                 variant: 'soft',
                 size: 'sm',
-                onClick: { $action: 'spaceStore.copyShareLink', args: [{ $: 'space.uuid' }] },
+                onClick: { $invoke: 'spaceStore.copyShareLink', args: [{ $: 'space.uuid' }] },
               },
               children: [
                 { type: 'we-icon', props: { name: 'copy' } },
@@ -554,7 +554,7 @@ const shareSection: SchemaNode = {
                       props: {
                         variant: 'soft',
                         size: 'sm',
-                        onClick: { $action: 'spaceStore.copyGuestLink', args: [{ $: 'space.uuid' }] },
+                        onClick: { $invoke: 'spaceStore.copyGuestLink', args: [{ $: 'space.uuid' }] },
                       },
                       children: [
                         { type: 'we-icon', props: { name: 'copy' } },
@@ -600,7 +600,7 @@ const shareSection: SchemaNode = {
                   props: {
                     variant: 'secondary',
                     size: 'sm',
-                    onClick: { $action: 'spaceStore.shareSpace', args: [{ $: 'space.uuid' }] },
+                    onClick: { $invoke: 'spaceStore.shareSpace', args: [{ $: 'space.uuid' }] },
                   },
                   children: ['Try again'],
                 },
@@ -650,7 +650,7 @@ const personalAppearanceSection: SchemaNode = {
             value: { $: 'space.templateOverride' },
             options: { $: 'spaceStore.templateOverrideOptions' },
             onChange: {
-              $action: 'spaceStore.setSpaceTemplateOverride',
+              $invoke: 'spaceStore.setSpaceTemplateOverride',
               args: [{ $: 'event.detail' }, { $: 'space.uuid' }],
             },
           },
@@ -667,7 +667,7 @@ const personalAppearanceSection: SchemaNode = {
             value: { $: 'space.themeOverride' },
             options: { $: 'spaceStore.themeOverrideOptions' },
             onChange: {
-              $action: 'spaceStore.setSpaceThemeOverride',
+              $invoke: 'spaceStore.setSpaceThemeOverride',
               args: [{ $: 'event.detail' }, { $: 'space.uuid' }],
             },
           },
@@ -723,7 +723,7 @@ const moduleRow: SchemaNode = {
                 // A bare `$event.detail`, never wrapped: an operator object around it would be
                 // evaluated at render time, before the event exists. See `setModuleVisible`.
                 onChange: {
-                  $action: 'spaceStore.setModuleVisible',
+                  $invoke: 'spaceStore.setModuleVisible',
                   args: [{ $: 'mod.id' }, { $: 'event.detail' }, { $: 'space.uuid' }],
                 },
               },
@@ -743,7 +743,7 @@ const moduleRow: SchemaNode = {
                 checked: { $: 'mod.enabled' },
                 disabled: { $: '!space.canAdminister' },
                 onChange: {
-                  $action: 'spaceStore.setModuleEnabled',
+                  $invoke: 'spaceStore.setModuleEnabled',
                   args: [{ $: 'mod.id' }, { $: 'event.detail' }, { $: 'space.uuid' }],
                 },
               },
@@ -796,7 +796,7 @@ function settingControl(options: {
   const { value, disabled, action, args } = options;
   // A bare `event.detail`, never wrapped: an operator object around it would be evaluated at render
   // time, before the event exists. The same rule as the module switches above.
-  const write = { $action: action, args: [...args, { $: 'event.detail' }] };
+  const write = { $invoke: action, args: [...args, { $: 'event.detail' }] };
   return {
     type: '$if',
     props: {
@@ -908,7 +908,7 @@ const moduleSettingsSection: SchemaNode = {
                             variant: 'ghost',
                             size: 'xs',
                             onClick: {
-                              $action: 'spaceStore.setSpaceModuleSetting',
+                              $invoke: 'spaceStore.setSpaceModuleSetting',
                               args: [{ $: 'setting.group' }, { $: 'setting.key' }],
                             },
                           },
@@ -1010,7 +1010,7 @@ const callSettingsSection: SchemaNode = {
                 size: 'sm',
                 checked: { $: 'modules.call.newCallsUseSfu' },
                 disabled: { $: 'modules.call.callConfigSaving' },
-                onChange: { $action: 'modules.call.setNewCallsUseSfu', args: [{ $: 'event.detail' }] },
+                onChange: { $invoke: 'modules.call.setNewCallsUseSfu', args: [{ $: 'event.detail' }] },
               },
             },
           ],
@@ -1079,7 +1079,7 @@ const autoInterpretSection: SchemaNode = {
             disabled: { $: '!space.canAdminister' },
             // Bare `$event.detail` — an operator around it would resolve at render time, before
             // the event exists. Same reason as the module switches above.
-            onChange: { $action: 'spaceStore.setAutoInterpret', args: [{ $: 'event.detail' }, { $: 'space.uuid' }] },
+            onChange: { $invoke: 'spaceStore.setAutoInterpret', args: [{ $: 'event.detail' }, { $: 'space.uuid' }] },
           },
         },
       ],
@@ -1148,7 +1148,7 @@ const threadModeSection: SchemaNode = {
               { label: 'Branching', value: 'fractal' },
               { label: 'One level', value: 'flat' },
             ],
-            onChange: { $action: 'spaceStore.setThreadMode', args: [{ $: 'event.detail' }, { $: 'space.uuid' }] },
+            onChange: { $invoke: 'spaceStore.setThreadMode', args: [{ $: 'event.detail' }, { $: 'space.uuid' }] },
           },
         },
       ],
@@ -1229,7 +1229,7 @@ const extractionTargetsSection: SchemaNode = {
                         // Bare `event.detail` — an operator around it would resolve at render time,
                         // before the event exists.
                         onChange: {
-                          $action: 'spaceStore.setExtractionTarget',
+                          $invoke: 'spaceStore.setExtractionTarget',
                           args: [{ $: 'candidate' }, { $: 'event.detail' }, { $: 'space.uuid' }],
                         },
                       },

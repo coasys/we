@@ -183,7 +183,7 @@ describe('foreign elements a seed allows', () => {
         props: {
           value: 3,
           max: 5,
-          'on:sl-change': { $action: 'routeStore.navigate', args: [{ $: 'event.target.value' }] },
+          'on:sl-change': { $invoke: 'routeStore.navigate', args: [{ $: 'event.target.value' }] },
         },
       },
       withRating(),
@@ -297,7 +297,7 @@ describe('unknown prop', () => {
 
   it('event handlers are always valid', () => {
     const result = validateSemantic(
-      { type: 'we-button', props: { onClick: { $action: 'routeStore.navigate' } } },
+      { type: 'we-button', props: { onClick: { $invoke: 'routeStore.navigate' } } },
       ctx(),
     );
     const propErrors = result.errors.filter((e) => e.message.includes('Unknown prop'));
@@ -358,7 +358,7 @@ describe('unknown store', () => {
         type: 'we-button',
         props: {
           text: { $: 'modules.transcribe.pending' },
-          onClick: { $action: 'modules.somethingNobodyHasWrittenYet.toggle' },
+          onClick: { $invoke: 'modules.somethingNobodyHasWrittenYet.toggle' },
         },
       },
       ctx(),
@@ -411,16 +411,47 @@ describe('unknown store member', () => {
   });
 });
 
+describe('the retired spelling', () => {
+  it('refuses the old token by name, saying what it is now', () => {
+    const old = { ['$' + 'action']: 'routeStore.navigate', args: ['/'] };
+    const result = validateSemantic({ type: 'we-button', props: { onClick: old } }, ctx());
+    expect(result.errors).toContainEqual(
+      expect.objectContaining({ severity: 'error', message: expect.stringContaining('is now $invoke') }),
+    );
+  });
+});
+
+describe('an action called with nothing', () => {
+  const needs = () =>
+    ctx({
+      storeEntries: [{ name: 'routeStore', state: {}, actions: ['navigate', 'back'], needsArgs: ['navigate'] }],
+    });
+  const warned = (token: Record<string, unknown>) =>
+    validateSemantic({ type: 'we-button', props: { onClick: token } }, needs()).errors.some(
+      (e) => e.severity === 'warning' && e.message.includes('takes arguments'),
+    );
+
+  it('warns when an action that needs arguments is given none, or an empty list', () => {
+    expect(warned({ $invoke: 'routeStore.navigate' })).toBe(true);
+    expect(warned({ $invoke: 'routeStore.navigate', args: [] })).toBe(true);
+  });
+
+  it('says nothing when the arguments are written, or the action needs none', () => {
+    expect(warned({ $invoke: 'routeStore.navigate', args: ['/home'] })).toBe(false);
+    expect(warned({ $invoke: 'routeStore.back' })).toBe(false);
+  });
+});
+
 describe('unknown action', () => {
-  it('errors for $action with unknown store', () => {
-    const result = validateSemantic({ type: 'we-button', props: { onClick: { $action: 'userStore.save' } } }, ctx());
+  it('errors for $invoke with unknown store', () => {
+    const result = validateSemantic({ type: 'we-button', props: { onClick: { $invoke: 'userStore.save' } } }, ctx());
     expect(result.errors.some((e) => e.severity === 'error' && e.message.includes('Unknown store "userStore"'))).toBe(
       true,
     );
   });
 
-  it('warns for $action with unknown method on known store', () => {
-    const result = validateSemantic({ type: 'we-button', props: { onClick: { $action: 'sessionStore.goTo' } } }, ctx());
+  it('warns for $invoke with unknown method on known store', () => {
+    const result = validateSemantic({ type: 'we-button', props: { onClick: { $invoke: 'sessionStore.goTo' } } }, ctx());
     expect(result.errors.some((e) => e.severity === 'warning' && e.message.includes('Unknown method "goTo"'))).toBe(
       true,
     );
@@ -428,7 +459,7 @@ describe('unknown action', () => {
 
   it('passes for known action', () => {
     const result = validateSemantic(
-      { type: 'we-button', props: { onClick: { $action: 'routeStore.navigate' } } },
+      { type: 'we-button', props: { onClick: { $invoke: 'routeStore.navigate' } } },
       ctx(),
     );
     const actionErrors = result.errors.filter((e) => e.message.includes('Unknown'));
@@ -436,10 +467,10 @@ describe('unknown action', () => {
   });
 });
 
-describe('event/arg inside $action args', () => {
+describe('event/arg inside $invoke args', () => {
   const nested = (args: unknown[]) =>
     validateSemantic(
-      { type: 'we-button', props: { onClick: { $action: 'routeStore.navigate', args } } },
+      { type: 'we-button', props: { onClick: { $invoke: 'routeStore.navigate', args } } },
       ctx(),
     ).errors.filter((e) => e.severity === 'error' && e.message.includes('nested inside another token'));
 
@@ -466,7 +497,7 @@ describe('event/arg inside $action args', () => {
 
   it('rejects the old string spelling of a reference in args', () => {
     const errors = validateSemantic(
-      { type: 'we-button', props: { onClick: { $action: 'routeStore.navigate', args: ['$event.detail'] } } },
+      { type: 'we-button', props: { onClick: { $invoke: 'routeStore.navigate', args: ['$event.detail'] } } },
       ctx(),
     ).errors.filter((e) => e.message.includes('old string spelling'));
     expect(errors).toHaveLength(1);
@@ -784,7 +815,7 @@ describe('nested detection', () => {
       {
         type: 'we-button',
         props: {
-          onClick: { $if: { condition: { $: 'unknownStore.value' }, then: { $action: 'routeStore.navigate' } } },
+          onClick: { $if: { condition: { $: 'unknownStore.value' }, then: { $invoke: 'routeStore.navigate' } } },
         },
       },
       ctx(),
@@ -1011,11 +1042,11 @@ describe('a role named in its TypeScript spelling', () => {
  * a custom event a Lit primitive declares, and what the design system's guidance tells authors to
  * prefer there, since delegation is unreliable across a shadow boundary. That one was not exempt,
  * so guarding a custom-event handler was refused with advice to use a ternary, which cannot hold a
- * handler. `$action` in the same position was always accepted, so the rule contradicted itself.
+ * handler. `$invoke` in the same position was always accepted, so the rule contradicted itself.
  */
 describe('$if in a handler position', () => {
   const errorsFor = (props: Record<string, unknown>) => validateSemantic({ type: 'we-button', props }, ctx()).errors;
-  const guard = { $if: { condition: { $: 'local.ready' }, then: { $action: 'routeStore.navigate', args: ['/'] } } };
+  const guard = { $if: { condition: { $: 'local.ready' }, then: { $invoke: 'routeStore.navigate', args: ['/'] } } };
 
   it('is allowed on a delegated DOM event', () => {
     expect(errorsFor({ onClick: guard })).toEqual([]);

@@ -144,7 +144,7 @@ const sectionRow: SchemaNode = {
                 // Bare `$event.detail`: an operator object around it resolves at render time, before
                 // the event exists. Same trap as the module switches.
                 onChange: {
-                  $action: 'spaceStore.setViewVisible',
+                  $invoke: 'spaceStore.setViewVisible',
                   args: [{ $: 'view.id' }, { $: 'event.detail' }, { $: 'space.uuid' }],
                 },
               },
@@ -163,7 +163,7 @@ const sectionRow: SchemaNode = {
                 checked: { $: 'view.enabled' },
                 disabled: { $: '!space.canAdminister' },
                 onChange: {
-                  $action: 'spaceStore.setViewEnabled',
+                  $invoke: 'spaceStore.setViewEnabled',
                   args: [{ $: 'view.id' }, { $: 'event.detail' }, { $: 'space.uuid' }],
                 },
               },
@@ -248,7 +248,7 @@ const sectionsCard: SchemaNode = {
         locked: { $: '!space.canAdminister' },
         // `$arg.detail` is where we-sortable puts the reordered ids. The event is `reorder`, which
         // Solid reaches from `onReorder` by lowercasing.
-        onReorder: { $action: 'spaceStore.reorderViews', args: [{ $: 'arg.detail' }, { $: 'space.uuid' }] },
+        onReorder: { $invoke: 'spaceStore.reorderViews', args: [{ $: 'arg.detail' }, { $: 'space.uuid' }] },
       },
       children: [
         {

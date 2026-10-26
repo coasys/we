@@ -159,7 +159,7 @@ const knowledgeGraph: SchemaNode = {
     onEdgeClick: { $setLocal: 'selectedEdge', value: { $: 'event' } },
     // Straight to the store: it opens the same record form every other model uses, on
     // `Relationship`, holding the two ends the gesture produced.
-    onEdgeCreate: { $action: 'recordStore.connectNodes', args: [{ $: 'event' }] },
+    onEdgeCreate: { $invoke: 'recordStore.connectNodes', args: [{ $: 'event' }] },
   },
 };
 
@@ -424,11 +424,11 @@ export const graphView: TemplateSchema = {
                       props: {
                         size: 'sm',
                         variant: 'soft',
-                        // `args` given explicitly, and not omitted: a `$action` with no args forwards
+                        // `args` given explicitly, and not omitted: a `$invoke` with no args forwards
                         // the handler's own arguments, so the button would call this with the click
                         // event as its optional `entity`. The store guards against that too — this is
                         // the call site saying what it means.
-                        onClick: { $action: 'recordStore.openRecordForm', args: [''] },
+                        onClick: { $invoke: 'recordStore.openRecordForm', args: [''] },
                       },
                       children: [{ type: 'we-icon', props: { name: 'plus' } }, 'New'],
                     },

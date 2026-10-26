@@ -74,7 +74,7 @@ const identifier: SchemaNode = {
                 square: true,
                 label: 'Copy your identifier',
                 onClick: {
-                  $action: 'clipboard.copy',
+                  $invoke: 'clipboard.copy',
                   args: [{ $: 'identityStore.did ? identityStore.did : me.did' }, 'Identifier'],
                 },
               },
@@ -105,8 +105,8 @@ const avatar: SchemaNode = {
     uploadLabel: 'Add photo',
     editLabel: 'Change photo',
     fontSize: '200',
-    onImageChange: { $action: 'profileStore.updateProfileImage', args: ['avatar', { $: 'arg' }] },
-    onImageRemove: { $action: 'profileStore.clearProfileImage', args: ['avatar'] },
+    onImageChange: { $invoke: 'profileStore.updateProfileImage', args: ['avatar', { $: 'arg' }] },
+    onImageRemove: { $invoke: 'profileStore.clearProfileImage', args: ['avatar'] },
   },
 };
 
@@ -241,7 +241,7 @@ export const logOutAction: SchemaNode = {
           $if: {
             condition: { $: 'sessionStore.isGuest' },
             then: { $setLocal: 'confirmGuestLogout', value: true },
-            else: { $action: 'sessionStore.logout' },
+            else: { $invoke: 'sessionStore.logout' },
           },
         },
       },
@@ -258,7 +258,7 @@ export const logOutAction: SchemaNode = {
       detail: 'To keep it, stay signed in on this browser.',
       confirmLabel: 'Sign out anyway',
       cancelLabel: 'Stay signed in',
-      confirm: { $action: 'sessionStore.logout' },
+      confirm: { $invoke: 'sessionStore.logout' },
     }),
   ],
 };
@@ -271,7 +271,7 @@ const thisDeviceRow: SchemaNode = {
   props: {
     variant: 'bare',
     width: '100%',
-    onClick: { $action: 'routeStore.navigate', args: ['/devices/this'] },
+    onClick: { $invoke: 'routeStore.navigate', args: ['/devices/this'] },
   },
   children: [
     {
@@ -356,7 +356,7 @@ export function thisDevicePage(advanced: SchemaNode[]): SchemaNode {
     children: [
       {
         type: 'we-button',
-        props: { variant: 'ghost', size: 'sm', onClick: { $action: 'routeStore.navigate', args: ['/devices'] } },
+        props: { variant: 'ghost', size: 'sm', onClick: { $invoke: 'routeStore.navigate', args: ['/devices'] } },
         children: [{ type: 'we-icon', props: { name: 'caret-left' } }, 'Devices'],
       },
       heading('This device', 'The computer or host serving this session, and what runs on it.'),

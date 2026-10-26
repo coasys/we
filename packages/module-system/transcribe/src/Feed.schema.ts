@@ -57,7 +57,7 @@ const origin: SchemaNode = {
         size: 'xs',
         variant: 'ghost',
         // Into the call it was said in — the address the transcript and the space's views follow.
-        onClick: { $action: 'routeStore.setParam', args: ['call', { $: 'row.call' }] },
+        onClick: { $invoke: 'routeStore.setParam', args: ['call', { $: 'row.call' }] },
       },
       children: [{ $: 'row.callTitle' }],
     },
@@ -165,7 +165,7 @@ const composer: SchemaNode = {
             },
             {
               type: 'we-button',
-              props: { size: 'xs', variant: 'ghost', onClick: { $action: 'modules.transcribe.cancelReply', args: [] } },
+              props: { size: 'xs', variant: 'ghost', onClick: { $invoke: 'modules.transcribe.cancelReply', args: [] } },
               children: ['Cancel'],
             },
           ],
@@ -185,12 +185,12 @@ const composer: SchemaNode = {
               $if: {
                 condition: { $: FEED_REPLY },
                 then: {
-                  $action: 'modules.transcribe.reply',
+                  $invoke: 'modules.transcribe.reply',
                   args: [{ $: 'modules.transcribe.replyingTo.id' }, { $: 'event.text' }, { $: 'event.marks' }],
                   onFinally: [{ $setLocal: 'sending', value: false }],
                 },
                 else: {
-                  $action: 'modules.transcribe.sendToFeed',
+                  $invoke: 'modules.transcribe.sendToFeed',
                   args: [{ $: 'event.text' }, { $: 'event.marks' }],
                   onFinally: [{ $setLocal: 'sending', value: false }],
                 },
@@ -234,10 +234,10 @@ export const feedPanel: SchemaNode = {
         timeline({
           fromStart: FROM_START,
           orientation: TIMELINE_ORIENTATION,
-          onLoadOlder: { $action: 'modules.transcribe.showMoreFeed' },
-          onLoadNewer: { $action: 'modules.transcribe.showMoreFeed' },
-          onJumpNewest: { $action: 'modules.transcribe.readFeedLive' },
-          onJumpOldest: { $action: 'modules.transcribe.readFeedFromStart' },
+          onLoadOlder: { $invoke: 'modules.transcribe.showMoreFeed' },
+          onLoadNewer: { $invoke: 'modules.transcribe.showMoreFeed' },
+          onJumpNewest: { $invoke: 'modules.transcribe.readFeedLive' },
+          onJumpOldest: { $invoke: 'modules.transcribe.readFeedFromStart' },
           children: [
             {
               type: 'Column',

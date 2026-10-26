@@ -88,7 +88,7 @@ export const spacesList: SchemaNode = cardList({
                           No `confirmModal`: the host raises its own in front of every destructive
                           store action, from the tier boundary. See DestructivePrompt.schema.ts.
                         */
-                        onClick: { $action: 'record.delete', args: ['Space', { $: 'space.id' }] },
+                        onClick: { $invoke: 'record.delete', args: ['Space', { $: 'space.id' }] },
                       },
                       children: [{ type: 'we-icon', props: { name: 'trash' } }],
                     },
@@ -189,7 +189,7 @@ export const spacesList: SchemaNode = cardList({
                     text: 'Enter Space',
                     variant: 'solid',
                     size: 'sm',
-                    onClick: { $action: 'spaceStore.navigateToSpace', args: [{ $: 'space.url' }] },
+                    onClick: { $invoke: 'spaceStore.navigateToSpace', args: [{ $: 'space.url' }] },
                   },
                 },
                 else: {
@@ -204,9 +204,9 @@ export const spacesList: SchemaNode = cardList({
                     onClick: [
                       { $setLocal: 'joining', value: true },
                       {
-                        $action: 'spaceStore.joinSpace',
+                        $invoke: 'spaceStore.joinSpace',
                         args: [{ $: 'space.url' }],
-                        onSuccess: [{ $action: 'spaceStore.navigateToSpace', args: [{ $: 'space.url' }] }],
+                        onSuccess: [{ $invoke: 'spaceStore.navigateToSpace', args: [{ $: 'space.url' }] }],
                         onError: [{ $setLocal: 'joining', value: false }],
                       },
                     ],

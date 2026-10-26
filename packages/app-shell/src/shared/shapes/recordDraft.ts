@@ -318,7 +318,7 @@ export function fieldsFor(
 /**
  * A model name, or nothing — from a caller that may have been handed something else entirely.
  *
- * `$action` with no `args` forwards the handler's own arguments, so a store method reached from a
+ * `$invoke` with no `args` forwards the handler's own arguments, so a store method reached from a
  * button and declaring an optional leading parameter receives a `PointerEvent`. It surfaced as a
  * toast reading `No model named "[object PointerEvent]" in this space`, which is the failure being
  * loud enough to find and still a failure.

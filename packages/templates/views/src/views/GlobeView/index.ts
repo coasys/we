@@ -256,13 +256,13 @@ export const globeView: TemplateSchema = {
                       {
                         $if: {
                           condition: { $: 'local.showTimeline' },
-                          then: { $action: 'clockStore.pause', args: ['globe'] },
+                          then: { $invoke: 'clockStore.pause', args: ['globe'] },
                         },
                       },
                       {
                         $if: {
                           condition: { $: 'local.showTimeline' },
-                          then: { $action: 'clockStore.seek', args: ['globe', null] },
+                          then: { $invoke: 'clockStore.seek', args: ['globe', null] },
                         },
                       },
                       { $toggleLocal: 'showTimeline' },
@@ -285,7 +285,7 @@ export const globeView: TemplateSchema = {
                     text: 'Create New Space',
                     variant: 'solid',
                     height: '40px',
-                    onClick: { $action: 'shellStore.setCreateSpaceOpen', args: [true] },
+                    onClick: { $invoke: 'shellStore.setCreateSpaceOpen', args: [true] },
                   },
                 },
               ],
@@ -517,7 +517,7 @@ export const globeView: TemplateSchema = {
                         size: 'sm',
                         square: true,
                         label: { $: "clockStore.clocks.globe.playing ? 'Pause' : 'Play'" },
-                        onClick: { $action: 'clockStore.toggle', args: ['globe'] },
+                        onClick: { $invoke: 'clockStore.toggle', args: ['globe'] },
                       },
                       children: [
                         {
@@ -548,7 +548,7 @@ export const globeView: TemplateSchema = {
                         marks: {
                           $: 'clockStore.clocks.globe.ticks.map(tick, { value: tick.fraction, label: tick.label })',
                         },
-                        onInput: { $action: 'clockStore.seekProgress', args: ['globe', { $: 'event.detail' }] },
+                        onInput: { $invoke: 'clockStore.seekProgress', args: ['globe', { $: 'event.detail' }] },
                       },
                     },
                     {
@@ -571,8 +571,8 @@ export const globeView: TemplateSchema = {
                             square: true,
                             label: 'Show everything',
                             onClick: [
-                              { $action: 'clockStore.pause', args: ['globe'] },
-                              { $action: 'clockStore.seek', args: ['globe', null] },
+                              { $invoke: 'clockStore.pause', args: ['globe'] },
+                              { $invoke: 'clockStore.seek', args: ['globe', null] },
                             ],
                           },
                           children: [{ type: 'we-icon', props: { name: 'x' } }],

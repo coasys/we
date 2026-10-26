@@ -90,8 +90,8 @@ export const safeModeBanner: SchemaNode = {
             onClick: {
               $if: {
                 condition: { $: 'local.leaveInto' },
-                then: { $action: 'templateStore.leaveSafeModeInto', args: [{ $: 'local.leaveInto' }] },
-                else: { $action: 'templateStore.leaveSafeMode' },
+                then: { $invoke: 'templateStore.leaveSafeModeInto', args: [{ $: 'local.leaveInto' }] },
+                else: { $invoke: 'templateStore.leaveSafeMode' },
               },
             },
           },

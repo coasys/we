@@ -126,7 +126,7 @@ that declares `backends: ['ad4m']` — nothing else. See `docs/architecture/pack
    code — a DX layer, not a runtime one.)
 
 2. **Schema semantics live in `@we/schema-shared`, parameterized by a reactivity port.** All token
-   resolution (`{ $ }` expressions, `$action`, `$query`, `$setLocal`, …) is in `propResolvers/`.
+   resolution (`{ $ }` expressions, `$invoke`, `$query`, `$setLocal`, …) is in `propResolvers/`.
    `resolveProp(value, stores, context, memo)` takes a framework-injected memoization function
    (`memo`), and `markReactive()` (see `propResolvers/reactive.ts`) tags accessors so a renderer
    knows a prop is reactive. The entire schema engine AND its reactivity wiring are framework-neutral;
@@ -319,7 +319,7 @@ widget there was retired once template-kit's rail fragments replaced it, and fea
 with their module family. Treat that as a strong prior that what you have is a fragment or a module.
 
 **A store member is public API, and classifying it is a security decision.** Every member is
-reachable from any template through an expression or `$action`, so name it for template authors and treat removal
+reachable from any template through an expression or `$invoke`, so name it for template authors and treat removal
 as breaking. Before `templateSurface.ts` existed, all 388 members were in the bag a template rendered
 against — including `runtimeStore.trustAgent` and the settings holding the API key — so a template
 that merely *painted* could trust an attacker's DID. Put a new member in the narrowest group that
@@ -421,7 +421,7 @@ Example node:
 {
   "type": "we-button",
   "props": {
-    "onClick": { "$action": "routeStore.navigate", "args": ["/home"] }
+    "onClick": { "$invoke": "routeStore.navigate", "args": ["/home"] }
   },
   "children": [
     { "type": "we-icon", "props": { "name": "house" } },
@@ -432,31 +432,32 @@ Example node:
 ## Prop-level Dynamic Logic & Expressions
 
 Two kinds of token go in props: an EXPRESSION, { "$": "…" }, for anything computed (a store read, a
-condition, a label, a list), and a HANDLER ($action, $setLocal, …) for anything that happens on an
+condition, a label, a list), and a HANDLER ($invoke, $setLocal, …) for anything that happens on an
 event. A plain string is always text. There are no other value tokens.
 
 Store reference:
 { "$": "storeName.property.path" }
 Reads a value from a named store, supporting nested paths — reactive, so the prop follows the store.
 
-Action/event:
-{ "$action": "storeName.method", "args": [...] }
-Calls a method on a store, optionally with arguments (which can themselves be tokens).
-IMPORTANT — omitting "args" does NOT call the method with no arguments: the handler's own arguments are
-forwarded, so a click handler passes the DOM event as the first parameter. That is deliberate (it is how
-{ "onChange": { "$action": "store.method" } } passes a value straight through), but it means a method whose
-first parameter is OPTIONAL receives a PointerEvent from a button written the obvious way. Pass the argument
-you mean explicitly when the method has an optional leading parameter — note "args": [] does not help, since
-an empty list is treated as "no args given" and forwards the event too.
+Invoking a store method:
+{ "$invoke": "storeName.method", "args": [...] }
+Calls a method on a store, optionally with arguments (which can themselves be tokens). The token's old
+spelling, with "action" where "invoke" is now, is refused by the validator.
+The method is called with exactly the "args" written, and with none when there are none — what the element
+emitted is never passed on by itself. To pass it, say so: { "$": "event" } is the whole value the handler
+received, and { "$": "event.detail" } (or any path into it) a part of it:
+{ "onChange": { "$invoke": "spaceStore.setViewEnabled", "args": ["cards", { "$": "event.detail" }] } }
+{ "onArrange": { "$invoke": "modules.call.setArrangement", "args": [{ "$": "arg" }] } }
+The validator warns about an action that needs arguments called with none.
 Supports async lifecycle callbacks — fired after the store method's Promise resolves/rejects:
   onSuccess: [...actions]  — fired on resolve; { "$": "result" } (and result.<path>) in args refers to the resolved value
   onError: [...actions]    — fired on reject; { "$": "result.message" } etc. refers to the error object
   onFinally: [...actions]  — fired regardless of outcome
 Non-promise (synchronous) methods are unaffected — lifecycle keys are ignored.
 Example — close modal after async submission:
-{ "$action": "spaceStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }] }
+{ "$invoke": "spaceStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }] }
 Example — navigate to newly created item:
-{ "$action": "spaceStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }, { "$action": "routeStore.navigate", "args": [{ "$": "`/space/${result.uuid}`" }] }] }
+{ "$invoke": "spaceStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }, { "$invoke": "routeStore.navigate", "args": [{ "$": "`/space/${result.uuid}`" }] }] }
 
 An action runs only when somebody asked for it. A press, a key, typing, a drop or a paste that reaches
 the element whose handler calls it counts as asking — and so does whatever the element does in answer,
@@ -467,20 +468,20 @@ the press instead. Navigating, opening and closing surfaces and editing an unsav
 they work anywhere. onSuccess, onError and onFinally count as part of the press that started them, and
 so does onBlur on a field somebody typed into. The validator warns about a write on an event nobody causes.
 
-Record mutations via $action (use these for creating/updating/deleting records):
+Record mutations via $invoke (use these for creating/updating/deleting records):
 A RECORD is one stored thing; an ENTITY is its type. Every one of these takes the entity name first
 and acts on a record of it.
 
 record.create — creates a record in the current dataset (default) or a specified one:
-{ "$action": "record.create", "args": ["EntityName", { "field": "value" }, { "dataset": "datasetStore.rootDataset" }] }
+{ "$invoke": "record.create", "args": ["EntityName", { "field": "value" }, { "dataset": "datasetStore.rootDataset" }] }
 The third argument is an options object. Omit it to write into the space on screen.
 
 record.update — updates one record:
-{ "$action": "record.update", "args": ["EntityName", { "$": "item.id" }, { "field": "newValue" }] }
-To target another dataset: { "$action": "record.update", "args": ["EntityName", { "$": "item.id" }, { "field": "value" }, { "dataset": "datasetStore.rootDataset" }] }
+{ "$invoke": "record.update", "args": ["EntityName", { "$": "item.id" }, { "field": "newValue" }] }
+To target another dataset: { "$invoke": "record.update", "args": ["EntityName", { "$": "item.id" }, { "field": "value" }, { "dataset": "datasetStore.rootDataset" }] }
 
 record.delete — deletes one record:
-{ "$action": "record.delete", "args": ["EntityName", { "$": "item.id" }] }
+{ "$invoke": "record.delete", "args": ["EntityName", { "$": "item.id" }] }
 
 Use dataset: 'datasetStore.rootDataset' for we-root entities (AgentSettings, ChatSession, etc.), and
 'datasetStore.personalDataset' for the agent's own content (a note, a Pocket folder). Both are chrome-tier.
@@ -502,9 +503,9 @@ Expressions:
 { "$": "<expression>" }
 Every computed value — a condition, a label, a number, a filtered list — is one expression string in a
 { "$": … } token. This is the value layer's whole vocabulary. The node layer ($each, node-level $if,
-$routes, $animate…), queries ($query, $queries) and handlers ($action, $setLocal, $toggleLocal…) stay
+$routes, $animate…), queries ($query, $queries) and handlers ($invoke, $setLocal, $toggleLocal…) stay
 as tokens; an expression goes anywhere a VALUE goes — a prop, a condition, $each's items, a children
-array (rendered as text), a where value, an $action argument.
+array (rendered as text), a where value, an $invoke argument.
 
 References — what a name starts from:
   spaceStore.members             a store member (any store in the Stores section; modules.<id>.<key> for a module)
@@ -513,11 +514,11 @@ References — what a name starts from:
   index, prev                    $each's row position, and the previous row
   me.did, currentDataset         the current agent, and the active dataset
   surface.tier, surface.width    the responsive boundary
-  event, arg, result             the callback argument inside a handler, and a settled $action's value
+  event, arg, result             the callback argument inside a handler, and a settled $invoke's value
 A plain string in an expression is ALWAYS a literal: 'item.name' is five words, item.name is a read.
 A plain string in a PROP or in children is text too: "$item.name" renders those ten characters. A
 reference is always written { "$": "item.name" }; the validator rejects the old string spelling.
-A store's actions are unreachable — spaceStore.createPost reads as nothing; only $action calls.
+A store's actions are unreachable — spaceStore.createPost reads as nothing; only $invoke calls.
 
 Operators, in JavaScript's spelling and precedence:
   == !=                          strict equality
@@ -688,7 +689,7 @@ Examples:
 { "$": "post.author in spaceStore.mutedDids" }
 
 Rules:
-- An expression naming event/arg/result at the TOP LEVEL of an $action's args, or as a $setLocal
+- An expression naming event/arg/result at the TOP LEVEL of an $invoke's args, or as a $setLocal
   "value", is evaluated when the handler fires. Nested inside another token it is evaluated at render
   time against no event and becomes a constant — the validator rejects that.
 - The validator reports every mistake with a column: an unknown name (with "did you mean"), an unknown
@@ -964,7 +965,7 @@ Call function: { "$callLocal": "fieldName" } — event handler that calls the fu
   The field must be declared as type: 'function' and set via $setLocal.
   Example: { "onClick": { "$callLocal": "onConfirm" } }
 State is created on mount and destroyed on unmount. Nested $localState declarations merge, inner fields shadow outer.
-Local values can be used in $action args: { "$action": "store.method", "args": [{ "$": "local.name" }] }
+Local values can be used in $invoke args: { "$invoke": "store.method", "args": [{ "$": "local.name" }] }
 
 Object-typed local state (consolidating related scalar fields):
 When several related fields share a common condition on their initial values (e.g. all null/empty when a store value is absent), prefer a single "object" field seeded from the store, then read sub-fields with dot-notation and write with merge.
@@ -1067,10 +1068,10 @@ Action tokens:
 { "$resetLocal": "$scope" } — resets all fields to initial values and clears touched state.
 
 Handler arrays (compose multiple actions on one event):
-{ "onClick": [{ "$touch": "$all" }, { "$if": { "condition": { "$": "formValid()" }, "then": { "$action": "store.submit", "onSuccess": [{ "$setLocal": "modalOpen", "value": false }] } } }] }
+{ "onClick": [{ "$touch": "$all" }, { "$if": { "condition": { "$": "formValid()" }, "then": { "$invoke": "store.submit", "onSuccess": [{ "$setLocal": "modalOpen", "value": false }] } } }] }
 Array entries execute sequentially. { "$if": { "condition", "then", "else" } } in a handler position runs one side or the
 other when the event fires — its condition may read event. It is the one place $if is a token rather than a node.
-Prefer onSuccess over a bare $setLocal before the $action — the bare form closes the modal immediately (losing the loading spinner); onSuccess waits for the Promise to resolve.
+Prefer onSuccess over a bare $setLocal before the $invoke — the bare form closes the modal immediately (losing the loading spinner); onSuccess waits for the Promise to resolve.
 
 Typical form pattern — validate on submit:
 {
@@ -1097,7 +1098,7 @@ Typical form pattern — validate on submit:
         "disabled": { "$": "local.submitting" },
         "onClick": [
           { "$touch": "$all" },
-          { "$if": { "condition": { "$": "formValid()" }, "then": { "$action": "store.save", "args": [{ "$": "local.name" }], "onSuccess": [{ "$setLocal": "submitDone", "value": true }] } } }
+          { "$if": { "condition": { "$": "formValid()" }, "then": { "$invoke": "store.save", "args": [{ "$": "local.name" }], "onSuccess": [{ "$setLocal": "submitDone", "value": true }] } } }
         ]
       },
       "children": ["Submit"]
@@ -1332,7 +1333,7 @@ Most @we/primitives also accept Design System Props (see next section for detail
 A post card, a member row and a space in the sidebar are rendered by **templates**, which are
 data. If making one draggable were a code change, every future draggable surface would be a code
 change too, and the contribution ladder says arrangement stays data. This is the same rung
-`we-sortable` occupies: two custom elements and an existing `$action`, with no new prop resolver,
+`we-sortable` occupies: two custom elements and an existing `$invoke`, with no new prop resolver,
 no new operator, and nothing added to the expression grammar.
 
 ```json
@@ -1370,13 +1371,13 @@ the geometry are measured from.
   Props: hideclosebutton: boolean = false, label: string = '', close: () => void
 - we-drop-zone (LayoutElement) — Anything a `we-draggable` can be dropped into.
 
-The receiving half of the pair, and the same rung: two custom elements and an existing `$action`,
+The receiving half of the pair, and the same rung: two custom elements and an existing `$invoke`,
 so a template can make a region a drop target without a code change.
 
 ```json
 { "type": "we-drop-zone",
   "props": { "accepts": "CollectionBlock,Space,Agent",
-             "onDropped": { "$action": "modules.pocket.gather", "args": [{ "$": "event.detail" }] } },
+             "onDropped": { "$invoke": "modules.pocket.gather", "args": [{ "$": "event.detail" }] } },
   "children": [ "…the panel…" ] }
 ```
 
@@ -2439,7 +2440,7 @@ genuinely change its mind, not merely stretch.
 | Prop | Type | Description |
 |------|------|-------------|
 | styles | Record\<string, string \| number\> | Inline CSS applied directly to the component's own element (raw CSS values allowed). For Column, Row, Grid — use this when you need CSS the DS props don't cover. Applied last, so it genuinely overrides a DS prop setting the same property. **Do not confuse with node-level styles** (see Schema Structure) which applies to a wrapper div, not the component. |
-| onClick | ActionToken | Event handler (see dynamic logic) |
+| onClick | InvokeToken | Event handler (see dynamic logic) |
 
 ---
 
@@ -2960,7 +2961,7 @@ WeNode extends Ad4mModel:
 ## Stores
 
 Stores provide state (readable values) and actions (methods) for dynamic logic in schemas.
-Read state in an expression ({ "$": "storeName.member" }) and call actions with $action.
+Read state in an expression ({ "$": "storeName.member" }) and call actions with $invoke.
 For ephemeral/form state, use $localState with local.* reads and $setLocal writes instead of stores (see Dynamic Logic).
 
 AccountStore:
@@ -3207,7 +3208,7 @@ RecordStore:
   - displays: Record<entity, RecordDisplay> — how to show an instance of each creatable model, every core block (a divider or a quote card included) and Relationship, keyed by entity name and derived from its declaration: { entity, label, icon, title, summary, media, mediaRelation, fields[] }, where title/summary/media name the properties playing those roles ('' when none does) and mediaRelation names a relation to an ImageBlock that pictures the record when no property does — look the image up by the ids it holds ({ entity: 'ImageBlock', where: { id: row[display.mediaRelation] } }) rather than drawing them and each field is { name, label, kind, role, options, vocabulary }. kind is one of text, longText, number, boolean, date, datetime, color, url, image, file, json, relation (with target, the model it points at); role is title, summary, media or detail. `options` is the values a field is allowed to hold where the model closes the set (a task's status), empty otherwise — count() it to tell a state worth drawing as a we-badge from free text, and map it into a we-select rather than offering a text box that accepts a word the model does not know. `vocabulary` names the community list a value is a slug of ('taskState' for a task's status, looked up in spaceStore.taskStates for its name and colour), empty otherwise. Index it by a row's type — { $: 'recordStore.displays[row.type]' } — and render the fields with $each; see "A record of any type" in the patterns
   - recordErrors: string[] — validation errors from the last save attempt, plus any backend failure
   - savingRecord: boolean — a create is in flight
-  - lastCreatedId: string — the id of the last record created, empty before the first. Read it to act on what was just made; kept in the store because an $action's onSuccess can read a store and cannot hold a value
+  - lastCreatedId: string — the id of the last record created, empty before the first. Read it to act on what was just made; kept in the store because an $invoke's onSuccess can read a store and cannot hold a value
   - pendingLink: the two records a pending connection joins ({ sourceId, sourceType, sourceLabel, targetId, targetType, targetLabel }), or null when the open form is an ordinary one. Read it to name what is being connected
   - relationDraft: the record being made inline for a relation field — an image for a sighting — as a draft of the same shape, or null. Its non-nullness mounts the nested form over the outer one. It is not written until the outer form saves
   - relationErrors: string[] — why the nested form's last Add was refused
@@ -3233,9 +3234,9 @@ RecordStore:
   - cancelRecordForm(): closes the form, discarding it
   - saveRecord(): validates and creates. Errors land in recordErrors and the form stays open holding what was typed; success closes it and sets lastCreatedId
   - placeOnCanvas(canvas: string, nodeId: string, nodeType: string, x: number, y: number): puts a record at a position on a canvas, or moves one already there. An upsert, so dragging twice leaves one coordinate. Prefer dragOnCanvas for the graph’s onNodeDragEnd, which also carries what a folded card is holding
-  - dragOnCanvas(canvas: string, payload): writes where a drag left a card, and where everything a FOLDED card carried with it now sits. Takes the graph's onNodeDragEnd payload as it arrives. This rather than placeOnCanvas wherever the canvas can fold: the carried cards are a list, $action calls a method once, and a schema cannot loop — so without it, carrying a fold into a corner and unfolding it scatters its contents back where they were
+  - dragOnCanvas(canvas: string, payload): writes where a drag left a card, and where everything a FOLDED card carried with it now sits. Takes the graph's onNodeDragEnd payload as it arrives. This rather than placeOnCanvas wherever the canvas can fold: the carried cards are a list, $invoke calls a method once, and a schema cannot loop — so without it, carrying a fold into a corner and unfolding it scatters its contents back where they were
   - dropOnCanvas(canvas: string, payload): puts something dragged in from elsewhere onto a canvas where it landed. Takes the graph's onDrop payload as it arrives. A record from this space is placed as it is; something from another dataset is brought in first (the bringIn rule) and placed — a whole post or note as a post, a single block as itself (a copy of the block, or a lone EmbedBlock quoting somebody else's), owned by the canvas. Refuses, with a toast, anything that is not a record — an agent, a space
-  - bringIn(payload): takes a `we-drop-zone`'s dropped detail ({ items }) into the space on screen as posts — `onDropped: { $action: 'recordStore.bringIn', args: [{ $: 'event.detail' }] }`. Your own note or post becomes a copy (a post from another shared space records sourceRef/sourceName, shown as 'Also posted in …'); anybody else's post or block becomes a new post quoting it through an EmbedBlock carrying sourceAuthor and sourceName. Things already in this space are ignored. Each new post shows a toast with Undo
+  - bringIn(payload): takes a `we-drop-zone`'s dropped detail ({ items }) into the space on screen as posts — `onDropped: { $invoke: 'recordStore.bringIn', args: [{ $: 'event.detail' }] }`. Your own note or post becomes a copy (a post from another shared space records sourceRef/sourceName, shown as 'Also posted in …'); anybody else's post or block becomes a new post quoting it through an EmbedBlock carrying sourceAuthor and sourceName. Things already in this space are ignored. Each new post shows a toast with Undo
   - updateRecordField(entity: string, id: string, field: string, value): changes one property of one record — the inspector's edit mode. Takes the field name so one action serves every control; the value is coerced by the field's declared kind and a control's { detail } is unwrapped. An empty string is not written, so a text field cannot be cleared this way
   - rekeyConnection(id: string): rewrites a Relationship's dedup key (`connection`) from its label and both ends' titles, which is how an extraction pass reads the structure people drew. updateRecordField does it already; call this after saving a Relationship's label through record.update
   - removeFromCanvas(canvas: string, node: string | string[]): takes a record — or a whole selection — off a canvas, leaving the records themselves alone. A card the canvas owns survives as an unplaced one in the tray. Takes one id or a list, so a selection is not a special case: pass the graph's onDeleteSelection or onSelectionAction records as event.records.map(r, r.recordId). UNDOABLE, which is why this rather than deleteRecords is what a canvas should bind its Delete key to
@@ -3547,7 +3548,7 @@ SpaceStore:
   - missingModules: string[] — of those, the ones this agent has not installed. Non-empty means the template is mounting a component nothing provides, so part of the page silently renders nothing. Empty in the ordinary case
   - activeModules: string[] — what actually renders here for this agent: registered ∩ installed ∩ enabled, less the modules muted in this space. Module chrome and the launcher rail gate on this; enabledModules alone is not sufficient
   - moduleInstallSettings: { id, name, description, icon, installed, surface, switchable, capabilities }[] — every registered module and whether this agent wants it anywhere. `capabilities` is what a person is agreeing to — derived from the module's manifest (its permissions and the kernels it reaches) and what it contributes (a panel, storage in the space), never authored, so it cannot go stale. The global Settings → Modules list, and the only place an 'app', 'capability' or agent-scoped module is decided about: a contribution is gated at the layer where it renders, and only 'chrome' (panels, slots, rail) and 'content' (sections, blocks) render inside a space. `surface` is derived from what the module contributes. Unset, every registered module counts as installed — a seed entry's `enabled: false` is about spaces, not people. Its per-space counterpart is `modules` on each spaceList row, which carries enabled/installed/visible/active together and lists the community-decided modules only: chrome or content, and not agent-scoped. A community-decided module a space has off takes its sections and its space-level settings out of that space
-  - moduleLaunchers: { id, icon, label, active, busy, concealed }[] — one entry per module panel that asks for a rail button, plus the launchers a module declares of its own; what the host module rail renders. `id` is a panel’s dock id (`<moduleId>:<name>`) or a launcher’s key, and is what launchModule takes. `active` is the module reporting its surface open; `concealed` says that panel is open and out of sight — a background tab of a stack, folded to its bar, or in a lane collapsed to its edge — so light the button on `mod.active && !mod.concealed`, since pressing a concealed one brings the panel forward rather than closing it. `busy` says the module is working in the background — an extraction pass running — and is independent of `active`, so a rail can show work going on behind a closed panel. Pair with { $action: "spaceStore.launchModule", args: [{ $: "mod.id" }] }
+  - moduleLaunchers: { id, icon, label, active, busy, concealed }[] — one entry per module panel that asks for a rail button, plus the launchers a module declares of its own; what the host module rail renders. `id` is a panel’s dock id (`<moduleId>:<name>`) or a launcher’s key, and is what launchModule takes. `active` is the module reporting its surface open; `concealed` says that panel is open and out of sight — a background tab of a stack, folded to its bar, or in a lane collapsed to its edge — so light the button on `mod.active && !mod.concealed`, since pressing a concealed one brings the panel forward rather than closing it. `busy` says the module is working in the background — an extraction pass running — and is independent of `active`, so a rail can show work going on behind a closed panel. Pair with { $invoke: "spaceStore.launchModule", args: [{ $: "mod.id" }] }
   - spaceViews: ResolvedView[] — this space's sections resolved: which view renders at which segment, in the space's order, each carrying its schema. The host builds the route tree from it; a nav strip reads viewNav, which is this without the payload
   - routableViews: ResolvedView[] — every view that could render here, at its permanent segment — what routes are built from. Separate from spaceViews because it changes when a view is installed, not when a switch is flicked
   - enabledViewIds: string[] — ids of the sections the community has turned on here. What a route body is gated on; not the nav list, which also drops this agent's hidden ones — hiding a section for yourself must not make its URL refuse you
@@ -3617,7 +3618,7 @@ SpaceStore:
   - setSpaceThemeOverride(themeId: string, spaceUuid?): sets the theme THIS AGENT sees in one space. Same three values as setSpaceTemplateOverride. Private
   - applyTheme(themeId: string): applies a theme where the agent is — pinned to the space on screen, or set as their global default when there is no space. What a theme picker in chrome should call: it persists, where setCurrentTheme only sets a signal that the next resolution overwrites. Which of the two it does is decided at click time, against state a schema cannot see
   - clearSpaceThemePin(): drops this agent’s theme pin for the space on screen, returning it to whatever would otherwise apply. The way back out of applyTheme, so the picker need not spell the FOLLOW_SPACE sentinel as a literal. Pair with spaceThemePinned
-  - launchModule(moduleId: string): invokes that module's declared launcher action. Takes an id rather than a path because $action resolves a literal string, so a rail iterating over modules cannot build modules.<id>.<method> itself
+  - launchModule(moduleId: string): invokes that module's declared launcher action. Takes an id rather than a path because $invoke resolves a literal string, so a rail iterating over modules cannot build modules.<id>.<method> itself
   - createSignalType(config: Partial<SignalType>): creates a new signal type in the community; slug auto-derived from name if blank
   - createRelationshipType(config: Partial<RelationshipType>): names a kind of connection this community makes — "contradicts", "came out of". The counterpart to createSignalType; slug derived from name if blank
   - setSignalTypeRetired(signalTypeId: string, retired: boolean): withdraws a signal type from use, or brings it back. Never deletes the signals given with it — a signal names its type by record id while templates resolve it by slug, so DELETING a type strands every reaction ever given and re-creating one with the same slug does not restore them. Retiring is the reversible version: the type stops being offered, existing counts keep working, and un-retiring brings everything back. Filter the offered list with OFFERED_SIGNAL_TYPES from @we/template-kit; leave find()-by-slug unfiltered so history still resolves
@@ -3631,7 +3632,7 @@ SpaceStore:
   - setWorkflowArchived(name: string, archived: boolean): puts a workflow away, or brings it back. Only whoever administers the space; rejects otherwise. Archiving never touches the records going through the workflow — offer it in place of deleting one that has any
   - setTaskStateRetired(slug: string, retired: boolean): withdraws a state from use, or brings it back. Never touches the work sitting in it — a task names its state by slug, so deleting the state would leave the work holding a word nothing defines. The same decision setSignalTypeRetired makes. By slug, which is what a task and a screen both hold
   - reorderTaskStates(orderedSlugs: string[]): sets the order this community reads its states in — which is the order of a board’s columns. An ordered relation rather than a number on each state, so two people reordering at once converge instead of one write discarding the other. A state the order does not mention still appears, after the ones it does. Slugs, which is what a screen holds. Key the rows by slug and pair with we-sortable’s onReorder, passing { $: "arg.detail" }
-  - setInvolvement(nodeId: string, agent: string, kind: string, on: boolean): puts somebody on a record as a kind one member says about another — assigning a task, asking for a review — or takes them off. `on` is the state wanted rather than a toggle, so a menu passes the opposite of the tick it shows and a double press cannot undo itself. Every copy of the pair goes on removal. A reflexive kind is routed to respondTo, and refused for anybody but the agent it is about. Pair with a DropdownMenu of toggle entries: `onSelect: { $action: "spaceStore.setInvolvement", args: [{ $: "card.id" }, { $: "arg.id" }, "assignee", { $: "!arg.checked" }] }`
+  - setInvolvement(nodeId: string, agent: string, kind: string, on: boolean): puts somebody on a record as a kind one member says about another — assigning a task, asking for a review — or takes them off. `on` is the state wanted rather than a toggle, so a menu passes the opposite of the tick it shows and a double press cannot undo itself. Every copy of the pair goes on removal. A reflexive kind is routed to respondTo, and refused for anybody but the agent it is about. Pair with a DropdownMenu of toggle entries: `onSelect: { $invoke: "spaceStore.setInvolvement", args: [{ $: "card.id" }, { $: "arg.id" }, "assignee", { $: "!arg.checked" }] }`
   - respondTo(nodeId: string, kind: string): gives this agent’s own answer to a record — "going", "maybe", "not-going" — replacing any other answer it held there, in one transaction. Pass an empty kind to withdraw the answer. Refuses a kind that is not reflexive. Shown on the click, before the write lands
   - createInvolvementType(config: { name, semantic?, reflexive?, appliesTo?, icon?, color? }): names a kind of part a person can have — "Shepherd", "Second pair of eyes". `appliesTo` is entity names joined with commas. `reflexive` is fixed once made. A slug the space already has is refused
   - updateInvolvementType(slug: string, updates: { name?, icon?, color?, semantic?, appliesTo? }): changes a kind the community already has. The slug and `reflexive` are absent — every involvement stores the one, and changing the other would rewrite who said what. An empty string clears a field
@@ -3798,7 +3799,7 @@ WorkflowStore:
 Record:
 - State:
 - Actions:
-  - create(entity: string, fields: object, options?: { dataset?: string }): creates a record in the current space, or in the dataset a store path names ('datasetStore.rootDataset' for we-root entities, 'datasetStore.personalDataset' for the agent's own content). See "Record mutations via $action" above
+  - create(entity: string, fields: object, options?: { dataset?: string }): creates a record in the current space, or in the dataset a store path names ('datasetStore.rootDataset' for we-root entities, 'datasetStore.personalDataset' for the agent's own content). See "Record mutations via $invoke" above
   - update(entity: string, id: string, fields: object, options?: { dataset?: string }): updates the named fields of one record, leaving the rest
   - delete(entity: string, id: string, options?: { dataset?: string }): deletes one record. Irreversible
 
@@ -3855,7 +3856,7 @@ Needs: kernels records, presence, ephemeral, media, peerConnection, call; permis
   - topology — Whether this call runs through the SFU relay ('sfu') or the peer-to-peer mesh ('mesh').
   - topologySwitchedBy — The DID of whoever switched this call to its topology by hand, or null if it runs on the one it started with.
   - videoDevice — The camera this agent has chosen, or empty for whatever the system offers.
-- Actions (`{ "$action": "modules.call.<name>" }`):
+- Actions (`{ "$invoke": "modules.call.<name>" }`):
   - attachAnchor — Make the running call about the record whose id is given, without rejoining it.
   - closeDeviceSettings — Close the camera and microphone chooser.
   - continueCall — Pick a past call back up by its record id, joining anyone already in it and writing no new record.
@@ -3958,7 +3959,7 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - transcriptShown — How many transcript lines are loaded right now.
   - unconfirmedIds — Records a pass made that nobody has kept yet, by id.
   - watchProblem — Why the standing extraction watch is not running here; empty when it is.
-- Actions (`{ "$action": "modules.transcribe.<name>" }`):
+- Actions (`{ "$invoke": "modules.transcribe.<name>" }`):
   - acceptProposal — Keeps a suggestion, as proposed or as edited.
   - addMessage — Writes something a person typed into a transcript, as a typed line — with its marks, when the composer gave any.
   - applyChange — Applies one suggested change to an agreed record.
@@ -4017,7 +4018,7 @@ Needs: kernels presence, ephemeral, view.
   - followingName — The name of whoever this agent is following.
   - problem — Why something could not be done, as a sentence to show, or empty.
   - watching — How many other people here have live cursors on.
-- Actions (`{ "$action": "modules.live.<name>" }`):
+- Actions (`{ "$invoke": "modules.live.<name>" }`):
   - dismissProblem — Dismiss the problem message.
   - follow — Follow whoever has the wheel.
   - releaseWheel — Give up the wheel.
@@ -4035,7 +4036,7 @@ Keep things from any space — posts, people, spaces — in a panel that follows
 Needs: kernels agentData.
 - State (read in an expression as `modules.pocket.<name>`):
   - open — Whether the Pocket panel is open.
-- Actions (`{ "$action": "modules.pocket.<name>" }`):
+- Actions (`{ "$invoke": "modules.pocket.<name>" }`):
   - close — Closes the Pocket panel.
   - show — Opens the Pocket panel and resolves the folder it was last looking at.
   - toggle — Opens the Pocket panel, or closes it if it is open.
@@ -4072,7 +4073,7 @@ A general-purpose graph engine — knowledge maps, schema maps, hierarchies and 
 ### Flux (`flux`)
 Reads conversations a Flux community keeps, in a space synced in from Flux.
 Needs: backends ad4m.
-- Actions (`{ "$action": "modules.flux.<name>" }`):
+- Actions (`{ "$invoke": "modules.flux.<name>" }`):
   - subgroupMessages — The messages in one of Flux’s conversation subgroups, oldest first — { id, author, timestamp, body }. Read when asked, since a subgroup’s messages are not a relation a $query can follow.
 
 ### Polls (`polls`)
@@ -4083,7 +4084,7 @@ Needs: kernels records.
   - pendingVote — This agent’s vote on a poll, written and not yet read back — { author, option }, or nothing. Keyed by poll id.
   - revealBeforeVoting — Whether a poll shows its counts before this agent has voted — the community’s setting here.
   - voting — The id of the poll a vote is being written for, or empty.
-- Actions (`{ "$action": "modules.polls.<name>" }`):
+- Actions (`{ "$invoke": "modules.polls.<name>" }`):
   - vote — Casts this agent’s vote on a poll, or changes it — one vote per person per poll.
 - Parts: `polls.pollCard` (needs block — the Poll record to show), `polls.pollComposer`
 - Settings: `revealBeforeVoting` (boolean; space) — Show counts before voting
@@ -4104,11 +4105,11 @@ Reading state — an expression naming the store:
 Example: { "$": "routeStore.currentPath" }
 
 Calling actions:
-{ "$action": "storeName.method", "args": [...] }
-Example: { "$action": "routeStore.navigate", "args": ["/home"] }
+{ "$invoke": "storeName.method", "args": [...] }
+Example: { "$invoke": "routeStore.navigate", "args": ["/home"] }
 
 Feature-module stores:
-{ "$": "modules.<moduleId>.<member>" } and { "$action": "modules.<moduleId>.<action>" }
+{ "$": "modules.<moduleId>.<member>" } and { "$invoke": "modules.<moduleId>.<action>" }
 Each feature module this deployment ships publishes its PUBLIC store members under its own id —
 modules.call.active, modules.transcribe.proposals, modules.polls.vote. The modules, their members,
 parts, panels, settings and functions are listed in the Feature Modules section below, and the
@@ -4125,7 +4126,7 @@ Iterating over store data:
       "type": "we-button",
       "props": {
         "variant": "ghost",
-        "onClick": { "$action": "routeStore.navigate", "args": [{ "$": "`/space/${space.uuid}`" }] }
+        "onClick": { "$invoke": "routeStore.navigate", "args": [{ "$": "`/space/${space.uuid}`" }] }
       },
       "children": [
         { "type": "we-avatar", "props": { "image": { "$": "space.avatar" }, "hash": { "$": "space.uuid" }, "initials": { "$": "space.name" }, "size": "sm" } },
@@ -4223,7 +4224,7 @@ Example — Channel list → Conversation list:
           "type": "we-button",
           "props": {
             "variant": "ghost",
-            "onClick": { "$action": "routeStore.navigate", "args": [{ "$": "`/channels/${channel.id}`" }] }
+            "onClick": { "$invoke": "routeStore.navigate", "args": [{ "$": "`/channels/${channel.id}`" }] }
           },
           "children": [{ "$": "channel.name" }]
         }]
@@ -4290,7 +4291,7 @@ Local state (form with validation):
         "disabled": { "$": "local.loading" },
         "onClick": [
           { "$touch": "$all" },
-          { "$if": { "condition": { "$": "formValid()" }, "then": { "$action": "myStore.submit", "args": [{ "$": "local.name" }] } } }
+          { "$if": { "condition": { "$": "formValid()" }, "then": { "$invoke": "myStore.submit", "args": [{ "$": "local.name" }] } } }
         ]
       }
     }
@@ -4408,7 +4409,7 @@ Pattern — live wired SignalControl (one hoisted query, reused by the projectio
                     "signalType": { "$": "sig" },
                     "signals": { "$": "filter(item.signals, { signalTypeId: sig.id })" },
                     "myDid": { "$": "me.did" },
-                    "onSignal": { "$action": "spaceStore.upsertSignal", "args": [{ "$": "item.id" }, { "$": "sig.id" }, { "$": "arg" }] }
+                    "onSignal": { "$invoke": "spaceStore.upsertSignal", "args": [{ "$": "item.id" }, { "$": "sig.id" }, { "$": "arg" }] }
                   }
                 }
               ]
@@ -4535,7 +4536,7 @@ placeholder and the grid can never disagree about how many rows there are.
       "props": { "variant": "body", "textAlign": "center", "maxWidth": "var(--we-layout-xs)" },
       "children": ["You haven't joined this space yet."]
     },
-    { "type": "we-button", "props": { "variant": "solid", "onClick": { "$action": "…" } }, "children": ["Join"] }
+    { "type": "we-button", "props": { "variant": "solid", "onClick": { "$invoke": "…" } }, "children": ["Join"] }
   ]
 }
 ```
@@ -4580,7 +4581,7 @@ confirmModal({
   title: 'Remove this column?',
   body: 'The cards in it stay on the board, in the state they are in.',
   confirmLabel: 'Remove',
-  confirm: { $action: 'spaceStore.removeBoardColumn', args: [{ $: 'board.id' }, { $: 'column.id' }] },
+  confirm: { $invoke: 'spaceStore.removeBoardColumn', args: [{ $: 'board.id' }, { $: 'column.id' }] },
 })
 ```
 
@@ -4620,7 +4621,7 @@ formModal({
   children: [field({ name: 'draftTitle', label: 'What needs doing?', placeholder: 'Ship the docs' })],
   disabled: { $: '!local.draftTitle' },
   submitLabel: 'Add task',
-  submit: { $action: 'record.create', args: ['TaskBlock', { title: { $: 'local.draftTitle' } }] },
+  submit: { $invoke: 'record.create', args: ['TaskBlock', { title: { $: 'local.draftTitle' } }] },
 })
 ```
 
@@ -4651,7 +4652,7 @@ person can type into must ask before throwing that away.**
 ```ts
 const guard = discardGuard({
   dirty: { $: 'local.name || local.description' },
-  close: { $action: 'shellStore.setCreateSpaceOpen', args: [false] },
+  close: { $invoke: 'shellStore.setCreateSpaceOpen', args: [false] },
   title: 'Discard this space?',
   body: 'The name, description and images you have entered will be lost.',
 });
@@ -4706,7 +4707,7 @@ through `onReady`. So the sequence is: `onReady` stores that function in a **`fu
         "onSave": [
           { "$setLocal": "submitting", "value": true },
           {
-            "$action": "spaceStore.createPost",
+            "$invoke": "spaceStore.createPost",
             "args": [{ "$": "arg" }],
             "onSuccess": [{ "$setLocal": "composeOpen", "value": false }],
             "onFinally": [{ "$setLocal": "submitting", "value": false }]
@@ -5043,7 +5044,7 @@ photos overlapping at an angle, yes; three cards in a row, no.
         }
       ]
     },
-    { "type": "we-switch", "props": { "checked": true, "onChange": { "$action": "…" } } }
+    { "type": "we-switch", "props": { "checked": true, "onChange": { "$invoke": "…" } } }
   ]
 }
 ```
@@ -5149,7 +5150,7 @@ Route objects follow the same structure as schema nodes, with an additional "pat
 ### Tabs + Routing
 
 IMPORTANT: we-tabs only manages visual selection — clicking a tab does NOT navigate automatically.
-Each we-tab MUST have an onClick with { "$action": "routeStore.navigate" } to trigger route changes.
+Each we-tab MUST have an onClick with { "$invoke": "routeStore.navigate" } to trigger route changes.
 Bind we-tabs selectedKey to the matching route segment so the active tab stays in sync.
 (Alternatively, a single onChange on we-tabs can replace per-tab onClick — see onChange pattern below.)
 
@@ -5169,8 +5170,8 @@ Recommended pattern — header above tabs (routes on ROOT, $routes outlet nested
       "type": "we-tabs",
       "props": { "selectedKey": { "$": "routeStore.segments[0]" } },
       "children": [
-        { "type": "we-tab", "props": { "key": "posts", "label": "Posts", "onClick": { "$action": "routeStore.navigate", "args": ["/posts"] } } },
-        { "type": "we-tab", "props": { "key": "articles", "label": "Articles", "onClick": { "$action": "routeStore.navigate", "args": ["/articles"] } } }
+        { "type": "we-tab", "props": { "key": "posts", "label": "Posts", "onClick": { "$invoke": "routeStore.navigate", "args": ["/posts"] } } },
+        { "type": "we-tab", "props": { "key": "articles", "label": "Articles", "onClick": { "$invoke": "routeStore.navigate", "args": ["/articles"] } } }
       ]
     },
     { "type": "$routes" }
@@ -5207,7 +5208,7 @@ WRONG — two common mistakes that produce empty tabs (validator will catch both
 }
 
 Alternative: single onChange on we-tabs (fires with event.detail.value = selected key):
-{ "onChange": { "$action": "routeStore.navigate", "args": [{ "$": "`/${arg.detail.value}`" }] } }
+{ "onChange": { "$invoke": "routeStore.navigate", "args": [{ "$": "`/${arg.detail.value}`" }] } }
 This replaces all per-tab onClick handlers but requires an interpolation to build the path.
 
 Nested routing example:
@@ -5493,7 +5494,7 @@ otherwise shove a floating panel down the screen mid-read.
 - Use design tokens for spacing, color, radius, etc. (do not use raw CSS except in styles).
 - Use the styles prop for custom inline CSS (e.g., { "width": "100px" }).
 - Use hoverProps for hover state overrides, activeProps for pressed state, focusProps for keyboard-focus state. Supported on @we/primitives (we-text, we-button, etc.) and layout components (Column, Row). focusProps fires on `:focus-visible` (keyboard), not on mouse click. Do not add a focus ring by hand — `we-button` and `we-input` already have one, in the `focus` role, which a `tone` re-points and a theme's `focusRingWidth` thickens.
-- Use expressions ({ "$": "…" }) for anything computed and handler tokens ($action, $setLocal, …) for anything that happens on an event; a plain string is always text.
+- Use expressions ({ "$": "…" }) for anything computed and handler tokens ($invoke, $setLocal, …) for anything that happens on an event; a plain string is always text.
 - Nest components using children or slots as needed.
 - For routes, use the routes array with path and child nodes.
 - Do not invent new components or props — use only those listed in the component registry.
@@ -6111,7 +6112,7 @@ themselves. Read the library table in the schema reference before composing.
 is falsy, so `count(local.items)` alone is the condition. Keep the comparison where a prop wants a
 real boolean — `&&`/`||` already answer with one.
 
-**Handlers stay tokens.** `$action`, `$setLocal`, `$toggleLocal`, `$toggleLocalIn`, `$callLocal`,
+**Handlers stay tokens.** `$invoke`, `$setLocal`, `$toggleLocal`, `$toggleLocalIn`, `$callLocal`,
 `$touch`, `$resetLocal` are the statement layer — about seven verbs, enumerable on purpose because
 capability grants and `destructive` flags attach to verbs. Their *arguments* take expressions, and an
 expression naming `event`/`arg`/`result` at the top level of `args` or as a `$setLocal` `value`

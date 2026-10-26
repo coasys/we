@@ -126,14 +126,14 @@ export const coasysFirstRun: SchemaNode = {
                   title: 'Make my identity here',
                   detail: keepsLine,
                   busy: true,
-                  onClick: { $action: 'identityStore.makeIdentity' },
+                  onClick: { $invoke: 'identityStore.makeIdentity' },
                 }),
                 door({
                   icon: 'lightning',
                   title: 'Start now',
                   detail: 'Use Coasys on this computer alone. Make your identity later, to share spaces',
                   busy: true,
-                  onClick: { $action: 'identityStore.startWithoutIdentity' },
+                  onClick: { $invoke: 'identityStore.startWithoutIdentity' },
                 }),
                 door({
                   icon: 'envelope-simple',

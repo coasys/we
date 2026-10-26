@@ -59,11 +59,24 @@ function processArgValue(arg: unknown, callArgs: unknown[]): unknown {
   return arg;
 }
 
-// Resolves $action props: { $action: 'routeStore.navigate', args: ['/home'] }
-// An argument may be an expression about the callback: args: [{ $: 'arg.id' }]
-// Supports lifecycle callbacks: onSuccess, onError, onFinally — fired after async actions resolve.
-// Within lifecycle arrays, `result` is the action's return value (onSuccess) or error (onError).
-export function resolveActionProp(
+/**
+ * Resolves `$invoke` props: `{ $invoke: 'routeStore.navigate', args: ['/home'] }`.
+ *
+ * The method is called with exactly the `args` written, and with none when there are none. An
+ * argument may be an expression about the callback — `args: [{ $: 'event.detail' }]` — which is how a
+ * handler passes on what its element emitted.
+ *
+ * It used to be otherwise: an `$invoke` with no `args` was handed whatever the element emitted, and
+ * `args: []` was read as "none given" and forwarded too. So every action's signature was coupled,
+ * invisibly, to the event shape of every element that might call it, and a button wired the obvious
+ * way handed its click to any method with an optional first parameter. A call started with a mouse
+ * event as its parent record; settings opened on a mouse event instead of a tab. Nothing is passed
+ * that is not written, which is the expression language's own rule applied to handlers.
+ *
+ * Supports lifecycle callbacks: onSuccess, onError, onFinally — fired after async actions resolve.
+ * Within lifecycle arrays, `result` is the action's return value (onSuccess) or error (onError).
+ */
+export function resolveInvokeProp(
   value: unknown,
   context: Props,
   stores: Props,
@@ -71,21 +84,21 @@ export function resolveActionProp(
   resolvePropFn: typeof resolveProp,
 ): unknown {
   const token = value as {
-    $action: string;
+    $invoke: string;
     args?: unknown[];
     onSuccess?: unknown[];
     onError?: unknown[];
     onFinally?: unknown[];
   };
 
-  // Split the $action string into a path, taking the **last** segment as the method and everything
+  // Split the $invoke string into a path, taking the **last** segment as the method and everything
   // before it as the path to the object holding it.
   //
   // Two segments used to be assumed (`store.method`), which quietly broke any namespaced store —
   // `modules.notes.toggle` resolved `stores.modules.notes`, an object rather than a function, so the
   // handler was silently dropped and the button did nothing. `$store` has always walked arbitrary
   // depth, so this also removes an inconsistency between the two.
-  const segments = token.$action.split('.');
+  const segments = token.$invoke.split('.');
   const methodName = segments[segments.length - 1];
   const ownerPath = segments.slice(0, -1);
   const storeName = ownerPath[0];
@@ -153,14 +166,12 @@ export function resolveActionProp(
         }
       }
 
-      // Hand deferred expressions the callback argument they were waiting for.
+      // Hand deferred expressions the callback argument they were waiting for. Only what was written:
+      // the callback's own arguments reach the method through an expression or not at all.
       const finalArgs = processArgTokens(resolvedArgs, callArgs);
 
-      // Use finalArgs if any were defined in schema, otherwise use callArgs
-      const argsToUse = resolvedArgs.length > 0 ? finalArgs : callArgs;
-
       // Unwrap reactive accessors at all depths so store methods receive plain values
-      const unwrappedArgs = argsToUse.map(deepUnwrap);
+      const unwrappedArgs = finalArgs.map(deepUnwrap);
       const result = method.apply(store, unwrappedArgs);
 
       /*
@@ -182,7 +193,7 @@ export function resolveActionProp(
             if (token.onError) {
               runWithGesture(gesture, () => dispatchActions(token.onError!, { ...context, result: err }));
             } else {
-              console.error(`[$action] ${token.$action} failed:`, err);
+              console.error(`[$invoke] ${token.$invoke} failed:`, err);
             }
           })
           .finally(() => {
@@ -195,6 +206,6 @@ export function resolveActionProp(
   }
 
   // Warn on missing store or method for debuggability
-  if (!store) console.warn(`Schema $action: store "${ownerPath.join('.')}" not found`);
-  else if (!method) console.warn(`Schema $action: method "${methodName}" not found on store "${ownerPath.join('.')}"`);
+  if (!store) console.warn(`Schema $invoke: store "${ownerPath.join('.')}" not found`);
+  else if (!method) console.warn(`Schema $invoke: method "${methodName}" not found on store "${ownerPath.join('.')}"`);
 }

@@ -31,18 +31,18 @@ function onClickOf(node: unknown): Record<string, unknown> {
 
 describe('formModal closes when the submit succeeds', () => {
   it('puts the close on a plain action, after anything the caller asked for', () => {
-    const submit = { $action: 'store.save', args: [], onSuccess: [{ $action: 'store.ping' }] };
+    const submit = { $invoke: 'store.save', args: [], onSuccess: [{ $invoke: 'store.ping' }] };
     const onClick = onClickOf(formModal({ ...base, submit }));
 
-    expect(onClick.onSuccess).toEqual([close, { $action: 'store.ping' }]);
+    expect(onClick.onSuccess).toEqual([close, { $invoke: 'store.ping' }]);
   });
 
   it('puts it down BOTH branches when the submit chooses between actions', () => {
     const submit = {
       $if: {
         condition: { $: 'local.existing' },
-        then: { $action: 'store.move', args: [] },
-        else: { $action: 'store.create', args: [] },
+        then: { $invoke: 'store.move', args: [] },
+        else: { $invoke: 'store.create', args: [] },
       },
     };
     const onClick = onClickOf(formModal({ ...base, submit }));
@@ -57,12 +57,12 @@ describe('formModal closes when the submit succeeds', () => {
 
   it('leaves a branch that is a list of handlers as a list, with the close last', () => {
     const submit = {
-      $if: { condition: { $: 'local.x' }, then: [{ $touch: '$all' }, { $action: 'store.save' }] },
+      $if: { condition: { $: 'local.x' }, then: [{ $touch: '$all' }, { $invoke: 'store.save' }] },
     };
     const onClick = onClickOf(formModal({ ...base, submit }));
     const branches = onClick.$if as { then: unknown[]; else?: unknown };
 
-    expect(branches.then).toEqual([{ $touch: '$all' }, { $action: 'store.save', onSuccess: [close] }]);
+    expect(branches.then).toEqual([{ $touch: '$all' }, { $invoke: 'store.save', onSuccess: [close] }]);
     expect(branches.else).toBeUndefined(); // a branch the caller did not write is not invented
   });
 });

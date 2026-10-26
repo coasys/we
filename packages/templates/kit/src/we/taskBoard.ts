@@ -495,12 +495,12 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
                       answerButton({
                         tone: 'success',
                         label: 'Accept',
-                        onClick: { $action: 'modules.transcribe.acceptProposal', args: [{ $: `${as}.id` }] },
+                        onClick: { $invoke: 'modules.transcribe.acceptProposal', args: [{ $: `${as}.id` }] },
                       }),
                       answerButton({
                         tone: 'danger',
                         label: 'Reject — removes it',
-                        onClick: { $action: 'modules.transcribe.rejectProposal', args: [{ $: `${as}.id` }] },
+                        onClick: { $invoke: 'modules.transcribe.rejectProposal', args: [{ $: `${as}.id` }] },
                       }),
                     ],
                   },
@@ -643,7 +643,7 @@ function cardPeople(as: string, entity: string, edge?: string): SchemaNode {
       },
       // A toggle reports the state it had before the press; "Assign to me" carries none, which reads as on.
       onSelect: {
-        $action: 'spaceStore.setInvolvement',
+        $invoke: 'spaceStore.setInvolvement',
         args: [{ $: `${as}.id` }, { $: 'arg.id' }, { $: 'arg.kind' }, { $: '!arg.checked' }],
       },
     },
@@ -714,7 +714,7 @@ export function moveTaskMenu(from: string, as = 'card'): SchemaNode {
       size: 'xs',
       items: { $: `${VIEW}.choices.map(k, { id: k.id, label: \`Move to \${k.label}\` })` },
       onSelect: {
-        $action: 'spaceStore.moveCardToColumn',
+        $invoke: 'spaceStore.moveCardToColumn',
         args: [{ $: from }, { $: 'arg.id' }, { $: `${as}.id` }, [], { $: `${VIEW}.contents[arg.id].slug` }],
       },
     },
@@ -877,11 +877,11 @@ const addTaskModal: SchemaNode = formModal({
     $if: {
       condition: { $: 'local.addExisting' },
       then: {
-        $action: 'spaceStore.moveCardToColumn',
+        $invoke: 'spaceStore.moveCardToColumn',
         args: ['', { $: 'col.id' }, { $: 'local.addExisting' }, [], { $: `${CELL}.slug` }],
       },
       else: {
-        $action: 'spaceStore.addTaskToColumn',
+        $invoke: 'spaceStore.addTaskToColumn',
         args: [{ $: 'col.id' }, { $: 'local.addTitle' }, { $: ANCHOR }],
       },
     },
@@ -899,7 +899,7 @@ const renameModal: SchemaNode = formModal({
   disabled: { $: '!local.renameTitle' },
   submitLabel: 'Rename',
   submit: {
-    $action: 'spaceStore.renameBoardColumn',
+    $invoke: 'spaceStore.renameBoardColumn',
     args: [{ $: 'col.id' }, { $: 'local.renameTitle' }],
     onSuccess: [{ $setLocal: 'renameOpen', value: false }],
   },
@@ -1016,7 +1016,7 @@ function waitingLine(waiting: string, as: string): SchemaNode {
                 props: {
                   size: 'xs',
                   variant: 'solid',
-                  onClick: { $action: 'spaceStore.approveTaskMove', args: [{ $: `${as}.id` }] },
+                  onClick: { $invoke: 'spaceStore.approveTaskMove', args: [{ $: `${as}.id` }] },
                 },
                 children: ['Approve'],
               },
@@ -1031,7 +1031,7 @@ function waitingLine(waiting: string, as: string): SchemaNode {
                 props: {
                   size: 'xs',
                   variant: 'ghost',
-                  onClick: { $action: 'spaceStore.withdrawTaskMove', args: [{ $: `${as}.id` }] },
+                  onClick: { $invoke: 'spaceStore.withdrawTaskMove', args: [{ $: `${as}.id` }] },
                 },
                 children: ['Withdraw'],
               },
@@ -1094,7 +1094,7 @@ function columnCards(opts: TaskBoardOptions, cell: string, group: SchemaProp): S
         person's row — would otherwise send every card it is not showing to the bottom, for everybody.
       */
       onReorder: {
-        $action: 'spaceStore.arrangeColumn',
+        $invoke: 'spaceStore.arrangeColumn',
         args: [{ $: 'col.id' }, { $: 'arg.detail' }, { $: `${VIEW}.contents[col.id].order` }],
       },
       /*
@@ -1112,7 +1112,7 @@ function columnCards(opts: TaskBoardOptions, cell: string, group: SchemaProp): S
         reads the column for the write itself, so a stale hint costs a frame and never a wrong write.
       */
       onMoved: {
-        $action: 'spaceStore.moveCardToColumn',
+        $invoke: 'spaceStore.moveCardToColumn',
         args: [
           { $: 'arg.detail.from' },
           { $: 'arg.detail.to' },
@@ -1239,7 +1239,7 @@ function columnHeading(opts: TaskBoardOptions): SchemaNode {
                 // Removing takes the column record and nothing else: the cards keep their
                 // state, so they reappear in another column bound to it or in Unplaced.
                 else: {
-                  $action: 'spaceStore.removeBoardColumn',
+                  $invoke: 'spaceStore.removeBoardColumn',
                   args: [opts.boardId, { $: 'col.id' }],
                 },
               },
@@ -1362,7 +1362,7 @@ function unplacedColumn(opts: TaskBoardOptions): SchemaNode {
                   size: 'xs',
                   width: '100%',
                   onClick: {
-                    $action: 'spaceStore.addBoardColumn',
+                    $invoke: 'spaceStore.addBoardColumn',
                     args: [opts.boardId, { $: 'state.name' }, { $: 'state.slug' }],
                   },
                 },
@@ -1403,7 +1403,7 @@ function unplacedColumn(opts: TaskBoardOptions): SchemaNode {
                 bound column — writes its state.
               */
               onMoved: {
-                $action: 'spaceStore.moveCardToColumn',
+                $invoke: 'spaceStore.moveCardToColumn',
                 args: [
                   '',
                   { $: 'arg.detail.to' },
@@ -1524,7 +1524,7 @@ function personRows(opts: TaskBoardOptions): SchemaNode {
               group: 'board-columns',
               gap: 'var(--we-space-400)',
               ay: 'start',
-              onReorder: { $action: 'spaceStore.reorderBoardColumns', args: [opts.boardId, { $: 'arg.detail' }] },
+              onReorder: { $invoke: 'spaceStore.reorderBoardColumns', args: [opts.boardId, { $: 'arg.detail' }] },
             },
             children: [
               { type: '$each', props: { items: { $: `${VIEW}.columns` }, as: 'col' }, children: [columnHead(opts)] },
@@ -1715,7 +1715,7 @@ function addColumnModal(opts: TaskBoardOptions): SchemaNode {
     disabled: { $: '!local.columnName' },
     submitLabel: 'Add column',
     submit: {
-      $action: 'spaceStore.addBoardColumn',
+      $invoke: 'spaceStore.addBoardColumn',
       args: [opts.boardId, { $: 'local.columnName' }, { $: 'local.columnSlug' }],
       onSuccess: [{ $setLocal: 'addColumnOpen', value: false }],
     },
@@ -1928,7 +1928,7 @@ export function taskBoard(opts: TaskBoardOptions): SchemaNode {
                           gap: 'var(--we-space-400)',
                           ay: 'start',
                           onReorder: {
-                            $action: 'spaceStore.reorderBoardColumns',
+                            $invoke: 'spaceStore.reorderBoardColumns',
                             args: [opts.boardId, { $: 'arg.detail' }],
                           },
                         },

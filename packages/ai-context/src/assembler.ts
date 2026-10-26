@@ -105,7 +105,7 @@ function formatForeignElements(elements: ForeignElementEntry[]): string {
     'Custom elements from libraries this deployment bundles, allowed by its seed. Name them like any',
     'primitive. Two differences: they take NO design-system props (wrap one in a Column or Row for',
     "spacing and colour), and their events keep their library's names — listen with the exact name",
-    'after `on:`, e.g. { "on:sl-change": { "$action": "…", "args": [{ "$": "event.target.value" }] } }.',
+    'after `on:`, e.g. { "on:sl-change": { "$invoke": "…", "args": [{ "$": "event.target.value" }] } }.',
   ];
   const byPackage = new Map<string, ForeignElementEntry[]>();
   for (const element of elements) byPackage.set(element.package, [...(byPackage.get(element.package) ?? []), element]);
@@ -333,7 +333,7 @@ function formatModules(modules: ModuleCatalogEntry[]): string {
         for (const m of state) lines.push(`  - ${m.name} — ${m.doc}`);
       }
       if (actions.length) {
-        lines.push(`- Actions (\`{ "$action": "modules.${mod.id}.<name>" }\`):`);
+        lines.push(`- Actions (\`{ "$invoke": "modules.${mod.id}.<name>" }\`):`);
         for (const m of actions) lines.push(`  - ${m.name} — ${m.doc}`);
       }
     } else {

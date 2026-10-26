@@ -387,5 +387,5 @@ genuinely change its mind, not merely stretch.
 | Prop | Type | Description |
 |------|------|-------------|
 | styles | Record\\<string, string \\| number\\> | Inline CSS applied directly to the component's own element (raw CSS values allowed). For Column, Row, Grid — use this when you need CSS the DS props don't cover. Applied last, so it genuinely overrides a DS prop setting the same property. **Do not confuse with node-level styles** (see Schema Structure) which applies to a wrapper div, not the component. |
-| onClick | ActionToken | Event handler (see dynamic logic) |
+| onClick | InvokeToken | Event handler (see dynamic logic) |
 `;

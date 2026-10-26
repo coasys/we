@@ -128,7 +128,7 @@ that declares \`backends: ['ad4m']\` — nothing else. See \`docs/architecture/p
    code — a DX layer, not a runtime one.)
 
 2. **Schema semantics live in \`@we/schema-shared\`, parameterized by a reactivity port.** All token
-   resolution (\`{ $ }\` expressions, \`$action\`, \`$query\`, \`$setLocal\`, …) is in \`propResolvers/\`.
+   resolution (\`{ $ }\` expressions, \`$invoke\`, \`$query\`, \`$setLocal\`, …) is in \`propResolvers/\`.
    \`resolveProp(value, stores, context, memo)\` takes a framework-injected memoization function
    (\`memo\`), and \`markReactive()\` (see \`propResolvers/reactive.ts\`) tags accessors so a renderer
    knows a prop is reactive. The entire schema engine AND its reactivity wiring are framework-neutral;

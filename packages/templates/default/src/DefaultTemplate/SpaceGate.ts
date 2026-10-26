@@ -32,7 +32,7 @@ function joinControls(label: string): SchemaNode[] {
         variant: 'solid',
         loading: joiningThisSpace,
         disabled: joiningThisSpace,
-        onClick: { $action: 'spaceStore.joinSpace', args: [{ $: 'routeStore.segments[1]' }] },
+        onClick: { $invoke: 'spaceStore.joinSpace', args: [{ $: 'routeStore.segments[1]' }] },
       },
     },
     {

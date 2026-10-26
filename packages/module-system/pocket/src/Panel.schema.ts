@@ -92,7 +92,7 @@ const forgetButton = (extra: Record<string, unknown> = {}): SchemaNode => ({
         variant: 'ghost',
         size: 'sm',
         square: true,
-        onClick: { $action: 'modules.pocket.forget', args: [{ $: 'item.id' }] },
+        onClick: { $invoke: 'modules.pocket.forget', args: [{ $: 'item.id' }] },
         ...extra,
       },
       children: [{ type: 'we-icon', props: { name: 'x' } }],
@@ -115,7 +115,7 @@ const openable = { $: "item.datasetKey != 'agent'" };
   the block's own dataset and a template can join strings.
 */
 const openAction = {
-  $action: 'modules.pocket.goTo',
+  $invoke: 'modules.pocket.goTo',
   args: [{ $: "item.withinId ? 'we:' + item.datasetKey + '/' + item.withinEntity + '/' + item.withinId : item.ref" }],
 };
 
@@ -203,7 +203,7 @@ const folderRow: SchemaNode = {
   props: {
     width: '100%',
     noArm: true,
-    onDropped: { $action: 'modules.pocket.gatherInto', args: [{ $: 'folder.id' }, { $: 'event.detail' }] },
+    onDropped: { $invoke: 'modules.pocket.gatherInto', args: [{ $: 'folder.id' }, { $: 'event.detail' }] },
   },
   children: [
     {
@@ -240,7 +240,7 @@ const folderRow: SchemaNode = {
                 size: 'sm',
                 disabled: { $: '!trim(local.renameFolderName)' },
                 onClick: {
-                  $action: 'modules.pocket.renameFolder',
+                  $invoke: 'modules.pocket.renameFolder',
                   args: [{ $: 'folder.id' }, { $: 'local.renameFolderName' }],
                   onFinally: [{ $setLocal: 'renamingFolderId', value: '' }],
                 },
@@ -272,7 +272,7 @@ const folderRow: SchemaNode = {
                 minWidth: '0',
                 ax: 'start',
                 gap: '300',
-                onClick: { $action: 'modules.pocket.enter', args: [{ $: 'folder.id' }, { $: 'folder.name' }] },
+                onClick: { $invoke: 'modules.pocket.enter', args: [{ $: 'folder.id' }, { $: 'folder.name' }] },
               },
               children: [
                 { type: 'we-icon', props: { name: { $: "folder.icon ? folder.icon : 'folder'" } } },
@@ -370,7 +370,7 @@ const deleteFolderConfirm: SchemaNode = {
                     tone: 'danger',
                     loading: { $: 'modules.pocket.busy' },
                     onClick: {
-                      $action: 'modules.pocket.deleteFolder',
+                      $invoke: 'modules.pocket.deleteFolder',
                       args: [{ $: 'local.confirmDeleteFolderId' }],
                       onFinally: [{ $setLocal: 'confirmDeleteFolderId', value: '' }],
                     },
@@ -447,14 +447,14 @@ const folderTile: SchemaNode = {
   type: 'we-drop-zone',
   props: {
     noArm: true,
-    onDropped: { $action: 'modules.pocket.gatherInto', args: [{ $: 'folder.id' }, { $: 'event.detail' }] },
+    onDropped: { $invoke: 'modules.pocket.gatherInto', args: [{ $: 'folder.id' }, { $: 'event.detail' }] },
   },
   children: [
     {
       type: 'we-button',
       props: {
         variant: 'bare',
-        onClick: { $action: 'modules.pocket.enter', args: [{ $: 'folder.id' }, { $: 'folder.name' }] },
+        onClick: { $invoke: 'modules.pocket.enter', args: [{ $: 'folder.id' }, { $: 'folder.name' }] },
       },
       children: [
         recordCard({
@@ -614,7 +614,7 @@ const breadcrumb: SchemaNode = {
               props: {
                 noArm: true,
                 onDropped: {
-                  $action: 'modules.pocket.gatherInto',
+                  $invoke: 'modules.pocket.gatherInto',
                   args: [{ $: 'crumb.id' }, { $: 'event.detail' }],
                 },
               },
@@ -627,7 +627,7 @@ const breadcrumb: SchemaNode = {
                     gap: '100',
                     // `goToCrumb` refuses the last position, so pressing where you already are does
                     // nothing rather than reloading the folder you are looking at.
-                    onClick: { $action: 'modules.pocket.goToCrumb', args: [{ $: 'index' }] },
+                    onClick: { $invoke: 'modules.pocket.goToCrumb', args: [{ $: 'index' }] },
                   },
                   children: [
                     {
@@ -732,7 +732,7 @@ const header: SchemaNode = {
                 variant: 'ghost',
                 size: 'sm',
                 square: true,
-                onClick: { $action: 'modules.pocket.up' },
+                onClick: { $invoke: 'modules.pocket.up' },
               },
               children: [{ type: 'we-icon', props: { name: 'arrow-left' } }],
             },
@@ -776,7 +776,7 @@ const newFolderForm: SchemaNode = {
             disabled: { $: '!trim(local.newFolderName)' },
             onClick: [
               {
-                $action: 'record.create',
+                $invoke: 'record.create',
                 args: [
                   'PocketFolder',
                   { name: { $: 'local.newFolderName' } },
@@ -847,7 +847,7 @@ const panel: SchemaNode = {
           `origin` above for what makes it possible.
         */
         noSelf: true,
-        onDropped: { $action: 'modules.pocket.gather', args: [{ $: 'event.detail' }] },
+        onDropped: { $invoke: 'modules.pocket.gather', args: [{ $: 'event.detail' }] },
       },
       children: [
         {
@@ -905,7 +905,7 @@ const panel: SchemaNode = {
 /** A drop-in trigger a template can place wherever it likes. */
 const toggleButton: SchemaNode = {
   type: 'we-button',
-  props: { variant: 'ghost', size: 'sm', onClick: { $action: 'modules.pocket.toggle' } },
+  props: { variant: 'ghost', size: 'sm', onClick: { $invoke: 'modules.pocket.toggle' } },
   children: [{ type: 'we-icon', props: { name: 'bag-simple' } }],
 };
 

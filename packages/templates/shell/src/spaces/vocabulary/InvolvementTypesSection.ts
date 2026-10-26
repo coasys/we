@@ -129,7 +129,7 @@ const createModal: SchemaNode = formModal({
   discardWhen: { $: 'local.kindName' },
   submitLabel: 'Add kind',
   submit: {
-    $action: 'spaceStore.createInvolvementType',
+    $invoke: 'spaceStore.createInvolvementType',
     args: [
       {
         name: { $: 'local.kindName' },
@@ -190,7 +190,7 @@ const editModal: SchemaNode = formModal({
   },
   submitLabel: 'Save',
   submit: {
-    $action: 'spaceStore.updateInvolvementType',
+    $invoke: 'spaceStore.updateInvolvementType',
     args: [
       { $: 'local.editInvolvementTypeSlug' },
       {
@@ -287,7 +287,7 @@ const kindRow: SchemaNode = {
             size: 'xs',
             variant: 'ghost',
             onClick: {
-              $action: 'spaceStore.setInvolvementTypeRetired',
+              $invoke: 'spaceStore.setInvolvementTypeRetired',
               args: [{ $: 'kind.slug' }, { $: '!kind.retired' }],
             },
           },

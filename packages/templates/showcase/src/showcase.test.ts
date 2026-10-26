@@ -375,7 +375,7 @@ describe('the workshop template’s call selection', () => {
       it was handed a PointerEvent and the backend refused the write. `''` is how `startCall`
       already spells "no anchor".
     */
-    expect(calls).toContain('{"$action":"modules.call.startCall","args":[""]}');
+    expect(calls).toContain('{"$invoke":"modules.call.startCall","args":[""]}');
     // And it says which of the three it is about to do. The middle one had no words of its own.
     expect(calls).toContain("'Join the call'");
   });
@@ -435,7 +435,7 @@ describe('the workshop template’s call selection', () => {
     const calls = JSON.stringify(workshop.meta?.panels?.find((panel) => panel.id === 'calls'));
 
     // The header's singular default: the first of them, which is all a single button can mean.
-    expect(calls).toContain('{"$action":"modules.call.joinCall","args":[{"$":"first(modules.call.liveCalls).id"}]}');
+    expect(calls).toContain('{"$invoke":"modules.call.joinCall","args":[{"$":"first(modules.call.liveCalls).id"}]}');
     // And the row's, which names the call beside it — see the next test for why the rows exist.
     expect(calls).toContain('find(modules.call.liveCalls, { recordId: call.id }).id');
   });
@@ -634,7 +634,7 @@ describe('the workshop template’s call selection', () => {
     expect(json).toContain(
       `"hidden":{"$":"(routeStore.params.suggestions == 'hide') ? modules.transcribe.unconfirmedIds : []"}`,
     );
-    expect(json).toContain('"$action":"modules.transcribe.applyChange"');
+    expect(json).toContain('"$invoke":"modules.transcribe.applyChange"');
     // Said in the key, which carries every reason a card is off the canvas, and nowhere else: a chip
     // over the corner spoke for one of the three and stood beside the panel already saying it.
     expect(json).not.toContain('Pending acceptance hidden');
@@ -647,7 +647,7 @@ describe('the workshop template’s call selection', () => {
     */
     expect(json).toContain(`{ type: 'manual', options: { size: { width: 180, height: 135 }`);
     expect(json).toContain(
-      `"$action":"recordStore.placeOnCanvas","args":[{"$":"${SPACE_CANVAS_EXPR}"},{"$":"event.recordId"},{"$":"event.recordType"},{"$":"event.x"},{"$":"event.y"}]`,
+      `"$invoke":"recordStore.placeOnCanvas","args":[{"$":"${SPACE_CANVAS_EXPR}"},{"$":"event.recordId"},{"$":"event.recordType"},{"$":"event.x"},{"$":"event.y"}]`,
     );
     // The calendar reads its events through the same filter the board does.
     expect(json).toContain(
@@ -726,8 +726,8 @@ describe('the workshop template’s call selection', () => {
       arrangement is the work and a modal per line is a mode change in the middle of a spatial
       gesture, on the one surface where every other gesture writes silently.
     */
-    expect(json).toContain('"$action":"recordStore.connectNodesNow"');
-    expect(json).not.toContain('"$action":"recordStore.connectNodes"');
+    expect(json).toContain('"$invoke":"recordStore.connectNodesNow"');
+    expect(json).not.toContain('"$invoke":"recordStore.connectNodes"');
     /*
       With the new line selected, which is the half that makes it discoverable.
 
@@ -769,7 +769,7 @@ describe('the workshop template’s call selection', () => {
       same key differently: see the test below.
     */
     expect(json).toContain('"condition":{"$":"event.kind == \'edge\' && event.recordId"}');
-    expect(json).toContain('"$action":"record.delete"');
+    expect(json).toContain('"$invoke":"record.delete"');
 
     // And the panel's own, which takes the id from the address rather than from a node payload —
     // the inspector is a panel, so the selection reaches it as parameters and nothing else.
@@ -784,7 +784,7 @@ describe('the workshop template’s call selection', () => {
     */
     const json = JSON.stringify(workshop);
 
-    expect(json).toContain('"$action":"recordStore.deleteRecords"');
+    expect(json).toContain('"$invoke":"recordStore.deleteRecords"');
     expect(json).toContain('"condition":{"$":"count(event.records)"}');
     expect(json).toContain('"id":"delete"');
   });
@@ -826,8 +826,8 @@ describe('the workshop template’s call selection', () => {
 
     // Undo takes the canvas as an argument, which is the whole of the scoping: there is no separate
     // "point the stack here" call for this template to have forgotten.
-    expect(json).toContain('"$action":"recordStore.undoCanvas"');
-    expect(json).toContain('"$action":"recordStore.redoCanvas"');
+    expect(json).toContain('"$invoke":"recordStore.undoCanvas"');
+    expect(json).toContain('"$invoke":"recordStore.redoCanvas"');
   });
 
   it('puts undo where it can be reached without the canvas having focus', () => {
@@ -1281,8 +1281,8 @@ describe('the workshop’s key', () => {
     expect(key).toContain('recordStore.setSpaceTypeColor');
     expect(key).toContain('spaceStore.currentSpace.id');
     expect(key).not.toContain('recordStore.setTypeColor');
-    expect(key).toContain('"$action":"spaceStore.updateTaskState"');
-    expect(key).toContain('"$action":"shellStore.openSpaceSettings","args":["vocabulary"]');
+    expect(key).toContain('"$invoke":"spaceStore.updateTaskState"');
+    expect(key).toContain('"$invoke":"shellStore.openSpaceSettings","args":["vocabulary"]');
     expect(key).toContain('spaceStore.offeredTaskStates');
     // A state is addressed by slug, which is what lets one of the three virtual defaults be coloured
     // at all: writing to it is the act that adopts it.
@@ -1492,9 +1492,9 @@ describe('the workshop’s key', () => {
     expect(canvas).toContain('"id":"cardShape","control":"shape"');
     expect(canvas).toContain('"id":"contentScale","control":"scale"');
     expect(canvas).toContain(
-      `"$action":"recordStore.setCardStyle","args":[{"$":"${SPACE_CANVAS_EXPR}"},{"$":"event.recordId"},{"$":"event.action"},{"$":"event.value"}]`,
+      `"$invoke":"recordStore.setCardStyle","args":[{"$":"${SPACE_CANVAS_EXPR}"},{"$":"event.recordId"},{"$":"event.action"},{"$":"event.value"}]`,
     );
-    expect(canvas).toContain('"$action":"recordStore.previewCardStyle"');
+    expect(canvas).toContain('"$invoke":"recordStore.previewCardStyle"');
     // Not on a suggestion, which offers the decision and nothing else.
     expect(canvas).toContain('"value":{"from":"data.canvasColor"},"when":{"data.pending":{"exists":false}}');
     // Picking a colour turns the lenses off, so the pick is visible.
@@ -1539,7 +1539,7 @@ describe('the workshop’s canvas', () => {
     // No model picker in the form: the kind was just chosen.
     expect(canvas).not.toContain('"label":"Entity"');
     // A pin rather than two number boxes, for anything with a latitude and a longitude.
-    expect(canvas).toContain('"$action":"recordStore.setRecordPlace"');
+    expect(canvas).toContain('"$invoke":"recordStore.setRecordPlace"');
     expect(canvas.split('{"$setLocal":"chooserOpen","value":true}').length - 1).toBeGreaterThanOrEqual(3);
     expect(canvas).toContain(
       `"condition":{"$":"kind.via == 'composer'"},"then":{"$setLocal":"newNoteOpen","value":true}`,
@@ -1547,24 +1547,24 @@ describe('the workshop’s canvas', () => {
     // A collection is called a note here; its description says it is a document of blocks.
     expect(canvas).toContain("(kind.via == 'composer' ? 'Note' : kind.label)");
     expect(canvas).toContain(
-      `"$action":"recordStore.createOnCanvas","args":[{"$":"${SPACE_CANVAS_EXPR}"},{"$":"local.newAt.x"},{"$":"local.newAt.y"}]`,
+      `"$invoke":"recordStore.createOnCanvas","args":[{"$":"${SPACE_CANVAS_EXPR}"},{"$":"local.newAt.x"},{"$":"local.newAt.y"}]`,
     );
-    expect(canvas).toContain('"$action":"recordStore.setRecordEntity","args":[{"$":"kind.value"}]');
-    expect(canvas).toContain('"$action":"recordStore.createCardOnCanvas"');
+    expect(canvas).toContain('"$invoke":"recordStore.setRecordEntity","args":[{"$":"kind.value"}]');
+    expect(canvas).toContain('"$invoke":"recordStore.createCardOnCanvas"');
     expect(canvas).toContain('"at":{"$":"local.newAt"}');
   });
 
   it('opens a note in the composer on a double-click, and only a note', () => {
     expect(canvas).toContain("'node-double-click'");
     expect(canvas).toContain(`"onNodeDoubleClick":{"$if":{"condition":{"$":"event.recordType == 'CollectionBlock'"}`);
-    expect(canvas).toContain('"$action":"spaceStore.updatePost","args":[{"$":"note.id"},{"$":"arg"}]');
+    expect(canvas).toContain('"$invoke":"spaceStore.updatePost","args":[{"$":"note.id"},{"$":"arg"}]');
     expect(canvas).toContain("local.inspectingType == 'CollectionBlock'");
   });
 
   it('takes a drop from the Pocket, through the store’s own refusals', () => {
     // The graph hands the template a world point; the store refuses another space's record.
     expect(canvas).toContain(
-      `"onDrop":{"$action":"recordStore.dropOnCanvas","args":[{"$":"${SPACE_CANVAS_EXPR}"},{"$":"event"}]}`,
+      `"onDrop":{"$invoke":"recordStore.dropOnCanvas","args":[{"$":"${SPACE_CANVAS_EXPR}"},{"$":"event"}]}`,
     );
   });
 
@@ -1584,7 +1584,7 @@ describe('the workshop’s canvas', () => {
 
     expect(inspector).toContain('"$toggleLocal":"editing"');
     expect(inspector).toContain(
-      '"$action":"recordStore.updateRecordField","args":[{"$":"routeStore.params.cardType"},{"$":"routeStore.params.card"},{"$":"field.name"},{"$":"event.detail"}]',
+      '"$invoke":"recordStore.updateRecordField","args":[{"$":"routeStore.params.cardType"},{"$":"routeStore.params.card"},{"$":"field.name"},{"$":"event.detail"}]',
     );
     expect(inspector).not.toContain('saveRecord');
     /*
@@ -1684,14 +1684,14 @@ describe('the workshop’s people', () => {
 
   it('puts who is on each card on the kanban, with a filter', () => {
     const kanban = route('/kanban');
-    expect(kanban).toContain('"$action":"spaceStore.setInvolvement"');
+    expect(kanban).toContain('"$invoke":"spaceStore.setInvolvement"');
     expect(kanban).toContain('"syncParam":"who"');
     expect(kanban).toContain('Group by person');
     // Where a card came from is a mark and a hovercard line, never the author's name on its face.
     // Each card says where it came from itself, whichever call that was — the board is the space's.
     expect(kanban).toContain('card.extractedFrom');
     // Pressing a card opens it in the inspector through the same parameters the canvas writes.
-    expect(kanban).toContain('"$action":"routeStore.setParam","args":["card",{"$":"card.id"}]');
+    expect(kanban).toContain('"$invoke":"routeStore.setParam","args":["card",{"$":"card.id"}]');
     expect(kanban).toContain('Extracted from the conversation');
   });
 
@@ -1706,13 +1706,13 @@ describe('the workshop’s people', () => {
     expect(route('/kanban')).toContain('{"$setLocal":"pressedCard","value":true}');
     // The page lets go — both parameters, so no type is left behind to be read without its card.
     expect(onClick).toContain('local.pressedCard');
-    expect(onClick).toContain('{"$action":"routeStore.setParam","args":["card",null]}');
-    expect(onClick).toContain('{"$action":"routeStore.setParam","args":["cardType",null]}');
+    expect(onClick).toContain('{"$invoke":"routeStore.setParam","args":["card",null]}');
+    expect(onClick).toContain('{"$invoke":"routeStore.setParam","args":["cardType",null]}');
   });
 
   it('lets a member answer an event, reading answers rather than the call’s roster', () => {
     const calendar = route('/calendar');
-    expect(calendar).toContain('"$action":"spaceStore.respondTo"');
+    expect(calendar).toContain('"$invoke":"spaceStore.respondTo"');
     expect(calendar).toContain('.committed');
     expect(calendar).not.toContain('event.participants');
     expect(calendar).not.toContain('setAttending');
@@ -1888,8 +1888,8 @@ describe('the inspector’s connections', () => {
   it('opens a row by writing the address the canvas follows', () => {
     // The panel cannot reach the canvas's locals; the address is the one thing both can see, and the
     // canvas binds `focus` to it — so a row opened here is selected and brought into view there.
-    expect(json).toContain('{"$action":"routeStore.setParam","args":["card",{"$":"conn.otherId"}]}');
-    expect(json).toContain('{"$action":"routeStore.setParam","args":["cardType","Relationship"]}');
+    expect(json).toContain('{"$invoke":"routeStore.setParam","args":["card",{"$":"conn.otherId"}]}');
+    expect(json).toContain('{"$invoke":"routeStore.setParam","args":["cardType","Relationship"]}');
     expect(JSON.stringify(workshop)).toContain('"focus":{"$":"routeStore.params.card"}');
   });
 });
@@ -1900,9 +1900,9 @@ describe('the workshop inspector’s people', () => {
 
   it('names everyone on the selected record by part, with the card’s own picker', () => {
     expect(inspector).toContain('involvementMenu({ node: row.id');
-    expect(inspector).toContain('"$action":"spaceStore.setInvolvement"');
+    expect(inspector).toContain('"$invoke":"spaceStore.setInvolvement"');
     // Your own answer is withdrawn, never somebody else's.
-    expect(inspector).toContain('"$action":"spaceStore.respondTo","args":[{"$":"row.id"},""]');
+    expect(inspector).toContain('"$invoke":"spaceStore.respondTo","args":[{"$":"row.id"},""]');
     expect(inspector).toContain('!holder.reflexive || holder.did == me.did');
   });
 
@@ -2102,7 +2102,7 @@ describe('folding a card on the canvas', () => {
       values out of the payload would silently drop every carried card and unfolding in a corner
       would scatter them back.
     */
-    expect(canvas).toContain('"onNodeDragEnd":{"$action":"recordStore.dragOnCanvas"');
+    expect(canvas).toContain('"onNodeDragEnd":{"$invoke":"recordStore.dragOnCanvas"');
     expect(canvas).toContain('{"$":"event"}]');
   });
 });
@@ -2231,9 +2231,9 @@ describe('the workshop’s tree', () => {
       guesses. `arrangeOnTree` carries the spine, and has to: what makes a parent a parent is this
       community's vocabulary and this reader's choice, neither of which a store can know.
     */
-    expect(canvas).toContain('"onNodeArrange":{"$action":"recordStore.arrangeOnTree"');
+    expect(canvas).toContain('"onNodeArrange":{"$invoke":"recordStore.arrangeOnTree"');
     expect(canvas).toContain('{"$":"local.spine"}');
-    expect(canvas).toContain('"onNodeDragEnd":{"$action":"recordStore.dragOnCanvas"');
+    expect(canvas).toContain('"onNodeDragEnd":{"$invoke":"recordStore.dragOnCanvas"');
   });
 
   it('swaps the gesture rather than listing both', () => {

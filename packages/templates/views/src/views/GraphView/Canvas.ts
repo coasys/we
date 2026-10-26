@@ -183,8 +183,8 @@ const canvasCards: SchemaNode = {
       Scoped to the canvas the picker has open: replaying a move onto a canvas the reader has
       navigated away from is the most confusing thing the key could do.
     */
-    onUndo: { $action: 'recordStore.undoCanvas', args: [CANVAS] },
-    onRedo: { $action: 'recordStore.redoCanvas', args: [CANVAS] },
+    onUndo: { $invoke: 'recordStore.undoCanvas', args: [CANVAS] },
+    onRedo: { $invoke: 'recordStore.redoCanvas', args: [CANVAS] },
     /*
       What a selection of several offers.
 
@@ -211,7 +211,7 @@ const canvasCards: SchemaNode = {
       {
         $if: {
           condition: { $: "event.action == 'delete'" },
-          then: { $action: 'recordStore.deleteRecords', args: [{ $: 'event.records' }] },
+          then: { $invoke: 'recordStore.deleteRecords', args: [{ $: 'event.records' }] },
         },
       },
       /*
@@ -225,7 +225,7 @@ const canvasCards: SchemaNode = {
         $if: {
           condition: { $: "event.action == 'color' && event.preview" },
           then: {
-            $action: 'recordStore.previewCardStyle',
+            $invoke: 'recordStore.previewCardStyle',
             args: [{ $: 'event.records.map(r, r.recordId)' }, 'color', { $: 'event.value' }],
           },
         },
@@ -234,7 +234,7 @@ const canvasCards: SchemaNode = {
         $if: {
           condition: { $: "event.action == 'color' && !event.preview" },
           then: {
-            $action: 'recordStore.setCardStyle',
+            $invoke: 'recordStore.setCardStyle',
             args: [CANVAS, { $: 'event.records.map(r, r.recordId)' }, 'color', { $: 'event.value' }],
           },
         },
@@ -254,7 +254,7 @@ const canvasCards: SchemaNode = {
     onDeleteSelection: {
       $if: {
         condition: { $: 'count(event.records)' },
-        then: { $action: 'recordStore.deleteRecords', args: [{ $: 'event.records' }] },
+        then: { $invoke: 'recordStore.deleteRecords', args: [{ $: 'event.records' }] },
       },
     },
     onNodeClick: selectNode,
@@ -270,7 +270,7 @@ const canvasCards: SchemaNode = {
     onEdgeClick: { $setLocal: 'selectedEdge', value: { $: 'event' } },
     // The same store call the knowledge map makes: connecting two things means the same thing
     // wherever you drew the line, and both end up in the same form.
-    onEdgeCreate: { $action: 'recordStore.connectNodes', args: [{ $: 'event' }] },
+    onEdgeCreate: { $invoke: 'recordStore.connectNodes', args: [{ $: 'event' }] },
     /*
       Double-click empty canvas to make something there.
 
@@ -295,7 +295,7 @@ const canvasCards: SchemaNode = {
       could take that apart.
     */
     onNodeDragEnd: {
-      $action: 'recordStore.placeOnCanvas',
+      $invoke: 'recordStore.placeOnCanvas',
       args: [CANVAS, { $: 'event.recordId' }, { $: 'event.recordType' }, { $: 'event.x' }, { $: 'event.y' }],
     },
     /*
@@ -305,7 +305,7 @@ const canvasCards: SchemaNode = {
       fact about the pair. Shrinking a post to fit six of them on a wall is not editing the post, and
       the same post on somebody else's canvas must not change size because of it.
     */
-    onNodeResize: { $action: 'recordStore.resizeOnCanvas', args: [CANVAS, { $: 'event' }] },
+    onNodeResize: { $invoke: 'recordStore.resizeOnCanvas', args: [CANVAS, { $: 'event' }] },
     /*
       Which side a connection attaches to, written back — and binding this is what puts the grips on
       the ends of a hovered line.
@@ -315,7 +315,7 @@ const canvasCards: SchemaNode = {
       claim shown on another canvas is tidied there on its own terms, and the claim itself never
       learns it was ever bent around anything.
     */
-    onEdgeAnchor: { $action: 'recordStore.anchorOnCanvas', args: [CANVAS, { $: 'event' }] },
+    onEdgeAnchor: { $invoke: 'recordStore.anchorOnCanvas', args: [CANVAS, { $: 'event' }] },
     /*
       The shape of a line, written back — and binding this is what puts the grips on a selected one.
 
@@ -324,7 +324,7 @@ const canvasCards: SchemaNode = {
       a bend survive somebody tidying the canvas: move either card and the shape follows them, where
       absolute points would leave the line doglegging through empty space.
     */
-    onEdgeReroute: { $action: 'recordStore.rerouteOnCanvas', args: [CANVAS, { $: 'event' }] },
+    onEdgeReroute: { $invoke: 'recordStore.rerouteOnCanvas', args: [CANVAS, { $: 'event' }] },
     /*
       And the same handle dropped on a *different* card, which re-attaches the connection.
 
@@ -333,7 +333,7 @@ const canvasCards: SchemaNode = {
       relationship is shown. That end's anchor is cleared with it, a side pinned against the card
       that used to be there deciding nothing about the one that arrived.
     */
-    onEdgeRetarget: { $action: 'recordStore.retargetOnCanvas', args: [CANVAS, { $: 'event' }] },
+    onEdgeRetarget: { $invoke: 'recordStore.retargetOnCanvas', args: [CANVAS, { $: 'event' }] },
   },
 };
 
@@ -439,7 +439,7 @@ export const canvasBar: SchemaNode = {
                     square: true,
                     label: 'Undo',
                     disabled: { $: '!recordStore.canvasHistory.canUndo' },
-                    onClick: { $action: 'recordStore.undoCanvas', args: [CANVAS] },
+                    onClick: { $invoke: 'recordStore.undoCanvas', args: [CANVAS] },
                   },
                   children: [{ type: 'we-icon', props: { name: 'arrow-counter-clockwise' } }],
                 },
@@ -461,7 +461,7 @@ export const canvasBar: SchemaNode = {
                     square: true,
                     label: 'Redo',
                     disabled: { $: '!recordStore.canvasHistory.canRedo' },
-                    onClick: { $action: 'recordStore.redoCanvas', args: [CANVAS] },
+                    onClick: { $invoke: 'recordStore.redoCanvas', args: [CANVAS] },
                   },
                   children: [{ type: 'we-icon', props: { name: 'arrow-clockwise' } }],
                 },
@@ -506,7 +506,7 @@ export const canvasBar: SchemaNode = {
                   props: {
                     size: 'sm',
                     variant: 'ghost',
-                    onClick: { $action: 'recordStore.createOnCanvas', args: [CANVAS] },
+                    onClick: { $invoke: 'recordStore.createOnCanvas', args: [CANVAS] },
                   },
                   children: [{ type: 'we-icon', props: { name: 'cube' } }, 'Record'],
                 },
@@ -532,7 +532,7 @@ const newCanvasModal: SchemaNode = formModal({
   disabled: { $: '!local.canvasName' },
   submitLabel: 'Create',
   submit: {
-    $action: 'record.create',
+    $invoke: 'record.create',
     args: ['CollectionBlock', { kind: 'canvas', title: { $: 'local.canvasName' } }],
     // Straight into the new canvas: making one and then having to find it in a picker is a step
     // nobody wanted.
@@ -568,7 +568,7 @@ const newCardModal: SchemaNode = composerModal({
     "nobody said where" and the place it is recoverable from.
   */
   saveAction: {
-    $action: 'recordStore.createCardOnCanvas',
+    $invoke: 'recordStore.createCardOnCanvas',
     // `'$arg'` first: the serialized tree, then where it goes.
     args: [{ $: 'arg' }, { canvas: CANVAS, at: { $: 'local.newCardAt' } }],
   },

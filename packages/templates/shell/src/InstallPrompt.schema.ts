@@ -34,7 +34,7 @@ export const installPrompt: SchemaNode = confirmModal({
   open: { $: 'templateStore.pendingInstall' },
   // Dismissing is declining, which is the safe direction: nothing has been written yet, and the
   // button is still there.
-  close: { $action: 'templateStore.cancelInstall' },
+  close: { $invoke: 'templateStore.cancelInstall' },
   title: { $: '`Install ${templateStore.pendingInstall.name}?`' },
   // Not `danger`: installing a template is an ordinary thing to want to do, and a red dialog on
   // every install teaches people to click through the one that mattered.
@@ -112,6 +112,6 @@ export const installPrompt: SchemaNode = confirmModal({
     },
   ],
   confirmLabel: 'Install',
-  confirm: { $action: 'templateStore.confirmInstall' },
+  confirm: { $invoke: 'templateStore.confirmInstall' },
   cancelLabel: 'Cancel',
 });

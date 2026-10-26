@@ -110,7 +110,7 @@ const removeMemberButton: SchemaNode = {
     // Square, like every icon-only button: the default's horizontal padding is sized for a word
     // beside the icon, which leaves a lozenge around a single glyph.
     square: true,
-    onClick: { $action: 'shapeStore.removeMember', args: [{ $: 'member.rowId' }] },
+    onClick: { $invoke: 'shapeStore.removeMember', args: [{ $: 'member.rowId' }] },
   },
   children: [{ type: 'we-icon', props: { name: 'trash' } }],
 };
@@ -129,10 +129,10 @@ const memberNameInput: SchemaNode = {
     width: '160px',
     size: 'sm',
     value: { $: 'member.name' },
-    onInput: { $action: 'shapeStore.setMemberField', args: [{ $: 'member.rowId' }, 'name', { $: 'arg.detail' }] },
+    onInput: { $invoke: 'shapeStore.setMemberField', args: [{ $: 'member.rowId' }, 'name', { $: 'arg.detail' }] },
     // Typed member fields mutate in place (the focus concession), so reactive readers — the
     // generate button's guard among them — only learn a row was touched when the edit is published.
-    onBlur: { $action: 'shapeStore.commitDraft' },
+    onBlur: { $invoke: 'shapeStore.commitDraft' },
   },
 };
 
@@ -148,7 +148,7 @@ const expandToggle: SchemaNode = {
         variant: 'ghost',
         size: 'sm',
         square: true,
-        onClick: { $action: 'shapeStore.toggleMemberExpanded', args: [{ $: 'member.rowId' }] },
+        onClick: { $invoke: 'shapeStore.toggleMemberExpanded', args: [{ $: 'member.rowId' }] },
       },
       children: [
         {
@@ -187,7 +187,7 @@ const defaultValueControl: SchemaNode = {
         placeholder: 'None',
         value: { $: 'member.defaultValue' },
         onChange: {
-          $action: 'shapeStore.setMemberField',
+          $invoke: 'shapeStore.setMemberField',
           args: [{ $: 'member.rowId' }, 'defaultValue', { $: 'arg.detail' }],
         },
       },
@@ -208,7 +208,7 @@ const defaultValueControl: SchemaNode = {
             showTime: true,
             value: { $: 'member.defaultValue' },
             onChange: {
-              $action: 'shapeStore.setMemberField',
+              $invoke: 'shapeStore.setMemberField',
               args: [{ $: 'member.rowId' }, 'defaultValue', { $: 'arg.detail' }],
             },
           },
@@ -235,7 +235,7 @@ const defaultValueControl: SchemaNode = {
                 options: { $: 'find(shapeStore.memberOptions, { rowId: member.rowId }).options' },
                 value: { $: 'member.defaultValue' },
                 onChange: {
-                  $action: 'shapeStore.setMemberField',
+                  $invoke: 'shapeStore.setMemberField',
                   args: [{ $: 'member.rowId' }, 'defaultValue', { $: 'arg.detail' }],
                 },
               },
@@ -255,7 +255,7 @@ const defaultValueControl: SchemaNode = {
                     placeholder: 'None',
                     value: { $: 'member.defaultValue' },
                     onInput: {
-                      $action: 'shapeStore.setMemberField',
+                      $invoke: 'shapeStore.setMemberField',
                       args: [{ $: 'member.rowId' }, 'defaultValue', { $: 'arg.detail' }],
                     },
                   },
@@ -270,7 +270,7 @@ const defaultValueControl: SchemaNode = {
                     placeholder: { $: "member.type == 'link' ? 'https://…' : 'None'" },
                     value: { $: 'member.defaultValue' },
                     onInput: {
-                      $action: 'shapeStore.setMemberField',
+                      $invoke: 'shapeStore.setMemberField',
                       args: [{ $: 'member.rowId' }, 'defaultValue', { $: 'arg.detail' }],
                     },
                   },
@@ -319,12 +319,12 @@ const propertyDetail: SchemaNode = {
                     placeholder: 'fiction, non-fiction, poetry',
                     value: { $: 'member.options' },
                     onInput: {
-                      $action: 'shapeStore.setMemberField',
+                      $invoke: 'shapeStore.setMemberField',
                       args: [{ $: 'member.rowId' }, 'options', { $: 'arg.detail' }],
                     },
                     // The default picker below is built from these, so the edit is published when
                     // it is finished rather than on every keystroke.
-                    onBlur: { $action: 'shapeStore.commitDraft' },
+                    onBlur: { $invoke: 'shapeStore.commitDraft' },
                   },
                 },
               ],
@@ -353,10 +353,10 @@ const propertyDetail: SchemaNode = {
                 placeholder: 'The title as spoken, without a subtitle.',
                 value: { $: 'member.hint' },
                 onInput: {
-                  $action: 'shapeStore.setMemberField',
+                  $invoke: 'shapeStore.setMemberField',
                   args: [{ $: 'member.rowId' }, 'hint', { $: 'arg.detail' }],
                 },
-                onBlur: { $action: 'shapeStore.commitDraft' },
+                onBlur: { $invoke: 'shapeStore.commitDraft' },
               },
             },
           ],
@@ -408,7 +408,7 @@ const propertyRow: SchemaNode = {
                 options: PROPERTY_TYPE_OPTIONS,
                 value: { $: 'member.type' },
                 onChange: {
-                  $action: 'shapeStore.setMemberField',
+                  $invoke: 'shapeStore.setMemberField',
                   args: [{ $: 'member.rowId' }, 'type', { $: 'arg.detail' }],
                 },
               },
@@ -428,7 +428,7 @@ const propertyRow: SchemaNode = {
                 size: 'sm',
                 checked: { $: 'member.required' },
                 onChange: {
-                  $action: 'shapeStore.setMemberField',
+                  $invoke: 'shapeStore.setMemberField',
                   args: [{ $: 'member.rowId' }, 'required', { $: 'arg.detail' }],
                 },
               },
@@ -541,7 +541,7 @@ const relationshipRow: SchemaNode = {
                 options: { $: 'shapeStore.relationshipTargets' },
                 value: { $: 'member.target' },
                 onChange: {
-                  $action: 'shapeStore.setMemberField',
+                  $invoke: 'shapeStore.setMemberField',
                   args: [{ $: 'member.rowId' }, 'target', { $: 'arg.detail' }],
                 },
               },
@@ -554,7 +554,7 @@ const relationshipRow: SchemaNode = {
                 labelOn: 'Many',
                 checked: { $: 'member.many' },
                 onChange: {
-                  $action: 'shapeStore.setMemberField',
+                  $invoke: 'shapeStore.setMemberField',
                   args: [{ $: 'member.rowId' }, 'many', { $: 'arg.detail' }],
                 },
               },
@@ -616,7 +616,7 @@ const generateButton: SchemaNode = {
             // written rows stays clickable and asks instead — refusing the click outright is what made
             // the first attempt the only attempt.
             disabled: { $: "shapeStore.generating || shapeStore.generateIntent == 'none'" },
-            onClick: { $action: 'shapeStore.requestGenerateFields' },
+            onClick: { $invoke: 'shapeStore.requestGenerateFields' },
           },
           children: [
             { type: 'we-icon', props: { name: 'sparkle' } },
@@ -640,7 +640,7 @@ const shapeWizardModal: SchemaNode = {
   // hand-written `min(850px, 92vw)` this replaced was the modal reinventing its own gutter, which
   // `size` now carries for every modal — and the 850 included the padding, which is why it looked
   // like a number nobody could have guessed.
-  props: { size: 'lg', close: { $action: 'shapeStore.requestCloseWizard' } },
+  props: { size: 'lg', close: { $invoke: 'shapeStore.requestCloseWizard' } },
   children: [
     {
       type: 'we-text',
@@ -682,7 +682,7 @@ const shapeWizardModal: SchemaNode = {
                   type: 'we-icon-picker',
                   props: {
                     value: { $: 'shapeStore.shapeDraft.icon' },
-                    onChange: { $action: 'shapeStore.setShapeField', args: ['icon', { $: 'arg.detail' }] },
+                    onChange: { $invoke: 'shapeStore.setShapeField', args: ['icon', { $: 'arg.detail' }] },
                   },
                 },
               ],
@@ -700,7 +700,7 @@ const shapeWizardModal: SchemaNode = {
                     value: { $: 'shapeStore.shapeDraft.name' },
                     // Renaming changes what queries resolve, so an existing model's name is fixed.
                     disabled: { $: 'shapeStore.editingShapeId' },
-                    onInput: { $action: 'shapeStore.setShapeField', args: ['name', { $: 'arg.detail' }] },
+                    onInput: { $invoke: 'shapeStore.setShapeField', args: ['name', { $: 'arg.detail' }] },
                   },
                 },
               ],
@@ -718,7 +718,7 @@ const shapeWizardModal: SchemaNode = {
                 rows: 1,
                 placeholder: 'A book someone in the group recommended',
                 value: { $: 'shapeStore.shapeDraft.description' },
-                onInput: { $action: 'shapeStore.setShapeField', args: ['description', { $: 'arg.detail' }] },
+                onInput: { $invoke: 'shapeStore.setShapeField', args: ['description', { $: 'arg.detail' }] },
               },
             },
           ],
@@ -739,7 +739,7 @@ const shapeWizardModal: SchemaNode = {
                 placeholder:
                   'Only counts when someone is actually recommending it, not books merely mentioned. Use the title as spoken, and the author if said.',
                 value: { $: 'shapeStore.shapeDraft.classHint' },
-                onInput: { $action: 'shapeStore.setShapeField', args: ['classHint', { $: 'arg.detail' }] },
+                onInput: { $invoke: 'shapeStore.setShapeField', args: ['classHint', { $: 'arg.detail' }] },
               },
             },
           ],
@@ -806,7 +806,7 @@ const shapeWizardModal: SchemaNode = {
                 width: '100%',
                 // Order is the declaration order the manifest stores, and will be the field order
                 // of the derived creation form — so reordering is data, not decoration.
-                onReorder: { $action: 'shapeStore.reorderMembers', args: [{ $: 'arg.detail' }] },
+                onReorder: { $invoke: 'shapeStore.reorderMembers', args: [{ $: 'arg.detail' }] },
               },
               children: [
                 {
@@ -822,7 +822,7 @@ const shapeWizardModal: SchemaNode = {
               children: [
                 {
                   type: 'we-button',
-                  props: { variant: 'outline', size: 'sm', onClick: { $action: 'shapeStore.addProperty' } },
+                  props: { variant: 'outline', size: 'sm', onClick: { $invoke: 'shapeStore.addProperty' } },
                   children: [
                     { type: 'we-icon', props: { name: 'plus' } },
                     { type: 'we-text', children: ['Add property'] },
@@ -830,7 +830,7 @@ const shapeWizardModal: SchemaNode = {
                 },
                 {
                   type: 'we-button',
-                  props: { variant: 'outline', size: 'sm', onClick: { $action: 'shapeStore.addRelationship' } },
+                  props: { variant: 'outline', size: 'sm', onClick: { $invoke: 'shapeStore.addRelationship' } },
                   children: [
                     { type: 'we-icon', props: { name: 'arrow-right' } },
                     { type: 'we-text', children: ['Add relationship'] },
@@ -888,7 +888,7 @@ const shapeWizardModal: SchemaNode = {
                     checked: { $: 'shapeStore.shapeDraft.extractable' },
                     // Bare `event.detail` — an operator around it would resolve at render time,
                     // before the event exists.
-                    onChange: { $action: 'shapeStore.setExtractable', args: [{ $: 'event.detail' }] },
+                    onChange: { $invoke: 'shapeStore.setExtractable', args: [{ $: 'event.detail' }] },
                   },
                 },
               ],
@@ -939,7 +939,7 @@ const shapeWizardModal: SchemaNode = {
                 width: '240px',
                 options: { $: 'shapeStore.identityOptions' },
                 value: { $: "shapeStore.shapeDraft.identityMember ? shapeStore.shapeDraft.identityMember : 'none'" },
-                onChange: { $action: 'shapeStore.setIdentityMember', args: [{ $: 'arg.detail' }] },
+                onChange: { $invoke: 'shapeStore.setIdentityMember', args: [{ $: 'arg.detail' }] },
               },
             },
           ],
@@ -974,7 +974,7 @@ const shapeWizardModal: SchemaNode = {
                 width: '240px',
                 options: { $: 'shapeStore.nameOptions' },
                 value: { $: "shapeStore.shapeDraft.nameMember ? shapeStore.shapeDraft.nameMember : 'none'" },
-                onChange: { $action: 'shapeStore.setNameMember', args: [{ $: 'arg.detail' }] },
+                onChange: { $invoke: 'shapeStore.setNameMember', args: [{ $: 'arg.detail' }] },
               },
             },
           ],
@@ -1005,7 +1005,7 @@ const shapeWizardModal: SchemaNode = {
       children: [
         {
           type: 'we-button',
-          props: { variant: 'ghost', onClick: { $action: 'shapeStore.requestCloseWizard' } },
+          props: { variant: 'ghost', onClick: { $invoke: 'shapeStore.requestCloseWizard' } },
           children: ['Cancel'],
         },
         {
@@ -1014,7 +1014,7 @@ const shapeWizardModal: SchemaNode = {
             variant: 'solid',
             loading: { $: 'shapeStore.savingShape' },
             disabled: { $: 'shapeStore.savingShape' },
-            onClick: { $action: 'shapeStore.saveShapeDraft' },
+            onClick: { $invoke: 'shapeStore.saveShapeDraft' },
           },
           children: [{ $: "shapeStore.editingShapeId ? 'Save changes' : 'Create model'" }],
         },
@@ -1033,7 +1033,7 @@ const shapeWizardModal: SchemaNode = {
 */
 const hintGuard = discardGuard({
   dirty: { $: 'shapeStore.hintEditorDirty' },
-  close: { $action: 'shapeStore.closeHintEditor' },
+  close: { $invoke: 'shapeStore.closeHintEditor' },
   title: 'Discard these hints?',
   body: 'The hints you have written will be lost. They have not been saved to this space.',
   keepLabel: 'Keep editing',
@@ -1088,7 +1088,7 @@ const hintEditorModal: SchemaNode = {
               props: {
                 rows: 3,
                 value: { $: 'shapeStore.hintEditor.classHint' },
-                onInput: { $action: 'shapeStore.setHintDraft', args: ['class', { $: 'arg.detail' }] },
+                onInput: { $invoke: 'shapeStore.setHintDraft', args: ['class', { $: 'arg.detail' }] },
               },
             },
           ],
@@ -1108,7 +1108,7 @@ const hintEditorModal: SchemaNode = {
                     placeholder: 'No hint — the AI sees only the field name and type',
                     value: { $: 'row.hint' },
                     onInput: {
-                      $action: 'shapeStore.setHintDraft',
+                      $invoke: 'shapeStore.setHintDraft',
                       args: [{ $: 'row.name' }, { $: 'arg.detail' }],
                     },
                   },
@@ -1133,7 +1133,7 @@ const hintEditorModal: SchemaNode = {
               props: {
                 variant: 'ghost',
                 loading: { $: 'shapeStore.hintBusy' },
-                onClick: { $action: 'shapeStore.resetHintEditor' },
+                onClick: { $invoke: 'shapeStore.resetHintEditor' },
               },
               children: [
                 { type: 'we-icon', props: { name: 'arrows-clockwise' } },
@@ -1160,7 +1160,7 @@ const hintEditorModal: SchemaNode = {
                 variant: 'solid',
                 loading: { $: 'shapeStore.hintBusy' },
                 disabled: { $: 'shapeStore.hintBusy' },
-                onClick: { $action: 'shapeStore.saveHintEditor' },
+                onClick: { $invoke: 'shapeStore.saveHintEditor' },
               },
               children: ['Save for this space'],
             },
@@ -1232,7 +1232,7 @@ const shapeRow: SchemaNode = {
               props: {
                 variant: 'ghost',
                 size: 'sm',
-                onClick: { $action: 'shapeStore.openHintEditor', args: [{ $: 'shape.name' }] },
+                onClick: { $invoke: 'shapeStore.openHintEditor', args: [{ $: 'shape.name' }] },
               },
               children: [
                 { type: 'we-icon', props: { name: 'sparkle' } },
@@ -1247,7 +1247,7 @@ const shapeRow: SchemaNode = {
                 variant: 'ghost',
                 size: 'sm',
                 square: true,
-                onClick: { $action: 'shapeStore.openShapeWizard', args: [{ $: 'shape.id' }] },
+                onClick: { $invoke: 'shapeStore.openShapeWizard', args: [{ $: 'shape.id' }] },
               },
               children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
             },
@@ -1264,7 +1264,7 @@ const shapeRow: SchemaNode = {
                   does not have, since it is handed the arguments of the call it is guarding.
                   See DestructivePrompt.schema.ts.
                 */
-                onClick: { $action: 'shapeStore.deleteShape', args: [{ $: 'shape.id' }] },
+                onClick: { $invoke: 'shapeStore.deleteShape', args: [{ $: 'shape.id' }] },
               },
               children: [{ type: 'we-icon', props: { name: 'trash' } }],
             },
@@ -1305,7 +1305,7 @@ const hintEntityRow: SchemaNode = {
       props: {
         variant: 'ghost',
         size: 'sm',
-        onClick: { $action: 'shapeStore.openHintEditor', args: [{ $: 'entity.entity' }] },
+        onClick: { $invoke: 'shapeStore.openHintEditor', args: [{ $: 'entity.entity' }] },
       },
       children: [
         { type: 'we-icon', props: { name: 'sparkle' } },
@@ -1323,12 +1323,12 @@ const hintEntityRow: SchemaNode = {
  */
 const discardConfirmModal: SchemaNode = confirmModal({
   open: { $: 'shapeStore.confirmDiscard' },
-  close: { $action: 'shapeStore.cancelDiscard' },
+  close: { $invoke: 'shapeStore.cancelDiscard' },
   title: 'Discard this model?',
   body: 'What you have filled in will be lost. Nothing has been saved to the space yet.',
   cancelLabel: 'Keep editing',
   confirmLabel: 'Discard',
-  confirm: { $action: 'shapeStore.cancelShapeWizard' },
+  confirm: { $invoke: 'shapeStore.cancelShapeWizard' },
 });
 
 /**
@@ -1340,12 +1340,12 @@ const discardConfirmModal: SchemaNode = confirmModal({
  */
 const replaceFieldsConfirmModal: SchemaNode = confirmModal({
   open: { $: 'shapeStore.confirmReplaceFields' },
-  close: { $action: 'shapeStore.cancelReplaceFields' },
+  close: { $invoke: 'shapeStore.cancelReplaceFields' },
   title: 'Replace the fields below?',
   body: 'Generating starts the field list again from the name, description and AI hint. The fields you have written will be replaced.',
   cancelLabel: 'Keep them',
   confirmLabel: 'Replace',
-  confirm: { $action: 'shapeStore.generateShapeFields' },
+  confirm: { $invoke: 'shapeStore.generateShapeFields' },
 });
 
 export const modelsSection: SchemaNode = {
@@ -1354,7 +1354,7 @@ export const modelsSection: SchemaNode = {
     description: 'The kinds of content this space defines — its own record types, and how AI interprets them.',
     aside: {
       type: 'we-button',
-      props: { variant: 'soft', size: 'sm', onClick: { $action: 'shapeStore.openShapeWizard' } },
+      props: { variant: 'soft', size: 'sm', onClick: { $invoke: 'shapeStore.openShapeWizard' } },
       children: [
         { type: 'we-icon', props: { name: 'plus' } },
         { type: 'we-text', children: ['New model'] },

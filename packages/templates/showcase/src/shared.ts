@@ -83,7 +83,7 @@ export function composerModal(opts: {
     saveLabel: opts.saveLabel ?? 'Post',
     ...(opts.onClose && { onClose: opts.onClose }),
     saveAction: {
-      $action: 'spaceStore.createPost',
+      $invoke: 'spaceStore.createPost',
       // `'$arg'` first: `createPost(json, options)`.
       args: [
         { $: 'arg' },
@@ -131,7 +131,7 @@ export function newContainerModal(opts: {
     busyLocal: 'creating',
     submitLabel: 'Create',
     submit: {
-      $action: 'record.create',
+      $invoke: 'record.create',
       args: [
         'CollectionBlock',
         {
@@ -144,7 +144,7 @@ export function newContainerModal(opts: {
         { parent: { id: opts.parentId ?? { $: 'spaceStore.root' }, relation: 'children', entity: 'CollectionBlock' } },
       ],
       ...(opts.navigateTo && {
-        onSuccess: [{ $action: 'routeStore.navigate', args: [expr`${opts.navigateTo} + result.id`] }],
+        onSuccess: [{ $invoke: 'routeStore.navigate', args: [expr`${opts.navigateTo} + result.id`] }],
       }),
     },
   });
@@ -212,7 +212,7 @@ export function signalRow(nodeRef: string): SchemaNode {
                       signals: { $: `filter(${nodeRef}.signals, { signalTypeId: sig.id })` },
                       myDid: { $: 'me.did' },
                       onSignal: {
-                        $action: 'spaceStore.upsertSignal',
+                        $invoke: 'spaceStore.upsertSignal',
                         args: [{ $: `${nodeRef}.id` }, { $: 'sig.id' }, { $: 'arg' }],
                       },
                     },

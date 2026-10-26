@@ -71,7 +71,7 @@ export const toolLibraryShell: TemplateSchema & { id: string } = {
                                 },
                                 width: '100%',
                                 ax: 'start',
-                                onClick: { $action: 'routeStore.navigate', args: [{ $: 'view.path' }] },
+                                onClick: { $invoke: 'routeStore.navigate', args: [{ $: 'view.path' }] },
                               },
                               children: [
                                 { type: 'we-icon', props: { name: { $: 'view.icon' } } },

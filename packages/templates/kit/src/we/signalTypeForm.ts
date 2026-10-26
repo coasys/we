@@ -236,7 +236,7 @@ export function createSignalTypeModal(options: CreateSignalTypeModalOptions): Sc
     discardWhen: { $: 'local.name || local.slug || local.description' },
     submitLabel: 'Create',
     submit: {
-      $action: 'spaceStore.createSignalType',
+      $invoke: 'spaceStore.createSignalType',
       args: [
         {
           name: { $: 'local.name' },

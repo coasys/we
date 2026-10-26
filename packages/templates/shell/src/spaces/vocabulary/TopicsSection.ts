@@ -98,7 +98,7 @@ const createModal: SchemaNode = formModal({
     there is nothing for an action to do that the generic write does not.
   */
   submit: {
-    $action: 'record.create',
+    $invoke: 'record.create',
     args: [
       'Topic',
       {
@@ -153,7 +153,7 @@ const topicRow: SchemaNode = {
           and lose their far end, which is the right degradation: deleting them here would delete
           claims people made because somebody tidied a vocabulary.
         */
-        onClick: { $action: 'record.delete', args: ['Topic', { $: 'topic.id' }] },
+        onClick: { $invoke: 'record.delete', args: ['Topic', { $: 'topic.id' }] },
       },
       children: [{ type: 'we-icon', props: { name: 'trash' } }],
     },

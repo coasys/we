@@ -78,7 +78,7 @@ export const initializeSpaceGate: SchemaNode = gatePrompt({
                 $if: {
                   condition: { $: 'formValid()' },
                   then: {
-                    $action: 'spaceStore.initializeAsWeSpace',
+                    $invoke: 'spaceStore.initializeAsWeSpace',
                     args: [{ $: 'local.name' }, { $: 'local.description' }, { $: 'local.avatar' }],
                     onFinally: [{ $setLocal: 'submitting', value: false }],
                   },

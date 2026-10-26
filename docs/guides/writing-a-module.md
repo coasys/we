@@ -204,7 +204,7 @@ reactivity silently stops crossing the boundary.
 **Members are private by default.** `deps.state(accessor, doc)` and `deps.action(fn, doc)` publish a
 member with a required one-sentence description; everything else is visible only to your own panels
 and parts. A marked state member is read in an expression as `modules.<id>.<name>`; a marked action is
-called with `$action` and cannot be read. The description is what the generated reference prints, and
+called with `$invoke` and cannot be read. The description is what the generated reference prints, and
 what the validator checks a template's `modules.<id>.<name>` against — a member you did not mark is
 as unknown to a template as one you never had.
 

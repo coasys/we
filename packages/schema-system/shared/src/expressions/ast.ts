@@ -177,7 +177,7 @@ export const DENIED_PROPERTIES: ReadonlySet<string> = new Set(['__proto__', 'con
  *
  * `local` is the namespace `$localState` and `$queries` declare into. `me` and `currentDataset` are
  * the host's neutral identity and dataset bindings. `event` is the callback argument inside a
- * handler, `arg` its older spelling, and `result` what a settled `$action` resolved to. `index` and
+ * handler, `arg` its older spelling, and `result` what a settled `$invoke` resolved to. `index` and
  * `prev` are what `$each` binds beside the item; `surface` is the responsive boundary. `item` is
  * `$each`'s default name.
  */

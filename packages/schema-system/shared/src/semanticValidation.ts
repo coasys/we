@@ -30,6 +30,9 @@ function retiredVariantHint(propName: string, value: string): string {
   return '';
 }
 
+/** The handler token's spelling before `$invoke`, which the validator names when it meets one. */
+const RETIRED_INVOKE = '$action'; // invoke-codemod: keep
+
 // ── Types ──────────────────────────────────────────────────────────
 
 export type ValidationContext = {
@@ -63,6 +66,12 @@ export type ValidationContext = {
    * Only what the context knows: an action it has no classification for is never warned about.
    */
   gatedActions?: Set<string>;
+  /**
+   * Action paths whose first parameter is required, from their documented signatures. Called with no
+   * `args` they are called with nothing, which is wrong whatever event the handler sits on. Only what
+   * the context knows: an action with no signature written is never warned about.
+   */
+  argsNeeded?: Set<string>;
   /**
    * Action paths the host confirms itself before a space template's call runs — see
    * {@link checkSelfConfirmed}. Absent when judging host chrome, which renders against a bag with no
@@ -412,6 +421,11 @@ export function buildValidationContext(data: ContextData): ValidationContext {
     }
   }
 
+  // What cannot be called with nothing — see `StoreEntry.needsArgs`.
+  const argsNeeded = new Set<string>();
+  for (const store of data.storeEntries)
+    for (const action of store.needsArgs ?? []) argsNeeded.add(`${store.name}.${action}`);
+
   // What the host asks about itself, in front of a space template's call.
   const hostConfirmed = new Set<string>();
   for (const store of data.storeEntries)
@@ -430,6 +444,7 @@ export function buildValidationContext(data: ContextData): ValidationContext {
 
   return {
     gatedActions,
+    argsNeeded,
     hostConfirmed,
     pluginPlacements,
     componentNames,
@@ -1268,13 +1283,13 @@ const UNASKED_EVENTS = new Set([
   'onPointerAt',
 ]);
 
-/** Every `$action` path anywhere inside a handler value, lifecycle callbacks included. */
+/** Every `$invoke` path anywhere inside a handler value, lifecycle callbacks included. */
 function actionPathsIn(value: unknown, into: string[] = []): string[] {
   if (Array.isArray(value)) {
     for (const item of value) actionPathsIn(item, into);
   } else if (value && typeof value === 'object') {
     const token = value as Record<string, unknown>;
-    if (typeof token.$action === 'string') into.push(token.$action);
+    if (typeof token.$invoke === 'string') into.push(token.$invoke);
     for (const nested of Object.values(token)) actionPathsIn(nested, into);
   }
   return into;
@@ -1616,7 +1631,7 @@ function checkProps(
  *
  * `$if` is two things with the same spelling. As a *node* (`{ type: '$if', props: { … } }`) it is
  * the conditional that renders one branch or the other; as a *token* it is the handler conditional,
- * legal inside `onClick` and the `$action` lifecycle arrays. What it is not is a value — and the
+ * legal inside `onClick` and the `$invoke` lifecycle arrays. What it is not is a value — and the
  * dispatcher does not know that: it routes every `{ $if: … }` to `resolveIfHandler`, which
  * unconditionally returns a handler. So
  *
@@ -1656,7 +1671,7 @@ function checkValuePositionIf(
     there, because delegation is unreliable across a shadow boundary and the browser's top layer.
 
     Only the first was exempt, so a `$if` guarding a custom-event handler was refused with advice to
-    use a ternary, which cannot hold a handler and would not have worked. `$action` in the same
+    use a ternary, which cannot hold a handler and would not have worked. `$invoke` in the same
     position was always accepted, so the rule was not even self-consistent — it was rejecting the
     conditional form of something it already allowed.
   */
@@ -1698,10 +1713,36 @@ function checkTokenValue(
     return;
   }
 
-  // $action token
-  if ('$action' in obj && typeof obj.$action === 'string') {
-    checkActionRef(obj.$action, `${path}.$action`, ctx, errors);
-    if (Array.isArray(obj.args)) checkActionArgs(obj.args, `${path}.args`, errors);
+  /*
+    The token's old spelling. It is no longer a handler, so the prop holds a plain object and the
+    button does nothing — refused here rather than left to fail quietly.
+  */
+  if (RETIRED_INVOKE in obj) {
+    errors.push({
+      path: `${path}.${RETIRED_INVOKE}`,
+      message: `${RETIRED_INVOKE} is now $invoke: rename the key and leave the rest as it is. \`pnpm codemod:invoke\` rewrites a whole branch`,
+      severity: 'error',
+    });
+  }
+
+  // $invoke token
+  if ('$invoke' in obj && typeof obj.$invoke === 'string') {
+    checkInvokeRef(obj.$invoke, `${path}.$invoke`, ctx, errors);
+    if (Array.isArray(obj.args)) checkInvokeArgs(obj.args, `${path}.args`, errors);
+    /*
+      A call with nothing, to a method that needs something. The method is passed only the `args`
+      written — never what the element emitted — so this is wrong on any event: a click no longer
+      arrives as the id, and nothing else does either.
+    */
+    if (!(Array.isArray(obj.args) && obj.args.length) && ctx.argsNeeded?.has(obj.$invoke)) {
+      errors.push({
+        path: `${path}.$invoke`,
+        message:
+          `${obj.$invoke} takes arguments, and an $invoke with no "args" calls it with none. Write what it ` +
+          'needs — what the element emitted is { "$": "event" }, or a field of it such as { "$": "event.detail" }',
+        severity: 'warning',
+      });
+    }
   }
 
   // $query token — the entity is checked against the manifest's known models.
@@ -1880,7 +1921,7 @@ function checkNestedTokens(
  * store is handed a plausible argument — so this is only findable by noticing a control that does
  * not work.
  */
-function checkActionArgs(args: unknown[], path: string, errors: ValidationError[]): void {
+function checkInvokeArgs(args: unknown[], path: string, errors: ValidationError[]): void {
   const walk = (value: unknown, at: string, insideOperator: boolean): void => {
     if (isExpressionToken(value)) {
       if (!insideOperator) return;
@@ -1915,7 +1956,7 @@ function checkActionArgs(args: unknown[], path: string, errors: ValidationError[
   args.forEach((arg, i) => walk(arg, `${path}[${i}]`, false));
 }
 
-function checkActionRef(ref: string, path: string, ctx: ValidationContext, errors: ValidationError[]): void {
+function checkInvokeRef(ref: string, path: string, ctx: ValidationContext, errors: ValidationError[]): void {
   const dotIdx = ref.indexOf('.');
   if (dotIdx === -1) return; // malformed, structural validation handles this
 
@@ -1926,7 +1967,7 @@ function checkActionRef(ref: string, path: string, ctx: ValidationContext, error
     const known = [...ctx.storeNames].join(', ');
     errors.push({
       path,
-      message: `Unknown store "${storeName}" in $action "${ref}". Known stores: ${known}`,
+      message: `Unknown store "${storeName}" in $invoke "${ref}". Known stores: ${known}`,
       severity: 'error',
     });
     return;
@@ -1941,7 +1982,7 @@ function checkActionRef(ref: string, path: string, ctx: ValidationContext, error
     if (known === undefined) {
       errors.push({
         path,
-        message: `Unknown module "${id}" in $action "${ref}". This deployment ships: ${[...ctx.modules.members.keys()].join(', ')}`,
+        message: `Unknown module "${id}" in $invoke "${ref}". This deployment ships: ${[...ctx.modules.members.keys()].join(', ')}`,
         severity: 'error',
       });
     } else if (known !== null && (!member || !known.has(member))) {

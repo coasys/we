@@ -48,7 +48,7 @@ import { routing } from './fragments/routing.js';
 import { rules } from './fragments/rules.js';
 import { schemaOperators } from './fragments/schema-operators.js';
 import { storePatterns } from './fragments/store-patterns.js';
-import { generateStoresText, storeEntries, undescribedMembers } from './fragments/stores.js';
+import { actionsNeedingArgs, generateStoresText, storeEntries, undescribedMembers } from './fragments/stores.js';
 import { theming } from './fragments/theming.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -275,6 +275,10 @@ async function main() {
     if (names) store.ambient = store.actions.filter((action) => names.has(action));
     const asked = destructive.get(store.name);
     if (asked) store.destructive = store.actions.filter((action) => asked.has(action));
+    // Which need arguments — what the validator warns about when an `$invoke` passes none.
+    const needed = new Set(actionsNeedingArgs(store.name));
+    const needsArgs = store.actions.filter((action) => needed.has(action));
+    if (needsArgs.length) store.needsArgs = needsArgs;
   }
 
   /*

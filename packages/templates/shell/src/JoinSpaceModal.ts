@@ -1,7 +1,7 @@
 import type { SchemaNode } from '@we/schema-shared';
 import { formModal } from '@we/template-kit';
 
-const close = { $action: 'shellStore.setJoinSpaceOpen', args: [false] };
+const close = { $invoke: 'shellStore.setJoinSpaceOpen', args: [false] };
 
 /**
  * Somewhere to put an address somebody sent you.
@@ -135,7 +135,7 @@ const joinSpaceModal: SchemaNode = formModal({
     above saying why.
   */
   submit: {
-    $action: 'spaceStore.joinSpace',
+    $invoke: 'spaceStore.joinSpace',
     args: [{ $: 'local.link' }],
   },
 });

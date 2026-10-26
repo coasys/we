@@ -1442,7 +1442,7 @@ const collapsingCard = (): Scenario => ({
  * finished dispatching — one answering a press, one answering nobody.
  */
 const selfFiringEvents = (): Scenario => {
-  const write = (name: string) => [{ $action: 'record.create', args: ['Probe', { probe: name }] }];
+  const write = (name: string) => [{ $invoke: 'record.create', args: ['Probe', { probe: name }] }];
   return {
     node: {
       type: 'Column',

@@ -507,7 +507,7 @@ export interface ShellStore {
    *
    * Real methods taking an id, rather than the per-panel keys the dock entries used to name. The
    * keys still answer `edge`/`size`/`float`, which the shell reads in TypeScript — but a close
-   * button is a schema `$action`, and `shellStore.close:extraction` names nothing on this store, so
+   * button is a schema `$invoke`, and `shellStore.close:extraction` names nothing on this store, so
    * the button rendered and did nothing but log. See `closeAction` in `dockRegistry.ts`.
    *
    * Reachable by a template as well, which is the other half: a panel with a close button and no
@@ -2735,11 +2735,11 @@ export function ShellStoreProvider(props: ParentProps) {
 
             Those three are read in TypeScript, through `readDockKey`, which resolves against
             `hostDockStores` — where these keys live. The close button is not: it is rendered into the
-            titlebar as a schema `$action` against `storeRef`, and the renderer resolves `shellStore`
+            titlebar as a schema `$invoke` against `storeRef`, and the renderer resolves `shellStore`
             to this store's real surface, where `close:extraction` is not a member. It rendered, took
             the click, and logged. See `closeAction` in `dockRegistry.ts`.
           */
-          closeAction: { $action: 'shellStore.closeTemplatePanel', args: [panel.id] },
+          closeAction: { $invoke: 'shellStore.closeTemplatePanel', args: [panel.id] },
           // What a tab strip calls it, when it shares a seat.
           title: panel.title,
           // Named outright rather than through `modules.<id>`, the way the editor's and the shell's

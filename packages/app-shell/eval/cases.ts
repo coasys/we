@@ -267,7 +267,7 @@ export const EVAL_CASES: EvalCase[] = [
       edited(s, (r) =>
         r.children!.push({
           type: 'we-button',
-          props: { variant: 'solid', onClick: { $action: 'routeStore.navigate', args: ['/start'] } },
+          props: { variant: 'solid', onClick: { $invoke: 'routeStore.navigate', args: ['/start'] } },
           children: ['Get started'],
         }),
       ),
@@ -361,14 +361,14 @@ export const EVAL_CASES: EvalCase[] = [
           children: [
             {
               type: 'we-tab',
-              props: { key: 'posts', label: 'Posts', onClick: { $action: 'routeStore.navigate', args: ['/posts'] } },
+              props: { key: 'posts', label: 'Posts', onClick: { $invoke: 'routeStore.navigate', args: ['/posts'] } },
             },
             {
               type: 'we-tab',
               props: {
                 key: 'members',
                 label: 'Members',
-                onClick: { $action: 'routeStore.navigate', args: ['/members'] },
+                onClick: { $invoke: 'routeStore.navigate', args: ['/members'] },
               },
             },
           ],
@@ -440,7 +440,7 @@ export const EVAL_CASES: EvalCase[] = [
             heading,
             {
               type: 'we-button',
-              props: { variant: 'ghost', onClick: { $action: 'routeStore.navigate', args: ['/settings'] } },
+              props: { variant: 'ghost', onClick: { $invoke: 'routeStore.navigate', args: ['/settings'] } },
               children: [{ type: 'we-icon', props: { name: 'gear' } }],
             },
           ],
@@ -617,7 +617,7 @@ export const EVAL_CASES: EvalCase[] = [
                       variant: 'solid',
                       tone: 'danger',
                       onClick: {
-                        $action: 'spaceStore.deleteCollection',
+                        $invoke: 'spaceStore.deleteCollection',
                         args: [{ $: 'post.id' }],
                         onSuccess: [{ $setLocal: 'confirmOpen', value: false }],
                       },

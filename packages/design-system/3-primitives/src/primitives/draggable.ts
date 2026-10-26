@@ -45,7 +45,7 @@ const CSS_STYLES = css`
  * A post card, a member row and a space in the sidebar are rendered by **templates**, which are
  * data. If making one draggable were a code change, every future draggable surface would be a code
  * change too, and the contribution ladder says arrangement stays data. This is the same rung
- * `we-sortable` occupies: two custom elements and an existing `$action`, with no new prop resolver,
+ * `we-sortable` occupies: two custom elements and an existing `$invoke`, with no new prop resolver,
  * no new operator, and nothing added to the expression grammar.
  *
  * ```json

@@ -21,7 +21,7 @@ import type { SchemaNode } from '@we/schema-shared';
  */
 const pending = 'bundleStore.pendingInstall';
 
-const close = { $action: 'bundleStore.cancelInstall' };
+const close = { $invoke: 'bundleStore.cancelInstall' };
 
 /** A heading and a list of lines, absent when the list is empty. */
 function listSection(heading: string, items: string, icon: string, iconColor: string): SchemaNode {
@@ -123,7 +123,7 @@ export function spaceChecklist(intro: SchemaNode['children']): SchemaNode {
                           label: { $: 'choice.name' },
                           checked: { $: 'choice.chosen || choice.done' },
                           disabled: { $: 'choice.done' },
-                          onChange: { $action: 'bundleStore.toggleSpace', args: [{ $: 'choice.id' }] },
+                          onChange: { $invoke: 'bundleStore.toggleSpace', args: [{ $: 'choice.id' }] },
                         },
                         // `label` names the control for a screen reader; what is seen is the slot.
                         children: [{ $: 'choice.name' }],
@@ -423,7 +423,7 @@ export const bundlePrompt: SchemaNode = {
                         variant: 'solid',
                         loading: { $: 'bundleStore.busy' },
                         disabled: { $: 'bundleStore.busy' },
-                        onClick: { $action: 'bundleStore.confirmInstall' },
+                        onClick: { $invoke: 'bundleStore.confirmInstall' },
                       },
                       children: [{ $: `${pending}.updates ? 'Update' : 'Install'` }],
                     },

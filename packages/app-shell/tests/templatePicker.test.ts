@@ -56,7 +56,7 @@ function clickOf(action: Record<string, unknown>): unknown[] {
 }
 
 const actionNames = (onClick: unknown[]) =>
-  onClick.map((step) => (step as { $action?: string }).$action).filter(Boolean);
+  onClick.map((step) => (step as { $invoke?: string }).$invoke).filter(Boolean);
 
 describe('the picker offers editing on every editable row', () => {
   const picker = templatePicker();
@@ -120,7 +120,7 @@ describe('the picker offers a way back to the template’s own layout', () => {
     const tooltip = (reset!.props as Record<string, unknown>).then as Record<string, unknown>;
     const button = (tooltip.children as Record<string, unknown>[])[0];
 
-    expect((button.props as Record<string, unknown>).onClick).toEqual({ $action: 'shellStore.resetTemplateLayout' });
+    expect((button.props as Record<string, unknown>).onClick).toEqual({ $invoke: 'shellStore.resetTemplateLayout' });
   });
 });
 
@@ -137,7 +137,7 @@ describe('the picker offers the app apart from the templates', () => {
   it('edits only an app the agent owns, the one on the row', () => {
     expect(edit).toBeDefined();
     expect((edit!.props as Record<string, unknown>).condition).toEqual({ $: 'app.editable' });
-    const steps = clickOf(edit!) as { $action?: string; args?: unknown[] }[];
+    const steps = clickOf(edit!) as { $invoke?: string; args?: unknown[] }[];
     expect(actionNames(steps)).toEqual(['editorStore.editApp']);
     expect(steps[0].args).toEqual([{ $: 'app.value' }]);
   });
@@ -145,7 +145,7 @@ describe('the picker offers the app apart from the templates', () => {
   it('forks any app, WE’s own included, and never switches the template', () => {
     expect(fork).toBeDefined();
     expect(fork!.type).toBe('we-tooltip');
-    const steps = clickOf(fork!) as { $action?: string; args?: unknown[] }[];
+    const steps = clickOf(fork!) as { $invoke?: string; args?: unknown[] }[];
     expect(actionNames(steps)).toEqual(['editorStore.forkApp']);
     expect(steps[0].args).toEqual([{ $: 'app.value' }]);
   });

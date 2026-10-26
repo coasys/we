@@ -52,7 +52,7 @@ const setStatus = (label: string, status: string, variant = 'soft') => ({
   props: {
     size: 'sm',
     variant,
-    onClick: { $action: 'record.update', args: ['Loan', { $: 'loan.id' }, { status }] },
+    onClick: { $invoke: 'record.update', args: ['Loan', { $: 'loan.id' }, { status }] },
   },
   children: [label],
 });
@@ -204,7 +204,7 @@ export const catalogueSection: TemplateSchema & { id: string } = {
                                     size: 'sm',
                                     disabled: { $: "it.condition == 'needs-repair'" },
                                     onClick: {
-                                      $action: 'record.create',
+                                      $invoke: 'record.create',
                                       args: [
                                         'Loan',
                                         { status: 'requested', borrower: { $: 'me.did' }, item: { $: 'it.id' } },

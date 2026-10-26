@@ -268,7 +268,7 @@ describe('SchemaRenderer', () => {
     const stores = { uiStore: { handleClick: clickSpy } };
     const node: SchemaNode = {
       type: 'TestComp',
-      props: { onClick: { $action: 'uiStore.handleClick' } },
+      props: { onClick: { $invoke: 'uiStore.handleClick' } },
     };
     const { container } = renderSchema(node, { registry, stores });
     const btn = container.querySelector('button')!;

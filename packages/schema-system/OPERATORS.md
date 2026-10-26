@@ -11,7 +11,7 @@ The `$`-constructs a schema writes are four different kinds of thing:
 | ------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
 | **Structure** | Arrangement — what renders where                                   | Node types: `$each`, `$if`, `$routes`, `$animate`, `$single`, `$surface`, `$slot`, `$agent`; `$localState`, `$queries` |
 | **Query**     | What the backend is asked for                                      | `{ $query: { entity, where, order, include, … } }` and `$queries`                                                      |
-| **Handlers**  | What happens on an event                                           | `$action`, `$setLocal`, `$toggleLocal`, `$toggleLocalIn`, `$callLocal`, `$touch`, `$resetLocal`                        |
+| **Handlers**  | What happens on an event                                           | `$invoke`, `$setLocal`, `$toggleLocal`, `$toggleLocalIn`, `$callLocal`, `$touch`, `$resetLocal`                        |
 | **Values**    | Anything computed — a condition, a label, a count, a filtered list | **One expression:** `{ $: "count(local.rows) > 0 && local.search != ''" }`                                             |
 
 The first three stay data tokens on purpose. Structure is what section-level remixing operates on;
@@ -56,7 +56,7 @@ an unknown name (with "did you mean"), an unknown store member, an undeclared lo
 function, a wrong argument count, prototype access — and a reference written as a plain string
 (`'$item.name'`), which would render as text.
 
-**Call time.** An expression naming `event`/`arg`/`result` at the top level of `$action`'s `args`,
+**Call time.** An expression naming `event`/`arg`/`result` at the top level of `$invoke`'s `args`,
 or as a `$setLocal` `value`, is evaluated when the handler fires. Nested inside another token it
 would be a constant; the validator refuses that.
 
@@ -72,7 +72,7 @@ Neither touches the parser, the validator's grammar, the renderer or what an aut
 
 ## Strings are text
 
-A plain string is a literal everywhere — in a prop, in `children`, in an `$action` argument. There
+A plain string is a literal everywhere — in a prop, in `children`, in an `$invoke` argument. There
 is no reference spelled as a string: `'$item.name'` renders those ten characters, and the validator
 rejects it. The value operators that once lived beside the expression (`$eq`, `$and`, `$concat`,
 `$count`, `$filter`, `$find`, `$plural`, `$map`, `$pick`, `$store`, `$local`, the prop-level `$if`)
@@ -82,7 +82,7 @@ are gone; each is a spelling inside the expression now.
 
 Documented in full in the generated reference; the short list:
 
-- **Handlers** — `{ $action: 'store.method', args, onSuccess, onError, onFinally }`,
+- **Handlers** — `{ $invoke: 'store.method', args, onSuccess, onError, onFinally }`,
   `{ $setLocal: 'field', value | merge }` (an expression `value` is evaluated when the handler
   fires), `{ $toggleLocal }`, `{ $toggleLocalIn }`, `{ $callLocal }`, `{ $touch }`,
   `{ $resetLocal }`, and `{ $if: { condition, then, else } }` choosing between handlers; handler

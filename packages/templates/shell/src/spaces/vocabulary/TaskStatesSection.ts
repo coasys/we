@@ -165,7 +165,7 @@ const createModal: SchemaNode = formModal({
   discardWhen: { $: 'local.stateName' },
   submitLabel: 'Add state',
   submit: {
-    $action: 'spaceStore.createTaskState',
+    $invoke: 'spaceStore.createTaskState',
     args: [
       {
         name: { $: 'local.stateName' },
@@ -284,7 +284,7 @@ const editModal: SchemaNode = formModal({
   },
   submitLabel: 'Save',
   submit: {
-    $action: 'spaceStore.updateTaskState',
+    $invoke: 'spaceStore.updateTaskState',
     args: [
       { $: 'local.editTaskStateSlug' },
       {
@@ -454,7 +454,7 @@ const stateRow: SchemaNode = {
             size: 'xs',
             variant: 'ghost',
             onClick: {
-              $action: 'spaceStore.setTaskStateRetired',
+              $invoke: 'spaceStore.setTaskStateRetired',
               args: [{ $: 'state.slug' }, { $: '!state.retired' }],
             },
           },
@@ -502,7 +502,7 @@ export const taskStatesSection: SchemaNode = sectionCard({
                 options: {
                   $: "[{ label: 'To any state', value: '' }, { label: 'On to the next state', value: 'next' }, { label: 'On, or back one', value: 'next-and-back' }]",
                 },
-                onChange: { $action: 'spaceStore.setTaskWorkflowRule', args: [{ $: 'event.detail' }] },
+                onChange: { $invoke: 'spaceStore.setTaskWorkflowRule', args: [{ $: 'event.detail' }] },
               },
             },
           ],
@@ -523,7 +523,7 @@ export const taskStatesSection: SchemaNode = sectionCard({
       props: {
         direction: 'vertical',
         width: '100%',
-        onReorder: { $action: 'spaceStore.reorderTaskStates', args: [{ $: 'arg.detail' }] },
+        onReorder: { $invoke: 'spaceStore.reorderTaskStates', args: [{ $: 'arg.detail' }] },
       },
       children: [
         {

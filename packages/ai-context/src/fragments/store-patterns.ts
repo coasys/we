@@ -11,11 +11,11 @@ Reading state — an expression naming the store:
 Example: { "$": "routeStore.currentPath" }
 
 Calling actions:
-{ "$action": "storeName.method", "args": [...] }
-Example: { "$action": "routeStore.navigate", "args": ["/home"] }
+{ "$invoke": "storeName.method", "args": [...] }
+Example: { "$invoke": "routeStore.navigate", "args": ["/home"] }
 
 Feature-module stores:
-{ "$": "modules.<moduleId>.<member>" } and { "$action": "modules.<moduleId>.<action>" }
+{ "$": "modules.<moduleId>.<member>" } and { "$invoke": "modules.<moduleId>.<action>" }
 Each feature module this deployment ships publishes its PUBLIC store members under its own id —
 modules.call.active, modules.transcribe.proposals, modules.polls.vote. The modules, their members,
 parts, panels, settings and functions are listed in the Feature Modules section below, and the
@@ -32,7 +32,7 @@ Iterating over store data:
       "type": "we-button",
       "props": {
         "variant": "ghost",
-        "onClick": { "$action": "routeStore.navigate", "args": [{ "$": "\`/space/\${space.uuid}\`" }] }
+        "onClick": { "$invoke": "routeStore.navigate", "args": [{ "$": "\`/space/\${space.uuid}\`" }] }
       },
       "children": [
         { "type": "we-avatar", "props": { "image": { "$": "space.avatar" }, "hash": { "$": "space.uuid" }, "initials": { "$": "space.name" }, "size": "sm" } },
@@ -130,7 +130,7 @@ Example — Channel list → Conversation list:
           "type": "we-button",
           "props": {
             "variant": "ghost",
-            "onClick": { "$action": "routeStore.navigate", "args": [{ "$": "\`/channels/\${channel.id}\`" }] }
+            "onClick": { "$invoke": "routeStore.navigate", "args": [{ "$": "\`/channels/\${channel.id}\`" }] }
           },
           "children": [{ "$": "channel.name" }]
         }]
@@ -197,7 +197,7 @@ Local state (form with validation):
         "disabled": { "$": "local.loading" },
         "onClick": [
           { "$touch": "$all" },
-          { "$if": { "condition": { "$": "formValid()" }, "then": { "$action": "myStore.submit", "args": [{ "$": "local.name" }] } } }
+          { "$if": { "condition": { "$": "formValid()" }, "then": { "$invoke": "myStore.submit", "args": [{ "$": "local.name" }] } } }
         ]
       }
     }
@@ -315,7 +315,7 @@ Pattern — live wired SignalControl (one hoisted query, reused by the projectio
                     "signalType": { "$": "sig" },
                     "signals": { "$": "filter(item.signals, { signalTypeId: sig.id })" },
                     "myDid": { "$": "me.did" },
-                    "onSignal": { "$action": "spaceStore.upsertSignal", "args": [{ "$": "item.id" }, { "$": "sig.id" }, { "$": "arg" }] }
+                    "onSignal": { "$invoke": "spaceStore.upsertSignal", "args": [{ "$": "item.id" }, { "$": "sig.id" }, { "$": "arg" }] }
                   }
                 }
               ]
