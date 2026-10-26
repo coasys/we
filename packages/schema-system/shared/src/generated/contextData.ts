@@ -1984,6 +1984,9 @@ export const contextData: ContextData = {
       fields: [
         { name: 'nodeType', type: 'string', predicate: 'we://node_type', required: false },
         { name: 'color', type: 'string', predicate: 'we://color', required: false },
+        { name: 'display', type: 'string', predicate: 'we://type_display', required: false },
+        { name: 'controls', type: 'string', predicate: 'we://type_controls', required: false },
+        { name: 'authoring', type: 'string', predicate: 'we://type_authoring', required: false },
       ],
       relations: [],
     },
@@ -2562,6 +2565,7 @@ export const contextData: ContextData = {
         'previewCardStyle',
         'setTypeColor',
         'setSpaceTypeColor',
+        'setSpaceTypePresentation',
         'createOnCanvas',
         'createCardOnCanvas',
       ],

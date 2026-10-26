@@ -46,6 +46,7 @@ import {
   VideoBlock,
   WeNode,
 } from './entities';
+import { readInterpretationHints, writeInterpretationHints } from './interpretationHints';
 
 /**
  * All SDNA models that belong to the we-root system perspective.
@@ -532,12 +533,35 @@ async function registerEntities(
     for (const m of toRefresh) refreshedThisSession.add(refreshKey(m));
   }
 
+  /*
+    A refresh writes the whole shape again, and with it the hints a space tuned — so read those first
+    and put them back once the new shape is in. Only for a shape the space customized: an untouched
+    one should take the release's hints, which is what a refresh is for. See `interpretationHints.ts`.
+  */
+  const tuned = (
+    await Promise.all(
+      toRefresh.map(async (m) => {
+        const entity = (m as unknown as { className?: string }).className ?? m.name;
+        const hints = await readInterpretationHints(p, entity).catch(() => null);
+        return hints?.customized ? { entity, hints } : null;
+      }),
+    )
+  ).filter((t): t is NonNullable<typeof t> => t !== null);
+
   try {
     await Ad4mModel.registerAll(p, toWrite);
   } finally {
     // Whether or not the write completed, what is stored may no longer be what was read. See
     // `storedShapesCache`.
     forgetStoredShapes(p);
+  }
+  for (const { entity, hints } of tuned) {
+    await writeInterpretationHints(p, entity, {
+      ...(hints.classHint !== undefined ? { classHint: hints.classHint } : {}),
+      propHints: hints.propHints,
+    }).catch((error: unknown) =>
+      console.warn(`ad4m: could not put back the hints this space tuned for ${entity}`, error),
+    );
   }
   // registerAll resolves before the written SDNA is actually queryable — settle before callers
   // run reactive queries against the fresh shapes. This wait is a property of THIS backend's

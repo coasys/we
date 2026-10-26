@@ -26,7 +26,7 @@ import type {
   SchemaPort,
 } from '@we/backend-shared';
 import { createInMemoryEphemeralPort, InMemoryBus, manifestEntries } from '@we/backend-shared';
-import { getEntity, getEntityForDataset, registerEntity, registerFileStore } from '@we/entities';
+import { createJsonShapeStore, getEntity, getEntityForDataset, registerEntity, registerFileStore } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 
 import { compileEntities, type EntityRuntime } from './entities';
@@ -239,6 +239,9 @@ export function createInMemorySchemaPort(runtime: EntityRuntime): SchemaPort {
     // so a stored shape can never predate the declared one.
     refreshSpace: async () => [],
     ensure: async () => {},
+    // The default store: the manifest kept as a document on a `Shape` record, which is all a
+    // backend with no schema language of its own has to keep it in.
+    shapes: createJsonShapeStore(async () => {}),
     hasCoreSchema: async () => true,
     hasAnySchema: async () => true,
     foreignSchemas: async () => [],

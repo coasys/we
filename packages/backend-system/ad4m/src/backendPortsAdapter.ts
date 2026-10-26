@@ -40,6 +40,7 @@ import { type Ad4mHttpConnection, createAd4mLanguageModelPort } from './language
 import { type Ad4mLifecycleOptions, createAd4mAgentSession, createAd4mDatasetLifecycle } from './lifecycleAdapter';
 import { compileManifest, manifestToEntries } from './manifestCompiler';
 import { createAd4mModelAdmin } from './modelAdminAdapter';
+import { createAd4mShapeStore } from './nativeShapes';
 import { installParentByRelation } from './parentByRelation';
 import { buildEntityClasses, buildEntityManifest, getForeignShacl } from './perspectiveHelpers';
 import { createAd4mReferencePort } from './referencePort';
@@ -68,7 +69,7 @@ export function createAd4mSchemaPort(backendClient: unknown): SchemaPort {
   const client = backendClient as Ad4mClient;
   void client; // schema install operates on dataset handles; the client stays for future needs
 
-  return {
+  const port: SchemaPort = {
     installRoot: (dataset) => installRootSdna(proxy(dataset)),
     installSpace: (dataset, moduleSchemas) => installSpaceSdna(proxy(dataset), moduleSchemas),
     installModules: (dataset, moduleSchemas) => installModuleSdna(proxy(dataset), moduleSchemas),
@@ -135,6 +136,13 @@ export function createAd4mSchemaPort(backendClient: unknown): SchemaPort {
 
     dedupe: (dataset) => deduplicateSpaceSdna(proxy(dataset)),
   };
+  // A space's own models are kept as their SHACL, installed the way this port installs any entity.
+  port.shapes = createAd4mShapeStore({
+    declare: (dataset, manifest, opts) => port.declareInDataset(dataset, manifest, opts),
+    ensure: (dataset, cls) => port.ensure(dataset, cls),
+    resolveExternal: (dataset, name) => getEntityForDataset(name, dataset),
+  });
+  return port;
 }
 
 export function createAd4mProfileDirectory(backendClient: unknown): ProfileDirectoryPort {
