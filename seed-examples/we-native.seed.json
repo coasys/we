@@ -8,7 +8,6 @@
   "modules": ["globe", "graph", "notes", "call", "transcribe"],
   "ad4m": {
     "dataPath": "~/.we-native-app",
-    "executorPath": "../ad4m/target/release/ad4m-executor",
     "repoPath": "../ad4m"
   },
   "electron": {

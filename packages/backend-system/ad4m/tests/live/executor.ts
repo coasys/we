@@ -11,7 +11,8 @@
  * running would hold), and no bootstrap, proxy or mDNS, so it never joins a network. One node, no
  * peers — which is all the cases ask about.
  *
- * Which binary: `AD4M_EXECUTOR`, else the sibling checkout's release build. To run against an
+ * Which binary: the one `scripts/ad4m-executor.mjs` chooses — `AD4M_EXECUTOR`, else the seed's own
+ * `ad4m.executorPath`, else the pinned commit's download (`pnpm ad4m:executor`). To run against an
  * executor that is already running instead, set `AD4M_LIVE_URL` and `AD4M_LIVE_TOKEN` — its agent
  * unlocked — and know that the tests then write their perspectives into that agent.
  */
@@ -50,14 +51,15 @@ function freePort(): Promise<number> {
 }
 
 function executorBinary(): string {
-  const fromEnv = process.env.AD4M_EXECUTOR;
-  if (fromEnv) return fromEnv;
-  // packages/backend-system/ad4m → the repo root → its sibling checkout.
-  const sibling = resolve(import.meta.dirname, '../../../../../../ad4m/target/release/ad4m-executor');
-  if (existsSync(sibling)) return sibling;
+  // packages/backend-system/ad4m/tests/live → the repo root.
+  const script = resolve(import.meta.dirname, '../../../../../scripts/ad4m-executor.mjs');
+  const chosen = spawnSync(process.execPath, [script, '--path'], { encoding: 'utf8' });
+  if (chosen.status !== 0) throw new Error(`Could not work out which executor to run:\n${chosen.stderr}`);
+  const binary = chosen.stdout.trim();
+  if (existsSync(binary)) return binary;
   throw new Error(
-    'No executor to run. Set AD4M_EXECUTOR to an ad4m-executor binary, or build one in a sibling ad4m ' +
-      'checkout with `cargo build --release --bin ad4m-executor`.',
+    `No executor at ${binary}. Run \`pnpm ad4m:executor\` to download the pinned one, or set ` +
+      'AD4M_EXECUTOR to an ad4m-executor binary.',
   );
 }
 

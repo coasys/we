@@ -10,7 +10,7 @@
  * Usage: pnpm setup-workspace
  */
 
-const { execSync } = require('child_process');
+const { execFileSync, execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
@@ -105,12 +105,7 @@ async function main() {
     log(`✅ Found ${seed.apps.length} app(s) in seed file`, 'green');
   }
 
-  if (!seed.ad4m || !seed.ad4m.executorPath) {
-    log('❌ Seed file must contain ad4m.executorPath', 'red');
-    process.exit(1);
-  }
-
-  if (!seed.ad4m.repoPath) {
+  if (!seed.ad4m?.repoPath) {
     log('⚠️  Warning: ad4m.repoPath not set in seed file', 'yellow');
     log('   Tauri Cargo.toml generation may fail', 'yellow');
   }
@@ -122,19 +117,12 @@ async function main() {
 
   let allDepsReady = true;
 
-  // Check AD4M executor
-  const ad4mExecutorPath = path.isAbsolute(seed.ad4m.executorPath)
-    ? seed.ad4m.executorPath
-    : path.resolve(WORKSPACE_ROOT, seed.ad4m.executorPath);
-
-  if (checkFileExists(ad4mExecutorPath, 'AD4M executor binary')) {
-    const stats = fs.statSync(ad4mExecutorPath);
-    const sizeMB = (stats.size / 1024 / 1024).toFixed(1);
-    log(`   Size: ${sizeMB}MB`, 'blue');
-  } else {
+  // The AD4M executor: the pinned one, downloaded when missing, or the seed's own build when it
+  // names one. It says which, and what to do when neither is there.
+  try {
+    execFileSync(process.execPath, [path.join(__dirname, 'ad4m-executor.mjs')], { stdio: 'inherit' });
+  } catch {
     allDepsReady = false;
-    log('   To build AD4M:', 'yellow');
-    log('   cd ../ad4m && cargo build --release', 'yellow');
   }
 
   // Check each app's dist folder
