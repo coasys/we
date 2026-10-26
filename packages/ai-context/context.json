@@ -1828,6 +1828,11 @@
           "default": "false"
         },
         {
+          "name": "lines",
+          "type": "number | undefined",
+          "optional": true
+        },
+        {
           "name": "gradient",
           "type": "string",
           "optional": false,

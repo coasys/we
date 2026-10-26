@@ -154,6 +154,22 @@ const styles = css`
     white-space: nowrap;
   }
 
+  /*
+    Clamped to a number of lines, the last ending in an ellipsis: 'truncate' for text worth more
+    than one line and less than all of it — a description under a name, a preview of a message.
+  */
+  :host([lines]) {
+    overflow: hidden;
+  }
+  :host([lines]) [part='base'] {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: var(--we-text-lines);
+    line-clamp: var(--we-text-lines);
+    overflow: hidden;
+    overflow-wrap: anywhere;
+  }
+
   :host([gradient]:not([gradient=''])) [part='base'] {
     background: var(--we-text-gradient) !important;
     -webkit-background-clip: text !important;
@@ -191,6 +207,8 @@ export default class Text extends DesignSystemElement {
   @property({ type: Boolean, reflect: true }) uppercase = false;
   @property({ type: Boolean, reflect: true }) italic = false;
   @property({ type: Boolean, reflect: true }) truncate = false;
+  /** At most this many lines, the last ending in an ellipsis. `truncate` is the one-line case. */
+  @property({ type: Number, reflect: true }) lines?: number;
   @property({ type: String, reflect: true }) gradient = '';
   /**
    * Show a placeholder at this text's own size instead of its content.
@@ -230,7 +248,7 @@ export default class Text extends DesignSystemElement {
   }
 
   render() {
-    const inline = this.styles || {};
+    const inline = this.lines ? { ...this.styles, '--we-text-lines': String(this.lines) } : this.styles || {};
     const renderFn = tagTemplates[this.tag] ?? tagTemplates['span'];
     // The real `we-skeleton` rather than a shimmer of our own, so a placeholder standing in for
     // text is the same object as one standing in for anything else. Sized to `1lh` — the line this

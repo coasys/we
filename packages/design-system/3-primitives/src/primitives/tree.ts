@@ -1,5 +1,5 @@
 import type { DesignSystemProps } from '@we/design-types';
-import { FOCUS_RING } from '@we/tokens';
+import { componentThemeVar, FOCUS_RING } from '@we/tokens';
 import { css, html, unsafeCSS } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { ifDefined } from 'lit/directives/if-defined.js';
@@ -24,7 +24,19 @@ const TREE_STYLES = css`
 /*
   A row's corners read its own override slot (--we-theme-tree-radius), so a theme can round rows
   without rounding every control.
+
+  The selected row reads the tree's `selected` variant, the component tier's usual vocabulary:
+  `components: { tree: { variants: { selected: { fill, text, border, borderWidth } } } }`. Fill and
+  text replace the selected role's. Border and its width draw a bar on the row's leading edge — the
+  mark a navigation tree draws on the row you are on, and what Coasys Glow asks for in mint. Unset,
+  the bar has no width, so every theme that says nothing renders as before.
+
+  Read from the variant only, not the tree's own keys: a `fill` set for every row would otherwise
+  paint the selected one too, and the selection would disappear into it.
 */
+const SELECTED = (key: string, fallback: string) =>
+  unsafeCSS(`var(${componentThemeVar('tree', key, 'selected')}, ${fallback})`);
+
 const ITEM_STYLES = css`
   :host {
     display: block;
@@ -44,14 +56,27 @@ const ITEM_STYLES = css`
     outline: none;
     min-height: var(--we-tree-row-height, 32px);
     box-sizing: border-box;
+    position: relative;
   }
   [part='row']:hover {
     background: var(--we-role-item-hover);
     color: var(--we-role-text);
   }
   :host([selected]) [part='row'] {
-    background: var(--we-role-selected);
-    color: var(--we-role-on-selected);
+    background: ${SELECTED('fill', 'var(--we-role-selected)')};
+    color: ${SELECTED('text', 'var(--we-role-on-selected)')};
+  }
+  /* The leading bar, inside the row's own rounding on that side. */
+  :host([selected]) [part='row']::before {
+    content: '';
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    width: ${SELECTED('border-width', '0px')};
+    background: ${SELECTED('border', 'transparent')};
+    border-start-start-radius: inherit;
+    border-end-start-radius: inherit;
+    pointer-events: none;
   }
   [part='row']:focus-visible {
     box-shadow: ${unsafeCSS(FOCUS_RING)};

@@ -640,6 +640,7 @@ export const contextData: ContextData = {
         { name: 'uppercase', type: 'boolean', optional: false, default: 'false' },
         { name: 'italic', type: 'boolean', optional: false, default: 'false' },
         { name: 'truncate', type: 'boolean', optional: false, default: 'false' },
+        { name: 'lines', type: 'number | undefined', optional: true },
         { name: 'gradient', type: 'string', optional: false, default: "''" },
         { name: 'loading', type: 'boolean', optional: false, default: 'false' },
         { name: 'loadingWidth', type: 'string', optional: false, default: "'100%'" },

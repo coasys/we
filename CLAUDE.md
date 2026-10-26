@@ -1596,7 +1596,7 @@ item is considered.
 - we-tag (DesignSystemElement)
   Props: variant: 'soft' | 'solid' = 'soft', dismissible: boolean = false
 - we-text (DesignSystemElement)
-  Props: text?: string | undefined, variant: '' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading-md' | 'heading-lg' | 'heading-xl' | 'overline' = '', tag: 'p' | 'span' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'small' | 'b' | 'i' | 'label' | 'div' = 'span', inline: boolean = false, uppercase: boolean = false, italic: boolean = false, truncate: boolean = false, gradient: string = '', loading: boolean = false, loadingWidth: string = '100%'
+  Props: text?: string | undefined, variant: '' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading-md' | 'heading-lg' | 'heading-xl' | 'overline' = '', tag: 'p' | 'span' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'small' | 'b' | 'i' | 'label' | 'div' = 'span', inline: boolean = false, uppercase: boolean = false, italic: boolean = false, truncate: boolean = false, lines?: number | undefined, gradient: string = '', loading: boolean = false, loadingWidth: string = '100%'
 - we-textarea (DesignSystemElement)
   Props: value: string = '', name: string = '', label: string = '', placeholder: string = '', rows: number = 3, maxlength: unknown = Infinity, minlength: number = 0, disabled: boolean = false, required: boolean = false, readonly: boolean = false, resize: 'none' | 'vertical' | 'horizontal' | 'both' = 'vertical', autoGrow: boolean = false, maxRows: number = 6, submitOnEnter: boolean = false, size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-timestamp (DesignSystemElement) — Displays a formatted or relative timestamp that self-updates each minute

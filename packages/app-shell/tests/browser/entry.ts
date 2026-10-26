@@ -385,9 +385,11 @@ function pageColor(): string {
 function partStyle(selector: string, property: string, part = 'base', nth = 0): string | null {
   const host = document.querySelectorAll(selector)[nth];
   // A part name, or a selector of its own when one part is not specific enough ("[aria-current]").
-  const inner = part.includes('[') ? part : `[part='${part}']`;
+  // `row::before` reads the part's pseudo-element — a mark drawn without an element of its own.
+  const [name, pseudo] = part.split('::');
+  const inner = name.includes('[') ? name : `[part='${name}']`;
   const el = host?.shadowRoot?.querySelector(inner) ?? host;
-  return el ? getComputedStyle(el).getPropertyValue(property) : null;
+  return el ? getComputedStyle(el, pseudo ? `::${pseudo}` : null).getPropertyValue(property) : null;
 }
 
 /** What a role resolves to at the document root, through a probe painted with it. */
