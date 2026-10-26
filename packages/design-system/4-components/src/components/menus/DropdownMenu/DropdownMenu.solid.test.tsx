@@ -261,3 +261,60 @@ describe('a group that does not apply here', () => {
     expect(menu.labels()).toEqual(['Background', 'Stars', 'Planet', 'Borders']);
   });
 });
+
+/**
+ * A trigger the caller draws, in its two kinds.
+ *
+ * Content that is not a control has to be made one, so it goes inside a bare button. Content that
+ * already is one went inside that button too, which nested a button in a button and shrank a
+ * full-width row to its own content — the rail's "Add a space" row and its account row stood
+ * narrower than every row beside them.
+ */
+describe('a custom trigger', () => {
+  const items = [{ id: 'create', label: 'Create a space' }];
+
+  it('is the trigger itself when it is already a control', () => {
+    mount(() => (
+      <DropdownMenu items={items} triggerTitle="Add a space">
+        <we-button width="100%">Add a space</we-button>
+      </DropdownMenu>
+    ));
+    const triggers = [...host!.querySelectorAll('[slot="trigger"]')] as HTMLElement[];
+
+    expect(triggers).toHaveLength(1);
+    expect(triggers[0].textContent).toBe('Add a space');
+    expect(triggers[0].querySelector('we-button')).toBeNull();
+    // Named by the menu's title, through `label` where the element has one (a registered we-button,
+    // which jsdom does not load) and `aria-label` otherwise.
+    const named = triggers[0] as HTMLElement & { label?: string };
+    expect(named.label || named.getAttribute('aria-label')).toBe('Add a space');
+  });
+
+  it('is found inside the boxless wrapper a schema node arrives in, which is what is slotted', () => {
+    mount(() => (
+      <DropdownMenu items={items}>
+        <div style={{ display: 'contents' }}>
+          <we-button>Add a space</we-button>
+        </div>
+      </DropdownMenu>
+    ));
+    const trigger = host!.querySelector('[slot="trigger"]') as HTMLElement;
+
+    expect(trigger.tagName).toBe('DIV');
+    expect(trigger.querySelector('we-button')?.textContent).toBe('Add a space');
+    expect(host!.querySelectorAll('we-button we-button')).toHaveLength(0);
+  });
+
+  it('goes inside a bare button when it is not', () => {
+    mount(() => (
+      <DropdownMenu items={items} triggerTitle="People">
+        <span>Faces</span>
+      </DropdownMenu>
+    ));
+    const trigger = host!.querySelector('[slot="trigger"]') as HTMLElement;
+
+    expect(trigger.tagName).toBe('WE-BUTTON');
+    expect(trigger.getAttribute('variant')).toBe('bare');
+    expect(trigger.querySelector('span')?.textContent).toBe('Faces');
+  });
+});
