@@ -2,12 +2,11 @@
  * BORDER TOKEN DEFINITIONS
  * This file defines border tokens that serve as the source of truth for the design system.
  * Note: Border radius tokens are in size.ts (RadiusToken/RadiusValue).
+ *
+ * Border colours are roles — `border`, `border-strong`, `border-hover` and each family's
+ * `<family>-border` — and live with the other roles in role.ts. There were two scale positions here
+ * as well, `neutral-100` and `neutral-200`, which nothing read and a theme could not follow.
  */
-
-import { color } from './color.js';
-
-// Literal union types for border tokens
-export type BorderColorToken = 'base' | 'strong';
 
 /**
  * Border width specification.
@@ -16,20 +15,9 @@ export type BorderColorToken = 'base' | 'strong';
 export const borderWidth = '1px';
 
 /**
- * Border color definitions.
- * These colors reference neutral color tokens and are used for borders in different contexts.
- * The integration with the color system ensures borders adapt to theme changes.
- */
-export const borderColor = {
-  base: color.neutral['100'], // Light border - subtle boundaries
-  strong: color.neutral['200'], // Strong border - more visible boundaries
-} satisfies Record<BorderColorToken, string>;
-
-/**
  * Complete border token object that combines all border categories.
  * This is the main export for consumers who need full border tokens.
  */
 export const border = {
   width: borderWidth,
-  color: borderColor,
 };

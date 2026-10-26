@@ -258,6 +258,32 @@ export interface WeSeedFile {
     };
   };
 
+  /**
+   * What a desktop build of this deployment is called and looks like on the machine it is installed
+   * on: the name in the window title, the menu and the installer, the identifier the OS installs it
+   * by, and its icon. Fixed at build time, so a seed's rather than a cartridge's — a cartridge
+   * renames the window from inside, but cannot rename the binary somebody installed.
+   *
+   * Each field falls back to WE's own, so a seed that leaves this out builds WE. Where the build keeps
+   * its data is `ad4m.dataPath`; a second deployment should set its own, so two executors at
+   * different versions never share one database.
+   */
+  desktop?: {
+    /** The name a person reads: window title, menu, installer, `.desktop` `Name=`. Default `WE`. */
+    productName?: string;
+    /**
+     * The identifier the OS installs the app by, without the runtime: `io.coasys.app` builds
+     * `io.coasys.app.electron` and `io.coasys.app.tauri`, so the two desktop hosts can be installed
+     * side by side. Default `io.weco.we`.
+     */
+    appId?: string;
+    /**
+     * The icon, as an SVG file relative to the repository root, drawn as it is with a margin around
+     * it. Default WE's own mark, composed onto its themed tile by `@we/brand`.
+     */
+    icon?: string;
+  };
+
   /** Electron-specific configuration */
   electron?: {
     /** Path to the built app dist (relative to we-electron) */
@@ -275,7 +301,7 @@ export interface WeSeedFile {
 
   /**
    * What a new space can start with, beyond the structure the host always makes — settings defaults,
-   * the records it begins with, the roles templates find them by, and the opinionated switches. See
+   * the records it begins with, the landmarks templates find them by, and the opinionated switches. See
    * `shared/spaceStarter.ts`. A new space gets the first; the others are there for a create dialog
    * to offer. Absent, a space starts with its structure and nothing else.
    */

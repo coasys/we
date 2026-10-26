@@ -44,6 +44,15 @@ export const AgentSettings: CoreEntityDef = {
        */
       systemLightThemeId: { type: 'string', predicate: 'we://system_light_theme', default: '' },
       systemDarkThemeId: { type: 'string', predicate: 'we://system_dark_theme', default: '' },
+      /**
+       * The person's display needs, as JSON (`DisplayPreferences` in @we/themes): colour scheme,
+       * contrast, text size, density and motion. Applied over every theme on screen — a space's
+       * included — because they are this person's needs, not a matter of taste a theme may overrule.
+       * Empty means follow the system on every axis it has a signal for, and change nothing else.
+       *
+       * The colour scheme replaces `themeMode`, which held that one axis alone.
+       */
+      displayPreferences: { type: 'string', predicate: 'we://display_preferences', default: '' },
       claudeApiKey: { type: 'string', predicate: 'we://claude_api_key', default: '' },
       datasetOrder: { type: 'string', predicate: 'we://dataset_order', default: '' },
       globalSpaceJoined: { type: 'boolean', predicate: 'we://global_space_joined', default: false },

@@ -349,7 +349,7 @@ function control(opts: Resolved, as: string): SchemaNode {
         ? {}
         : {
             onSignal: {
-              $action: 'spaceStore.upsertSignal',
+              $invoke: 'spaceStore.upsertSignal',
               args: [{ $: `${opts.record}.id` }, { $: `${as}.id` }, { $: 'arg' }],
             },
           }),
@@ -381,7 +381,7 @@ function mark(opts: Resolved, as: string): SchemaNode {
       ...(press && pressable
         ? {
             onPress: {
-              $action: 'spaceStore.upsertSignal',
+              $invoke: 'spaceStore.upsertSignal',
               // A toggle is on or off, so its press is its whole vocabulary: give the type's top of
               // range, or take it back. `arg` is not available — nothing emitted a value.
               args: [
@@ -1044,7 +1044,7 @@ function newType(opts: Resolved, { labelled, under }: { labelled: boolean; under
   const button: SchemaNode = {
     type: 'we-button',
     props: {
-      variant: labelled ? 'secondary' : 'bare',
+      variant: labelled ? 'soft' : 'bare',
       size: opts.size === 'xs' && !labelled ? 'xs' : 'sm',
       ...(labelled ? {} : { color: 'text-faint', hoverProps: { color: 'text' } }),
       label: 'New reaction type',

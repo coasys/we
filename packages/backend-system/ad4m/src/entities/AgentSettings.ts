@@ -68,6 +68,17 @@ export class AgentSettings extends Ad4mModel {
   @Property({ through: 'we://system_dark_theme' })
   systemDarkThemeId: string = '';
 
+  /**
+   * The person's display needs, as JSON (`DisplayPreferences` in @we/themes): colour scheme,
+   * contrast, text size, density and motion. Applied over every theme on screen — a space's
+   * included — because they are this person's needs, not a matter of taste a theme may overrule.
+   * Empty means follow the system on every axis it has a signal for, and change nothing else.
+   *
+   * The colour scheme replaces `themeMode`, which held that one axis alone.
+   */
+  @Property({ through: 'we://display_preferences' })
+  displayPreferences: string = '';
+
   @Property({ through: 'we://claude_api_key' })
   claudeApiKey: string = '';
 

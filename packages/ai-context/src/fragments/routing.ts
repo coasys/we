@@ -24,7 +24,7 @@ Route objects follow the same structure as schema nodes, with an additional "pat
 ### Tabs + Routing
 
 IMPORTANT: we-tabs only manages visual selection — clicking a tab does NOT navigate automatically.
-Each we-tab MUST have an onClick with { "$action": "routeStore.navigate" } to trigger route changes.
+Each we-tab MUST have an onClick with { "$invoke": "routeStore.navigate" } to trigger route changes.
 Bind we-tabs selectedKey to the matching route segment so the active tab stays in sync.
 (Alternatively, a single onChange on we-tabs can replace per-tab onClick — see onChange pattern below.)
 
@@ -44,8 +44,8 @@ Recommended pattern — header above tabs (routes on ROOT, $routes outlet nested
       "type": "we-tabs",
       "props": { "selectedKey": { "$": "routeStore.segments[0]" } },
       "children": [
-        { "type": "we-tab", "props": { "key": "posts", "label": "Posts", "onClick": { "$action": "routeStore.navigate", "args": ["/posts"] } } },
-        { "type": "we-tab", "props": { "key": "articles", "label": "Articles", "onClick": { "$action": "routeStore.navigate", "args": ["/articles"] } } }
+        { "type": "we-tab", "props": { "key": "posts", "label": "Posts", "onClick": { "$invoke": "routeStore.navigate", "args": ["/posts"] } } },
+        { "type": "we-tab", "props": { "key": "articles", "label": "Articles", "onClick": { "$invoke": "routeStore.navigate", "args": ["/articles"] } } }
       ]
     },
     { "type": "$routes" }
@@ -82,7 +82,7 @@ WRONG — two common mistakes that produce empty tabs (validator will catch both
 }
 
 Alternative: single onChange on we-tabs (fires with event.detail.value = selected key):
-{ "onChange": { "$action": "routeStore.navigate", "args": [{ "$": "\`/\${arg.detail.value}\`" }] } }
+{ "onChange": { "$invoke": "routeStore.navigate", "args": [{ "$": "\`/\${arg.detail.value}\`" }] } }
 This replaces all per-tab onClick handlers but requires an interpolation to build the path.
 
 Nested routing example:

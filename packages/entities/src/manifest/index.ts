@@ -32,16 +32,19 @@ import { ExtractionAmendment } from './ExtractionAmendment';
 import { ExtractionPass } from './ExtractionPass';
 import { MutedAgent } from './MutedAgent';
 import { Placement } from './Placement';
+import { Policy } from './Policy';
 import { ReadMarker } from './ReadMarker';
 import { Relationship } from './Relationship';
 import { RelationshipType } from './RelationshipType';
+import { Role } from './Role';
+import { RoleGrant } from './RoleGrant';
 import { Shape } from './Shape';
 import { WE_NODE_ENTITY, WE_NODE_RELATIONS } from './shared';
 import { Signal } from './Signal';
 import { SignalType } from './SignalType';
 import { Space } from './Space';
+import { SpaceLandmark } from './SpaceLandmark';
 import { SpacePreference } from './SpacePreference';
-import { SpaceRole } from './SpaceRole';
 import { SpaceTemplatePreference } from './SpaceTemplatePreference';
 import { Template } from './Template';
 import { Theme } from './Theme';
@@ -78,12 +81,15 @@ export const CORE_DEFS: Record<string, CoreEntityDef> = {
   ReadMarker,
   Relationship,
   RelationshipType,
+  Role,
+  RoleGrant,
+  Policy,
   Shape,
   Signal,
   SignalType,
   Space,
   SpacePreference,
-  SpaceRole,
+  SpaceLandmark,
   SpaceTemplatePreference,
   TagBlock,
   TaskBlock,

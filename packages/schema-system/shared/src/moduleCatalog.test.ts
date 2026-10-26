@@ -89,14 +89,14 @@ describe('module store references', () => {
     );
   });
 
-  it('checks an $action the same way, one segment deeper', () => {
+  it('checks an $invoke the same way, one segment deeper', () => {
     const ok = validateSemantic(
-      template({ type: 'we-text', props: { onClick: { $action: 'modules.polls.vote' } } }),
+      template({ type: 'we-text', props: { onClick: { $invoke: 'modules.polls.vote' } } }),
       ctx,
     );
     expect(messages(ok)).toEqual([]);
     const bad = validateSemantic(
-      template({ type: 'we-text', props: { onClick: { $action: 'modules.polls.vot' } } }),
+      template({ type: 'we-text', props: { onClick: { $invoke: 'modules.polls.vot' } } }),
       ctx,
     );
     expect(messages(bad)[0]).toContain('Unknown action "vot" on modules.polls');

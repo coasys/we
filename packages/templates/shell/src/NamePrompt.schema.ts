@@ -36,7 +36,7 @@ export const namePrompt: SchemaNode = formModal({
   open: { $: 'profileStore.needsName' },
   // Dismissing is answering "not now", which is the only other answer there is. The backdrop, the
   // close button and Cancel all land here.
-  close: { $action: 'profileStore.dismissNamePrompt' },
+  close: { $invoke: 'profileStore.dismissNamePrompt' },
   title: 'What should we call you?',
   // One field. `md` would be a dialog four times the width of the thing it holds.
   size: 'sm',
@@ -55,7 +55,7 @@ export const namePrompt: SchemaNode = formModal({
       props: { color: 'text-muted' },
       children: [
         {
-          $: "sessionStore.isGuest ? 'You joined as a guest, so this is a brand-new identity with no name on it yet. This is what other people in the space will see on your posts and messages.' : 'Your account was set up outside WE, so we do not have a name for you yet. This is what other people will see on your posts and messages.'",
+          $: "sessionStore.isGuest ? 'You joined as a guest, so this is a brand-new identity with no name on it yet. This is what other people in the space will see on your posts and messages.' : `Your account was set up outside ${templateStore.brand.name}, so we do not have a name for you yet. This is what other people will see on your posts and messages.`",
         },
       ],
     },
@@ -73,7 +73,7 @@ export const namePrompt: SchemaNode = formModal({
   cancelLabel: 'Not now',
   // Not `updateOwnProfile`: the store action dismisses before it publishes, so a failed write
   // cannot re-raise this modal on top of the toast explaining the failure.
-  submit: { $action: 'profileStore.saveNameFromPrompt', args: [{ $: 'local.promptName' }] },
+  submit: { $invoke: 'profileStore.saveNameFromPrompt', args: [{ $: 'local.promptName' }] },
   // No discard guard. One word is not worth a second dialog asking whether they meant to close the
   // first — and "Not now" is a legitimate answer here, not an accident to be caught.
 });

@@ -67,11 +67,11 @@ export const toolLibraryShell: TemplateSchema & { id: string } = {
                               type: 'we-button',
                               props: {
                                 variant: {
-                                  $: "contains(routeStore.currentPath, view.segment) ? 'secondary' : 'ghost'",
+                                  $: "contains(routeStore.currentPath, view.segment) ? 'soft' : 'ghost'",
                                 },
                                 width: '100%',
                                 ax: 'start',
-                                onClick: { $action: 'routeStore.navigate', args: [{ $: 'view.path' }] },
+                                onClick: { $invoke: 'routeStore.navigate', args: [{ $: 'view.path' }] },
                               },
                               children: [
                                 { type: 'we-icon', props: { name: { $: 'view.icon' } } },

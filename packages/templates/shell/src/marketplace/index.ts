@@ -26,7 +26,7 @@ const tabBar = {
     props: {
       key: tab.key,
       label: tab.label,
-      onClick: { $action: 'routeStore.navigate', args: [tab.path] },
+      onClick: { $invoke: 'routeStore.navigate', args: [tab.path] },
     },
   })),
 };
@@ -48,7 +48,7 @@ const marketplaceBrowser = {
               type: 'Row',
               props: { gap: '400', ay: 'center', mb: '300' },
               children: [
-                { type: 'we-icon', props: { name: 'storefront', size: 'lg', gradient: 'primary' } },
+                { type: 'we-icon', props: { name: 'storefront', size: 'lg', gradient: 'accent' } },
                 {
                   type: 'we-text',
                   props: { variant: 'heading-md' },
@@ -59,7 +59,7 @@ const marketplaceBrowser = {
             {
               type: 'we-text',
               props: { mb: '500' },
-              children: ['Browse and install community modules for your WE spaces.'],
+              children: [{ $: '`Browse and install community modules for your ${templateStore.brand.name} spaces.`' }],
             },
             tabBar,
           ],

@@ -223,7 +223,7 @@ const channelRoute: RouteSchema = {
       children: [
         {
           type: 'we-button',
-          props: { variant: 'secondary', flex: '1', ax: 'start', onClick: { $setLocal: 'composeOpen', value: true } },
+          props: { variant: 'soft', flex: '1', ax: 'start', onClick: { $setLocal: 'composeOpen', value: true } },
           children: [
             { type: 'we-icon', props: { name: 'chat-dots' } },
             { type: 'we-text', props: { color: 'text-faint' }, children: ['Write a message…'] },

@@ -19,7 +19,7 @@ const DECISION = 'modules.transcribe.tiedDecision';
 const dialog = (kind: 'accept' | 'reject'): SchemaNode =>
   confirmModal({
     open: { $: `${DECISION} && ${DECISION}.kind == '${kind}'` },
-    close: { $action: 'modules.transcribe.cancelTiedDecision' },
+    close: { $invoke: 'modules.transcribe.cancelTiedDecision' },
     title: { $: `${DECISION}.title` },
     body: { $: `${DECISION}.body` },
     // Only when there is one: `detail` always draws its line, and an empty one is a gap.
@@ -33,8 +33,8 @@ const dialog = (kind: 'accept' | 'reject'): SchemaNode =>
       },
     ],
     confirmLabel: { $: `${DECISION}.confirmLabel` },
-    confirm: { $action: 'modules.transcribe.confirmTiedDecision' },
-    tone: kind === 'accept' ? 'primary' : 'danger',
+    confirm: { $invoke: 'modules.transcribe.confirmTiedDecision' },
+    tone: kind === 'accept' ? 'accent' : 'danger',
     busy: { $: 'modules.transcribe.tiedBusy' },
   });
 

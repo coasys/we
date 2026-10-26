@@ -13,7 +13,8 @@ const fs = require('fs');
 const path = require('path');
 
 const WORKSPACE_ROOT = path.resolve(__dirname, '..');
-const SEED_FILE = path.join(WORKSPACE_ROOT, 'we-seed.json');
+// The seed this run is for: `WE_SEED`, or WE's own `we-seed.json`. See `scripts/seed.cjs`.
+const SEED_FILE = require('./seed.cjs').seedPath();
 
 let errors = [];
 let warnings = [];
@@ -101,6 +102,35 @@ function main() {
         error(`ad4m.linkServerUrl must be an http(s) URL, got: ${seed.ad4m.linkServerUrl}`);
       } else {
         success(`ad4m.linkServerUrl is ${seed.ad4m.linkServerUrl} (server link language offered for shared spaces)`);
+      }
+    }
+  }
+
+  if (seed.desktop !== undefined) {
+    const desktop = seed.desktop;
+    if (typeof desktop !== 'object' || desktop === null || Array.isArray(desktop)) {
+      error('Invalid field: desktop (must be an object of productName, appId and icon)');
+    } else {
+      for (const key of ['productName', 'appId', 'icon']) {
+        if (desktop[key] !== undefined && (typeof desktop[key] !== 'string' || !desktop[key].trim())) {
+          error(`desktop.${key} must be a non-empty string`);
+        }
+      }
+      // An identifier is what the OS installs by, so it has to look like one.
+      if (typeof desktop.appId === 'string' && !/^[a-z][a-z0-9-]*(\.[a-z0-9-]+)+$/i.test(desktop.appId)) {
+        error(`desktop.appId must be a reverse-domain identifier such as io.example.app, got: ${desktop.appId}`);
+      }
+      if (typeof desktop.icon === 'string') {
+        const icon = path.resolve(path.join(__dirname, '..'), desktop.icon);
+        if (!desktop.icon.endsWith('.svg')) error(`desktop.icon must be an SVG file, got: ${desktop.icon}`);
+        else if (!fs.existsSync(icon))
+          error(`desktop.icon not found: ${desktop.icon} (relative to the repository root)`);
+      }
+      if (desktop.productName && seed.ad4m && !seed.ad4m.dataPath) {
+        warn(
+          `desktop.productName is ${desktop.productName} but ad4m.dataPath is unset, so it shares WE's ~/.ad4m — ` +
+            'set its own unless the two builds should share one executor database',
+        );
       }
     }
   }
@@ -301,6 +331,19 @@ function main() {
   reading the manifest from its source files rather than importing it, so this script keeps running
   under plain node. A starter that would half-apply at a create press fails here instead.
 */
+/** The space templates (not sections) the named bundles bring, by the id an install gives them. */
+function bundleSpaceTemplates(ids) {
+  if (!Array.isArray(ids)) return [];
+  return ids.flatMap((id) => {
+    try {
+      const bundle = JSON.parse(fs.readFileSync(path.join(WORKSPACE_ROOT, 'bundles', `${id}.bundle.json`), 'utf8'));
+      return (bundle.templates || []).filter((t) => t.meta?.role !== 'view').map((t) => `${id}--${t.id}`);
+    } catch {
+      return [];
+    }
+  });
+}
+
 function validateSpaceStarter(seed) {
   const starters = seed.spaceStarters;
   if (!starters) return;
@@ -319,7 +362,10 @@ function validateSpaceStarter(seed) {
     ),
   );
   const identity = new Set(['uuid', 'url', 'name', 'description', 'discovery', 'avatar', 'coverImage']);
-  const templates = new Set(seed.templates || []);
+  // The seed's own templates, and the space templates its bundles bring — under the id an install gives
+  // them (`<bundle>--<template>`, as `bundlePieceId` writes it). A bundle that cannot be read is
+  // reported by the bundle check; here it simply brings nothing.
+  const templates = new Set([...(seed.templates || []), ...bundleSpaceTemplates(seed.bundles)]);
   const modules = new Set((seed.modules || []).map((m) => (typeof m === 'string' ? m : m.id)));
   // A string that is exactly `$<name>` is a reference; see packages/app-shell/src/shared/spaceStarter.ts.
   const refOf = (v) => (typeof v === 'string' ? (/^\$([A-Za-z_][\w-]*)$/.exec(v) || [])[1] || null : null);
@@ -400,11 +446,13 @@ function validateSpaceStarter(seed) {
         if (!defined.has(ref)) error(`${p}.settings.${name} refers to $${ref}, which no record defines`);
       }
     }
-    for (const [name, ref] of Object.entries(starter.roles || {})) {
+    for (const [name, ref] of Object.entries(starter.landmarks || {})) {
       const target = refOf(ref);
       if (!target || target === 'root' || target === 'space' || !defined.has(target))
-        error(`${p}.roles.${name} must name a record's $id: ${ref}`);
+        error(`${p}.landmarks.${name} must name a record's $id: ${ref}`);
     }
+    if (starter.policy !== undefined && !['open', 'community'].includes(starter.policy))
+      error(`${p}.policy must be "open" or "community": ${JSON.stringify(starter.policy)}`);
     if (errors.length === before) success(`space starter "${starter.id}" is valid`);
     /*
       What nothing contains, by entity. Right for vocabulary — found by type — and a forgotten `in`
@@ -421,7 +469,7 @@ function validateSpaceStarter(seed) {
       Object.values(record.fields || {}).forEach((v) => refsIn(v).forEach((r) => referred.add(r)));
     }
     Object.values(starter.settings || {}).forEach((v) => refsIn(v).forEach((r) => referred.add(r)));
-    Object.values(starter.roles || {}).forEach((v) => refsIn(v).forEach((r) => referred.add(r)));
+    Object.values(starter.landmarks || {}).forEach((v) => refsIn(v).forEach((r) => referred.add(r)));
     (starter.records || []).forEach((record, index) => {
       if (record.$id && !referred.has(record.$id)) {
         warn(`${p}.records[${index}].$id "${record.$id}" is never referred to — leave it out`);

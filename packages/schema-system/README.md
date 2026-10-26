@@ -32,9 +32,9 @@ text — a reference is always `{ $: '…' }`.
 
 | Token         | Purpose                             | Example                                                                  |
 | ------------- | ----------------------------------- | ------------------------------------------------------------------------ |
-| `$action`     | Store method call + async lifecycle | `{ $action: 'store.method', args: [{ $: 'arg.id' }], onSuccess: [...] }` |
+| `$invoke`     | Store method call + async lifecycle | `{ $invoke: 'store.method', args: [{ $: 'arg.id' }], onSuccess: [...] }` |
 | `$setLocal` … | Write local state                   | `{ $setLocal: 'page', value: { $: 'local.page + 20' } }`                 |
-| `$if`         | Choose between handlers             | `{ $if: { condition: { $: 'formValid()' }, then: { $action: '…' } } }`   |
+| `$if`         | Choose between handlers             | `{ $if: { condition: { $: 'formValid()' }, then: { $invoke: '…' } } }`   |
 | `$query`      | Data retrieval                      | `{ $query: { entity: 'Post', where: { … } } }`                           |
 
 ### Renderer Operators
@@ -58,7 +58,7 @@ Operators that appear as the `type` field and control rendering structure:
 - **Schema mutations:** `findMutations()` for diff-based updates, `updateSchema()` for applying changes
 - **Schema versioning:** `schemaVersion` field for future migrations
 - **Transitions:** `TransitionConfig` for animated `$if` node show/hide (`fade`, `slide`, `scale`)
-- **Operator token types:** `StoreToken`, `ConcatToken`, `ActionToken`, `OperatorToken`, etc. for typed schema authoring
+- **Operator token types:** `StoreToken`, `ConcatToken`, `InvokeToken`, `OperatorToken`, etc. for typed schema authoring
 
 See [OPERATORS.md](./OPERATORS.md) for the full operator reference.
 
@@ -101,7 +101,7 @@ See [OPERATORS.md](./OPERATORS.md) for the full operator reference.
 ### `@we/schema-shared`
 
 - **Types:** `SchemaNode`, `TemplateSchema`, `RouteSchema`, `SchemaProp`, `ComponentRegistry`, `RenderProps`, `RendererOutput`, `TransitionConfig`
-- **Operator token types:** `ExpressionToken`, `StoreToken`, `ActionToken`, `IfToken`, `MapToken`, `PickToken`, `EqToken`, `NeToken`, `NotToken`, `AndToken`, `OrToken`, `OperatorToken`
+- **Operator token types:** `ExpressionToken`, `StoreToken`, `InvokeToken`, `IfToken`, `MapToken`, `PickToken`, `EqToken`, `NeToken`, `NotToken`, `AndToken`, `OrToken`, `OperatorToken`
 - **Expressions:** `parseExpression()`, `printExpression()`, `evaluateExpression()`, `checkExpression()`, `defineFunction()`, `listFunctions()`, `operatorToExpr()`, `exprToOperator()`
 - **Functions:** `resolveProp()`, `resolveProps()`, `splitProps()`, `validateSchema()`, `findMutations()`, `hasToken()`
 - **Constants:** `REACTIVE_ACCESSOR`

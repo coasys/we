@@ -94,7 +94,7 @@ describe('a ring on a face', () => {
   });
 
   it('reads a tone as its colour, and anything else as a colour', () => {
-    expect(avatarInnerRings({ ringColor: 'primary' })).toContain('var(--we-role-accent)');
+    expect(avatarInnerRings({ ringColor: 'accent' })).toContain('var(--we-role-accent)');
     expect(avatarInnerRings({ ringColor: 'rebeccapurple' })).toContain('rebeccapurple');
   });
 

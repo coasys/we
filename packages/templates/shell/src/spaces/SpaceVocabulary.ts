@@ -50,10 +50,10 @@ const openSpaceFirst: SchemaNode = {
     {
       type: 'we-button',
       props: {
-        variant: 'secondary',
+        variant: 'soft',
         size: 'sm',
         alignSelf: 'start',
-        onClick: { $action: 'spaceStore.navigateToSpace', args: [{ $: 'space.uuid' }] },
+        onClick: { $invoke: 'spaceStore.navigateToSpace', args: [{ $: 'space.uuid' }] },
       },
       children: [
         { type: 'we-text', props: { variant: 'label' }, children: ['Open this space'] },
@@ -72,7 +72,7 @@ const signalTypesSection: SchemaNode = sectionCard({
       condition: { $: 'space.canAdminister' },
       then: {
         type: 'we-button',
-        props: { variant: 'secondary', size: 'sm', onClick: { $setLocal: 'createSignalTypeOpen', value: true } },
+        props: { variant: 'soft', size: 'sm', onClick: { $setLocal: 'createSignalTypeOpen', value: true } },
         children: [
           { type: 'we-icon', props: { name: 'plus' } },
           { type: 'we-text', children: ['Add signal type'] },
@@ -111,10 +111,10 @@ export const spaceVocabularySection: SchemaNode = {
         // The state being edited, by slug — a name per row is impossible when the rows come from
         // data, and only one can be open at a time. See `editModal` in TaskStatesSection.
         editTaskStateSlug: { type: 'string', initial: '' },
-        guardTaskStateSlug: { type: 'string', initial: '' },
+        evidenceTaskStateSlug: { type: 'string', initial: '' },
         // The edited state's requirements until its Save — here rather than in the edit form, because
         // the form that adds one is a modal of its own beside it. See `editModal` in TaskStatesSection.
-        editTaskStateGuards: { type: 'array', initial: [] },
+        editTaskStateEvidence: { type: 'array', initial: [] },
         createInvolvementTypeOpen: { type: 'boolean', initial: false },
         editInvolvementTypeSlug: { type: 'string', initial: '' },
       },

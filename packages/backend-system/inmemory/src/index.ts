@@ -104,4 +104,4 @@ export {
   type SeededPeer,
 } from './lifecycle';
 export { inMemoryCapabilities, inMemoryQueryAdapter } from './queryAdapter';
-export { createInMemoryFlowPort } from './flows';
+export { createInMemoryWorkflowPort } from './workflows';

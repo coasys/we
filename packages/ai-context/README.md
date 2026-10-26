@@ -27,7 +27,7 @@ reference cannot silently drift from the code:
 - `cem.ts` — primitives + props from the Custom Elements Manifest
 - `typescript.ts` — Solid component props via ts-morph (function declarations
   with a `@superclass` JSDoc tag)
-- `appShell.ts` — the store surface (every expression- or `$action`-reachable
+- `appShell.ts` — the store surface (every expression- or `$invoke`-reachable
   member) parsed from the store interfaces; its header records why this is
   derived rather than hand-listed
 - `models.ts` / `tokens.ts` / `plugins.ts` — entity models, design tokens,

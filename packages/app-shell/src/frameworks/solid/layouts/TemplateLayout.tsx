@@ -368,6 +368,7 @@ export function TemplateLayout(
       lastScopedThemeId = null;
       return;
     }
+    // Both sides, for `applyThemeVars` to choose between — see `applyThemeToDOM` in ThemeStore.
     const overrides = parseOverrides(td.overrides);
     if (isValidThemeKey(td.id) && !overrides.themeName) overrides.themeName = td.id;
     // Editing keeps the id and changes parameters; switching changes the id. Only the second
@@ -500,10 +501,7 @@ export function TemplateLayout(
           <TemplateBoundary
             what="this space's template"
             action={
-              <we-button
-                variant="ghost"
-                onClick={() => props.hostStores.shellStore.openShellView('settings', '/appearance')}
-              >
+              <we-button variant="ghost" onClick={() => props.hostStores.shellStore.openShellView('settings', '/apps')}>
                 Choose another template
               </we-button>
             }

@@ -1,7 +1,7 @@
 import type { SchemaNode } from '@we/schema-shared';
 import { discardGuard, field } from '@we/template-kit';
 
-const close = { $action: 'shellStore.setCreateSpaceOpen', args: [false] };
+const close = { $invoke: 'shellStore.setCreateSpaceOpen', args: [false] };
 
 /**
  * Written out rather than through `formModal`, because this is the validating form — a `required`
@@ -356,7 +356,7 @@ export const createSpaceModal = {
                   props: { variant: 'footnote', color: 'text-faint' },
                   children: [
                     {
-                      $: "local.discovery == 'listed' ? 'Appears on the WE discovery globe' : 'Not shown in global discovery'",
+                      $: "local.discovery == 'listed' ? `Appears on the ${templateStore.brand.name} discovery globe` : 'Not shown in global discovery'",
                     },
                   ],
                 },
@@ -407,7 +407,9 @@ export const createSpaceModal = {
                 {
                   type: 'we-text',
                   props: { variant: 'footnote', color: 'text-muted' },
-                  children: ['Join the WE discovery space to list your space globally.'],
+                  children: [
+                    { $: '`Join the ${templateStore.brand.name} discovery space to list your space globally.`' },
+                  ],
                 },
               ],
             },
@@ -430,7 +432,7 @@ export const createSpaceModal = {
         {
           type: 'we-button',
           // Guarded like the backdrop — one way out of the modal, not two that disagree.
-          props: { variant: 'secondary', text: 'Cancel', onClick: guard.close },
+          props: { variant: 'soft', text: 'Cancel', onClick: guard.close },
         },
         {
           type: 'we-button',
@@ -446,7 +448,7 @@ export const createSpaceModal = {
                 $if: {
                   condition: { $: 'formValid()' },
                   then: {
-                    $action: 'spaceStore.createSpace',
+                    $invoke: 'spaceStore.createSpace',
                     args: [
                       { $: 'local.name' },
                       { $: 'local.description' },
@@ -457,7 +459,7 @@ export const createSpaceModal = {
                       { $: 'local.location' },
                       { $: 'local.sharing' },
                     ],
-                    onSuccess: [{ $action: 'shellStore.setCreateSpaceOpen', args: [false] }],
+                    onSuccess: [{ $invoke: 'shellStore.setCreateSpaceOpen', args: [false] }],
                     onFinally: [{ $setLocal: 'submitting', value: false }],
                   },
                   else: { $setLocal: 'submitting', value: false },

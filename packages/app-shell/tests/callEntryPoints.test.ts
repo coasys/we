@@ -75,7 +75,7 @@ function actionsIn(node: unknown): string[] {
     if (Array.isArray(value)) return value.forEach(walk);
     if (!value || typeof value !== 'object') return;
     const record = value as Record<string, unknown>;
-    if (typeof record.$action === 'string') found.push(record.$action);
+    if (typeof record.$invoke === 'string') found.push(record.$invoke);
     Object.values(record).forEach(walk);
   };
   walk(node);

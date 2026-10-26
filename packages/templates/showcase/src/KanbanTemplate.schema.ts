@@ -43,7 +43,7 @@ const boardsRoute: RouteSchema = {
             { type: 'we-text', props: { variant: 'heading-lg' }, children: ['Boards'] },
             {
               type: 'we-button',
-              props: { variant: 'primary', size: 'sm', onClick: { $setLocal: 'newBoardOpen', value: true } },
+              props: { variant: 'solid', size: 'sm', onClick: { $setLocal: 'newBoardOpen', value: true } },
               children: [{ type: 'we-icon', props: { name: 'plus' } }, 'New board'],
             },
           ],
@@ -68,7 +68,7 @@ const boardsRoute: RouteSchema = {
               props: {
                 variant: 'bare',
                 width: '100%',
-                onClick: { $action: 'routeStore.navigate', args: [{ $: '`./board/${board.id}`' }] },
+                onClick: { $invoke: 'routeStore.navigate', args: [{ $: '`./board/${board.id}`' }] },
               },
               children: [
                 {
@@ -165,7 +165,7 @@ const boardRoute: RouteSchema = {
       children: [
         {
           type: 'we-button',
-          props: { variant: 'ghost', size: 'sm', onClick: { $action: 'routeStore.navigate', args: ['.'] } },
+          props: { variant: 'ghost', size: 'sm', onClick: { $invoke: 'routeStore.navigate', args: ['.'] } },
           children: [{ type: 'we-icon', props: { name: 'arrow-left' } }],
         },
         {
@@ -211,7 +211,7 @@ const boardRoute: RouteSchema = {
             title: 'New card',
             kind: KIND.post,
             saveLabel: 'Add',
-            onClose: [{ $action: 'spaceStore.moveCardToColumn', args: ['', { $: 'col.id' }, { $: 'result' }] }],
+            onClose: [{ $invoke: 'spaceStore.moveCardToColumn', args: ['', { $: 'col.id' }, { $: 'result' }] }],
           }),
           empty: emptyState({
             icon: 'columns',

@@ -101,6 +101,20 @@ function seedExecutorPath() {
   return join(__dirname, '..', '..', '..', '..', 'ad4m', 'target', 'release', 'ad4m-executor');
 }
 
+/*
+  A seed that names its own product (`desktop.productName`) runs under that name, so its config
+  directory — and the account registry in it — is its own rather than WE's. A packaged build already
+  has the name from electron-builder; this is for a development run. Before `userData` is first read.
+*/
+const seedProductName = (() => {
+  try {
+    return JSON.parse(readFileSync(join(__dirname, 'seed-runtime.json'), 'utf8')).productName;
+  } catch {
+    return undefined;
+  }
+})();
+if (seedProductName && !app.isPackaged) app.setName(seedProductName);
+
 // The registry needs the app's config directory, which is available before `ready`.
 const accounts = createAccountRegistry({
   configDir: app.getPath('userData'),
@@ -472,10 +486,21 @@ const trusted = (url) => isTrusted(url, trustedOrigins(policyOptions()));
  * lists its icons, was showing the mark while this one was not.
  *
  * The file therefore has to exist at runtime rather than only at package time; it is copied to
- * `resources/icon.png` by `extraResources`, alongside the executor and the renderer bundle.
+ * `resources/icon.png` by `extraResources`, alongside the executor and the renderer bundle — the
+ * seed's own icon when it has one, as the package's is.
  */
-const windowIcon = () =>
-  app.isPackaged ? join(process.resourcesPath, 'icon.png') : join(__dirname, '..', 'build', 'icon.png');
+const windowIcon = () => {
+  if (app.isPackaged) return join(process.resourcesPath, 'icon.png');
+  // Unpackaged: another seed's icon where `@we/brand` has rendered it (see seed-runtime.json),
+  // else WE's own.
+  try {
+    const runtime = JSON.parse(readFileSync(join(__dirname, 'seed-runtime.json'), 'utf8'));
+    if (runtime.windowIcon) return runtime.windowIcon;
+  } catch {
+    // No generated config: WE's own icon.
+  }
+  return join(__dirname, '..', 'build', 'icon.png');
+};
 
 function createWindow() {
   mainWindow = new BrowserWindow({

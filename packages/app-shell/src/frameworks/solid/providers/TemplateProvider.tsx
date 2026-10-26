@@ -15,8 +15,8 @@ import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/te
 import { completeResponse, respondsThrough } from '@shared/responses';
 import { installRenderSettleOnExit, installSafeModeShortcut } from '@shared/safeMode';
 import { hostSourceBag } from '@shared/sources';
-import { flowStateOf } from '@shared/taskFlow';
-import { taskFlowLive } from '@shared/taskFlowLive';
+import { workflowStateOf } from '@shared/taskWorkflow';
+import { taskWorkflowLive } from '@shared/taskWorkflowLive';
 import { copyText } from '@shared/utils';
 
 import { signalOptimism } from '../../../shared/signalOptimism';
@@ -34,7 +34,6 @@ import {
   useClockStore,
   useDatasetStore,
   useEditorStore,
-  useFlowStore,
   useInterpretationStore,
   usePresenceStore,
   useProfileStore,
@@ -47,6 +46,7 @@ import {
   useSpaceStore,
   useTemplateStore,
   useThemeStore,
+  useWorkflowStore,
 } from '@solid/stores';
 import type { Stores } from '@solid/types';
 import { Route, Router } from '@solidjs/router';
@@ -65,6 +65,8 @@ import {
   expandViewRoutes,
   hasViewsMarker,
   installGestureTracking,
+  recordRouteBody,
+  recordViewCandidates,
   SPACE_ROUTE_PATH,
 } from '@we/schema-shared';
 import type { OwnerRef, VisualEditorContextValue } from '@we/schema-solid';
@@ -102,7 +104,7 @@ export default function TemplateProvider() {
   const interpretationStore = useInterpretationStore();
   const clockStore = useClockStore();
   const bundleStore = useBundleStore();
-  const flowStore = useFlowStore();
+  const workflowStore = useWorkflowStore();
 
   // Set CSS custom properties on :root so position:fixed elements (e.g. CesiumGlobe canvas)
   // can consume the shell's own furniture without hard-coding it.
@@ -124,7 +126,7 @@ export default function TemplateProvider() {
   });
 
   /*
-    The console, as a store, so a schema author can print from an `$action` while working something
+    The console, as a store, so a schema author can print from an `$invoke` while working something
     out. This is the one place `console.log` is the *feature* rather than a leftover — hence the
     disable, rather than an exemption in the lint config that would cover the whole file.
   */
@@ -504,7 +506,7 @@ export default function TemplateProvider() {
     interpretationStore,
     clockStore,
     bundleStore,
-    flowStore,
+    workflowStore,
     // Always present, even with no modules registered: a read of `modules.x` resolves through the
     // single-segment path, which indexes the store object without a guard and would throw on a
     // missing `modules` key rather than returning undefined.
@@ -646,15 +648,15 @@ export default function TemplateProvider() {
     ...sources,
     arrangedBoard: (options: unknown) => {
       const given = (options ?? {}) as { columns?: unknown; board?: unknown };
-      const flowView = taskFlowLive.view();
+      const workflowView = taskWorkflowLive.view();
       const view = arrangedBoardSource({
         ...given,
         pending: boardOptimism.overlay(),
         // Who is on each card, including a tick nobody's subscription has carried back yet — a
         // filter that ignored it would dim the card somebody was just assigned to.
         pendingInvolvements: involvementOptimism.overlay(),
-        // Where the space's states ask for agreement, a card is where its run is. See `taskFlow.ts`.
-        flow: flowView,
+        // Where the space's states ask for agreement, a card is where its run is. See `taskWorkflow.ts`.
+        workflow: workflowView,
       });
 
       const rows = new Map<string, readonly string[]>();
@@ -676,7 +678,7 @@ export default function TemplateProvider() {
         const row = record as { id?: string; status?: unknown } | null;
         // Against the state the board draws — the run's where there is one — or a drop that moved a
         // run would be held until `status` caught up, which it may never do if nobody mirrors it.
-        if (row?.id) rows.set(`${row.id}.status`, [flowStateOf(flowView, row.id) ?? String(row.status ?? '')]);
+        if (row?.id) rows.set(`${row.id}.status`, [workflowStateOf(workflowView, row.id) ?? String(row.status ?? '')]);
       }
 
       queueMicrotask(() => boardOptimism.settle((id, relation) => rows.get(`${id}.${relation}`)));
@@ -811,12 +813,12 @@ export default function TemplateProvider() {
    * straight here from a template, so
    *
    * ```json
-   * { "$action": "record.create", "args": ["TextBlock", {}, { "dataset": "sessionStore.logout" }] }
+   * { "$invoke": "record.create", "args": ["TextBlock", {}, { "dataset": "sessionStore.logout" }] }
    * ```
    *
    * logged the user out from a synced space template, and `runtimeStore.restartExecutor`,
    * `runtimeStore.exportDatabase` and `themeStore.restorePersonalTheme` were reachable the same way.
-   * `buildTemplateBag` protects `{ "$action": "sessionStore.logout" }` and did nothing for this
+   * `buildTemplateBag` protects `{ "$invoke": "sessionStore.logout" }` and did nothing for this
    * closure's own lookup — a filtered bag around an unfiltered walk.
    *
    * The fix is not a better walk. The option means *which dataset*, and the datasets are a closed
@@ -1132,11 +1134,11 @@ export default function TemplateProvider() {
           {
             type: 'we-button',
             props: {
-              variant: 'primary',
+              variant: 'solid',
               // The dataset id, never the route segment: for a shared space the segment is the
               // neighbourhood CID, and the settings page keys off the dataset id.
               onClick: {
-                $action: 'shellStore.openShellView',
+                $invoke: 'shellStore.openShellView',
                 args: ['settings', { $: '`/spaces/${datasetStore.currentDataset.id}`' }],
               },
             },
@@ -1178,8 +1180,8 @@ export default function TemplateProvider() {
           {
             type: 'we-button',
             props: {
-              variant: 'primary',
-              onClick: { $action: 'routeStore.navigate', args: [{ $: 'first(spaceStore.viewNav).path' }] },
+              variant: 'solid',
+              onClick: { $invoke: 'routeStore.navigate', args: [{ $: 'first(spaceStore.viewNav).path' }] },
             },
             children: [{ $: '`Go to ${first(spaceStore.viewNav).label}`' }],
           },
@@ -1226,10 +1228,20 @@ export default function TemplateProvider() {
    * A page for one record is the only member so far, and it is here rather than in each template
    * because every space wants it and no template should have to remember to include it.
    */
-  const HOST_ROUTES = [{ ...recordPage, path: RECORD_ROUTE_PATH }];
+  /*
+    The record page chooses its view by what the record is: the template's own map, then any view
+    here that says it draws the type, then the generic page — see `recordViews.ts` in the schema
+    system. A memo, because both the template and the views available can change.
+  */
+  const hostRoutes = createMemo(() => [
+    {
+      ...recordRouteBody(recordPage, recordViewCandidates(templateSchema, spaceStore.routableViews())),
+      path: RECORD_ROUTE_PATH,
+    },
+  ]);
 
   /** Their first path segment — what the redirect compares a URL against. */
-  const HOST_ROUTE_SEGMENTS = new Set(HOST_ROUTES.map((route) => route.path.split('/')[1]));
+  const HOST_ROUTE_SEGMENTS = new Set([RECORD_ROUTE_PATH.split('/')[1]]);
 
   /*
     Every space template lives under `/space/:spaceId`, and the host is what puts it there.
@@ -1253,7 +1265,7 @@ export default function TemplateProvider() {
   */
   const routesWithViews = createMemo(() => {
     const routes = templateSchema.routes ?? [];
-    const extras = HOST_ROUTES as unknown as (typeof routes)[number][];
+    const extras = hostRoutes() as unknown as (typeof routes)[number][];
     /*
       `$part` expanded over the whole route table, before the router sees it.
 

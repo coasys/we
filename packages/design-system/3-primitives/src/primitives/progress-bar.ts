@@ -6,7 +6,7 @@ import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
-import type { ComponentSize, ComponentVariant } from '../types';
+import type { ComponentSize } from '../types';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'flex',
@@ -15,20 +15,15 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
 };
 
 /*
-  The bar itself. Roles rather than scale positions, because these are meanings a theme pins — a
-  theme setting `accent` expects its primary progress bar to follow — and because the corrections
-  at apply time measure a role against what is behind it and skip a scale position entirely.
+  The bar itself, in the accent — which a `tone` re-points, so a `success` bar is green and a
+  palette hue works too. A role rather than a scale position, because the corrections at apply time
+  measure a role against what is behind it and skip a scale position entirely.
 
   `neutral` takes `border-strong`: the trough is already `control-surface`, so the fill has to be a
   neutral distinguishable from it, and that is the role for an emphasised neutral.
 */
-const VARIANT_COLORS: Record<ComponentVariant, string> = {
-  neutral: 'var(--we-role-border-strong)',
-  primary: 'var(--we-role-accent)',
-  success: 'var(--we-role-success)',
-  warning: 'var(--we-role-warning)',
-  danger: 'var(--we-role-danger)',
-};
+const fillFor = (tone: string | undefined): string =>
+  tone === 'neutral' ? 'var(--we-role-border-strong)' : 'var(--we-role-accent)';
 
 const SIZE_HEIGHTS: Record<ComponentSize, string> = {
   xs: '2px',
@@ -56,7 +51,6 @@ export default class ProgressBar extends DesignSystemElement {
 
   @property({ type: Number }) value = 0;
   @property({ type: Number }) max = 100;
-  @property({ type: String, reflect: true }) variant: ComponentVariant = 'primary';
   @property({ type: String, reflect: true }) size: ComponentSize = 'md';
   /**
    * What is progressing. Announced with the percentage, and without it a screen reader says only
@@ -84,7 +78,7 @@ export default class ProgressBar extends DesignSystemElement {
   render() {
     const pct = Math.min(100, Math.max(0, (this.value / this.max) * 100));
     const height = SIZE_HEIGHTS[this.size];
-    const fillColor = VARIANT_COLORS[this.variant];
+    const fillColor = fillFor(this.tone);
 
     return html`
       <div

@@ -53,6 +53,12 @@
 export type { AnchorId, Content } from './types.ts';
 
 // States — what a surface shows when it has nothing to show.
+export { lineComposer } from './input/lineComposer.ts';
+export type { LineComposerOptions } from './input/lineComposer.ts';
+export { treeRow } from './lists/treeRow.ts';
+export type { TreeRowOptions } from './lists/treeRow.ts';
+export { comingSoon } from './states/comingSoon.ts';
+export type { ComingSoonOptions } from './states/comingSoon.ts';
 export { emptyNote, emptyState } from './states/emptyState.ts';
 export type { EmptyStateOptions } from './states/emptyState.ts';
 export { gatePrompt } from './states/gatePrompt.ts';
@@ -82,6 +88,7 @@ export {
   PANEL_TITLE_PROPS,
   panelHeader,
   panelScroll,
+  panelScrollProps,
   panelShell,
   SECTION_LABEL_PROPS,
   sectionLabel,

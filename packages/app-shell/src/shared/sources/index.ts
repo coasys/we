@@ -19,6 +19,7 @@
  */
 import { arrangedBoard } from './arrangedBoard';
 import { calendarMonth, calendarMonths, monthLabel, yearLabel } from './calendarMonth';
+import { can } from './can';
 import { formatJson } from './formatJson';
 import { involvement } from './involvement';
 import { involvementMenu } from './involvementMenu';
@@ -46,10 +47,17 @@ export interface HostSource {
  */
 export const hostSources: readonly HostSource[] = [
   {
+    name: 'can',
+    params: ['options'],
+    doc: 'Whether the viewer may take an action under the space\'s policy — for hiding what they may not do. Actions are "Entity.create", "Entity.edit", "Entity.delete", and "Entity.relation.add" or ".remove". Pass the record acted on for an edit or a delete, since the answer often depends on who made it. It decides only what to offer: the write is checked again when it is made, and a refused one fails with the reason. Options: policy (spaceStore.policy), action, record.',
+    example: "can({ policy: spaceStore.policy, action: 'CollectionBlock.delete', record: post })",
+    fn: can,
+  },
+  {
     name: 'requirementLabel',
     params: ['options'],
-    doc: 'What a step or a task state asks to be there first, in the words the app uses for it ("at least 1 comment in response to it"). For a form holding requirements it has not saved yet. Options: entity (comment, call, task, file, link, image, or an entity name), tie ("responses", or empty for anywhere in the space), min.',
-    example: 'requirementLabel({ entity: local.guardEntity, tie: local.guardTie, min: local.guardMin })',
+    doc: 'What a step or a task state asks to be there first, in the words the app uses for it ("at least 1 comment in response to it"). For a form holding requirements it has not saved yet. Options: entity (comment, call, task, file, link, image, or an entity name), via ("responses", or empty for anywhere in the space), min.',
+    example: 'requirementLabel({ entity: local.evidenceEntity, via: local.evidenceVia, min: local.evidenceMin })',
     fn: requirementLabel,
   },
   {
@@ -83,7 +91,7 @@ export const hostSources: readonly HostSource[] = [
   {
     name: 'arrangedBoard',
     params: ['options'],
-    doc: 'A board worked out from its three subscriptions — { ready, gathers, columns, contents, unplaced, unplacedStates, available, total, involved, filtering, show, dimmed, cardCount, matchedCount, unplacedTotal, rows, cells, rowCounts, flow, awaiting, awaitingOnly }. columns are the caller’s own column records in the board’s order; contents[columnId] is { label, icon, color, lane, arranged, unarranged, count, shown, matched, order }; unplaced is work no column here shows. Options: board (the record with children hydrated), columns (its kind: "column" children), records (everything in scope), states (spaceStore.taskStates). To read it by who is on the work, also pass involvements (an Involvement query), kinds (spaceStore.involvementTypes), people (the chosen DIDs), me (me.did — involved is everyone on a card here, the viewer first) and show: "dim" lists the others in dimmed and moves nothing; "hide" drops them from arranged, unarranged and unplaced while count stays true and shown says how many are drawn; "rows" adds a row per person plus "nobody" — rows are keys, cells[row][columnId] is { arranged, unarranged, count }. A drag in a column showing only part of itself passes contents[columnId].order to arrangeColumn, so the hidden cards keep their places. Where the space\u2019s states ask for agreement (spaceStore.taskFlowEnabled) a card is drawn where its run is, and three more fields answer: flow[cardId] is { to, voters, counted, needs, mine, canApprove, approverKind } for a card waiting on a move — counted is how many of voters count toward needs; awaiting is the cards whose waiting move the viewer\u2019s approval would help; pass awaitingMe: true to draw only those (awaitingOnly says it is on).',
+    doc: 'A board worked out from its three subscriptions — { ready, gathers, columns, contents, unplaced, unplacedStates, available, total, involved, filtering, show, dimmed, cardCount, matchedCount, unplacedTotal, rows, cells, rowCounts, workflow, awaiting, awaitingOnly }. columns are the caller’s own column records in the board’s order; contents[columnId] is { label, icon, color, lane, arranged, unarranged, count, shown, matched, order }; unplaced is work no column here shows. Options: board (the record with children hydrated), columns (its kind: "column" children), records (everything in scope), states (spaceStore.taskStates). To read it by who is on the work, also pass involvements (an Involvement query), kinds (spaceStore.involvementTypes), people (the chosen DIDs), me (me.did — involved is everyone on a card here, the viewer first) and show: "dim" lists the others in dimmed and moves nothing; "hide" drops them from arranged, unarranged and unplaced while count stays true and shown says how many are drawn; "rows" adds a row per person plus "nobody" — rows are keys, cells[row][columnId] is { arranged, unarranged, count }. A drag in a column showing only part of itself passes contents[columnId].order to arrangeColumn, so the hidden cards keep their places. Where the space\u2019s states ask for agreement (spaceStore.taskWorkflowEnabled) a card is drawn where its run is, and three more fields answer: workflow[cardId] is { to, approvers, counted, needs, mine, canApprove, approverKind } for a card waiting on a move — counted is how many of approvers count toward needs; awaiting is the cards whose waiting move the viewer\u2019s approval would help; pass awaitingMe: true to draw only those (awaitingOnly says it is on).',
     example:
       'arrangedBoard({ board: first(local.board), columns: local.columns, records: local.pool, states: spaceStore.taskStates }).columns',
     fn: arrangedBoard,

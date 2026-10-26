@@ -12,16 +12,19 @@ import type { AgentPort } from './agents';
 import type { CallPort } from './call';
 import type { DatasetHandle, RendererDataBindings } from './dataSource';
 import type { EphemeralPort } from './ephemeral';
-import type { FlowPort } from './flows';
+import type { IdentityPort } from './identity';
 import type { InterpretationPort } from './interpretation';
 import type { LanguageModelPort } from './languageModel';
 import type { AgentSessionPort, DatasetLifecyclePort } from './lifecycle';
 import type { EntityManifest } from './manifest';
 import type { EntityManifestEntry } from './manifestEntry';
 import type { ModelAdminPort } from './modelAdmin';
+import type { PersonPort } from './persons';
 import type { AgentProfileSummary, PublishProfileFields } from './profileTypes';
 import type { RuntimeAdminPort } from './runtimeAdmin';
+import type { ShapeStore } from './shapes';
 import type { TranscriptionPort } from './transcription';
+import type { WorkflowPort } from './workflows';
 
 /**
  * Schema management on a dataset: installing the host's entity schemas, checking what a dataset
@@ -142,6 +145,11 @@ export interface SchemaPort {
   resetInterpretationHints(dataset: DatasetHandle, entity: string): Promise<void>;
   /** Optional remediation for duplicated schema installs (backend-specific failure mode). */
   dedupe?(dataset: DatasetHandle): Promise<{ removed: number; authors: string[] }>;
+  /**
+   * Where the space keeps its own models. Optional: absent, each model is a manifest document on a
+   * `Shape` record — see {@link ShapeStore}.
+   */
+  shapes?: ShapeStore;
 }
 
 /** A file to store, as `ProfileDirectoryPort.uploadFile` takes it. */
@@ -244,7 +252,7 @@ export interface BackendPorts {
    * Rules over a record's state, and moves made under them. Optional: a backend that cannot enforce
    * rules omits it, and a surface that would have asked for agreement falls back to writing the state.
    */
-  flows?: FlowPort;
+  workflows?: WorkflowPort;
   /**
    * Who points at a value through one predicate — every message that mentions an agent. Optional: a
    * backend that cannot answer omits it, and a surface asking falls back to what it can read.
@@ -255,6 +263,17 @@ export interface BackendPorts {
    * module cannot build a session there.
    */
   call?: CallPort;
+  /**
+   * The person's identity beyond this session — passwords and passkeys, keys, devices, bots, plan.
+   * Optional: absent, every part of Settings that needs it says "coming soon"; see
+   * {@link IdentityPort}.
+   */
+  identity?: IdentityPort;
+  /**
+   * Who a signing key speaks for. Optional: absent, every key is its own person — see
+   * {@link PersonPort} and `SELF_PERSONS`.
+   */
+  persons?: PersonPort;
 }
 
 /**

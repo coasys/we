@@ -102,7 +102,7 @@ export const spaceModal = {
                         signals: { $: 'filter(space.signals, { signalTypeId: sig.id })' },
                         myDid: { $: 'me.did' },
                         onSignal: {
-                          $action: 'spaceStore.upsertSignal',
+                          $invoke: 'spaceStore.upsertSignal',
                           args: [{ $: 'space.id' }, { $: 'sig.id' }, { $: 'arg' }],
                         },
                       },
@@ -126,11 +126,11 @@ export const spaceModal = {
                       type: 'we-button',
                       props: {
                         text: 'Enter Space',
-                        variant: 'primary',
+                        variant: 'solid',
                         height: '40px',
                         onClick: [
                           { $setLocal: 'selectedPin', value: null },
-                          { $action: 'spaceStore.navigateToSpace', args: [{ $: 'space.url' }] },
+                          { $invoke: 'spaceStore.navigateToSpace', args: [{ $: 'space.url' }] },
                         ],
                       },
                     },
@@ -138,14 +138,14 @@ export const spaceModal = {
                       type: 'we-button',
                       props: {
                         text: 'Join Space',
-                        variant: 'primary',
+                        variant: 'solid',
                         height: '40px',
                         onClick: {
-                          $action: 'spaceStore.joinSpace',
+                          $invoke: 'spaceStore.joinSpace',
                           args: [{ $: 'space.url' }],
                           onSuccess: [
                             { $setLocal: 'selectedPin', value: null },
-                            { $action: 'spaceStore.navigateToSpace', args: [{ $: 'space.url' }] },
+                            { $invoke: 'spaceStore.navigateToSpace', args: [{ $: 'space.url' }] },
                           ],
                         },
                       },

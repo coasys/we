@@ -200,7 +200,7 @@ describe('BlockComposer save handshake', () => {
           type: 'BlockComposer',
           props: {
             onReady: { $setLocal: 'savePost', value: { $: 'event.save' } },
-            onSave: { $action: 'spaceStore.createPost', args: [{ $: 'arg' }] },
+            onSave: { $invoke: 'spaceStore.createPost', args: [{ $: 'arg' }] },
           },
         },
       ],
@@ -501,14 +501,14 @@ describe('space values', () => {
 
 describe('a write wired to an event nobody causes', () => {
   const unasked = (node: SchemaNode) => messages(node, 'warning').filter((m) => m.includes('fires without anybody'));
-  const create = { $action: 'record.create', args: ['TaskBlock', { title: 'x' }] };
+  const create = { $invoke: 'record.create', args: ['TaskBlock', { title: 'x' }] };
 
   it('warns when an image loading would write', () => {
     expect(unasked({ type: 'img', props: { src: 'a.png', onLoad: create } })).toHaveLength(1);
   });
 
   it('finds the write inside a handler list and inside a lifecycle callback', () => {
-    const nested = { $action: 'routeStore.navigate', args: ['/'], onSuccess: [create] };
+    const nested = { $invoke: 'routeStore.navigate', args: ['/'], onSuccess: [create] };
     expect(unasked({ type: 'details', props: { onToggle: [{ $setLocal: 'x', value: 1 }, nested] } })).toHaveLength(1);
   });
 
@@ -518,9 +518,9 @@ describe('a write wired to an event nobody causes', () => {
 
   it('says nothing about an action that may run unasked', () => {
     expect(
-      unasked({ type: 'img', props: { src: 'a.png', onLoad: { $action: 'routeStore.navigate', args: ['/'] } } }),
+      unasked({ type: 'img', props: { src: 'a.png', onLoad: { $invoke: 'routeStore.navigate', args: ['/'] } } }),
     ).toEqual([]);
-    expect(unasked({ type: 'Grid', props: { onArrange: { $action: 'modules.call.setArrangement' } } })).toEqual([]);
+    expect(unasked({ type: 'Grid', props: { onArrange: { $invoke: 'modules.call.setArrangement' } } })).toEqual([]);
   });
 
   it('says nothing about a blur, which counts as asking once somebody typed', () => {
@@ -538,7 +538,7 @@ describe('a dialog asking about what the host asks about anyway', () => {
     ({ type: '$if', props: { condition: { $: 'true' }, then: { type: 'we-modal', children } } }) as SchemaNode;
   const deleteButton = {
     type: 'we-button',
-    props: { onClick: { $action: 'spaceStore.deleteCollection', args: ['c1'] } },
+    props: { onClick: { $invoke: 'spaceStore.deleteCollection', args: ['c1'] } },
   };
 
   it('warns about a confirmation in front of a delete', () => {
@@ -719,5 +719,37 @@ describe('tokens inside the data a prop holds', () => {
       { type: 'GraphView', props: { emptyAction: { type: 'Row', children: [{ $: 'row.title' }] } } },
     ]);
     expect(messages(node, 'error')).toEqual([]);
+  });
+});
+
+describe('a template’s own record views', () => {
+  const template = (recordViews: Record<string, unknown>) =>
+    ({
+      type: 'Column',
+      meta: { name: 't', description: '', icon: 'x', recordViews },
+      children: [],
+    }) as unknown as SchemaNode;
+
+  it('checks each view as a node of the template', () => {
+    const result = validateSemantic(template({ TaskBlock: { type: 'we-nonexistent' } }), context);
+    expect(result.errors.some((e) => e.path.startsWith('meta.recordViews.TaskBlock'))).toBe(true);
+  });
+
+  it('refuses a key the record page cannot match', () => {
+    const result = validateSemantic(template({ 'task block': { type: 'Column' } }), context);
+    expect(result.valid).toBe(false);
+    expect(result.errors.map((e) => e.path)).toContain('meta.recordViews.task block');
+  });
+
+  it('accepts an entity, an entity with a kind, and a view named by id', () => {
+    const result = validateSemantic(
+      template({
+        TaskBlock: { type: 'Column' },
+        'CollectionBlock:call': { type: 'Column' },
+        Proposal: 'proposal-page',
+      }),
+      context,
+    );
+    expect(result.errors.filter((e) => e.path.startsWith('meta.recordViews'))).toEqual([]);
   });
 });

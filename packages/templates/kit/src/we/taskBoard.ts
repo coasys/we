@@ -104,18 +104,18 @@ export interface TaskCardOptions {
   /** Controls shown at the end of the card's meta row — usually {@link moveTaskMenu}. */
   actions?: SchemaNode;
   /**
-   * The move the card is waiting on, as an expression — `arrangedBoard(…).flow[card.id]`, which is
+   * The move the card is waiting on, as an expression — `arrangedBoard(…).workflow[card.id]`, which is
    * nothing unless the space's states ask for agreement and somebody has asked to move this card.
    * Draws where it is asking to go and how close it is, with Approve for somebody whose approval
    * would count and Withdraw for somebody who asked.
    */
   waiting?: string;
   /**
-   * The flows the card's record is going through, other than the board's own, as an expression —
-   * `flowStore.recordFlows[card.id]`. One small chip each, naming the flow and where the record
+   * The workflows the card's record is going through, other than the board's own, as an expression —
+   * `workflowStore.recordWorkflows[card.id]`. One small chip each, naming the workflow and where the record
    * stands in it, so a card going through a review says so on the board. Omit for none.
    */
-  flows?: string;
+  workflows?: string;
   /** Context key the card reads. Defaults to `'card'`, which is what {@link taskBoard} binds. */
   as?: string;
   /**
@@ -280,10 +280,10 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
                     type: 'we-badge',
                     props: {
                       size: 'xs',
-                      variant: 'warning',
+                      variant: 'solid',
+                      tone: 'warning',
                       // Solid, as the recording badges are: a soft warning reads as decoration, and
                       // this is the one thing on the card that asks for a decision.
-                      appearance: 'solid',
                     },
                     children: ['suggested'],
                   },
@@ -305,7 +305,7 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
         },
       },
       ...(opts.waiting ? [waitingLine(opts.waiting, as)] : []),
-      ...(opts.flows ? [flowChips(opts.flows)] : []),
+      ...(opts.workflows ? [workflowChips(opts.workflows)] : []),
       {
         type: 'Row',
         props: { gap: '200', ay: 'center' },
@@ -316,7 +316,7 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
               condition: { $: `${as}.priority != 'medium'` },
               then: {
                 type: 'we-badge',
-                props: { size: 'xs', variant: { $: `${as}.priority == 'high' ? 'danger' : 'neutral'` } },
+                props: { size: 'xs', tone: { $: `${as}.priority == 'high' ? 'danger' : ''` } },
                 children: [{ $: `${as}.priority` }],
               },
             },
@@ -416,7 +416,7 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
                 children: [
                   {
                     type: 'we-badge',
-                    props: { size: 'xs', variant: 'neutral' },
+                    props: { size: 'xs' },
                     children: [
                       {
                         $: `find(spaceStore.taskStates, { slug: ${as}.status }).name ?? ${as}.status`,
@@ -495,12 +495,12 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
                       answerButton({
                         tone: 'success',
                         label: 'Accept',
-                        onClick: { $action: 'modules.transcribe.acceptProposal', args: [{ $: `${as}.id` }] },
+                        onClick: { $invoke: 'modules.transcribe.acceptProposal', args: [{ $: `${as}.id` }] },
                       }),
                       answerButton({
                         tone: 'danger',
                         label: 'Reject — removes it',
-                        onClick: { $action: 'modules.transcribe.rejectProposal', args: [{ $: `${as}.id` }] },
+                        onClick: { $invoke: 'modules.transcribe.rejectProposal', args: [{ $: `${as}.id` }] },
                       }),
                     ],
                   },
@@ -643,7 +643,7 @@ function cardPeople(as: string, entity: string, edge?: string): SchemaNode {
       },
       // A toggle reports the state it had before the press; "Assign to me" carries none, which reads as on.
       onSelect: {
-        $action: 'spaceStore.setInvolvement',
+        $invoke: 'spaceStore.setInvolvement',
         args: [{ $: `${as}.id` }, { $: 'arg.id' }, { $: 'arg.kind' }, { $: '!arg.checked' }],
       },
     },
@@ -714,7 +714,7 @@ export function moveTaskMenu(from: string, as = 'card'): SchemaNode {
       size: 'xs',
       items: { $: `${VIEW}.choices.map(k, { id: k.id, label: \`Move to \${k.label}\` })` },
       onSelect: {
-        $action: 'spaceStore.moveCardToColumn',
+        $invoke: 'spaceStore.moveCardToColumn',
         args: [{ $: from }, { $: 'arg.id' }, { $: `${as}.id` }, [], { $: `${VIEW}.contents[arg.id].slug` }],
       },
     },
@@ -757,8 +757,8 @@ export interface TaskBoardOptions {
    * supplying its own `card` gets those two and draws the counts itself.
    */
   social?: boolean;
-  /** Draw a chip for each flow a card's record is going through — see {@link TaskCardOptions.flows}. */
-  flows?: boolean;
+  /** Draw a chip for each workflow a card's record is going through — see {@link TaskCardOptions.workflows}. */
+  workflows?: boolean;
   /** Extra conditions on the pool — `{ kind: 'post' }` for a board of composed cards. */
   where?: Record<string, unknown>;
   /**
@@ -877,11 +877,11 @@ const addTaskModal: SchemaNode = formModal({
     $if: {
       condition: { $: 'local.addExisting' },
       then: {
-        $action: 'spaceStore.moveCardToColumn',
+        $invoke: 'spaceStore.moveCardToColumn',
         args: ['', { $: 'col.id' }, { $: 'local.addExisting' }, [], { $: `${CELL}.slug` }],
       },
       else: {
-        $action: 'spaceStore.addTaskToColumn',
+        $invoke: 'spaceStore.addTaskToColumn',
         args: [{ $: 'col.id' }, { $: 'local.addTitle' }, { $: ANCHOR }],
       },
     },
@@ -899,7 +899,7 @@ const renameModal: SchemaNode = formModal({
   disabled: { $: '!local.renameTitle' },
   submitLabel: 'Rename',
   submit: {
-    $action: 'spaceStore.renameBoardColumn',
+    $invoke: 'spaceStore.renameBoardColumn',
     args: [{ $: 'col.id' }, { $: 'local.renameTitle' }],
     onSuccess: [{ $setLocal: 'renameOpen', value: false }],
   },
@@ -921,28 +921,28 @@ function draggable(card: SchemaNode, as: string): SchemaNode {
 
 /** The default card for a column of this board — see `taskCard`. */
 /**
- * The flows a card's record is going through, one chip each — the flow, and where the record stands
+ * The workflows a card's record is going through, one chip each — the workflow, and where the record stands
  * in it. Warning-toned when a move is waiting or the record is stuck, since those are what somebody
  * might act on; quiet otherwise.
  */
-function flowChips(flows: string): SchemaNode {
+function workflowChips(workflows: string): SchemaNode {
   return {
     type: '$if',
     props: {
-      condition: { $: `count(${flows} ?? [])` },
+      condition: { $: `count(${workflows} ?? [])` },
       then: {
         type: 'Row',
         props: { gap: '100', wrap: true },
         children: [
           {
             type: '$each',
-            props: { items: { $: `${flows} ?? []` }, as: 'inFlow' },
+            props: { items: { $: `${workflows} ?? []` }, as: 'inWorkflow' },
             children: [
               {
                 type: 'we-badge',
                 props: {
                   size: 'sm',
-                  variant: { $: "inFlow.waiting || inFlow.stalled ? 'warning' : 'neutral'" },
+                  tone: { $: "inWorkflow.waiting || inWorkflow.stalled ? 'warning' : ''" },
                 },
                 children: [
                   {
@@ -950,7 +950,9 @@ function flowChips(flows: string): SchemaNode {
                     props: { gap: '100', ay: 'center' },
                     children: [
                       { type: 'we-icon', props: { name: 'flow-arrow', size: 'xs' } },
-                      { $: 'inFlow.stateLabel ? `${inFlow.label} · ${inFlow.stateLabel}` : inFlow.label' },
+                      {
+                        $: 'inWorkflow.stateLabel ? `${inWorkflow.label} · ${inWorkflow.stateLabel}` : inWorkflow.label',
+                      },
                     ],
                   },
                 ],
@@ -983,7 +985,7 @@ function waitingLine(waiting: string, as: string): SchemaNode {
     children: [
       {
         type: 'Row',
-        props: { gap: '200', ay: 'center', wrap: true, bg: 'warning-surface', r: 'control', px: '200', py: '100' },
+        props: { gap: '200', ay: 'center', wrap: true, bg: 'warning-soft', r: 'control', px: '200', py: '100' },
         children: [
           { type: 'we-icon', props: { name: 'hourglass', size: 'xs', color: 'warning-text' } },
           {
@@ -998,7 +1000,9 @@ function waitingLine(waiting: string, as: string): SchemaNode {
           {
             type: 'AvatarStack',
             props: {
-              avatars: { $: 'wait.voters.map(d, { image: find(profileStore.profiles, { did: d }).avatar, hash: d })' },
+              avatars: {
+                $: 'wait.approvers.map(d, { image: find(profileStore.profiles, { did: d }).avatar, hash: d })',
+              },
               max: 3,
               size: 'xs',
             },
@@ -1011,8 +1015,8 @@ function waitingLine(waiting: string, as: string): SchemaNode {
                 type: 'we-button',
                 props: {
                   size: 'xs',
-                  variant: 'primary',
-                  onClick: { $action: 'spaceStore.approveTaskMove', args: [{ $: `${as}.id` }] },
+                  variant: 'solid',
+                  onClick: { $invoke: 'spaceStore.approveTaskMove', args: [{ $: `${as}.id` }] },
                 },
                 children: ['Approve'],
               },
@@ -1027,7 +1031,7 @@ function waitingLine(waiting: string, as: string): SchemaNode {
                 props: {
                   size: 'xs',
                   variant: 'ghost',
-                  onClick: { $action: 'spaceStore.withdrawTaskMove', args: [{ $: `${as}.id` }] },
+                  onClick: { $invoke: 'spaceStore.withdrawTaskMove', args: [{ $: `${as}.id` }] },
                 },
                 children: ['Withdraw'],
               },
@@ -1044,7 +1048,7 @@ function boardCard(opts: TaskBoardOptions, showState: string, from: string): Sch
     ? opts.card('card')
     : taskCard({
         actions: moveTaskMenu(from),
-        waiting: `${VIEW}.flow[card.id]`,
+        waiting: `${VIEW}.workflow[card.id]`,
         extracted: opts.extracted,
         bg: opts.bg,
         showState,
@@ -1054,7 +1058,7 @@ function boardCard(opts: TaskBoardOptions, showState: string, from: string): Sch
         ...(opts.select ? { select: opts.select } : {}),
         ...(opts.people ? { peopleOf: opts.entity ?? 'TaskBlock' } : {}),
         ...(opts.social ? { social: true } : {}),
-        ...(opts.flows ? { flows: 'flowStore.recordFlows[card.id]' } : {}),
+        ...(opts.workflows ? { workflows: 'workflowStore.recordWorkflows[card.id]' } : {}),
       });
 }
 
@@ -1090,7 +1094,7 @@ function columnCards(opts: TaskBoardOptions, cell: string, group: SchemaProp): S
         person's row — would otherwise send every card it is not showing to the bottom, for everybody.
       */
       onReorder: {
-        $action: 'spaceStore.arrangeColumn',
+        $invoke: 'spaceStore.arrangeColumn',
         args: [{ $: 'col.id' }, { $: 'arg.detail' }, { $: `${VIEW}.contents[col.id].order` }],
       },
       /*
@@ -1108,7 +1112,7 @@ function columnCards(opts: TaskBoardOptions, cell: string, group: SchemaProp): S
         reads the column for the write itself, so a stale hint costs a frame and never a wrong write.
       */
       onMoved: {
-        $action: 'spaceStore.moveCardToColumn',
+        $invoke: 'spaceStore.moveCardToColumn',
         args: [
           { $: 'arg.detail.from' },
           { $: 'arg.detail.to' },
@@ -1183,7 +1187,6 @@ function columnHeading(opts: TaskBoardOptions): SchemaNode {
                       type: 'we-badge',
                       props: {
                         size: 'xs',
-                        variant: 'neutral',
                       },
                       children: ['lane'],
                     },
@@ -1226,7 +1229,7 @@ function columnHeading(opts: TaskBoardOptions): SchemaNode {
           size: 'xs',
           items: [
             { id: 'rename', label: 'Rename' },
-            { id: 'remove', label: 'Remove column', variant: 'danger' },
+            { id: 'remove', label: 'Remove column', tone: 'danger' },
           ],
           onSelect: [
             {
@@ -1236,7 +1239,7 @@ function columnHeading(opts: TaskBoardOptions): SchemaNode {
                 // Removing takes the column record and nothing else: the cards keep their
                 // state, so they reappear in another column bound to it or in Unplaced.
                 else: {
-                  $action: 'spaceStore.removeBoardColumn',
+                  $invoke: 'spaceStore.removeBoardColumn',
                   args: [opts.boardId, { $: 'col.id' }],
                 },
               },
@@ -1355,11 +1358,11 @@ function unplacedColumn(opts: TaskBoardOptions): SchemaNode {
               {
                 type: 'we-button',
                 props: {
-                  variant: 'secondary',
+                  variant: 'soft',
                   size: 'xs',
                   width: '100%',
                   onClick: {
-                    $action: 'spaceStore.addBoardColumn',
+                    $invoke: 'spaceStore.addBoardColumn',
                     args: [opts.boardId, { $: 'state.name' }, { $: 'state.slug' }],
                   },
                 },
@@ -1400,7 +1403,7 @@ function unplacedColumn(opts: TaskBoardOptions): SchemaNode {
                 bound column — writes its state.
               */
               onMoved: {
-                $action: 'spaceStore.moveCardToColumn',
+                $invoke: 'spaceStore.moveCardToColumn',
                 args: [
                   '',
                   { $: 'arg.detail.to' },
@@ -1447,7 +1450,7 @@ function addColumnButton(pt: string): SchemaNode {
           {
             type: 'we-button',
             props: {
-              variant: 'secondary',
+              variant: 'soft',
               size: 'xs',
               square: true,
               label: 'Add column',
@@ -1521,7 +1524,7 @@ function personRows(opts: TaskBoardOptions): SchemaNode {
               group: 'board-columns',
               gap: 'var(--we-space-400)',
               ay: 'start',
-              onReorder: { $action: 'spaceStore.reorderBoardColumns', args: [opts.boardId, { $: 'arg.detail' }] },
+              onReorder: { $invoke: 'spaceStore.reorderBoardColumns', args: [opts.boardId, { $: 'arg.detail' }] },
             },
             children: [
               { type: '$each', props: { items: { $: `${VIEW}.columns` }, as: 'col' }, children: [columnHead(opts)] },
@@ -1634,7 +1637,7 @@ function awaitingToggle(): SchemaNode {
   return {
     type: '$if',
     props: {
-      condition: { $: `spaceStore.taskFlowEnabled && (count(${VIEW}.awaiting) > 0 || local.boardAwaiting)` },
+      condition: { $: `spaceStore.taskWorkflowEnabled && (count(${VIEW}.awaiting) > 0 || local.boardAwaiting)` },
       then: {
         type: 'Row',
         props: { gap: '200', ay: 'center' },
@@ -1643,7 +1646,7 @@ function awaitingToggle(): SchemaNode {
             type: 'we-button',
             props: {
               size: 'sm',
-              variant: { $: "local.boardAwaiting ? 'secondary' : 'ghost'" },
+              variant: { $: "local.boardAwaiting ? 'soft' : 'ghost'" },
               onClick: { $toggleLocal: 'boardAwaiting' },
             },
             children: [
@@ -1712,7 +1715,7 @@ function addColumnModal(opts: TaskBoardOptions): SchemaNode {
     disabled: { $: '!local.columnName' },
     submitLabel: 'Add column',
     submit: {
-      $action: 'spaceStore.addBoardColumn',
+      $invoke: 'spaceStore.addBoardColumn',
       args: [opts.boardId, { $: 'local.columnName' }, { $: 'local.columnSlug' }],
       onSuccess: [{ $setLocal: 'addColumnOpen', value: false }],
     },
@@ -1825,7 +1828,7 @@ export function taskBoard(opts: TaskBoardOptions): SchemaNode {
       */
       involvements: {
         entity: 'Involvement',
-        ...(opts.people ? {} : { when: { $: 'spaceStore.taskFlowEnabled' } }),
+        ...(opts.people ? {} : { when: { $: 'spaceStore.taskWorkflowEnabled' } }),
       },
       /*
         What this community reacts with, for the counts on every card — one subscription for the
@@ -1925,7 +1928,7 @@ export function taskBoard(opts: TaskBoardOptions): SchemaNode {
                           gap: 'var(--we-space-400)',
                           ay: 'start',
                           onReorder: {
-                            $action: 'spaceStore.reorderBoardColumns',
+                            $invoke: 'spaceStore.reorderBoardColumns',
                             args: [opts.boardId, { $: 'arg.detail' }],
                           },
                         },
@@ -1957,7 +1960,7 @@ export function taskBoard(opts: TaskBoardOptions): SchemaNode {
                   opts.empty,
                   {
                     type: 'we-button',
-                    props: { variant: 'secondary', size: 'sm', onClick: { $setLocal: 'addColumnOpen', value: true } },
+                    props: { variant: 'soft', size: 'sm', onClick: { $setLocal: 'addColumnOpen', value: true } },
                     children: [{ type: 'we-icon', props: { name: 'plus' } }, 'Add column'],
                   },
                 ],

@@ -165,7 +165,8 @@ with it rather than by hand.
 So a local \`cd ad4m/core && pnpm run build\` does NOT get picked up by WE — changes to \`@coasys/ad4m\`
 reach WE once they are pushed to an ad4m PR or \`dev\` and the pin moves to that commit. A bot keeps
 one PR open that moves it to ad4m \`dev\`'s head once a day (\`.github/workflows/bump-ad4m.yaml\`); a
-feature that needs a new ad4m pins it in its own PR. Run \`pnpm verify:ad4m\` before merging either.
+feature that needs a new ad4m pins it in its own PR. CI runs \`pnpm verify:ad4m\` on both (the \`AD4M
+live\` workflow); it is not a required check, so read its result before merging either.
 The whole policy is in \`docs/contributing/ad4m-and-deploys.md\`.
 
 For active local iteration you can temporarily switch the override to
@@ -373,7 +374,7 @@ themselves. Read the library table in the schema reference before composing.
 is falsy, so \`count(local.items)\` alone is the condition. Keep the comparison where a prop wants a
 real boolean — \`&&\`/\`||\` already answer with one.
 
-**Handlers stay tokens.** \`$action\`, \`$setLocal\`, \`$toggleLocal\`, \`$toggleLocalIn\`, \`$callLocal\`,
+**Handlers stay tokens.** \`$invoke\`, \`$setLocal\`, \`$toggleLocal\`, \`$toggleLocalIn\`, \`$callLocal\`,
 \`$touch\`, \`$resetLocal\` are the statement layer — about seven verbs, enumerable on purpose because
 capability grants and \`destructive\` flags attach to verbs. Their *arguments* take expressions, and an
 expression naming \`event\`/\`arg\`/\`result\` at the top level of \`args\` or as a \`$setLocal\` \`value\`
@@ -594,6 +595,22 @@ per shape at 3 + P calls for P properties — and it rejects outright when one s
 property transform a newer SDK encoded. For a question about many shapes, ask the executor
 once with SPARQL, and read a shape in full only when the answer needs it: \`readShapeProperties\` and
 \`getForeignShacl\` in \`perspectiveHelpers.ts\` show how.
+
+---
+
+### Solid + Lit Web Component Props: \`prop:\` and \`weProps\`
+
+In Solid JSX, a camelCase prop with a **computed** value on a \`we-*\` element is assigned as a
+**lowercased property** — \`fontSize={x}\` becomes \`el.fontsize = x\` — which the Lit element
+never reads, so the value is dropped without a trace. A literal (\`fontSize="400"\`) compiles to an
+attribute and works, which is what makes this hard to see. A spread is computed by nature:
+\`{...SECTION_LABEL_PROPS}\` delivered \`variant\` and \`color\` and silently dropped
+\`textTransform\` and \`letterSpacing\`, so every editor panel title lost its capitals.
+
+- A computed camelCase prop: write \`prop:fontSize={x}\`. (\`styles\` is the exception: plain.)
+- A spread: write \`{...weProps(OBJ)}\` from \`@we/design-utils/solid\`, which prefixes every key.
+
+\`pnpm check:we-props\` gates CI on both.
 
 ---
 

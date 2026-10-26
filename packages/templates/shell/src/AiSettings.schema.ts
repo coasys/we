@@ -32,8 +32,78 @@ function field(label: string, name: string, placeholder = '', type = 'text'): Sc
           type,
           placeholder,
           value: { $: `runtimeStore.aiForm.${name}` },
-          onInput: { $action: 'runtimeStore.setAiFormField', args: [name, { $: 'event.detail' }] },
+          onInput: { $invoke: 'runtimeStore.setAiFormField', args: [name, { $: 'event.detail' }] },
         },
+      },
+    ],
+  };
+}
+
+/**
+ * The API key: typed to send, never shown back.
+ *
+ * The backend holds the key and answers only whether one is set, so the field is empty whenever the
+ * form opens, and empty means "keep the one that is set". Removing it is a choice of its own rather
+ * than clearing the field, which would otherwise be indistinguishable from not touching it. Masked,
+ * which only stops it being read over a shoulder — the threat that applies to a settings page.
+ */
+function apiKeyField(): SchemaNode {
+  return {
+    type: 'we-form-field',
+    props: {
+      label: 'API key',
+      error: { $: 'runtimeStore.aiApiKeyError' },
+      description: {
+        $: "!runtimeStore.aiForm.apiKeyStored ? '' : runtimeStore.aiForm.apiKey ? 'Replaces the key that is set when you save.' : runtimeStore.aiForm.apiKeyRemoved ? 'The key that is set is removed when you save.' : 'A key is set. The node keeps it and never shows it — type a new one to replace it.'",
+      },
+    },
+    children: [
+      {
+        type: 'Row',
+        props: { gap: '200', ay: 'center' },
+        children: [
+          {
+            type: 'we-input',
+            props: {
+              flex: '1',
+              minWidth: '0',
+              type: 'password',
+              placeholder: {
+                $: "runtimeStore.aiForm.apiKeyStored ? 'Leave empty to keep the key that is set' : 'sk-…'",
+              },
+              value: { $: 'runtimeStore.aiForm.apiKey' },
+              onInput: { $invoke: 'runtimeStore.setAiFormField', args: ['apiKey', { $: 'event.detail' }] },
+            },
+          },
+          {
+            type: '$if',
+            props: {
+              condition: { $: 'runtimeStore.aiForm.apiKeyStored && !runtimeStore.aiForm.apiKey' },
+              then: {
+                type: '$if',
+                props: {
+                  condition: { $: 'runtimeStore.aiForm.apiKeyRemoved' },
+                  then: {
+                    type: 'we-button',
+                    props: {
+                      variant: 'ghost',
+                      text: 'Keep key',
+                      onClick: { $invoke: 'runtimeStore.setAiFormField', args: ['apiKeyRemoved', false] },
+                    },
+                  },
+                  else: {
+                    type: 'we-button',
+                    props: {
+                      variant: 'ghost',
+                      text: 'Remove key',
+                      onClick: { $invoke: 'runtimeStore.setAiFormField', args: ['apiKeyRemoved', true] },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        ],
       },
     ],
   };
@@ -63,7 +133,7 @@ const tokenizerFields: SchemaNode = {
           props: {
             checked: { $: 'runtimeStore.aiForm.useTokenizer' },
             size: 'sm',
-            onChange: { $action: 'runtimeStore.setAiFormField', args: ['useTokenizer', { $: 'event.detail' }] },
+            onChange: { $invoke: 'runtimeStore.setAiFormField', args: ['useTokenizer', { $: 'event.detail' }] },
           },
         },
         { type: 'we-text', props: { variant: 'label' }, children: ['Use a separate tokenizer'] },
@@ -95,7 +165,7 @@ const tokenizerFields: SchemaNode = {
 */
 const guard = discardGuard({
   dirty: { $: 'runtimeStore.aiFormDirty' },
-  close: { $action: 'runtimeStore.closeAiForm' },
+  close: { $invoke: 'runtimeStore.closeAiForm' },
   title: 'Discard these settings?',
   body: 'The changes you have made to this model will be lost.',
 });
@@ -130,7 +200,7 @@ const modelForm: SchemaNode = {
                   { label: 'Embeddings', value: 'embedding' },
                   { label: 'Transcription', value: 'transcription' },
                 ],
-                onChange: { $action: 'runtimeStore.setAiFormField', args: ['kind', { $: 'event.detail' }] },
+                onChange: { $invoke: 'runtimeStore.setAiFormField', args: ['kind', { $: 'event.detail' }] },
               },
             },
           ],
@@ -150,7 +220,7 @@ const modelForm: SchemaNode = {
                   { label: 'A Hugging Face repository', value: 'huggingface' },
                   { label: 'A file on this machine', value: 'file' },
                 ],
-                onChange: { $action: 'runtimeStore.setAiFormField', args: ['sourceKind', { $: 'event.detail' }] },
+                onChange: { $invoke: 'runtimeStore.setAiFormField', args: ['sourceKind', { $: 'event.detail' }] },
               },
             },
           ],
@@ -168,7 +238,7 @@ const modelForm: SchemaNode = {
                   placeholder: 'Choose a model',
                   searchable: true,
                   options: { $: 'runtimeStore.aiPresetOptions' },
-                  onChange: { $action: 'runtimeStore.setAiFormField', args: ['presetName', { $: 'event.detail' }] },
+                  onChange: { $invoke: 'runtimeStore.setAiFormField', args: ['presetName', { $: 'event.detail' }] },
                 },
               },
             ],
@@ -185,7 +255,7 @@ const modelForm: SchemaNode = {
                 props: {
                   value: { $: 'runtimeStore.aiForm.apiService' },
                   options: { $: 'runtimeStore.aiServiceOptions' },
-                  onChange: { $action: 'runtimeStore.setAiService', args: [{ $: 'event.detail' }] },
+                  onChange: { $invoke: 'runtimeStore.setAiService', args: [{ $: 'event.detail' }] },
                 },
               },
             ],
@@ -225,7 +295,7 @@ const modelForm: SchemaNode = {
                             { label: 'Ollama', value: 'ollama' },
                           ],
                           onChange: {
-                            $action: 'runtimeStore.setAiFormField',
+                            $invoke: 'runtimeStore.setAiFormField',
                             args: ['apiProtocol', { $: 'event.detail' }],
                           },
                         },
@@ -237,9 +307,7 @@ const modelForm: SchemaNode = {
               },
             },
           },
-          // The key is stored by the backend and sent to the provider; masking it here only stops
-          // it being read over a shoulder, which is the threat that applies to a settings page.
-          field('API key', 'apiKey', 'sk-…', 'password'),
+          apiKeyField(),
           {
             type: 'Row',
             props: { gap: '200', ay: 'end' },
@@ -265,7 +333,7 @@ const modelForm: SchemaNode = {
                               searchable: true,
                               options: { $: 'runtimeStore.aiDiscoveredModelOptions' },
                               onChange: {
-                                $action: 'runtimeStore.setAiFormField',
+                                $invoke: 'runtimeStore.setAiFormField',
                                 args: ['apiModel', { $: 'event.detail' }],
                               },
                             },
@@ -283,16 +351,20 @@ const modelForm: SchemaNode = {
                   condition: { $: 'runtimeStore.canDiscoverAiModels' },
                   then: {
                     type: 'we-tooltip',
-                    props: { content: 'Ask the service which models it serves — which also checks the key' },
+                    props: {
+                      content: {
+                        $: "runtimeStore.aiDiscoverNeedsKey ? 'Type the key again to list models — the node keeps the key it holds and never hands it back' : 'Ask the service which models it serves — which also checks the key'",
+                      },
+                    },
                     children: [
                       {
                         type: 'we-button',
                         props: {
                           text: 'List models',
-                          variant: 'secondary',
+                          variant: 'soft',
                           loading: { $: "'discoverAiModels' in runtimeStore.pending" },
-                          disabled: { $: '!runtimeStore.aiForm.apiBaseUrl' },
-                          onClick: { $action: 'runtimeStore.discoverAiModels' },
+                          disabled: { $: '!runtimeStore.aiForm.apiBaseUrl || runtimeStore.aiDiscoverNeedsKey' },
+                          onClick: { $invoke: 'runtimeStore.discoverAiModels' },
                         },
                       },
                     ],
@@ -328,7 +400,7 @@ const modelForm: SchemaNode = {
                       placeholder: 'e.g. 32768',
                       value: { $: 'runtimeStore.aiForm.apiMaxContext' },
                       onInput: {
-                        $action: 'runtimeStore.setAiFormField',
+                        $invoke: 'runtimeStore.setAiFormField',
                         args: ['apiMaxContext', { $: 'event.detail' }],
                       },
                     },
@@ -359,7 +431,7 @@ const modelForm: SchemaNode = {
           type: '$if',
           props: {
             condition: { $: 'runtimeStore.error && !count(runtimeStore.pending)' },
-            then: { type: 'we-alert', props: { variant: 'danger' }, children: [{ $: 'runtimeStore.error' }] },
+            then: { type: 'we-alert', props: { tone: 'danger' }, children: [{ $: 'runtimeStore.error' }] },
           },
         },
 
@@ -370,7 +442,7 @@ const modelForm: SchemaNode = {
             {
               type: 'we-button',
               // Guarded like the backdrop — one way out of the modal.
-              props: { text: 'Cancel', variant: 'secondary', onClick: guard.close },
+              props: { text: 'Cancel', variant: 'soft', onClick: guard.close },
             },
             {
               type: 'we-button',
@@ -378,7 +450,7 @@ const modelForm: SchemaNode = {
                 text: 'Save',
                 loading: { $: "'saveAiModel' in runtimeStore.pending" },
                 disabled: { $: '!runtimeStore.aiFormComplete' },
-                onClick: { $action: 'runtimeStore.saveAiModel' },
+                onClick: { $invoke: 'runtimeStore.saveAiModel' },
               },
             },
           ],
@@ -406,7 +478,7 @@ const modelCard: SchemaNode = {
               type: '$if',
               props: {
                 condition: { $: 'model.isDefault' },
-                then: { type: 'we-badge', props: { variant: 'primary', size: 'xs' }, children: ['Default'] },
+                then: { type: 'we-badge', props: { tone: 'accent', size: 'xs' }, children: ['Default'] },
               },
             },
           ],
@@ -440,7 +512,7 @@ const modelCard: SchemaNode = {
                             text: 'Make default',
                             variant: 'ghost',
                             size: 'sm',
-                            onClick: { $action: 'runtimeStore.setDefaultAiModel', args: [{ $: 'model.id' }] },
+                            onClick: { $invoke: 'runtimeStore.setDefaultAiModel', args: [{ $: 'model.id' }] },
                           },
                         },
                       },
@@ -450,7 +522,7 @@ const modelCard: SchemaNode = {
                       props: {
                         variant: 'ghost',
                         size: 'sm',
-                        onClick: { $action: 'runtimeStore.editAiModel', args: [{ $: 'model.id' }] },
+                        onClick: { $invoke: 'runtimeStore.editAiModel', args: [{ $: 'model.id' }] },
                       },
                       children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
                     },
@@ -459,7 +531,7 @@ const modelCard: SchemaNode = {
                       props: {
                         variant: 'ghost',
                         size: 'sm',
-                        onClick: { $action: 'runtimeStore.removeAiModel', args: [{ $: 'model.id' }] },
+                        onClick: { $invoke: 'runtimeStore.removeAiModel', args: [{ $: 'model.id' }] },
                       },
                       children: [{ type: 'we-icon', props: { name: 'trash' } }],
                     },
@@ -519,7 +591,7 @@ const taskCard: SchemaNode = {
               props: {
                 variant: 'ghost',
                 size: 'sm',
-                onClick: { $action: 'runtimeStore.removeAiTask', args: [{ $: 'task.id' }] },
+                onClick: { $invoke: 'runtimeStore.removeAiTask', args: [{ $: 'task.id' }] },
               },
               children: [{ type: 'we-icon', props: { name: 'trash' } }],
             },
@@ -586,8 +658,8 @@ export const aiSection: SchemaNode = {
                       props: {
                         text: 'Add a model',
                         size: 'sm',
-                        variant: 'secondary',
-                        onClick: { $action: 'runtimeStore.newAiModel' },
+                        variant: 'soft',
+                        onClick: { $invoke: 'runtimeStore.newAiModel' },
                       },
                       children: [{ type: 'we-icon', props: { name: 'plus' } }],
                     },

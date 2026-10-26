@@ -52,7 +52,7 @@ export const openCardModal: SchemaNode = {
           saveLabel: 'Save',
           editorState: { $: 'card.editorState' },
           // `'$arg'` goes second: `updatePost(postId, json)`.
-          saveAction: { $action: 'spaceStore.updatePost', args: [{ $: 'card.id' }, { $: 'arg' }] },
+          saveAction: { $invoke: 'spaceStore.updatePost', args: [{ $: 'card.id' }, { $: 'arg' }] },
           onSaved: [{ $setLocal: 'revision', value: { $: 'local.revision + 1' } }],
         }),
       ],

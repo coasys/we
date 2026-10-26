@@ -129,7 +129,7 @@ const createModal: SchemaNode = formModal({
   discardWhen: { $: 'local.kindName' },
   submitLabel: 'Add kind',
   submit: {
-    $action: 'spaceStore.createInvolvementType',
+    $invoke: 'spaceStore.createInvolvementType',
     args: [
       {
         name: { $: 'local.kindName' },
@@ -190,7 +190,7 @@ const editModal: SchemaNode = formModal({
   },
   submitLabel: 'Save',
   submit: {
-    $action: 'spaceStore.updateInvolvementType',
+    $invoke: 'spaceStore.updateInvolvementType',
     args: [
       { $: 'local.editInvolvementTypeSlug' },
       {
@@ -241,7 +241,7 @@ const kindRow: SchemaNode = {
             },
             {
               type: 'we-badge',
-              props: { size: 'xs', variant: 'neutral' },
+              props: { size: 'xs' },
               children: [{ $: "kind.reflexive ? 'about themselves' : 'about someone'" }],
             },
             {
@@ -287,7 +287,7 @@ const kindRow: SchemaNode = {
             size: 'xs',
             variant: 'ghost',
             onClick: {
-              $action: 'spaceStore.setInvolvementTypeRetired',
+              $invoke: 'spaceStore.setInvolvementTypeRetired',
               args: [{ $: 'kind.slug' }, { $: '!kind.retired' }],
             },
           },
@@ -306,7 +306,7 @@ export const involvementTypesSection: SchemaNode = sectionCard({
     'The parts people can have in things here — assigned to a task, reviewing it, going to an event. Each says what it counts as, so a board can find who is doing the work whatever this space calls it.',
   aside: {
     type: 'we-button',
-    props: { variant: 'secondary', size: 'sm', onClick: { $setLocal: 'createInvolvementTypeOpen', value: true } },
+    props: { variant: 'soft', size: 'sm', onClick: { $setLocal: 'createInvolvementTypeOpen', value: true } },
     children: [
       { type: 'we-icon', props: { name: 'plus' } },
       { type: 'we-text', children: ['Add Kind'] },

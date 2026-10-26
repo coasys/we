@@ -58,9 +58,9 @@ function collectReferences(value: unknown, out: { expressions: string[]; parts: 
   }
 
   for (const [key, entry] of Object.entries(record)) {
-    // `{ $: '…' }` is a value expression and `{ $action: '…' }` a handler. Both resolve a store path,
+    // `{ $: '…' }` is a value expression and `{ $invoke: '…' }` a handler. Both resolve a store path,
     // and both are how a reference to another module's store would be written.
-    if ((key === '$' || key === '$action') && typeof entry === 'string') out.expressions.push(entry);
+    if ((key === '$' || key === '$invoke') && typeof entry === 'string') out.expressions.push(entry);
     else collectReferences(entry, out);
   }
 }

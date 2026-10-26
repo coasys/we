@@ -1,10 +1,21 @@
 import { forgetBootSnapshot, readBootSnapshot } from '@shared/bundles/bootSnapshot';
+import {
+  type AppFace,
+  deviceAppOf,
+  resolveFace,
+  setCurrentProductName,
+  svgDataUrl,
+  WE_PRODUCT_NAME,
+} from '@shared/bundles/brand';
+import { readDeviceApp, writeDeviceApp } from '@shared/bundles/deviceApp';
 import { appSpaceTemplate, followedTemplateId } from '@shared/bundles/display';
 import { displaySourceOf, readInstalledBundles } from '@shared/bundles/installedBundles';
+import { bootScreenTemplate, placesNode } from '@shared/bundles/judgeBundle';
 import { appTemplateRegistry, DEFAULT_APP_ID, resolveAppTemplate } from '@shared/registries/appTemplates';
 import { withDerivedIds } from '@shared/registries/derivedIds';
 import { reservedTemplateIds } from '@shared/registries/reservedTemplateIds';
 import { seedBundleAppId, seedBundlePieces } from '@shared/registries/seedBundles';
+import { slotRegistry } from '@shared/registries/slotRegistry';
 import { templateRegistry } from '@shared/registries/templateRegistry';
 import { profileTemplate, settingsTemplate } from '@shared/schemas';
 import { getSeed } from '@shared/seedRegistry';
@@ -29,7 +40,7 @@ import {
   Template,
 } from '@we/entities';
 import type { RouteSchema, SchemaNode, TemplateMeta, TemplateSchema } from '@we/schema-shared';
-import { ensureNodeIds, hasViewsMarker } from '@we/schema-shared';
+import { ensureNodeIds, hasViewsMarker, templateThemeIds } from '@we/schema-shared';
 import { updateSchema } from '@we/schema-solid';
 import {
   Accessor,
@@ -59,6 +70,7 @@ import { useRouteStore } from './RouteStore';
 import { useSessionStore } from './SessionStore';
 import { createSpaceRecordWait } from './spaceRecordWait';
 import { createTemplateDrafts } from './templateDrafts';
+import { useThemeStore } from './ThemeStore';
 
 const emptyMeta: TemplateMeta = { name: '', description: '', icon: '' };
 const emptyTemplate: TemplateSchema = { id: '', meta: emptyMeta, type: '', children: [], slots: {}, routes: [] };
@@ -139,6 +151,21 @@ export interface PendingInstall {
   blocked: string[];
 }
 
+/** What the app in use calls itself. `name` is always set — WE's own when nothing else is. */
+export interface AppBrand {
+  /** Whether a bundle's brand is showing, rather than WE's. */
+  active: boolean;
+  /** The bundle it came from, `''` for WE's own. */
+  bundleId: string;
+  name: string;
+  /** The mark, as a URL an image can draw; empty for WE's, whose surfaces draw WE's own mark. */
+  mark: string;
+  /** The wordmark, the same way. */
+  wordmark: string;
+  /** The About page, as Markdown; empty for WE's. */
+  about: string;
+}
+
 export interface TemplateStore {
   /** Injected by SpaceStore (mounted below) — see resolveSpaceFromPerspective. */
   provideSpaceLookup: (lookup: () => SpaceLike[]) => void;
@@ -192,6 +219,11 @@ export interface TemplateStore {
   appTemplateOptions: () => { label: string; value: string }[];
   /** Choose the app this agent is in. Theirs alone, kept in their settings. */
   setAppTemplate: (id: string) => Promise<boolean>;
+  /**
+   * The name, mark and About page the app goes by: WE's, unless the app in use came in a bundle that
+   * brings its own. Before anybody has signed in, the app this device last ran. See `bundles/brand.ts`.
+   */
+  brand: Accessor<AppBrand>;
   saveTemplate: (name: string) => Promise<void>;
   /**
    * Save a schema as a template of its own, in the agent's library or the current space. By default it
@@ -319,6 +351,7 @@ const SPACE_PREFIX = 'space::';
 export function TemplateStoreProvider(props: ParentProps) {
   const session = useSessionStore();
   const datasetStore = useDatasetStore();
+  const themeStore = useThemeStore();
   const routeStore = useRouteStore();
 
   /*
@@ -538,8 +571,17 @@ export function TemplateStoreProvider(props: ParentProps) {
       ...readInstalledBundles(settingOrRemembered('installedBundles')).map(displaySourceOf),
     ]),
   );
-  function setAppTemplate(id: string): Promise<boolean> {
-    return datasetStore.updateAgentSettings({ appTemplateId: id === DEFAULT_APP_ID ? '' : id });
+  async function setAppTemplate(id: string): Promise<boolean> {
+    const saved = await datasetStore.updateAgentSettings({ appTemplateId: id === DEFAULT_APP_ID ? '' : id });
+    /*
+      Entering an app adopts its look: the first theme it names becomes the agent's default, at the
+      moment they chose the app. A choice they make afterwards wins, as any later choice does — this
+      is the app's suggestion made once, not a setting it keeps imposing.
+    */
+    const app = ownApps().find((t) => t.id === id) ?? appTemplateRegistry[id];
+    const theme = templateThemeIds(app?.meta).find((themeId) => themeStore.allThemes().some((t) => t.id === themeId));
+    if (saved && theme) await themeStore.setDefaultTheme(theme);
+    return saved;
   }
   async function leaveSafeModeInto(appId: string): Promise<void> {
     if (typeof appId !== 'string' || !appTemplateOptions().some((option) => option.value === appId)) return;
@@ -552,6 +594,91 @@ export function TemplateStoreProvider(props: ParentProps) {
     forgetBootSnapshot(session.me()?.did);
     leaveSafeMode();
   }
+
+  /*
+    The app's face — its name, mark and sign-in screen — and what follows from it. See
+    `bundles/brand.ts` for the rule and `bundles/deviceApp.ts` for why the device keeps a copy.
+  */
+  const rememberedApp = readDeviceApp();
+  const settled = () => !!datasetStore.agentSettings() && libraryLoaded();
+  const face = createMemo<AppFace>(() =>
+    resolveFace({
+      safe: safe.on,
+      settled: settled(),
+      inUseBundle: appTemplate().source?.bundle,
+      sources: [
+        ...seedBundlePieces,
+        ...readInstalledBundles(settingOrRemembered('installedBundles')).map((entry) => ({
+          bundleId: entry.id,
+          brand: entry.brand,
+          bootScreen: entry.bootScreen,
+        })),
+      ],
+      device: rememberedApp,
+    }),
+  );
+  const brand = createMemo<AppBrand>(() => {
+    const { bundleId, brand: own } = face();
+    return {
+      active: !!own,
+      bundleId,
+      name: own?.name || WE_PRODUCT_NAME,
+      mark: svgDataUrl(own?.mark),
+      wordmark: svgDataUrl(own?.wordmark),
+      about: own?.about ?? '',
+    };
+  });
+
+  // The app's first theme stands in for the agent's default until they choose one.
+  themeStore.provideAppTheme(() =>
+    safe.on
+      ? undefined
+      : templateThemeIds(appTemplate().meta).find((id) => themeStore.allThemes().some((t) => t.id === id)),
+  );
+
+  // Kept for the next boot's sign-in screen, once the app in use is known rather than guessed.
+  createEffect(() => {
+    if (!settled() || safe.on) return;
+    const offered = new Set(templateThemeIds(appTemplate().meta));
+    writeDeviceApp(deviceAppOf(face(), offered.size ? themeStore.allThemes().filter((t) => offered.has(t.id)) : []));
+  });
+
+  // The window's name and icon, and the name code that is not a template reads.
+  if (typeof document !== 'undefined') {
+    const baseTitle = document.title;
+    const iconLink = document.querySelector<HTMLLinkElement>('link[rel~="icon"]');
+    const baseIcon = iconLink?.getAttribute('href') ?? null;
+    createEffect(() => {
+      const { active, name, mark } = brand();
+      setCurrentProductName(name);
+      document.title = active ? name : baseTitle;
+      if (iconLink && baseIcon !== null) iconLink.setAttribute('href', active && mark ? mark : baseIcon);
+    });
+  }
+
+  /*
+    The sign-in screen: the app's own when it brings one that still passes — accepted at the chrome
+    tier, as its app is, and placing the host's password field — else whatever was there before (the
+    seed's, or WE's). The slot is replaced rather than drawn around, so the boot screen is one thing
+    whoever drew it.
+  */
+  let baseBootScreen: SchemaNode | undefined;
+  createEffect(() => {
+    const own = face().bootScreen;
+    baseBootScreen ??= slotRegistry.get('core:bootScreen')?.node;
+    let node = baseBootScreen;
+    if (own && placesNode(own, 'CredentialField')) {
+      const accepted = acceptTemplate(bootScreenTemplate({ bootScreen: own, name: brand().name }), {
+        origin: `the app “${brand().name}”`,
+        grants: CHROME_TIER,
+      });
+      if (accepted.schema) {
+        const { meta: _meta, ...screen } = accepted.schema;
+        node = screen as SchemaNode;
+      }
+    }
+    if (node && slotRegistry.get('core:bootScreen')?.node !== node) slotRegistry.replace('core:bootScreen', node);
+  });
 
   const toSwitcherItems = (templates: TemplateSchema[], prefix = ''): TemplateSwitcherItem[] =>
     templates.map((t) => ({
@@ -2389,6 +2516,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     appTemplateId,
     appTemplateOptions,
     setAppTemplate,
+    brand,
     openDraft,
     updateDraft,
     closeDraft,

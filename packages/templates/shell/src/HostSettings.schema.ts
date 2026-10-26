@@ -80,8 +80,11 @@ const identity: SchemaNode = {
  *
  * `freeAccess` is not the same as a zero balance: on a free node the number is meaningless, and
  * showing "0 credits" there would read as an account that had run dry.
+ *
+ * On Plan & usage rather than in the host's details: credits are the person's usage of their plan,
+ * and that page is where they look for it. The host section says who runs the node and what it can do.
  */
-const credits: SchemaNode = {
+export const hostCredits: SchemaNode = {
   type: '$if',
   props: {
     condition: { $: 'sessionStore.hostAccount && !sessionStore.hostAccount.freeAccess' },
@@ -128,7 +131,7 @@ const advertisedModels: SchemaNode = {
             {
               type: '$each',
               props: { items: { $: 'sessionStore.host.aiModels' }, as: 'model' },
-              children: [{ type: 'we-tag', props: { variant: 'neutral' }, children: [{ $: 'model' }] }],
+              children: [{ type: 'we-tag', props: {}, children: [{ $: 'model' }] }],
             },
           ],
         },
@@ -194,7 +197,6 @@ export const hostSection: SchemaNode = {
               props: { gap: '300' },
               children: [
                 identity,
-                credits,
                 {
                   type: 'Column',
                   props: { gap: '100' },

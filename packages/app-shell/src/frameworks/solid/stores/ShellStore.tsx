@@ -68,6 +68,7 @@ import {
   type TopChrome,
   unlaned,
   widestMin,
+  withChromeCovered,
 } from '@shared/dockGeometry';
 import type { ScreenSource } from '@shared/platform/types';
 import { appFrame } from '@shared/registries/appFrame';
@@ -321,7 +322,8 @@ export interface ShellStore {
    * A floating panel takes no room, so it contributes nothing to `contentInset` and the content
    * region is the whole area. It still sits over part of it, and a surface drawing into its own box
    * cannot see which part. Read this to keep something in the clear — a board putting a new card
-   * where the reader can actually see it, a toast, a first-run pointer.
+   * where the reader can actually see it, a toast, a first-run pointer, a composer pinned to the
+   * bottom of a view. Floating chrome counts too: the call bar along the bottom, while it is up.
    */
   coveredInset: Accessor<ContentInset>;
   /** True while a dock is being dragged, so transitions can be suspended and the edge track the cursor. */
@@ -505,7 +507,7 @@ export interface ShellStore {
    *
    * Real methods taking an id, rather than the per-panel keys the dock entries used to name. The
    * keys still answer `edge`/`size`/`float`, which the shell reads in TypeScript — but a close
-   * button is a schema `$action`, and `shellStore.close:extraction` names nothing on this store, so
+   * button is a schema `$invoke`, and `shellStore.close:extraction` names nothing on this store, so
    * the button rendered and did nothing but log. See `closeAction` in `dockRegistry.ts`.
    *
    * Reachable by a template as well, which is the other half: a panel with a close button and no
@@ -524,6 +526,29 @@ export interface ShellStore {
    * seen from three places, so resetting it three times would be the same thing said three ways.
    */
   resetTemplateLayout: () => void;
+  /**
+   * The width a reader has dragged a home lane to, by lane name, for the template on screen — or
+   * nothing, so the lane keeps the width its template gave it. See `PanelLane` (`resize`).
+   */
+  laneWidth: (lane: string) => number | undefined;
+  /** Keep a lane's width — what dragging its edge writes. Per agent, per template, on this device. */
+  setLaneWidth: (lane: string, width: number) => void;
+  /**
+   * The home lanes the reader has folded away, by name, for the template on screen. A lane folded
+   * away keeps its sections mounted and hidden, so a feed keeps its place and a call keeps its streams.
+   */
+  collapsedLanes: Accessor<string[]>;
+  /** Fold a lane away or bring it back — what a sidebar's collapse button calls. */
+  toggleLane: (lane: string) => void;
+  /** Fold a lane away, or bring it back, as said rather than flipped. */
+  setLaneCollapsed: (lane: string, collapsed: boolean) => void;
+  /**
+   * Whether every section's grip is showing, so the reader can see what can be moved. Off, a grip
+   * shows only where the pointer or the keyboard is, and a page made of sections reads as a page.
+   */
+  customisingLayout: Accessor<boolean>;
+  /** Show every section's grip, or go back to showing them only on hover. */
+  toggleCustomiseLayout: () => void;
   /**
    * The arrangements saved for the interface on screen, by name.
    *
@@ -897,6 +922,38 @@ interface SavedLayout {
   placements: Record<string, FloatPlacement>;
   activation: Record<string, number>;
   closed: Record<string, boolean>;
+  /** Home lanes' widths and folds. Absent in a layout saved before lanes could be resized. */
+  lanes?: Record<string, LaneState>;
+}
+
+/**
+ * A home lane as the reader has left it: dragged to a width, or folded away. Keyed like placements,
+ * `<template scope>::<lane>`, so one template's sidebar width is not another's.
+ */
+interface LaneState {
+  width?: number;
+  collapsed?: boolean;
+}
+
+const LANES_KEY = 'we-local:shell.lanes';
+
+function loadLanes(): Record<string, LaneState> {
+  if (typeof localStorage === 'undefined') return {};
+  try {
+    const parsed = JSON.parse(localStorage.getItem(LANES_KEY) ?? '{}') as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, LaneState>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveLanes(lanes: Record<string, LaneState>): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(LANES_KEY, JSON.stringify(lanes));
+  } catch {
+    // A lane back at its template's width on next boot, and nothing else.
+  }
 }
 
 type SavedLayouts = Record<string, Record<string, SavedLayout>>;
@@ -1593,6 +1650,24 @@ export function ShellStoreProvider(props: ParentProps) {
    * arrangement in front of you, and the arrangement has been replaced.
    */
   const [closedPanels, setClosedPanels] = createSignal<Record<string, boolean>>({});
+
+  /** Home lanes' widths and folds, for every template — see `LaneState`. */
+  const [lanes, setLanes] = createSignal<Record<string, LaneState>>(loadLanes());
+  const laneKey = (lane: string) => `${templatePanelScope()}::${lane}`;
+  const writeLane = (lane: string, change: Partial<LaneState>) =>
+    setLanes((prev) => {
+      const key = laneKey(lane);
+      const merged: LaneState = { ...prev[key], ...change };
+      const cleaned = Object.fromEntries(
+        Object.entries(merged).filter(([, value]) => value !== undefined && value !== false),
+      );
+      const next = { ...prev };
+      if (Object.keys(cleaned).length) next[key] = cleaned as LaneState;
+      else delete next[key];
+      saveLanes(next);
+      return next;
+    });
+  const [customisingLayout, setCustomisingLayout] = createSignal(false);
 
   /*
     Switching template forgets what was closed.
@@ -2457,7 +2532,12 @@ export function ShellStoreProvider(props: ParentProps) {
     about arithmetic — a strip of displacing panels sums and a column of floating ones takes the
     maximum — and a function answering both would have to explain which number it was returning.
   */
-  const covered = createMemo(() => (panelsAway() ? { ...NO_INSET } : coveredInset(dockRequests(), viewport())));
+  //
+  // And the chrome floating over the content — the call bar above all — which stays while the panels
+  // are away, so a composer pinned to the bottom of a view can rise above it and settle when it goes.
+  const covered = createMemo(() =>
+    withChromeCovered(panelsAway() ? { ...NO_INSET } : coveredInset(dockRequests(), viewport()), moduleChrome()),
+  );
 
   /**
    * Publish where the content's edges are, as CSS custom properties, so chrome can sit against the
@@ -2490,6 +2570,22 @@ export function ShellStoreProvider(props: ParentProps) {
    * sidebar, not over it — and does so in CSS so `--we-sidebar-width` stays the only place that
    * width is decided.
    */
+  /*
+    What is covered, published the same way — `--we-covered-<edge>`, the CSS face of `coveredInset`.
+
+    A space's template cannot read the store member, which is chrome's, but it can pad by a variable:
+    a composer pinned to the bottom of a view writes `pb: 'calc(var(--we-space-500) +
+    var(--we-covered-bottom, 0px))'` and rises above the call bar while one is up. Geometry it is
+    drawn into, not anything it can move.
+  */
+  createEffect(() => {
+    if (typeof document === 'undefined') return;
+    const edges = covered();
+    const root = document.documentElement.style;
+    for (const edge of ['top', 'right', 'bottom', 'left'] as const)
+      root.setProperty(`--we-covered-${edge}`, `${edges[edge]}px`);
+  });
+
   createEffect(() => {
     if (typeof document === 'undefined') return;
     /*
@@ -2639,11 +2735,11 @@ export function ShellStoreProvider(props: ParentProps) {
 
             Those three are read in TypeScript, through `readDockKey`, which resolves against
             `hostDockStores` — where these keys live. The close button is not: it is rendered into the
-            titlebar as a schema `$action` against `storeRef`, and the renderer resolves `shellStore`
+            titlebar as a schema `$invoke` against `storeRef`, and the renderer resolves `shellStore`
             to this store's real surface, where `close:extraction` is not a member. It rendered, took
             the click, and logged. See `closeAction` in `dockRegistry.ts`.
           */
-          closeAction: { $action: 'shellStore.closeTemplatePanel', args: [panel.id] },
+          closeAction: { $invoke: 'shellStore.closeTemplatePanel', args: [panel.id] },
           // What a tab strip calls it, when it shares a seat.
           title: panel.title,
           // Named outright rather than through `modules.<id>`, the way the editor's and the shell's
@@ -4051,7 +4147,8 @@ export function ShellStoreProvider(props: ParentProps) {
       const prefix = `${scope}::`;
       return (
         Object.keys(placements()).some((key) => key.startsWith(prefix)) ||
-        Object.entries(closedPanels()).some(([key, closed]) => closed && key.startsWith(prefix))
+        Object.entries(closedPanels()).some(([key, closed]) => closed && key.startsWith(prefix)) ||
+        Object.keys(lanes()).some((key) => key.startsWith(prefix))
       );
     },
 
@@ -4074,6 +4171,7 @@ export function ShellStoreProvider(props: ParentProps) {
         placements: under(placements()),
         activation: under(activation()),
         closed: under(closedPanels()),
+        lanes: under(lanes()),
       };
       setLayouts((prev) => {
         const next = { ...prev, [scope]: { ...(prev[scope] ?? {}), [label]: snapshot } };
@@ -4105,6 +4203,11 @@ export function ShellStoreProvider(props: ParentProps) {
         return next;
       });
       setClosedPanels((prev) => ({ ...without(prev), ...saved.closed }));
+      setLanes((prev) => {
+        const next = { ...without(prev), ...(saved.lanes ?? {}) };
+        saveLanes(next);
+        return next;
+      });
       setActiveLayout(name);
     },
 
@@ -4145,7 +4248,30 @@ export function ShellStoreProvider(props: ParentProps) {
       // And the panels closed under it, which is the half `resetDockToLayout` cannot reach — a closed
       // panel has no titlebar, so its own menu is not on screen to be opened.
       setClosedPanels((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => !key.startsWith(prefix))));
+      // And the home lanes: back to the widths the template gave them, none of them folded.
+      setLanes((prev) => {
+        const next = Object.fromEntries(Object.entries(prev).filter(([key]) => !key.startsWith(prefix)));
+        if (Object.keys(next).length === Object.keys(prev).length) return prev;
+        saveLanes(next);
+        return next;
+      });
     },
+
+    laneWidth: (lane) => lanes()[laneKey(lane)]?.width,
+    setLaneWidth: (lane, width) => {
+      if (!Number.isFinite(width) || width <= 0) return;
+      writeLane(lane, { width: Math.round(width) });
+    },
+    collapsedLanes: () => {
+      const prefix = `${templatePanelScope()}::`;
+      return Object.entries(lanes())
+        .filter(([key, state]) => key.startsWith(prefix) && state.collapsed)
+        .map(([key]) => key.slice(prefix.length));
+    },
+    toggleLane: (lane) => writeLane(lane, { collapsed: !lanes()[laneKey(lane)]?.collapsed }),
+    setLaneCollapsed: (lane, collapsed) => writeLane(lane, { collapsed: !!collapsed }),
+    customisingLayout,
+    toggleCustomiseLayout: () => setCustomisingLayout((on) => !on),
 
     snapDock: (id, snap) => {
       const request = dockRequests().find((entry) => entry.id === id);

@@ -5,12 +5,17 @@
  * than restated — plus the rows a seeded backend should answer with. Nothing here describes layout;
  * the assertions live beside the cases, so one scenario can be measured several ways.
  */
-import { lineComposer, transcriptLines } from '@we/module-transcribe';
-import { cardShell, panelScroll, timeline, timelineMoreAt, timelineOrder } from '@we/schema-kit';
+import { transcriptLines } from '@we/module-transcribe';
+import { cardShell, lineComposer, panelScroll, timeline, timelineMoreAt, timelineOrder } from '@we/schema-kit';
 import type { SchemaNode } from '@we/schema-shared';
 import { discussionSection, foldingSectionLabel, signalDisplay } from '@we/template-kit';
 import { bundlePrompt, safeModeBanner } from '@we/template-shell';
-import { CALL_CHROME_BAND, TREE_LOCALS, TREE_QUERIES, treeStrip } from '@we/template-showcase';
+import { CALL_CHROME_BAND, themeLabTemplate, TREE_LOCALS, TREE_QUERIES, treeStrip } from '@we/template-showcase';
+import { THEME_PRESETS, type ThemeOverrides, themeSides, withThemeSide } from '@we/themes/presets';
+
+import coasysBundle from '../../../../bundles/coasys.bundle.json';
+import fieldGuideBundle from '../../../../bundles/field-guide.bundle.json';
+import toolLibraryBundle from '../../../../bundles/tool-library.bundle.json';
 
 export interface Scenario {
   /** The schema to mount, exactly as the app would render it. */
@@ -395,6 +400,253 @@ const vocabulary = (): Scenario => {
  * Deliberately not a fragment: this is a fact about the interop stylesheet, and stating it in
  * fourteen nodes is what keeps the next reader from thinking it is about comment threads.
  */
+/**
+ * Buttons and a card given a tone, beside untoned ones — what `tone` paints, read off real pixels.
+ */
+/**
+ * The theme lab template under one built-in theme — the `scale` axis picks which, by its place in
+ * `THEME_LAB_THEMES`, so one case sweeps them all. Applied as a node theme, as a space's would be.
+ */
+/** The lab without its graphs, which need the graph module the harness does not register. */
+const withoutGraphs = (node: SchemaNode): SchemaNode => ({
+  ...node,
+  ...(Array.isArray(node.children)
+    ? {
+        children: (node.children as SchemaNode[])
+          .filter((child) => typeof child !== 'object' || child === null || (child as SchemaNode).type !== 'GraphView')
+          .map((child) => (typeof child === 'object' && child !== null ? withoutGraphs(child as SchemaNode) : child)),
+      }
+    : {}),
+});
+
+export const THEME_LAB_THEMES = ['light', 'dark', 'black', 'cyberpunk', 'retro', 'channels', 'timeline'] as const;
+const themeLab = (index = 0): Scenario => {
+  const { meta: _meta, ...page } = themeLabTemplate as SchemaNode & { meta?: unknown };
+  const preset = THEME_PRESETS[THEME_LAB_THEMES[index] ?? 'light'];
+  return {
+    node: { type: 'Column', theme: preset.parameters, children: [withoutGraphs(page as SchemaNode)] },
+    tables: {},
+  };
+};
+
+/**
+ * Every theme the checked-in bundles carry, a two-sided one as each of its sides — the same list the
+ * contrast suite holds to its pairs, so what passes there can be looked at here.
+ */
+type LabBundle = {
+  id: string;
+  theme?: { id: string; overrides: unknown };
+  themes?: { id: string; overrides: unknown }[];
+};
+export const BUNDLE_LAB_THEMES: { label: string; theme: ThemeOverrides }[] = (
+  [coasysBundle, fieldGuideBundle, toolLibraryBundle] as LabBundle[]
+).flatMap((bundle) =>
+  (bundle.themes ?? (bundle.theme ? [bundle.theme] : [])).flatMap((t) => {
+    const overrides = t.overrides as ThemeOverrides;
+    if (!themeSides(overrides).length) return [{ label: `${bundle.id}-${t.id}`, theme: overrides }];
+    return (['light', 'dark'] as const).map((side) => ({
+      label: `${bundle.id}-${t.id}-${side}`,
+      theme: withThemeSide(overrides, side),
+    }));
+  }),
+);
+const bundleThemeLab = (index = 0): Scenario => {
+  const { meta: _meta, ...page } = themeLabTemplate as SchemaNode & { meta?: unknown };
+  return {
+    node: {
+      type: 'Column',
+      theme: BUNDLE_LAB_THEMES[index]?.theme ?? {},
+      children: [withoutGraphs(page as SchemaNode)],
+    },
+    tables: {},
+  };
+};
+
+/** The theme lab, `copies` times over and unthemed, as a page large enough for a theme change to cost something. */
+const themeLabPage = (copies = 4): Scenario => {
+  const { meta: _meta, ...page } = themeLabTemplate as SchemaNode & { meta?: unknown };
+  return {
+    node: { type: 'Column', children: Array.from({ length: copies }, () => withoutGraphs(page as SchemaNode)) },
+    tables: {},
+  };
+};
+
+/**
+ * A theme that pins its accent tint, and a soft button restored to the accent inside a purple tone —
+ * beside one toned to the accent directly. Both should be the pinned tint.
+ */
+const heldAccent = (): Scenario => ({
+  node: {
+    type: 'Column',
+    theme: { roles: { accentSoft: 'rgb(18, 52, 86)' } },
+    props: { gap: '300', p: '300' },
+    children: [
+      { type: 'we-button', props: { variant: 'soft', tone: 'accent', id: 'plain' }, children: ['Plain'] },
+      {
+        type: 'Row',
+        props: { tone: 'purple' },
+        children: [
+          { type: 'we-button', props: { variant: 'soft', tone: 'accent', id: 'restored' }, children: ['Restored'] },
+        ],
+      },
+    ],
+  },
+  tables: {},
+});
+
+const toned = (): Scenario => ({
+  node: {
+    type: 'Column',
+    props: { gap: '300', p: '300' },
+    children: [
+      { type: 'we-button', props: { variant: 'solid' }, children: ['Untoned solid'] },
+      { type: 'we-button', props: { variant: 'solid', tone: 'danger' }, children: ['Danger'] },
+      { type: 'we-button', props: { variant: 'solid', tone: 'teal' }, children: ['Teal'] },
+      { type: 'we-button', props: { variant: 'soft' }, children: ['Untoned soft'] },
+      { type: 'we-button', props: { variant: 'soft', tone: 'success' }, children: ['Success soft'] },
+      {
+        type: 'Column',
+        props: { tone: 'warning', bg: 'accent-soft', p: '300' },
+        children: [{ type: 'we-button', props: { variant: 'solid' }, children: ['Inside a warning card'] }],
+      },
+    ],
+  },
+  tables: {},
+});
+
+/**
+ * A theme's component tier and type roles, beside elements that say something themselves.
+ *
+ * Two copies of one row: the first under no theme, the second under a node-level theme setting a
+ * button radius, a soft-button fill, a control weight and a heading weight. Each copy holds an
+ * untouched button, a soft one, one with its own radius, a heading and a markdown heading.
+ */
+const componentTierRow = (): SchemaNode => ({
+  type: 'Column',
+  props: { gap: '200', p: '200' },
+  children: [
+    { type: 'we-button', props: { variant: 'solid' }, children: ['Solid'] },
+    { type: 'we-button', props: { variant: 'soft' }, children: ['Soft'] },
+    { type: 'we-button', props: { variant: 'solid', r: '600' }, children: ['Own radius'] },
+    { type: 'we-text', props: { variant: 'heading-md' }, children: ['Heading'] },
+    { type: 'we-markdown', props: { content: '## Markdown heading' } },
+  ],
+});
+
+const componentTier = (): Scenario => ({
+  node: {
+    type: 'Column',
+    children: [
+      componentTierRow(),
+      {
+        ...componentTierRow(),
+        theme: {
+          typeStyles: { control: { weight: 700 }, heading: { weight: 300 } },
+          components: { button: { radius: '0', variants: { soft: { fill: 'danger-soft' } } } },
+        },
+      },
+    ],
+  },
+  tables: {},
+});
+
+/**
+ * Settings that have to reach every component drawing what they name, under a node-level theme:
+ * a border width, a disabled opacity, an icon weight, and the state contract's two roles pinned to
+ * colours nothing else uses, across the list components.
+ */
+const settingsReach = (): Scenario => ({
+  node: {
+    type: 'Column',
+    theme: {
+      borderWidth: '3px',
+      disabledOpacity: 0.2,
+      iconWeight: 'bold',
+      roles: { selected: 'rgb(255, 0, 0)', itemHover: 'rgb(0, 0, 255)' },
+    },
+    props: { gap: '200', p: '200' },
+    children: [
+      { type: 'we-input', props: { value: 'A field' } },
+      { type: 'we-button', props: { variant: 'outline' }, children: ['Outline'] },
+      { type: 'we-button', props: { variant: 'solid', disabled: true }, children: ['Disabled'] },
+      { type: 'we-checkbox', props: { disabled: true, label: 'Disabled box' } },
+      { type: 'we-icon', props: { name: 'house' } },
+      {
+        type: 'we-menu',
+        children: [
+          { type: 'we-menu-item', children: ['Plain'] },
+          { type: 'we-menu-item', props: { selected: true }, children: ['Chosen'] },
+        ],
+      },
+      { type: 'we-pagination', props: { page: 2, total: 3 } },
+      {
+        type: 'we-tabs',
+        props: { selectedKey: 'b' },
+        children: [
+          { type: 'we-tab', props: { key: 'a', label: 'A' } },
+          { type: 'we-tab', props: { key: 'b', label: 'B', selected: true } },
+        ],
+      },
+      {
+        type: 'we-tree',
+        props: { selected: 'one' },
+        children: [{ type: 'we-tree-item', props: { value: 'one', selected: true }, children: ['One'] }],
+      },
+    ],
+  },
+  tables: {},
+});
+
+/** Elevation and glow: a raised box under no theme and under a flat one, and two glowing ones. */
+const elevation = (): Scenario => {
+  const box = (id: string, props: Record<string, unknown>): SchemaNode => ({
+    type: 'Column',
+    props: { id, p: '300', bg: 'surface', ...props },
+    children: [id],
+  });
+  return {
+    node: {
+      type: 'Column',
+      props: { gap: '400', p: '400' },
+      children: [
+        box('raised', { shadow: 'md' }),
+        { type: 'Column', theme: { shadowIntensity: 'flat' }, children: [box('flat', { shadow: 'md' })] },
+        box('glow', { shadow: 'glow' }),
+        box('glow-teal', { shadow: 'glow', tone: 'teal' }),
+      ],
+    },
+    tables: {},
+  };
+};
+
+/** A theme's surface images on each kind of thing that wears one, and its surface opacity on a card. */
+const surfaceImages = (): Scenario => ({
+  node: {
+    type: 'Column',
+    theme: {
+      surfaceOpacity: 0.5,
+      surfaceImages: {
+        page: 'linear-gradient(rgb(255, 0, 0), rgb(255, 0, 0))',
+        surface: 'linear-gradient(rgb(0, 255, 0), rgb(0, 255, 0))',
+        surfaceRaised: 'linear-gradient(rgb(0, 0, 255), rgb(0, 0, 255))',
+      },
+    },
+    props: { gap: '200', p: '200' },
+    children: [
+      { type: 'Column', props: { id: 'page', bg: 'page', p: '200' }, children: ['page'] },
+      { type: 'Column', props: { id: 'surface', bg: 'surface', p: '200' }, children: ['surface'] },
+      { type: 'Card', props: { id: 'card', bg: 'surface' }, children: ['card'] },
+      {
+        type: 'Column',
+        props: { id: 'own', bg: 'surface', bgImage: 'linear-gradient(black, black)' },
+        children: ['own'],
+      },
+      { type: 'we-menu', children: [{ type: 'we-menu-item', children: ['Item'] }] },
+    ],
+  },
+  tables: {},
+});
+
 const nestedInteractive = (): Scenario => ({
   node: {
     type: 'Row',
@@ -442,7 +694,7 @@ const tokenOffsets = (): Scenario => ({
         type: 'we-button',
         props: {
           id: 'pin-lit',
-          variant: 'secondary',
+          variant: 'soft',
           size: 'xs',
           square: true,
           position: 'absolute',
@@ -479,17 +731,17 @@ const squareLoading = (): Scenario => ({
     children: [
       {
         type: 'we-button',
-        props: { id: 'md-idle', variant: 'secondary', square: true },
+        props: { id: 'md-idle', variant: 'soft', square: true },
         children: [{ type: 'we-icon', props: { name: 'paper-plane-tilt' } }],
       },
       {
         type: 'we-button',
-        props: { id: 'md-busy', variant: 'secondary', square: true, loading: true },
+        props: { id: 'md-busy', variant: 'soft', square: true, loading: true },
         children: [{ type: 'we-icon', props: { name: 'paper-plane-tilt' } }],
       },
       {
         type: 'we-button',
-        props: { id: 'xs-busy', variant: 'secondary', size: 'xs', square: true, loading: true },
+        props: { id: 'xs-busy', variant: 'soft', size: 'xs', square: true, loading: true },
         children: [{ type: 'we-icon', props: { name: 'arrows-clockwise' } }],
       },
     ],
@@ -720,6 +972,56 @@ const compactComposer = (): Scenario => ({
  * The transcript's and the Feed's input as they place it: the compact composer framed as a field,
  * with a send button beside it.
  */
+/**
+ * A tree as a sidebar draws one: three groups down a narrow column, the first open with two rows
+ * under it. What it is for is the stacking — every row on a line of its own, and a row's children
+ * under it rather than beside it — which only a browser laying the hosts out can show.
+ */
+const treeRowsScenario = (): Scenario => ({
+  node: {
+    type: 'Column',
+    props: { width: '240px', p: '300', bg: 'chrome' },
+    children: [
+      {
+        type: 'we-tree',
+        props: { label: 'This space', selected: 'channel|general' },
+        children: [
+          {
+            type: 'we-tree-item',
+            props: { value: 'group|channels', open: true, expandable: true },
+            children: [
+              { type: 'we-text', children: ['Channels'] },
+              {
+                type: 'we-tree-item',
+                slot: 'children',
+                props: { value: 'channel|general' },
+                children: [{ type: 'we-text', children: ['General'] }],
+              },
+              {
+                type: 'we-tree-item',
+                slot: 'children',
+                props: { value: 'channel|design' },
+                children: [{ type: 'we-text', children: ['Design'] }],
+              },
+            ],
+          },
+          {
+            type: 'we-tree-item',
+            props: { value: 'group|calls', expandable: true },
+            children: [{ type: 'we-text', children: ['Calls'] }],
+          },
+          {
+            type: 'we-tree-item',
+            props: { value: 'group|people', expandable: true },
+            children: [{ type: 'we-text', children: ['People'] }],
+          },
+        ],
+      },
+    ],
+  },
+  tables: {},
+});
+
 const lineComposerScenario = (): Scenario => ({
   node: {
     type: 'Column',
@@ -1140,7 +1442,7 @@ const collapsingCard = (): Scenario => ({
  * finished dispatching — one answering a press, one answering nobody.
  */
 const selfFiringEvents = (): Scenario => {
-  const write = (name: string) => [{ $action: 'record.create', args: ['Probe', { probe: name }] }];
+  const write = (name: string) => [{ $invoke: 'record.create', args: ['Probe', { probe: name }] }];
   return {
     node: {
       type: 'Column',
@@ -1440,6 +1742,17 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'signals:one-reactor': oneReactor,
   'inspector:provenance': provenanceLine,
   'ds:nested-interactive': nestedInteractive,
+  'ds:tone': toned,
+  'theme:lab': themeLab,
+  'theme:lab-bundle': bundleThemeLab,
+  'tone:held-accent': heldAccent,
+  // Nothing of its own: for a case that mounts something else into the page, such as a panel.
+  blank: () => ({ node: { type: 'Column' }, tables: {} }),
+  'perf:theme-drag': themeLabPage,
+  'ds:component-tier': componentTier,
+  'ds:settings-reach': settingsReach,
+  'ds:elevation': elevation,
+  'ds:surface-images': surfaceImages,
   'ds:token-offsets': tokenOffsets,
   'ds:square-loading': squareLoading,
   'ds:crowded-square-row': crowdedSquareRow,
@@ -1448,6 +1761,7 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'ds:pinned-empty': pinnedShortContent,
   'composer:compact': compactComposer,
   'composer:line': lineComposerScenario,
+  'tree:rows': treeRowsScenario,
   'mention:card': mentionCard,
   'timeline:live-newest-bottom': timelineReading(false, 'newestBottom'),
   'timeline:live-newest-top': timelineReading(false, 'newestTop'),

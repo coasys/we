@@ -10,6 +10,7 @@ import type {
   RadiusValue,
   ShadowValue,
   SpaceValue,
+  ToneName,
   ZIndexValue,
 } from '@we/tokens';
 
@@ -118,6 +119,14 @@ export type Placement =
   | 'right-end';
 
 export interface DesignSystemProps {
+  /**
+   * The colour family this element and everything in it draws with — a semantic family (`accent`,
+   * `success`, `warning`, `danger`, `neutral`) or a palette hue (`red` … `pink`). It re-points the
+   * accent's roles inside the element, so a component drawing with `accent` draws with the tone, its
+   * label, tint, text, border, states, focus ring and glow included. Status uses the semantic
+   * families; categories use the palette.
+   */
+  tone?: ToneName;
   bg?: ColorValue;
   bgImage?: string;
   bgFit?: 'cover' | 'contain';

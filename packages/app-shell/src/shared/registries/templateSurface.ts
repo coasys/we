@@ -129,7 +129,7 @@ const WIRING = 'wiring' as const;
 
 interface MemberSpec {
   group: CapabilityGroup;
-  /** `state` is read in expressions and tagged reactive; `action` is called through `$action`. */
+  /** `state` is read in expressions and tagged reactive; `action` is called through `$invoke`. */
   kind: 'state' | 'action';
   /**
    * Irreversible, or expensive to reverse. Not a grant of its own — a flag the host reads to decide
@@ -208,6 +208,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     host: state('session'),
     hostAccount: state('session'),
     isGuest: state('session'),
+    identityCapabilities: state('session'),
     isDevelopment: state('session'),
     devTools: state('session'),
     setDevTools: action('session'),
@@ -286,6 +287,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     aiPresetOptions: state('runtime-admin'),
     aiFormComplete: state('runtime-admin'),
     aiMaxContextError: state('runtime-admin'),
+    aiApiKeyError: state('runtime-admin'),
+    aiDiscoverNeedsKey: state('runtime-admin'),
     aiFormDirty: state('runtime-admin'),
     aiServiceOptions: state('runtime-admin'),
     canDiscoverAiModels: state('runtime-admin'),
@@ -481,8 +484,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // Where a space's things are and which record plays which part — read by any template that
     // shows the space at all, so `content` for the reason the space's vocabulary is.
     root: state('content'),
-    roles: state('content'),
-    taskFlowEnabled: state('content'),
+    landmarks: state('content'),
+    taskWorkflowEnabled: state('content'),
     offeredTaskStates: state('content'),
     taskStatesLoaded: state('content'),
     /*
@@ -493,6 +496,14 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     involvementTypes: state('content'),
     offeredInvolvementTypes: state('content'),
     involvementTypesLoaded: state('content'),
+    // Who holds which standing in the space — read by any template that shows a member's badge, so
+    // `content` for the reason the space's vocabulary is.
+    roles: state('content'),
+    myRoles: state('content'),
+    memberRoles: state('content'),
+    rolesLoaded: state('content'),
+    // What the space's policy allows — read by any template deciding what to offer, through `can()`.
+    policy: state('content'),
     setInvolvement: action('content'),
     respondTo: action('content'),
     mutedDids: state('content'),
@@ -522,12 +533,12 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     moveCardToColumn: action('content'),
     approveTaskMove: action('content'),
     withdrawTaskMove: action('content'),
-    archivedFlows: state('content'),
-    setFlowArchived: action('space-settings'),
-    taskFlowRule: state('content'),
-    setTaskFlowRule: action('space-settings'),
-    addTaskStateGuard: action('signals'),
-    removeTaskStateGuard: action('signals'),
+    archivedWorkflows: state('content'),
+    setWorkflowArchived: action('space-settings'),
+    taskWorkflowRule: state('content'),
+    setTaskWorkflowRule: action('space-settings'),
+    addTaskStateEvidence: action('signals'),
+    removeTaskStateEvidence: action('signals'),
     addTaskToColumn: action('content'),
 
     // ── signals ──
@@ -556,6 +567,16 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     createInvolvementType: action('signals'),
     updateInvolvementType: action('signals'),
     setInvolvementTypeRetired: action('signals'),
+    /*
+      Who holds which role is who may change the space, so naming roles and granting them are the
+      space's own settings: the same tier as renaming it. They act on the space on screen and take no
+      space id, so there is nothing to truncate.
+    */
+    createRole: action('space-settings'),
+    updateRole: action('space-settings'),
+    grantRole: action('space-settings'),
+    revokeRole: action('space-settings'),
+    setPolicyPreset: action('space-settings'),
 
     // ── navigation ──
     spaceList: state('navigation'),
@@ -654,8 +675,11 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       a reset, and that picker lives in the appearance tier.
     */
     spaceThemePinned: state('appearance'),
+    // Beside the space-default picker it explains, in Space settings.
+    spaceThemeHiddenBy: state('space-settings'),
     moduleInstallSettings: state('space-admin'),
     createSpace: action('space-admin'),
+    shareSpace: action('space-admin'),
     initializeAsWeSpace: action('space-settings'),
     removeSpace: destructive('space-admin'),
     updateSpaceImage: hereOnly('space-settings', 2),
@@ -738,6 +762,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     relationshipTargets: state('space-settings'),
     identityOptions: state('space-settings'),
     nameOptions: state('space-settings'),
+    draftNameMember: state('space-settings'),
     hintEditor: state('space-settings'),
     hintBusy: state('space-settings'),
     openShapeWizard: ambient('space-settings'),
@@ -838,6 +863,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     setCardStyle: action('content'),
     setTypeColor: action('content'),
     setSpaceTypeColor: action('content'),
+    // The rest of a type's presentation in the space's key, written as the colour beside it is.
+    setSpaceTypePresentation: action('content'),
     dropOnCanvas: action('content'),
     // Writes posts into the space on screen and nowhere else; what it reads from elsewhere is only
     // what this agent already holds. A space's template offering a drop target is the product.
@@ -900,7 +927,14 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     activeTemplateTheme: state('view-state'),
     setCurrentTheme: action('appearance'),
     setDefaultTheme: action('library'),
+    provideAppTheme: WIRING,
     setSystemTheme: action('agent'),
+    themeMode: state('appearance'),
+    displayPreferences: state('appearance'),
+    themeSide: state('appearance'),
+    currentThemeSides: state('appearance'),
+    setThemeMode: action('agent'),
+    setDisplayPreference: action('agent'),
     setThemeInstalled: action('library'),
     previewThemeScope: ambient('editor'),
     setThemeScopeGlobal: action('agent'),
@@ -965,6 +999,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     defaultTemplateId: state('library'),
     appTemplateId: state('library'),
     appTemplateOptions: state('library'),
+    // Appearance, so every template can name the app it is in — WE's own, or a bundle's brand.
+    brand: state('appearance'),
     appTemplate: WIRING,
     operationLoading: state('appearance'),
     switchTemplate: action('appearance'),
@@ -995,7 +1031,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     publishToSpace: action('library'),
     deleteMarketplaceTemplate: destructive('library'),
     publishToMarketplace: action('library'),
-    // Queries that answer with a value, which $action cannot read: templateManagementList carries
+    // Queries that answer with a value, which $invoke cannot read: templateManagementList carries
     // isBuiltIn and isInstalled per row, which is the form a template can use.
     isBuiltInTemplateId: WIRING,
     isInstalled: WIRING,
@@ -1156,7 +1192,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       driven by a resize handle it owns". The arithmetic is the host's; the handle is not code. Docks
       are built as *schema* by `dockRegistry.dockFrame` — the geometry arrives through
       `{ $: 'shellStore.dockGeometry.<id>.<field>' }` and the drag through
-      `{ $action: 'shellStore.beginDockResize' }` — so marking them wiring removed them from every
+      `{ $invoke: 'shellStore.beginDockResize' }` — so marking them wiring removed them from every
       bag, chrome's included. Every docked panel rendered as empty space with no resize rail.
 
       That is the gap `WIRING` had: it conflated "no schema may have this" with "no *template* may
@@ -1170,13 +1206,20 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     dockResizing: state('host-layout'),
     // Read by the sidebar and the module rail, which hide while a panel is maximised.
     panelMaximised: state('host-layout'),
-    // Written by the host layout, which can see the editor's widths — never by a template.
+    /*
+      Written by the host layout, which can see the editor's widths — never by a template.
+
+      The drag's own calls are ambient. A press reaches the handle once, and a drag then calls these
+      on every pointer move and at its release, long after that one press counted — so gated, every
+      resize reported itself as nobody having asked. They only arrange this agent's own panels, which
+      is the arranging of surfaces the gate already lets anything do.
+    */
     beginDockResize: action('host-layout'),
-    resizeDock: action('host-layout'),
+    resizeDock: ambient('host-layout'),
     // The divider between two stacked panels — one number, because a boundary has one degree of
     // freedom and what one panel gains the other gives up.
-    resizeColumn: action('host-layout'),
-    endDockResize: action('host-layout'),
+    resizeColumn: ambient('host-layout'),
+    endDockResize: ambient('host-layout'),
     /*
       Moving a panel, which is the same capability as resizing one and is listed for the same reason.
 
@@ -1196,11 +1239,12 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     insertDock: action('host-layout'),
     beginDockMove: action('host-layout'),
     raiseDock: ambient('host-layout'),
-    moveDock: action('host-layout'),
+    // A move's own calls are ambient, for the reason a resize's are — see `resizeDock`.
+    moveDock: ambient('host-layout'),
     beginTabDrag: action('host-layout'),
-    moveTab: action('host-layout'),
-    endTabDrag: action('host-layout'),
-    endDockMove: action('host-layout'),
+    moveTab: ambient('host-layout'),
+    endTabDrag: ambient('host-layout'),
+    endDockMove: ambient('host-layout'),
     snapDock: action('host-layout'),
     toggleMaximiseDock: action('host-layout'),
     fitDock: action('host-layout'),
@@ -1233,6 +1277,15 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // Read by a module's own dock frame, to know whether the interface is supplying its contents.
     panelSupplied: state('host-layout'),
     resetTemplateLayout: action('host-layout'),
+    // A space template folding its own sidebar away is its own view, so the space tier has it; the
+    // width is written by the lane's own handle, never by a template.
+    collapsedLanes: state('view-state'),
+    toggleLane: ambient('view-state'),
+    setLaneCollapsed: ambient('view-state'),
+    laneWidth: WIRING,
+    setLaneWidth: WIRING,
+    customisingLayout: state('host-layout'),
+    toggleCustomiseLayout: ambient('host-layout'),
     layoutNames: state('host-layout'),
     activeLayout: state('host-layout'),
     saveLayout: action('host-layout'),
@@ -1321,36 +1374,36 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
   },
 
   /*
-    A flow's records and moves are the community's content, so reading them and asking for a move are
-    `content`. Writing a flow — saving, deleting — changes the space's rules for everybody, so it is
+    A workflow's records and moves are the community's content, so reading them and asking for a move are
+    `content`. Writing a workflow — saving, deleting — changes the space's rules for everybody, so it is
     `space-settings`, and the store refuses it from anybody who does not administer the space anyway.
     Everything that edits the draft is ambient view-state: nothing leaves this screen until a save.
   */
-  flowStore: {
+  workflowStore: {
     available: state('content'),
     capabilities: state('content'),
     canEdit: state('content'),
-    flows: state('content'),
-    flowsLoaded: state('content'),
+    workflows: state('content'),
+    workflowsLoaded: state('content'),
     startable: state('content'),
     open: state('content'),
     draft: state('view-state'),
-    recordFlows: state('content'),
-    refreshFlows: ambient('content'),
-    openFlow: ambient('view-state'),
-    closeFlow: ambient('view-state'),
+    recordWorkflows: state('content'),
+    refreshWorkflows: ambient('content'),
+    openWorkflow: ambient('view-state'),
+    closeWorkflow: ambient('view-state'),
     loadHistory: ambient('content'),
-    startFlow: action('content'),
+    startWorkflow: action('content'),
     moveRecord: action('content'),
     withdrawRecord: action('content'),
-    newFlow: ambient('view-state'),
-    editFlow: ambient('view-state'),
+    newWorkflow: ambient('view-state'),
+    editWorkflow: ambient('view-state'),
     cancelDraft: ambient('view-state'),
     saveDraft: action('space-settings'),
-    deleteFlow: destructive('space-settings'),
+    deleteWorkflow: destructive('space-settings'),
     setDraftLabel: ambient('view-state'),
     setDraftHint: ambient('view-state'),
-    setDraftSubjects: ambient('view-state'),
+    setDraftEntities: ambient('view-state'),
     addStep: ambient('view-state'),
     removeStep: ambient('view-state'),
     moveStep: ambient('view-state'),
@@ -1363,8 +1416,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     addException: ambient('view-state'),
     removeException: ambient('view-state'),
     setApprovals: ambient('view-state'),
-    addGuard: ambient('view-state'),
-    removeGuard: ambient('view-state'),
+    addEvidence: ambient('view-state'),
+    removeEvidence: ambient('view-state'),
   },
 
   appStore: {
@@ -1515,7 +1568,7 @@ const ALWAYS_PRESENT = new Set<string>([
  * only marked members are present at all: **private by default**, which is the default a second
  * author needs, and the inverse of the opt-out list it replaces. A marked state member is tagged
  * reactive so `{ $: 'modules.transcribe.level' }` reads it; a marked action is left untagged so
- * `{ $: 'modules.call.leave' }` reads a function rather than *calling* it during paint, and `$action`
+ * `{ $: 'modules.call.leave' }` reads a function rather than *calling* it during paint, and `$invoke`
  * still calls it.
  *
  * The chrome tier — the module's own panels, and the host's — sees every member. An unmarked
@@ -1557,7 +1610,7 @@ export interface BuildBagOptions {
    * unqualified click.
    *
    * Awaiting it makes a destructive action async from the template's point of view, which costs
-   * nothing: `$action` already awaits, and `onSuccess`/`onError`/`onFinally` are defined in terms
+   * nothing: `$invoke` already awaits, and `onSuccess`/`onError`/`onFinally` are defined in terms
    * of the returned promise. A refusal resolves `undefined` — the same nothing a blocked action
    * resolves — so `onSuccess` does not fire on a cancel.
    */
@@ -1715,7 +1768,7 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
 export interface SurfaceReference {
   /** The store path as written — `sessionStore.logout`. */
   path: string;
-  /** How it was reached: read in an expression, or called through `$action`. */
+  /** How it was reached: read in an expression, or called through `$invoke`. */
   via: 'store' | 'action';
   /** The group it belongs to, or null when the member is not classified at all. */
   group: CapabilityGroup | null;
@@ -1754,7 +1807,7 @@ function classify(path: string): { store: string; member: string; spec: Classifi
 }
 
 /**
- * Walk any schema-shaped value, collecting every store read in an expression and every `$action`.
+ * Walk any schema-shaped value, collecting every store read in an expression and every `$invoke`.
  *
  * Structural rather than typed on `SchemaNode`, because references live in props, in nested
  * operator objects, in `$each` items, in route trees and in handler arrays — everywhere. A walk
@@ -1769,7 +1822,7 @@ function collectReferences(value: unknown, into: { path: string; via: 'store' | 
   if (!value || typeof value !== 'object') return;
 
   const node = value as Record<string, unknown>;
-  if (typeof node.$action === 'string') into.push({ path: node.$action, via: 'action' });
+  if (typeof node.$invoke === 'string') into.push({ path: node.$invoke, via: 'action' });
   /*
     An expression names stores as bare paths — `spaceStore.members`, `modules.notes.open`. Every
     dotted root the expression reads is reported as a store reference; roots that are not stores

@@ -10,7 +10,7 @@
  * ## Render time and call time
  *
  * An expression that names `event`, `arg` or `result` is about a callback that has not fired yet.
- * Resolved at render time — an `$action`'s `args`, say — it returns a **deferred** function that the
+ * Resolved at render time — an `$invoke`'s `args`, say — it returns a **deferred** function that the
  * action dispatcher calls with the callback's argument, exactly as a bare `'$event.detail'` string
  * is substituted there. Inside a handler array or a lifecycle array the context already carries
  * `event`/`result`, so the same expression simply evaluates.

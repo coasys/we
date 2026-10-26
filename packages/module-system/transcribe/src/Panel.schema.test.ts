@@ -256,8 +256,14 @@ describe('a transcript with nothing in it', () => {
    * space to be told nothing changed — and reading one back is the commonest thing anybody does to
    * a long transcript.
    */
-  it('subscribes only while the call is live', () => {
-    expect(linesJson).toContain('"subscribe":{"$":"modules.transcribe.callOnScreenLive"}');
+  it('subscribes to a call only while it is live, and to anything else always', () => {
+    expect(linesJson).toContain(
+      `"subscribe":{"$":"modules.transcribe.callOnScreenLive || (local.subjectKindLoaded && first(local.subjectKind).kind != 'call')"}`,
+    );
+    // The kind is read through the subject token, so a placement's substitution reaches it.
+    expect(linesJson).toContain(
+      '"subjectKind":{"entity":"CollectionBlock","where":{"id":{"$":"modules.transcribe.collectionId"}}',
+    );
   });
 
   /**
@@ -601,7 +607,7 @@ describe('what belongs to the live microphone only', () => {
     expect(panelJson).not.toContain('modules.call.continueCall');
     // The three-action chain it replaced, still gone. Adoption happens on its own now.
     expect(panelJson).not.toContain('modules.transcribe.resume');
-    expect(panelJson).not.toContain('{"$action":"routeStore.setParam","args":["call",null]}');
+    expect(panelJson).not.toContain('{"$invoke":"routeStore.setParam","args":["call",null]}');
   });
 
   it('still says in words what a past call can be picked back up', () => {
@@ -820,10 +826,10 @@ describe('the feed', () => {
       row and becomes a thing sitting on it.
 
       The badge's own neutral fill is `control-surface` for exactly this: a step away from the row's
-      `surface-sunken` in either polarity. See BADGE_APPEARANCE_DEFAULTS, where this row is the case
+      `surface-sunken` in either polarity. See BADGE_VARIANT_DEFAULTS, where this row is the case
       that argued it.
     */
-    expect(linesJson).toContain('{"type":"we-badge","props":{"size":"xs","variant":"neutral"}');
+    expect(linesJson).toContain('{"type":"we-badge","props":{"size":"xs"},"children":[{"type":"we-icon"');
     /*
       A keyboard rather than the letterform it used to be. Everything on this row is text, so what
       the mark is about is how the line *arrived* — and the panel's own record button now spends
@@ -875,12 +881,13 @@ describe('the recording indicator', () => {
       There was a solid red REC chip beside this. Between them they made one point twice, and the
       split was forced: the button had two variants, so it could not look different while actually
       capturing and the chip was added to cover the third state. The call bar's copy has carried all
-      three for a while — off quiet, armed `secondary`, capturing `danger`, on the reasoning that a
+      three for a while — off quiet, armed `soft`, capturing solid `danger`, on the reasoning that a
       state which arrives on its own must be legible without being looked for.
     */
     expect(panelJson).toContain(
-      "modules.transcribe.listening ? 'danger' : modules.transcribe.enabled ? 'secondary' : 'ghost'",
+      "modules.transcribe.listening ? 'solid' : modules.transcribe.enabled ? 'soft' : 'ghost'",
     );
+    expect(panelJson).toContain("modules.transcribe.listening ? 'danger' : modules.transcribe.enabled ? '' : ''");
     expect(panelJson).not.toContain('"children":["REC"]');
   });
 
@@ -945,7 +952,7 @@ describe('the extraction panel', () => {
   it('changes the list of the call it is showing, not the one this agent is in', () => {
     const chips = JSON.stringify(extractionTargets);
 
-    expect(chips).toContain('"$action":"modules.transcribe.toggleExtractionTarget"');
+    expect(chips).toContain('"$invoke":"modules.transcribe.toggleExtractionTarget"');
     expect(chips).toContain(`{"$":"target.entity"},{"$":"${EXTRACTION_SUBJECT_EXPR}"}`);
   });
 
@@ -966,14 +973,14 @@ describe('the extraction panel', () => {
 
   it('runs a pass over that call rather than over the one this agent is in', () => {
     expect(json).toContain('modules.transcribe.extractCollection');
-    expect(json).not.toContain('"$action":"modules.transcribe.extract"');
+    expect(json).not.toContain('"$invoke":"modules.transcribe.extract"');
   });
 
   it('offers the switch on any call, not only the one this agent is in', () => {
     // The answer is stored on the call, so a call opened from a link can be decided too — it is what
     // applies when the call is next live. Only the read-back gate on everything else stays.
     const header = JSON.stringify((extractionPanel.children as SchemaNode[])[0]);
-    expect(header).toContain('"$action":"modules.transcribe.toggleAutoExtract"');
+    expect(header).toContain('"$invoke":"modules.transcribe.toggleAutoExtract"');
     expect(header).not.toContain(VIEWING_LIVE_EXPR);
   });
 
@@ -986,7 +993,7 @@ describe('the extraction panel', () => {
     */
     expect(json).not.toContain('"spaceStore.setAutoInterpret"');
     expect(json).toContain(
-      `"onChange":{"$action":"modules.transcribe.toggleAutoExtract","args":[{"$":"${EXTRACTION_SUBJECT_EXPR}"}]}`,
+      `"onChange":{"$invoke":"modules.transcribe.toggleAutoExtract","args":[{"$":"${EXTRACTION_SUBJECT_EXPR}"}]}`,
     );
     expect(json).toContain('!spaceStore.canAdministerCurrentSpace');
     expect(json).toContain('Set by whoever administers this space');
@@ -1035,8 +1042,8 @@ describe('the extraction panel', () => {
     expect(json).toContain(".filter(p, p.kind != 'update')");
     expect(json).toContain(".filter(p, p.kind == 'update')");
     expect(json).toContain('"children":["Pending changes"]');
-    expect(json).toContain('"$action":"modules.transcribe.applyChange"');
-    expect(json).toContain('"$action":"modules.transcribe.dismissChange"');
+    expect(json).toContain('"$invoke":"modules.transcribe.applyChange"');
+    expect(json).toContain('"$invoke":"modules.transcribe.dismissChange"');
     // The old half comes from the record itself, asked for by id once the model is known.
     expect(json).toContain('"current":{"entity":{"$":"proposal.entity"},"where":{"id":{"$":"proposal.id"}}');
     // An agreed record with a change suggested still counts as extracted.
@@ -1175,7 +1182,7 @@ describe('the extraction panel', () => {
     // state. Left open at the end rather than closing the props object: what is being pinned is
     // that the badge is the count's, and it should not have to be rewritten when the count's chip
     // gains a size or a colour.
-    expect(json).toContain('"we-badge","props":{"size":"xs","variant":"warning","appearance":"solid"');
+    expect(json).toContain('"we-badge","props":{"size":"xs","variant":"solid","tone":"warning"');
   });
 
   it('lists only the fields a record actually has something in', () => {
@@ -1207,7 +1214,7 @@ describe('the extraction panel', () => {
     */
     // The card's own former shape. `we-alert` still draws the two genuine alerts in this panel — a
     // failed pass and a watch that cannot run — which is what it is for.
-    expect(json).not.toContain('"we-alert","props":{"variant":"warning","appearance":"accent"');
+    expect(json).not.toContain('"we-alert","props":{"variant":"edge","tone":"warning"');
     expect(json).not.toContain('"name":"warning"');
     // The edge the alert drew, written out, in the role each list means: one still awaiting an
     // answer, one already settled.
@@ -1283,7 +1290,7 @@ describe('the extraction panel', () => {
       place to make it.
     */
     const chips = JSON.stringify(extractionTargets);
-    const add = '{"$action":"shellStore.openSpaceSettings","args":["vocabulary"]}';
+    const add = '{"$invoke":"shellStore.openSpaceSettings","args":["vocabulary"]}';
 
     // In the section's heading, about the list rather than one more thing in it — and not among the chips.
     expect(chips).not.toContain(add);
@@ -1299,7 +1306,7 @@ describe('the extraction panel', () => {
       that does anything on a press, and a button that fades because a setting elsewhere is on reads
       as unavailable rather than as unnecessary.
     */
-    expect(json).not.toContain("modules.transcribe.autoExtract ? 'ghost' : 'secondary'");
+    expect(json).not.toContain("modules.transcribe.autoExtract ? 'ghost' : 'soft'");
   });
 
   it('names the chips, then puts the press that acts on them underneath', () => {
@@ -2031,7 +2038,7 @@ describe('the things to extract fold like every other section', () => {
   it('gives running a pass the same weight as keeping them running', () => {
     // `secondary` read as the lesser of the two beside an "Auto extract: on" switch, when it is the
     // one that does something this instant.
-    expect(JSON.stringify(extractionPanel)).toContain('"variant":"primary"');
+    expect(JSON.stringify(extractionPanel)).toContain('"variant":"solid"');
   });
 });
 
@@ -2196,8 +2203,8 @@ describe('the composer', () => {
         $if: { then: Record<string, unknown>; else: Record<string, unknown> };
       }
     ).$if;
-    expect(branch.then.$action).toBe('modules.transcribe.reply');
-    expect(branch.else.$action).toBe('modules.transcribe.addMessage');
+    expect(branch.then.$invoke).toBe('modules.transcribe.reply');
+    expect(branch.else.$invoke).toBe('modules.transcribe.addMessage');
     expect(branch.else.args).toEqual([
       { $: 'routeStore.params.call ? routeStore.params.call : modules.transcribe.callId' },
       { $: 'event.text' },
@@ -2223,7 +2230,7 @@ describe('one line, two lists', () => {
   const transcript = JSON.stringify(transcribeModule);
 
   it("gives the Feed the transcript's line, Edit and the typed mark included", () => {
-    expect(feed).toContain('"$action":"modules.transcribe.editUtterance"');
+    expect(feed).toContain('"$invoke":"modules.transcribe.editUtterance"');
     expect(feed).toContain('"name":"keyboard"');
     // The text badge the Feed's own line drew for a typed message is gone.
     expect(feed).not.toContain("row.source == '' ? 'bot' : 'typed'");

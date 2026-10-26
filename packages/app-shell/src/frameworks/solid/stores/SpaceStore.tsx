@@ -16,8 +16,7 @@ import {
   unreadContainerIds,
 } from '@shared/containerActivity';
 import { datasetAddressedBy } from '@shared/datasetIdentity';
-import { guardLabel, refusalWords } from '@shared/flowViews';
-import { guardSubjectOf } from '@shared/guardSubjects';
+import { evidenceSubjectOf } from '@shared/evidenceSubjects';
 import { buildGuestLink } from '@shared/guestLink';
 import {
   type AmendmentEntry,
@@ -60,7 +59,31 @@ import { completeResponse } from '@shared/responses';
 import { seedDefaultEnabledModules } from '@shared/seedModules';
 import { getSeed } from '@shared/seedRegistry';
 import { type SharingPickerOption, sharingPickerOptions } from '@shared/sharingOptions';
-import { readSpaceRoles, writeSpaceRole } from '@shared/spaceRoles';
+import { readSpaceLandmarks, writeSpaceLandmark } from '@shared/spaceLandmarks';
+import {
+  createPolicyCheck,
+  type GovernedSpace,
+  POLICY_PRESETS,
+  policyInForce,
+  type PolicyPreset,
+  type PolicyVersion,
+  policyView,
+  presetOf,
+  type SpacePolicyView,
+  type SpaceStanding,
+} from '@shared/spacePolicy';
+import {
+  ADMIN_ROLE,
+  ADMIN_ROLE_RECORD,
+  administers,
+  cannotRevoke,
+  type GrantRow,
+  type RoleRow,
+  rolesByPerson,
+  rolesOf,
+  rolesView,
+  type RoleView,
+} from '@shared/spaceRoles';
 import {
   applyStarterRecords,
   defaultSpaceStarter,
@@ -74,24 +97,30 @@ import {
   type LocationData,
   removeSpaceFromParent,
   spaceSelfWhere,
+  type SpaceSyncOptions,
   syncSpaceToParent,
 } from '@shared/spaceSync';
 import { isSystemDataset } from '@shared/systemDatasets';
 import {
   approvalsOf,
-  compileTaskFlow,
-  createTaskFlowActions,
-  flowStateOf,
+  compileTaskWorkflow,
+  createTaskWorkflowActions,
   needsAgreement,
   openMoveOf,
-  parseTaskStateGuards,
-  storeTaskStateGuards,
-  TASK_FLOW,
-  type TaskFlowRule,
+  parseTaskStateEvidence,
+  storeTaskStateEvidence,
+  TASK_WORKFLOW,
   type TaskStateRule,
-} from '@shared/taskFlow';
-import { taskFlowLive } from '@shared/taskFlowLive';
-import { resolveSpaceTheme, type ThemeResolutionInput } from '@shared/themeResolution';
+  type TaskWorkflowRule,
+  workflowStateOf,
+} from '@shared/taskWorkflow';
+import { taskWorkflowLive } from '@shared/taskWorkflowLive';
+import {
+  resolveSpaceTheme,
+  type SpaceThemeHiddenBy,
+  spaceThemeHiddenBy as hiddenBy,
+  type ThemeResolutionInput,
+} from '@shared/themeResolution';
 import { uploadOf } from '@shared/uploadOf';
 import { copyText, deriveSlug } from '@shared/utils';
 import type { ViewSetting } from '@shared/viewResolution';
@@ -103,8 +132,9 @@ import {
   routableSections,
   viewSettings,
 } from '@shared/viewResolution';
-import type { AgentProfileSummary, DatasetRef, FlowView } from '@we/backend-shared';
-import { displayName, trace } from '@we/backend-shared';
+import { evidenceLabel, refusalWords } from '@shared/workflowViews';
+import type { AgentProfileSummary, DatasetRef, WorkflowView } from '@we/backend-shared';
+import { displayName, isPolicyRefusal, SELF_PERSONS, trace, validatePolicy } from '@we/backend-shared';
 import type { ContentInput } from '@we/block-shared';
 import {
   contentHash,
@@ -130,19 +160,24 @@ import {
   InvolvementType,
   LocationBlock,
   MutedAgent,
+  Policy,
   ReadMarker,
+  registerEntityWriteCheck,
   RelationshipType,
+  Role,
+  RoleGrant,
   Signal,
   SignalType,
   Space,
+  SpaceLandmark,
   SpacePreference,
-  SpaceRole,
   TaskState,
 } from '@we/entities';
 import type { ResolvedView, TemplateSchema } from '@we/schema-shared';
-import { hasViewsMarker } from '@we/schema-shared';
+import { hasViewsMarker, templateThemeId } from '@we/schema-shared';
 import {
   Accessor,
+  createComputed,
   createContext,
   createEffect,
   createMemo,
@@ -152,6 +187,7 @@ import {
   untrack,
   useContext,
 } from 'solid-js';
+import { createStore, reconcile } from 'solid-js/store';
 
 import { oneAtATime } from '../../../shared/oneAtATime';
 import { signalOptimism } from '../../../shared/signalOptimism';
@@ -244,6 +280,24 @@ export interface SpaceListEntry {
    * it connects to the right node and joins the right space with no choices to make.
    */
   guestLink: string;
+  /**
+   * Where sharing this space stands while it is not yet shared: `'sharing'` while the backend
+   * publishes it, `'failed'` when that did not work (see `shareError`, and `shareSpace` to try
+   * again), `''` otherwise. A shared space reads `''` and has a `shareLink`.
+   *
+   * Creating a shared space makes the local space first and shares it after, so a space can be in
+   * use while this says `'sharing'`.
+   */
+  sharing: '' | 'sharing' | 'failed';
+  /** Why the last attempt to share this space failed, or `''`. */
+  shareError: string;
+}
+
+/** What sharing a space was asked for: the backend's sharing option, and the listing to write after. */
+interface ShareTask {
+  sharing?: string;
+  /** Set when the space is listed in global discovery — the images and place to list it with. */
+  listing?: SpaceSyncOptions;
 }
 
 /*
@@ -369,12 +423,12 @@ export interface TaskStateView {
   approverKind: string;
   /**
    * What must be there before a task enters this state, each with a sentence saying so — see
-   * `TaskState.guards`. `tie` is the relation the task holds them through, empty for anywhere.
+   * `TaskState.evidence`. `via` is the relation the task holds them through, empty for anywhere.
    */
-  guards: {
+  evidence: {
     entity: string;
     where?: Record<string, string | number | boolean>;
-    tie: string;
+    via: string;
     min: number;
     label: string;
   }[];
@@ -585,6 +639,17 @@ export interface SpaceStore {
   offeredInvolvementTypes: Accessor<InvolvementTypeView[]>;
   /** The space has been asked for its kinds. */
   involvementTypesLoaded: Accessor<boolean>;
+  /**
+   * The standings people hold across the space — admin, moderator, whatever this community names —
+   * each with the people holding it: `{ id, slug, name, description, holders }`. Admin first.
+   */
+  roles: Accessor<RoleView[]>;
+  /** The slugs of the roles the viewer holds here. */
+  myRoles: Accessor<string[]>;
+  /** By person, the slugs of the roles they hold — for a badge beside a member. */
+  memberRoles: Accessor<Record<string, string[]>>;
+  /** The space has been asked for its roles. An empty list is otherwise "not fetched yet". */
+  rolesLoaded: Accessor<boolean>;
   /** Options for the per-space template override picker, including a "follow the space" entry. */
   templateOverrideOptions: Accessor<{ label: string; value: string }[]>;
   /** Options for the per-space theme override picker, including a "follow the space" entry. */
@@ -594,6 +659,11 @@ export interface SpaceStore {
    * apply — is there anything for a "reset" to undo? False outside a space.
    */
   spaceThemePinned: Accessor<boolean>;
+  /**
+   * What keeps this agent from seeing the space on screen's own theme: `'pin'`, `'agent-default'`,
+   * `'template'`, or `''` when nothing does.
+   */
+  spaceThemeHiddenBy: Accessor<SpaceThemeHiddenBy>;
   /** Feature modules this *agent* wants available anywhere. Personal; see AgentSettings.installedModules. */
   installedModules: Accessor<string[]>;
   /** Module ids the template on screen mounts components from — derived from the schema, not declared. */
@@ -670,6 +740,11 @@ export interface SpaceStore {
     sharing?: string,
   ) => Promise<void>;
   /**
+   * Share a space that is still local — what retries a share that failed. Uses the sharing option
+   * and listing the failed attempt had. Watch `spaceList[].sharing` for how it is going.
+   */
+  shareSpace: (uuid: string) => Promise<void>;
+  /**
    * Join a shared dataset. `focus` defaults to true; pass false to join without navigating to it.
    *
    * Rejects when the join could not be completed, so a caller's `onSuccess` means what it says.
@@ -691,7 +766,7 @@ export interface SpaceStore {
    * Create a composed artifact, and return its id.
    *
    * The id is what makes "and then do something with it" possible from a schema — placing a new card
-   * where somebody double-clicked, scrolling to it, selecting it — since `$action`'s `onSuccess`
+   * where somebody double-clicked, scrolling to it, selecting it — since `$invoke`'s `onSuccess`
    * reads the resolved value as `$result`. `createBlocks` has always returned the model; this simply
    * stopped throwing the id away.
    */
@@ -846,11 +921,11 @@ export interface SpaceStore {
    */
   root: Accessor<string>;
   /**
-   * The records this space names by role, as name → id: `roles.canvas` is the space's canvas. A role
+   * The records this space names by landmark, as name → id: `landmarks.canvas` is the space's canvas. A landmark
    * the space never named is simply absent, and a template must handle that, since a space can
    * switch template and a template must never assume what another set up.
    */
-  roles: Accessor<Record<string, string>>;
+  landmarks: Accessor<Record<string, string>>;
   /**
    * Whether one collection — a call, a channel, the space's own — is extracted as it grows: its own
    * answer, copied from the space's default when it was made. False until it has been read.
@@ -935,37 +1010,37 @@ export interface SpaceStore {
       semantic?: TaskStateView['semantic'];
       approvals?: number;
       approverKind?: string;
-      guards?: { entity: string; where?: Record<string, string | number | boolean>; tie?: string; min?: number }[];
+      evidence?: { entity: string; where?: Record<string, string | number | boolean>; via?: string; min?: number }[];
     },
   ) => Promise<void>;
   /**
    * How a task may move between this space's states, in their order — `''` for anywhere, `next`, or
-   * `next-and-back` (see `Space.taskFlowRule`). Only whoever administers the space; rejects otherwise.
+   * `next-and-back` (see `Space.taskWorkflowRule`). Only whoever administers the space; rejects otherwise.
    */
-  setTaskFlowRule: (rule: '' | 'next' | 'next-and-back') => Promise<void>;
-  /** Add something that must be there before a task enters this state — see `TaskState.guards`. */
-  addTaskStateGuard: (slug: string, guard: { entity: string; tie?: string; min?: number }) => Promise<void>;
-  /** Take away the state's guard at that position in its `guards`. */
-  removeTaskStateGuard: (slug: string, index: number) => Promise<void>;
-  /** How a task may move between this space's states — see `setTaskFlowRule`. */
-  taskFlowRule: Accessor<'' | 'next' | 'next-and-back'>;
+  setTaskWorkflowRule: (rule: '' | 'next' | 'next-and-back') => Promise<void>;
+  /** Add something that must be there before a task enters this state — see `TaskState.evidence`. */
+  addTaskStateEvidence: (slug: string, requirement: { entity: string; via?: string; min?: number }) => Promise<void>;
+  /** Take away the state's evidence requirement at that position in its `evidence`. */
+  removeTaskStateEvidence: (slug: string, index: number) => Promise<void>;
+  /** How a task may move between this space's states — see `setTaskWorkflowRule`. */
+  taskWorkflowRule: Accessor<'' | 'next' | 'next-and-back'>;
   /**
    * Whether this space's task states ask for agreement — some state needs more than one approval, or
    * names whose approval counts. Where they do, a card dragged into such a state waits rather than
    * moving, and the board shows what it is waiting on.
    */
-  taskFlowEnabled: Accessor<boolean>;
+  taskWorkflowEnabled: Accessor<boolean>;
   /** Agree with the move a task is waiting on — the same as dragging it there yourself. */
   approveTaskMove: (taskId: string) => Promise<void>;
   /** Take back this agent's own vote on the move a task is waiting on. Never touches anybody else's. */
   withdrawTaskMove: (taskId: string) => Promise<void>;
   /**
-   * The flows this space has put away, by name (`Space.archivedFlows`). An archived flow keeps its
+   * The workflows this space has put away, by name (`Space.archivedWorkflows`). An archived workflow keeps its
    * records, which still show and can still finish, but is not offered for starting on anything new.
    */
-  archivedFlows: Accessor<string[]>;
-  /** Put a flow away, or bring it back. Only whoever administers the space; rejects otherwise. */
-  setFlowArchived: (name: string, archived: boolean) => Promise<void>;
+  archivedWorkflows: Accessor<string[]>;
+  /** Put a workflow away, or bring it back. Only whoever administers the space; rejects otherwise. */
+  setWorkflowArchived: (name: string, archived: boolean) => Promise<void>;
   /**
    * Withdraw a state from use, or bring it back. Never touches the work sitting in it. By slug, which
    * is what a task and a screen both hold.
@@ -1013,6 +1088,21 @@ export interface SpaceStore {
   canAdministerSpace: (uuid: string) => boolean;
   /** The same, about the space on screen, as something an expression can read. */
   canAdministerCurrentSpace: Accessor<boolean>;
+  /** Name a role this community holds — "Moderator". Only whoever administers the space. */
+  createRole: (config: { name: string; description?: string }) => Promise<void>;
+  /** Rename a role or change what it says it means. Its slug, which grants hold, stays. */
+  updateRole: (slug: string, updates: { name?: string; description?: string }) => Promise<void>;
+  /** Give `agent` the role. Only whoever administers the space; holding it already is no change. */
+  grantRole: (slug: string, agent: string) => Promise<void>;
+  /** Take the role from `agent`. Refused for the last admin — see `cannotRevoke`. */
+  revokeRole: (slug: string, agent: string) => Promise<void>;
+  /**
+   * The space's policy in force — who may do what to its records — as a template reads it:
+   * `{ loaded, preset, permissions, frozen, me, roles, sentences }`. Pass it to `can()`.
+   */
+  policy: Accessor<SpacePolicyView>;
+  /** Replace the space's policy with a preset: `open` or `community`. Only whoever may change the rules. */
+  setPolicyPreset: (preset: PolicyPreset) => Promise<void>;
   /** Copy a space's share link to the clipboard. No-op for a space that has none. */
   copyShareLink: (uuid: string) => Promise<void>;
   /** Copy a guest invite link — auto-creates account, auto-joins the space. No-op without a host. */
@@ -1084,6 +1174,13 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   const [mySpaces, setMySpaces] = createSignal<Space[]>([]);
   const [creatingSpace, setCreatingSpace] = createSignal(false);
+  /**
+   * Spaces being shared, or whose share failed, by dataset id — with what the share was asked for,
+   * so a retry asks the same. A space leaves the map once it is shared. See `SpaceListEntry.sharing`.
+   */
+  const [shares, setShares] = createSignal<
+    Record<string, { state: 'sharing' | 'failed'; error: string; task: ShareTask }>
+  >({});
 
   const [joiningSpace, setJoiningSpace] = createSignal('');
   const [joinSlow, setJoinSlow] = createSignal(false);
@@ -1117,10 +1214,13 @@ export function SpaceStoreProvider(props: ParentProps) {
    * *offer* the controls, which is worth doing — an owner should see what is theirs to manage — but
    * it must never be described to the user as protection.
    *
-   * A predicate rather than an inline `author === me` in each template, because creator-only is
-   * today's answer and not the last one: multiple admins, roles, or an SDNA-level constraint all
-   * change what "may administer" means. Templates asking the question by name keep working; templates
-   * that had compared two DIDs would all need editing.
+   * Answered from the space's roles: whoever holds `admin` administers it, or its creator while nobody
+   * does (`administers` in `shared/spaceRoles.ts`). A space's roles are read once it is open, so a
+   * space in the list that is not the one on screen still answers by who made it.
+   *
+   * A predicate rather than an inline `author === me` in each template, because what "may
+   * administer" means keeps growing: templates asking the question by name follow it; templates that
+   * had compared two DIDs would all need editing.
    */
   /**
    * The same question about the space on screen, as a value a schema can read.
@@ -1132,6 +1232,19 @@ export function SpaceStoreProvider(props: ParentProps) {
    * removed by anybody else, the space's own author included. Asked here, the answer can grow
    * (several admins, roles) without every template being rewritten.
    */
+  /*
+    The space on screen's roles, as read — declared here rather than with the rest of the roles
+    further down because the question above is answered from them. Filled by the `── Roles ──`
+    section.
+  */
+  const [roleRows, setRoleRows] = createSignal<RoleRow[]>([]);
+  const [grantRows, setGrantRows] = createSignal<GrantRow[]>([]);
+  const [rolesLoaded, setRolesLoaded] = createSignal(false);
+  const roleViews = createMemo<RoleView[]>(() => rolesView(roleRows(), grantRows()));
+  /** Who the viewer is as a person, and who made the space on screen — see `PersonPort`. */
+  const [mePerson, setMePerson] = createSignal<string | null>(null);
+  const [authorPerson, setAuthorPerson] = createSignal<string | null>(null);
+
   // A plain accessor rather than a memo: it reads its signals when called, so it is reactive either
   // way — and a memo here runs eagerly at creation, before `currentSpace` further down the file
   // exists. Cheap enough that memoising buys nothing.
@@ -1146,6 +1259,11 @@ export function SpaceStoreProvider(props: ParentProps) {
     // A personal space has no one else to answer to.
     if (!space.url) return true;
     const me = session.me()?.did;
+    // The space on screen answers from its roles. Any other space, whose roles are not read until it
+    // is opened, answers as it always has: by who made it.
+    if (uuid === datasetStore.currentDataset()?.id && rolesLoaded()) {
+      return administers(roleViews(), mePerson() ?? me ?? null, authorPerson() ?? space.author ?? null);
+    }
     return Boolean(me && space.author === me);
   }
 
@@ -1401,31 +1519,6 @@ export function SpaceStoreProvider(props: ParentProps) {
   /** `installedModules` as a set — the shape both the list and the intersection want. */
   const installedSet = createMemo(() => new Set(installedModules()));
 
-  /*
-    Row identity, held stable while a row's *content* is unchanged.
-
-    `<For>` — which is what `$each` renders through — keys by reference, so handing it a fresh
-    object for every row on every recompute destroys and rebuilds the whole subtree. That is not a
-    render-cost point: everything below it loses its `$localState`, so toggling any one setting in
-    the space-settings panel reset the open tab and threw away a half-typed name and description.
-    The query path solved this long ago with `reconcile({ key: 'id' })`; a store-backed list has no
-    such protection, so it is done here.
-
-    `location` is compared by reference because `updateSpaceInCache` clones the space and carries it
-    through untouched; everything else is plain data and compares as JSON. A row whose content
-    genuinely changed still gets a new object, and still remounts — which is correct, and why the
-    settings panel also holds its open tab *above* the `$each`.
-  */
-  const rowCache = new Map<string, { signature: string; location: unknown; row: SpaceListEntry }>();
-  const stableRow = (row: SpaceListEntry): SpaceListEntry => {
-    const { location, ...rest } = row;
-    const signature = JSON.stringify(rest);
-    const cached = rowCache.get(row.uuid);
-    if (cached && cached.signature === signature && cached.location === location) return cached.row;
-    rowCache.set(row.uuid, { signature, location, row });
-    return row;
-  };
-
   /**
    * The spaces list: one row per joined dataset the agent can act on.
    *
@@ -1433,10 +1526,10 @@ export function SpaceStoreProvider(props: ParentProps) {
    * system datasets — those belong in the advanced section, where the subject is datasets rather
    * than spaces.
    */
-  const spaceList = createMemo<SpaceListEntry[]>(() =>
+  const spaceRows = createMemo<SpaceListEntry[]>(() =>
     datasetStore.orderedDatasets().map((ds) => {
       const space = mySpaces().find((s) => isSpaceSelf(s, ds));
-      return stableRow({
+      return {
         uuid: ds.id,
         // A foreign dataset has no Space record to name it, so the dataset's own name stands in.
         name: space?.name || ds.name,
@@ -1458,9 +1551,25 @@ export function SpaceStoreProvider(props: ParentProps) {
         themeOverride: themeOverrideFor(ds.id),
         shareLink: shareLinkFor(ds),
         guestLink: guestLinkFor(ds),
-      });
+        sharing: shares()[ds.id]?.state ?? '',
+        shareError: shares()[ds.id]?.error ?? '',
+      };
     }),
   );
+
+  /*
+    Each row stays the same object for as long as its space is listed; a change to the space changes
+    the row's fields in place.
+
+    `<For>`, which `$each` renders through, keys by reference, so a fresh object for a row destroys
+    and rebuilds everything under it. Under the space-settings panel that is every `$localState`, a
+    half-typed name, and the scroll position: setting a space's default theme threw the Appearance
+    tab back to its top. Holding a row only while nothing in it changed was not enough, because
+    changing something is exactly what a settings page does. Query results are kept the same way.
+  */
+  const [spaceListStore, setSpaceListStore] = createStore<SpaceListEntry[]>([]);
+  createComputed(() => setSpaceListStore(reconcile(spaceRows(), { key: 'uuid', merge: true })));
+  const spaceList: Accessor<SpaceListEntry[]> = () => spaceListStore;
 
   // TemplateStore mounts above this store and cannot read it directly — hand it the space lookup
   // it needs to resolve a space's default template (see TemplateStore.provideSpaceLookup).
@@ -1716,7 +1825,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    * collection of this kind", which is how a second one would split the space's content.
    *
    * Then the starter's records, each contained by the collection unless it names another, and a
-   * `SpaceRole` per role. A starter record that fails is reported and skipped: everything above has
+   * `SpaceLandmark` per landmark. A starter record that fails is reported and skipped: everything above has
    * been written, and the person's space exists.
    */
   async function writeSpaceStructure(dataset: DatasetProxy, space: Space, starter?: SpaceStarter): Promise<void> {
@@ -1752,7 +1861,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         );
         return (made as { id: string }).id;
       },
-      role: (name, nodeId) => writeSpaceRole(dataset, space.id, name, nodeId),
+      landmark: (name, nodeId) => writeSpaceLandmark(dataset, space.id, name, nodeId),
       linkSpace: (relations) => linkSpaceRelations(Space, dataset, space.id, relations),
       /*
         A post is seeded as the blocks inside it, and its stored document is derived from those here,
@@ -1783,24 +1892,11 @@ export function SpaceStoreProvider(props: ParentProps) {
       // Create the dataset
       const spaceRef = await lifecycle.create(name);
       const spaceHandle = spaceRef.handle as DatasetProxy;
-      let publishedSharedId: string | undefined;
+      if (access === 'shared' && !lifecycle.publish) throw new Error('This backend cannot publish shared datasets.');
 
       // Register SDNA models (full set, same as switchDataset uses)
       const schemas = session.backendPorts()!.schemas;
       await schemas.installSpace(spaceHandle, moduleRegistry.moduleSchemas(schemas));
-
-      // If shared, publish — capture the returned URL so it can be stored on the Space model
-      // (the dataset handle's own sharedUrl is not updated in-place).
-      if (access === 'shared') {
-        if (!lifecycle.publish) throw new Error('This backend cannot publish shared datasets.');
-        const published = await lifecycle.publish(spaceRef.id, { sharing });
-        publishedSharedId = published.sharedId;
-        // Patch the ref so trackDataset sees the sharedId — the proxy's sharedUrl is not
-        // updated in-place by publish, so the ref captured at create time would otherwise
-        // stay empty and shareLinkFor / guestLinkFor would return ''.
-        spaceRef.sharedId = published.sharedId;
-        spaceRef.sharedUri = published.uri;
-      }
 
       // Process avatar image if provided
       const avatarData = avatarFile
@@ -1814,7 +1910,6 @@ export function SpaceStoreProvider(props: ParentProps) {
       const starter = defaultSpaceStarter(getSeed()?.spaceStarters);
       const spaceData = {
         uuid: spaceRef.id,
-        url: publishedSharedId,
         name,
         description,
         discovery,
@@ -1831,7 +1926,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       trace('space', 'created', { id: spaceRecord.id });
 
       /*
-        The space collection, and then the starter: the like reaction, the canvas, the roles.
+        The space collection, and then the starter: the like reaction, the canvas, the landmarks.
 
         The like used to be written here by name, on the argument that a space arriving with no
         reaction is a blank rather than a neutral start. The argument holds and now lives with the
@@ -1839,31 +1934,35 @@ export function SpaceStoreProvider(props: ParentProps) {
         deployment that wants different defaults can say so without editing this file.
       */
       await writeSpaceStructure(spaceHandle, spaceRecord, starter);
-
-      // Sync to global discovery space when the user opted in.
-      // Space.create returns relations unhydrated, so we pass avatarData, coverImageData,
-      // and locationData directly rather than reading them back from spaceRecord.
-      if (discovery === 'listed') {
-        const globalDs = datasetStore.globalDataset();
-        if (globalDs) {
-          await syncSpaceToParent(spaceRecord, globalDs.handle, session.backendPorts()!.schemas, {
-            locationData,
-            avatarData,
-            coverImageData,
-          }).catch((err) => console.error('SpaceStore: sync space to global failed', err));
-        }
-      }
+      /*
+        Before the space is shared, so it is never shared without somebody who administers it — and
+        written only here, by its creator: a member joining later must never write a first admin of
+        their own. See `Role`.
+      */
+      await writeAdminGrant(spaceHandle).catch((error) =>
+        console.error('SpaceStore: could not make the space’s creator its admin', error),
+      );
+      // After the grant, since writing the first version is an admin's to do; before sharing, so the
+      // space is never shared without it.
+      await writeStartingPolicy(spaceHandle, starter).catch((error) =>
+        console.error('SpaceStore: could not write the space’s starting policy', error),
+      );
 
       // Track locally so the sidebar updates with the action rather than with the backend's
       // change event (which may lag, or on web may not fire at all).
-      //
-      // Re-read rather than tracking `spaceRef`: patching its uri above does not reach its handle,
-      // whose `sharedUrl` stays empty from before the publish, and the transport for presence and
-      // calls is opened from the handle. A fresh read carries both.
-      const tracked =
-        access === 'shared' ? ((await lifecycle.get(spaceRef.id).catch(() => null)) ?? spaceRef) : spaceRef;
-      await datasetStore.trackDataset(tracked);
+      await datasetStore.trackDataset(spaceRef);
       setMySpaces((prev) => [...prev, spaceRecord]);
+
+      // Space.create returns relations unhydrated, so the listing is given avatarData,
+      // coverImageData and locationData directly rather than reading them back from spaceRecord.
+      const listing = discovery === 'listed' ? { locationData, avatarData, coverImageData } : undefined;
+      if (access === 'shared') {
+        // The person waits for the local space only. Sharing talks to the network, and the
+        // listing needs the address sharing mints, so both follow, reported on `spaceList`.
+        void share(spaceRecord, { sharing, listing });
+      } else if (listing) {
+        await listInGlobal(spaceRecord, listing);
+      }
     } catch (error) {
       console.error('SpaceStore: createSpace error', error);
       toastService.error('Could not create the space.');
@@ -1874,6 +1973,58 @@ export function SpaceStoreProvider(props: ParentProps) {
     } finally {
       setCreatingSpace(false);
     }
+  }
+
+  /** Lists a space in global discovery. A failure is reported and swallowed: the space itself is fine. */
+  async function listInGlobal(space: Space, listing?: SpaceSyncOptions): Promise<void> {
+    const globalDs = datasetStore.globalDataset();
+    if (!globalDs) return;
+    await syncSpaceToParent(space, globalDs.handle, session.backendPorts()!.schemas, listing).catch((err) =>
+      console.error('SpaceStore: sync space to global failed', err),
+    );
+  }
+
+  /**
+   * Shares a local space: publishes it, then records the address it was published at, then lists
+   * it if it is listed — in that order, because the record and the listing carry the address.
+   *
+   * A failure leaves the space as it was, local and usable, with the error on `spaceList` and a
+   * toast offering to try again.
+   */
+  async function share(space: Space, task: ShareTask): Promise<void> {
+    const lifecycle = session.lifecycle();
+    const uuid = space.uuid;
+    if (!lifecycle?.publish || shares()[uuid]?.state === 'sharing') return;
+    setShares((prev) => ({ ...prev, [uuid]: { state: 'sharing', error: '', task } }));
+    try {
+      // A retry after a later step failed finds the dataset already published: keep its address.
+      const sharedId =
+        (await lifecycle.get(uuid))?.sharedId ?? (await lifecycle.publish(uuid, { sharing: task.sharing })).sharedId;
+      const ds = datasetStore.datasets().find((d) => d.id === uuid);
+      if (ds) await Space.update(ds.handle, space.id, { url: sharedId });
+      // Re-read rather than patching the ref: the handle it carries was minted before the publish,
+      // and the transport for presence and calls is opened from the handle. A fresh read carries both.
+      const ref = await lifecycle.get(uuid);
+      if (ref) await datasetStore.trackDataset(ref);
+      // Only now does the space show as shared: before this, a failure leaves it retryable.
+      const shared = Object.assign(Object.create(Object.getPrototypeOf(space)), space, { url: sharedId }) as Space;
+      setMySpaces((prev) => prev.map((s) => (s.uuid === uuid ? shared : s)));
+      setShares(({ [uuid]: _done, ...rest }) => rest);
+      if (shared.discovery === 'listed') await listInGlobal(shared, task.listing);
+    } catch (error) {
+      console.error('SpaceStore: sharing a space failed', error);
+      const message = error instanceof Error ? error.message : String(error);
+      setShares((prev) => ({ ...prev, [uuid]: { state: 'failed', error: message, task } }));
+      toastService.add(`Could not share “${space.name}”. It is here, unshared.`, 'danger', 8000, {
+        label: 'Try again',
+        run: () => void shareSpace(uuid),
+      });
+    }
+  }
+
+  async function shareSpace(uuid: string): Promise<void> {
+    const space = mySpaces().find((s) => s.uuid === uuid);
+    if (space && !space.url) await share(space, shares()[uuid]?.task ?? {});
   }
 
   /**
@@ -1987,10 +2138,14 @@ export function SpaceStoreProvider(props: ParentProps) {
   async function finishJoin(joinedRef: DatasetRef, focus: boolean): Promise<void> {
     const joinedHandle = joinedRef.handle as DatasetProxy;
 
+    // A join returns before the dataset has synced, and until it has it holds none of the
+    // space's data — the creator's schema included. Everything below reads it, so wait.
+    await session.lifecycle()?.whenSynced?.(joinedRef.id);
+
     // Install WE SDNA so Space, SignalType, CollectionBlock etc. are queryable
     // immediately. installSpace diffs against the dataset's actual state before writing,
-    // so this is safe to call unconditionally even when the space's creator or an earlier
-    // joiner already installed it — it won't write a duplicate copy.
+    // so once the dataset has synced this writes only what the creator and earlier joiners
+    // have not — never a duplicate copy.
     const joinSchemas = session.backendPorts()!.schemas;
     await joinSchemas.installSpace(joinedHandle, moduleRegistry.moduleSchemas(joinSchemas));
 
@@ -2269,14 +2424,14 @@ export function SpaceStoreProvider(props: ParentProps) {
     ...boardOptimism.ports,
     offeredStates: () => offeredTaskStates(),
     notify: (message) => toastService.error(message),
-    rolesChanged: () => void reloadSpaceStructure(),
-    // Wrapped for `offeredStates`' reason: the flow is worked out from the states, further down.
-    flow: {
-      enabled: () => taskFlow.enabled(),
-      needsAgreement: (slug) => needsAgreement(taskFlowRules().find((state) => state.slug === slug)),
-      stateOf: (taskId) => flowStateOf(taskFlowLive.view(), taskId),
-      move: (taskId, from, to) => taskFlow.move(taskId, from, to),
-      entryFor: (to) => taskFlow.entryFor(to),
+    landmarksChanged: () => void reloadSpaceStructure(),
+    // Wrapped for `offeredStates`' reason: the workflow is worked out from the states, further down.
+    workflow: {
+      enabled: () => taskWorkflow.enabled(),
+      needsAgreement: (slug) => needsAgreement(taskWorkflowRules().find((state) => state.slug === slug)),
+      stateOf: (taskId) => workflowStateOf(taskWorkflowLive.view(), taskId),
+      move: (taskId, from, to) => taskWorkflow.move(taskId, from, to),
+      entryFor: (to) => taskWorkflow.entryFor(to),
       explain: (from, to, outcome) => explainTaskMove(from, to, outcome ?? ''),
     },
     /*
@@ -2988,39 +3143,39 @@ export function SpaceStoreProvider(props: ParentProps) {
   /*
     ── The space's structure ────────────────────────────────────────────────────────────────────
 
-    Its collection and its roles, read on entering the space. Both are written once, at the create
-    press, so there is nothing to follow live: a role somebody adds later is picked up on the next
+    Its collection and its landmarks, read on entering the space. Both are written once, at the create
+    press, so there is nothing to follow live: a landmark somebody adds later is picked up on the next
     entry. `root` is read through the relation and never by looking for "the collection of kind
     space", which is the read a second one would silently split.
 
-    Two roles of one name are not prevented — roles are written at creation, by one person — and the
-    newest wins. A role whose record has since been deleted still reads here; a template reading it
-    finds nothing at that id and treats it as absent, which is what it must do for a missing role
+    Two landmarks of one name are not prevented — landmarks are written at creation, by one person — and the
+    newest wins. A landmark whose record has since been deleted still reads here; a template reading it
+    finds nothing at that id and treats it as absent, which is what it must do for a missing landmark
     anyway.
   */
   const [spaceRoot, setSpaceRoot] = createSignal('');
-  const [spaceRoles, setSpaceRoles] = createSignal<Record<string, string>>({});
-  /** Read the space collection and the roles again — after an action made a record the space's. */
+  const [spaceLandmarks, setSpaceLandmarks] = createSignal<Record<string, string>>({});
+  /** Read the space collection and the landmarks again — after an action made a record the space's. */
   async function reloadSpaceStructure(): Promise<void> {
     const dataset = datasetStore.currentDataset()?.handle;
     const uuid = datasetStore.currentDataset()?.id;
     if (!dataset || !datasetStore.isWeSpace()) return;
     try {
       const space = await Space.findOne(dataset, { include: { root: true } });
-      const roles = await readSpaceRoles(dataset);
+      const landmarks = await readSpaceLandmarks(dataset);
       if (datasetStore.currentDataset()?.id !== uuid) return; // navigated away while loading
-      // Roles first: `root` is what says the read has answered, so a template asking "is there a
+      // Landmarks first: `root` is what says the read has answered, so a template asking "is there a
       // board?" never hears "no" in the frame between the two.
-      setSpaceRoles(roles);
+      setSpaceLandmarks(landmarks);
       setSpaceRoot(space?.root?.id ?? '');
     } catch (error) {
-      console.warn('SpaceStore: could not read the space’s collection and roles', error);
+      console.warn('SpaceStore: could not read the space’s collection and landmarks', error);
     }
   }
   /*
-    Read on entering the space, then follow its roles.
+    Read on entering the space, then follow its landmarks.
 
-    Read once, a role written after entering never arrived: a space entered while its starter was
+    Read once, a landmark written after entering never arrived: a space entered while its starter was
     still writing showed "make a board" beside the board the starter had just made, and a board a
     peer made reached nobody until they switched space. Task states are followed for the same reason.
   */
@@ -3034,15 +3189,15 @@ export function SpaceStoreProvider(props: ParentProps) {
       watch?.dispose();
     });
     setSpaceRoot('');
-    setSpaceRoles({});
+    setSpaceLandmarks({});
     void untrack(reloadSpaceStructure).then(() => {
       if (stopped || !dataset || !weSpace) return;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      watch = (SpaceRole as any).query(dataset, {}) as typeof watch;
+      watch = (SpaceLandmark as any).query(dataset, {}) as typeof watch;
       watch
         ?.subscribe(() => void (!stopped && reloadSpaceStructure()))
         .catch((error: unknown) => {
-          console.warn('SpaceStore: could not watch the space’s roles', error);
+          console.warn('SpaceStore: could not watch the space’s landmarks', error);
         });
     });
   });
@@ -3129,12 +3284,12 @@ export function SpaceStoreProvider(props: ParentProps) {
           // A record written before these existed has neither: one approval, from anybody.
           approvals: approvalsOf({ slug: '', approvals: r.approvals }),
           approverKind: r.approverKind || '',
-          guards: parseTaskStateGuards(r.guards).map((g) => ({
+          evidence: parseTaskStateEvidence(r.evidence).map((g) => ({
             entity: g.entity,
             ...(g.where ? { where: g.where } : {}),
-            tie: g.tie && 'relation' in g.tie ? g.tie.relation : '',
+            via: g.via && 'relation' in g.via ? g.via.relation : '',
             min: g.min ?? 1,
-            label: guardLabel(g),
+            label: evidenceLabel(g),
           })),
         })),
       );
@@ -3230,7 +3385,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     a.retired === b.retired &&
     a.approvals === b.approvals &&
     a.approverKind === b.approverKind &&
-    JSON.stringify(a.guards) === JSON.stringify(b.guards);
+    JSON.stringify(a.evidence) === JSON.stringify(b.evidence);
 
   /**
    * The states this space uses, as screens read them.
@@ -3279,45 +3434,45 @@ export function SpaceStoreProvider(props: ParentProps) {
   const offeredTaskStates = createMemo<TaskStateView[]>(() => taskStates().filter((s) => !s.retired));
 
   /*
-    The space's task states as a flow — see `shared/taskFlow.ts` for when a space has one and what it
+    The space's task states as a workflow — see `shared/taskWorkflow.ts` for when a space has one and what it
     compiles to.
 
-    Every state, withdrawn ones included: work still sits in a withdrawn state, and a flow that did
+    Every state, withdrawn ones included: work still sits in a withdrawn state, and a workflow that did
     not know it could not move that work out of it.
   */
-  const taskFlowRules = createMemo<TaskStateRule[]>(
+  const taskWorkflowRules = createMemo<TaskStateRule[]>(
     () =>
       taskStates().map((s) => ({
         slug: s.slug,
         approvals: s.approvals,
         approverKind: s.approverKind,
-        guards: parseTaskStateGuards(storeTaskStateGuards(s.guards)),
+        evidence: parseTaskStateEvidence(storeTaskStateEvidence(s.evidence)),
       })),
     [],
     { equals: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
   );
-  const taskFlowRule = createMemo<TaskFlowRule>(() => {
-    const rule = currentSpace()?.taskFlowRule ?? '';
+  const taskWorkflowRule = createMemo<TaskWorkflowRule>(() => {
+    const rule = currentSpace()?.taskWorkflowRule ?? '';
     return rule === 'next' || rule === 'next-and-back' ? rule : '';
   });
-  const taskFlowDefinition = createMemo(() => compileTaskFlow(taskFlowRules(), taskFlowRule()));
+  const taskWorkflowDefinition = createMemo(() => compileTaskWorkflow(taskWorkflowRules(), taskWorkflowRule()));
   /** Why a task's move was refused, naming the rule — in the community's own words for its states. */
   const explainTaskMove = (from: string, to: string, outcome: string): string | null => {
     const names = new Map(taskStates().map((state) => [state.slug, state.name]));
-    return refusalWords(untrack(taskFlowDefinition), from, to, outcome, {
+    return refusalWords(untrack(taskWorkflowDefinition), from, to, outcome, {
       state: (slug) => names.get(slug) ?? slug,
       kind: (slug) => slug,
     });
   };
-  const taskFlowEnabled = (): boolean =>
-    Boolean(taskFlowDefinition() && session.backendPorts()?.flows && datasetStore.isWeSpace());
-  const [taskFlowView, setTaskFlowView] = createSignal<FlowView | null>(null);
+  const taskWorkflowEnabled = (): boolean =>
+    Boolean(taskWorkflowDefinition() && session.backendPorts()?.workflows && datasetStore.isWeSpace());
+  const [taskWorkflowView, setTaskWorkflowView] = createSignal<WorkflowView | null>(null);
 
-  const taskFlow = createTaskFlowActions({
+  const taskWorkflow = createTaskWorkflowActions({
     dataset: () => datasetStore.currentDataset()?.handle,
-    port: () => (taskFlowEnabled() ? session.backendPorts()?.flows : undefined),
-    states: () => taskFlowRules(),
-    rule: () => taskFlowRule(),
+    port: () => (taskWorkflowEnabled() ? session.backendPorts()?.workflows : undefined),
+    states: () => taskWorkflowRules(),
+    rule: () => taskWorkflowRule(),
   });
 
   /*
@@ -3332,18 +3487,18 @@ export function SpaceStoreProvider(props: ParentProps) {
     before writing, so an administrator opening a space whose definition is already current writes
     nothing.
   */
-  const taskFlowKey = createMemo(() => {
-    const definition = taskFlowDefinition();
+  const taskWorkflowKey = createMemo(() => {
+    const definition = taskWorkflowDefinition();
     const id = datasetStore.currentDataset()?.id;
-    return definition && id && taskFlowEnabled() ? `${id}\u0000${JSON.stringify(definition)}` : '';
+    return definition && id && taskWorkflowEnabled() ? `${id}\u0000${JSON.stringify(definition)}` : '';
   });
   createEffect(() => {
-    const key = taskFlowKey();
-    setTaskFlowView(null);
+    const key = taskWorkflowKey();
+    setTaskWorkflowView(null);
     if (!key) return;
-    const port = session.backendPorts()?.flows;
+    const port = session.backendPorts()?.workflows;
     const dataset = datasetStore.currentDataset()?.handle;
-    const definition = untrack(taskFlowDefinition);
+    const definition = untrack(taskWorkflowDefinition);
     if (!port || !dataset || !definition) return;
     let stop: (() => void) | undefined;
     let cancelled = false;
@@ -3356,35 +3511,35 @@ export function SpaceStoreProvider(props: ParentProps) {
         try {
           await port.install(dataset, definition);
         } catch (error) {
-          console.error('SpaceStore: could not install the task flow', error);
+          console.error('SpaceStore: could not install the task workflow', error);
           toastService.error('Could not save which moves need agreement');
         }
       }
       if (cancelled) return;
       try {
-        const unsubscribe = await port.watch(dataset, TASK_FLOW, (view) => {
-          if (!cancelled) setTaskFlowView(view);
+        const unsubscribe = await port.watch(dataset, TASK_WORKFLOW, (view) => {
+          if (!cancelled) setTaskWorkflowView(view);
         });
         if (cancelled) unsubscribe();
         else stop = unsubscribe;
       } catch (error) {
-        console.warn('SpaceStore: could not watch the task flow', error);
+        console.warn('SpaceStore: could not watch the task workflow', error);
       }
     })();
   });
 
   // What the board draws from — the view and the rules, together, or nothing.
   createEffect(() => {
-    const view = taskFlowView();
+    const view = taskWorkflowView();
     const rules = Object.fromEntries(
-      taskFlowRules().map((rule) => [
+      taskWorkflowRules().map((rule) => [
         rule.slug,
         { approvals: approvalsOf(rule), approverKind: rule.approverKind ?? '' },
       ]),
     );
-    taskFlowLive.set(taskFlowKey() && view ? { view, rules } : null);
+    taskWorkflowLive.set(taskWorkflowKey() && view ? { view, rules } : null);
   });
-  onCleanup(() => taskFlowLive.set(null));
+  onCleanup(() => taskWorkflowLive.set(null));
 
   /**
    * Write `status` to follow a move that happened, for every surface that reads it rather than the run.
@@ -3400,7 +3555,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     task.status = slug;
     const started = performance.now();
     await task.save();
-    trace('flows', 'mirror', { taskId, slug, ms: Math.round(performance.now() - started) });
+    trace('workflows', 'mirror', { taskId, slug, ms: Math.round(performance.now() - started) });
   }
 
   /**
@@ -3408,12 +3563,12 @@ export function SpaceStoreProvider(props: ParentProps) {
    * what dragging the card there would do.
    */
   async function approveTaskMove(taskId: string): Promise<void> {
-    const view = taskFlowLive.view();
+    const view = taskWorkflowLive.view();
     const move = openMoveOf(view, taskId);
-    const from = flowStateOf(view, taskId);
+    const from = workflowStateOf(view, taskId);
     if (!move || !from) return;
     try {
-      const outcome = await taskFlow.move(taskId, from, move.to);
+      const outcome = await taskWorkflow.move(taskId, from, move.to);
       if (outcome === 'moved' || outcome === 'already-there') await mirrorTaskStatus(taskId, move.to);
       else if (outcome === 'stalled') {
         toastService.error('That card is stuck between two moves — one of them has to be withdrawn');
@@ -3434,85 +3589,90 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   }
 
-  const archivedFlows = createMemo<string[]>(() => parseIdList(currentSpace()?.archivedFlows), [], {
+  const archivedWorkflows = createMemo<string[]>(() => parseIdList(currentSpace()?.archivedWorkflows), [], {
     equals: (a, b) => a.join('\u0000') === b.join('\u0000'),
   });
 
   /**
-   * Put a flow away or bring it back — persisted on the space, cached, and republished the way
+   * Put a workflow away or bring it back — persisted on the space, cached, and republished the way
    * `writeEnabledViews` does it, for the reason it gives.
    */
-  async function setFlowArchived(name: string, archived: boolean): Promise<void> {
+  async function setWorkflowArchived(name: string, archived: boolean): Promise<void> {
     const ds = datasetStore.currentDataset();
     const space = currentSpace();
     if (!ds || !space) return;
-    if (!canAdministerCurrentSpace()) throw new Error('Only whoever administers this space can archive its flows');
-    const current = parseIdList(space.archivedFlows);
+    if (!canAdministerCurrentSpace()) throw new Error('Only whoever administers this space can archive its workflows');
+    const current = parseIdList(space.archivedWorkflows);
     const next = archived ? [...new Set([...current, name])] : current.filter((n) => n !== name);
     if (next.join('\u0000') === current.join('\u0000')) return;
-    const archivedFlowsJson = next.length ? JSON.stringify(next) : '';
+    const archivedWorkflowsJson = next.length ? JSON.stringify(next) : '';
     try {
-      await Space.update(ds.handle, space.id, { archivedFlows: archivedFlowsJson });
+      await Space.update(ds.handle, space.id, { archivedWorkflows: archivedWorkflowsJson });
     } catch (error) {
-      console.error('SpaceStore: could not persist archivedFlows', error);
+      console.error('SpaceStore: could not persist archivedWorkflows', error);
       toastService.error('Could not save this change for the space.');
       throw error;
     }
-    updateSpaceInCache(ds, { archivedFlows: archivedFlowsJson } as never);
+    updateSpaceInCache(ds, { archivedWorkflows: archivedWorkflowsJson } as never);
     setCurrentSpace((prev) =>
       prev
         ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, {
-            archivedFlows: archivedFlowsJson,
+            archivedWorkflows: archivedWorkflowsJson,
           }) as Space)
         : prev,
     );
   }
 
-  /** The state's guards as stored, for an edit that adds or takes one away. */
+  /** The state's evidence requirements as stored, for an edit that adds or takes one away. */
   const guardsOfState = (slug: string) =>
-    (taskStates().find((t) => t.slug === slug)?.guards ?? []).map(({ entity, where, tie, min }) => ({
+    (taskStates().find((t) => t.slug === slug)?.evidence ?? []).map(({ entity, where, via, min }) => ({
       entity,
       ...(where ? { where } : {}),
-      tie,
+      via,
       min,
     }));
 
-  async function addTaskStateGuard(slug: string, guard: { entity: string; tie?: string; min?: number }): Promise<void> {
-    if (!guard?.entity) return;
+  async function addTaskStateEvidence(
+    slug: string,
+    requirement: { entity: string; via?: string; min?: number },
+  ): Promise<void> {
+    if (!requirement?.entity) return;
     // `entity` is what the requirement form picked — a key such as "comment" — or an entity name.
-    const what = guardSubjectOf(guard.entity);
-    await updateTaskState(slug, { guards: [...guardsOfState(slug), { ...guard, ...what }] });
+    const what = evidenceSubjectOf(requirement.entity);
+    await updateTaskState(slug, { evidence: [...guardsOfState(slug), { ...requirement, ...what }] });
   }
 
-  async function removeTaskStateGuard(slug: string, index: number): Promise<void> {
-    await updateTaskState(slug, { guards: guardsOfState(slug).filter((_, i) => i !== index) });
+  async function removeTaskStateEvidence(slug: string, index: number): Promise<void> {
+    await updateTaskState(slug, { evidence: guardsOfState(slug).filter((_, i) => i !== index) });
   }
 
-  /** See the interface. Persisted on the space the way `setFlowArchived` is. */
-  async function setTaskFlowRule(rule: '' | 'next' | 'next-and-back'): Promise<void> {
+  /** See the interface. Persisted on the space the way `setWorkflowArchived` is. */
+  async function setTaskWorkflowRule(rule: '' | 'next' | 'next-and-back'): Promise<void> {
     const ds = datasetStore.currentDataset();
     const space = currentSpace();
     if (!ds || !space) return;
     if (!canAdministerCurrentSpace()) throw new Error('Only whoever administers this space can change how tasks move');
     const next = rule === 'next' || rule === 'next-and-back' ? rule : '';
-    if ((space.taskFlowRule ?? '') === next) return;
+    if ((space.taskWorkflowRule ?? '') === next) return;
     try {
-      await Space.update(ds.handle, space.id, { taskFlowRule: next });
+      await Space.update(ds.handle, space.id, { taskWorkflowRule: next });
     } catch (error) {
-      console.error('SpaceStore: could not persist taskFlowRule', error);
+      console.error('SpaceStore: could not persist taskWorkflowRule', error);
       toastService.error('Could not save this change for the space.');
       throw error;
     }
-    updateSpaceInCache(ds, { taskFlowRule: next } as never);
+    updateSpaceInCache(ds, { taskWorkflowRule: next } as never);
     setCurrentSpace((prev) =>
-      prev ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, { taskFlowRule: next }) as Space) : prev,
+      prev
+        ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, { taskWorkflowRule: next }) as Space)
+        : prev,
     );
   }
 
   /** Take back this agent's vote on the move a task is waiting on. */
   async function withdrawTaskMove(taskId: string): Promise<void> {
     try {
-      await taskFlow.withdraw(taskId);
+      await taskWorkflow.withdraw(taskId);
     } catch (error) {
       console.error('SpaceStore: could not withdraw that vote', error);
       toastService.error('Could not withdraw that');
@@ -3543,7 +3703,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   */
   onCleanup(
     recordStore.provideContentHomes({
-      forCanvas: (canvas) => (canvas === spaceRoles().canvas && spaceRoot() ? spaceRoot() : canvas),
+      forCanvas: (canvas) => (canvas === spaceLandmarks().canvas && spaceRoot() ? spaceRoot() : canvas),
       root: () => spaceRoot(),
     }),
   );
@@ -3692,7 +3852,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       semantic?: TaskStateView['semantic'];
       approvals?: number;
       approverKind?: string;
-      guards?: { entity: string; where?: Record<string, string | number | boolean>; tie?: string; min?: number }[];
+      evidence?: { entity: string; where?: Record<string, string | number | boolean>; via?: string; min?: number }[];
     },
   ): Promise<void> {
     const p = datasetStore.currentDataset()?.handle;
@@ -3708,16 +3868,16 @@ export function SpaceStoreProvider(props: ParentProps) {
         record.semantic = updates.semantic;
       }
       /*
-        What agreement a state asks for. Changing either is what turns the space's states into a flow
-        or back — nothing else has to be switched — and the flow's definition follows from the states
+        What agreement a state asks for. Changing either is what turns the space's states into a workflow
+        or back — nothing else has to be switched — and the workflow's definition follows from the states
         on the next read, installed by whoever administers the space.
       */
       if (updates.approvals !== undefined) record.approvals = approvalsOf({ slug, approvals: updates.approvals });
       if (updates.approverKind !== undefined) record.approverKind = updates.approverKind;
-      // A form's list may hold keys ("comment") beside guards read back off the record; both store as records.
-      if (Array.isArray(updates.guards))
-        record.guards = storeTaskStateGuards(
-          updates.guards.map((guard) => ({ ...guard, ...guardSubjectOf(guard.entity) })),
+      // A form's list may hold keys ("comment") beside evidence requirements read back off the record; both store as records.
+      if (Array.isArray(updates.evidence))
+        record.evidence = storeTaskStateEvidence(
+          updates.evidence.map((requirement) => ({ ...requirement, ...evidenceSubjectOf(requirement.entity) })),
         );
       await record.save();
       await loadTaskStates();
@@ -3864,6 +4024,372 @@ export function SpaceStoreProvider(props: ParentProps) {
     notify: (message) => toastService.error(message),
     ...involvementOptimism.ports,
   });
+
+  /*
+    ── Roles ────────────────────────────────────────────────────────────────────────────────────
+
+    The standings people hold across the space: its `Role` records, and the `RoleGrant`s saying who
+    holds which. Read live rather than once, for the reason landmarks are: somebody made an admin by
+    another member is owed the controls that come with it now, not after a space switch. What the
+    records mean, and the one change refused, are `shared/spaceRoles.ts`.
+
+    Everything compares persons rather than signing keys, through the backend's `PersonPort` — so a
+    role granted to somebody covers every device they speak from.
+  */
+  const persons = () => session.backendPorts()?.persons ?? SELF_PERSONS;
+  const personOf = async (did: string): Promise<string> => (await persons().personOf(did)) ?? did;
+
+  createEffect(() => {
+    const did = session.me()?.did;
+    if (!did) return setMePerson(null);
+    void personOf(did).then((person) => {
+      if (session.me()?.did === did) setMePerson(person);
+    });
+  });
+  createEffect(() => {
+    const author = currentSpace()?.author;
+    if (!author) return setAuthorPerson(null);
+    void personOf(author).then((person) => {
+      if (currentSpace()?.author === author) setAuthorPerson(person);
+    });
+  });
+
+  async function reloadRoles(): Promise<void> {
+    const dataset = datasetStore.currentDataset()?.handle;
+    const uuid = datasetStore.currentDataset()?.id;
+    if (!dataset || !datasetStore.isWeSpace()) {
+      setRoleRows([]);
+      setGrantRows([]);
+      setRolesLoaded(true);
+      return;
+    }
+    try {
+      const [roles, grants] = await Promise.all([Role.findAll(dataset), RoleGrant.findAll(dataset)]);
+      if (datasetStore.currentDataset()?.id !== uuid) return;
+      setRoleRows(roles.map((r) => ({ id: r.id, slug: r.slug, name: r.name, description: r.description })));
+      setGrantRows(
+        grants.map((g) => ({
+          id: g.id,
+          role: g.role,
+          agent: g.agent,
+          createdAt: g.createdAt as GrantRow['createdAt'],
+          revokedAt: g.revokedAt,
+        })),
+      );
+    } catch (error) {
+      console.warn('SpaceStore: could not read the space’s roles', error);
+    } finally {
+      if (datasetStore.currentDataset()?.id === uuid) setRolesLoaded(true);
+    }
+  }
+
+  createEffect(() => {
+    const dataset = datasetStore.currentDataset()?.handle;
+    const weSpace = datasetStore.isWeSpace();
+    let stopped = false;
+    const watches: { dispose(): void }[] = [];
+    onCleanup(() => {
+      stopped = true;
+      for (const watch of watches) watch.dispose();
+    });
+    setRoleRows([]);
+    setGrantRows([]);
+    setRolesLoaded(false);
+    void (async () => {
+      const schemas = session.backendPorts()?.schemas;
+      if (dataset && weSpace && schemas) {
+        // A space made before roles existed has neither entity installed; `ensure` is the diff-first
+        // install `loadInvolvementTypes` uses.
+        for (const Model of [Role, RoleGrant]) await schemas.ensure(dataset, Model as never).catch(() => undefined);
+      }
+      await untrack(reloadRoles);
+      if (stopped || !dataset || !weSpace) return;
+      for (const Model of [Role, RoleGrant]) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const watch = (Model as any).query(dataset, {}) as
+          { subscribe(cb: () => void): Promise<unknown>; dispose(): void } | undefined;
+        if (!watch) continue;
+        watches.push(watch);
+        watch
+          .subscribe(() => void (!stopped && reloadRoles()))
+          .catch((error: unknown) => console.warn('SpaceStore: could not watch the space’s roles', error));
+      }
+    })();
+  });
+
+  const myRoles = createMemo<string[]>(() => rolesOf(roleViews(), mePerson() ?? session.me()?.did));
+  const memberRoles = createMemo<Record<string, string[]>>(() => rolesByPerson(roleViews()));
+
+  /** The `admin` role, when the space has none yet, and its creator's grant of it — see `Role`. */
+  async function writeAdminGrant(dataset: DatasetProxy): Promise<void> {
+    const me = session.me()?.did;
+    if (!me) return;
+    const existing = (await Role.findAll(dataset, { where: { slug: ADMIN_ROLE } }).catch(() => [])) as Role[];
+    if (!existing.length) await Role.create(dataset, { ...ADMIN_ROLE_RECORD });
+    await RoleGrant.create(dataset, { role: ADMIN_ROLE, agent: await personOf(me) });
+  }
+
+  /** The open space's dataset, for a change only whoever administers it may make. Throws otherwise. */
+  function administeredDataset(what: string): DatasetProxy {
+    const p = datasetStore.currentDataset()?.handle;
+    if (!p) throw new Error('No space is open');
+    if (!canAdministerCurrentSpace()) throw new Error(`Only whoever administers this space can ${what}`);
+    return p;
+  }
+
+  async function createRole(config: { name: string; description?: string }): Promise<void> {
+    const name = config?.name?.trim();
+    if (!name) return;
+    const p = administeredDataset('name its roles');
+    const slug = deriveSlug(name);
+    if (!slug) return;
+    if (roleViews().some((role) => role.slug === slug && role.id)) {
+      toastService.error(`A role called "${name}" already exists`);
+      return;
+    }
+    await Role.create(p, { slug, name, description: config.description?.trim() ?? '' });
+    await reloadRoles();
+  }
+
+  async function updateRole(slug: string, updates: { name?: string; description?: string }): Promise<void> {
+    const p = administeredDataset('change its roles');
+    const record = ((await Role.findAll(p, { where: { slug } }).catch(() => [])) as Role[])[0];
+    if (!record) return;
+    if (updates?.name !== undefined && updates.name.trim()) record.name = updates.name.trim();
+    if (updates?.description !== undefined) record.description = updates.description.trim();
+    await record.save();
+    await reloadRoles();
+  }
+
+  async function grantRole(slug: string, agent: string): Promise<void> {
+    if (!slug || !agent) return;
+    const p = administeredDataset('give its roles');
+    const person = await personOf(agent);
+    if (
+      roleViews()
+        .find((role) => role.slug === slug)
+        ?.holders.includes(person)
+    )
+      return;
+    await RoleGrant.create(p, { role: slug, agent: person });
+    await reloadRoles();
+  }
+
+  async function revokeRole(slug: string, agent: string): Promise<void> {
+    if (!slug || !agent) return;
+    const p = administeredDataset('take its roles away');
+    const person = await personOf(agent);
+    const refused = cannotRevoke(roleViews(), slug, person);
+    if (refused) {
+      toastService.error(refused);
+      return;
+    }
+    // Marked rather than deleted: the policy's history is judged by who held what when. See `RoleGrant`.
+    const revokedAt = new Date().toISOString();
+    for (const grant of grantRows().filter((g) => g.role === slug && g.agent === person && !g.revokedAt)) {
+      await RoleGrant.update(p, grant.id, { revokedAt });
+    }
+    await reloadRoles();
+  }
+
+  /*
+    ── Policy ───────────────────────────────────────────────────────────────────────────────────
+
+    The space's rules: who may do what to its records. A version per `Policy` record, the one in
+    force worked out by `policyInForce`, and read live for the reason roles are — a rule an admin
+    changed holds from the next write, not the next space switch.
+
+    The same rules are what the write check judges every write by. It is registered here, once,
+    because only this store knows which dataset is which space and who holds what in it; every
+    backend asks it from its own write path. See `shared/spacePolicy.ts`.
+  */
+  const [policyRows, setPolicyRows] = createSignal<PolicyVersion[]>([]);
+  const [policyLoaded, setPolicyLoaded] = createSignal(false);
+
+  const currentStanding = (): SpaceStanding => ({
+    roles: roleViews(),
+    creator: authorPerson() ?? currentSpace()?.author ?? null,
+    history: { roles: roleRows(), grants: grantRows() },
+  });
+  const currentPolicy = createMemo(() => policyInForce(policyRows(), currentStanding()));
+  const currentPolicyView = createMemo<SpacePolicyView>(() =>
+    policyView(
+      currentPolicy(),
+      currentStanding(),
+      mePerson() ?? session.me()?.did ?? null,
+      policyLoaded() && rolesLoaded(),
+    ),
+  );
+
+  /** Every version, with its author as a person. */
+  async function readPolicyVersions(dataset: DatasetProxy): Promise<PolicyVersion[]> {
+    const rows = (await Policy.findAll(dataset).catch(() => [])) as Policy[];
+    return Promise.all(
+      rows.map(async (row) => ({
+        id: row.id,
+        document: row.document,
+        createdAt: row.createdAt as PolicyVersion['createdAt'],
+        author: row.author ? await personOf(row.author) : null,
+      })),
+    );
+  }
+
+  async function reloadPolicy(): Promise<void> {
+    const dataset = datasetStore.currentDataset()?.handle;
+    const uuid = datasetStore.currentDataset()?.id;
+    if (!dataset || !datasetStore.isWeSpace()) {
+      setPolicyRows([]);
+      setPolicyLoaded(true);
+      return;
+    }
+    try {
+      const versions = await readPolicyVersions(dataset);
+      if (datasetStore.currentDataset()?.id === uuid) setPolicyRows(versions);
+    } finally {
+      if (datasetStore.currentDataset()?.id === uuid) setPolicyLoaded(true);
+    }
+  }
+
+  createEffect(() => {
+    const dataset = datasetStore.currentDataset()?.handle;
+    const weSpace = datasetStore.isWeSpace();
+    let stopped = false;
+    let watch: { subscribe(cb: () => void): Promise<unknown>; dispose(): void } | undefined;
+    onCleanup(() => {
+      stopped = true;
+      watch?.dispose();
+    });
+    setPolicyRows([]);
+    setPolicyLoaded(false);
+    void (async () => {
+      const schemas = session.backendPorts()?.schemas;
+      // A space made before policies existed has the entity uninstalled; see the roles effect above.
+      if (dataset && weSpace && schemas) await schemas.ensure(dataset, Policy as never).catch(() => undefined);
+      await untrack(reloadPolicy);
+      if (stopped || !dataset || !weSpace) return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      watch = (Policy as any).query(dataset, {}) as { subscribe(cb: () => void): Promise<unknown>; dispose(): void };
+      watch
+        ?.subscribe(() => void (!stopped && reloadPolicy()))
+        .catch((error: unknown) => console.warn('SpaceStore: could not watch the space’s policy', error));
+    })();
+  });
+
+  /** The dataset a write names, among the ones this agent has open. */
+  function datasetOfHandle(handle: unknown) {
+    const known = [
+      ...datasetStore.datasets(),
+      datasetStore.rootDataset(),
+      datasetStore.personalDataset(),
+      datasetStore.testDataset(),
+    ].filter((d): d is NonNullable<typeof d> => Boolean(d));
+    const byHandle = known.find((d) => d.handle === handle);
+    if (byHandle) return byHandle;
+    // A backend may hand a model a handle object of its own for the same dataset. `uuid` first: the
+    // production handle also carries an unrelated `id`.
+    const id = (handle as { uuid?: string; id?: string } | null)?.uuid ?? (handle as { id?: string } | null)?.id;
+    return id ? known.find((d) => d.id === id) : undefined;
+  }
+
+  /*
+    Spaces other than the one on screen, read when a write reaches one and kept a few seconds — long
+    enough that a write of several records reads them once, short enough that a change to another
+    space's rules is not held over.
+  */
+  const governedElsewhere = new Map<string, { at: number; space: Promise<GovernedSpace | null> }>();
+  const GOVERNED_TTL_MS = 5_000;
+
+  async function readGovernedSpace(ds: { id: string; sharedId?: string; handle: DatasetProxy }) {
+    const [self] = (await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) }).catch(() => [])) as Space[];
+    if (!self) return null;
+    const [roles, grants, versions] = await Promise.all([
+      Role.findAll(ds.handle).catch(() => []) as Promise<Role[]>,
+      RoleGrant.findAll(ds.handle).catch(() => []) as Promise<RoleGrant[]>,
+      readPolicyVersions(ds.handle),
+    ]);
+    const grantRows: GrantRow[] = grants.map((g) => ({
+      id: g.id,
+      role: g.role,
+      agent: g.agent,
+      createdAt: g.createdAt as GrantRow['createdAt'],
+      revokedAt: g.revokedAt,
+    }));
+    const standing: SpaceStanding = {
+      roles: rolesView(roles, grantRows),
+      creator: self.author ? await personOf(self.author) : null,
+      history: { roles, grants: grantRows },
+    };
+    return { ...standing, policy: policyInForce(versions, standing) };
+  }
+
+  /** The space a dataset is, with its rules — `null` for anything that is not a space. */
+  async function governedSpace(handle: unknown): Promise<GovernedSpace | null> {
+    const ds = datasetOfHandle(handle);
+    if (!ds || isSystemDataset(ds.name) || datasetStore.systemDatasetUuids().includes(ds.id)) return null;
+    if (ds.id === datasetStore.currentDataset()?.id && policyLoaded() && rolesLoaded() && currentSpace()) {
+      return { ...currentStanding(), policy: currentPolicy() };
+    }
+    const cached = governedElsewhere.get(ds.id);
+    if (cached && Date.now() - cached.at < GOVERNED_TTL_MS) return cached.space;
+    const space = readGovernedSpace(ds);
+    // Nothing is remembered about a dataset that is not a space yet: the first record a new space
+    // is given is its own `Space`, and every write after it is the space's.
+    governedElsewhere.set(ds.id, { at: Date.now(), space });
+    void space.then((found) => {
+      if (!found) governedElsewhere.delete(ds.id);
+    });
+    return space;
+  }
+
+  const policyCheck = createPolicyCheck({
+    me: async () => {
+      const did = session.me()?.did;
+      return did ? (mePerson() ?? (await personOf(did))) : null;
+    },
+    personOf,
+    space: governedSpace,
+  });
+  registerEntityWriteCheck(async (write) => {
+    try {
+      await policyCheck(write);
+    } catch (error) {
+      // Said here, once, for every write — a store that swallows its own errors still tells the person
+      // why nothing happened.
+      if (isPolicyRefusal(error)) toastService.error(error.message);
+      throw error;
+    }
+  });
+  onCleanup(() => registerEntityWriteCheck(null));
+
+  /**
+   * The starting policy, written by the space's creator before it is shared — and only by them, as
+   * the admin grant is: a member joining later must never write a first version of their own, which
+   * would compete with the creator's. A starter's `policy` names the preset.
+   *
+   * Without one nothing is written, and the space reads as `open`: what every space did before it had
+   * a policy. `community` is offered in People rather than chosen for everybody, because some shared
+   * work is edited by members who did not make it — a call's extraction switch, a transcript line
+   * from another participant's device, a suggested change to somebody else's record, a board's
+   * columns — and `community` keeps editing to a record's author and the space's admins.
+   */
+  async function writeStartingPolicy(dataset: DatasetProxy, starter: SpaceStarter | undefined): Promise<void> {
+    const preset = starter?.policy;
+    if (!preset) return;
+    await Policy.create(dataset, { document: JSON.stringify(POLICY_PRESETS[preset].policy) });
+  }
+
+  async function setPolicyPreset(preset: PolicyPreset): Promise<void> {
+    const chosen = POLICY_PRESETS[preset];
+    if (!chosen) return;
+    const p = datasetStore.currentDataset()?.handle;
+    if (!p) throw new Error('No space is open');
+    if (presetOf(currentPolicy()) === preset) return;
+    const problems = validatePolicy(chosen.policy);
+    if (problems.length) throw new Error(problems.join(' '));
+    // Judged by the write check like any other write: `Policy.edit` under the version in force.
+    await Policy.create(p, { document: JSON.stringify(chosen.policy) });
+    await reloadPolicy();
+  }
 
   /** The record behind a kind, by slug — or null when there is none. See `taskStateRecord`. */
   async function involvementTypeRecord(p: DatasetProxy, slug: string): Promise<InvolvementType | null> {
@@ -4821,7 +5347,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   const templateThemeFor = (uuid: string): string => {
     if (!themeStore.useTemplateTheme()) return '';
     if (datasetStore.currentDataset()?.id !== uuid) return '';
-    const suggested = templateStore.currentTemplate?.meta?.themeId;
+    const suggested = templateThemeId(templateStore.currentTemplate?.meta);
     if (!suggested) return '';
     return themeStore.allThemes().some((t) => t.id === suggested) ? suggested : '';
   };
@@ -4883,6 +5409,16 @@ export function SpaceStoreProvider(props: ParentProps) {
     const pin = themeOverrideFor(uuid);
     if (pin === FOLLOW_SPACE || pin === AGENT_DEFAULT) return false;
     return pin !== unpinnedThemeFor(uuid);
+  });
+
+  /**
+   * What keeps this agent from seeing the space on screen's own theme, if anything — so setting the
+   * space's default while one of these holds can say why nothing changed, rather than looking as
+   * though it did not save.
+   */
+  const spaceThemeHiddenBy = createMemo<SpaceThemeHiddenBy>(() => {
+    const uuid = datasetStore.currentDataset()?.id;
+    return uuid ? hiddenBy(themeResolutionInput(uuid)) : '';
   });
 
   /**
@@ -5068,7 +5604,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   /**
    * Invoke a module's launcher.
    *
-   * Here rather than in the schema because `$action` resolves a *literal* path, so a rail iterating
+   * Here rather than in the schema because `$invoke` resolves a *literal* path, so a rail iterating
    * over modules cannot build `modules.<id>.<method>` per entry. The rail passes the id instead and
    * this dereferences it.
    */
@@ -5475,7 +6011,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     const themes = themeStore.allThemes();
     if (!themes.length) return;
 
-    const suggested = templateStore.currentTemplate?.meta?.themeId;
+    const suggested = templateThemeId(templateStore.currentTemplate?.meta);
     if (!suggested || themes.some((t) => t.id === suggested)) return;
     if (reportedMissingThemes.has(suggested)) return;
 
@@ -5504,8 +6040,26 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (!ds) return;
     if (isCurrent(ds)) setSpaceDefaultThemeId(themeId);
     updateSpaceInCache(ds, { defaultThemeId: themeId } as never);
+    if (isCurrent(ds)) explainHiddenSpaceTheme();
     const [space] = await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) });
     if (space) await Space.update(ds.handle, space.id, { defaultThemeId: themeId });
+  }
+
+  /**
+   * Say why a space default just set is not what this agent sees. Members get it; the person who set
+   * it is the one looking at something else, and without this the setting reads as not having saved.
+   */
+  function explainHiddenSpaceTheme(): void {
+    const reason = spaceThemeHiddenBy();
+    const uuid = datasetStore.currentDataset()?.id;
+    if (!reason || !uuid) return;
+    const name = themeStore.allThemes().find((t) => t.id === resolveThemeFor(uuid))?.name ?? 'another theme';
+    if (reason === 'template') {
+      toastService.info(`Saved. You won't see it while this template brings its own theme, ${name}.`, 8000);
+      return;
+    }
+    const useSpaceTheme = { label: "Use the space's theme", run: () => void clearSpaceThemePin() };
+    toastService.info(`Saved. You won't see it while you're using ${name} in this space.`, 8000, useSpaceTheme);
   }
 
   // Load neighbourhood members whenever the current dataset changes
@@ -5702,6 +6256,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     templateOverrideOptions,
     themeOverrideOptions,
     spaceThemePinned,
+    spaceThemeHiddenBy,
     moduleInstallSettings,
     moduleLaunchers,
     spaceViews,
@@ -5714,6 +6269,7 @@ export function SpaceStoreProvider(props: ParentProps) {
 
     // Actions
     createSpace,
+    shareSpace,
     joinSpace,
     initializeAsWeSpace,
     removeSpace,
@@ -5738,7 +6294,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     setModuleEnabled,
     autoInterpret,
     root: spaceRoot,
-    roles: spaceRoles,
+    landmarks: spaceLandmarks,
     autoExtractFor,
     setAutoExtractFor,
     canSetExtractionFor,
@@ -5768,13 +6324,13 @@ export function SpaceStoreProvider(props: ParentProps) {
     createTaskState,
     updateTaskState,
     setTaskStateRetired,
-    taskFlowEnabled,
-    archivedFlows,
-    setFlowArchived,
-    taskFlowRule,
-    setTaskFlowRule,
-    addTaskStateGuard,
-    removeTaskStateGuard,
+    taskWorkflowEnabled,
+    archivedWorkflows,
+    setWorkflowArchived,
+    taskWorkflowRule,
+    setTaskWorkflowRule,
+    addTaskStateEvidence,
+    removeTaskStateEvidence,
     approveTaskMove,
     withdrawTaskMove,
     reorderTaskStates,
@@ -5789,6 +6345,16 @@ export function SpaceStoreProvider(props: ParentProps) {
     openRecordRef,
     canAdministerSpace,
     canAdministerCurrentSpace,
+    roles: roleViews,
+    myRoles,
+    memberRoles,
+    rolesLoaded,
+    createRole,
+    updateRole,
+    grantRole,
+    revokeRole,
+    policy: currentPolicyView,
+    setPolicyPreset,
     copyShareLink,
     copyGuestLink,
     exportCallTranscript,

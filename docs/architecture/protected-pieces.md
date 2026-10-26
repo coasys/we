@@ -50,8 +50,10 @@ This does not stop a screen drawing a convincing fake field of its own and colle
 into it. It means that field cannot sign anybody in, so the person notices.
 
 **Condition.** A redrawn sign-in screen is safe on the desktop partly because the menu bar, which
-the operating system draws, is where the way out lives. If sign-in comes to the web, this needs
-revisiting before it ships.
+the operating system draws, is where the way out lives. On the web the way out is the address:
+`?safe` is read before anything renders (`safeMode.ts`), and in safe mode the sign-in screen is the
+deployment's own, whatever app this device last ran (`shared/bundles/brand.ts`). An installed app
+drawing its own sign-in screen relies on that, so `?safe` must keep working before sign-in.
 
 ## The safety prompts
 

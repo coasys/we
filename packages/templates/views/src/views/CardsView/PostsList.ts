@@ -42,7 +42,7 @@ export const postsList: SchemaNode = {
         width: '100%',
         noSelf: true,
         hint: 'Drop to post it in this space',
-        onDropped: { $action: 'recordStore.bringIn', args: [{ $: 'event.detail' }] },
+        onDropped: { $invoke: 'recordStore.bringIn', args: [{ $: 'event.detail' }] },
       },
       children: [
         cardList({
@@ -169,7 +169,7 @@ export const postsList: SchemaNode = {
                         },
                         then: {
                           type: 'we-badge',
-                          props: { variant: 'warning', size: 'sm' },
+                          props: { tone: 'warning', size: 'sm' },
                           children: [
                             {
                               $: "`${presenceStore.online.filter(p, p.did != me.did && p.activities.exists(a, a.type == 'edit' && a.nodeId == post.id)).map(p, p.name).join(', ')} editing`",
@@ -206,7 +206,7 @@ export const postsList: SchemaNode = {
                                     onClick: [
                                       { $setLocal: 'editPostOpen', value: true },
                                       {
-                                        $action: 'presenceStore.setActivity',
+                                        $invoke: 'presenceStore.setActivity',
                                         args: [{ type: 'edit', nodeId: { $: 'post.id' } }],
                                       },
                                     ],
@@ -221,12 +221,12 @@ export const postsList: SchemaNode = {
                                   editorState: { $: 'post.editorState' },
                                   // `'$arg'` second: `updatePost(postId, json)`.
                                   saveAction: {
-                                    $action: 'spaceStore.updatePost',
+                                    $invoke: 'spaceStore.updatePost',
                                     args: [{ $: 'post.id' }, { $: 'arg' }],
                                   },
                                   saveLabel: 'Save',
                                   onClose: [
-                                    { $action: 'presenceStore.clearActivity', args: ['edit', { $: 'post.id' }] },
+                                    { $invoke: 'presenceStore.clearActivity', args: ['edit', { $: 'post.id' }] },
                                   ],
                                 }),
                                 {
@@ -242,7 +242,7 @@ export const postsList: SchemaNode = {
                                       two questions about one click, and this is the one a hostile
                                       template could simply have omitted. See DestructivePrompt.schema.ts.
                                     */
-                                    onClick: { $action: 'spaceStore.deleteCollection', args: [{ $: 'post.id' }] },
+                                    onClick: { $invoke: 'spaceStore.deleteCollection', args: [{ $: 'post.id' }] },
                                   },
                                   children: [{ type: 'we-icon', props: { name: 'trash' } }],
                                 },
@@ -271,7 +271,7 @@ export const postsList: SchemaNode = {
                         variant: 'ghost',
                         size: 'xs',
                         alignSelf: 'start',
-                        onClick: { $action: 'spaceStore.openRecordRef', args: [{ $: 'post.sourceRef' }] },
+                        onClick: { $invoke: 'spaceStore.openRecordRef', args: [{ $: 'post.sourceRef' }] },
                       },
                       children: [
                         {

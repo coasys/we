@@ -21,7 +21,7 @@ const kindBadge: SchemaNode = {
       type: 'we-badge',
       props: {
         size: 'sm',
-        variant: { $: "space.kind == 'shared' ? 'primary' : 'neutral'" },
+        tone: { $: "space.kind == 'shared' ? 'accent' : ''" },
       },
       children: [{ $: "space.kind == 'shared' ? 'Shared' : 'Personal'" }],
     },
@@ -29,8 +29,8 @@ const kindBadge: SchemaNode = {
     // and opening it is what surfaces that gate.
     else: {
       type: 'we-badge',
-      props: { size: 'sm', variant: 'warning' },
-      children: ['Not a WE space'],
+      props: { size: 'sm', tone: 'warning' },
+      children: [{ $: '`Not a ${templateStore.brand.name} space`' }],
     },
   },
 };
@@ -54,7 +54,7 @@ const spaceCard: SchemaNode = {
         variant: 'bare',
         flex: '1',
         ax: 'start',
-        onClick: { $action: 'spaceStore.navigateToSpace', args: [{ $: 'space.uuid' }] },
+        onClick: { $invoke: 'spaceStore.navigateToSpace', args: [{ $: 'space.uuid' }] },
       },
       children: [
         {
@@ -108,7 +108,7 @@ const spaceCard: SchemaNode = {
         variant: 'ghost',
         size: 'sm',
         square: true,
-        onClick: { $action: 'routeStore.navigate', args: [{ $: '`/spaces/${space.uuid}`' }] },
+        onClick: { $invoke: 'routeStore.navigate', args: [{ $: '`/spaces/${space.uuid}`' }] },
       },
       children: [{ type: 'we-icon', props: { name: 'gear' } }],
     },

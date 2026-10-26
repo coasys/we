@@ -68,7 +68,7 @@ export const initializeSpaceGate: SchemaNode = gatePrompt({
           type: 'we-button',
           props: {
             text: 'Initialize as WE Space',
-            variant: 'primary',
+            variant: 'solid',
             loading: { $: 'local.submitting' },
             disabled: { $: 'local.submitting' },
             onClick: [
@@ -78,7 +78,7 @@ export const initializeSpaceGate: SchemaNode = gatePrompt({
                 $if: {
                   condition: { $: 'formValid()' },
                   then: {
-                    $action: 'spaceStore.initializeAsWeSpace',
+                    $invoke: 'spaceStore.initializeAsWeSpace',
                     args: [{ $: 'local.name' }, { $: 'local.description' }, { $: 'local.avatar' }],
                     onFinally: [{ $setLocal: 'submitting', value: false }],
                   },

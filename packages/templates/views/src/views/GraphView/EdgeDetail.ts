@@ -208,11 +208,11 @@ const editing: SchemaNode = {
                   type: 'we-button',
                   props: {
                     size: 'sm',
-                    variant: 'primary',
+                    variant: 'solid',
                     // Nothing about a label is locally judgeable beyond its presence.
                     disabled: { $: '!local.draftLabel' },
                     onClick: {
-                      $action: 'record.update',
+                      $invoke: 'record.update',
                       args: [
                         'Relationship',
                         { $: 'link.id' },
@@ -225,7 +225,7 @@ const editing: SchemaNode = {
                       // The graph re-reads, so the line's label and its colour change with it.
                       onSuccess: [
                         // The key quotes the label, and the next extraction pass reads the claim from it.
-                        { $action: 'recordStore.rekeyConnection', args: [{ $: 'link.id' }] },
+                        { $invoke: 'recordStore.rekeyConnection', args: [{ $: 'link.id' }] },
                         { $setLocal: 'editOpen', value: false },
                         { $setLocal: 'revision', value: { $: 'local.revision + 1' } },
                       ],
@@ -310,7 +310,7 @@ export const edgeDetailModal: SchemaNode = {
                         color: 'danger-text',
                         ml: 'auto',
                         onClick: {
-                          $action: 'record.delete',
+                          $invoke: 'record.delete',
                           args: ['Relationship', { $: 'link.id' }],
                           onSuccess: [close, { $setLocal: 'revision', value: { $: 'local.revision + 1' } }],
                         },

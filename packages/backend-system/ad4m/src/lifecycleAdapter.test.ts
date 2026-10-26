@@ -21,18 +21,19 @@ function mockClient(templates: Template[]) {
   const known = templates.map((t) => t.address);
   const client = {
     runtime: {
-      knownLinkLanguageTemplates: vi.fn(async () => [...known]),
+      // As the executor answers: each known template with its meta, leaving out one it cannot read.
+      knownLinkLanguageTemplates: vi.fn(async () =>
+        known.flatMap((address) => {
+          const t = templates.find((x) => x.address === address);
+          return t ? [{ address, name: t.name, possibleTemplateParams: t.params ?? undefined }] : [];
+        }),
+      ),
       addKnownLinkLanguageTemplates: vi.fn(async (addresses: string[]) => {
         known.push(...addresses);
         return known;
       }),
     },
     languages: {
-      meta: vi.fn(async (address: string) => {
-        const t = templates.find((x) => x.address === address);
-        if (!t) throw new Error('unknown language');
-        return { name: t.name, possibleTemplateParams: t.params ?? undefined };
-      }),
       publish: vi.fn(async (_path: string, meta: { possibleTemplateParams: string[] }) => {
         templates.push({ ...SERVER, address: 'Qm-dev-server' });
         return { address: 'Qm-dev-server', possibleTemplateParams: meta.possibleTemplateParams };
@@ -51,6 +52,16 @@ const templateData = (client: ReturnType<typeof mockClient>) =>
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe('sharingOptions', () => {
+  it('reads an older executor that lists bare addresses, and drops anything with none', async () => {
+    const client = mockClient([HOLOCHAIN]);
+    client.runtime.knownLinkLanguageTemplates = vi.fn(async () => [HOLOCHAIN.address, {}, null]) as never;
+    const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
+
+    expect(await lifecycle.sharingOptions?.()).toEqual([
+      { id: HOLOCHAIN.address, name: HOLOCHAIN.address, kind: 'peer-to-peer' },
+    ]);
+  });
+
   it('hides an old server build when no link server is configured', async () => {
     const client = mockClient([HOLOCHAIN, OLD_SERVER]);
     const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
@@ -93,6 +104,14 @@ describe('sharingOptions', () => {
     const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
 
     expect(await lifecycle.sharingOptions?.()).toHaveLength(1);
+  });
+
+  it('reads every template and its meta in one call', async () => {
+    const client = mockClient([HOLOCHAIN, SERVER, UNDECLARED]);
+    const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
+
+    expect(await lifecycle.sharingOptions?.()).toHaveLength(3);
+    expect(client.runtime.knownLinkLanguageTemplates).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -424,5 +443,98 @@ describe('one handle per dataset', () => {
     await lifecycle.list();
 
     expect(client.perspective.all).toHaveBeenCalledTimes(2);
+  });
+});
+
+/**
+ * A join returns before the neighbourhood has synced (coasys/ad4m#1466): the perspective holds none
+ * of its data until the executor reports `SYNCED`, so anything reading it must wait for that.
+ */
+describe('whenSynced', () => {
+  function syncClient(states: string[]) {
+    const listeners = new Set<(event: { perspectiveUuid: string; state: string }) => void>();
+    const client = {
+      on: vi.fn((type: string, cb: (event: never) => void, filter?: { perspective?: string }) => {
+        expect(type).toBe('sync-state-change');
+        expect(filter?.perspective).toBe('hood');
+        const listener = cb as (event: { perspectiveUuid: string; state: string }) => void;
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      }),
+      perspective: { byUUID: vi.fn(async (uuid: string) => ({ uuid, name: 'Hood', state: states.shift() })) },
+    };
+    const emit = (state: string) => {
+      for (const l of [...listeners]) l({ perspectiveUuid: 'hood', state });
+    };
+    return { client, listeners, emit };
+  }
+
+  const settled = async (p: Promise<unknown>) =>
+    Promise.race([
+      p.then(
+        () => 'resolved',
+        () => 'rejected',
+      ),
+      new Promise((r) => setTimeout(() => r('pending'), 10)),
+    ]);
+
+  it('resolves at once for a dataset that has already synced, and stops listening', async () => {
+    const { client, listeners } = syncClient(['SYNCED']);
+    const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
+
+    await expect(lifecycle.whenSynced!('hood')).resolves.toBeUndefined();
+    expect(listeners.size).toBe(0);
+  });
+
+  it('resolves at once for a dataset that is not shared', async () => {
+    const { client } = syncClient(['PRIVATE']);
+    const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
+
+    await expect(lifecycle.whenSynced!('hood')).resolves.toBeUndefined();
+  });
+
+  it('waits through the join states until the dataset syncs', async () => {
+    const { client, listeners, emit } = syncClient(['NEIGHBOURHOOD_JOIN_INITIATED']);
+    const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
+
+    const synced = lifecycle.whenSynced!('hood');
+    expect(await settled(synced)).toBe('pending');
+    emit('LINK_LANGUAGE_INSTALLED_BUT_NOT_SYNCED');
+    expect(await settled(synced)).toBe('pending');
+    emit('SYNCED');
+
+    expect(await settled(synced)).toBe('resolved');
+    expect(listeners.size).toBe(0);
+  });
+
+  it('hears a change that lands while the current state is being read', async () => {
+    // Listening starts before the read, so a SYNCED sent meanwhile is not lost behind a stale answer.
+    const { client, emit } = syncClient([]);
+    client.perspective.byUUID.mockImplementationOnce(async (uuid: string) => {
+      emit('SYNCED');
+      return { uuid, name: 'Hood', state: 'LINK_LANGUAGE_INSTALLED_BUT_NOT_SYNCED' };
+    });
+    const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
+
+    expect(await settled(lifecycle.whenSynced!('hood'))).toBe('resolved');
+  });
+
+  it('fails, saying why, when the link language cannot be installed', async () => {
+    const { client, listeners, emit } = syncClient(['NEIGHBOURHOOD_JOIN_INITIATED']);
+    const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
+
+    const synced = lifecycle.whenSynced!('hood');
+    emit('LINK_LANGUAGE_FAILED_TO_INSTALL');
+
+    await expect(synced).rejects.toThrow(/sync language/);
+    expect(listeners.size).toBe(0);
+  });
+
+  it('fails for a dataset that is not there', async () => {
+    const { client } = syncClient([]);
+    client.perspective.byUUID.mockResolvedValueOnce(null as never);
+    const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
+
+    await expect(lifecycle.whenSynced!('hood')).rejects.toThrow(/hood/);
   });
 });

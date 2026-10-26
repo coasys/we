@@ -243,13 +243,13 @@ export function messageLine(opts: {
                                     `control-surface` is a step away from both `surface` and
                                     `surface-sunken` in either polarity, which is the whole reason
                                     the neutral badge is painted with it — see
-                                    BADGE_APPEARANCE_DEFAULTS, where this same transcript row is the
+                                    BADGE_VARIANT_DEFAULTS, where this same transcript row is the
                                     case that argued it. The row carried a sunken fill when that was
                                     written and carries none now, and the choice survives the change
                                     precisely because it was made against both grounds.
                                   */
                         type: 'we-badge',
-                        props: { size: 'xs', variant: 'neutral' },
+                        props: { size: 'xs' },
                         /*
                                     A keyboard, because this marks *how the line arrived* rather than
                                     that it is text — everything on this row is text.
@@ -358,7 +358,7 @@ export function messageLine(opts: {
                       color: 'text-faint',
                       opacity: { $: 'local.pointerOnRow ? 1 : 0' },
                       onClick: {
-                        $action: 'modules.transcribe.startReply',
+                        $invoke: 'modules.transcribe.startReply',
                         args: [
                           {
                             $: `{ id: ${as}.id, text: ${as}.text, author: ${as}.author, surface: '${opts.surface}' }`,
@@ -455,7 +455,7 @@ export function messageLine(opts: {
                       value: { $: 'local.draft' },
                       onInput: { $setLocal: 'draft', value: { $: 'event.detail' } },
                       'on:submit': {
-                        $action: 'modules.transcribe.editUtterance',
+                        $invoke: 'modules.transcribe.editUtterance',
                         args: [{ $: `${as}.id` }, { $: 'local.draft' }, { $: `${as}.source` }],
                         onSuccess: [{ $setLocal: 'mending', value: false }],
                       },
@@ -476,10 +476,10 @@ export function messageLine(opts: {
                                       a proposal card is the case that earns success and danger,
                                       because there the colour IS the decision being offered.
                                     */
-                          variant: 'primary',
+                          variant: 'solid',
                           disabled: { $: '!trim(local.draft)' },
                           onClick: {
-                            $action: 'modules.transcribe.editUtterance',
+                            $invoke: 'modules.transcribe.editUtterance',
                             args: [{ $: `${as}.id` }, { $: 'local.draft' }, { $: `${as}.source` }],
                             // Closed on success only: a failed write leaves the words on
                             // screen to try again with, rather than discarding them and
@@ -502,7 +502,7 @@ export function messageLine(opts: {
                           // hovered, so beside a filled Save it read as a word somebody
                           // had left next to a button rather than the other half of a
                           // pair.
-                          variant: 'secondary',
+                          variant: 'soft',
                           /*
                                       Both, and the second is what stops the pencil flashing.
 

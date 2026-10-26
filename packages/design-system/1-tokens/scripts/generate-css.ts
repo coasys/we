@@ -8,6 +8,7 @@ import type { breakpoint as breakpointTokens } from '../src/breakpoint.js';
 import type { color as colorTokens } from '../src/color.js';
 import { CHROMA_CEILING, RAMP, STATE_STEPS } from '../src/color.js';
 import type { component as componentTokens } from '../src/component.js';
+import { CHROMATIC_FAMILIES, familySaturationVar } from '../src/families.js';
 import type { font as fontTokens } from '../src/font.js';
 import type { layout as layoutTokens } from '../src/layout.js';
 import { role as roleTokens, ROLE_ALIASES, ROLE_RELATIVE_FALLBACK } from '../src/role.js';
@@ -19,6 +20,7 @@ import type {
   size as sizeTokens,
 } from '../src/size.js';
 import type { space as spaceTokens } from '../src/space.js';
+import { THEME_DERIVED_VARIABLES } from '../src/themeInputs.js';
 import type { zIndex as zIndexTokens } from '../src/z-index.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -79,9 +81,10 @@ export async function generateCSS() {
 
 // Helper functions for CSS generation
 export function generateAnimationCSS(animation: typeof animationTokens) {
-  const transitionVars = Object.entries(animation.transition)
-    .map(([key, value]) => `  --we-transition-${key}: ${value};`)
-    .join('\n');
+  const transitionVars = [
+    ...Object.entries(animation.transition).map(([key, value]) => `  --we-transition-${key}: ${value};`),
+    ...Object.entries(animation.easing).map(([key, value]) => `  --we-ease-${key}: ${value};`),
+  ].join('\n');
 
   const reducedVars = Object.keys(animation.transition)
     .map((key) => `    --we-transition-${key}: 0ms !important;`)
@@ -120,6 +123,24 @@ ${reducedVars}
 }
 
 /*
+  The same, for somebody who asked in the app rather than in their system: applying a theme marks
+  the document when motion resolves to reduced (see \`REDUCED_MOTION_ROOT\` in states.ts). Without
+  this the app's own Motion setting zeroed the transition tokens and nothing else.
+*/
+:root[data-we-motion='reduced'] {
+${reducedVars}
+}
+
+:root[data-we-motion='reduced'] *,
+:root[data-we-motion='reduced'] *::before,
+:root[data-we-motion='reduced'] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+/*
   The same argument for transparency, which nothing was consulting.
 
   Every floating panel defaults to glass — a 30% surface behind a 12px backdrop blur — and both are
@@ -140,19 +161,14 @@ ${reducedVars}
   return css;
 }
 
-export function generateBorderCSS(border: typeof borderTokens) {
+// The width comes from the shared list of theme-derived variables.
+export function generateBorderCSS(_border: typeof borderTokens) {
   const css = `/* BORDER TOKENS - Generated from JS tokens */
 
 :root {
   /* Border Width */
   /* Themeable: a theme sets --we-theme-border-width to move every stroke at once. */
-  --we-border-width: var(--we-theme-border-width, ${border.width});
-
-  /* Semantic border radius alias (override in themes) */
-  --we-border-radius: var(--we-radius-400);
-
-  /* Border Colors */
-${aliasVars(['--we-border-color', '--we-border-color-strong'])}
+  --we-border-width: ${THEME_DERIVED_VARIABLES['--we-border-width']};
 
   /* Focus ring color — resolves to the focus role, so a theme pinning that role moves the ring
      with it. There is deliberately no separate theme key: two ways to say one thing is how they
@@ -190,8 +206,8 @@ ${vars}
 export function generateColorCSS(color: typeof colorTokens) {
   const hueVars = Object.entries(color.hues)
     .map(([key, value]) => {
-      // neutral-hue inherits from primary-hue by default so neutral surfaces tint to match the primary color
-      if (key === 'neutral') return `  --we-color-${key}-hue: var(--we-color-primary-hue);`;
+      // The neutral hue follows the accent's by default, so the greys tint to match it.
+      if (key === 'neutral') return `  --we-color-${key}-hue: var(--we-color-accent-hue);`;
       return `  --we-color-${key}-hue: ${value};`;
     })
     .join('\n');
@@ -212,13 +228,15 @@ export function generateColorCSS(color: typeof colorTokens) {
     )
     .join('\n');
 
-  const colorTypes = ['neutral', 'primary', 'success', 'warning', 'danger'];
+  // Every family in the registry gets a ramp. Neutral takes its own saturation; every other family
+  // its own saturation variable, which falls back to the theme's (see THEME_DERIVED_VARIABLES).
+  const colorTypes = Object.keys(color.hues);
   const colorPalettes = colorTypes
     .map((type) => {
       const paletteVars = Object.keys(color.lightness)
         .map((lightnessKey) => {
           const saturationVar =
-            type === 'neutral' ? 'var(--we-color-neutral-saturation)' : 'var(--we-color-saturation)';
+            type === 'neutral' ? 'var(--we-color-neutral-saturation)' : `var(--we-color-${type}-saturation)`;
           /*
             The taper is computed in CSS, from the lightness this step actually renders at.
 
@@ -271,6 +289,7 @@ ${paletteVars}`;
   --we-state-active: ${STATE_STEPS[color.config.polarity].active};
   --we-color-saturation: ${color.config.saturation};
   --we-color-neutral-saturation: ${color.config.neutralSaturation};
+${CHROMATIC_FAMILIES.map((family) => `  ${familySaturationVar(family)}: ${THEME_DERIVED_VARIABLES[familySaturationVar(family)]};`).join('\n')}
 
   /* Color Hues */
 ${hueVars}
@@ -281,8 +300,8 @@ ${lightnessVars}
 ${colorPalettes}
 
   /* Base Colors */
-  --we-color-white: oklch(var(--we-color-lightness-0) 0 var(--we-color-neutral-hue));
-  --we-color-black: oklch(var(--we-color-lightness-1000) 0 var(--we-color-neutral-hue));
+  --we-color-white: ${THEME_DERIVED_VARIABLES['--we-color-white']};
+  --we-color-black: ${THEME_DERIVED_VARIABLES['--we-color-black']};
 
   /* Semantic Roles — intent over scale position. Defaults are parametric expressions
      so every theme keeps working untouched; themes may pin individual roles
@@ -293,11 +312,11 @@ ${roleVars}
 ${aliasVars(['--we-color-focus'])}
   /* Themeable width, like --we-border-width: a focus ring is a stroke, and a theme that
      thickens its borders and cannot thicken its rings looks half-converted. */
-  --we-focus-ring-width: var(--we-theme-focus-ring-width, 2px);
+  --we-focus-ring-width: ${THEME_DERIVED_VARIABLES['--we-focus-ring-width']};
 ${aliasVars(['--we-focus-outline'])}
 
   /* Gradient */
-  --we-gradient-primary: linear-gradient(135deg, oklch(var(--we-color-lightness-500) ${GRADIENT_CHROMA} calc(var(--we-color-primary-hue) - 25)) 0%, oklch(var(--we-color-lightness-500) ${GRADIENT_CHROMA} calc(var(--we-color-primary-hue) + 25)) 100%);
+  --we-gradient-accent: linear-gradient(135deg, oklch(var(--we-color-lightness-500) ${GRADIENT_CHROMA} calc(var(--we-color-accent-hue) - 25)) 0%, oklch(var(--we-color-lightness-500) ${GRADIENT_CHROMA} calc(var(--we-color-accent-hue) + 25)) 100%);
 }
 
 @supports not (color: oklch(from red calc(l + 0.1) c h)) {
@@ -405,7 +424,8 @@ export function generateFontCSS(font: typeof fontTokens) {
 
   const fontSizeVars = Object.entries(font.size)
     .filter(([key]) => key !== 'base')
-    .map(([key, value]) => `  --we-font-size-${key}: ${value};`)
+    // From the shared list: a theme applied below the document scales these by its own font scale.
+    .map(([key]) => `  --we-font-size-${key}: ${THEME_DERIVED_VARIABLES[`--we-font-size-${key}`]};`)
     .join('\n');
 
   const fontWeightVars = Object.entries(font.weight)
@@ -530,12 +550,9 @@ export function generateSpaceCSS(space: typeof spaceTokens) {
     was to also shrink the text. `0` stays `0` — scaling nothing is still nothing, and a `calc()`
     there would turn a plain zero into a length for no reason.
   */
-  const spaceVars = Object.entries(space)
-    .map(([key, value]) =>
-      parseFloat(String(value)) === 0
-        ? `  --we-space-${key}: ${value};`
-        : `  --we-space-${key}: calc(${value} * var(--we-theme-spacing-scale, 1));`,
-    )
+  // From the shared list, so a theme applied below the document re-declares exactly these.
+  const spaceVars = Object.keys(space)
+    .map((key) => `  --we-space-${key}: ${THEME_DERIVED_VARIABLES[`--we-space-${key}`]};`)
     .join('\n');
 
   const css = `/* SPACE TOKENS - Generated from JS tokens */

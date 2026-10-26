@@ -4,6 +4,7 @@ export type {
   RendererOutput,
   SchemaNode,
   SchemaProp,
+  RecordViewDraws,
   TemplateMeta,
   TemplatePanel,
   TemplateSchema,
@@ -15,7 +16,7 @@ export type {
   TransitionConfig,
   TransitionEffect,
   ExpressionToken,
-  ActionToken,
+  InvokeToken,
   IfToken,
   QueryToken,
   QueryDescriptor,
@@ -118,15 +119,27 @@ export {
 export {
   applyThemeVars,
   clearThemeVars,
-  DARK_SURFACES,
+  fontFaceProblem,
+  type FontFaceSetting,
+  type DisplayPreferences,
+  basePolarity,
   migrateOverrides,
   parseOverrides,
+  readThemeSettings,
   reconcileSurfaces,
+  registerNamedThemes,
   role,
   roleVar,
+  previewDisplay,
+  rangeForPolarity,
+  setDisplayPreferences,
+  setThemeLive,
   surfacesForPolarity,
   THEME_SCHEMA_VERSION,
   themeParametersToStyle,
+  type ThemeSideName,
+  themeSides,
+  withThemeSide,
 } from './themeStyles';
 export { validateField } from './validation';
 export { type FreeNames, freeNames } from './freeNames';
@@ -145,8 +158,11 @@ export type { FindNodeResult, PatchError } from './indexer';
 export { deriveNodeIds, derivedNodeId, isNodeId, newNodeId, NODE_ID_LENGTH } from './nodeIdentity';
 export { type PartFork, partForkChanged, partForkPrint } from './forkPrint';
 export { HOST_PART_IDS, type HostPartId, isHostPartId } from './hostPartIds';
+export { templateThemeId, templateThemeIds } from './templateTheme';
+export { parseRecordViewKey, type RecordViewCandidate, recordRouteBody, recordViewCandidates } from './recordViews';
 export {
   type Bundle,
+  type BundleBrand,
   BUNDLE_FORMAT,
   BUNDLE_FORMAT_VERSION,
   type BundleDisplay,
@@ -154,7 +170,9 @@ export {
   type BundleProblem,
   type BundleRecordType,
   type BundleTheme,
+  bundleThemes,
   readBundle,
+  svgProblem,
 } from './bundle';
 export {
   expandViewRoutes,
@@ -218,3 +236,6 @@ export type {
   FormStateToken,
   ValueIf,
 } from './conditionModel';
+
+// Reduced motion, as the renderer's timers ask it — the system's preference or the person's.
+export { motionIsReduced } from '@we/tokens';

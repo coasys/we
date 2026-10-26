@@ -14,7 +14,7 @@ import { render } from '@solidjs/testing-library';
 import { createInMemoryBackendPorts, type InMemoryAgentOptions, type InMemoryLifecycle } from '@we/backend-inmemory';
 import { createBlocks, registerCoreBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
-import { AgentSettings, CollectionBlock, getEntity, Space, SpaceRole } from '@we/entities';
+import { AgentSettings, CollectionBlock, getEntity, Policy, Space, SpaceLandmark } from '@we/entities';
 import { type FeedFind, readFeedWindow } from '@we/module-transcribe';
 import { createEffect, createRoot, createSignal } from 'solid-js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -111,14 +111,14 @@ import { type DatasetStore, DatasetStoreProvider, useDatasetStore } from '../src
 import { ProfileStoreProvider } from '../src/frameworks/solid/stores/ProfileStore';
 import { type RecordStore, RecordStoreProvider, useRecordStore } from '../src/frameworks/solid/stores/RecordStore';
 import { type SessionStore, SessionStoreProvider, useSessionStore } from '../src/frameworks/solid/stores/SessionStore';
-import { ShapeStoreProvider } from '../src/frameworks/solid/stores/ShapeStore';
+import { type ShapeStore, ShapeStoreProvider, useShapeStore } from '../src/frameworks/solid/stores/ShapeStore';
 import { ShellStoreProvider } from '../src/frameworks/solid/stores/ShellStore';
 import { type SpaceStore, SpaceStoreProvider, useSpaceStore } from '../src/frameworks/solid/stores/SpaceStore';
 import { withExtractionDefaults } from '../src/shared/collectionExtraction';
 import { createModuleStoreDeps } from '../src/shared/registries/moduleHostServices';
 import { completeResponse } from '../src/shared/responses';
 import { provideSeed } from '../src/shared/seedRegistry';
-import { writeSpaceRole } from '../src/shared/spaceRoles';
+import { writeSpaceLandmark } from '../src/shared/spaceLandmarks';
 
 provideSeed({ name: 'test', modules: [] } as never);
 
@@ -127,6 +127,7 @@ interface Stores {
   datasets: DatasetStore;
   spaces: SpaceStore;
   records: RecordStore;
+  shapes: ShapeStore;
 }
 
 function mountShell(): Stores {
@@ -136,6 +137,7 @@ function mountShell(): Stores {
     out.datasets = useDatasetStore();
     out.spaces = useSpaceStore();
     out.records = useRecordStore();
+    out.shapes = useShapeStore();
     return null;
   }
   render(() => (
@@ -545,6 +547,35 @@ describe('first run', () => {
   }, 10000);
 });
 
+describe('what the backend can do with an identity', () => {
+  it('is nothing on a backend with no identity port, so Settings says "coming soon"', async () => {
+    const stores = mountShell();
+    await ready(stores);
+
+    expect(Object.values(stores.session.identityCapabilities()).every((on) => on === false)).toBe(true);
+  });
+
+  it('is what the backend answers once the session is usable, and nothing again after logging out', async () => {
+    agentOptions = { unlocked: false, password: 'secret' };
+    onPorts = (ports) => {
+      // A partial answer: whatever a backend leaves out stays off rather than reading as undefined.
+      ports.identity = { capabilities: async () => ({ devices: true, linkDevice: true }) as never };
+    };
+    const stores = mountShell();
+    await vi.waitFor(() => expect(stores.session.bootState()).toBe('login'));
+    await stores.session.login('secret');
+    await ready(stores);
+
+    await vi.waitFor(() => expect(stores.session.identityCapabilities().devices).toBe(true));
+    expect(stores.session.identityCapabilities().linkDevice).toBe(true);
+    expect(stores.session.identityCapabilities().password).toBe(false);
+
+    await stores.session.logout();
+    // The next person to sign in on this screen is not owed the last one's answer.
+    expect(stores.session.identityCapabilities().devices).toBe(false);
+  }, 10000);
+});
+
 describe('a boot that cannot reach the backend', () => {
   it('keeps why it failed, so the screen has something to say', async () => {
     // 'error' is the one boot state with no form and no spinner behind it. Without the message the
@@ -579,16 +610,23 @@ describe('dataset lifecycle through the real stores', () => {
     expect(stores.datasets.getDatasetOrder()).toContain(created.id);
   }, 10000);
 
-  it('creates a shared space through publish', async () => {
+  /*
+    `$each` keys by reference, so a row rebuilt as a new object remounts everything under it — in the
+    space-settings page that was the scroll position, thrown back to the top by setting a default.
+  */
+  it('keeps a space’s row the same object when one of its settings changes', async () => {
     const stores = mountShell();
     await ready(stores);
+    await stores.spaces.createSpace('Row Space', '', 'personal', 'hidden');
+    const uuid = (await lifecycle.list()).find((d) => d.name === 'Row Space')!.id;
+    const rowOf = () => stores.spaces.spaceList().find((r) => r.uuid === uuid);
+    await vi.waitFor(() => expect(rowOf()?.isWeSpace).toBe(true));
+    const before = rowOf();
 
-    await stores.spaces.createSpace('Shared Space', 'shared', 'shared', 'hidden');
+    await stores.spaces.setSpaceDefaultTheme('retro', uuid);
 
-    const created = (await lifecycle.list()).find((d) => d.name === 'Shared Space')!;
-    expect(created.sharedUri).toMatch(/^inmemory:\/\//);
-    // The Space model stores the adapter-minted scheme-less shared id.
-    expect(stores.spaces.mySpaces()[0].url).toBe(created.sharedId);
+    expect(rowOf()?.defaultThemeId).toBe('retro');
+    expect(rowOf()).toBe(before);
   }, 10000);
 
   it("joins a peer's published dataset and switches to it", async () => {
@@ -631,6 +669,91 @@ describe('dataset lifecycle through the real stores', () => {
     expect(stores.spaces.joiningSpace()).toBe('');
     expect(stores.spaces.joinError()).toBeNull();
   }, 20000);
+
+  /*
+    A join returns before the neighbourhood has synced (coasys/ad4m#1466). Installing the schema
+    then read an empty dataset, found none of the creator's shapes and wrote a second copy of every
+    one; it must wait for the backend to say the dataset has synced.
+  */
+  function holdSync(id: string) {
+    const installed: string[] = [];
+    let release!: () => void;
+    let fail!: (error: Error) => void;
+    const held = new Promise<void>((resolve, reject) => {
+      release = resolve;
+      fail = reject;
+    });
+    onPorts = (ports) => {
+      const { installSpace, hasCoreSchema, hasAnySchema } = ports.schemas;
+      const idOf = (dataset: unknown) => (dataset as { id: string }).id;
+      ports.schemas.installSpace = async (dataset, modules) => {
+        installed.push(idOf(dataset));
+        return installSpace(dataset, modules);
+      };
+      // The held dataset holds a schema only once one is installed into it — none arrives by sync
+      // here — where the in-memory backend otherwise answers that every dataset has one.
+      ports.schemas.hasCoreSchema = async (dataset) =>
+        idOf(dataset) === id ? installed.includes(id) : hasCoreSchema(dataset);
+      ports.schemas.hasAnySchema = async (dataset) =>
+        idOf(dataset) === id ? installed.includes(id) : hasAnySchema(dataset);
+      ports.lifecycle.whenSynced = (datasetId) => (datasetId === id ? held : Promise.resolve());
+    };
+    return { installed, release: () => release(), fail: (error: Error) => fail(error) };
+  }
+
+  it('installs the schema into a joined space only once it has synced', async () => {
+    const sync = holdSync('sync-ds');
+    const stores = mountShell();
+    await ready(stores);
+    lifecycle.seedShared({ id: 'sync-ds', name: 'Syncing Space', sharedUri: 'inmemory://sync-ds' });
+
+    const joined = stores.spaces.joinSpace('inmemory://sync-ds');
+    await vi.waitFor(() => expect(stores.spaces.joiningSpace()).toBe('sync-ds'));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(sync.installed, 'installed before the dataset synced').not.toContain('sync-ds');
+    expect(stores.spaces.joiningSpace(), 'the join is still in progress while it syncs').toBe('sync-ds');
+
+    sync.release();
+    await joined;
+
+    expect(sync.installed).toContain('sync-ds');
+    await vi.waitFor(() => expect(stores.datasets.currentDataset()?.name).toBe('Syncing Space'));
+    expect(stores.spaces.joiningSpace()).toBe('');
+  }, 10000);
+
+  it('fails a join whose space cannot sync, and installs nothing into it', async () => {
+    const sync = holdSync('broken-ds');
+    const stores = mountShell();
+    await ready(stores);
+    lifecycle.seedShared({ id: 'broken-ds', name: 'Broken Space', sharedUri: 'inmemory://broken-ds' });
+
+    const joined = stores.spaces.joinSpace('inmemory://broken-ds');
+    sync.fail(new Error('The space’s sync language could not be installed.'));
+
+    await expect(joined).rejects.toThrow(/sync language/);
+    expect(sync.installed).not.toContain('broken-ds');
+    expect(stores.spaces.joinError()).toEqual(expect.objectContaining({ spaceId: 'broken-ds' }));
+    expect(stores.spaces.joiningSpace()).toBe('');
+  }, 10000);
+
+  it('does not judge a dataset empty, and make it a WE space, before it has synced', async () => {
+    // The dataset-added event can switch to a just-joined dataset before the join has finished.
+    // Holding no schema then says nothing about what it is: a Flux community looks the same.
+    seededDatasets = [{ id: 'unsynced-ds', name: 'Unsynced' }];
+    const sync = holdSync('unsynced-ds');
+    const stores = mountShell();
+    await ready(stores);
+
+    const switched = stores.datasets.switchDataset('unsynced-ds');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(sync.installed).not.toContain('unsynced-ds');
+
+    sync.release();
+    await switched;
+
+    expect(sync.installed).toContain('unsynced-ds');
+    expect(stores.datasets.isWeSpace()).toBe(true);
+  }, 10000);
 
   it('reports a backend that answered, rather than waiting out the recovery window', async () => {
     const stores = mountShell();
@@ -718,7 +841,7 @@ describe('what the stores actually wrote', () => {
 
   it('gives a new space its collection, and writes the starter under it', async () => {
     /*
-      The space collection is the host's and is made whatever the starter says; the canvas, its role
+      The space collection is the host's and is made whatever the starter says; the canvas, its landmark
       and the settings are the starter's. Both halves are written at the create press, and nothing on
       screen says when either is missing — a space simply arrives without its canvas.
     */
@@ -730,7 +853,7 @@ describe('what the stores actually wrote', () => {
           id: 'test',
           settings: { defaultTemplateId: 'workshop' },
           records: [{ $id: 'canvas', entity: 'CollectionBlock', fields: { kind: 'canvas' }, in: '$root' }],
-          roles: { canvas: '$canvas' },
+          landmarks: { canvas: '$canvas' },
           input: true,
         },
       ],
@@ -745,7 +868,7 @@ describe('what the stores actually wrote', () => {
       const [space] = await Space.findAll(ref.handle as never, { include: { root: true } });
       expect(space.defaultTemplateId).toBe('workshop');
       const root = (space as unknown as { root?: { id: string; kind: string } }).root;
-      expect(root?.kind).toBe('space');
+      expect(root?.kind).toBe('channel');
       // The starter's `input` lands on the space collection itself, where the messages typed outside
       // calls are decided — not on the space, which holds only what new collections start with.
       const rootRecord = await CollectionBlock.findOne(ref.handle as never, { where: { id: root!.id } } as never);
@@ -761,8 +884,8 @@ describe('what the stores actually wrote', () => {
       const contained = (holder as unknown as { children?: { id: string; kind: string }[] })?.children ?? [];
       expect(contained.map((c) => c.kind)).toEqual(['canvas']);
 
-      const roles = await SpaceRole.findAll(ref.handle as never);
-      expect(roles.map((r) => [r.name, Array.isArray(r.node) ? r.node[0] : r.node])).toEqual([
+      const landmarks = await SpaceLandmark.findAll(ref.handle as never);
+      expect(landmarks.map((r) => [r.name, Array.isArray(r.node) ? r.node[0] : r.node])).toEqual([
         ['canvas', contained[0].id],
       ]);
     } finally {
@@ -770,26 +893,165 @@ describe('what the stores actually wrote', () => {
     }
   }, 10000);
 
-  it('hears a role written after the space was entered', async () => {
+  it('hears a landmark written after the space was entered', async () => {
     /*
-      Roles were read once, on entering. A space entered while its starter was still writing — or
+      Landmarks were read once, on entering. A space entered while its starter was still writing — or
       one whose board a peer made afterwards — showed "make a board" beside a board that existed.
     */
     const stores = mountShell();
     await ready(stores);
 
-    await stores.spaces.createSpace('Late Roles', 'x', 'personal', 'hidden');
-    const ref = (await lifecycle.list()).find((d) => d.name === 'Late Roles')!;
+    await stores.spaces.createSpace('Late Landmarks', 'x', 'personal', 'hidden');
+    const ref = (await lifecycle.list()).find((d) => d.name === 'Late Landmarks')!;
     await stores.datasets.switchDataset(ref.id);
     await vi.waitFor(() => expect(stores.spaces.root()).not.toBe(''));
-    expect(stores.spaces.roles().board).toBeUndefined();
+    expect(stores.spaces.landmarks().board).toBeUndefined();
 
     const [space] = await Space.findAll(ref.handle as never);
     const board = await CollectionBlock.create(ref.handle as never, { kind: 'board', title: 'Board' } as never);
-    await writeSpaceRole(ref.handle as never, space.id, 'board', board.id);
+    await writeSpaceLandmark(ref.handle as never, space.id, 'board', board.id);
 
-    await vi.waitFor(() => expect(stores.spaces.roles().board).toBe(board.id));
+    await vi.waitFor(() => expect(stores.spaces.landmarks().board).toBe(board.id));
   }, 10000);
+
+  it('says in the model wizard which field will name a record, worked out or chosen', async () => {
+    /*
+      "Work it out" picks a field called name or title, else the first text field — a rule nothing
+      in the list showed, so a field was treated specially on every card with no word of why.
+    */
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace('Named', 'x', 'personal', 'hidden');
+    const ref = (await lifecycle.list()).find((d) => d.name === 'Named')!;
+    await stores.datasets.switchDataset(ref.id);
+
+    const { shapes } = stores;
+    shapes.openShapeWizard();
+    shapes.setShapeField('name', 'Sighting');
+    shapes.addProperty();
+    shapes.addProperty();
+    const [species, notes] = shapes.shapeDraft()!.members.filter((m) => m.kind === 'property');
+    shapes.setMemberField(species.rowId, 'name', 'species');
+    shapes.setMemberField(notes.rowId, 'name', 'notes');
+
+    // Names are typed in place and announced on blur, as the name input does.
+    shapes.commitDraft();
+
+    expect(shapes.draftNameMember()).toBe(species.rowId);
+    expect(shapes.nameOptions()[0].label).toBe('Work it out (species)');
+
+    // The first text field, so it follows the order.
+    shapes.reorderMembers([notes.rowId, species.rowId]);
+    expect(shapes.draftNameMember()).toBe(notes.rowId);
+    expect(shapes.nameOptions()[0].label).toBe('Work it out (notes)');
+
+    // A field chosen is the one, and the option stops guessing.
+    shapes.setNameMember(species.rowId);
+    expect(shapes.draftNameMember()).toBe(species.rowId);
+    expect(shapes.nameOptions()[0].label).toBe('Work it out');
+  }, 10000);
+
+  it('makes the creator of a space its admin, and lets an admin give and take back a role', async () => {
+    /*
+      The admin role is the host's, written at the create press like the space collection: a shared
+      space must always have somebody who administers it. Every other role is the community's.
+    */
+    const stores = mountShell();
+    await ready(stores);
+    const me = stores.session.me()?.did ?? '';
+
+    await stores.spaces.createSpace('Stewarded', 'x', 'personal', 'hidden');
+    const ref = (await lifecycle.list()).find((d) => d.name === 'Stewarded')!;
+    await stores.datasets.switchDataset(ref.id);
+    await vi.waitFor(() => expect(stores.spaces.roles().map((r) => [r.slug, r.holders])).toEqual([['admin', [me]]]));
+    expect(stores.spaces.myRoles()).toEqual(['admin']);
+
+    await stores.spaces.createRole({ name: 'Moderator', description: 'Looks after posts' });
+    await stores.spaces.grantRole('moderator', 'did:test:ben');
+    await vi.waitFor(() => expect(stores.spaces.memberRoles()['did:test:ben']).toEqual(['moderator']));
+    expect(stores.spaces.roles().find((r) => r.slug === 'moderator')).toMatchObject({
+      name: 'Moderator',
+      description: 'Looks after posts',
+    });
+
+    // The last admin keeps the role: somebody else has to be made one first.
+    await stores.spaces.revokeRole('admin', me);
+    expect(stores.spaces.myRoles()).toEqual(['admin']);
+
+    await stores.spaces.revokeRole('moderator', 'did:test:ben');
+    await vi.waitFor(() => expect(stores.spaces.memberRoles()['did:test:ben']).toBeUndefined());
+  }, 10000);
+
+  it('answers who administers a shared space from its roles, not from who made it', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    const me = stores.session.me()?.did ?? '';
+
+    await stores.spaces.createSpace('Handed On', 'x', 'shared', 'hidden');
+    await vi.waitFor(() =>
+      expect(stores.spaces.spaceList().find((s) => s.name === 'Handed On')).toMatchObject({ kind: 'shared' }),
+    );
+    const ref = (await lifecycle.list()).find((d) => d.name === 'Handed On')!;
+    await stores.datasets.switchDataset(ref.id);
+    await vi.waitFor(() => expect(stores.spaces.myRoles()).toEqual(['admin']));
+    expect(stores.spaces.canAdministerCurrentSpace()).toBe(true);
+
+    // Hand the space on: another admin first, then step down.
+    await stores.spaces.grantRole('admin', 'did:test:ben');
+    await stores.spaces.revokeRole('admin', me);
+    await vi.waitFor(() => expect(stores.spaces.myRoles()).toEqual([]));
+
+    // Having made the space is no way back in while somebody holds the role.
+    expect(stores.spaces.canAdministerCurrentSpace()).toBe(false);
+    await expect(stores.spaces.grantRole('admin', me)).rejects.toThrow(/administers/);
+  }, 10000);
+
+  it('starts a shared space open, and once it is on community, refuses at the write what that does not allow', async () => {
+    /*
+      End to end through the real check: the store registers it, the backend asks it, and a write the
+      space's rules do not allow is refused with nothing written — whichever caller made it.
+    */
+    const stores = mountShell();
+    await ready(stores);
+    const me = stores.session.me()?.did ?? '';
+    await stores.spaces.createSpace('Ruled', 'x', 'shared', 'hidden');
+    const ref = (await lifecycle.list()).find((d) => d.name === 'Ruled')!;
+    await stores.datasets.switchDataset(ref.id);
+    const handle = ref.handle as never;
+    // Nothing written: a space with no policy reads as open, as every space did before.
+    await vi.waitFor(() => expect(stores.spaces.policy()).toMatchObject({ loaded: true, preset: 'open' }));
+    expect(await Policy.count(handle as never)).toBe(0);
+    expect(stores.spaces.policy().roles).toEqual(['admin']);
+
+    // An admin may change the rules; choosing what is in force already writes nothing.
+    await stores.spaces.setPolicyPreset('open');
+    await stores.spaces.setPolicyPreset('community');
+    await vi.waitFor(() => expect(stores.spaces.policy().preset).toBe('community'));
+    await stores.spaces.setPolicyPreset('open');
+    await vi.waitFor(() => expect(stores.spaces.policy().preset).toBe('open'));
+    await stores.spaces.setPolicyPreset('community');
+    await vi.waitFor(() => expect(stores.spaces.policy().preset).toBe('community'));
+    expect(await Policy.count(handle as never)).toBe(3);
+
+    // Somebody else administers it now; this agent is a member.
+    await stores.spaces.grantRole('admin', 'did:test:somebody-else');
+    await stores.spaces.revokeRole('admin', me);
+    await vi.waitFor(() => expect(stores.spaces.policy().roles).toEqual([]));
+
+    const refused = vi.spyOn(toastService, 'error');
+    const [space] = await Space.findAll(handle as never, { where: { name: 'Ruled' } });
+    await expect(Space.update(handle as never, space.id, { description: 'mine now' } as never)).rejects.toMatchObject({
+      name: 'PolicyRefusal',
+    });
+    expect(refused).toHaveBeenCalledWith(expect.stringContaining('Space.edit'));
+    expect((await Space.findOne(handle as never, { where: { id: space.id } }))?.description).toBe('x');
+    await expect(stores.spaces.setPolicyPreset('open')).rejects.toMatchObject({ name: 'PolicyRefusal' });
+    expect(stores.spaces.policy().preset).toBe('community');
+
+    // What members make is still theirs to make.
+    await expect(CollectionBlock.create(handle, { kind: 'post' } as never)).resolves.toBeDefined();
+    refused.mockRestore();
+  }, 15000);
 
   it('persists sidebar order as settings, not just as store state', async () => {
     const stores = mountShell();
@@ -812,6 +1074,8 @@ describe('what the stores actually wrote', () => {
 
     await stores.spaces.createSpace('Public', 'x', 'shared', 'listed');
     await stores.spaces.createSpace('Private', 'x', 'personal', 'hidden');
+    // Sharing follows the create; see 'creating a shared space in stages'.
+    await vi.waitFor(() => expect(stores.spaces.spaceList().find((s) => s.name === 'Public')?.kind).toBe('shared'));
 
     const shared = (await lifecycle.list()).find((d) => d.name === 'Public')!;
     const personal = (await lifecycle.list()).find((d) => d.name === 'Private')!;
@@ -823,6 +1087,138 @@ describe('what the stores actually wrote', () => {
     expect(publicSpace.url).toBe(shared.sharedId);
     expect(privateSpace.url).toBeFalsy();
     expect(publicSpace.discovery).toBe('listed');
+  }, 10000);
+});
+
+/**
+ * Creating a shared space is two stages: the local space, which is what the person waits for, and
+ * sharing it, which talks to the network and runs after. Each test holds `publish` open to look at
+ * the space between the two.
+ */
+describe('creating a shared space in stages', () => {
+  /** Replaces the backend's publish with one each call of which the test settles by hand. */
+  function holdPublish() {
+    const calls: { resolve: () => void; reject: (err: Error) => void }[] = [];
+    onPorts = (ports) => {
+      const publish = ports.lifecycle.publish.bind(ports.lifecycle);
+      ports.lifecycle.publish = (id: string, options?: { sharing?: string }) =>
+        new Promise<{ uri: string; sharedId: string }>((resolve, reject) => {
+          calls.push({ resolve: () => void publish(id, options).then(resolve, reject), reject });
+        });
+    };
+    return calls;
+  }
+  const row = (stores: Stores, name: string) => stores.spaces.spaceList().find((s) => s.name === name)!;
+
+  it('is ready before it is shared, and shares in the background', async () => {
+    const publish = holdPublish();
+    const stores = mountShell();
+    await ready(stores);
+
+    await stores.spaces.createSpace('Garden', 'x', 'shared', 'hidden');
+
+    // Resolved with publish still open: the space is here, local, and says it is being shared.
+    expect(publish).toHaveLength(1);
+    expect(row(stores, 'Garden')).toMatchObject({ sharing: 'sharing', shareLink: '', kind: 'personal' });
+    const created = (await lifecycle.list()).find((d) => d.name === 'Garden')!;
+    const [before] = await Space.findAll(created.handle as never);
+    expect(before.url).toBeFalsy();
+
+    publish[0].resolve();
+
+    await vi.waitFor(() => expect(row(stores, 'Garden')).toMatchObject({ sharing: '', kind: 'shared' }));
+    const shared = (await lifecycle.list()).find((d) => d.name === 'Garden')!;
+    expect(shared.sharedUri).toMatch(/^inmemory:\/\//);
+    expect(row(stores, 'Garden').shareLink).toContain(shared.sharedId);
+    const [after] = await Space.findAll(shared.handle as never);
+    expect(after.url).toBe(shared.sharedId);
+  }, 10000);
+
+  it('keeps the space when sharing fails, and shares it on a retry', async () => {
+    const publish = holdPublish();
+    const stores = mountShell();
+    await ready(stores);
+
+    await stores.spaces.createSpace('Workbench', 'x', 'shared', 'hidden');
+    publish[0].reject(new Error('the network said no'));
+
+    await vi.waitFor(() =>
+      expect(row(stores, 'Workbench')).toMatchObject({ sharing: 'failed', shareError: 'the network said no' }),
+    );
+    // Still a space: listed, in mySpaces, and local.
+    expect(stores.spaces.mySpaces().map((s) => s.name)).toContain('Workbench');
+    expect(row(stores, 'Workbench')).toMatchObject({ kind: 'personal', shareLink: '' });
+
+    const retry = stores.spaces.shareSpace(row(stores, 'Workbench').uuid);
+    await vi.waitFor(() => expect(row(stores, 'Workbench').sharing).toBe('sharing'));
+    publish[1].resolve();
+    await retry;
+
+    expect(row(stores, 'Workbench')).toMatchObject({ sharing: '', shareError: '', kind: 'shared' });
+    expect(row(stores, 'Workbench').shareLink).not.toBe('');
+  }, 10000);
+
+  it('a retry after a step that follows the publish does not publish again', async () => {
+    let publishes = 0;
+    let failGetOnce = false;
+    onPorts = (ports) => {
+      const publish = ports.lifecycle.publish.bind(ports.lifecycle);
+      const get = ports.lifecycle.get.bind(ports.lifecycle);
+      ports.lifecycle.publish = async (id: string, options?: { sharing?: string }) => {
+        publishes += 1;
+        const result = await publish(id, options);
+        failGetOnce = true;
+        return result;
+      };
+      ports.lifecycle.get = async (id: string) => {
+        if (failGetOnce) {
+          failGetOnce = false;
+          throw new Error('lost the executor after publishing');
+        }
+        return get(id);
+      };
+    };
+    const stores = mountShell();
+    await ready(stores);
+
+    await stores.spaces.createSpace('Kiln', 'x', 'shared', 'hidden');
+    await vi.waitFor(() => expect(row(stores, 'Kiln').sharing).toBe('failed'));
+
+    await stores.spaces.shareSpace(row(stores, 'Kiln').uuid);
+
+    expect(publishes).toBe(1);
+    expect(row(stores, 'Kiln')).toMatchObject({ sharing: '', kind: 'shared' });
+  }, 10000);
+
+  it('lists a space in global discovery only once it has the address it is listed under', async () => {
+    provideSeed({ name: 'test', modules: [], globalSpaceUrl: 'inmemory://global' } as never);
+    try {
+      const publish = holdPublish();
+      const seedGlobal = onPorts!;
+      onPorts = (ports) => {
+        seedGlobal(ports);
+        ports.lifecycle.seedShared({ id: 'global', name: 'Global', sharedUri: 'inmemory://global' });
+      };
+      const stores = mountShell();
+      await ready(stores);
+      await stores.spaces.joinSpace('inmemory://global', false);
+      const global = stores.datasets.globalDataset()!;
+      expect(global).not.toBeNull();
+
+      await stores.spaces.createSpace('Listed', 'x', 'shared', 'listed');
+      expect(await Space.findAll(global.handle as never, { where: { name: 'Listed' } })).toEqual([]);
+
+      publish[0].resolve();
+
+      await vi.waitFor(() => expect(row(stores, 'Listed').kind).toBe('shared'));
+      const shared = (await lifecycle.list()).find((d) => d.name === 'Listed')!;
+      await vi.waitFor(async () => {
+        const [listing] = await Space.findAll(global.handle as never, { where: { name: 'Listed' } });
+        expect(listing?.url).toBe(shared.sharedId);
+      });
+    } finally {
+      provideSeed({ name: 'test', modules: [] } as never);
+    }
   }, 10000);
 });
 
@@ -891,6 +1287,32 @@ describe('blocks on a canvas', () => {
     expect(displays.TextBlock).toMatchObject({ label: 'Text', icon: 'text-t' });
     expect(displays.EmbedBlock?.label).toBe('Embed');
     expect(displays.Relationship).toBeDefined();
+  }, 10000);
+});
+
+describe('how a space presents a type', () => {
+  it('lays its own presentation over the model’s, and keeps it through a colour coming and going', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace('Presented', 'x', 'personal', 'hidden');
+    const ref = (await lifecycle.list()).find((d) => d.name === 'Presented')!;
+    await stores.datasets.switchDataset(ref.id);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.name).toBe('Presented'));
+    const spaceId = stores.spaces.currentSpace()!.id;
+    const summary = () => stores.records.displays().TaskBlock?.fields.find((f) => f.role === 'summary')?.name;
+    expect(summary()).toBe('description');
+
+    await stores.records.setSpaceTypePresentation(spaceId, 'TaskBlock', { display: { summary: 'assignee' } });
+    await vi.waitFor(() => expect(summary()).toBe('assignee'));
+
+    // A colour set and cleared in the key does not take the presentation with it.
+    await stores.records.setSpaceTypeColor(spaceId, 'TaskBlock', 'accent');
+    await stores.records.setSpaceTypeColor(spaceId, 'TaskBlock', '');
+    await stores.records.setSpaceTypePresentation(spaceId, 'EventBlock', null);
+    await vi.waitFor(() => expect(summary()).toBe('assignee'));
+
+    await stores.records.setSpaceTypePresentation(spaceId, 'TaskBlock', null);
+    await vi.waitFor(() => expect(summary()).toBe('description'));
   }, 10000);
 });
 
@@ -1295,18 +1717,11 @@ describe('what a collection extracts', () => {
     const root = stores.spaces.root();
     const call = await CollectionBlock.create(handle, { kind: 'call', mode: 'feed', autoExtract: true } as never);
 
-    // Somebody else's shared space: its author is who administers it. Rewritten in place — no write
-    // path lets one agent sign as another.
-    const space = stores.spaces.currentSpace()!;
-    const row = (handle as unknown as { tables: Record<string, { id: string; author?: string }[]> }).tables.Space.find(
-      (r) => r.id === space.id,
-    )!;
-    row.author = 'did:test:somebody-else';
-    // And the store's own copy of the space list, which is re-read only when the datasets change —
-    // the state a member who joined somebody else's space starts in.
-    const listed = stores.spaces.mySpaces().find((s) => s.id === space.id) as unknown as { author: string };
-    listed.author = 'did:test:somebody-else';
-    expect(stores.spaces.canAdministerCurrentSpace()).toBe(false);
+    // A space somebody else administers: they hold its admin role, and this agent no longer does.
+    await vi.waitFor(() => expect(stores.spaces.myRoles()).toEqual(['admin']));
+    await stores.spaces.grantRole('admin', 'did:test:somebody-else');
+    await stores.spaces.revokeRole('admin', stores.session.me()?.did ?? '');
+    await vi.waitFor(() => expect(stores.spaces.canAdministerCurrentSpace()).toBe(false));
 
     expect(stores.spaces.canSetExtractionFor(root)).toBe(false);
     expect(stores.spaces.canSetExtractionFor(call.id)).toBe(true);

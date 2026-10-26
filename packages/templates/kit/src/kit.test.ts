@@ -59,7 +59,7 @@ const portable: Record<string, SchemaNode> = {
   emptyState: emptyState({ icon: 'newspaper', label: 'posts', searchable: true }),
   'emptyState (no delay)': emptyState({ icon: 'user', label: 'members', delay: 0 }),
   emptyNote: emptyNote('No spaces yet'),
-  gatePrompt: gatePrompt({ icon: 'lock', iconGradient: 'primary', title: 'Join', body: 'Body.' }),
+  gatePrompt: gatePrompt({ icon: 'lock', iconGradient: 'accent', title: 'Join', body: 'Body.' }),
   'gatePrompt (form)': gatePrompt({
     icon: 'rocket',
     title: 'Set up',
@@ -113,19 +113,19 @@ const portable: Record<string, SchemaNode> = {
     title: 'Delete?',
     body: 'Gone forever.',
     confirmLabel: 'Delete',
-    confirm: { $action: 'spaceStore.deleteCollection', args: [{ $: 'post.id' }] },
+    confirm: { $invoke: 'spaceStore.deleteCollection', args: [{ $: 'post.id' }] },
     busyLocal: 'deleting',
   }),
   composerModal: composerModal({
     openLocal: 'composeOpen',
     title: 'New post',
-    saveAction: { $action: 'spaceStore.createPost', args: [{ $: 'arg' }] },
+    saveAction: { $invoke: 'spaceStore.createPost', args: [{ $: 'arg' }] },
   }),
   'composerModal (unguarded)': composerModal({
     openLocal: 'composeOpen',
     title: 'New post',
     guardDraft: false,
-    saveAction: { $action: 'spaceStore.createPost', args: [{ $: 'arg' }] },
+    saveAction: { $invoke: 'spaceStore.createPost', args: [{ $: 'arg' }] },
   }),
   'formModal (guarded)': formModal({
     open: { $: 'local.formOpen' },
@@ -134,7 +134,7 @@ const portable: Record<string, SchemaNode> = {
     localState: { thingName: { type: 'string', initial: '' } },
     children: [field({ name: 'thingName', label: 'Name' })],
     discardWhen: { $: 'local.thingName' },
-    submit: { $action: 'record.create', args: ['CollectionBlock', { title: { $: 'local.thingName' } }] },
+    submit: { $invoke: 'record.create', args: ['CollectionBlock', { title: { $: 'local.thingName' } }] },
   }),
   formModal: formModal({
     open: { $: 'local.formOpen' },
@@ -147,7 +147,7 @@ const portable: Record<string, SchemaNode> = {
     children: [field({ name: 'thingName', label: 'Name' })],
     disabled: { $: '!local.thingName' },
     busyLocal: 'creating',
-    submit: { $action: 'record.create', args: ['CollectionBlock', { title: { $: 'local.thingName' } }] },
+    submit: { $invoke: 'record.create', args: ['CollectionBlock', { title: { $: 'local.thingName' } }] },
   }),
   field: field({ name: 'name', label: 'Name', validated: true, touchOnBlur: true }),
   'field (select)': field({ name: 'mode', control: 'select', props: { options: [] } }),
@@ -162,8 +162,8 @@ const portable: Record<string, SchemaNode> = {
         label: 'Spaces',
         badge: '3',
         reorderable: true,
-        onReorder: { $action: 'datasetStore.reorderDatasets', args: [{ $: 'arg.detail' }] },
-        action: { icon: 'plus', label: 'Create a space', onClick: { $action: 'shellStore.setCreateSpaceOpen' } },
+        onReorder: { $invoke: 'datasetStore.reorderDatasets', args: [{ $: 'arg.detail' }] },
+        action: { icon: 'plus', label: 'Create a space', onClick: { $invoke: 'shellStore.setCreateSpaceOpen' } },
         children: [
           railItem({
             id: { $: 'space.uuid' },
@@ -381,7 +381,7 @@ describe('the portable tier names no store and no agent machinery', () => {
   // The tier split is the kit's real dependency declaration (see README) and nothing in
   // package.json can enforce it. This walk can: the inputs above are store-free except where a
   // *caller* supplies an action, so any `$store` or `$agent` found here was introduced by the
-  // fragment itself. `$action` is exempt for exactly that reason — confirmModal passes its
+  // fragment itself. `$invoke` is exempt for exactly that reason — confirmModal passes its
   // caller's action through, which is the caller's dependency, not the kit's.
   for (const [name, node] of Object.entries(portable)) {
     it(name, () => {
@@ -684,7 +684,7 @@ describe('contracts call sites depend on', () => {
     expect(gated).toBe(true);
     let saves: unknown;
     walk(section, (n) => {
-      if ((n as { $action?: string }).$action === 'spaceStore.updatePost') saves = (n as { args?: unknown }).args;
+      if ((n as { $invoke?: string }).$invoke === 'spaceStore.updatePost') saves = (n as { args?: unknown }).args;
     });
     // The id first: `updatePost(postId, json)` takes the tree second.
     expect(saves).toEqual([{ $: 'local.discussionEditing' }, { $: 'arg' }]);
@@ -745,8 +745,8 @@ describe('contracts call sites depend on', () => {
       const props = (n.props ?? {}) as Record<string, unknown>;
       for (const handler of Object.values(props)) {
         for (const step of Array.isArray(handler) ? handler : [handler]) {
-          const call = step as { $action?: string; args?: unknown[] } | undefined;
-          if (call?.$action !== 'spaceStore.createPost') continue;
+          const call = step as { $invoke?: string; args?: unknown[] } | undefined;
+          if (call?.$invoke !== 'spaceStore.createPost') continue;
           const parent = (call.args?.[1] as { parentId?: { $?: string } } | undefined)?.parentId?.$;
           if (parent?.includes('row.id')) recordReply = true;
         }
@@ -873,7 +873,7 @@ describe('contracts call sites depend on', () => {
     */
     let forms = 0;
     walk(weDomain['signalDisplay (full)'], (n) => {
-      if (n.$action === 'spaceStore.createSignalType') forms += 1;
+      if (n.$invoke === 'spaceStore.createSignalType') forms += 1;
     });
     expect(forms).toBe(1);
   });
@@ -1093,7 +1093,7 @@ describe('contracts call sites depend on', () => {
     let creates = 0;
     let gated = false;
     walk(weDomain['signalDisplay (full)'], (n) => {
-      if (n.$action === 'spaceStore.createSignalType') creates += 1;
+      if (n.$invoke === 'spaceStore.createSignalType') creates += 1;
       const condition = (n.props as { condition?: { $?: string } } | undefined)?.condition?.$;
       if (condition === 'spaceStore.canAdministerCurrentSpace') gated = true;
     });
@@ -1287,8 +1287,8 @@ describe('handler arrays are never nested', () => {
     const node = composerModal({
       openLocal: 'editOpen',
       title: 'Edit',
-      saveAction: { $action: 'spaceStore.updatePost', args: ['x', { $: 'arg' }] },
-      onClose: [{ $action: 'presenceStore.clearActivity', args: ['edit', 'x'] }],
+      saveAction: { $invoke: 'spaceStore.updatePost', args: ['x', { $: 'arg' }] },
+      onClose: [{ $invoke: 'presenceStore.clearActivity', args: ['edit', 'x'] }],
     });
     expect(nestedHandlerArrays(node)).toEqual([]);
   });
@@ -1300,7 +1300,7 @@ describe('handler arrays are never nested', () => {
       title: 't',
       body: 'b',
       confirmLabel: 'Go',
-      confirm: [{ $setLocal: 'a', value: 1 }, { $action: 'x.y' }],
+      confirm: [{ $setLocal: 'a', value: 1 }, { $invoke: 'x.y' }],
     });
     expect(nestedHandlerArrays(node)).toEqual([]);
   });
@@ -1448,8 +1448,8 @@ describe('Back through a discard guard', () => {
     const composer = composerModal({
       openLocal: 'noteOpen',
       title: 'New note',
-      saveAction: { $action: 'x.save', args: [{ $: 'arg' }] },
-      onClose: [{ $action: 'x.clear' }],
+      saveAction: { $invoke: 'x.save', args: [{ $: 'arg' }] },
+      onClose: [{ $invoke: 'x.clear' }],
       back,
     });
     expect(nested(composer)).toBe(false);

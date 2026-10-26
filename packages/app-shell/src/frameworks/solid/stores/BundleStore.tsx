@@ -21,10 +21,12 @@
  * about and cannot be removed — but a space can be set up for one all the same, and it is listed.
  */
 import { selectBootSnapshot, writeBootSnapshot } from '@shared/bundles/bootSnapshot';
+import { currentProductName } from '@shared/bundles/brand';
 import { bundlePieces } from '@shared/bundles/bundlePieces';
 import { bundleDigest, type BundleGrant, grantOf, whatIsNew } from '@shared/bundles/consent';
 import {
   installedEntry,
+  installedThemes,
   readInstalledBundles,
   withInstalled,
   withoutInstalled,
@@ -334,7 +336,7 @@ export function BundleStoreProvider(props: ParentProps) {
     if (!read.bundle) {
       const first = read.problems[0];
       console.warn('Not a bundle:', read.problems);
-      toastService.error(`That file is not an app this version of WE can read — ${first.message}`);
+      toastService.error(`That file is not an app this version of ${currentProductName()} can read — ${first.message}`);
       return;
     }
     const bundle = read.bundle;
@@ -370,7 +372,14 @@ export function BundleStoreProvider(props: ParentProps) {
       );
     if (judged.adds.sections.length)
       adds.push(`${plural(judged.adds.sections.length, 'section', 'sections')}: ${named(judged.adds.sections)}`);
-    if (judged.adds.theme) adds.push(`A theme, “${judged.adds.theme}”`);
+    if (judged.adds.themes.length)
+      adds.push(
+        judged.adds.themes.length === 1
+          ? `A theme, “${judged.adds.themes[0]}”`
+          : `${judged.adds.themes.length} themes: ${named(judged.adds.themes)}`,
+      );
+    if (judged.adds.brand) adds.push(`Its own name and look: it calls itself “${judged.adds.brand}”`);
+    if (judged.adds.bootScreen) adds.push('Its own sign-in screen, around the app’s password field');
 
     const recordTypes = judged.adds.recordTypes;
     const previous = installedList().find((entry) => entry.id === bundle.id);
@@ -422,12 +431,24 @@ export function BundleStoreProvider(props: ParentProps) {
     setBusy(true);
     try {
       const pieces = bundlePieces(bundle);
-      // The theme first: a theme record is known by the id it is given, and the templates naming it
-      // have to point at that.
-      const themeId = pieces.theme ? await themeStore.writeLibraryTheme(pieces.theme) : undefined;
+      // The themes first: a theme record is known by the id it is given, and the templates naming
+      // one have to point at that.
+      const written = new Map<string, string>();
+      for (const theme of pieces.themes) {
+        const id = await themeStore.writeLibraryTheme(theme);
+        if (id) written.set(theme.id, id);
+      }
+      const themeRef = (id: string) => written.get(id) ?? id;
       const pointAtTheme = (template: TemplateSchema): TemplateSchema =>
-        themeId && template.meta.themeId === pieces.theme?.id
-          ? { ...template, meta: { ...template.meta, themeId } }
+        written.size
+          ? {
+              ...template,
+              meta: {
+                ...template.meta,
+                ...(template.meta.themeId ? { themeId: themeRef(template.meta.themeId) } : {}),
+                ...(template.meta.themeIds ? { themeIds: template.meta.themeIds.map(themeRef) } : {}),
+              },
+            }
           : template;
       await templateStore.writeLibraryTemplates(
         [...(pieces.app ? [pieces.app] : []), ...pieces.shells, ...pieces.sections].map(pointAtTheme),
@@ -445,7 +466,10 @@ export function BundleStoreProvider(props: ParentProps) {
       });
       await datasetStore.updateAgentSettings({
         installedBundles: JSON.stringify(
-          withInstalled(installedList(), { ...entry, ...(themeId ? { theme: themeId } : {}) }),
+          withInstalled(installedList(), {
+            ...entry,
+            ...(written.size ? { themes: pieces.themes.map((theme) => themeRef(theme.id)) } : {}),
+          }),
         ),
       });
 
@@ -579,7 +603,7 @@ export function BundleStoreProvider(props: ParentProps) {
     setBusy(true);
     try {
       for (const id of [...(entry.app ? [entry.app] : []), ...entry.templates]) await templateStore.deleteTemplate(id);
-      if (entry.theme) await themeStore.deleteTheme(entry.theme);
+      for (const id of installedThemes(entry)) await themeStore.deleteTheme(id);
       await datasetStore.updateAgentSettings({
         installedBundles: JSON.stringify(withoutInstalled(installedList(), bundleId)),
       });

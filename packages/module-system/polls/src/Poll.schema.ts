@@ -38,11 +38,11 @@ const optionRow: SchemaNode = {
         {
           type: 'we-button',
           props: {
-            variant: { $: `${MY_VOTE} == row.option ? 'primary' : 'outline'` },
+            variant: { $: `${MY_VOTE} == row.option ? 'solid' : 'outline'` },
             size: 'sm',
             disabled: { $: 'block.closed || modules.polls.voting == block.id' },
             loading: { $: 'modules.polls.voting == block.id' },
-            onClick: { $action: 'modules.polls.vote', args: [{ $: 'block.id' }, { $: 'row.option' }] },
+            onClick: { $invoke: 'modules.polls.vote', args: [{ $: 'block.id' }, { $: 'row.option' }] },
           },
           children: [{ $: 'row.option' }],
         },
@@ -74,7 +74,7 @@ const optionRow: SchemaNode = {
           type: 'we-progress-bar',
           props: {
             value: { $: 'round(row.share * 100)' },
-            variant: { $: "row.leading ? 'primary' : 'neutral'" },
+            tone: { $: "row.leading ? '' : 'neutral'" },
             size: 'xs',
           },
         },
@@ -104,7 +104,7 @@ export const pollCard: SchemaNode = {
           type: '$if',
           props: {
             condition: { $: 'block.closed' },
-            then: { type: 'we-badge', props: { variant: 'neutral' }, children: ['Closed'] },
+            then: { type: 'we-badge', props: {}, children: ['Closed'] },
           },
         },
       ],
@@ -167,7 +167,7 @@ export const pollComposer: SchemaNode = {
             disabled: { $: '!trim(local.question) || count(tally({ options: local.options })) < 2' },
             onClick: [
               {
-                $action: 'record.create',
+                $invoke: 'record.create',
                 args: ['Poll', { question: { $: 'trim(local.question)' }, options: { $: 'local.options' } }],
                 onSuccess: [
                   { $setLocal: 'question', value: '' },

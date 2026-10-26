@@ -243,10 +243,10 @@ const spread: SchemaNode = {
             {
               type: 'we-button',
               props: {
-                variant: 'secondary',
+                variant: 'soft',
                 size: 'sm',
                 alignSelf: 'start',
-                onClick: { $action: 'routeStore.navigate', args: ['./wall'] },
+                onClick: { $invoke: 'routeStore.navigate', args: ['./wall'] },
               },
               children: ['Open the wall'],
             },
@@ -300,7 +300,7 @@ const header: SchemaNode = {
   children: [
     {
       type: 'we-button',
-      props: { variant: 'bare', onClick: { $action: 'routeStore.navigate', args: ['.'] } },
+      props: { variant: 'bare', onClick: { $invoke: 'routeStore.navigate', args: ['.'] } },
       children: [
         {
           type: 'we-text',
@@ -315,12 +315,12 @@ const header: SchemaNode = {
       children: [
         {
           type: 'we-button',
-          props: { variant: 'ghost', size: 'sm', onClick: { $action: 'routeStore.navigate', args: ['./wall'] } },
+          props: { variant: 'ghost', size: 'sm', onClick: { $invoke: 'routeStore.navigate', args: ['./wall'] } },
           children: [{ type: 'we-icon', props: { name: 'squares-four' } }, 'Wall'],
         },
         {
           type: 'we-button',
-          props: { variant: 'primary', size: 'sm', onClick: { $setLocal: 'composeOpen', value: true } },
+          props: { variant: 'solid', size: 'sm', onClick: { $setLocal: 'composeOpen', value: true } },
           children: [{ type: 'we-icon', props: { name: 'plus' } }, 'Add'],
         },
         composerModal({ openLocal: 'composeOpen', title: 'Add to the scrapbook', kind: KIND.post }),

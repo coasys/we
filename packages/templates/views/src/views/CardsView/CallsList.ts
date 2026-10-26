@@ -341,7 +341,7 @@ export const callsList: SchemaNode = {
                                     // want and this does not.
                                     then: {
                                       type: 'we-badge',
-                                      props: { variant: 'success', appearance: 'solid', size: 'xs' },
+                                      props: { variant: 'solid', tone: 'success', size: 'xs' },
                                       children: ['Live'],
                                     },
                                   },
@@ -541,7 +541,7 @@ export const callsList: SchemaNode = {
                                           {
                                             $if: {
                                               condition: { $: 'modules.call.active' },
-                                              then: { $action: 'modules.call.goToCall' },
+                                              then: { $invoke: 'modules.call.goToCall' },
                                             },
                                           },
                                           {
@@ -566,7 +566,7 @@ export const callsList: SchemaNode = {
                                                 had been a silent no-op with a comment claiming
                                                 otherwise.
                                               */
-                                              then: { $action: 'modules.call.continueCall', args: [{ $: 'call.id' }] },
+                                              then: { $invoke: 'modules.call.continueCall', args: [{ $: 'call.id' }] },
                                             },
                                           },
                                         ],
@@ -619,7 +619,7 @@ export const callsList: SchemaNode = {
                                         loading: { $: 'modules.transcribe.extractingId == call.id' },
                                         disabled: { $: "modules.transcribe.extractStatus == 'running'" },
                                         onClick: {
-                                          $action: 'modules.transcribe.extractCollection',
+                                          $invoke: 'modules.transcribe.extractCollection',
                                           args: [{ $: 'call.id' }],
                                         },
                                       },
@@ -659,7 +659,7 @@ export const callsList: SchemaNode = {
                                     variant: 'ghost',
                                     size: 'sm',
                                     square: true,
-                                    onClick: { $action: 'spaceStore.exportCallTranscript', args: [{ $: 'call.id' }] },
+                                    onClick: { $invoke: 'spaceStore.exportCallTranscript', args: [{ $: 'call.id' }] },
                                   },
                                   children: [{ type: 'we-icon', props: { name: 'download' } }],
                                 },
@@ -809,7 +809,7 @@ export const callsList: SchemaNode = {
                                               See DestructivePrompt.schema.ts.
                                             */
                                             onClick: {
-                                              $action: 'spaceStore.deleteCollection',
+                                              $invoke: 'spaceStore.deleteCollection',
                                               args: [{ $: 'call.id' }],
                                             },
                                           },
@@ -862,7 +862,7 @@ export const callsList: SchemaNode = {
                                 $: 'local.titleDraft != call.title || local.descriptionDraft != call.description',
                               },
                               submit: {
-                                $action: 'record.update',
+                                $invoke: 'record.update',
                                 args: [
                                   'CollectionBlock',
                                   { $: 'call.id' },

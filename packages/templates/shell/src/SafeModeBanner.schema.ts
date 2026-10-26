@@ -84,14 +84,14 @@ export const safeModeBanner: SchemaNode = {
         {
           type: 'we-button',
           props: {
-            variant: 'secondary',
+            variant: 'soft',
             size: 'sm',
             flexShrink: '0',
             onClick: {
               $if: {
                 condition: { $: 'local.leaveInto' },
-                then: { $action: 'templateStore.leaveSafeModeInto', args: [{ $: 'local.leaveInto' }] },
-                else: { $action: 'templateStore.leaveSafeMode' },
+                then: { $invoke: 'templateStore.leaveSafeModeInto', args: [{ $: 'local.leaveInto' }] },
+                else: { $invoke: 'templateStore.leaveSafeMode' },
               },
             },
           },

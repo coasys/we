@@ -20,6 +20,7 @@ import {
   emptyState,
   foldingBody,
   foldingSectionLabel,
+  lineComposer,
   panelScroll,
   panelShell,
   timeline,
@@ -30,7 +31,6 @@ import { type SchemaNode, type SchemaProp } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
 
 import { CARET_SIZE, codePane, extractionActivity } from './ExtractionStatus.schema';
-import { lineComposer } from './lineComposer';
 import { messageLine } from './messageLine';
 import { SUBJECT_EXPR as SHARED_SUBJECT_EXPR, VIEWING_LIVE_EXPR } from './subject';
 import { repliesInclude } from './thread';
@@ -122,7 +122,7 @@ export const timelineOrderButton: SchemaNode = {
         variant: 'ghost',
         label: 'Newest at the top or the bottom',
         onClick: {
-          $action: 'spaceStore.setAgentModuleSetting',
+          $invoke: 'spaceStore.setAgentModuleSetting',
           args: [
             'transcribe',
             'timelineOrder',
@@ -951,7 +951,7 @@ const proposalEditor: SchemaNode = {
                 showTime: { $: "field.kind == 'datetime'" },
                 value: { $: 'modules.transcribe.proposalDraft[field.name]' },
                 onChange: {
-                  $action: 'modules.transcribe.setProposalField',
+                  $invoke: 'modules.transcribe.setProposalField',
                   args: [{ $: 'field.name' }, { $: 'event.detail' }],
                 },
               },
@@ -967,7 +967,7 @@ const proposalEditor: SchemaNode = {
                     value: { $: 'modules.transcribe.proposalDraft[field.name]' },
                     options: { $: 'field.options.map(o, { label: o, value: o })' },
                     onChange: {
-                      $action: 'modules.transcribe.setProposalField',
+                      $invoke: 'modules.transcribe.setProposalField',
                       args: [{ $: 'field.name' }, { $: 'event.detail' }],
                     },
                   },
@@ -978,7 +978,7 @@ const proposalEditor: SchemaNode = {
                     size: 'xs',
                     value: { $: 'modules.transcribe.proposalDraft[field.name]' },
                     onInput: {
-                      $action: 'modules.transcribe.setProposalField',
+                      $invoke: 'modules.transcribe.setProposalField',
                       args: [{ $: 'field.name' }, { $: 'event.detail' }],
                     },
                   },
@@ -1018,7 +1018,7 @@ const proposalEditor: SchemaNode = {
  *
  * ## Still `we-alert`
  *
- * The look is unchanged and deliberately so — `appearance: 'accent'` is a plain surface with a thick
+ * The look is unchanged and deliberately so — `variant: 'edge'` is a plain surface with a thick
  * status edge, which is what stops a run of these reading as a stack of brown rectangles in a dark
  * theme. It also keeps the warning glyph, which is what makes the state readable to somebody who
  * cannot tell the colours apart. What changed is only what is *inside* it.
@@ -1185,11 +1185,11 @@ const suggestedChangesGroup: SchemaNode = {
                                   props: { gap: '100', ay: 'center', flexShrink: '0' },
                                   children: [
                                     answerButton('success', 'Accept this change', {
-                                      $action: 'modules.transcribe.applyChange',
+                                      $invoke: 'modules.transcribe.applyChange',
                                       args: [{ $: 'proposal.id' }, { $: 'change.name' }],
                                     }),
                                     answerButton('danger', 'Reject this change — keeps the current value', {
-                                      $action: 'modules.transcribe.dismissChange',
+                                      $invoke: 'modules.transcribe.dismissChange',
                                       args: [{ $: 'proposal.id' }, { $: 'change.name' }],
                                     }),
                                   ],
@@ -1212,7 +1212,7 @@ const suggestedChangesGroup: SchemaNode = {
                                     variant: 'ghost',
                                     size: 'xs',
                                     onClick: {
-                                      $action: 'modules.transcribe.acceptProposal',
+                                      $invoke: 'modules.transcribe.acceptProposal',
                                       args: [{ $: 'proposal.id' }],
                                     },
                                   },
@@ -1224,7 +1224,7 @@ const suggestedChangesGroup: SchemaNode = {
                                     variant: 'ghost',
                                     size: 'xs',
                                     onClick: {
-                                      $action: 'modules.transcribe.rejectProposal',
+                                      $invoke: 'modules.transcribe.rejectProposal',
                                       args: [{ $: 'proposal.id' }],
                                     },
                                   },
@@ -1329,7 +1329,7 @@ const proposals: SchemaNode = {
                             words, which is the whole meaning of the edge, and every card on screen
                             sits under it.
 
-                            The edge itself is `we-alert`'s `accent` appearance written out: a
+                            The edge itself is `we-alert`'s `edge` variant written out: a
                             surface, ordinary text, and a three-pixel rule in the status at full
                             strength rather than in its tint. Same figures, so a card here and an
                             alert elsewhere still look like the same family.
@@ -1412,7 +1412,7 @@ const proposals: SchemaNode = {
                                                             square: true,
                                                             label: 'Stop editing',
                                                             onClick: {
-                                                              $action: 'modules.transcribe.cancelProposalEdit',
+                                                              $invoke: 'modules.transcribe.cancelProposalEdit',
                                                             },
                                                           },
                                                           children: [{ type: 'we-icon', props: { name: 'x' } }],
@@ -1431,7 +1431,7 @@ const proposals: SchemaNode = {
                                                             square: true,
                                                             label: 'Edit before accepting',
                                                             onClick: {
-                                                              $action: 'modules.transcribe.editProposal',
+                                                              $invoke: 'modules.transcribe.editProposal',
                                                               args: [{ $: 'proposal.id' }],
                                                             },
                                                           },
@@ -1556,7 +1556,7 @@ const proposals: SchemaNode = {
                                                           borderColor: 'success',
                                                         },
                                                         onClick: {
-                                                          $action: 'modules.transcribe.acceptProposal',
+                                                          $invoke: 'modules.transcribe.acceptProposal',
                                                           args: [{ $: 'proposal.id' }],
                                                         },
                                                       },
@@ -1586,7 +1586,7 @@ const proposals: SchemaNode = {
                                                           borderColor: 'danger',
                                                         },
                                                         onClick: {
-                                                          $action: 'modules.transcribe.rejectProposal',
+                                                          $invoke: 'modules.transcribe.rejectProposal',
                                                           args: [{ $: 'proposal.id' }],
                                                         },
                                                       },
@@ -1740,7 +1740,7 @@ export const extractionTargets: SchemaNode = {
                   is most likely to want to press. The same confusion had a card's action buttons
                   fading along with the card they were anchored to.
                 */
-                variant: { $: "target.selected ? 'secondary' : 'outline'" },
+                variant: { $: "target.selected ? 'soft' : 'outline'" },
                 /*
                   A pill, because a chip is a chip.
 
@@ -1762,7 +1762,7 @@ export const extractionTargets: SchemaNode = {
                   is the shape this replaced.
                 */
                 onClick: {
-                  $action: 'modules.transcribe.toggleExtractionTarget',
+                  $invoke: 'modules.transcribe.toggleExtractionTarget',
                   args: [{ $: 'target.entity' }, EXTRACTION_SUBJECT],
                 },
               },
@@ -2138,7 +2138,7 @@ const extractionHistory: SchemaNode = {
                       size: 'sm',
                       square: true,
                       label: 'Export the extraction log',
-                      onClick: { $action: 'spaceStore.exportExtractionLog', args: [EXTRACTION_SUBJECT] },
+                      onClick: { $invoke: 'spaceStore.exportExtractionLog', args: [EXTRACTION_SUBJECT] },
                     },
                     children: [{ type: 'we-icon', props: { name: 'download' } }],
                   },
@@ -2311,7 +2311,7 @@ const recognisedCard: SchemaNode = {
       props: { variant: 'footnote', color: 'text-muted' },
       children: [
         {
-          $: `count(local.madeIn) ? (first(local.madeIn).kind == 'space' ? 'First found in messages outside calls' : 'First found in ' + (first(local.madeIn).title ? first(local.madeIn).title : 'another call')) : 'Already in the space'`,
+          $: `count(local.madeIn) ? (first(local.madeIn).id == spaceStore.root ? 'First found in messages outside calls' : 'First found in ' + (first(local.madeIn).title ? first(local.madeIn).title : 'another call')) : 'Already in the space'`,
         },
       ],
     },
@@ -2572,7 +2572,7 @@ const autoExtractControl: SchemaNode = {
             disabled: { $: `!(${CAN_DECIDE})` },
             // The collection on screen, named: the store's own default is the call this agent is
             // in, which is not the one this panel shows outside a call.
-            onChange: { $action: 'modules.transcribe.toggleAutoExtract', args: [EXTRACTION_SUBJECT] },
+            onChange: { $invoke: 'modules.transcribe.toggleAutoExtract', args: [EXTRACTION_SUBJECT] },
           },
         },
       ],
@@ -2645,7 +2645,7 @@ const extractNowControl: SchemaNode = {
           and the split between them is deliberate, but a reader scanning for "make it happen" was
           being pointed at the standing decision.
         */
-        variant: 'primary',
+        variant: 'solid',
         gap: '100',
         // Its own alignment, so it needs no wrapper row to stop it stretching across the well —
         // and a wrapper that stayed behind when the button did not would cost a gap for nothing.
@@ -2668,7 +2668,7 @@ const extractNowControl: SchemaNode = {
           `canExtract` about the live call while the action behind it would have worked on the one
           being shown.
         */
-        onClick: { $action: 'modules.transcribe.extractCollection', args: [EXTRACTION_SUBJECT] },
+        onClick: { $invoke: 'modules.transcribe.extractCollection', args: [EXTRACTION_SUBJECT] },
       },
       children: [
         { type: 'we-icon', props: { name: 'sparkle' } },
@@ -2826,7 +2826,7 @@ const extract: SchemaNode = {
         condition: { $: "modules.transcribe.extractStatus == 'error'" },
         then: {
           type: 'we-alert',
-          props: { variant: 'warning' },
+          props: { tone: 'warning' },
           children: [{ $: 'modules.transcribe.extractError' }],
         },
       },
@@ -2891,7 +2891,7 @@ const extract: SchemaNode = {
                   variant: 'ghost',
                   square: true,
                   label: "Add a kind of thing to extract, in this space's vocabulary",
-                  onClick: { $action: 'shellStore.openSpaceSettings', args: ['vocabulary'] },
+                  onClick: { $invoke: 'shellStore.openSpaceSettings', args: ['vocabulary'] },
                 },
                 children: [{ type: 'we-icon', props: { name: 'plus' } }],
               },
@@ -3154,13 +3154,30 @@ export const transcriptLines: SchemaNode = {
       include: repliesInclude(),
       when: { $: 'modules.transcribe.collectionId' },
       /*
-        Live only while the call is.
+        A call's lines are live only while the call is; anything else — a channel these lines are
+        pointed at — always is, since somebody can write into it at any moment.
 
         A finished transcript is settled, so a subscription over it has the node re-running this
         query on every change in the space to be told nothing changed. Reading one back is the
-        commonest thing anybody does to a long transcript, and it was the case paying most.
+        commonest thing anybody does to a long transcript, and it was the case paying most. Until
+        the subject's kind is known it is not followed, so a past call is never subscribed to on the
+        way to finding out it is one.
       */
-      subscribe: { $: CALL_ON_SCREEN_LIVE },
+      subscribe: {
+        $: `${CALL_ON_SCREEN_LIVE} || (local.subjectKindLoaded && first(local.subjectKind).kind != 'call')`,
+      },
+    },
+    /*
+      What the subject is, read once. Through the same token as the scope, so a placement pointing
+      these lines at a channel points this at the channel too.
+    */
+    subjectKind: {
+      entity: 'CollectionBlock',
+      where: { id: { $: 'modules.transcribe.collectionId' } },
+      select: ['kind'],
+      limit: 1,
+      when: { $: 'modules.transcribe.collectionId' },
+      subscribe: false,
     },
   },
   children: [
@@ -3421,10 +3438,10 @@ export const captureStatus: SchemaNode = {
                   type: 'we-button',
                   props: {
                     size: 'sm',
-                    variant: 'primary',
+                    variant: 'solid',
                     loading: { $: 'modules.transcribe.installingModel' },
                     disabled: { $: 'modules.transcribe.installingModel' },
-                    onClick: { $action: 'modules.transcribe.installModel' },
+                    onClick: { $invoke: 'modules.transcribe.installModel' },
                   },
                   children: [
                     { type: 'we-icon', props: { name: 'download-simple' } },
@@ -3439,8 +3456,8 @@ export const captureStatus: SchemaNode = {
                       type: 'we-button',
                       props: {
                         size: 'sm',
-                        variant: 'secondary',
-                        onClick: { $action: 'shellStore.openShellView', args: ['settings', '/ai'] },
+                        variant: 'soft',
+                        onClick: { $invoke: 'shellStore.openShellView', args: ['settings', '/ai'] },
                       },
                       children: ['Open AI settings'],
                     },
@@ -3494,7 +3511,7 @@ export const captureStatus: SchemaNode = {
         condition: { $: 'modules.transcribe.installError' },
         then: {
           type: 'we-alert',
-          props: { variant: 'warning' },
+          props: { tone: 'warning' },
           children: [{ $: '`The model could not be installed: ${modules.transcribe.installError}`' }],
         },
       },
@@ -3513,7 +3530,7 @@ export const captureStatus: SchemaNode = {
         condition: { $: 'modules.transcribe.reconnecting' },
         then: {
           type: 'we-alert',
-          props: { variant: 'warning' },
+          props: { tone: 'warning' },
           children: ['Reconnecting to the speech model. What is said now is held, and written once it is back.'],
         },
       },
@@ -3524,7 +3541,7 @@ export const captureStatus: SchemaNode = {
         condition: { $: "modules.transcribe.status == 'error'" },
         then: {
           type: 'we-alert',
-          props: { variant: 'warning' },
+          props: { tone: 'warning' },
           children: [{ $: 'modules.transcribe.error' }],
         },
       },
@@ -3540,7 +3557,7 @@ export const captureStatus: SchemaNode = {
  * been written — several seconds during which a panel showing saved lines alone looks exactly like
  * a panel that has stopped listening. This is that gap, said out loud.
  *
- * `accent-muted` rather than the feed's `surface-sunken`, and labelled: it is deliberately not one
+ * `accent-soft` rather than the feed's `surface-sunken`, and labelled: it is deliberately not one
  * of the transcript's rows. What it holds is provisional — the model has not seen it, so the words
  * can change before they land — and a block that looked like the others would be quietly asserting
  * otherwise.
@@ -3582,7 +3599,7 @@ export const pendingUtterance: SchemaNode = {
     condition: { $: `modules.transcribe.pending && (${VIEWING_LIVE_EXPR})` },
     then: {
       type: 'Column',
-      props: { bg: 'accent-muted', r: '300', p: '300', gap: '200' },
+      props: { bg: 'accent-soft', r: '300', p: '300', gap: '200' },
       children: [
         {
           type: 'Row',
@@ -3621,7 +3638,7 @@ export const pendingUtterance: SchemaNode = {
                 condition: { $: 'modules.transcribe.pending' },
                 then: {
                   type: 'we-button',
-                  props: { variant: 'ghost', size: 'xs', onClick: { $action: 'modules.transcribe.flushNow' } },
+                  props: { variant: 'ghost', size: 'xs', onClick: { $invoke: 'modules.transcribe.flushNow' } },
                   children: ['Save now'],
                 },
               },
@@ -3700,7 +3717,7 @@ const sendMessage = [
     $if: {
       condition: { $: TRANSCRIPT_REPLY },
       then: {
-        $action: 'modules.transcribe.reply',
+        $invoke: 'modules.transcribe.reply',
         args: [
           { $: 'modules.transcribe.replyingTo.id' },
           { $: 'event.text' },
@@ -3710,7 +3727,7 @@ const sendMessage = [
         onFinally: [{ $setLocal: 'sending', value: false }],
       },
       else: {
-        $action: 'modules.transcribe.addMessage',
+        $invoke: 'modules.transcribe.addMessage',
         args: [{ $: TRANSCRIPT_TARGET_EXPR }, { $: 'event.text' }, { $: 'event.marks' }],
         onFinally: [{ $setLocal: 'sending', value: false }],
       },
@@ -3779,7 +3796,7 @@ export const transcriptComposer: SchemaNode = {
             },
             {
               type: 'we-button',
-              props: { size: 'xs', variant: 'ghost', onClick: { $action: 'modules.transcribe.cancelReply' } },
+              props: { size: 'xs', variant: 'ghost', onClick: { $invoke: 'modules.transcribe.cancelReply' } },
               children: ['Cancel'],
             },
           ],
@@ -3827,10 +3844,10 @@ export const transcriptFeed: SchemaNode = timeline({
   */
   fromStart: TRANSCRIPT_FROM_START,
   orientation: TIMELINE_ORIENTATION,
-  onLoadOlder: { $action: 'modules.transcribe.showMoreTranscript' },
-  onLoadNewer: { $action: 'modules.transcribe.showMoreTranscript' },
-  onJumpNewest: { $action: 'modules.transcribe.readTranscriptLive' },
-  onJumpOldest: { $action: 'modules.transcribe.readTranscriptFromStart' },
+  onLoadOlder: { $invoke: 'modules.transcribe.showMoreTranscript' },
+  onLoadNewer: { $invoke: 'modules.transcribe.showMoreTranscript' },
+  onJumpNewest: { $invoke: 'modules.transcribe.readTranscriptLive' },
+  onJumpOldest: { $invoke: 'modules.transcribe.readTranscriptFromStart' },
   children: [
     {
       type: 'Column',
@@ -4421,7 +4438,7 @@ export const panel: SchemaNode = panelShell({
                   size: 'sm',
                   square: true,
                   label: 'Export the transcript',
-                  onClick: { $action: 'spaceStore.exportCallTranscript', args: [SUBJECT] },
+                  onClick: { $invoke: 'spaceStore.exportCallTranscript', args: [SUBJECT] },
                 },
                 children: [{ type: 'we-icon', props: { name: 'download' } }],
               },
@@ -4507,11 +4524,14 @@ export const panel: SchemaNode = panelShell({
                             the way out of the thing nobody switched on.
                           */
                       variant: {
-                        $: "modules.transcribe.listening ? 'danger' : modules.transcribe.enabled ? 'secondary' : 'ghost'",
+                        $: "modules.transcribe.listening ? 'solid' : modules.transcribe.enabled ? 'soft' : 'ghost'",
+                      },
+                      tone: {
+                        $: "modules.transcribe.listening ? 'danger' : modules.transcribe.enabled ? '' : ''",
                       },
                       size: 'sm',
                       gap: '200',
-                      onClick: { $action: 'modules.transcribe.toggle' },
+                      onClick: { $invoke: 'modules.transcribe.toggle' },
                     },
                     /*
                           A glyph and a word, the shape the Continue button beside it already has.

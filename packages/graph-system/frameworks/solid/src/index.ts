@@ -6,6 +6,7 @@
  */
 export { GraphView, pathFrom } from './GraphView.solid';
 export type {
+  GraphBackdrop,
   GraphDecoration,
   GraphHostBindings,
   GraphRegion,

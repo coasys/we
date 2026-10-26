@@ -105,10 +105,10 @@ export function LocationInput(props: LocationInputProps) {
                 </we-form-field>
               </Row>
               <Row ax="end" gap="200">
-                <we-button variant="secondary" onClick={closeModal}>
+                <we-button variant="soft" onClick={closeModal}>
                   Cancel
                 </we-button>
-                <we-button variant="primary" onClick={handleSubmit} disabled={!name().trim()}>
+                <we-button variant="solid" onClick={handleSubmit} disabled={!name().trim()}>
                   Save
                 </we-button>
               </Row>

@@ -88,7 +88,7 @@ function controlRow(control: string, spec: ControlSpec, setter = 'recordStore.se
               // One action for every control, taking the field's name — the only shape that works
               // when the fields are data and no handler can be written per field.
               [spec.event]: {
-                $action: setter,
+                $invoke: setter,
                 args: [{ $: 'field.name' }, { $: 'event.detail' }],
               },
               ...spec.props,
@@ -112,7 +112,7 @@ function placeInput(property: string, label: string): SchemaNode {
           size: 'sm',
           value: { $: `first(field.entries).fields.${property} ?? ''` },
           onInput: {
-            $action: 'recordStore.setRelationEntryField',
+            $invoke: 'recordStore.setRelationEntryField',
             args: [{ $: 'field.name' }, { $: 'first(field.entries).key' }, property, { $: 'event.detail' }],
           },
         },
@@ -137,7 +137,7 @@ const locationEditor: SchemaNode = {
         latitude: { $: 'field.many ? null : first(field.entries).fields.latitude' },
         longitude: { $: 'field.many ? null : first(field.entries).fields.longitude' },
         placeholder: { $: '`Pin ${lower(field.label)} on the map…`' },
-        onChange: { $action: 'recordStore.setRelationLocation', args: [{ $: 'field.name' }, { $: 'arg.detail' }] },
+        onChange: { $invoke: 'recordStore.setRelationLocation', args: [{ $: 'field.name' }, { $: 'arg.detail' }] },
       },
     },
     {
@@ -191,12 +191,12 @@ const imageEditor: SchemaNode = {
                     {
                       type: 'we-button',
                       props: {
-                        variant: 'secondary',
+                        variant: 'soft',
                         size: 'xs',
                         square: true,
                         label: { $: '`Remove ${entry.label}`' },
                         onClick: {
-                          $action: 'recordStore.removeRelationEntry',
+                          $invoke: 'recordStore.removeRelationEntry',
                           args: [{ $: 'field.name' }, { $: 'entry.key' }],
                         },
                       },
@@ -217,7 +217,7 @@ const imageEditor: SchemaNode = {
             r: 'surface',
             placeholderIcon: 'image',
             uploadLabel: { $: '`Add ${lower(field.targetLabel)}`' },
-            onImageChange: { $action: 'recordStore.addRelationImage', args: [{ $: 'field.name' }, { $: 'event' }] },
+            onImageChange: { $invoke: 'recordStore.addRelationImage', args: [{ $: 'field.name' }, { $: 'event' }] },
           },
         },
       ],
@@ -234,9 +234,9 @@ const imageEditor: SchemaNode = {
         placeholderIcon: 'image',
         uploadLabel: { $: '`Add ${lower(field.targetLabel)}`' },
         editLabel: { $: '`Change ${lower(field.targetLabel)}`' },
-        onImageChange: { $action: 'recordStore.addRelationImage', args: [{ $: 'field.name' }, { $: 'event' }] },
+        onImageChange: { $invoke: 'recordStore.addRelationImage', args: [{ $: 'field.name' }, { $: 'event' }] },
         onImageRemove: {
-          $action: 'recordStore.removeRelationEntry',
+          $invoke: 'recordStore.removeRelationEntry',
           args: [{ $: 'field.name' }, { $: 'first(field.entries).key' }],
         },
       },
@@ -295,7 +295,7 @@ const genericRelationEditor: SchemaNode = {
                         square: true,
                         label: { $: '`Remove ${entry.label}`' },
                         onClick: {
-                          $action: 'recordStore.removeRelationEntry',
+                          $invoke: 'recordStore.removeRelationEntry',
                           args: [{ $: 'field.name' }, { $: 'entry.key' }],
                         },
                       },
@@ -338,7 +338,7 @@ const genericRelationEditor: SchemaNode = {
                         },
                         value: '',
                         onChange: {
-                          $action: 'recordStore.pickRelation',
+                          $invoke: 'recordStore.pickRelation',
                           args: [{ $: 'field.name' }, { $: 'event.detail' }],
                         },
                       },
@@ -354,9 +354,9 @@ const genericRelationEditor: SchemaNode = {
                 then: {
                   type: 'we-button',
                   props: {
-                    variant: 'secondary',
+                    variant: 'soft',
                     size: 'sm',
-                    onClick: { $action: 'recordStore.openRelationForm', args: [{ $: 'field.name' }] },
+                    onClick: { $invoke: 'recordStore.openRelationForm', args: [{ $: 'field.name' }] },
                   },
                   children: [{ type: 'we-icon', props: { name: 'plus' } }, { $: '`Add ${lower(field.targetLabel)}`' }],
                 },
@@ -413,7 +413,7 @@ const relationFormModal: SchemaNode = {
     condition: { $: 'recordStore.relationDraft' },
     then: {
       type: 'we-modal',
-      props: { size: 'sm', close: { $action: 'recordStore.cancelRelationForm' } },
+      props: { size: 'sm', close: { $invoke: 'recordStore.cancelRelationForm' } },
       children: [
         {
           type: 'Row',
@@ -455,12 +455,12 @@ const relationFormModal: SchemaNode = {
           children: [
             {
               type: 'we-button',
-              props: { variant: 'secondary', onClick: { $action: 'recordStore.cancelRelationForm' } },
+              props: { variant: 'soft', onClick: { $invoke: 'recordStore.cancelRelationForm' } },
               children: ['Cancel'],
             },
             {
               type: 'we-button',
-              props: { variant: 'primary', onClick: { $action: 'recordStore.saveRelationForm' } },
+              props: { variant: 'solid', onClick: { $invoke: 'recordStore.saveRelationForm' } },
               children: ['Add'],
             },
           ],
@@ -529,7 +529,7 @@ const placePicker: SchemaNode = {
               $: "find(recordStore.recordDraft.fields, { name: 'longitude' }).value == '' ? null : find(recordStore.recordDraft.fields, { name: 'longitude' }).value",
             },
             placeholder: 'Pin it on the map…',
-            onChange: { $action: 'recordStore.setRecordPlace', args: [{ $: 'arg.detail' }] },
+            onChange: { $invoke: 'recordStore.setRecordPlace', args: [{ $: 'arg.detail' }] },
           },
         },
       ],
@@ -539,7 +539,7 @@ const placePicker: SchemaNode = {
 
 export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
   const save: SchemaProp = {
-    $action: 'recordStore.saveRecord',
+    $invoke: 'recordStore.saveRecord',
     ...(opts.onCreated?.length ? { onSuccess: opts.onCreated } : {}),
   };
 
@@ -551,7 +551,7 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
   */
   const guard = discardGuard({
     dirty: { $: 'recordStore.recordDraftDirty' },
-    close: { $action: 'recordStore.cancelRecordForm' },
+    close: { $invoke: 'recordStore.cancelRecordForm' },
     ...(opts.back && { back: opts.back }),
     title: 'Discard this entry?',
     body: 'What you have filled in will be lost. Nothing has been saved to the space yet.',
@@ -703,7 +703,7 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
                           // and silently did nothing. The chosen kind is held beside the draft.
                           value: { $: 'recordStore.relationshipKind' },
                           onChange: {
-                            $action: 'recordStore.setRelationshipKind',
+                            $invoke: 'recordStore.setRelationshipKind',
                             args: [{ $: 'event.detail' }],
                           },
                         },
@@ -725,7 +725,7 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
                                   square: true,
                                   label: 'Leave the kind unnamed',
                                   flexShrink: '0',
-                                  onClick: { $action: 'recordStore.setRelationshipKind', args: [''] },
+                                  onClick: { $invoke: 'recordStore.setRelationshipKind', args: [''] },
                                 },
                                 children: [{ type: 'we-icon', props: { name: 'x' } }],
                               },
@@ -766,7 +766,7 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
                             width: '100%',
                             options: { $: "recordStore.creatableEntities.filter(k, k.via == 'form')" },
                             value: { $: 'recordStore.recordDraft.entity' },
-                            onChange: { $action: 'recordStore.setRecordEntity', args: [{ $: 'event.detail' }] },
+                            onChange: { $invoke: 'recordStore.setRecordEntity', args: [{ $: 'event.detail' }] },
                           },
                         },
                       ],
@@ -836,13 +836,13 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
               {
                 type: 'we-button',
                 // Guarded like the backdrop — one way out of the modal.
-                props: { variant: 'secondary', onClick: guard.close },
+                props: { variant: 'soft', onClick: guard.close },
                 children: ['Cancel'],
               },
               {
                 type: 'we-button',
                 props: {
-                  variant: 'primary',
+                  variant: 'solid',
                   // Disabled only while the write is in flight. Never on "the form is not valid
                   // yet" — that would make the button unclickable in exactly the state where
                   // clicking it is what reveals which field is missing.

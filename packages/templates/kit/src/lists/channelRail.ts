@@ -76,16 +76,16 @@ function channelRow(opts: ChannelRailOptions, as: string): SchemaNode {
   return {
     type: 'we-button',
     props: {
-      variant: { $: `routeStore.segments[${opts.activeSegment ?? 1}] == ${as}.id ? 'secondary' : 'ghost'` },
+      variant: { $: `routeStore.segments[${opts.activeSegment ?? 1}] == ${as}.id ? 'soft' : 'ghost'` },
       size: 'sm',
       width: '100%',
       ax: 'between',
       onClick: [
-        { $action: 'routeStore.navigate', args: [expr`${opts.hrefPrefix} + ${ref(as, 'id')}`] },
+        { $invoke: 'routeStore.navigate', args: [expr`${opts.hrefPrefix} + ${ref(as, 'id')}`] },
         // Opening a channel is what marks it read. Deliberately on the navigation rather than on
         // the feed's mount: a feed that marks on mount also marks on every re-render the router
         // does, and re-reading a channel you are already in would clear a dot you had not seen.
-        { $action: 'spaceStore.markRead', args: [{ $: `${as}.id` }] },
+        { $invoke: 'spaceStore.markRead', args: [{ $: `${as}.id` }] },
       ],
     },
     children: [

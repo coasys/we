@@ -1,6 +1,8 @@
 import type { OperatorToken, SchemaNode, SchemaProp } from '@we/schema-shared';
 import { field } from '@we/template-kit';
 
+import { brandMark } from './brandMark';
+
 /**
  * A scale step, rotated off the primary hue.
  *
@@ -21,7 +23,7 @@ import { field } from '@we/template-kit';
  * still looks like the theme.
  */
 const sweep = (step: '100' | '200', hueOffset: string) =>
-  `oklch(from var(--we-color-primary-${step}) l c calc(h ${hueOffset}))`;
+  `oklch(from var(--we-color-accent-${step}) l c calc(h ${hueOffset}))`;
 
 /**
  * The boot screen: the four states a session can be in before the app is usable.
@@ -55,7 +57,7 @@ const sweep = (step: '100' | '200', hueOffset: string) =>
 /**
  * The boot background: the logo's own hue sweep, centred and made pale.
  *
- * The same `primary-hue ± 25` sweep as `--we-gradient-primary` (the mark, the gradient buttons),
+ * The same `primary-hue ± 25` sweep as `--we-gradient-accent` (the mark, the gradient buttons),
  * turned radial — so the screen and the logo are lit by one idea rather than two.
  *
  * Lightness is what differs, and must: at 500 the sweep is a saturated mid-tone, right for a 38px
@@ -121,7 +123,7 @@ function accountBadge(account: string): SchemaNode {
           image: { $: `${account}.avatar` },
           initials: { $: `${account}.name` },
           size: '120px',
-          bg: 'accent-muted',
+          bg: 'accent-soft',
         },
       },
       {
@@ -140,7 +142,7 @@ const accountError: SchemaNode = {
     condition: { $: 'accountStore.error' },
     then: {
       type: 'we-alert',
-      props: { variant: 'danger', maxWidth: '320px' },
+      props: { tone: 'danger', maxWidth: '320px' },
       children: [{ $: 'accountStore.error' }],
     },
   },
@@ -169,12 +171,7 @@ const logoCorner: SchemaNode = {
     then: {
       type: 'Column',
       props: { position: 'absolute', top: '0', left: '0', width: '80px', height: '80px', ax: 'center', ay: 'center' },
-      children: [
-        {
-          type: 'we-image',
-          props: { src: '/we-text.svg', alt: 'WE', width: '38px', height: '38px', gradient: 'primary' },
-        },
-      ],
+      children: [brandMark({ width: '38px', height: '38px', gradient: 'accent' })],
     },
   },
 };
@@ -190,10 +187,7 @@ const firstRunSplash: SchemaNode = {
   type: 'Column',
   props: { gap: '600', ax: 'center' },
   children: [
-    {
-      type: 'we-image',
-      props: { src: '/we-text.svg', alt: 'WE', width: '150px', height: '75px', gradient: 'primary' },
-    },
+    brandMark({ width: '150px', height: '75px', gradient: 'accent', wordmark: true }),
     {
       type: 'Row',
       props: { gap: '300', ay: 'center', height: '40px' },
@@ -265,10 +259,10 @@ function accountSwitcher(): SchemaNode {
                 image: { $: 'account.avatar' },
                 initials: { $: 'account.name' },
                 size: 'lg',
-                bg: 'accent-muted',
+                bg: 'accent-soft',
               },
             },
-            { $action: 'accountStore.switchAccount', args: [{ $: 'account.id' }] },
+            { $invoke: 'accountStore.switchAccount', args: [{ $: 'account.id' }] },
           ),
         ],
       },
@@ -284,11 +278,11 @@ function accountSwitcher(): SchemaNode {
           // corner.
           then: tile(
             'New account',
-            // `surface` rather than the `accent-muted` its siblings wear: this is the secondary
+            // `surface` rather than the `accent-soft` its siblings wear: this is the secondary
             // action and should be quieter. Not `surface-sunken`, which is what the boot screen's
             // own ground is painted — the disc was the same colour as the thing behind it.
             { type: 'we-avatar', props: { icon: 'plus', size: 'lg', bg: 'surface' } },
-            { $action: 'accountStore.createAccount' },
+            { $invoke: 'accountStore.createAccount' },
           ),
         },
       },
@@ -480,22 +474,22 @@ const unlockForm: SchemaNode = {
                 // Editing the password retracts the verdict on it. "Incorrect password" is about
                 // the string that was submitted, so it has nothing to say about the one being
                 // typed to replace it — left up, it reads as a running judgement of the new one.
-                onEdit: { $action: 'sessionStore.clearPasswordError' },
+                onEdit: { $invoke: 'sessionStore.clearPasswordError' },
                 // Enter only fires with something typed, so an empty field cannot reach the
                 // executor and come back as "Incorrect password" for a password never entered.
-                onSubmit: { $action: 'sessionStore.unlock' },
+                onSubmit: { $invoke: 'sessionStore.unlock' },
               },
             },
             {
               type: 'we-button',
               props: {
-                variant: 'primary',
+                variant: 'solid',
                 // Gated on the value, not on a validation rule. There is nothing to submit until
                 // something is typed, which is a precondition rather than a judgement — and the
                 // OS sign-in screens this follows all hold the button until there is.
                 disabled: { $: '!sessionStore.credentialEntered' },
                 loading: { $: 'sessionStore.loginLoading' },
-                onClick: { $action: 'sessionStore.unlock' },
+                onClick: { $invoke: 'sessionStore.unlock' },
               },
               children: ['Login'],
             },
@@ -583,7 +577,9 @@ const bootFailure: SchemaNode = {
         {
           type: 'we-text',
           props: { color: 'text-muted', textAlign: 'center' },
-          children: ['WE could not connect to the data layer that holds your account.'],
+          children: [
+            { $: '`${templateStore.brand.name} could not connect to the data layer that holds your account.`' },
+          ],
         },
         {
           type: '$if',
@@ -598,7 +594,7 @@ const bootFailure: SchemaNode = {
         },
         {
           type: 'we-button',
-          props: { text: 'Try again', variant: 'primary', onClick: { $action: 'sessionStore.retryBoot' } },
+          props: { text: 'Try again', variant: 'solid', onClick: { $invoke: 'sessionStore.retryBoot' } },
         },
       ],
     },
@@ -779,7 +775,7 @@ export const bootScreen: SchemaNode = {
                                 r: 'avatar',
                                 alignSelf: 'center',
                                 // mb: '100',
-                                onImageChange: { $action: 'profileStore.setPendingAvatar', args: [{ $: 'arg' }] },
+                                onImageChange: { $invoke: 'profileStore.setPendingAvatar', args: [{ $: 'arg' }] },
                               },
                             },
                             // The profile's name, not a separate local label. One DID, one
@@ -806,12 +802,12 @@ export const bootScreen: SchemaNode = {
                             onClick: [
                               { $touch: '$all' },
                               // The password field's errors, which `$touch` cannot reach.
-                              { $action: 'sessionStore.touchCredential' },
+                              { $invoke: 'sessionStore.touchCredential' },
                               {
                                 $if: {
                                   condition: { $: 'formValid() && sessionStore.credentialConfirmed' },
                                   then: {
-                                    $action: 'profileStore.completeAccountSetup',
+                                    $invoke: 'profileStore.completeAccountSetup',
                                     args: [{ $: 'local.name' }],
                                   },
                                 },

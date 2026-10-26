@@ -54,7 +54,7 @@ export const aboutView: TemplateSchema = {
                 variant: 'ghost',
                 size: 'sm',
                 square: true,
-                onClick: { $action: 'shellStore.openSpaceSettings', args: ['about'] },
+                onClick: { $invoke: 'shellStore.openSpaceSettings', args: ['about'] },
               },
               children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
             },

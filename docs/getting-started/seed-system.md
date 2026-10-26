@@ -19,6 +19,36 @@ pnpm validate:seed        # validates ./we-seed.json against the schema
 
 Run it after any seed edit; `setup-workspace` also depends on a valid seed.
 
+## Building another deployment
+
+`we-seed.json` is WE's own seed and the default. Other deployments keep theirs
+under `seeds/<name>.seed.json` and choose one with `WE_SEED`, which every
+script, generator and app build reads through `scripts/seed.cjs`:
+
+```bash
+WE_SEED=seeds/coasys.seed.json pnpm validate:seed
+WE_SEED=seeds/coasys.seed.json pnpm build
+```
+
+`seeds/coasys.seed.json` is the worked example: it builds in the Coasys cartridge
+(`bundles: ["coasys"]`), so the app opens as Coasys, with its own product name, app
+id and icon (`desktop`) and its own data folder (`ad4m.dataPath`).
+
+Paths inside any seed (`ad4m.executorPath`, `desktop.icon`, …) are relative to
+the repository root, wherever the seed file sits.
+
+`desktop.icon` is an SVG of the whole desktop icon, drawn edge to edge: a tile,
+its rounded corners and its margin included, as WE's own icon is. `@we/brand`
+renders it into every size the desktop apps ship; run
+`WE_SEED=… pnpm --filter @we/brand generate-icons` after changing it.
+
+The registries generated from a seed (`*.generated.ts` in the shell) and the
+desktop icons are checked in for WE's own seed. For another seed they are
+written under a `.seed-build/<name>/` directory beside the package that makes
+them, ignored by git, and the apps' Vite plugin (`scripts/seed-vite.mjs`) and
+the shell's tsup build read them from there. Building a second deployment never
+changes a tracked file, and nothing from it can be committed as WE's.
+
 ## The sections
 
 ### `project` (required)
@@ -153,6 +183,9 @@ record types are not built in — they belong to spaces, and whoever runs a spac
 in Settings. The format and the rest are in `docs/architecture/apps-as-data.md`;
 `pnpm validate:seed` checks each id names a bundle file of this format.
 
+A space starter may name a bundle's space template as its `defaultTemplateId`, by the id an install
+gives it: `<bundle>--<template>`, so `coasys--space` for the Coasys bundle's.
+
 ```json
 "bundles": ["field-guide"]
 ```
@@ -175,8 +208,11 @@ A starter has four parts:
     and a forgotten `in` on a post or a channel shows up there.
   - **A field value that is exactly `"$name"`** refers to an earlier record, `$root` or `$space`.
     A list of them is a to-many relation.
-- **`roles`:** how templates find what the starter made, e.g. `"canvas": "$canvas"`.
+- **`landmarks`:** how templates find what the starter made, e.g. `"canvas": "$canvas"`.
 - **`input`:** whether messages typed straight into the space are extracted.
+- **`policy`:** the rules a new space starts from, `"community"` or `"open"`. Without it, nothing is
+  written and the space is open. See
+  [the policy doc](../architecture/space-policy.md).
 
 Two further rules:
 
@@ -199,7 +235,7 @@ the host's own field, `CredentialField`, which keeps what is typed out of
 template state, so a screen cannot keep or forward a password:
 
 ```json
-{ "type": "CredentialField", "props": { "purpose": "unlock", "onSubmit": { "$action": "sessionStore.unlock" } } }
+{ "type": "CredentialField", "props": { "purpose": "unlock", "onSubmit": { "$invoke": "sessionStore.unlock" } } }
 ```
 
 Gate the Sign in button on `sessionStore.credentialEntered` and call
@@ -260,6 +296,25 @@ and a marketplace icon appears in the sidebar. Both are optional: leave one out
 and everything that reaches it goes with it — the discovery entry in the spaces
 list, the "listed" switch when creating a space, the marketplace icon and the
 "Browse the marketplace" buttons in space settings.
+
+### `desktop`
+
+What a desktop build is called and installed as. Fixed at build time, so it
+belongs to the seed rather than to a cartridge, which can rename the window from
+inside but not the binary somebody installed.
+
+- `productName` — the name a person reads: window title, menu, installer, the
+  `.desktop` `Name=`. Defaults to `WE`. The executable is its lower-case form.
+- `appId` — the reverse-domain identifier the OS installs by, without the
+  runtime: `io.coasys.app` builds `io.coasys.app.electron` and
+  `io.coasys.app.tauri`, so the two hosts install side by side. Defaults to
+  `io.weco.we`.
+- `icon` — an SVG, relative to the repository root, drawn as it is with a margin
+  (`@we/brand` makes every size). Defaults to WE's mark on its themed tile.
+
+Give a second deployment its own `ad4m.dataPath` as well: two builds bundle their
+own executors, and two executors at different versions must not write one
+database. `validate:seed` warns when a seed names a product but not a data path.
 
 ### `electron`
 

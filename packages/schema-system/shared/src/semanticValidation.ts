@@ -1,15 +1,37 @@
 import { BASE_CLASS_LAYERS, CSS_PROP_TO_VAR_SUFFIX, getKeysForLayers, layerKeyMap, tierKeys } from '@we/design-utils';
-import { role, semanticValues, space } from '@we/tokens';
+import { role, semanticValues, space, TONES } from '@we/tokens';
 
 import type { ContextData, StateMemberMeta } from './contextTypes';
 import { expandDefinitions } from './definitions';
 import { checkExpression, ExpressionSyntaxError, isCallTime, isExpressionToken, parseExpression } from './expressions';
 import type { Expr } from './expressions/ast';
 import { HOST_PART_IDS, isHostPartId } from './hostPartIds';
+import { parseRecordViewKey } from './recordViews';
 import { isTemplateElement } from './templateElements';
 import type { SchemaNode } from './types';
 import type { ValidationError, ValidationResult } from './validators';
 import { validateStructure } from './validators';
+
+/**
+ * What to say when a colour turns up where a style belongs.
+ *
+ * `variant` held both once — `primary`, `danger` and `success` beside `ghost` and `outline` — and
+ * the colour moved to `tone`, a prop every element takes. Somebody writing from memory, or a model
+ * trained on the old spelling, writes `variant: 'danger'`; the bare "allowed values" list would
+ * tell them `danger` is wrong without saying where it went.
+ */
+function retiredVariantHint(propName: string, value: string): string {
+  if (propName !== 'variant') return '';
+  if (value === 'primary') return ` — the main action is variant 'solid'; its colour is the accent`;
+  if (value === 'secondary') return ` — the quiet filled style is variant 'soft'`;
+  if (value === 'default') return ` — leave variant out, and give tone: 'danger' for a destructive item`;
+  if ((TONES as readonly string[]).includes(value)) return ` — a colour is tone: '${value}', not a variant`;
+  if (value === 'accent') return ` — the edge style is variant 'edge'`;
+  return '';
+}
+
+/** The handler token's spelling before `$invoke`, which the validator names when it meets one. */
+const RETIRED_INVOKE = '$action'; // invoke-codemod: keep
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -44,6 +66,12 @@ export type ValidationContext = {
    * Only what the context knows: an action it has no classification for is never warned about.
    */
   gatedActions?: Set<string>;
+  /**
+   * Action paths whose first parameter is required, from their documented signatures. Called with no
+   * `args` they are called with nothing, which is wrong whatever event the handler sits on. Only what
+   * the context knows: an action with no signature written is never warned about.
+   */
+  argsNeeded?: Set<string>;
   /**
    * Action paths the host confirms itself before a space template's call runs — see
    * {@link checkSelfConfirmed}. Absent when judging host chrome, which renders against a bag with no
@@ -393,6 +421,11 @@ export function buildValidationContext(data: ContextData): ValidationContext {
     }
   }
 
+  // What cannot be called with nothing — see `StoreEntry.needsArgs`.
+  const argsNeeded = new Set<string>();
+  for (const store of data.storeEntries)
+    for (const action of store.needsArgs ?? []) argsNeeded.add(`${store.name}.${action}`);
+
   // What the host asks about itself, in front of a space template's call.
   const hostConfirmed = new Set<string>();
   for (const store of data.storeEntries)
@@ -411,6 +444,7 @@ export function buildValidationContext(data: ContextData): ValidationContext {
 
   return {
     gatedActions,
+    argsNeeded,
     hostConfirmed,
     pluginPlacements,
     componentNames,
@@ -630,6 +664,14 @@ function walkNode(
         path: `${path}.type`,
         message:
           '{ type: "$panels" } cannot be inside a panel\'s node: lanes hold sections, sections do not hold lanes',
+        severity: 'error',
+      });
+    }
+    const resize = (n.props as { resize?: unknown } | undefined)?.resize;
+    if (resize !== undefined && resize !== 'start' && resize !== 'end') {
+      errors.push({
+        path: `${path}.props.resize`,
+        message: `"resize" names the edge a reader drags: "end" for a column on the left, "start" for one on the right — got ${JSON.stringify(resize)}`,
         severity: 'error',
       });
     }
@@ -1070,7 +1112,7 @@ const BORDER_PROPS = new Set(['border', 'borderTop', 'borderRight', 'borderBotto
 
 /** Flag a role named in camelCase, wherever a colour can appear — including behind `$if`. */
 function checkColourValue(propName: string, value: unknown, path: string, errors: ValidationError[]): void {
-  // A colour computed by an expression is one of its string literals — `open ? 'accentMuted' : 'surface'`.
+  // A colour computed by an expression is one of its string literals — `open ? 'accentSoft' : 'surface'`.
   if (isExpressionToken(value)) {
     for (const literal of value.$.matchAll(/'([^'\\]*)'|"([^"\\]*)"/g)) {
       checkColourValue(propName, literal[1] ?? literal[2], path, errors);
@@ -1241,13 +1283,13 @@ const UNASKED_EVENTS = new Set([
   'onPointerAt',
 ]);
 
-/** Every `$action` path anywhere inside a handler value, lifecycle callbacks included. */
+/** Every `$invoke` path anywhere inside a handler value, lifecycle callbacks included. */
 function actionPathsIn(value: unknown, into: string[] = []): string[] {
   if (Array.isArray(value)) {
     for (const item of value) actionPathsIn(item, into);
   } else if (value && typeof value === 'object') {
     const token = value as Record<string, unknown>;
-    if (typeof token.$action === 'string') into.push(token.$action);
+    if (typeof token.$invoke === 'string') into.push(token.$invoke);
     for (const nested of Object.values(token)) actionPathsIn(nested, into);
   }
   return into;
@@ -1505,7 +1547,8 @@ function checkProps(
           primitives, so `mdUpProps` is what they are called. A warning that only says the prop is
           unknown leaves the author to find that out from the docs.
         */
-        const suggestion = suggest(propName, [...knownProps, ...ctx.universalProps]);
+        const suggestion =
+          propName === 'appearance' ? 'variant' : suggest(propName, [...knownProps, ...ctx.universalProps]);
         errors.push({
           path: propPath,
           message: `Unknown prop "${propName}" on "${componentType}"${suggestion ? ` — did you mean "${suggestion}"?` : ''}`,
@@ -1539,6 +1582,18 @@ function checkProps(
       }
     }
 
+    // `tone` is a DS prop every element takes, so no component's own enum lists it.
+    if (propName === 'tone' && typeof propValue === 'string' && !(TONES as readonly string[]).includes(propValue)) {
+      const suggestion =
+        propValue === 'primary' ? 'accent' : propValue === 'error' ? 'danger' : suggest(propValue, [...TONES]);
+      errors.push({
+        path: propPath,
+        message: `Unknown tone "${propValue}" on "${componentType}"${suggestion ? ` — did you mean "${suggestion}"?` : ''}. Tones: ${TONES.join(', ')}`,
+        severity: 'warning',
+      });
+      continue;
+    }
+
     // Check allowed values for string enums
     if (typeof propValue === 'string') {
       const allowedMap = ctx.componentPropAllowedValues.get(componentType);
@@ -1550,7 +1605,7 @@ function checkProps(
         if (!acceptsCssLength) {
           errors.push({
             path: propPath,
-            message: `Invalid value "${propValue}" for prop "${propName}" on "${componentType}". Allowed: ${allowed.map((v) => `'${v}'`).join(' | ')}`,
+            message: `Invalid value "${propValue}" for prop "${propName}" on "${componentType}". Allowed: ${allowed.map((v) => `'${v}'`).join(' | ')}${retiredVariantHint(propName, propValue)}`,
             severity: 'warning',
           });
         }
@@ -1576,12 +1631,12 @@ function checkProps(
  *
  * `$if` is two things with the same spelling. As a *node* (`{ type: '$if', props: { … } }`) it is
  * the conditional that renders one branch or the other; as a *token* it is the handler conditional,
- * legal inside `onClick` and the `$action` lifecycle arrays. What it is not is a value — and the
+ * legal inside `onClick` and the `$invoke` lifecycle arrays. What it is not is a value — and the
  * dispatcher does not know that: it routes every `{ $if: … }` to `resolveIfHandler`, which
  * unconditionally returns a handler. So
  *
  * ```json
- * { "bg": { "$if": { "condition": …, "then": "primary-50", "else": "neutral-0" } } }
+ * { "bg": { "$if": { "condition": …, "then": "accent-50", "else": "neutral-0" } } }
  * ```
  *
  * hands a *function* to the colour resolver. Nothing is painted, nothing warns, nothing throws —
@@ -1616,7 +1671,7 @@ function checkValuePositionIf(
     there, because delegation is unreliable across a shadow boundary and the browser's top layer.
 
     Only the first was exempt, so a `$if` guarding a custom-event handler was refused with advice to
-    use a ternary, which cannot hold a handler and would not have worked. `$action` in the same
+    use a ternary, which cannot hold a handler and would not have worked. `$invoke` in the same
     position was always accepted, so the rule was not even self-consistent — it was rejecting the
     conditional form of something it already allowed.
   */
@@ -1658,10 +1713,36 @@ function checkTokenValue(
     return;
   }
 
-  // $action token
-  if ('$action' in obj && typeof obj.$action === 'string') {
-    checkActionRef(obj.$action, `${path}.$action`, ctx, errors);
-    if (Array.isArray(obj.args)) checkActionArgs(obj.args, `${path}.args`, errors);
+  /*
+    The token's old spelling. It is no longer a handler, so the prop holds a plain object and the
+    button does nothing — refused here rather than left to fail quietly.
+  */
+  if (RETIRED_INVOKE in obj) {
+    errors.push({
+      path: `${path}.${RETIRED_INVOKE}`,
+      message: `${RETIRED_INVOKE} is now $invoke: rename the key and leave the rest as it is. \`pnpm codemod:invoke\` rewrites a whole branch`,
+      severity: 'error',
+    });
+  }
+
+  // $invoke token
+  if ('$invoke' in obj && typeof obj.$invoke === 'string') {
+    checkInvokeRef(obj.$invoke, `${path}.$invoke`, ctx, errors);
+    if (Array.isArray(obj.args)) checkInvokeArgs(obj.args, `${path}.args`, errors);
+    /*
+      A call with nothing, to a method that needs something. The method is passed only the `args`
+      written — never what the element emitted — so this is wrong on any event: a click no longer
+      arrives as the id, and nothing else does either.
+    */
+    if (!(Array.isArray(obj.args) && obj.args.length) && ctx.argsNeeded?.has(obj.$invoke)) {
+      errors.push({
+        path: `${path}.$invoke`,
+        message:
+          `${obj.$invoke} takes arguments, and an $invoke with no "args" calls it with none. Write what it ` +
+          'needs — what the element emitted is { "$": "event" }, or a field of it such as { "$": "event.detail" }',
+        severity: 'warning',
+      });
+    }
   }
 
   // $query token — the entity is checked against the manifest's known models.
@@ -1840,7 +1921,7 @@ function checkNestedTokens(
  * store is handed a plausible argument — so this is only findable by noticing a control that does
  * not work.
  */
-function checkActionArgs(args: unknown[], path: string, errors: ValidationError[]): void {
+function checkInvokeArgs(args: unknown[], path: string, errors: ValidationError[]): void {
   const walk = (value: unknown, at: string, insideOperator: boolean): void => {
     if (isExpressionToken(value)) {
       if (!insideOperator) return;
@@ -1875,7 +1956,7 @@ function checkActionArgs(args: unknown[], path: string, errors: ValidationError[
   args.forEach((arg, i) => walk(arg, `${path}[${i}]`, false));
 }
 
-function checkActionRef(ref: string, path: string, ctx: ValidationContext, errors: ValidationError[]): void {
+function checkInvokeRef(ref: string, path: string, ctx: ValidationContext, errors: ValidationError[]): void {
   const dotIdx = ref.indexOf('.');
   if (dotIdx === -1) return; // malformed, structural validation handles this
 
@@ -1886,7 +1967,7 @@ function checkActionRef(ref: string, path: string, ctx: ValidationContext, error
     const known = [...ctx.storeNames].join(', ');
     errors.push({
       path,
-      message: `Unknown store "${storeName}" in $action "${ref}". Known stores: ${known}`,
+      message: `Unknown store "${storeName}" in $invoke "${ref}". Known stores: ${known}`,
       severity: 'error',
     });
     return;
@@ -1901,7 +1982,7 @@ function checkActionRef(ref: string, path: string, ctx: ValidationContext, error
     if (known === undefined) {
       errors.push({
         path,
-        message: `Unknown module "${id}" in $action "${ref}". This deployment ships: ${[...ctx.modules.members.keys()].join(', ')}`,
+        message: `Unknown module "${id}" in $invoke "${ref}". This deployment ships: ${[...ctx.modules.members.keys()].join(', ')}`,
         severity: 'error',
       });
     } else if (known !== null && (!member || !known.has(member))) {
@@ -2455,6 +2536,25 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
       if (!panel.node || typeof panel.node !== 'object') return;
       walkNode(panel.node, `meta.panels[${index}].node`, context, { ...state, insidePanel: true }, errors);
     });
+  }
+
+  /*
+    A template's own record views are its nodes, drawn on the record page with the rest of it — so
+    they are checked as nodes, and their keys as the types they claim to draw. A key the record page
+    cannot read is a view nobody will ever see, which is worth saying rather than leaving silent.
+  */
+  const recordViews = (schema as { meta?: { recordViews?: Record<string, unknown> } })?.meta?.recordViews;
+  if (recordViews && typeof recordViews === 'object') {
+    for (const [key, value] of Object.entries(recordViews)) {
+      if (!parseRecordViewKey(key)) {
+        errors.push({
+          path: `meta.recordViews.${key}`,
+          message: `"${key}" is not a type the record page can match: write an entity ("TaskBlock") or an entity and a kind ("CollectionBlock:call")`,
+          severity: 'error',
+        });
+      }
+      if (value && typeof value === 'object') walkNode(value, `meta.recordViews.${key}`, context, state, errors);
+    }
   }
 
   return {

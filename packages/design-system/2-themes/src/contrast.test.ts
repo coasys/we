@@ -11,6 +11,9 @@
  * the colour without a DOM. That is what makes this a unit test that runs on every commit instead
  * of a screenshot somebody remembers to take.
  */
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import {
   APCA_MINIMUM,
   apcaContrast,
@@ -26,11 +29,12 @@ import {
   rgbToOklch,
   simulateVision,
 } from '@we/design-utils';
-import { chromaTaper, color, FILL_LIGHTNESS, RAMP, role } from '@we/tokens';
+import { capitalise, chromaTaper, color, FILL_LIGHTNESS, PALETTE_HUES, type PaletteHue, RAMP, role } from '@we/tokens';
 import { describe, expect, it } from 'vitest';
 
 import type { ThemeOverrides, ThemeRole } from './overrides';
 import { THEME_PRESETS, type ThemeName } from './presets';
+import { themeSides, withThemeSide } from './sides';
 import {
   DERIVED_FILLS,
   deriveRoleVars,
@@ -66,9 +70,9 @@ const PAIRS: { fg: ThemeRole; bg: ThemeRole; level: ContrastLevel; what: string 
   { fg: 'onDanger', bg: 'danger', level: 'ui', what: 'a destructive button label' },
   { fg: 'onSuccess', bg: 'success', level: 'ui', what: 'a success fill label' },
   { fg: 'onWarning', bg: 'warning', level: 'ui', what: 'a warning fill label' },
-  { fg: 'dangerText', bg: 'dangerSurface', level: 'body', what: 'danger text on its tint' },
-  { fg: 'successText', bg: 'successSurface', level: 'body', what: 'success text on its tint' },
-  { fg: 'warningText', bg: 'warningSurface', level: 'body', what: 'warning text on its tint' },
+  { fg: 'dangerText', bg: 'dangerSoft', level: 'body', what: 'danger text on its tint' },
+  { fg: 'successText', bg: 'successSoft', level: 'body', what: 'success text on its tint' },
+  { fg: 'warningText', bg: 'warningSoft', level: 'body', what: 'warning text on its tint' },
   /*
     And on an ordinary card, which is where a status message usually is — an error under a form
     field, a tick in a settings row. Only the tint was asserted, and in a dark theme the card is the
@@ -78,6 +82,28 @@ const PAIRS: { fg: ThemeRole; bg: ThemeRole; level: ContrastLevel; what: string 
   { fg: 'dangerText', bg: 'surface', level: 'body', what: 'danger text on a card' },
   { fg: 'successText', bg: 'surface', level: 'body', what: 'success text on a card' },
   { fg: 'warningText', bg: 'surface', level: 'body', what: 'warning text on a card' },
+  // The palette, from the family registry: each hue's label on its fill, and its text on its tint
+  // and on a card — the same three a status family is held to.
+  ...PALETTE_HUES.flatMap((hue) => [
+    {
+      fg: `on${capitalise(hue)}` as ThemeRole,
+      bg: hue as ThemeRole,
+      level: 'ui' as const,
+      what: `a ${hue} fill label`,
+    },
+    {
+      fg: `${hue}Text` as ThemeRole,
+      bg: `${hue}Soft` as ThemeRole,
+      level: 'body' as const,
+      what: `${hue} text on its tint`,
+    },
+    {
+      fg: `${hue}Text` as ThemeRole,
+      bg: 'surface' as ThemeRole,
+      level: 'body' as const,
+      what: `${hue} text on a card`,
+    },
+  ]),
 ];
 
 /*
@@ -128,21 +154,35 @@ function lightness(step: string, theme: ThemeOverrides): number {
   return Math.min(100, Math.max(0, floor + t * (ceiling - floor)));
 }
 
+const isPalette = (family: string): family is PaletteHue => (PALETTE_HUES as readonly string[]).includes(family);
+
 function hueOf(family: string, theme: ThemeOverrides): number {
+  if (isPalette(family)) return theme.palette?.hues?.[family]?.hue ?? HUE_DEFAULTS[family];
   const key = family === 'neutral' ? 'neutralHue' : (`${family}Hue` as const);
   // Neutral follows primary unless a theme separates them — the same linkage the tokens CSS has.
   return (
     (theme[key as keyof ThemeOverrides] as number | undefined) ??
-    (family === 'neutral' ? (theme.primaryHue ?? HUE_DEFAULTS.neutral) : HUE_DEFAULTS[family])
+    (family === 'neutral' ? (theme.accentHue ?? HUE_DEFAULTS.neutral) : HUE_DEFAULTS[family])
   );
 }
 
+/** Mirrors the family saturation variables: a family's own, then the palette's, then the theme's. */
 function saturationOf(family: string, theme: ThemeOverrides): number {
-  return (family === 'neutral' ? theme.neutralSaturation : theme.saturation) ?? 50;
+  if (family === 'neutral') return theme.neutralSaturation ?? 50;
+  if (isPalette(family)) return theme.palette?.saturation ?? theme.saturation ?? 50;
+  return (theme[`${family}Saturation` as keyof ThemeOverrides] as number | undefined) ?? theme.saturation ?? 50;
+}
+
+/** A palette fill's default lightness, with the theme's palette shift applied, as the CSS computes it. */
+function withPaletteShift(value: string, theme: ThemeOverrides): string {
+  return value.replace(/calc\(([\d.]+) \+ var\(--we-color-palette-lightness, 0\)\)/, (_, base: string) =>
+    String(parseFloat(base) + (theme.palette?.lightness ?? 0)),
+  );
 }
 
 /** Resolve a role's value — a token reference, a pinned lightness, or a literal — to RGB. */
 function resolve(value: string, theme: ThemeOverrides): Rgba | null {
+  value = withPaletteShift(value, theme);
   const token = /^var\(--we-color-([a-z]+)-(\d+)\)$/.exec(value.trim());
   if (token) {
     const [, family, step] = token;
@@ -185,9 +225,11 @@ function resolve(value: string, theme: ThemeOverrides): Rgba | null {
     );
   if (pinned) {
     const [, literalL, lightnessVar, fallbackL, chromaExpr, hueFamily, alpha] = pinned;
-    const declaredL = lightnessVar
-      ? (theme[`${lightnessVar}Lightness` as keyof ThemeOverrides] as number | undefined)
-      : undefined;
+    const declaredL = !lightnessVar
+      ? undefined
+      : isPalette(lightnessVar)
+        ? theme.palette?.hues?.[lightnessVar]?.lightness
+        : (theme[`${lightnessVar}Lightness` as keyof ThemeOverrides] as number | undefined);
     const l = literalL ?? String(declaredL ?? parseFloat(fallbackL));
     const lightnessFraction = parseFloat(l) / 100;
     const hue = hueOf(hueFamily, theme);
@@ -221,7 +263,10 @@ function resolve(value: string, theme: ThemeOverrides): Rgba | null {
           maxChromaFor(
             declaredL !== undefined
               ? declaredL / 100
-              : (FILL_LIGHTNESS[hueFamily as keyof typeof FILL_LIGHTNESS] ?? lightnessFraction),
+              : FILL_LIGHTNESS[hueFamily as keyof typeof FILL_LIGHTNESS] !== undefined
+                ? FILL_LIGHTNESS[hueFamily as keyof typeof FILL_LIGHTNESS] +
+                  (isPalette(hueFamily) ? (theme.palette?.lightness ?? 0) / 100 : 0)
+                : lightnessFraction,
             hue,
           ) *
           factor
@@ -261,6 +306,25 @@ const RELATIVE =
  */
 const RELATIVE_CLAMPED =
   /^oklch\(from\s+var\((--we-role-[a-z0-9-]+)\)\s+clamp\(([\d.]+),\s*calc\(l\s*([+-])\s*([\d.]+)\),\s*([\d.]+)\)\s+c\s+h\)$/;
+
+/** `color-mix(in oklab, var(--we-role-a) 16%, var(--we-role-b))`: `a` at that share, the rest `b`. */
+const MIX = /^color-mix\(in oklab,\s*var\((--we-role-[a-z0-9-]+)\)\s+([\d.]+)%,\s*var\((--we-role-[a-z0-9-]+)\)\)$/;
+
+/** Mix two colours as `color-mix(in oklab, …)` does: straight lines in L, a and b. */
+function mixOklab(a: Rgba, b: Rgba, share: number): Rgba {
+  const lab = (c: Rgba) => {
+    const { l, c: chroma, h } = rgbToOklch(c);
+    const rad = (h * Math.PI) / 180;
+    return [l, chroma * Math.cos(rad), chroma * Math.sin(rad)];
+  };
+  const [l1, a1, b1] = lab(a);
+  const [l2, a2, b2] = lab(b);
+  const l = l1 * share + l2 * (1 - share);
+  const x = a1 * share + a2 * (1 - share);
+  const y = b1 * share + b2 * (1 - share);
+  const h = ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+  return { ...oklchToRgb(l, Math.hypot(x, y), h), a: 1 };
+}
 
 /** `--we-role-surface-sunken` → `surfaceSunken`, the one spelling change between CSS and the tokens. */
 const roleOf = (cssVar: string): ThemeRole =>
@@ -333,6 +397,17 @@ function themeColors(theme: ThemeOverrides): Map<ThemeRole, Rgba> {
       // order when the bounds cross, and a theme whose page sits below `lo` is exactly that case.
       const bounded = Math.max(parseFloat(lo), Math.min(stepped, parseFloat(hi)));
       return { ...oklchToRgb(Math.min(1, Math.max(0, bounded)), c, h), a: from.a };
+    }
+
+    // One role mixed into another — a tint drawn as a fill over the surface (Coasys Glow's).
+    const mixed = MIX.exec(value.trim());
+    if (mixed) {
+      const [, a, share, b] = mixed;
+      if (seen.has(name)) return null;
+      const next = new Set([...seen, name]);
+      const from = resolveDeclared(roleOf(a), next);
+      const into = resolveDeclared(roleOf(b), next);
+      return from && into ? mixOklab(from, into, parseFloat(share) / 100) : null;
     }
 
     const relative = RELATIVE.exec(value.trim());
@@ -499,6 +574,68 @@ describe.each(Object.keys(THEME_PRESETS) as ThemeName[])('%s', (name) => {
 });
 
 /**
+ * The themes an app brings in a bundle, held to the same pairs as the built-in ones.
+ *
+ * A bundle checked into the repository (`bundles/*.bundle.json`) is built into any deployment that
+ * names it, so its themes are as much WE's to answer for as a preset — and a whitelabelled app's
+ * theme is the one its people see on every screen. Each side a theme carries is worn and measured
+ * on its own: a dark side that passes says nothing about the light one.
+ */
+const BUNDLES_DIR = join(import.meta.dirname, '..', '..', '..', '..', 'bundles');
+const bundleThemeCases: { label: string; theme: ThemeOverrides }[] = readdirSync(BUNDLES_DIR)
+  .filter((file) => file.endsWith('.bundle.json'))
+  .flatMap((file) => {
+    const bundle = JSON.parse(readFileSync(join(BUNDLES_DIR, file), 'utf8')) as {
+      id: string;
+      theme?: { id: string; overrides: ThemeOverrides };
+      themes?: { id: string; overrides: ThemeOverrides }[];
+    };
+    const themes = bundle.themes ?? (bundle.theme ? [bundle.theme] : []);
+    return themes.flatMap((theme) => {
+      const sides = themeSides(theme.overrides);
+      if (!sides.length) return [{ label: `${bundle.id}/${theme.id}`, theme: theme.overrides }];
+      return (['light', 'dark'] as const).map((side) => ({
+        label: `${bundle.id}/${theme.id} (${side})`,
+        theme: withThemeSide(theme.overrides, side),
+      }));
+    });
+  });
+
+describe.each(bundleThemeCases)('$label', ({ label, theme }) => {
+  it.each(PAIRS)('clears AA for $what', (pair) => {
+    const fg = roleColor(pair.fg, theme);
+    const bg = roleColor(pair.bg, theme);
+    expect(fg, `could not resolve ${pair.fg}`).toBeTruthy();
+    expect(bg, `could not resolve ${pair.bg}`).toBeTruthy();
+    const ratio = contrastRatio(fg!, bg!);
+    expect(
+      Number(ratio.toFixed(2)),
+      `${label}: ${pair.what} is ${ratio.toFixed(2)}:1, needs ${CONTRAST_MINIMUM[pair.level]}:1`,
+    ).toBeGreaterThanOrEqual(CONTRAST_MINIMUM[pair.level]);
+  });
+
+  it.each(PAIRS)('clears APCA Lc for $what', (pair) => {
+    const fg = roleColor(pair.fg, theme);
+    const bg = roleColor(pair.bg, theme);
+    expect(fg, `could not resolve ${pair.fg}`).toBeTruthy();
+    expect(bg, `could not resolve ${pair.bg}`).toBeTruthy();
+    const lc = apcaContrast(fg!, bg!);
+    const accepted = ACCEPTED_BELOW_FLOOR[`${label}:${pair.what}`];
+    if (accepted !== undefined) {
+      expect(
+        Math.round(lc),
+        `${label}: ${pair.what} is Lc ${lc.toFixed(0)}, recorded as Lc ${accepted} — see ACCEPTED_BELOW_FLOOR`,
+      ).toBe(accepted);
+      return;
+    }
+    expect(
+      Math.round(lc),
+      `${label}: ${pair.what} is Lc ${lc.toFixed(0)}, needs Lc ${APCA_MINIMUM[pair.level]}`,
+    ).toBeGreaterThanOrEqual(APCA_MINIMUM[pair.level]);
+  });
+});
+
+/**
  * Elevation has to survive the inversion, and until now nothing said so.
  *
  * `page` and `surface` are both scale positions by default (neutral-50 and neutral-0), and the whole
@@ -550,11 +687,11 @@ describe.each(Object.keys(THEME_PRESETS) as ThemeName[])('%s', (name) => {
  * divergence is not 1 unit, it is 12.
  */
 const MEASURED: Record<string, Record<string, [number, number, number]>> = {
-  light: { 'neutral-200': [203, 203, 211], 'neutral-700': [76, 75, 94], 'primary-500': [126, 104, 228] },
-  dark: { 'neutral-200': [59, 57, 82], 'neutral-700': [184, 183, 201], 'primary-500': [127, 114, 206] },
-  black: { 'neutral-200': [37, 35, 56], 'neutral-700': [162, 160, 188], 'primary-500': [106, 83, 198] },
-  cyberpunk: { 'neutral-200': [67, 66, 81], 'neutral-700': [187, 187, 197], 'primary-500': [132, 114, 225] },
-  channels: { 'neutral-200': [54, 58, 66], 'neutral-700': [182, 185, 191], 'primary-500': [79, 120, 230] },
+  light: { 'neutral-200': [203, 203, 211], 'neutral-700': [76, 75, 94], 'accent-500': [126, 104, 228] },
+  dark: { 'neutral-200': [59, 57, 82], 'neutral-700': [184, 183, 201], 'accent-500': [127, 114, 206] },
+  black: { 'neutral-200': [37, 35, 56], 'neutral-700': [162, 160, 188], 'accent-500': [106, 83, 198] },
+  cyberpunk: { 'neutral-200': [67, 66, 81], 'neutral-700': [187, 187, 197], 'accent-500': [132, 114, 225] },
+  channels: { 'neutral-200': [54, 58, 66], 'neutral-700': [182, 185, 191], 'accent-500': [79, 120, 230] },
 };
 
 describe('the resolver agrees with the browser', () => {

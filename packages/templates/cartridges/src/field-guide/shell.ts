@@ -65,9 +65,9 @@ export const fieldGuideShell: TemplateSchema & { id: string } = {
                         {
                           type: 'we-button',
                           props: {
-                            variant: { $: "contains(routeStore.currentPath, view.segment) ? 'secondary' : 'ghost'" },
+                            variant: { $: "contains(routeStore.currentPath, view.segment) ? 'soft' : 'ghost'" },
                             size: 'sm',
-                            onClick: { $action: 'routeStore.navigate', args: [{ $: 'view.path' }] },
+                            onClick: { $invoke: 'routeStore.navigate', args: [{ $: 'view.path' }] },
                           },
                           children: [
                             { type: 'we-icon', props: { name: { $: 'view.icon' } } },

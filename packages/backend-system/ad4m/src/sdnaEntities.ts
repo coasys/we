@@ -23,15 +23,18 @@ import {
   LocationBlock,
   MutedAgent,
   Placement,
+  Policy,
   ReadMarker,
   Relationship,
   RelationshipType,
+  Role,
+  RoleGrant,
   Shape,
   Signal,
   SignalType,
   Space,
+  SpaceLandmark,
   SpacePreference,
-  SpaceRole,
   SpaceTemplatePreference,
   TagBlock,
   TaskBlock,
@@ -44,6 +47,7 @@ import {
   VideoBlock,
   WeNode,
 } from './entities';
+import { readInterpretationHints, writeInterpretationHints } from './interpretationHints';
 
 /**
  * All SDNA models that belong to the we-root system perspective.
@@ -530,12 +534,35 @@ async function registerEntities(
     for (const m of toRefresh) refreshedThisSession.add(refreshKey(m));
   }
 
+  /*
+    A refresh writes the whole shape again, and with it the hints a space tuned — so read those first
+    and put them back once the new shape is in. Only for a shape the space customized: an untouched
+    one should take the release's hints, which is what a refresh is for. See `interpretationHints.ts`.
+  */
+  const tuned = (
+    await Promise.all(
+      toRefresh.map(async (m) => {
+        const entity = (m as unknown as { className?: string }).className ?? m.name;
+        const hints = await readInterpretationHints(p, entity).catch(() => null);
+        return hints?.customized ? { entity, hints } : null;
+      }),
+    )
+  ).filter((t): t is NonNullable<typeof t> => t !== null);
+
   try {
     await Ad4mModel.registerAll(p, toWrite);
   } finally {
     // Whether or not the write completed, what is stored may no longer be what was read. See
     // `storedShapesCache`.
     forgetStoredShapes(p);
+  }
+  for (const { entity, hints } of tuned) {
+    await writeInterpretationHints(p, entity, {
+      ...(hints.classHint !== undefined ? { classHint: hints.classHint } : {}),
+      propHints: hints.propHints,
+    }).catch((error: unknown) =>
+      console.warn(`ad4m: could not put back the hints this space tuned for ${entity}`, error),
+    );
   }
   // registerAll resolves before the written SDNA is actually queryable — settle before callers
   // run reactive queries against the fresh shapes. This wait is a property of THIS backend's
@@ -653,7 +680,7 @@ export const SPACE_MODELS = [
   // Which record plays which part in this space — its canvas, say. Shared: a role is how every
   // member's template finds the same record, so one held privately would point each member at a
   // different canvas.
-  SpaceRole,
+  SpaceLandmark,
   // How a board draws its connections. Shared with the arrangement it is part of: a line somebody
   // routed clear of the cards is tidying everyone can see, and a board where each member's
   // connectors take a different path is the same non-board as one where the cards move per member.
@@ -707,6 +734,17 @@ export const SPACE_MODELS = [
   */
   Involvement,
   InvolvementType,
+  /*
+    The standings people hold across the space, and who holds them. Shared: a moderator is a fact
+    about the community, and a grant held privately would make nobody one.
+  */
+  Role,
+  RoleGrant,
+  /*
+    The space's rules, a version per record. Shared, for the same reason: rules one member kept to
+    themselves would govern nobody.
+  */
+  Policy,
 ] as const;
 
 /**

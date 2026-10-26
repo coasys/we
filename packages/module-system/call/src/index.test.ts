@@ -148,11 +148,11 @@ describe('the compact bar', () => {
   const buttonFor = (action: string): SchemaNode =>
     walk(slotNodes()).find(
       (node) =>
-        node.type === 'we-button' && JSON.stringify(props(node).onClick) === JSON.stringify({ $action: action }),
+        node.type === 'we-button' && JSON.stringify(props(node).onClick) === JSON.stringify({ $invoke: action }),
     ) as SchemaNode;
 
   /** The menu's lines are a prop rather than child nodes, so they are read rather than walked. */
-  type MenuEntry = { id?: string; onToggle?: { $action: string }; onAction?: { $action: string }; hidden?: unknown };
+  type MenuEntry = { id?: string; onToggle?: { $invoke: string }; onAction?: { $invoke: string }; hidden?: unknown };
   const entries = (): MenuEntry[] => props(inCall()).items as MenuEntry[];
 
   it('folds screen share, show/hide and solo into one menu below the base tier', () => {
@@ -160,7 +160,7 @@ describe('the compact bar', () => {
     expect(menu).toBeDefined();
 
     const toggles = entries().filter((entry) => entry.onToggle);
-    expect(toggles.map((entry) => entry.onToggle!.$action).sort()).toEqual([
+    expect(toggles.map((entry) => entry.onToggle!.$invoke).sort()).toEqual([
       'modules.call.toggleScreenShare',
       'modules.call.toggleSolo',
       'modules.call.toggleStage',
@@ -199,12 +199,8 @@ describe('the compact bar', () => {
     // By id rather than "the first entry that does something": the menu holds more than one of
     // those now, and a positional find would silently start asserting about whichever was added last.
     const start = entries().find((entry) => entry.id === 'start-another');
-    /*
-      `args` explicitly, and the empty string is the point: a handler with none forwards the click,
-      and `startCall` takes an optional anchor id — so it would be handed a PointerEvent and the
-      write refused. `''` is how the store spells "about the space rather than about a node in it".
-    */
-    expect(start?.onAction).toEqual({ $action: 'modules.call.startCall', args: [''] });
+    // `''` is how the store spells "about the space rather than about a node in it".
+    expect(start?.onAction).toEqual({ $invoke: 'modules.call.startCall', args: [''] });
     // Never folded: it is the one entry the row does not show somewhere else.
     expect(start?.hidden).toBeUndefined();
   });
@@ -265,8 +261,8 @@ describe('how the bar reads left to right', () => {
       if (inner.some((node) => node.type === '$slot' && props(node).anchor === 'call-dev')) return 'dev';
       if (child.type === 'we-divider') return 'divider';
       if (inner.some((node) => node.type === 'DropdownMenu')) return 'fold';
-      const acted = inner.find((node) => typeof (props(node).onClick as { $action?: string })?.$action === 'string');
-      return acted ? String((props(acted).onClick as { $action: string }).$action) : String(child.type ?? '');
+      const acted = inner.find((node) => typeof (props(node).onClick as { $invoke?: string })?.$invoke === 'string');
+      return acted ? String((props(acted).onClick as { $invoke: string }).$invoke) : String(child.type ?? '');
     });
 
   it('puts the fold after the controls it folds', () => {
@@ -527,7 +523,7 @@ describe('choosing a camera and microphone', () => {
     const entry = items.find((item) => item.id === 'devices');
 
     expect(entry, 'the bar offers no way to change device').toBeDefined();
-    expect(entry?.onAction).toEqual({ $action: 'modules.call.openDeviceSettings' });
+    expect(entry?.onAction).toEqual({ $invoke: 'modules.call.openDeviceSettings' });
     expect(entry?.hidden, 'the entry folds away at some width').toBeUndefined();
   });
 

@@ -72,7 +72,7 @@ export interface DockEntry {
    *
    * The shell reads `edge`/`size`/`float` in TypeScript, through `readDockKey`, which resolves
    * against `moduleStores` or `hostDockStores` and needs no path. `close` is different: it is
-   * rendered into the titlebar as an `$action`, so it needs a name the renderer can resolve, and the
+   * rendered into the titlebar as an `$invoke`, so it needs a name the renderer can resolve, and the
    * two namespaces do not have the same shape — a module's store is `modules.<id>`, and the host's
    * own stores are named outright. Defaults to the module form, which is right for every module.
    */
@@ -83,7 +83,7 @@ export interface DockEntry {
    * A module names a method and the titlebar builds `<store>.<method>`. That works because a module
    * store *has* that member; a **template panel's** does not. Its keys are minted per panel
    * (`close:extraction`) into `hostDockStores`, which is where the shell reads `edge`/`size`/`float`
-   * from in TypeScript — but the close button is rendered as a schema `$action`, and the renderer
+   * from in TypeScript — but the close button is rendered as a schema `$invoke`, and the renderer
    * resolves `shellStore` to the real store surface, where no such member exists. So the button
    * rendered, took the click, and logged `method "close:extraction" not found on store "shellStore"`:
    * an authored panel could not be closed at all.
@@ -445,7 +445,7 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
                 the pointer landing anywhere on the frame.
               */
               zIndex: geo('layer'),
-              onPointerdown: { $action: 'shellStore.raiseDock', args: [entry.id] },
+              onPointerdown: { $invoke: 'shellStore.raiseDock', args: [entry.id] },
               /*
                 Marked so "fit to content" can measure the chrome rather than assume it.
 
@@ -620,7 +620,7 @@ function titleBar(entry: DockEntry): SchemaNode {
         where people aim, since the grip is a thin strip and the target for a double-click is
         "the titlebar". The button stays: this is a second route, not the only one.
       */
-      onDblclick: { $action: 'shellStore.toggleMaximiseDock', args: [entry.id] },
+      onDblclick: { $invoke: 'shellStore.toggleMaximiseDock', args: [entry.id] },
     },
     children: [
       /*
@@ -641,11 +641,11 @@ function titleBar(entry: DockEntry): SchemaNode {
           // `onXxx`, not `on:xxx`: the schema renderer recognises an event prop by a capital after
           // "on" and Solid lowercases the rest, so these bind `movestart`, `move` and `moveend`.
           onMovestart: {
-            $action: 'shellStore.beginDockMove',
+            $invoke: 'shellStore.beginDockMove',
             args: [entry.id, { $: 'arg.detail.x' }, { $: 'arg.detail.y' }],
           },
-          onMove: { $action: 'shellStore.moveDock', args: [entry.id, { $: 'arg.detail.dx' }, { $: 'arg.detail.dy' }] },
-          onMoveend: { $action: 'shellStore.endDockMove', args: [entry.id] },
+          onMove: { $invoke: 'shellStore.moveDock', args: [entry.id, { $: 'arg.detail.dx' }, { $: 'arg.detail.dy' }] },
+          onMoveend: { $invoke: 'shellStore.endDockMove', args: [entry.id] },
         },
         children: [foldedName(entry)],
       },
@@ -732,7 +732,7 @@ function stowButton(id: string): SchemaNode {
               size: 'xs',
               square: true,
               variant: 'ghost',
-              onClick: { $action: 'shellStore.toggleStowLane', args: [id] },
+              onClick: { $invoke: 'shellStore.toggleStowLane', args: [id] },
             },
             children: [
               {
@@ -764,7 +764,7 @@ function fitButton(id: string): SchemaNode {
     children: [
       {
         type: 'we-button',
-        props: { size: 'xs', square: true, variant: 'ghost', onClick: { $action: 'shellStore.fitDock', args: [id] } },
+        props: { size: 'xs', square: true, variant: 'ghost', onClick: { $invoke: 'shellStore.fitDock', args: [id] } },
         children: [{ type: 'we-icon', props: { name: 'crop' } }],
       },
     ],
@@ -841,7 +841,7 @@ function tabStrip(id: string): SchemaNode {
                     eye finds it. A token duration, so a theme's animation speed and a reduced-motion
                     setting still decide.
 
-                    The accent fill itself rather than `accent-muted`: muted is
+                    The accent fill itself rather than `accent-soft`: muted is
                     a tint toward the ground, so in a dark theme it came out darker than the resting
                     tab's `control-surface` — a flash that dimmed the thing it was pointing at. The name
                     keeps its own colour throughout — see the text, below.
@@ -870,15 +870,15 @@ function tabStrip(id: string): SchemaNode {
                       ay: 'center',
                       label: { $: '`${tab.title} — drag out of the stack`' },
                       onMovestart: {
-                        $action: 'shellStore.beginTabDrag',
+                        $invoke: 'shellStore.beginTabDrag',
                         args: [{ $: 'tab.id' }, { $: 'arg.detail.x' }, { $: 'arg.detail.y' }],
                       },
                       onMove: {
-                        $action: 'shellStore.moveTab',
+                        $invoke: 'shellStore.moveTab',
                         args: [{ $: 'tab.id' }, { $: 'arg.detail.dx' }, { $: 'arg.detail.dy' }],
                       },
                       onMoveend: {
-                        $action: 'shellStore.endTabDrag',
+                        $invoke: 'shellStore.endTabDrag',
                         args: [{ $: 'tab.id' }, { $: 'arg.detail.x' }, { $: 'arg.detail.y' }],
                       },
                     },
@@ -948,9 +948,9 @@ function collapseButton(id: string): SchemaNode {
         props: {
           size: 'xs',
           square: true,
-          variant: { $: `${place('collapsed')} ? 'secondary' : 'ghost'` },
+          variant: { $: `${place('collapsed')} ? 'soft' : 'ghost'` },
           disabled: { $: `!${place('canCollapse')}` },
-          onClick: { $action: 'shellStore.toggleCollapseDock', args: [id] },
+          onClick: { $invoke: 'shellStore.toggleCollapseDock', args: [id] },
         },
         children: [{ type: 'we-icon', props: { name: { $: `${place('collapsed')} ? 'caret-down' : 'caret-up'` } } }],
       },
@@ -992,9 +992,9 @@ function displaceControl(id: string, place: (field: string) => string): SchemaNo
         props: {
           size: 'xs',
           square: true,
-          variant: { $: `${place('displace')} ? 'secondary' : 'ghost'` },
+          variant: { $: `${place('displace')} ? 'soft' : 'ghost'` },
           disabled: { $: `!${place('canDisplace')}` },
-          onClick: { $action: 'shellStore.toggleDockDisplace', args: [id] },
+          onClick: { $invoke: 'shellStore.toggleDockDisplace', args: [id] },
         },
         children: [{ type: 'we-icon', props: { name: 'columns' } }],
       },
@@ -1027,8 +1027,8 @@ function maximiseButton(id: string): SchemaNode {
         props: {
           size: 'xs',
           square: true,
-          variant: { $: `${maximised} ? 'secondary' : 'ghost'` },
-          onClick: { $action: 'shellStore.toggleMaximiseDock', args: [id] },
+          variant: { $: `${maximised} ? 'soft' : 'ghost'` },
+          onClick: { $invoke: 'shellStore.toggleMaximiseDock', args: [id] },
         },
         children: [
           {
@@ -1063,7 +1063,7 @@ function maximiseButton(id: string): SchemaNode {
 function closeButton(entry: DockEntry): SchemaNode {
   const store = entry.storeRef ?? `modules.${entry.moduleId}`;
   // A written-out handler wins, for a dock whose close takes an argument — see `closeAction`.
-  const onClick = entry.closeAction ?? { $action: `${store}.${entry.close}` };
+  const onClick = entry.closeAction ?? { $invoke: `${store}.${entry.close}` };
 
   return {
     type: 'we-tooltip',
@@ -1102,7 +1102,7 @@ function positionMenu(entry: DockEntry): SchemaNode {
     label: opts.label,
     icon: opts.icon,
     checked: { $: `${place('snap')} == '${opts.snap}'` },
-    onToggle: { $action: 'shellStore.snapDock', args: [id, opts.snap] },
+    onToggle: { $invoke: 'shellStore.snapDock', args: [id, opts.snap] },
   });
 
   return {
@@ -1115,7 +1115,7 @@ function positionMenu(entry: DockEntry): SchemaNode {
         The four controls beside it are `xs` ghost squares, and this drew `DropdownMenu`'s own
         trigger: a filled pill, because without `square` the size's horizontal padding still
         applies, and one that hovered to the accent, because the component overrode the fill of the
-        `primary` variant and not its hover. Asking for `ghost` is enough now — icon-only is
+        `solid` variant and not its hover. Asking for `ghost` is enough now — icon-only is
         inferred from an icon with no label, and brings the square with it.
       */
       triggerVariant: 'ghost',
@@ -1156,7 +1156,7 @@ function positionMenu(entry: DockEntry): SchemaNode {
           label: 'Return to page',
           icon: 'arrow-square-in',
           disabled: { $: `!${place('home')} || ${place('snap')} == 'home'` },
-          onAction: { $action: 'shellStore.returnHome', args: [entry.id.replace(/^template:/, '')] },
+          onAction: { $invoke: 'shellStore.returnHome', args: [entry.id.replace(/^template:/, '')] },
         },
         {
           id: 'reset',
@@ -1166,7 +1166,7 @@ function positionMenu(entry: DockEntry): SchemaNode {
           // when you move a panel is one you stop looking for, and the disabled state carries the
           // actual rule — there is a layout to go back to, and you are not on it.
           disabled: { $: `!shellStore.layoutPinned['${id}']` },
-          onAction: { $action: 'shellStore.resetDockToLayout', args: [id] },
+          onAction: { $invoke: 'shellStore.resetDockToLayout', args: [id] },
         },
         /*
           Taking room, for a docked panel — the titlebar's toggle, moved here once there is a sidebar's
@@ -1180,7 +1180,7 @@ function positionMenu(entry: DockEntry): SchemaNode {
           icon: 'columns',
           checked: { $: place('displace') },
           hidden: { $: dockGeometryPath(id, 'floating') },
-          onToggle: { $action: 'shellStore.toggleDockDisplace', args: [id] },
+          onToggle: { $invoke: 'shellStore.toggleDockDisplace', args: [id] },
         },
         at({ snap: 'top-left', label: 'Top left', icon: 'arrow-up-left' }),
         at({ snap: 'top', label: 'Top', icon: 'arrow-line-up' }),
@@ -1288,7 +1288,7 @@ function dragGhost(id: string): SchemaNode {
           zIndex: 'chrome',
           r: '500',
           border: '2px solid accent',
-          bg: 'accent-muted',
+          bg: 'accent-soft',
           opacity: 0.7,
           // No shadow: this is an outline of where a panel would go, not a panel. A shadow would
           // make it read as one — and `chromeLayering.test.ts` picks the frame's own box out of this
@@ -1355,8 +1355,8 @@ function snapTargets(id: string): SchemaNode {
                 than none, since the rule it is teaching looks intermittent.
               */
               zIndex: 'chrome',
-              border: { $: `${SNAP_IS_ACTIVE} ? '2px solid primary-500' : '2px dashed neutral-300'` },
-              bg: { $: `${SNAP_IS_ACTIVE} ? 'accent-muted' : 'transparent'` },
+              border: { $: `${SNAP_IS_ACTIVE} ? '2px solid accent-500' : '2px dashed neutral-300'` },
+              bg: { $: `${SNAP_IS_ACTIVE} ? 'accent-soft' : 'transparent'` },
               opacity: { $: `${SNAP_IS_ACTIVE} ? 0.9 : 0.5` },
             },
           },
@@ -1484,14 +1484,14 @@ function resizeEdge(id: string, side: 'left' | 'right' | 'top' | 'bottom'): Sche
       ...(vertical
         ? { top: '0', bottom: '0', [side]: '0', width: '8px' }
         : { left: '0', right: '0', [side]: '0', height: '8px' }),
-      onResizestart: { $action: 'shellStore.beginDockResize', args: [id] },
+      onResizestart: { $invoke: 'shellStore.beginDockResize', args: [id] },
       onResize: {
-        $action: 'shellStore.resizeDock',
+        $invoke: 'shellStore.resizeDock',
         // The axis this side does not own is passed as zero rather than omitted: one action
         // signature serves edges and corners, and an edge contributes nothing on its own axis.
         args: vertical ? [id, side, { $: 'arg.detail.delta' }, 0] : [id, side, 0, { $: 'arg.detail.delta' }],
       },
-      onResizeend: { $action: 'shellStore.endDockResize' },
+      onResizeend: { $invoke: 'shellStore.endDockResize' },
     },
   };
 }
@@ -1536,9 +1536,9 @@ function laneDivider(id: string): SchemaNode {
           left: geo('seam.left'),
           width: geo('seam.width'),
           height: geo('seam.height'),
-          onResizestart: { $action: 'shellStore.beginDockResize', args: [id] },
-          onResize: { $action: 'shellStore.resizeColumn', args: [id, { $: 'arg.detail.delta' }] },
-          onResizeend: { $action: 'shellStore.endDockResize' },
+          onResizestart: { $invoke: 'shellStore.beginDockResize', args: [id] },
+          onResize: { $invoke: 'shellStore.resizeColumn', args: [id, { $: 'arg.detail.delta' }] },
+          onResizeend: { $invoke: 'shellStore.endDockResize' },
         },
       },
     },
@@ -1582,9 +1582,9 @@ function laneOuterEdge(id: string): SchemaNode {
           left: geo('laneEdge.left'),
           width: geo('laneEdge.width'),
           height: geo('laneEdge.height'),
-          onResizestart: { $action: 'shellStore.beginDockResize', args: [id] },
+          onResizestart: { $invoke: 'shellStore.beginDockResize', args: [id] },
           onResize: {
-            $action: 'shellStore.resizeDock',
+            $invoke: 'shellStore.resizeDock',
             args: [
               id,
               {
@@ -1594,7 +1594,7 @@ function laneOuterEdge(id: string): SchemaNode {
               { $: `${dockGeometryPath(id, 'handleX')} ? 0 : arg.detail.delta` },
             ],
           },
-          onResizeend: { $action: 'shellStore.endDockResize' },
+          onResizeend: { $invoke: 'shellStore.endDockResize' },
         },
       },
     },
@@ -1684,7 +1684,7 @@ function laneStrip(id: string): SchemaNode {
               // Eased rather than switched, so the names come up as the pointer arrives. A token duration,
               // so a theme's animation speed and reduced motion still decide.
               transition: 'color 200 ease',
-              onClick: { $action: 'shellStore.toggleStowLane', args: [id] },
+              onClick: { $invoke: 'shellStore.toggleStowLane', args: [id] },
             },
             children: [
               /*
@@ -1733,9 +1733,9 @@ function resizeCorner(id: string, corner: 'top-left' | 'top-right' | 'bottom-lef
       label: `Resize from the ${corner.replace('-', ' ')}`,
       // Diagonal both ways, so the cursor names the axis pair rather than a direction of travel.
       styles: { cursor: corner === 'top-left' || corner === 'bottom-right' ? 'nwse-resize' : 'nesw-resize' },
-      onMovestart: { $action: 'shellStore.beginDockResize', args: [id] },
-      onMove: { $action: 'shellStore.resizeDock', args: [id, corner, { $: 'arg.detail.dx' }, { $: 'arg.detail.dy' }] },
-      onMoveend: { $action: 'shellStore.endDockResize' },
+      onMovestart: { $invoke: 'shellStore.beginDockResize', args: [id] },
+      onMove: { $invoke: 'shellStore.resizeDock', args: [id, corner, { $: 'arg.detail.dx' }, { $: 'arg.detail.dy' }] },
+      onMoveend: { $invoke: 'shellStore.endDockResize' },
     },
     // No glyph: a corner grip is read from the cursor and from the corner it sits in, and a visible
     // handle in all four corners of a video tile is four things covering the picture.

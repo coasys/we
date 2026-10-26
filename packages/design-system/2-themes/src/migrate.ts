@@ -82,9 +82,11 @@ const MIGRATIONS: ((overrides: Versioned) => Versioned)[] = [
   */
   (overrides) => {
     const next: Versioned = { ...overrides };
-    for (const key of ['primaryHue', 'successHue', 'warningHue', 'dangerHue', 'neutralHue'] as const) {
-      const value = next[key];
-      if (typeof value === 'number') next[key] = hslHueToOklch(value);
+    // A stored theme of this age spells the accent's hue `primaryHue`; v6 → v7 renames it.
+    const hues = next as Record<string, unknown>;
+    for (const key of ['primaryHue', 'successHue', 'warningHue', 'dangerHue', 'neutralHue']) {
+      const value = hues[key];
+      if (typeof value === 'number') hues[key] = hslHueToOklch(value);
     }
     for (const key of ['saturation', 'neutralSaturation'] as const) {
       const value = next[key] as unknown;
@@ -181,6 +183,32 @@ const MIGRATIONS: ((overrides: Versioned) => Versioned)[] = [
     for (const key of ['saturation', 'neutralSaturation'] as const) {
       const value = next[key];
       if (typeof value === 'number') next[key] = Math.min(100, Math.round(value * 1.6129));
+    }
+    return next;
+  },
+
+  /*
+    v6 → v7: one name for the accent, and one name for every family's tint.
+
+    The main colour had three names — "Brand" in the editor, `primaryHue` and `primary-*` in the
+    code, `accent` in the roles — and the tinted fill two: `accentMuted` for the accent, `-Surface`
+    for the statuses. "Muted" also meant "quieter text" and "surface" four other things. Every family
+    now has the same roles (`<family>Soft` for the tint), and the accent is `accent` throughout.
+  */
+  (overrides) => {
+    const next = renameRoles(
+      { ...overrides },
+      {
+        accentMuted: 'accentSoft',
+        dangerSurface: 'dangerSoft',
+        successSurface: 'successSoft',
+        warningSurface: 'warningSoft',
+      },
+    );
+    const legacy = next as Record<string, unknown>;
+    if (legacy.primaryHue !== undefined) {
+      legacy.accentHue = legacy.primaryHue;
+      delete legacy.primaryHue;
     }
     return next;
   },

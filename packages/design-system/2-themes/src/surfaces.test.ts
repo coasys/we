@@ -7,85 +7,58 @@
 import { role } from '@we/tokens';
 import { describe, expect, it } from 'vitest';
 
+import { THEME_PRESETS } from './presets';
 import { reconcileSurfaces, surfacesForPolarity } from './themeStyles';
 
-describe('the surface stack a polarity needs', () => {
+const STACK = ['chrome', 'page', 'surface', 'surfaceRaised', 'surfaceSunken'];
+
+describe('the surface stack across a change of polarity', () => {
   /*
-    The bug this exists to prevent: flipping to dark inverts the scale, so `page` (neutral-50) ends
-    up lighter than `surface` (neutral-0) and a card sinks below the page it is on. Nothing about
-    the flip tells you that — the theme still looks like a theme, just subtly upside down.
+    The bug this pins: a fork of `dark`, switched light and back to dark, was given a stack of dark
+    pins at fixed lightnesses of 7–14% — which the dark preset itself never had, since it is drawn
+    from the parametric stack — and looked black beside the theme it was forked from.
   */
-  it('pins the surfaces when going dark', () => {
-    const out = surfacesForPolarity('dark', undefined)!;
-    expect(Object.keys(out).sort()).toEqual(['chrome', 'page', 'surface', 'surfaceRaised', 'surfaceSunken']);
+  it('lands where the presets are drawn from: no surface pinned in either direction', () => {
+    for (const polarity of ['light', 'dark'] as const) {
+      const preset = THEME_PRESETS[polarity].parameters as { roles?: Record<string, string> };
+      for (const name of STACK) expect(preset.roles?.[name], `${polarity} pins ${name}`).toBeUndefined();
+      expect(surfacesForPolarity(polarity, undefined)).toBeUndefined();
+    }
   });
 
-  it('puts the stack in the right order', () => {
-    const out = surfacesForPolarity('dark', undefined)!;
-    const at = (v: string) => parseFloat(/^oklch\(([\d.]+)%/.exec(v)![1]);
-    expect(at(out.surfaceSunken!)).toBeLessThan(at(out.page!));
-    expect(at(out.page!)).toBeLessThan(at(out.surface!));
-    expect(at(out.surface!)).toBeLessThan(at(out.surfaceRaised!));
-  });
-
-  /*
-    The chrome is the app's ground and the page stands off it — in the pins *and* in the defaults.
-
-    Both halves are asserted because getting one is what the two previous attempts each managed. A
-    pin without a matching default is wrong in every theme the pin does not reach, and a built-in
-    dark preset never goes through a polarity change, so it reaches fewer than it looks. A default
-    without a matching pin is wrong in every theme that has been flipped.
-
-    The direction is also the thing that inverted once already: the furniture was briefly *lighter*
-    than the content in dark, which reads as the page being a hole rather than the rail being a
-    frame.
-  */
-  it('stands the page off the chrome, in the pins and in the defaults alike', () => {
-    const out = surfacesForPolarity('dark', undefined)!;
-    const at = (v: string) => parseFloat(/^oklch\(([\d.]+)%/.exec(v)![1]);
-    expect(at(out.chrome!)).toBeLessThan(at(out.page!));
-
-    // `chrome` holds the scale position; `page` is the one measured from it, never the reverse —
-    // which is what makes "how dark is the app" and "how far does a space stand off it" two knobs.
-    expect(role.page).toMatch(/^oklch\(from var\(--we-role-chrome\) calc\(l \+ /);
-    expect(role.chrome).not.toContain('--we-role-page');
-  });
-
-  it('clears them going light, rather than writing a second stack', () => {
-    // The parametric defaults are already right in that direction, and no pin means the hue and
-    // lightness sliders still reach everything.
-    expect(surfacesForPolarity('light', surfacesForPolarity('dark', undefined))).toBeUndefined();
+  it('drops a stack tuned for the other polarity, in both directions', () => {
+    const tuned = { page: 'oklch(95% 0.01 264)', surface: 'oklch(98% 0.01 264)', chrome: 'oklch(92% 0 0)' };
+    expect(surfacesForPolarity('dark', tuned)).toBeUndefined();
+    expect(surfacesForPolarity('light', tuned)).toBeUndefined();
   });
 
   it('leaves roles that are not surfaces alone in both directions', () => {
     expect(surfacesForPolarity('light', { accent: '#f0f' })).toEqual({ accent: '#f0f' });
-    expect(surfacesForPolarity('dark', { accent: '#f0f' })!.accent).toBe('#f0f');
+    expect(surfacesForPolarity('dark', { accent: '#f0f', page: '#000' })).toEqual({ accent: '#f0f' });
   });
 
-  it('replaces a stack tuned for the other polarity rather than keeping it', () => {
-    const stale = { page: 'hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) 95%)' };
-    expect(surfacesForPolarity('dark', stale)!.page).not.toBe(stale.page);
+  /*
+    The chrome is the app's ground and the page stands off it, as one offset in both polarities —
+    which is what lets the stack be left to the formula on any flip.
+  */
+  it('states the page as a step off the chrome, never the reverse', () => {
+    expect(role.page).toMatch(/^oklch\(from var\(--we-role-chrome\) calc\(l \+ /);
+    expect(role.chrome).not.toContain('--we-role-page');
   });
 });
 
 describe('changing base preset', () => {
   const DARK = { polarity: 'dark' as const };
   const LIGHT = { polarity: 'light' as const };
-  const darkStack = surfacesForPolarity('dark', undefined)!;
+  const pinned = { page: 'oklch(10% 0.01 264)', surface: 'oklch(12% 0.01 264)' };
 
   /*
-    The three-click bug: click Dark, which pins the stack, then pick a light base preset. The pins
-    survive `...existing`, so the theme ends up light-polarity — near-black text — over near-black
-    cards. 1.12:1, which is not a subtle regression, it is an invisible interface.
+    The three-click bug: a stack pinned for one polarity surviving a change to the other — a light
+    theme's near-black text over near-black cards, 1.12:1.
   */
-  it('drops a dark stack when the new preset is light', () => {
-    const out = reconcileSurfaces({ polarity: 'dark' as const, roles: darkStack }, LIGHT);
-    expect(out).toBeUndefined();
-  });
-
-  it('pins a dark stack when the new preset is dark', () => {
-    const out = reconcileSurfaces({ polarity: 'light' as const }, DARK)!;
-    expect(out.surface).toBe(darkStack.surface);
+  it('drops a pinned stack when the polarity changes', () => {
+    expect(reconcileSurfaces({ polarity: 'dark' as const, roles: pinned }, LIGHT)).toBeUndefined();
+    expect(reconcileSurfaces({ polarity: 'light' as const, roles: pinned }, DARK)).toBeUndefined();
   });
 
   /*
@@ -93,19 +66,12 @@ describe('changing base preset', () => {
     would silently discard whatever the author had tuned.
   */
   it('leaves a tuned stack alone when the polarity does not change', () => {
-    const tuned = { ...darkStack, surface: 'hsl(220 20% 22%)' };
-    expect(reconcileSurfaces({ polarity: 'dark' as const, roles: tuned }, DARK)).toBe(tuned);
+    expect(reconcileSurfaces({ polarity: 'dark' as const, roles: pinned }, DARK)).toBe(pinned);
   });
 
-  it('keeps role pins that are not surfaces, in both directions', () => {
-    expect(reconcileSurfaces({ polarity: 'dark' as const, roles: { ...darkStack, accent: '#f0f' } }, LIGHT)).toEqual({
+  it('keeps role pins that are not surfaces', () => {
+    expect(reconcileSurfaces({ polarity: 'dark' as const, roles: { ...pinned, accent: '#f0f' } }, LIGHT)).toEqual({
       accent: '#f0f',
     });
-    expect(reconcileSurfaces({ polarity: 'light' as const, roles: { accent: '#f0f' } }, DARK)!.accent).toBe('#f0f');
-  });
-
-  it('treats a theme with no multiplier as light, which is the default', () => {
-    expect(reconcileSurfaces({ roles: { accent: '#f0f' } }, LIGHT)).toEqual({ accent: '#f0f' });
-    expect(reconcileSurfaces({ roles: {} }, DARK)!.page).toBe(darkStack.page);
   });
 });

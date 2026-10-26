@@ -29,6 +29,7 @@ export interface AgentSettingsRecord extends RecordInstance {
   defaultThemeId: string;
   systemLightThemeId: string;
   systemDarkThemeId: string;
+  displayPreferences: string;
   claudeApiKey: string;
   datasetOrder: string;
   globalSpaceJoined: boolean;
@@ -260,6 +261,22 @@ export interface RelationshipTypeRecord extends WeNodeRecord {
   schemaVersion: number;
 }
 
+export interface RoleRecord extends RecordInstance {
+  slug: string;
+  name: string;
+  description: string;
+}
+
+export interface RoleGrantRecord extends RecordInstance {
+  role: string;
+  agent: string;
+  revokedAt: string;
+}
+
+export interface PolicyRecord extends RecordInstance {
+  document: string;
+}
+
 export interface ShapeRecord extends WeNodeRecord {
   name: string;
   description: string;
@@ -309,13 +326,13 @@ export interface SpaceRecord extends WeNodeRecord {
   autoInterpret: boolean;
   threadMode: string;
   moduleSettings: string;
-  archivedFlows: string;
-  taskFlowRule: string;
+  archivedWorkflows: string;
+  taskWorkflowRule: string;
   location?: LocationBlockRecord;
   taskStates: string[];
   typeStyles: string[];
   root?: CollectionBlockRecord;
-  roles: string[];
+  landmarks: string[];
   setLocation(value: Pick<LocationBlockRecord, 'id'>): Promise<unknown>;
   addTaskStates(value: string | { id: string }, batch?: string): Promise<unknown>;
   removeTaskStates(value: string | { id: string }, batch?: string): Promise<unknown>;
@@ -332,7 +349,7 @@ export interface SpacePreferenceRecord extends WeNodeRecord {
   themeId: string;
 }
 
-export interface SpaceRoleRecord extends RecordInstance {
+export interface SpaceLandmarkRecord extends RecordInstance {
   name: string;
   node?: string;
 }
@@ -368,7 +385,7 @@ export interface TaskStateRecord extends WeNodeRecord {
   retired: boolean;
   approvals: number;
   approverKind: string;
-  guards: string;
+  evidence: string;
   schemaVersion: number;
 }
 
@@ -444,6 +461,9 @@ export interface ExtractionPassRecord extends RecordInstance {
 export interface TypeStyleRecord extends RecordInstance {
   nodeType: string;
   color: string;
+  display: string;
+  controls: string;
+  authoring: string;
 }
 
 export interface VideoBlockRecord extends WeNodeRecord {

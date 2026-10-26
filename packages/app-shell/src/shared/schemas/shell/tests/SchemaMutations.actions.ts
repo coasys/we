@@ -164,14 +164,14 @@ export function schemaMutationActions(
     const count = innerColumn.children.length;
     innerColumn.children.push({
       type: 'Row',
-      props: { p: '300', gap: '200', bg: 'accent-muted', r: '200', ay: 'center' },
+      props: { p: '300', gap: '200', bg: 'accent-soft', r: '200', ay: 'center' },
       children: [
         { type: 'we-icon', props: { name: 'lightning', color: 'accent' } },
         { type: 'we-text', children: [`Multi-mutate child #${count}`] },
       ],
     });
 
-    dynamicArea.props.bg = dynamicArea.props.bg === 'neutral-0' ? 'primary-50' : 'neutral-0';
+    dynamicArea.props.bg = dynamicArea.props.bg === 'neutral-0' ? 'accent-50' : 'neutral-0';
     innerColumn.type = innerColumn.type === 'Column' ? 'Row' : 'Column';
 
     applyUpdate(newSchema);
@@ -203,12 +203,12 @@ export function schemaMutationActions(
     const root = getMutationsRoot(newSchema);
     const dynamicArea = root.children[0].children[4];
     if (!dynamicArea.props.border) {
-      dynamicArea.props.border = '2px solid var(--we-color-primary-300)';
+      dynamicArea.props.border = '2px solid var(--we-color-accent-300)';
     } else {
       dynamicArea.props.border =
-        dynamicArea.props.border === '2px solid var(--we-color-primary-300)'
+        dynamicArea.props.border === '2px solid var(--we-color-accent-300)'
           ? '2px dashed var(--we-color-danger-300)'
-          : '2px solid var(--we-color-primary-300)';
+          : '2px solid var(--we-color-accent-300)';
     }
     applyUpdate(newSchema);
   }
@@ -232,7 +232,7 @@ export function schemaMutationActions(
     if (dynamicArea.theme) {
       delete dynamicArea.theme;
     } else {
-      dynamicArea.theme = { primaryHue: 312, saturation: 80 };
+      dynamicArea.theme = { accentHue: 312, saturation: 80 };
     }
     applyUpdate(newSchema);
   }

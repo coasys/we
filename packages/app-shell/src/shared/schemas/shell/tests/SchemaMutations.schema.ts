@@ -15,7 +15,7 @@
  *   addRouteChild (mutate inside route definition)
  *
  * Tokens exercised:
- *   expressions ({ $: … }), $action, $routes
+ *   expressions ({ $: … }), $invoke, $routes
  *
  * This replaces the old TestTemplate.schema.ts with a clean, focused design.
  */
@@ -28,7 +28,7 @@ import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 function button(action: string, icon: string, label: string, variant?: string): SchemaNode {
   return {
     type: 'we-button',
-    props: { ...(variant && { variant }), onClick: { $action: `templateStore.${action}` } },
+    props: { ...(variant && { variant }), onClick: { $invoke: `templateStore.${action}` } },
     children: [{ type: 'we-icon', props: { name: icon } }, label],
   };
 }
@@ -49,7 +49,7 @@ const mutationButtons = buttonRow(undefined, [
   ['addRouteChild', 'plus', 'Add route child'],
 ]);
 
-const mutationButtons2 = buttonRow('secondary', [
+const mutationButtons2 = buttonRow('soft', [
   ['removeFromMiddle', 'arrows-in-line-vertical', 'Remove middle'],
   ['reorderChildren', 'arrows-down-up', 'Reorder'],
   ['deepNestedProp', 'tree-structure', 'Deep prop'],

@@ -156,7 +156,7 @@ export function suggestedChanges(opts: SuggestedChangesOptions): SchemaNode {
         tone: 'success',
         label: 'Accept this change',
         onClick: {
-          $action: 'modules.transcribe.applyChange',
+          $invoke: 'modules.transcribe.applyChange',
           args: [{ $: `${opts.record}.id` }, { $: 'change.name' }],
         },
       }),
@@ -164,7 +164,7 @@ export function suggestedChanges(opts: SuggestedChangesOptions): SchemaNode {
         tone: 'danger',
         label: 'Reject this change — keeps the current value',
         onClick: {
-          $action: 'modules.transcribe.dismissChange',
+          $invoke: 'modules.transcribe.dismissChange',
           args: [{ $: `${opts.record}.id` }, { $: 'change.name' }],
         },
       }),
@@ -226,7 +226,7 @@ export function suggestedChanges(opts: SuggestedChangesOptions): SchemaNode {
                         props: {
                           variant: 'ghost',
                           size: 'xs',
-                          onClick: { $action: 'modules.transcribe.acceptProposal', args: [{ $: `${opts.record}.id` }] },
+                          onClick: { $invoke: 'modules.transcribe.acceptProposal', args: [{ $: `${opts.record}.id` }] },
                         },
                         children: ['Accept all'],
                       },
@@ -235,7 +235,7 @@ export function suggestedChanges(opts: SuggestedChangesOptions): SchemaNode {
                         props: {
                           variant: 'ghost',
                           size: 'xs',
-                          onClick: { $action: 'modules.transcribe.rejectProposal', args: [{ $: `${opts.record}.id` }] },
+                          onClick: { $invoke: 'modules.transcribe.rejectProposal', args: [{ $: `${opts.record}.id` }] },
                         },
                         children: ['Reject all'],
                       },
@@ -326,10 +326,10 @@ export function suggestionsToggle(opts: SuggestionsToggleOptions): SchemaNode {
                   condition: { $: SUGGESTIONS_HIDDEN },
                   then: {
                     type: 'we-badge',
-                    props: { size: 'xs', variant: 'warning' },
+                    props: { size: 'xs', tone: 'warning' },
                     children: [{ $: `\`\${${opts.count}} hidden\`` }],
                   },
-                  else: { type: 'we-badge', props: { size: 'xs', variant: 'neutral' }, children: [{ $: opts.count }] },
+                  else: { type: 'we-badge', props: { size: 'xs' }, children: [{ $: opts.count }] },
                 },
               },
               {
@@ -339,7 +339,7 @@ export function suggestionsToggle(opts: SuggestionsToggleOptions): SchemaNode {
                   label: 'Pending acceptance',
                   checked: { $: `!(${SUGGESTIONS_HIDDEN})` },
                   onChange: {
-                    $action: 'routeStore.setParam',
+                    $invoke: 'routeStore.setParam',
                     args: [SUGGESTIONS_PARAM, { $: "event.detail ? null : 'hide'" }],
                   },
                 },

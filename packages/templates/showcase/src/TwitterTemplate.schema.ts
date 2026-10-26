@@ -137,12 +137,12 @@ const leftRail: SchemaNode = {
           type: 'we-button',
           props: {
             variant: {
-              $: "(nav.segment ? nav.segment in routeStore.templateSegments : !count(routeStore.templateSegments)) ? 'secondary' : 'ghost'",
+              $: "(nav.segment ? nav.segment in routeStore.templateSegments : !count(routeStore.templateSegments)) ? 'soft' : 'ghost'",
             },
             width: '100%',
             ax: 'start',
             gap: '300',
-            onClick: { $action: 'routeStore.navigate', args: [{ $: 'nav.path' }] },
+            onClick: { $invoke: 'routeStore.navigate', args: [{ $: 'nav.path' }] },
           },
           children: [
             { type: 'we-icon', props: { name: { $: 'nav.icon' } } },
@@ -154,7 +154,7 @@ const leftRail: SchemaNode = {
     {
       type: 'we-button',
       props: {
-        variant: 'primary',
+        variant: 'solid',
         width: '100%',
         r: 'pill',
         mt: '300',
@@ -190,7 +190,7 @@ const postCard = (opts: { clickable?: boolean }): SchemaNode => {
         props: {
           variant: 'bare',
           width: '100%',
-          onClick: { $action: 'routeStore.navigate', args: [{ $: '`./post/${post.id}`' }] },
+          onClick: { $invoke: 'routeStore.navigate', args: [{ $: '`./post/${post.id}`' }] },
         },
         children: [
           {
@@ -259,7 +259,7 @@ const timeline: SchemaNode = {
               type: 'we-button',
               props: {
                 size: 'sm',
-                variant: { $: "local.sortField == tab.value ? 'secondary' : 'ghost'" },
+                variant: { $: "local.sortField == tab.value ? 'soft' : 'ghost'" },
                 onClick: { $setLocal: 'sortField', value: { $: 'tab.value' } },
               },
               children: [{ $: 'tab.label' }],
@@ -322,7 +322,7 @@ const postDetail: RouteSchema = {
           children: [
             {
               type: 'we-button',
-              props: { variant: 'secondary', size: 'sm', onClick: { $setLocal: 'replyOpen', value: true } },
+              props: { variant: 'soft', size: 'sm', onClick: { $setLocal: 'replyOpen', value: true } },
               children: [{ type: 'we-icon', props: { name: 'chat-circle' } }, 'Reply'],
             },
           ],

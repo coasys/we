@@ -19,7 +19,18 @@
       "enabled": false
     }
   ],
-  "templates": ["default", "workshop", "discord", "twitter", "instagram", "youtube", "kanban", "events", "scrapbook"],
+  "templates": [
+    "default",
+    "workshop",
+    "discord",
+    "twitter",
+    "instagram",
+    "youtube",
+    "kanban",
+    "events",
+    "scrapbook",
+    "theme-lab"
+  ],
   "views": ["about", "cards", "graph", "globe", "boards", "calendar"],
   "spaceStarters": [
     {
@@ -131,6 +142,22 @@
           }
         },
         {
+          "entity": "Role",
+          "fields": {
+            "name": "Moderator",
+            "slug": "moderator",
+            "description": "Looks after what members post, and removes what does not belong here."
+          }
+        },
+        {
+          "entity": "Role",
+          "fields": {
+            "name": "Muted",
+            "slug": "muted",
+            "description": "Can read the space but not post in it, until a moderator or admin lifts it."
+          }
+        },
+        {
           "$id": "canvas",
           "entity": "CollectionBlock",
           "fields": {
@@ -181,7 +208,7 @@
           "in": "$board"
         }
       ],
-      "roles": {
+      "landmarks": {
         "canvas": "$canvas",
         "board": "$board"
       },

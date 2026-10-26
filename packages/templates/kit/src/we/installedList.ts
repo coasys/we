@@ -122,7 +122,7 @@ export function installedList(opts: InstalledListOptions): SchemaNode {
                           variant: 'ghost',
                           size: 'sm',
                           onClick: {
-                            $action: opts.applyAction,
+                            $invoke: opts.applyAction,
                             args: [opts.key],
                           },
                         },
@@ -143,7 +143,7 @@ export function installedList(opts: InstalledListOptions): SchemaNode {
                           variant: 'outline',
                           size: 'sm',
                           onClick: {
-                            $action: 'record.update',
+                            $invoke: 'record.update',
                             args: ['Space', { $: 'spaceStore.currentSpace.id' }, { [opts.defaultField]: opts.key }],
                           },
                         },
@@ -163,7 +163,7 @@ export function installedList(opts: InstalledListOptions): SchemaNode {
                               props: {
                                 variant: 'ghost',
                                 size: 'sm',
-                                onClick: { $action: 'shellStore.openSpaceSettings', args: ['features'] },
+                                onClick: { $invoke: 'shellStore.openSpaceSettings', args: ['features'] },
                               },
                               children: ['Sections'],
                             },
@@ -195,9 +195,9 @@ export function installedList(opts: InstalledListOptions): SchemaNode {
                           variant: 'ghost',
                           size: 'sm',
                           onClick: {
-                            $action: 'record.delete',
+                            $invoke: 'record.delete',
                             args: [opts.entity, { $: `${opts.as}.id` }],
-                            onSuccess: [{ $action: opts.refreshAction }],
+                            onSuccess: [{ $invoke: opts.refreshAction }],
                           },
                         },
                         children: [{ type: 'we-icon', props: { name: 'trash' } }],
@@ -216,7 +216,7 @@ export function installedList(opts: InstalledListOptions): SchemaNode {
             children: [
               {
                 type: 'we-badge',
-                props: { variant: 'neutral' },
+                props: {},
                 children: [{ $: `'v' + ${opts.as}.version` }],
               },
               {
@@ -225,7 +225,7 @@ export function installedList(opts: InstalledListOptions): SchemaNode {
                   condition: expr`${opts.key} == ${{ $: `spaceStore.currentSpace.${opts.defaultField}` }}`,
                   then: {
                     type: 'we-badge',
-                    props: { variant: 'primary' },
+                    props: { tone: 'accent' },
                     children: ['Space default'],
                   },
                 },

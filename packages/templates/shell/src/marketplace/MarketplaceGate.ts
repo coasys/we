@@ -14,16 +14,18 @@ const notConfiguredPrompt: SchemaNode = gatePrompt({
 
 const joinPrompt: SchemaNode = gatePrompt({
   icon: 'storefront',
-  iconGradient: 'primary',
+  iconGradient: 'accent',
   title: 'Module Marketplace',
-  body: 'Browse and install templates, themes, blocks, and components shared by the WE community.',
+  body: {
+    $: '`Browse and install templates, themes, blocks, and components shared by the ${templateStore.brand.name} community.`',
+  },
   bodyWidth: '420px',
   children: [
     {
       type: 'we-button',
       $localState: { joining: { type: 'boolean', initial: false } },
       props: {
-        variant: 'primary',
+        variant: 'solid',
         loading: { $: 'local.joining' },
         disabled: { $: 'local.joining' },
         onClick: [
@@ -33,7 +35,7 @@ const joinPrompt: SchemaNode = gatePrompt({
             // silently moved you out of the space you were in — while still looking like an overlay
             // over that space. The marketplace's own routes name `datasetStore.marketplaceDataset`
             // explicitly, so it never needed to be the current one.
-            $action: 'spaceStore.joinSpace',
+            $invoke: 'spaceStore.joinSpace',
             args: [{ $: 'datasetStore.marketplaceId' }, false],
             onFinally: [{ $setLocal: 'joining', value: false }],
           },

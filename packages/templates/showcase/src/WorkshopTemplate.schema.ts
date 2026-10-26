@@ -96,7 +96,6 @@ import {
   newNoteModal,
   newThingChooser,
 } from './WorkshopCards.ts';
-import { FLOWS_LOCALS, flowsPage, flowsSection } from './WorkshopFlows.ts';
 import {
   CANVAS_FILL,
   FOLD_FROM_GRAPH,
@@ -142,6 +141,7 @@ import {
   vocabularyEditLink,
   vocabularyToggle,
 } from './WorkshopVocabulary.ts';
+import { FLOWS_LOCALS, workflowsPage, workflowsSection } from './WorkshopWorkflows.ts';
 
 /**
  * The call on screen — **named in the address**, or the one being recorded when it names none.
@@ -183,7 +183,7 @@ const CALL = { $: CALL_EXPR };
  * finds it by that name. Found rather than assumed, since a space can switch template and arrive
  * here without one — an empty string then, which the canvas reads as "nothing to load".
  */
-const SPACE_CANVAS_EXPR = "spaceStore.roles.canvas ? spaceStore.roles.canvas : ''";
+const SPACE_CANVAS_EXPR = "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''";
 const SPACE_CANVAS = { $: SPACE_CANVAS_EXPR };
 
 /**
@@ -262,7 +262,7 @@ const pageWithCall = (callExpr: string): SchemaProp => ({
     The key's lens comes along — an explicit `?` drops whatever the address held, so a navigation
     that spelt only the call would turn the lens back to its default on every change of call.
   */
-  $action: 'routeStore.navigate',
+  $invoke: 'routeStore.navigate',
   args: [
     {
       $: `\`\${spaceStore.spacePath}/\${${PAGE_EXPR}}?call=\${${callExpr}}${LENS_QUERY}${FOLD_QUERY}${OPEN_QUERY}${VOCAB_QUERY}\``,
@@ -315,7 +315,7 @@ const openLiveCall: SchemaProp = pageWithCall("''");
  * word covers equally well. `BoardsView` keeps its name: it lists board records, has a picker, and
  * has no canvas beside it. See `docs/architecture/boards.md`.
  */
-const ROUTE = { canvas: 'canvas', kanban: 'kanban', calendar: 'calendar', flows: 'flows' } as const;
+const ROUTE = { canvas: 'canvas', kanban: 'kanban', calendar: 'calendar', workflows: 'workflows' } as const;
 
 const NAV = [
   { segment: ROUTE.canvas, icon: 'graph', label: 'Canvas' },
@@ -323,9 +323,9 @@ const NAV = [
   // already used this one, so the strip and the page it led to disagreed about what was there.
   { segment: ROUTE.kanban, icon: 'kanban', label: 'Kanban' },
   { segment: ROUTE.calendar, icon: 'calendar', label: 'Calendar' },
-  // The space's flows and what is going through them — see `WorkshopFlows.ts`. Named for what it
-  // lists, unlike its neighbours: a flow has no arrangement of its own to name the page after.
-  { segment: ROUTE.flows, icon: 'flow-arrow', label: 'Flows' },
+  // The space's workflows and what is going through them — see `WorkshopWorkflows.ts`. Named for what it
+  // lists, unlike its neighbours: a workflow has no arrangement of its own to name the page after.
+  { segment: ROUTE.workflows, icon: 'flow-arrow', label: 'Workflows' },
 ];
 
 /**
@@ -614,7 +614,7 @@ const callPill: SchemaNode = {
             $: 'local.titleDraft != first(local.callRecord).title || local.descriptionDraft != first(local.callRecord).description',
           },
           submit: {
-            $action: 'record.update',
+            $invoke: 'record.update',
             args: [
               'CollectionBlock',
               CALL,
@@ -647,7 +647,7 @@ const fromLensControl: SchemaNode = {
       $: `(${FROM_ON}) ? (${SCOPE_LABEL}) + ((${FROM_HIDE}) ? ' · others hidden' : ' · others dimmed') : 'All'`,
     },
     triggerTitle: 'Show what came from one call, or from outside calls',
-    triggerVariant: { $: `(${FROM_ON}) ? 'secondary' : 'ghost'` },
+    triggerVariant: { $: `(${FROM_ON}) ? 'soft' : 'ghost'` },
     items: {
       $:
         `[{ type: 'group', id: 'scope', label: 'Scope', items: [` +
@@ -664,8 +664,8 @@ const fromLensControl: SchemaNode = {
         $if: {
           condition: { $: "arg.id == 'scope:all'" },
           then: [
-            { $action: 'routeStore.setParam', args: [SCOPE_PARAM, ''] },
-            { $action: 'routeStore.setParam', args: [FROM_PARAM, ''] },
+            { $invoke: 'routeStore.setParam', args: [SCOPE_PARAM, ''] },
+            { $invoke: 'routeStore.setParam', args: [FROM_PARAM, ''] },
           ],
         },
       },
@@ -674,13 +674,13 @@ const fromLensControl: SchemaNode = {
           condition: { $: "arg.id == 'scope:space' || arg.id == 'scope:call'" },
           then: [
             {
-              $action: 'routeStore.setParam',
+              $invoke: 'routeStore.setParam',
               args: [SCOPE_PARAM, { $: "arg.id == 'scope:space' ? 'space' : 'call'" }],
             },
             {
               $if: {
                 condition: { $: `!${FROM_MODE}` },
-                then: { $action: 'routeStore.setParam', args: [FROM_PARAM, 'dim'] },
+                then: { $invoke: 'routeStore.setParam', args: [FROM_PARAM, 'dim'] },
               },
             },
           ],
@@ -689,7 +689,7 @@ const fromLensControl: SchemaNode = {
       {
         $if: {
           condition: { $: "arg.id == 'mode:dim' || arg.id == 'mode:hide'" },
-          then: { $action: 'routeStore.setParam', args: [FROM_PARAM, { $: "arg.id == 'mode:hide' ? 'hide' : 'dim'" }] },
+          then: { $invoke: 'routeStore.setParam', args: [FROM_PARAM, { $: "arg.id == 'mode:hide' ? 'hide' : 'dim'" }] },
         },
       },
     ],
@@ -735,8 +735,8 @@ const switcher: SchemaNode = {
             // were reading as a row of small ornaments over a full-bleed canvas.
             r: 'control',
             gap: '200',
-            variant: { $: "nav.segment in routeStore.segments ? 'secondary' : 'ghost'" },
-            onClick: { $action: 'routeStore.navigate', args: [navPath] },
+            variant: { $: "nav.segment in routeStore.segments ? 'soft' : 'ghost'" },
+            onClick: { $invoke: 'routeStore.navigate', args: [navPath] },
           },
           children: [
             { type: 'we-icon', props: { name: { $: 'nav.icon' } } },
@@ -802,7 +802,7 @@ const IN_A_CALL_HERE = 'modules.call.active && !modules.call.elsewhere';
  * `''` is falsy, which is how `startCall` already spells "no anchor" — a call about the space rather
  * than about some node in it.
  */
-const NEW_CALL_ACTION: SchemaProp = { $action: 'modules.call.startCall', args: [''] };
+const NEW_CALL_ACTION: SchemaProp = { $invoke: 'modules.call.startCall', args: [''] };
 
 /**
  * Start a second call, beside the one already running here.
@@ -954,7 +954,7 @@ const startCallButton = (size: 'sm' | 'md'): SchemaNode => ({
               props: {
                 size,
                 gap: '200',
-                variant: { $: `${IN_A_CALL_HERE} ? 'secondary' : 'primary'` },
+                variant: { $: `${IN_A_CALL_HERE} ? 'soft' : 'solid'` },
                 /*
                   Three branches, flat, and read at the press.
 
@@ -975,7 +975,7 @@ const startCallButton = (size: 'sm' | 'md'): SchemaNode => ({
                   that happened to be current when the panel opened.
                 */
                 onClick: [
-                  { $if: { condition: { $: IN_A_CALL_HERE }, then: { $action: 'modules.call.goToCall' } } },
+                  { $if: { condition: { $: IN_A_CALL_HERE }, then: { $invoke: 'modules.call.goToCall' } } },
                   {
                     $if: {
                       condition: { $: `!(${IN_A_CALL_HERE}) && ${CALL_RUNNING_HERE}` },
@@ -983,7 +983,7 @@ const startCallButton = (size: 'sm' | 'md'): SchemaNode => ({
                       // Which call, where there are several, is the list's question — see
                       // `callsPanel`.
                       then: {
-                        $action: 'modules.call.joinCall',
+                        $invoke: 'modules.call.joinCall',
                         args: [{ $: 'first(modules.call.liveCalls).id' }],
                       },
                     },
@@ -1146,7 +1146,7 @@ const historyPill: SchemaNode = {
                 square: true,
                 label: 'Undo',
                 disabled: { $: '!recordStore.canvasHistory.canUndo' },
-                onClick: { $action: 'recordStore.undoCanvas', args: [SPACE_CANVAS] },
+                onClick: { $invoke: 'recordStore.undoCanvas', args: [SPACE_CANVAS] },
               },
               children: [{ type: 'we-icon', props: { name: 'arrow-u-up-left' } }],
             },
@@ -1168,7 +1168,7 @@ const historyPill: SchemaNode = {
                 square: true,
                 label: 'Redo',
                 disabled: { $: '!recordStore.canvasHistory.canRedo' },
-                onClick: { $action: 'recordStore.redoCanvas', args: [SPACE_CANVAS] },
+                onClick: { $invoke: 'recordStore.redoCanvas', args: [SPACE_CANVAS] },
               },
               children: [{ type: 'we-icon', props: { name: 'arrow-u-up-right' } }],
             },
@@ -1356,7 +1356,7 @@ const relationshipKind: SchemaNode = {
                         // field, value coerced by the field's declared kind. `relationshipTypeId` is
                         // a plain string property, so nothing special happens to it on the way.
                         onChange: {
-                          $action: 'recordStore.updateRecordField',
+                          $invoke: 'recordStore.updateRecordField',
                           args: [
                             'Relationship',
                             { $: 'routeStore.params.card' },
@@ -1388,7 +1388,7 @@ const relationshipKind: SchemaNode = {
                                 // property" — see `clearOnEmpty`. Not null or undefined: those still
                                 // skip, so that an ordinary partial save is not data loss.
                                 onClick: {
-                                  $action: 'recordStore.updateRecordField',
+                                  $invoke: 'recordStore.updateRecordField',
                                   args: ['Relationship', { $: 'routeStore.params.card' }, 'relationshipTypeId', ''],
                                 },
                               },
@@ -1506,7 +1506,7 @@ const composedContent: SchemaNode = {
           saveLabel: 'Save',
           editorState: { $: COMPOSED },
           // `arg` second: `updatePost(postId, json)`.
-          saveAction: { $action: 'spaceStore.updatePost', args: [{ $: 'row.id' }, { $: 'arg' }] },
+          saveAction: { $invoke: 'spaceStore.updatePost', args: [{ $: 'row.id' }, { $: 'arg' }] },
         }),
       ],
     },
@@ -1645,8 +1645,8 @@ const LINK_END_ROWS = [
  */
 function openRecord(id: string, type: SchemaProp): SchemaProp[] {
   return [
-    { $action: 'routeStore.setParam', args: ['cardType', type] },
-    { $action: 'routeStore.setParam', args: ['card', { $: id }] },
+    { $invoke: 'routeStore.setParam', args: ['cardType', type] },
+    { $invoke: 'routeStore.setParam', args: ['card', { $: id }] },
   ];
 }
 
@@ -1924,7 +1924,7 @@ const peopleSection: SchemaNode = {
                     $: `involvementMenu({ node: row.id, entity: ${CARD_TYPE}, rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did, said: row.assignee })`,
                   },
                   onSelect: {
-                    $action: 'spaceStore.setInvolvement',
+                    $invoke: 'spaceStore.setInvolvement',
                     args: [{ $: 'row.id' }, { $: 'arg.id' }, { $: 'arg.kind' }, { $: '!arg.checked' }],
                   },
                 },
@@ -2008,9 +2008,9 @@ const peopleSection: SchemaNode = {
                                             onClick: {
                                               $if: {
                                                 condition: { $: 'holder.reflexive' },
-                                                then: { $action: 'spaceStore.respondTo', args: [{ $: 'row.id' }, ''] },
+                                                then: { $invoke: 'spaceStore.respondTo', args: [{ $: 'row.id' }, ''] },
                                                 else: {
-                                                  $action: 'spaceStore.setInvolvement',
+                                                  $invoke: 'spaceStore.setInvolvement',
                                                   args: [
                                                     { $: 'row.id' },
                                                     { $: 'holder.did' },
@@ -2349,7 +2349,7 @@ const inspectorPanel: SchemaNode = {
     connectionsOpen: { type: 'boolean', initial: false, persist: 'inspector.connectionsSection' },
     connectsOpen: { type: 'boolean', initial: false, persist: 'inspector.connectsSection' },
     peopleOpen: { type: 'boolean', initial: false, persist: 'inspector.peopleSection' },
-    flowsOpen: { type: 'boolean', initial: false, persist: 'inspector.flowsSection' },
+    workflowsOpen: { type: 'boolean', initial: false, persist: 'inspector.workflowsSection' },
     reactionsOpen: { type: 'boolean', initial: false, persist: 'inspector.reactionsSection' },
     discussionOpen: { type: 'boolean', initial: false, persist: 'inspector.discussionSection' },
   },
@@ -2500,7 +2500,7 @@ const inspectorPanel: SchemaNode = {
                     props: {
                       size: 'sm',
                       square: true,
-                      variant: { $: `!(${COMPOSED_CARD}) && local.editing ? 'secondary' : 'ghost'` },
+                      variant: { $: `!(${COMPOSED_CARD}) && local.editing ? 'soft' : 'ghost'` },
                       onClick: {
                         $if: {
                           condition: { $: COMPOSED_CARD },
@@ -2575,7 +2575,7 @@ const inspectorPanel: SchemaNode = {
                         delete makes the same non-choice, one surface along.
                       */
                       onClick: {
-                        $action: 'record.delete',
+                        $invoke: 'record.delete',
                         args: [{ $: CARD_TYPE }, { $: 'routeStore.params.card' }],
                       },
                     },
@@ -2692,12 +2692,12 @@ const inspectorPanel: SchemaNode = {
                             answerButton({
                               tone: 'success',
                               label: 'Accept',
-                              onClick: { $action: 'modules.transcribe.acceptProposal', args: [{ $: 'row.id' }] },
+                              onClick: { $invoke: 'modules.transcribe.acceptProposal', args: [{ $: 'row.id' }] },
                             }),
                             answerButton({
                               tone: 'danger',
                               label: 'Reject — removes it',
-                              onClick: { $action: 'modules.transcribe.rejectProposal', args: [{ $: 'row.id' }] },
+                              onClick: { $invoke: 'modules.transcribe.rejectProposal', args: [{ $: 'row.id' }] },
                             }),
                           ],
                         },
@@ -2850,11 +2850,11 @@ const inspectorPanel: SchemaNode = {
                     // A vocabulary record is edited where the space's words are — see `WorkshopVocabulary`.
                     vocabularyEditLink(CARD_TYPE),
                     peopleSection,
-                    // Beside who is on it: which flows it is going through is also about this record.
-                    flowsSection({
+                    // Beside who is on it: which workflows it is going through is also about this record.
+                    workflowsSection({
                       type: CARD_TYPE,
-                      open: { field: 'flowsOpen' },
-                      flowsPath: { $: '`${spaceStore.spacePath}/flows`' },
+                      open: { field: 'workflowsOpen' },
+                      workflowsPath: { $: '`${spaceStore.spacePath}/workflows`' },
                     }),
                     // After the disclosure: that is about this record's own fields, and connections
                     // are about other records.
@@ -3069,7 +3069,7 @@ const callsPanel: SchemaNode = {
                             {
                               type: 'we-button',
                               props: {
-                                variant: { $: `call.id == (${CALL_EXPR}) ? 'secondary' : 'ghost'` },
+                                variant: { $: `call.id == (${CALL_EXPR}) ? 'soft' : 'ghost'` },
                                 flex: '1',
                                 /*
                               The half of `flex: '1'` that is easy to forget, and without which this
@@ -3330,7 +3330,7 @@ const callsPanel: SchemaNode = {
                                   type: 'we-button',
                                   props: {
                                     size: 'sm',
-                                    variant: 'primary',
+                                    variant: 'solid',
                                     /*
                                       `joinCall` rather than `goToCall`: the latter means "bring me to
                                       my call", so pressed on somebody else's row while in a call of
@@ -3341,7 +3341,7 @@ const callsPanel: SchemaNode = {
                                     */
                                     onClick: [
                                       {
-                                        $action: 'modules.call.joinCall',
+                                        $invoke: 'modules.call.joinCall',
                                         args: [{ $: `${ROW_LIVE_CALL}.id` }],
                                       },
                                       // And point every other surface at it, which is what clicking
@@ -3401,7 +3401,7 @@ const callsPanel: SchemaNode = {
                                 onClick: [
                                   { $setLocal: 'deletingIsCurrent', value: { $: `call.id == (${CALL_EXPR})` } },
                                   {
-                                    $action: 'spaceStore.deleteCollection',
+                                    $invoke: 'spaceStore.deleteCollection',
                                     args: [{ $: 'call.id' }],
                                     // Only when the record just deleted is the one every other
                                     // surface is reading. Deleting some other call must not move you
@@ -3547,7 +3547,7 @@ const canvas: SchemaNode = {
         /*
           Plain, and a role rather than a scale position.
 
-          `primary-50` is a step on a ramp, and the ramp flips with the theme's polarity: the pale
+          `accent-50` is a step on a ramp, and the ramp flips with the theme's polarity: the pale
           tint it names in a light theme is a near-black in a dark one, and there is no number that
           is right in both. A role is the thing a theme redefines, and the tinted panels the key
           draws with are the ones the design system already maintains for exactly this — legible in
@@ -3715,7 +3715,7 @@ const canvas: SchemaNode = {
       one voice. Neither state is a dead end: one is waiting for a call to be started or chosen, the
       other for the conversation to produce something.
     */
-    emptyGradient: 'primary',
+    emptyGradient: 'accent',
     /*
       The graph's own status strip, on.
 
@@ -3780,7 +3780,7 @@ const canvas: SchemaNode = {
       selected on the canvas too, as soon as the canvas has re-read and drawn it.
     */
     onEdgeCreate: {
-      $action: 'recordStore.connectNodesNow',
+      $invoke: 'recordStore.connectNodesNow',
       args: [{ $: 'event' }],
       onSuccess: [
         { $setLocal: 'inspecting', value: { $: 'result' } },
@@ -3800,11 +3800,11 @@ const canvas: SchemaNode = {
 
       The whole payload rather than four values picked out of it: a folded card arrives carrying a
       placement for each card hidden under it, and a schema cannot loop over a list whose length it
-      does not know — `$action` calls a method once. Without it, folding a cluster and carrying it
+      does not know — `$invoke` calls a method once. Without it, folding a cluster and carrying it
       into a corner would scatter everything back where it was the moment you unfolded, which makes
       a fold a way of hiding things rather than of tidying them.
     */
-    onNodeDragEnd: { $action: 'recordStore.dragOnCanvas', args: [SPACE_CANVAS, { $: 'event' }] },
+    onNodeDragEnd: { $invoke: 'recordStore.dragOnCanvas', args: [SPACE_CANVAS, { $: 'event' }] },
     /*
       The same gesture in the tree, where what a drag means is different.
 
@@ -3818,10 +3818,10 @@ const canvas: SchemaNode = {
       The spine goes with it, and has to: what makes a parent a parent is this community's own
       vocabulary and this reader's current choice, neither of which a store can know.
     */
-    onNodeArrange: { $action: 'recordStore.arrangeOnTree', args: [SPACE_CANVAS, { $: 'local.spine' }, { $: 'event' }] },
+    onNodeArrange: { $invoke: 'recordStore.arrangeOnTree', args: [SPACE_CANVAS, { $: 'local.spine' }, { $: 'event' }] },
     // Who answered with the reaction the tree is weighed by, for the strip's list of voices.
     onSeedSummary: TREE_VOICE_SUMMARY,
-    onNodeResize: { $action: 'recordStore.resizeOnCanvas', args: [SPACE_CANVAS, { $: 'event' }] },
+    onNodeResize: { $invoke: 'recordStore.resizeOnCanvas', args: [SPACE_CANVAS, { $: 'event' }] },
     // Not in the tree, which gives every card one box: a resize there would change nothing on screen, and
     // its handles would sit over the card's reaction badge on the same edge.
     resizable: { $: `!${TREE_ON}` },
@@ -3834,8 +3834,8 @@ const canvas: SchemaNode = {
       `EdgeRoute` parented to this canvas rather than on the `Relationship` — how a claim is *drawn*
       is a fact about a view, and the same claim on another canvas is untouched.
     */
-    onEdgeAnchor: { $action: 'recordStore.anchorOnCanvas', args: [SPACE_CANVAS, { $: 'event' }] },
-    onEdgeReroute: { $action: 'recordStore.rerouteOnCanvas', args: [SPACE_CANVAS, { $: 'event' }] },
+    onEdgeAnchor: { $invoke: 'recordStore.anchorOnCanvas', args: [SPACE_CANVAS, { $: 'event' }] },
+    onEdgeReroute: { $invoke: 'recordStore.rerouteOnCanvas', args: [SPACE_CANVAS, { $: 'event' }] },
     /*
       And the same handle dropped on a *different* card, which re-attaches the connection.
 
@@ -3844,7 +3844,7 @@ const canvas: SchemaNode = {
       relationship is shown. That end's anchor is cleared with it, a side pinned against the card
       that used to be there deciding nothing about the one that arrived.
     */
-    onEdgeRetarget: { $action: 'recordStore.retargetOnCanvas', args: [SPACE_CANVAS, { $: 'event' }] },
+    onEdgeRetarget: { $invoke: 'recordStore.retargetOnCanvas', args: [SPACE_CANVAS, { $: 'event' }] },
     /*
       What is selected, in the address — because the inspector is a *panel*.
 
@@ -3885,7 +3885,7 @@ const canvas: SchemaNode = {
       A placement is the canvas's membership, so the store's one action is enough — and it refuses
       a record from another space, which this canvas could not draw, with a sentence saying so.
     */
-    onDrop: { $action: 'recordStore.dropOnCanvas', args: [SPACE_CANVAS, { $: 'event' }] },
+    onDrop: { $invoke: 'recordStore.dropOnCanvas', args: [SPACE_CANVAS, { $: 'event' }] },
     /*
       A line is a record here too, so clicking one inspects it.
 
@@ -3927,7 +3927,7 @@ const canvas: SchemaNode = {
       {
         $if: {
           condition: { $: 'count(event.records)' },
-          then: { $action: 'recordStore.deleteRecords', args: [{ $: 'event.records' }] },
+          then: { $invoke: 'recordStore.deleteRecords', args: [{ $: 'event.records' }] },
         },
       },
       {
@@ -3939,7 +3939,7 @@ const canvas: SchemaNode = {
             Destructive either way, so the host asks the same question it always did.
           */
           then: {
-            $action: 'recordStore.deleteRecords',
+            $invoke: 'recordStore.deleteRecords',
             args: [{ $: '[{ recordId: event.recordId, recordType: event.recordType }]' }],
           },
         },
@@ -3956,8 +3956,8 @@ const canvas: SchemaNode = {
       Scoped to the call this canvas is about, so walking to another call's canvas does not leave a
       press that would move cards on a canvas nobody is looking at.
     */
-    onUndo: { $action: 'recordStore.undoCanvas', args: [SPACE_CANVAS] },
-    onRedo: { $action: 'recordStore.redoCanvas', args: [SPACE_CANVAS] },
+    onUndo: { $invoke: 'recordStore.undoCanvas', args: [SPACE_CANVAS] },
+    onRedo: { $invoke: 'recordStore.redoCanvas', args: [SPACE_CANVAS] },
     /*
       Cards can be carried off this canvas — into the Pocket, and from there into any other space.
 
@@ -3982,7 +3982,7 @@ const canvas: SchemaNode = {
       {
         $if: {
           condition: { $: "event.action == 'delete'" },
-          then: { $action: 'recordStore.deleteRecords', args: [{ $: 'event.records' }] },
+          then: { $invoke: 'recordStore.deleteRecords', args: [{ $: 'event.records' }] },
         },
       },
       /*
@@ -3996,7 +3996,7 @@ const canvas: SchemaNode = {
         $if: {
           condition: { $: "event.action == 'color' && event.preview" },
           then: {
-            $action: 'recordStore.previewCardStyle',
+            $invoke: 'recordStore.previewCardStyle',
             args: [{ $: 'event.records.map(r, r.recordId)' }, 'color', { $: 'event.value' }],
           },
         },
@@ -4005,7 +4005,7 @@ const canvas: SchemaNode = {
         $if: {
           condition: { $: "event.action == 'color' && !event.preview" },
           then: {
-            $action: 'recordStore.setCardStyle',
+            $invoke: 'recordStore.setCardStyle',
             args: [SPACE_CANVAS, { $: 'event.records.map(r, r.recordId)' }, 'color', { $: 'event.value' }],
           },
         },
@@ -4126,9 +4126,9 @@ const canvas: SchemaNode = {
             parked, somewhere new on every reload. Keeping it is the moment it joins the arrangement.
           */
           then: [
-            { $action: 'modules.transcribe.acceptProposal', args: [{ $: 'event.recordId' }] },
+            { $invoke: 'modules.transcribe.acceptProposal', args: [{ $: 'event.recordId' }] },
             {
-              $action: 'recordStore.placeOnCanvas',
+              $invoke: 'recordStore.placeOnCanvas',
               args: [
                 SPACE_CANVAS,
                 { $: 'event.recordId' },
@@ -4143,13 +4143,13 @@ const canvas: SchemaNode = {
       {
         $if: {
           condition: { $: "event.action == 'reject'" },
-          then: { $action: 'modules.transcribe.rejectProposal', args: [{ $: 'event.recordId' }] },
+          then: { $invoke: 'modules.transcribe.rejectProposal', args: [{ $: 'event.recordId' }] },
         },
       },
       {
         $if: {
           condition: { $: "event.action == 'delete'" },
-          then: { $action: 'record.delete', args: [{ $: 'event.recordType' }, { $: 'event.recordId' }] },
+          then: { $invoke: 'record.delete', args: [{ $: 'event.recordType' }, { $: 'event.recordId' }] },
         },
       },
       /*
@@ -4161,7 +4161,7 @@ const canvas: SchemaNode = {
         $if: {
           condition: { $: "event.action in ['color', 'cardShape', 'contentScale'] && event.preview" },
           then: {
-            $action: 'recordStore.previewCardStyle',
+            $invoke: 'recordStore.previewCardStyle',
             args: [{ $: 'event.recordId' }, { $: 'event.action' }, { $: 'event.value' }],
           },
         },
@@ -4170,7 +4170,7 @@ const canvas: SchemaNode = {
         $if: {
           condition: { $: "event.action in ['color', 'cardShape', 'contentScale'] && !event.preview" },
           then: {
-            $action: 'recordStore.setCardStyle',
+            $invoke: 'recordStore.setCardStyle',
             args: [SPACE_CANVAS, { $: 'event.recordId' }, { $: 'event.action' }, { $: 'event.value' }],
           },
         },
@@ -4185,7 +4185,7 @@ const canvas: SchemaNode = {
       {
         $if: {
           condition: { $: `event.action == 'color' && !event.preview && !(${NO_LENS})` },
-          then: { $action: 'routeStore.setParam', args: [LENS_PARAM, 'none'] },
+          then: { $invoke: 'routeStore.setParam', args: [LENS_PARAM, 'none'] },
         },
       },
     ],
@@ -4381,7 +4381,7 @@ function callGate(icon: string, message: string, action?: SchemaNode): SchemaNod
     children: [
       {
         type: 'we-icon',
-        props: { name: icon, size: 'xl', gradient: 'primary' },
+        props: { name: icon, size: 'xl', gradient: 'accent' },
       },
       {
         type: 'we-text',
@@ -4451,8 +4451,8 @@ const kanbanRoute: RouteSchema = {
             $if: {
               condition: { $: 'routeStore.params.card' },
               then: [
-                { $action: 'routeStore.setParam', args: ['card', null] },
-                { $action: 'routeStore.setParam', args: ['cardType', null] },
+                { $invoke: 'routeStore.setParam', args: ['card', null] },
+                { $invoke: 'routeStore.setParam', args: ['cardType', null] },
               ],
             },
           },
@@ -4493,7 +4493,7 @@ const kanbanRoute: RouteSchema = {
 
             This was the call's own board, behind a "start or choose a call" gate. Every call files what
             it finds into the space collection now, so the work a call commits to is the space's work,
-            and the board for it is the space's — the one playing its `board` role, gathering from the
+            and the board for it is the space's — its `board` landmark, gathering from the
             space collection. What one call produced is a lens over it rather than a board of its
             own: see `FROM_PARAM`.
 
@@ -4505,7 +4505,7 @@ const kanbanRoute: RouteSchema = {
             {
               type: '$if',
               props: {
-                condition: { $: 'spaceStore.roles.board' },
+                condition: { $: 'spaceStore.landmarks.board' },
                 then: {
                   type: 'Column',
                   props: { width: '100%', ...ROUTE_BAND },
@@ -4513,7 +4513,7 @@ const kanbanRoute: RouteSchema = {
                     taskBoard({
                       // The space's own board, which gathers from the space collection — a fact the
                       // board carries, so nothing here has to say so.
-                      boardId: { $: 'spaceStore.roles.board' },
+                      boardId: { $: 'spaceStore.landmarks.board' },
                       // The scope lens — see `SCOPE_PARAM`.
                       onlyFrom: { record: { $: SCOPE_RECORD }, param: FROM_PARAM },
                       // Its control, beside the board's own filters.
@@ -4566,8 +4566,8 @@ const kanbanRoute: RouteSchema = {
                             there is something to open, which is what a preview owes a reader.
                           */
                       social: true,
-                      // A chip per flow the task is going through, beside the board's own.
-                      flows: true,
+                      // A chip per workflow the task is going through, beside the board's own.
+                      workflows: true,
                       // Put away what extraction made and nobody has kept — shared with the canvas and calendar.
                       suggestions: true,
                       /*
@@ -4588,8 +4588,8 @@ const kanbanRoute: RouteSchema = {
                         selected: 'routeStore.params.card',
                         onSelect: [
                           { $setLocal: 'pressedCard', value: true },
-                          { $action: 'routeStore.setParam', args: ['cardType', 'TaskBlock'] },
-                          { $action: 'routeStore.setParam', args: ['card', { $: 'card.id' }] },
+                          { $invoke: 'routeStore.setParam', args: ['cardType', 'TaskBlock'] },
+                          { $invoke: 'routeStore.setParam', args: ['card', { $: 'card.id' }] },
                         ],
                       },
                       empty: emptyState({
@@ -4618,7 +4618,7 @@ const kanbanRoute: RouteSchema = {
                         props: {
                           gap: '200',
                           mt: '400',
-                          onClick: { $action: 'spaceStore.openBoardFor', args: ['', 'Everything'] },
+                          onClick: { $invoke: 'spaceStore.openBoardFor', args: ['', 'Everything'] },
                         },
                         children: [{ type: 'we-icon', props: { name: 'kanban' } }, 'Make a board for this space'],
                       },
@@ -4707,9 +4707,9 @@ const rsvp: SchemaNode = {
               type: 'we-button',
               props: {
                 size: 'xs',
-                variant: { $: `${ON_EVENTS}.answers[event.id] == answer.slug ? 'secondary' : 'ghost'` },
+                variant: { $: `${ON_EVENTS}.answers[event.id] == answer.slug ? 'soft' : 'ghost'` },
                 onClick: {
-                  $action: 'spaceStore.respondTo',
+                  $invoke: 'spaceStore.respondTo',
                   args: [{ $: 'event.id' }, { $: `${ON_EVENTS}.answers[event.id] == answer.slug ? '' : answer.slug` }],
                 },
               },
@@ -4860,7 +4860,7 @@ const eventList: SchemaNode = {
               type: 'we-button',
               props: {
                 size: 'sm',
-                variant: 'secondary',
+                variant: 'soft',
                 ml: 'auto',
                 onClick: { $setLocal: 'newEventOpen', value: true },
               },
@@ -4938,7 +4938,7 @@ const eventList: SchemaNode = {
       discardWhen: { $: 'local.draftTitle || local.draftDescription' },
       submitLabel: 'Add event',
       submit: {
-        $action: 'record.create',
+        $invoke: 'record.create',
         args: [
           'EventBlock',
           {
@@ -5040,7 +5040,7 @@ const eventList: SchemaNode = {
                                       children: [
                                         {
                                           type: 'we-badge',
-                                          props: { size: 'xs', variant: 'warning', appearance: 'solid' },
+                                          props: { size: 'xs', variant: 'solid', tone: 'warning' },
                                           children: ['suggested'],
                                         },
                                       ],
@@ -5113,12 +5113,12 @@ const eventList: SchemaNode = {
                                 answerButton({
                                   tone: 'success',
                                   label: 'Accept',
-                                  onClick: { $action: 'modules.transcribe.acceptProposal', args: [{ $: 'event.id' }] },
+                                  onClick: { $invoke: 'modules.transcribe.acceptProposal', args: [{ $: 'event.id' }] },
                                 }),
                                 answerButton({
                                   tone: 'danger',
                                   label: 'Reject — removes it',
-                                  onClick: { $action: 'modules.transcribe.rejectProposal', args: [{ $: 'event.id' }] },
+                                  onClick: { $invoke: 'modules.transcribe.rejectProposal', args: [{ $: 'event.id' }] },
                                 }),
                               ],
                             },
@@ -5195,13 +5195,13 @@ const eventList: SchemaNode = {
  * cell: one subscription sifted 42 times, against 42 subscriptions for rows already in hand.
  */
 /**
- * Every flow in the space, the records going through each, and the editor. The page is in
- * `WorkshopFlows.ts`; this gives it the route's padding under the pinned chrome.
+ * Every workflow in the space, the records going through each, and the editor. The page is in
+ * `WorkshopWorkflows.ts`; this gives it the route's padding under the pinned chrome.
  */
-const flowsRoute: RouteSchema = {
-  path: '/flows',
+const workflowsRoute: RouteSchema = {
+  path: '/workflows',
   $localState: { ...FLOWS_LOCALS },
-  ...flowsPage({ ...ROUTE_BAND }),
+  ...workflowsPage({ ...ROUTE_BAND }),
 };
 
 const calendarRoute: RouteSchema = {
@@ -5225,8 +5225,8 @@ const calendarRoute: RouteSchema = {
             $if: {
               condition: { $: 'routeStore.params.card' },
               then: [
-                { $action: 'routeStore.setParam', args: ['card', null] },
-                { $action: 'routeStore.setParam', args: ['cardType', null] },
+                { $invoke: 'routeStore.setParam', args: ['card', null] },
+                { $invoke: 'routeStore.setParam', args: ['cardType', null] },
               ],
             },
           },
@@ -5468,9 +5468,9 @@ const calendarRoute: RouteSchema = {
                                 overflow: 'hidden',
                                 // A tint and an outline rather than a fill: with titles in the cell, a solid
                                 // fill wins every contrast fight against its own contents.
-                                bg: { $: "cell.date == local.day ? 'accent-muted' : cell.inMonth ? '' : 'page'" },
+                                bg: { $: "cell.date == local.day ? 'accent-soft' : cell.inMonth ? '' : 'page'" },
                                 border: { $: "cell.date == local.day ? '1px solid accent' : '1px solid transparent'" },
-                                hoverProps: { bg: { $: "cell.date == local.day ? 'accent-muted' : 'surface-hover'" } },
+                                hoverProps: { bg: { $: "cell.date == local.day ? 'accent-soft' : 'surface-hover'" } },
                                 // Pressing the selected day again releases it — the first thing anyone tries.
                                 // Inside the handler so it reads the state at click time, not at paint.
                                 onClick: [
@@ -5536,7 +5536,7 @@ const calendarRoute: RouteSchema = {
                                         text: { $: `(mark.id in ${CHANGED} ? '✎ ' : '') + mark.title` },
                                         // Faded for the neighbouring months, so a busy 1st of next month
                                         // does not read as part of the month being looked at.
-                                        bg: { $: "cell.inMonth ? 'accent-muted' : 'surface-sunken'" },
+                                        bg: { $: "cell.inMonth ? 'accent-soft' : 'surface-sunken'" },
                                         color: { $: "cell.inMonth ? 'accent-text' : 'text-muted'" },
                                         border: {
                                           $: `(${UNCONFIRMED_EVENT('mark')}) ? '1px dashed accent-text' : '1px solid transparent'`,
@@ -5869,7 +5869,7 @@ export const workshopTemplate: TemplateSchema = {
     canvasRoute,
     kanbanRoute,
     calendarRoute,
-    flowsRoute,
+    workflowsRoute,
     /*
       An address this template has no screen for goes to the canvas, rather than saying so.
 

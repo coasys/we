@@ -9,10 +9,10 @@
  * children are already on the canvas still folds, as before — one caret, whatever is behind it.
  *
  * **The vocabulary.** What the space has *defined* — its signal types, connection kinds, task states,
- * kinds of part, topics, models and flows — is never on the canvas, because those records are found by
+ * kinds of part, topics, models and workflows — is never on the canvas, because those records are found by
  * type and nothing on the canvas contains them. `?vocab=1` swaps the canvas for a map of them: one
  * bucket per kind, in the order and words of the space's Vocabulary settings, each opening into what is
- * in it. A model opens into its fields and a Records node; a flow into its steps and the moves between
+ * in it. A model opens into its fields and a Records node; a workflow into its steps and the moves between
  * them. Clicking a record inspects it like any card; editing stays where it is, in the settings.
  */
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
@@ -23,7 +23,7 @@ export const OPEN_NODES = `split(routeStore.params.${OPEN_PARAM})`;
 
 /** Open a card or close it — from the graph's own report, for the reason `FOLD_FROM_GRAPH` gives. */
 export const OPEN_FROM_GRAPH: SchemaProp = {
-  $action: 'routeStore.setParam',
+  $invoke: 'routeStore.setParam',
   args: [
     OPEN_PARAM,
     { $: `join(event.open ? distinct(${OPEN_NODES}, [event.id]) : ${OPEN_NODES}.filter(k, k != event.id), ',')` },
@@ -69,7 +69,7 @@ const BUCKETS = `[
   { key: 'topics', label: 'Topics', entity: 'Topic' },
   { key: 'models', label: 'Models', models: recordStore.creatableEntities.map(k, { name: k.value, label: k.label }) },
   { key: 'other', label: 'From other apps', models: datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value))).map(e, { name: e.name }) },
-  { key: 'flows', label: 'Flows', flows: flowStore.flows.map(f, { name: f.name, label: f.label, steps: f.steps, moves: f.moves }) }
+  { key: 'workflows', label: 'Workflows', workflows: workflowStore.workflows.map(f, { name: f.name, label: f.label, steps: f.steps, moves: f.moves }) }
 ].filter(b, b.key != 'other' || count(b.models))`;
 
 /** The map of the space's vocabulary — see the module docblock. */
@@ -126,7 +126,7 @@ export const vocabularyCanvas: SchemaNode = {
           what is in them a tint of it, and a card's properties the quietest.
         */
         nodeStyle: [
-          { style: { shape: 'card', width: 180, height: 64, color: 'accent-muted' } },
+          { style: { shape: 'card', width: 180, height: 64, color: 'accent-soft' } },
           { when: { kind: 'cluster', type: 'vocabulary' }, style: { color: 'accent', height: 56 } },
           { when: { 'data.final': true }, style: { borderColor: 'accent-text', borderWidth: 2 } },
           { when: { kind: 'property' }, style: { color: 'control-surface', height: 44, content: 'property' } },
@@ -135,7 +135,7 @@ export const vocabularyCanvas: SchemaNode = {
         /*
           A parent's lines leave its bottom edge and meet each child at its top, as the canvas's tree
           draws them — where the geometry decides, the outer children of a wide rank are met at their
-          sides, and the same relationship reads three different ways. Not a flow's moves, which run
+          sides, and the same relationship reads three different ways. Not a workflow's moves, which run
           between steps side by side.
         */
         edgeStyle: [
@@ -153,7 +153,7 @@ export const vocabularyCanvas: SchemaNode = {
         ],
         open: { $: OPEN_NODES },
         onNodeOpen: OPEN_FROM_GRAPH,
-        // A record on the map is inspected like any card; a bucket, a flow or a field has none, and clears it.
+        // A record on the map is inspected like any card; a bucket, a workflow or a field has none, and clears it.
         focus: { $: 'routeStore.params.card' },
         onNodeClick: [
           { $setLocal: 'inspecting', value: { $: "event.recordId ?? ''" } },
@@ -170,14 +170,16 @@ export const vocabularyToggle: SchemaNode = {
   type: 'we-tooltip',
   props: {
     placement: 'bottom',
-    content: { $: `${VOCAB_ON} ? 'Back to the canvas' : 'What this space has defined — its words, models and flows'` },
+    content: {
+      $: `${VOCAB_ON} ? 'Back to the canvas' : 'What this space has defined — its words, models and workflows'`,
+    },
   },
   children: [
     {
       type: 'we-button',
       props: {
-        variant: { $: `${VOCAB_ON} ? 'secondary' : 'ghost'` },
-        onClick: { $action: 'routeStore.setParam', args: [VOCAB_PARAM, { $: `${VOCAB_ON} ? null : '1'` }] },
+        variant: { $: `${VOCAB_ON} ? 'soft' : 'ghost'` },
+        onClick: { $invoke: 'routeStore.setParam', args: [VOCAB_PARAM, { $: `${VOCAB_ON} ? null : '1'` }] },
       },
       children: [
         { type: 'we-icon', props: { name: 'book-open-text' } },
@@ -204,9 +206,9 @@ export function vocabularyEditLink(cardType: string): SchemaNode {
         type: 'we-button',
         props: {
           size: 'sm',
-          variant: 'secondary',
+          variant: 'soft',
           // About this record, so the settings land on its row — see `spaceSettingsFocus`.
-          onClick: { $action: 'shellStore.openSpaceSettings', args: ['vocabulary', { $: 'row.id' }] },
+          onClick: { $invoke: 'shellStore.openSpaceSettings', args: ['vocabulary', { $: 'row.id' }] },
         },
         children: [
           { type: 'we-icon', props: { name: 'book-open-text' } },

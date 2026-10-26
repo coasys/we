@@ -424,7 +424,7 @@ function replyBody(
                               `hoverProps` keeps it, and the tinted fill is what acknowledges the
                               pointer instead.
                             */
-                            hoverProps: { color: 'danger-text', bg: 'danger-surface' },
+                            hoverProps: { color: 'danger-text', bg: 'danger-soft' },
                             label: 'Delete this reply',
                             /*
                               Straight to the action, with no dialog of ours in front of it. The host
@@ -434,7 +434,7 @@ function replyBody(
                             */
                             onClick: [
                               { $setLocal: 'pressedControl', value: true },
-                              { $action: 'spaceStore.deleteCollection', args: [{ $: `${as}.id` }] },
+                              { $invoke: 'spaceStore.deleteCollection', args: [{ $: `${as}.id` }] },
                             ],
                           },
                           children: [{ type: 'we-icon', props: { name: 'trash' } }],
@@ -748,11 +748,11 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
                     /*
                       The reply being continued, drawn as itself and marked as the context it is.
 
-                      `accent-muted` rather than `surface-sunken`. Sunken is `page` minus 0.035 of
+                      `accent-soft` rather than `surface-sunken`. Sunken is `page` minus 0.035 of
                       lightness, and the panel this sits in paints `page` — so the card the whole
                       scoped view hangs off was three and a half percent different from its
                       background and read as nothing at all. A tint is also the truer answer: this
-                      is the SELECTED thing, which is what `accent-muted` is for, where sunken means
+                      is the SELECTED thing, which is what `accent-soft` is for, where sunken means
                       a well cut into a surface.
 
                       The rule down the left edge is back, in the accent and at 3px. It was taken
@@ -769,7 +769,7 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
                       width: '100%',
                       p: '300',
                       r: 'surface',
-                      bg: 'accent-muted',
+                      bg: 'accent-soft',
                       borderLeft: '3px solid accent',
                     },
                     children: replyBody('focused', 'false', opts, false),
@@ -912,7 +912,7 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
                       onSave: [
                         { $setLocal: COMPOSER_BUSY, value: true },
                         {
-                          $action: 'spaceStore.createPost',
+                          $invoke: 'spaceStore.createPost',
                           // The tree first: `createPost(json, options)`. `we://response` rather than
                           // `we://child` — a reply answers the thing rather than becoming part
                           // of it, which is what lets a reply be a composition with children.
@@ -952,7 +952,7 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
                     cannot be found by somebody looking for how to send.
                   */
                   square: true,
-                  variant: 'secondary',
+                  variant: 'soft',
                   label: 'Post this reply',
                   disabled: { $: `!local.${COMPOSER_DIRTY} || local.${COMPOSER_BUSY}` },
                   loading: { $: `local.${COMPOSER_BUSY}` },
@@ -983,7 +983,7 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
             saveLabel: 'Save',
             editorState: { $: 'first(local.discussionEdit).editorState' },
             saveAction: {
-              $action: 'spaceStore.updatePost',
+              $invoke: 'spaceStore.updatePost',
               // The id first: `updatePost(postId, json)` takes the tree second, which is why the
               // fragment asks a caller to place `arg` rather than appending it.
               args: [{ $: `local.${EDITING}` }, { $: 'arg' }],
@@ -999,7 +999,7 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
         title: opts.title ?? 'Reply',
         saveLabel: 'Reply',
         saveAction: {
-          $action: 'spaceStore.createPost',
+          $invoke: 'spaceStore.createPost',
           // The tree first: `createPost(json, options)`. `we://response` rather than `we://child`
           // — a reply answers the thing rather than becoming part of it, which is what lets a reply
           // be a full composition with children of its own.

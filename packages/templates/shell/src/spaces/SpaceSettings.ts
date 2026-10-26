@@ -3,6 +3,7 @@ import { expr } from '@we/schema-shared';
 import { attributeRow } from '@we/template-kit';
 
 import { spaceDefaultsSection } from './SpaceDefaults.ts';
+import { spacePeopleSection } from './SpacePeople.ts';
 import { spaceSectionsSection } from './SpaceSections.ts';
 import { spaceVocabularySection } from './SpaceVocabulary.ts';
 
@@ -53,7 +54,7 @@ const routeSpaceUuid = { $: 'routeStore.segments[1]' };
 
 const backLink: SchemaNode = {
   type: 'we-button',
-  props: { variant: 'ghost', size: 'sm', ax: 'start', onClick: { $action: 'routeStore.navigate', args: ['/spaces'] } },
+  props: { variant: 'ghost', size: 'sm', ax: 'start', onClick: { $invoke: 'routeStore.navigate', args: ['/spaces'] } },
   children: [
     { type: 'we-icon', props: { name: 'arrow-left' } },
     { type: 'we-text', props: { variant: 'label' }, children: ['All spaces'] },
@@ -82,7 +83,7 @@ export const spaceIdentity: SchemaNode = {
           props: { variant: 'footnote', color: 'text-faint' },
           children: [
             {
-              $: "space.isWeSpace ? space.kind == 'shared' ? 'Shared space' : 'Personal space' : 'Joined dataset — not yet a WE space'",
+              $: "space.isWeSpace ? space.kind == 'shared' ? 'Shared space' : 'Personal space' : `Joined dataset — not yet a ${templateStore.brand.name} space`",
             },
           ],
         },
@@ -99,9 +100,9 @@ const pageHeader: SchemaNode = {
     {
       type: 'we-button',
       props: {
-        variant: 'secondary',
+        variant: 'soft',
         size: 'sm',
-        onClick: { $action: 'spaceStore.navigateToSpace', args: [{ $: 'space.uuid' }] },
+        onClick: { $invoke: 'spaceStore.navigateToSpace', args: [{ $: 'space.uuid' }] },
       },
       children: [
         { type: 'we-text', props: { variant: 'label' }, children: ['Open'] },
@@ -123,7 +124,11 @@ const notAWeSpaceNotice: SchemaNode = {
     {
       type: 'we-text',
       props: { variant: 'footnote', color: 'text-faint' },
-      children: ['This dataset was synced in from another app and has no WE space in it. Open it to initialize one.'],
+      children: [
+        {
+          $: '`This dataset was synced in from another app and has no ${templateStore.brand.name} space in it. Open it to initialize one.`',
+        },
+      ],
     },
   ],
 };
@@ -143,7 +148,7 @@ const saveMetaOnBlur = [
       then: [
         { $setLocal: 'saving', value: true },
         {
-          $action: 'spaceStore.updateSpaceMeta',
+          $invoke: 'spaceStore.updateSpaceMeta',
           args: [{ name: { $: 'local.editName' }, description: { $: 'local.editDescription' } }, { $: 'space.uuid' }],
           onFinally: [
             { $setLocal: 'metaDirty', value: false },
@@ -171,7 +176,7 @@ const discoveryRow: SchemaNode = attributeRow({
   icon: 'globe',
   label: 'Discovery',
   value: expr`${isListed} ? 'Listed' : 'Hidden'`,
-  description: expr`${isListed} ? 'Appears on the WE discovery globe' : 'Not shown in global discovery'`,
+  description: expr`${isListed} ? \`Appears on the \${templateStore.brand.name} discovery globe\` : 'Not shown in global discovery'`,
   control: {
     type: 'we-switch',
     props: {
@@ -180,7 +185,7 @@ const discoveryRow: SchemaNode = attributeRow({
       labelOn: 'Listed',
       labelOff: 'Hidden',
       onChange: {
-        $action: 'spaceStore.updateSpaceMeta',
+        $invoke: 'spaceStore.updateSpaceMeta',
         args: [{ discovery: expr`${isListed} ? 'hidden' : 'listed'` }, { $: 'space.uuid' }],
       },
     },
@@ -192,7 +197,7 @@ const saveLocationOnBlur = [
     $if: {
       condition: { $: 'local.locationDirty' },
       then: {
-        $action: 'spaceStore.updateSpaceMeta',
+        $invoke: 'spaceStore.updateSpaceMeta',
         args: [{ location: { $: 'local.location' } }, { $: 'space.uuid' }],
         onFinally: [{ $setLocal: 'locationDirty', value: false }],
       },
@@ -211,7 +216,7 @@ const locationRow: SchemaNode = attributeRow({
     children: [
       {
         type: 'we-button',
-        props: { variant: 'secondary', size: 'sm', onClick: { $toggleLocal: 'editLocation' } },
+        props: { variant: 'soft', size: 'sm', onClick: { $toggleLocal: 'editLocation' } },
         children: [{ $: "local.editLocation ? 'Hide' : 'Edit'" }],
       },
       {
@@ -224,10 +229,11 @@ const locationRow: SchemaNode = attributeRow({
             type: 'we-button',
             props: {
               size: 'sm',
-              variant: 'danger',
+              variant: 'solid',
+              tone: 'danger',
               onClick: [
                 { $setLocal: 'location', value: null },
-                { $action: 'spaceStore.updateSpaceMeta', args: [{ location: null }, { $: 'space.uuid' }] },
+                { $invoke: 'spaceStore.updateSpaceMeta', args: [{ location: null }, { $: 'space.uuid' }] },
               ],
             },
             children: [
@@ -264,7 +270,7 @@ const locationEditor: SchemaNode = {
                 onChange: [
                   { $setLocal: 'location', value: { $: 'event.detail' } },
                   {
-                    $action: 'spaceStore.updateSpaceMeta',
+                    $invoke: 'spaceStore.updateSpaceMeta',
                     args: [{ location: { $: 'local.location' } }, { $: 'space.uuid' }],
                   },
                 ],
@@ -496,9 +502,9 @@ const shareSection: SchemaNode = {
             {
               type: 'we-button',
               props: {
-                variant: 'secondary',
+                variant: 'soft',
                 size: 'sm',
-                onClick: { $action: 'spaceStore.copyShareLink', args: [{ $: 'space.uuid' }] },
+                onClick: { $invoke: 'spaceStore.copyShareLink', args: [{ $: 'space.uuid' }] },
               },
               children: [
                 { type: 'we-icon', props: { name: 'copy' } },
@@ -546,9 +552,9 @@ const shareSection: SchemaNode = {
                     {
                       type: 'we-button',
                       props: {
-                        variant: 'secondary',
+                        variant: 'soft',
                         size: 'sm',
-                        onClick: { $action: 'spaceStore.copyGuestLink', args: [{ $: 'space.uuid' }] },
+                        onClick: { $invoke: 'spaceStore.copyGuestLink', args: [{ $: 'space.uuid' }] },
                       },
                       children: [
                         { type: 'we-icon', props: { name: 'copy' } },
@@ -562,6 +568,47 @@ const shareSection: SchemaNode = {
           },
         },
       ],
+    },
+    // Not shared yet: a new shared space is usable before its share finishes, and may fail to share.
+    else: {
+      type: '$if',
+      props: {
+        condition: { $: 'space.sharing' },
+        then: {
+          type: 'Column',
+          props: { gap: '300', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
+          children: [
+            { type: 'we-text', props: { variant: 'label' }, children: ['Invite'] },
+            {
+              type: 'we-text',
+              props: {
+                variant: 'footnote',
+                color: { $: "space.sharing == 'failed' ? 'danger-text' : 'text-faint'" },
+              },
+              children: [
+                {
+                  $: "space.sharing == 'failed' ? `Could not share this space: ${space.shareError}` : 'Sharing this space. Its link appears here when it is ready.'",
+                },
+              ],
+            },
+            {
+              type: '$if',
+              props: {
+                condition: { $: "space.sharing == 'failed'" },
+                then: {
+                  type: 'we-button',
+                  props: {
+                    variant: 'secondary',
+                    size: 'sm',
+                    onClick: { $invoke: 'spaceStore.shareSpace', args: [{ $: 'space.uuid' }] },
+                  },
+                  children: ['Try again'],
+                },
+              },
+            },
+          ],
+        },
+      },
     },
   },
 };
@@ -603,7 +650,7 @@ const personalAppearanceSection: SchemaNode = {
             value: { $: 'space.templateOverride' },
             options: { $: 'spaceStore.templateOverrideOptions' },
             onChange: {
-              $action: 'spaceStore.setSpaceTemplateOverride',
+              $invoke: 'spaceStore.setSpaceTemplateOverride',
               args: [{ $: 'event.detail' }, { $: 'space.uuid' }],
             },
           },
@@ -620,7 +667,7 @@ const personalAppearanceSection: SchemaNode = {
             value: { $: 'space.themeOverride' },
             options: { $: 'spaceStore.themeOverrideOptions' },
             onChange: {
-              $action: 'spaceStore.setSpaceThemeOverride',
+              $invoke: 'spaceStore.setSpaceThemeOverride',
               args: [{ $: 'event.detail' }, { $: 'space.uuid' }],
             },
           },
@@ -676,7 +723,7 @@ const moduleRow: SchemaNode = {
                 // A bare `$event.detail`, never wrapped: an operator object around it would be
                 // evaluated at render time, before the event exists. See `setModuleVisible`.
                 onChange: {
-                  $action: 'spaceStore.setModuleVisible',
+                  $invoke: 'spaceStore.setModuleVisible',
                   args: [{ $: 'mod.id' }, { $: 'event.detail' }, { $: 'space.uuid' }],
                 },
               },
@@ -696,7 +743,7 @@ const moduleRow: SchemaNode = {
                 checked: { $: 'mod.enabled' },
                 disabled: { $: '!space.canAdminister' },
                 onChange: {
-                  $action: 'spaceStore.setModuleEnabled',
+                  $invoke: 'spaceStore.setModuleEnabled',
                   args: [{ $: 'mod.id' }, { $: 'event.detail' }, { $: 'space.uuid' }],
                 },
               },
@@ -749,7 +796,7 @@ function settingControl(options: {
   const { value, disabled, action, args } = options;
   // A bare `event.detail`, never wrapped: an operator object around it would be evaluated at render
   // time, before the event exists. The same rule as the module switches above.
-  const write = { $action: action, args: [...args, { $: 'event.detail' }] };
+  const write = { $invoke: action, args: [...args, { $: 'event.detail' }] };
   return {
     type: '$if',
     props: {
@@ -861,7 +908,7 @@ const moduleSettingsSection: SchemaNode = {
                             variant: 'ghost',
                             size: 'xs',
                             onClick: {
-                              $action: 'spaceStore.setSpaceModuleSetting',
+                              $invoke: 'spaceStore.setSpaceModuleSetting',
                               args: [{ $: 'setting.group' }, { $: 'setting.key' }],
                             },
                           },
@@ -963,7 +1010,7 @@ const callSettingsSection: SchemaNode = {
                 size: 'sm',
                 checked: { $: 'modules.call.newCallsUseSfu' },
                 disabled: { $: 'modules.call.callConfigSaving' },
-                onChange: { $action: 'modules.call.setNewCallsUseSfu', args: [{ $: 'event.detail' }] },
+                onChange: { $invoke: 'modules.call.setNewCallsUseSfu', args: [{ $: 'event.detail' }] },
               },
             },
           ],
@@ -1032,7 +1079,7 @@ const autoInterpretSection: SchemaNode = {
             disabled: { $: '!space.canAdminister' },
             // Bare `$event.detail` — an operator around it would resolve at render time, before
             // the event exists. Same reason as the module switches above.
-            onChange: { $action: 'spaceStore.setAutoInterpret', args: [{ $: 'event.detail' }, { $: 'space.uuid' }] },
+            onChange: { $invoke: 'spaceStore.setAutoInterpret', args: [{ $: 'event.detail' }, { $: 'space.uuid' }] },
           },
         },
       ],
@@ -1101,7 +1148,7 @@ const threadModeSection: SchemaNode = {
               { label: 'Branching', value: 'fractal' },
               { label: 'One level', value: 'flat' },
             ],
-            onChange: { $action: 'spaceStore.setThreadMode', args: [{ $: 'event.detail' }, { $: 'space.uuid' }] },
+            onChange: { $invoke: 'spaceStore.setThreadMode', args: [{ $: 'event.detail' }, { $: 'space.uuid' }] },
           },
         },
       ],
@@ -1182,7 +1229,7 @@ const extractionTargetsSection: SchemaNode = {
                         // Bare `event.detail` — an operator around it would resolve at render time,
                         // before the event exists.
                         onChange: {
-                          $action: 'spaceStore.setExtractionTarget',
+                          $invoke: 'spaceStore.setExtractionTarget',
                           args: [{ $: 'candidate' }, { $: 'event.detail' }, { $: 'space.uuid' }],
                         },
                       },
@@ -1275,14 +1322,15 @@ const audienceNote = (text: string, editableWhen?: SchemaProp): SchemaNode => ({
 });
 
 /**
- * The tabs, in the order somebody works through a new space: what it is, how it looks, what it has,
- * what its words mean.
+ * The tabs, in the order somebody works through a new space: what it is, who looks after it, how it
+ * looks, what it has, what its words mean.
  *
  * Vocabulary is last because it is the deepest and the least often visited — and because it is
  * enormous, which is most of why these are tabs at all.
  */
 const TABS = [
   { key: 'about', label: 'About' },
+  { key: 'people', label: 'People' },
   { key: 'appearance', label: 'Appearance' },
   { key: 'features', label: 'Features' },
   { key: 'vocabulary', label: 'Vocabulary' },
@@ -1334,14 +1382,12 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
     /*
       The wrapper exists for one reason: the open tab must outlive the row.
 
-      `spaceStore.spaceList` builds a fresh object per row on every recompute, and `$each` renders
-      through a reference-keyed `<For>` — so *any* write to the space rebuilds this whole subtree.
-      With the tab declared inside the loop, flicking a view or an extraction target destroyed the
-      `$localState` holding it and re-created it at `'about'`: the settings panel jumped back to the
-      first tab on every toggle.
-
-      Above the loop it survives, and it belongs there anyway — which tab is open is a fact about
-      the panel, not about the row the filter happens to return.
+      `$each` renders through a reference-keyed `<For>`, and `spaceStore.spaceList` once built a
+      fresh object per row whenever the space changed — so a write to the space rebuilt this whole
+      subtree. With the tab declared inside the loop, flicking a view or an extraction target
+      destroyed the `$localState` holding it and re-created it at `'about'`. The rows now change in
+      place and keep their identity, but the tab still belongs out here: which tab is open is a fact
+      about the panel, not about the row the filter happens to return.
     */
     type: 'Column',
     props: { width: '100%', ...fills },
@@ -1411,6 +1457,19 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
                           audienceNote('Everyone in this space sees these.', { $: 'space.canAdminister' }),
                           communitySection,
                           shareSection,
+                        ],
+                        fill,
+                      ),
+
+                      /*
+                    People — who is here and who looks after the space. Community-owned, like About,
+                    and read from the space itself, like Vocabulary — see `SpacePeople.ts`.
+                  */
+                      tabPanel(
+                        'people',
+                        [
+                          audienceNote('Everyone in this space sees these.', { $: 'space.canAdminister' }),
+                          spacePeopleSection,
                         ],
                         fill,
                       ),

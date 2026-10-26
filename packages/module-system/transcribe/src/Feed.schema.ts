@@ -10,10 +10,9 @@
  * it scrolls, pages and re-anchors exactly as the transcript does, and follows the same per-viewer
  * orientation.
  */
-import { panelShell, timeline, timelineMoreAt, timelineOrder } from '@we/schema-kit';
+import { lineComposer, panelShell, timeline, timelineMoreAt, timelineOrder } from '@we/schema-kit';
 import type { SchemaNode } from '@we/schema-shared';
 
-import { lineComposer } from './lineComposer';
 import { messageLine } from './messageLine';
 import { TIMELINE_ORIENTATION, timelineOrderButton } from './Panel.schema';
 
@@ -58,7 +57,7 @@ const origin: SchemaNode = {
         size: 'xs',
         variant: 'ghost',
         // Into the call it was said in — the address the transcript and the space's views follow.
-        onClick: { $action: 'routeStore.setParam', args: ['call', { $: 'row.call' }] },
+        onClick: { $invoke: 'routeStore.setParam', args: ['call', { $: 'row.call' }] },
       },
       children: [{ $: 'row.callTitle' }],
     },
@@ -67,7 +66,7 @@ const origin: SchemaNode = {
       type: '$if',
       props: {
         condition: { $: "row.source == ''" },
-        then: { type: 'we-badge', props: { size: 'sm', variant: 'neutral' }, children: ['bot'] },
+        then: { type: 'we-badge', props: { size: 'sm' }, children: ['bot'] },
       },
     },
   },
@@ -101,7 +100,7 @@ const activity: SchemaNode = {
         },
         {
           type: 'we-badge',
-          props: { size: 'sm', variant: { $: "row.suggested ? 'warning' : 'success'" } },
+          props: { size: 'sm', tone: { $: "row.suggested ? 'warning' : 'success'" } },
           children: [{ $: "row.suggested ? row.suggested + ' suggested' : 'kept'" }],
         },
         {
@@ -132,7 +131,7 @@ const activity: SchemaNode = {
                   type: 'Row',
                   props: { gap: '200', ay: 'center', opacity: { $: 'item.pending ? 0.6 : 1' } },
                   children: [
-                    { type: 'we-badge', props: { size: 'sm', variant: 'neutral' }, children: [{ $: 'item.entity' }] },
+                    { type: 'we-badge', props: { size: 'sm' }, children: [{ $: 'item.entity' }] },
                     { type: 'we-text', props: { variant: 'body', truncate: true }, children: [{ $: 'item.title' }] },
                   ],
                 },
@@ -166,7 +165,7 @@ const composer: SchemaNode = {
             },
             {
               type: 'we-button',
-              props: { size: 'xs', variant: 'ghost', onClick: { $action: 'modules.transcribe.cancelReply', args: [] } },
+              props: { size: 'xs', variant: 'ghost', onClick: { $invoke: 'modules.transcribe.cancelReply', args: [] } },
               children: ['Cancel'],
             },
           ],
@@ -186,12 +185,12 @@ const composer: SchemaNode = {
               $if: {
                 condition: { $: FEED_REPLY },
                 then: {
-                  $action: 'modules.transcribe.reply',
+                  $invoke: 'modules.transcribe.reply',
                   args: [{ $: 'modules.transcribe.replyingTo.id' }, { $: 'event.text' }, { $: 'event.marks' }],
                   onFinally: [{ $setLocal: 'sending', value: false }],
                 },
                 else: {
-                  $action: 'modules.transcribe.sendToFeed',
+                  $invoke: 'modules.transcribe.sendToFeed',
                   args: [{ $: 'event.text' }, { $: 'event.marks' }],
                   onFinally: [{ $setLocal: 'sending', value: false }],
                 },
@@ -222,7 +221,7 @@ export const feedPanel: SchemaNode = {
             type: 'we-button',
             props: {
               size: 'xs',
-              variant: { $: "local.feedActivity ? 'secondary' : 'ghost'" },
+              variant: { $: "local.feedActivity ? 'soft' : 'ghost'" },
               onClick: { $setLocal: 'feedActivity', value: { $: '!local.feedActivity' } },
             },
             children: [{ $: "local.feedActivity ? 'Messages and activity' : 'Messages only'" }],
@@ -235,10 +234,10 @@ export const feedPanel: SchemaNode = {
         timeline({
           fromStart: FROM_START,
           orientation: TIMELINE_ORIENTATION,
-          onLoadOlder: { $action: 'modules.transcribe.showMoreFeed' },
-          onLoadNewer: { $action: 'modules.transcribe.showMoreFeed' },
-          onJumpNewest: { $action: 'modules.transcribe.readFeedLive' },
-          onJumpOldest: { $action: 'modules.transcribe.readFeedFromStart' },
+          onLoadOlder: { $invoke: 'modules.transcribe.showMoreFeed' },
+          onLoadNewer: { $invoke: 'modules.transcribe.showMoreFeed' },
+          onJumpNewest: { $invoke: 'modules.transcribe.readFeedLive' },
+          onJumpOldest: { $invoke: 'modules.transcribe.readFeedFromStart' },
           children: [
             {
               type: 'Column',

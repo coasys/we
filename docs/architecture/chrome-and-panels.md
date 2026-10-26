@@ -27,11 +27,11 @@ Reserve **rail** for the right-hand one and **sidebar** for the left, as the cod
 The sidebar and the rail are not drawn by the shell directly: they are **host parts** an **app
 template** places (`meta.role: 'app'`, `host.sidebar`, `host.rail`). WE's own app
 (`templates/shell/src/WeApp.schema.ts`) is today's arrangement written as data. An agent may choose
-an app of their own — in Settings → Appearance, or in the template picker's App section, which sits
+an app of their own — in Settings → Apps & templates, or in the template picker's App section, which sits
 above the templates and offers to edit or fork each — and edit it where it is drawn: the editor bar's
 **Page | App** switch says which of the two the session edits, one at a time, and WE's app — built
 in — is forked from the bar the inspector shows while it is the target. An app of your own is
-deleted in Settings → Appearance, which puts you back in WE's if it was the one you were in. An app
+deleted in Settings → Apps & templates, which puts you back in WE's if it was the one you were in. An app
 can also arrive in a bundle — built in by the seed, or installed from a file — with templates, a
 theme and record types of its own; see `apps-as-data.md`. Safe
 mode always draws WE's. Everything else here — the editor's panels and bar, the boot screen and its
@@ -225,6 +225,24 @@ lane is `order`. None of it touches the tree, so "Reset layout" restores the aut
 else. A section is rendered by the outlet when home and by the dock layer when not — two mount
 points, one remount at the gesture, never on a move. The grip is the host's, on a wrapper that
 outlives the section and becomes its placeholder.
+
+**A lane can be a sidebar.** `resize: 'end'` (or `'start'`) on the outlet puts a drag handle on that
+edge alone; the width somebody leaves it at is kept per agent and per template
+(`shellStore.laneWidth`), clamped to the outlet's `minWidth` and `maxWidth`, and its `width` is where
+it starts. `shellStore.toggleLane(name)` folds a lane away and back — its sections stay mounted and
+hidden — and a space template may call it, since folding its own sidebar is its own view state. Both
+are part of a saved layout and undone by "Reset layout". Below `NARROW_VIEWPORT_PX` a kept width
+means nothing, so the lane takes its parent's width and the handle goes; how the page stacks there is
+the template's own layout.
+
+**A section is as long as its content unless it says `grow`.** With `grow`, it takes that share of
+the length the lane has left, as a panel in a docked lane does, and is held to it — so a section that
+fills a sidebar (a tree, a list) reaches the end of the lane and scrolls inside itself rather than
+running past it. Its wrapper is a column, so what the section draws can say `height: 100%`.
+
+**Grips are quiet.** A section's grip shows where the pointer or the keyboard is, so a page made of
+sections reads as a page; `shellStore.toggleCustomiseLayout` shows every grip at once, for a reader
+asking what can be moved.
 
 The one rule that keeps all of this a model: **a lane holds sections; a section does not hold a
 lane.** The validator refuses a `$panels` inside a panel's node. Fixed depth is what keeps a

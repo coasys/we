@@ -37,7 +37,7 @@ const caretIcon = (openField: string): SchemaNode => ({
 const subgroupMessagesToggle: SchemaNode = {
   type: 'we-button',
   props: {
-    variant: 'secondary',
+    variant: 'soft',
     size: 'sm',
     alignSelf: 'start',
     px: '200',
@@ -47,7 +47,7 @@ const subgroupMessagesToggle: SchemaNode = {
         $if: {
           condition: { $: '!local.subgroupMessages' },
           then: {
-            $action: 'modules.flux.subgroupMessages',
+            $invoke: 'modules.flux.subgroupMessages',
             args: [{ $: 'subgroup.id' }],
             onSuccess: [{ $setLocal: 'subgroupMessages', value: { $: 'result' } }],
           },
@@ -146,7 +146,7 @@ const subgroupCard: SchemaNode = withLocalState(
 const conversationSubgroupsToggle: SchemaNode = {
   type: 'we-button',
   props: {
-    variant: 'secondary',
+    variant: 'soft',
     size: 'sm',
     px: '200',
     alignSelf: 'start',

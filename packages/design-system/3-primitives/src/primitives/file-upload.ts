@@ -30,7 +30,7 @@ const styles = css`
 
   :host([dragover]) [part='base'] {
     border-color: var(--we-role-accent);
-    background: var(--we-role-accent-muted);
+    background: var(--we-role-accent-soft);
   }
 
   input[part='native'] {
@@ -68,7 +68,6 @@ const styles = css`
   }
 
   :host([disabled]) {
-    opacity: 0.5;
     pointer-events: none;
   }
 `;
@@ -166,7 +165,7 @@ export default class FileUpload extends DesignSystemElement {
                         <span>${file.name}</span>
                         <we-button
                           part="remove"
-                          variant="secondary"
+                          variant="soft"
                           aria-label="Remove file"
                           @click=${() => this._removeFile(i)}
                         >

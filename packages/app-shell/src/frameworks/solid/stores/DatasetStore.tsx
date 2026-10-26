@@ -943,11 +943,9 @@ export function DatasetStoreProvider(props: ParentProps) {
     const created = toApp(await lifecycle.create(SYSTEM_DATASET_NAMES.root));
     made.push(created);
     await schemas.installRoot(created.handle);
-    await AgentSettings.create(created.handle, {
-      currentTemplateId: 'default',
-      currentThemeId: 'dark',
-      defaultThemeId: 'dark',
-    });
+    // No theme: a new agent has not chosen one, so they wear the theme their app offers first
+    // (WE's own offers Dark). Writing one here made it a choice that outranked every app's theme.
+    await AgentSettings.create(created.handle, { currentTemplateId: 'default' });
     setRootDataset(created);
     // Read back rather than holding what the create answered with, which is the same thing the
     // `existing` branch above does one screen up. This signal lives for the life of the app and its
@@ -1133,13 +1131,19 @@ export function DatasetStoreProvider(props: ParentProps) {
       // foreignSpacePrefill in SpaceStore) exists to ask the user about explicitly.
       // Only a dataset with no SDNA of any kind — the genuine first-time join
       // race (the dataset-added listener fires before joinSpace reaches the schema install)
-      // — should hit the install path here.
+      // — should hit the install path here. And only once it has synced: before that a
+      // just-joined dataset holds no SDNA whatever app made it, so a Flux community would
+      // look empty too.
       const schemas = session.backendPorts()!.schemas;
       let weSpace = await schemas.hasCoreSchema(handle);
       trace('dataset', 'switch:core', { dataset: uuid, weSpace, ms: lap() });
       if (!weSpace) {
         if (!(await schemas.hasAnySchema(handle))) {
-          await schemas.installSpace(handle, moduleRegistry.moduleSchemas(schemas));
+          await lifecycle.whenSynced?.(uuid);
+          if (requestedDataset !== uuid) return;
+          if (!(await schemas.hasAnySchema(handle))) {
+            await schemas.installSpace(handle, moduleRegistry.moduleSchemas(schemas));
+          }
           weSpace = await schemas.hasCoreSchema(handle);
         }
       } else {

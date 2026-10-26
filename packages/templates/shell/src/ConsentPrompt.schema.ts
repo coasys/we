@@ -22,11 +22,11 @@ export const consentPrompt: SchemaNode = confirmModal({
     no dismissal at all: no backdrop handler and no Escape, so the only way out of a consent
     request was the two buttons, and a keyboard user who could not reach them was simply stuck.
   */
-  close: { $action: 'runtimeStore.denyConsent' },
+  close: { $invoke: 'runtimeStore.denyConsent' },
   // The backend's own title, so a request type we don't specifically recognise still says
   // something true rather than nothing.
   title: { $: 'runtimeStore.pendingConsent.title' },
-  tone: 'primary',
+  tone: 'accent',
   icon: 'shield-check',
   children: [
     // Capability requests: who is asking, and for what.
@@ -122,7 +122,7 @@ export const consentPrompt: SchemaNode = confirmModal({
   cancelLabel: 'Deny',
   confirmLabel: 'Approve',
   busy: { $: "'approveConsent' in runtimeStore.pending" },
-  confirm: { $action: 'runtimeStore.approveConsent' },
+  confirm: { $invoke: 'runtimeStore.approveConsent' },
 });
 
 /**
@@ -145,7 +145,7 @@ export const consentSecret: SchemaNode = {
         read outside the top layer and out of reach of the keyboard.
       */
       type: 'we-modal',
-      props: { size: 'sm', ax: 'center', close: { $action: 'runtimeStore.dismissConsentSecret' } },
+      props: { size: 'sm', ax: 'center', close: { $invoke: 'runtimeStore.dismissConsentSecret' } },
       children: [
         { type: 'we-icon', props: { name: 'key', color: 'accent-text', size: 'lg' } },
         { type: 'we-text', props: { variant: 'heading-sm' }, children: ['Confirmation code'] },
@@ -166,7 +166,7 @@ export const consentSecret: SchemaNode = {
         },
         {
           type: 'we-button',
-          props: { variant: 'primary', onClick: { $action: 'runtimeStore.dismissConsentSecret' } },
+          props: { variant: 'solid', onClick: { $invoke: 'runtimeStore.dismissConsentSecret' } },
           children: ['Done'],
         },
       ],

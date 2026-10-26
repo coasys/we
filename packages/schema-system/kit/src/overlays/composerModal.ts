@@ -67,13 +67,13 @@ export interface ComposerModalOptions {
    * is not always last: `updatePost(postId, json)` takes it second and `createPost(json, options)`
    * takes it first. An implicit append would silently serve one and corrupt the other.
    */
-  saveAction: { $action: string; args: SchemaProp[] };
+  saveAction: { $invoke: string; args: SchemaProp[] };
   /** Primary button label. Defaults to "Post". */
   saveLabel?: string;
   /**
    * Actions to run once the save has succeeded, after the modal closes itself.
    *
-   * `saveAction` deliberately takes only `$action` and `args` — the lifecycle is this fragment's,
+   * `saveAction` deliberately takes only `$invoke` and `args` — the lifecycle is this fragment's,
    * because closing on success and clearing the in-flight flag are what the handshake is for, and a
    * caller supplying its own `onSuccess` would silently replace both. That left no way to react to a
    * save at all, which is a real gap: a graph has to be told to re-read, a list may want to scroll to
@@ -197,7 +197,7 @@ export function composerModal(opts: ComposerModalOptions): SchemaNode {
                   onSave: [
                     { $setLocal: 'submitting', value: true },
                     {
-                      $action: opts.saveAction.$action,
+                      $invoke: opts.saveAction.$invoke,
                       args: opts.saveAction.args,
                       // The close first, so anything the caller adds runs against a modal that has
                       // already gone — a refresh it triggers repaints what is behind, not under it.
@@ -222,13 +222,13 @@ export function composerModal(opts: ComposerModalOptions): SchemaNode {
                 // Guarded like the backdrop, so the modal has one way out rather than two that
                 // disagree — the house precedent is the model wizard, whose Cancel routes through
                 // the same `requestCloseWizard` its backdrop does.
-                props: { variant: 'secondary', onClick: guard?.close ?? close },
+                props: { variant: 'soft', onClick: guard?.close ?? close },
                 children: ['Cancel'],
               },
               {
                 type: 'we-button',
                 props: {
-                  variant: 'primary',
+                  variant: 'solid',
                   loading: { $: 'local.submitting' },
                   // Disabled only while in flight, never on "nothing typed yet" — the house rule.
                   // Nothing about a draft is locally judgeable anyway.

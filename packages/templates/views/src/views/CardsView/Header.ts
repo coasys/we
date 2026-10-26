@@ -25,9 +25,9 @@ const startCallButton: SchemaNode = {
       type: 'we-button',
       props: {
         text: { $: "modules.call.active ? 'Go to call' : 'Call'" },
-        variant: 'primary',
+        variant: 'solid',
         /*
-          A handler array so the branch is taken at click time. Written as a single `$action` with a
+          A handler array so the branch is taken at click time. Written as a single `$invoke` with a
           `$if` in its args it would resolve when the header painted and freeze whichever answer was
           true then — the trap named in the schema docs, and the reason the two states are two
           entries rather than one conditional action.
@@ -36,13 +36,13 @@ const startCallButton: SchemaNode = {
           {
             $if: {
               condition: { $: 'modules.call.active' },
-              then: { $action: 'modules.call.goToCall' },
+              then: { $invoke: 'modules.call.goToCall' },
             },
           },
           {
             $if: {
               condition: { $: '!modules.call.active' },
-              then: { $action: 'modules.call.startCall', args: [''] },
+              then: { $invoke: 'modules.call.startCall', args: [''] },
             },
           },
         ],
@@ -70,7 +70,7 @@ const emptyCallsToggle: SchemaNode = {
       type: 'we-button',
       props: {
         label: { $: "local.showEmptyCalls ? 'Hide calls nobody spoke in' : 'Show calls nobody spoke in'" },
-        variant: { $: "local.showEmptyCalls ? 'secondary' : 'ghost'" },
+        variant: { $: "local.showEmptyCalls ? 'soft' : 'ghost'" },
         size: 'sm',
         onClick: { $toggleLocal: 'showEmptyCalls' },
       },
@@ -112,7 +112,7 @@ const contentTypeOptions = [
 const displayModeButton = (mode: string, icon: string): SchemaNode => ({
   type: 'we-button',
   props: {
-    variant: expr`local.displayMode == ${mode} ? 'secondary' : 'ghost'`,
+    variant: expr`local.displayMode == ${mode} ? 'soft' : 'ghost'`,
     square: true,
     onClick: { $setLocal: 'displayMode', value: mode },
   },
@@ -246,7 +246,7 @@ export const cardsHeader: SchemaNode = {
           children: [
             {
               type: 'we-button',
-              props: { text: 'Post', variant: 'primary', onClick: { $setLocal: 'createPostOpen', value: true } },
+              props: { text: 'Post', variant: 'solid', onClick: { $setLocal: 'createPostOpen', value: true } },
             },
             {
               type: 'we-button',
@@ -256,7 +256,7 @@ export const cardsHeader: SchemaNode = {
                 // Opens the shell-chrome mount (slot 'core:createSpace'), which exists once and
                 // closes itself via the same shell flag. A route-local copy of the modal used to
                 // live here, gated on a local flag its close never cleared — unclosable.
-                onClick: { $action: 'shellStore.setCreateSpaceOpen', args: [true] },
+                onClick: { $invoke: 'shellStore.setCreateSpaceOpen', args: [true] },
               },
             },
           ],

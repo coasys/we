@@ -1,4 +1,5 @@
-export type ToastVariant = 'info' | 'success' | 'warning' | 'error';
+/** A toast's colour family — the same word `tone` is on every element, from the status ones. */
+export type ToastTone = 'neutral' | 'success' | 'warning' | 'danger';
 
 /**
  * One thing a person can do about a toast, beside dismissing it — "Undo" on the thing it reports.
@@ -14,7 +15,7 @@ export interface ToastAction {
 export interface ToastItem {
   id: string;
   message: string;
-  variant?: ToastVariant;
+  tone?: ToastTone;
   duration?: number;
   action?: ToastAction;
 }

@@ -95,14 +95,14 @@ placeholder and the grid can never disagree about how many rows there are.
   "type": "Column",
   "props": { "flex": "1", "height": "100%", "ax": "center", "ay": "center", "gap": "400", "p": "600" },
   "children": [
-    { "type": "we-icon", "props": { "name": "lock", "size": "xl", "gradient": "primary" } },
+    { "type": "we-icon", "props": { "name": "lock", "size": "xl", "gradient": "accent" } },
     { "type": "we-text", "props": { "variant": "heading-md", "textAlign": "center" }, "children": ["Join this Space"] },
     {
       "type": "we-text",
       "props": { "variant": "body", "textAlign": "center", "maxWidth": "var(--we-layout-xs)" },
       "children": ["You haven't joined this space yet."]
     },
-    { "type": "we-button", "props": { "variant": "primary", "onClick": { "$action": "…" } }, "children": ["Join"] }
+    { "type": "we-button", "props": { "variant": "solid", "onClick": { "$invoke": "…" } }, "children": ["Join"] }
   ]
 }
 \`\`\`
@@ -147,7 +147,7 @@ confirmModal({
   title: 'Remove this column?',
   body: 'The cards in it stay on the board, in the state they are in.',
   confirmLabel: 'Remove',
-  confirm: { $action: 'spaceStore.removeBoardColumn', args: [{ $: 'board.id' }, { $: 'column.id' }] },
+  confirm: { $invoke: 'spaceStore.removeBoardColumn', args: [{ $: 'board.id' }, { $: 'column.id' }] },
 })
 \`\`\`
 
@@ -163,7 +163,7 @@ Cancel, and the action's \`onSuccess\`.
   (\`{ $: 'shapeStore.confirmDiscard' }\`) or on a string id works the same way.
 - \`cancel\` for a cancel button that does more than close — "Keep editing" dismisses the question
   and leaves the wizard behind it open.
-- \`tone: 'primary'\` for a question with no casualty; the default \`danger\` picks a warning icon and
+- \`tone: 'accent'\` for a question with no casualty; the default \`danger\` picks a warning icon and
   a danger confirm button.
 - \`detail\` for a quieter second line, \`children\` for a \`we-alert\` naming a surprising consequence.
 - \`busyLocal\` if the action is not instant — a write that walks a board or a thread takes a while, and
@@ -187,7 +187,7 @@ formModal({
   children: [field({ name: 'draftTitle', label: 'What needs doing?', placeholder: 'Ship the docs' })],
   disabled: { $: '!local.draftTitle' },
   submitLabel: 'Add task',
-  submit: { $action: 'record.create', args: ['TaskBlock', { title: { $: 'local.draftTitle' } }] },
+  submit: { $invoke: 'record.create', args: ['TaskBlock', { title: { $: 'local.draftTitle' } }] },
 })
 \`\`\`
 
@@ -218,7 +218,7 @@ person can type into must ask before throwing that away.**
 \`\`\`ts
 const guard = discardGuard({
   dirty: { $: 'local.name || local.description' },
-  close: { $action: 'shellStore.setCreateSpaceOpen', args: [false] },
+  close: { $invoke: 'shellStore.setCreateSpaceOpen', args: [false] },
   title: 'Discard this space?',
   body: 'The name, description and images you have entered will be lost.',
 });
@@ -273,7 +273,7 @@ through \`onReady\`. So the sequence is: \`onReady\` stores that function in a *
         "onSave": [
           { "$setLocal": "submitting", "value": true },
           {
-            "$action": "spaceStore.createPost",
+            "$invoke": "spaceStore.createPost",
             "args": [{ "$": "arg" }],
             "onSuccess": [{ "$setLocal": "composeOpen", "value": false }],
             "onFinally": [{ "$setLocal": "submitting", "value": false }]
@@ -284,7 +284,7 @@ through \`onReady\`. So the sequence is: \`onReady\` stores that function in a *
     {
       "type": "we-button",
       "props": {
-        "variant": "primary",
+        "variant": "solid",
         "loading": { "$": "local.submitting" },
         "disabled": { "$": "local.submitting" },
         "onClick": { "$callLocal": "savePost" }
@@ -610,7 +610,7 @@ photos overlapping at an angle, yes; three cards in a row, no.
         }
       ]
     },
-    { "type": "we-switch", "props": { "checked": true, "onChange": { "$action": "…" } } }
+    { "type": "we-switch", "props": { "checked": true, "onChange": { "$invoke": "…" } } }
   ]
 }
 \`\`\`

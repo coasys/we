@@ -9,10 +9,10 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { buildValidationContext, readBundle, validateSemantic, withEntities } from '@we/schema-shared';
+import { buildValidationContext, bundleThemes, readBundle, validateSemantic, withEntities } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
-import { bundleFileName, type Cartridge, cartridgeBundles, fieldGuide, toolLibrary } from './index.ts';
+import { bundleFileName, type Cartridge, cartridgeBundles, coasys, fieldGuide, toolLibrary } from './index.ts';
 
 const contextData = JSON.parse(readFileSync(resolve(import.meta.dirname, '../../../ai-context/context.json'), 'utf-8'));
 
@@ -40,6 +40,45 @@ describe.each([fieldGuide, toolLibrary])('the $name cartridge', (cartridge) => {
     const errors = errorsFor(cartridge, false);
     expect(errors.length).toBeGreaterThan(0);
     for (const shape of cartridge.shapes) expect(errors.join('\n')).toContain(shape.name);
+  });
+});
+
+describe('the Coasys cartridge', () => {
+  /*
+    It defines no kinds of record of its own, so there is no gap to record: every template it brings
+    must validate as it stands — the app around every space and the space template with its pages.
+  */
+  it('is valid as it stands', () => {
+    const context = buildValidationContext(contextData);
+    const errors = [coasys.app!, coasys.shell].flatMap((template) =>
+      validateSemantic(template, context)
+        .errors.filter((e) => e.severity === 'error')
+        .map((e) => `${template.id}: ${e.path}: ${e.message}`),
+    );
+    expect(errors).toEqual([]);
+  });
+
+  it('brings its own name, mark, sign-in screen and theme', () => {
+    const bundle = cartridgeBundles().find((b) => b.id === 'coasys')!;
+    expect(bundle.brand?.name).toBe('Coasys');
+    expect(bundle.brand?.mark).toMatch(/^<svg/);
+    expect(JSON.stringify(bundle.bootScreen)).toContain('CredentialField');
+    const [glowTheme, coasysTheme] = bundleThemes(bundle);
+    expect(bundle.app?.meta.themeId).toBe(glowTheme.id);
+    expect(Object.keys(coasysTheme.overrides)).toEqual(expect.arrayContaining(['light', 'dark']));
+  });
+
+  it('leads with Glow and offers Coasys beside it, Glow carrying its font rather than fetching it', () => {
+    const bundle = cartridgeBundles().find((b) => b.id === 'coasys')!;
+    const themes = bundleThemes(bundle);
+    expect(themes.map((t) => t.name)).toEqual(['Coasys Glow', 'Coasys']);
+    expect(bundle.app?.meta.themeIds).toEqual(themes.map((t) => t.id));
+    const glow = themes[0];
+    const faces = (glow.overrides as { fontFaces?: { family: string; src: string }[] }).fontFaces ?? [];
+    expect(faces.map((f) => f.family)).toEqual(['Bricolage Grotesque']);
+    expect(faces.every((f) => f.src.startsWith('data:font/woff2;base64,'))).toBe(true);
+    // Nothing in it reaches out: no stylesheet carrying a url(), and no face that is not data.
+    expect(glow.css ?? '').not.toMatch(/url\(/);
   });
 });
 

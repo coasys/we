@@ -128,7 +128,7 @@ that declares \`backends: ['ad4m']\` — nothing else. See \`docs/architecture/p
    code — a DX layer, not a runtime one.)
 
 2. **Schema semantics live in \`@we/schema-shared\`, parameterized by a reactivity port.** All token
-   resolution (\`{ $ }\` expressions, \`$action\`, \`$query\`, \`$setLocal\`, …) is in \`propResolvers/\`.
+   resolution (\`{ $ }\` expressions, \`$invoke\`, \`$query\`, \`$setLocal\`, …) is in \`propResolvers/\`.
    \`resolveProp(value, stores, context, memo)\` takes a framework-injected memoization function
    (\`memo\`), and \`markReactive()\` (see \`propResolvers/reactive.ts\`) tags accessors so a renderer
    knows a prop is reactive. The entire schema engine AND its reactivity wiring are framework-neutral;
@@ -155,6 +155,8 @@ that declares \`backends: ['ad4m']\` — nothing else. See \`docs/architecture/p
 
 ### Where to look
 
+- How a theme becomes CSS, where it reaches, and how to extend it → \`docs/architecture/theming.md\`;
+  writing one → \`packages/design-system/2-themes/THEME_AUTHORING.md\`.
 - Change how a token/operator resolves → \`packages/schema-system/shared/src/propResolvers/\`.
 - Change tree-walking / mounting / control flow → \`packages/schema-system/frameworks/solid/src/\`.
 - Add/adjust a primitive → \`packages/design-system/3-primitives/src/\` (Lit).
@@ -216,9 +218,15 @@ never delete its cards, and why the link state can be inconsistent after a parti
 still renders one answer. The same doc records where new per-column state goes, so the entity does
 not accrete a scalar per feature.
 
-**Before changing anything about flows, read docs/architecture/flows.md.** \`FlowPort\` speaks in
+**Before changing anything about workflows, read docs/architecture/workflows.md.** \`WorkflowPort\` speaks in
 rules and moves — a state's \`requires\`, \`move\` answering moved, waiting, refused, stalled or pending —
 and never in how a backend enforces them: runs, proposals and an entry state stay in the AD4M
-adapter, and where backends differ they say so in \`FlowPort.capabilities\`. A flow is edited as lanes
+adapter, and where backends differ they say so in \`WorkflowPort.capabilities\`. A workflow is edited as lanes
 that are read back out of the stored definition, never stored themselves.
+
+**Before changing who may write what, read docs/architecture/space-policy.md.** A space's policy is an
+allow-list held in the space as versioned \`Policy\` records, and every write is judged by it at one
+point: the write check in \`@we/entities\`, which every backend asks from its own write path. Never add a
+permission check in a store or a template instead — a caller that forgets is a way round every rule.
+\`can()\` lets a template decide what to offer; the write is judged again when it is made.
 `;

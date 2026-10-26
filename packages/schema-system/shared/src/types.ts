@@ -160,6 +160,12 @@ export type TemplatePanel = {
   open?: boolean;
 };
 
+/** What a record view draws: an entity, and optionally one kind of it. */
+export interface RecordViewDraws {
+  entity: string;
+  kind?: string;
+}
+
 export type TemplateMeta = {
   name: string;
   description: string;
@@ -182,6 +188,27 @@ export type TemplateMeta = {
    * not installed is reported once and ignored, exactly as `?theme=` in a share link is.
    */
   themeId?: string;
+  /**
+   * The themes this template is designed for, its default first — for an app offering more than one
+   * look (a flat and a glowing one), each by its id. Where both are given, `themeIds` wins and
+   * `themeId` is ignored. Read either with `templateThemeId`, which answers with the default.
+   */
+  themeIds?: string[];
+  /**
+   * The kind of record this view draws, for a view that is a record's own page — a call's tiles and
+   * transcript, a discussion's steps. The record page uses it when nothing more specific is chosen
+   * (see `recordViews.ts`). `kind` narrows an entity that is several things told apart by a field: a
+   * `CollectionBlock` that is a call. The view says what it draws, never the model: UI does not
+   * travel inside a model every other reader of the space carries.
+   */
+  draws?: RecordViewDraws;
+  /**
+   * How this template draws one record, by type: `'Entity'` or `'Entity:kind'` to a view node, or to
+   * the id of a view available here. The record page asks this first, before any view that says it
+   * draws the type, and falls back to the generic page. Nodes here are the template's own, drawn and
+   * judged with it, and are never sections a space switches on.
+   */
+  recordViews?: Record<string, SchemaNode | string>;
   /**
    * What this template *is* — a whole interface, one section inside one, or the app around them all.
    *
@@ -425,8 +452,8 @@ export type RendererOutput<NodeType = unknown> = NodeType | null;
  * value is one of these; a plain string is text.
  */
 export type ExpressionToken = { $: string };
-export type ActionToken = {
-  $action: string;
+export type InvokeToken = {
+  $invoke: string;
   args?: unknown[];
   onSuccess?: unknown[];
   onError?: unknown[];
@@ -640,7 +667,7 @@ export type QueryDescriptor = {
 /** Union of every token a schema writes in a value or handler position. */
 export type OperatorToken =
   | ExpressionToken
-  | ActionToken
+  | InvokeToken
   | IfToken
   | QueryToken
   | SetLocalToken

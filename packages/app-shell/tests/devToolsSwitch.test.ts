@@ -41,7 +41,7 @@ const nodes = walk(settingsTemplate);
 /** The switch itself, found by the action it calls rather than by position. */
 const toggle = nodes.find((node) => {
   const action = (node.props as Node | undefined)?.onChange as Node | undefined;
-  return action?.$action === 'sessionStore.setDevTools';
+  return action?.$invoke === 'sessionStore.setDevTools';
 });
 
 describe('Settings → Developer', () => {
@@ -69,7 +69,7 @@ describe('Settings → Developer', () => {
     */
     const navToDeveloper = nodes.find((node) => {
       const action = (node.props as Node | undefined)?.onClick as Node | undefined;
-      return action?.$action === 'routeStore.navigate' && (action.args as unknown[])?.[0] === '/developer';
+      return action?.$invoke === 'routeStore.navigate' && (action.args as unknown[])?.[0] === '/developer';
     });
     expect(navToDeveloper).toBeDefined();
 

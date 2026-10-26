@@ -17,10 +17,10 @@
  * ## Why the colours are computed rather than written down
  *
  * The icon is the sidebar's header, standing on its own: the `page` role behind it and
- * `--we-gradient-primary` through the mark. Both are parametric — hue, saturation and a lightness
+ * `--we-gradient-accent` through the mark. Both are parametric — hue, saturation and a lightness
  * ramp — so hard-coding `#1f1e2a` would freeze today's theme into a file nothing recomputes, which
  * is the same mistake as naming a scale position where a role belongs. Here the preset is read and
- * the ramp arithmetic reused from `@we/tokens`, so moving `primaryHue` moves the icon.
+ * the ramp arithmetic reused from `@we/tokens`, so moving `accentHue` moves the icon.
  *
  * ## Why the Tauri CLI does the rasterising
  *
@@ -33,6 +33,7 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -124,14 +125,14 @@ function rampLightness(step: keyof typeof colorLightness, floor: number, ceiling
 function resolvePalette() {
   /*
     Widened to the shared parameter type. Each preset's own type is narrowed to exactly the keys it
-    declares, so `primaryHue` is a type error on a preset that leaves it at the default — which is
+    declares, so `accentHue` is a type error on a preset that leaves it at the default — which is
     most of them, and would make this break on whichever theme was chosen rather than on all of them.
   */
   const p = THEME_PRESETS[ICON_THEME].parameters as ThemeParameters;
   const polarity = (p.polarity ?? 'light') as 'light' | 'dark';
   const floor = parseFloat(String(p.lightnessFloor ?? '0%'));
   const ceiling = parseFloat(String(p.lightnessCeiling ?? '100%'));
-  const hue = p.primaryHue ?? 288;
+  const hue = p.accentHue ?? 288;
   const saturation = p.saturation ?? 60;
   const neutralSaturation = p.neutralSaturation ?? 10;
   const neutralHue = p.neutralHue ?? hue;
@@ -280,7 +281,63 @@ function assertTauriIconOrder() {
   }
 }
 
+// ─── Another deployment's icon ──────────────────────────────────────────────────
+
+/*
+  A seed other than WE's own (`WE_SEED`) may name its own icon (`desktop.icon`, an SVG). It is the
+  whole icon, drawn as it is, edge to edge — a tile, its corners and its margin included, as WE's own
+  icon is composed above — and written beside each desktop app under `.seed-build/<name>/`, where that
+  app's build looks for it. WE's checked-in icons are left alone, so building another deployment
+  changes nothing tracked. See `scripts/seed.cjs`.
+
+  Edge to edge rather than inset: a margin added here around a tile that already has one left the
+  icon visibly smaller than every other app's on the panel, WE's included.
+*/
+const seedFile = createRequire(import.meta.url)('../../../scripts/seed.cjs') as {
+  isDefaultSeed(): boolean;
+  readSeed(): { desktop?: { icon?: string } };
+  desktopOf(seed: unknown): { productName: string; icon: string | null };
+  generatedDir(packageDir: string): string | null;
+  seedLabel(): string;
+};
+
+/** The seed's SVG filling a square, as an image so any SVG composes. */
+function composeSeedIcon(source: string, size = 1024): string {
+  const data = Buffer.from(readFileSync(source)).toString('base64');
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+  <image width="${size}" height="${size}" preserveAspectRatio="xMidYMid meet" href="data:image/svg+xml;base64,${data}"/>
+</svg>
+`;
+}
+
+function generateSeedIcons(source: string) {
+  const composed = join(HERE, '..', '.seed-icon.svg');
+  writeFileSync(composed, composeSeedIcon(source));
+  const tauriIcons = join(seedFile.generatedDir(join(REPO, 'apps', 'we-tauri', 'src-tauri'))!, 'icons');
+  mkdirSync(tauriIcons, { recursive: true });
+  execFileSync('pnpm', ['exec', 'tauri', 'icon', composed, '-o', tauriIcons], { cwd: join(HERE, '..'), stdio: 'pipe' });
+
+  const master = join(HERE, '..', '.icon-1024');
+  execFileSync('pnpm', ['exec', 'tauri', 'icon', composed, '-o', master, '--png', '1024'], {
+    cwd: join(HERE, '..'),
+    stdio: 'pipe',
+  });
+  const electronDir = seedFile.generatedDir(join(REPO, 'apps', 'we-electron'))!;
+  mkdirSync(electronDir, { recursive: true });
+  copyFileSync(join(master, '1024x1024.png'), join(electronDir, 'icon.png'));
+  rmSync(master, { recursive: true, force: true });
+  rmSync(composed, { force: true });
+  console.log(`✅ ${seedFile.seedLabel()}: desktop icons from ${source}`);
+}
+
 function main() {
+  if (!seedFile.isDefaultSeed()) {
+    const { icon } = seedFile.desktopOf(seedFile.readSeed());
+    if (icon) generateSeedIcons(icon);
+    else console.log(`ℹ️  ${seedFile.seedLabel()} names no desktop icon — its builds use WE's`);
+    return;
+  }
+
   assertTauriIconOrder();
   const mark = readFileSync(MARK, 'utf8');
   for (const target of WORDMARK_TARGETS) {

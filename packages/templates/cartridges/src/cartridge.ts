@@ -19,7 +19,10 @@ import {
   type Bundle,
   BUNDLE_FORMAT,
   BUNDLE_FORMAT_VERSION,
+  type BundleBrand,
   type BundleRecordType,
+  type BundleTheme,
+  type SchemaNode,
   type TemplateSchema,
 } from '@we/schema-shared';
 import type { Fixture, FixtureAgent, FixtureRecord, FixtureShape, FixtureTheme } from '@we/template-fixtures';
@@ -33,6 +36,12 @@ export interface Cartridge {
   shell: TemplateSchema & { id: string };
   sections: Array<TemplateSchema & { id: string }>;
   theme: FixtureTheme;
+  /** More themes the app offers beside `theme`, which stays its default. */
+  themes?: BundleTheme[];
+  /** What the app calls itself — its name, mark and About page — when it is not WE. */
+  brand?: BundleBrand;
+  /** Its own sign-in screen, around the host's password field. */
+  bootScreen?: SchemaNode;
   shapes: FixtureShape[];
   /** Modules the host must have. A cartridge names them; it cannot ship one. */
   modules: string[];
@@ -134,6 +143,18 @@ export function toBundle(cartridge: Cartridge, version = '1.0.0'): Bundle {
     },
   };
   const theme = { ...cartridge.theme, id: piece(cartridge.theme.id) };
+  const extra = (cartridge.themes ?? []).map((t) => ({ ...t, id: piece(t.id) }));
+  // Every theme the app offers, its default first — what a template names in `meta.themeIds`.
+  const themeIds = extra.length ? { themeIds: [theme.id, ...extra.map((t) => t.id)] } : {};
+  // The app wears the cartridge's theme too: it is what stands in for the agent's default until they
+  // choose one, so the chrome and the space it frames open in the same look.
+  const app = cartridge.app
+    ? {
+        ...cartridge.app,
+        id: piece(cartridge.app.id),
+        meta: { ...cartridge.app.meta, themeId: theme.id, ...themeIds },
+      }
+    : undefined;
   return {
     format: BUNDLE_FORMAT,
     formatVersion: BUNDLE_FORMAT_VERSION,
@@ -143,12 +164,12 @@ export function toBundle(cartridge: Cartridge, version = '1.0.0'): Bundle {
     description: cartridge.description,
     icon: cartridge.shell.meta.icon ?? 'app-window',
     author: { name: 'WE' },
-    ...(cartridge.app ? { app: { ...cartridge.app, id: piece(cartridge.app.id) } } : {}),
+    ...(app ? { app } : {}),
     templates: [
-      { ...shell, meta: { ...shell.meta, themeId: theme.id } },
+      { ...shell, meta: { ...shell.meta, themeId: theme.id, ...themeIds } },
       ...cartridge.sections.map((section) => ({ ...section, id: piece(section.id) })),
     ],
-    theme,
+    ...(extra.length ? { themes: [theme, ...extra] } : { theme }),
     recordTypes: cartridge.shapes.map((shape) => ({
       name: shape.name,
       ...(shape.icon ? { icon: shape.icon } : {}),
@@ -156,5 +177,7 @@ export function toBundle(cartridge: Cartridge, version = '1.0.0'): Bundle {
       manifest: shape.manifest as BundleRecordType['manifest'],
     })),
     display: cartridge.display === 'ours' ? { spaces: 'ours', template: shellId } : { spaces: 'theirs' },
+    ...(cartridge.brand ? { brand: cartridge.brand } : {}),
+    ...(cartridge.bootScreen ? { bootScreen: cartridge.bootScreen } : {}),
   };
 }

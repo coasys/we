@@ -30,7 +30,7 @@ describe('a foreign custom element', () => {
       type: 'x-rating',
       props: {
         value: 3,
-        'on:x-change': { $action: 'ratings.record', args: [{ $: 'event.detail' }] },
+        'on:x-change': { $invoke: 'ratings.record', args: [{ $: 'event.detail' }] },
       },
     };
     const { container } = render(() => <RenderSchema node={node} stores={stores} registry={{}} />);

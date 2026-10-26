@@ -29,10 +29,10 @@ function joinControls(label: string): SchemaNode[] {
       type: 'we-button',
       props: {
         text: label,
-        variant: 'primary',
+        variant: 'solid',
         loading: joiningThisSpace,
         disabled: joiningThisSpace,
-        onClick: { $action: 'spaceStore.joinSpace', args: [{ $: 'routeStore.segments[1]' }] },
+        onClick: { $invoke: 'spaceStore.joinSpace', args: [{ $: 'routeStore.segments[1]' }] },
       },
     },
     {
@@ -63,7 +63,7 @@ function joinControls(label: string): SchemaNode[] {
 
 const globalSpaceJoinPrompt: SchemaNode = gatePrompt({
   icon: 'globe-hemisphere-west',
-  iconGradient: 'primary',
+  iconGradient: 'accent',
   title: 'Join the global discovery space',
   body: "This is the WE network's global discovery space — find communities and people from across the network. Join to explore spaces on the globe and connect with others.",
   children: joinControls('Join'),
@@ -71,7 +71,7 @@ const globalSpaceJoinPrompt: SchemaNode = gatePrompt({
 
 const regularSpaceJoinPrompt: SchemaNode = gatePrompt({
   icon: 'lock',
-  iconGradient: 'primary',
+  iconGradient: 'accent',
   title: 'Join this Space',
   body: "You haven't joined this space yet. Click below to connect and start collaborating.",
   children: joinControls('Join Space'),

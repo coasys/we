@@ -58,8 +58,8 @@ export const GLOBE_LAYER_CATALOG: PluginCatalog = {
     '"scale": { "from": colour, "to": colour } (a colour) to scale it across all ' +
     'the rows. Colours are roles or tokens ("accent", "warning-500") or CSS. For a heat, use ' +
     '{ "from": "success-500", "to": "danger-500" }, green to red, which reads the same way round in a light and a ' +
-    'dark theme; the graph\'s named scales ("heat") follow the page\'s theme and turn around in a dark one, which ' +
-    'is wrong over satellite imagery. Start a height range above 0 so the least still shows. Pressing a feature calls onSelect. ' +
+    'dark theme; the graph\'s named scales ("heat") fade from the page\'s own colour, which over satellite imagery ' +
+    'reads as nothing to do with the earth. Start a height range above 0 so the least still shows. Pressing a feature calls onSelect. ' +
     'A globe can follow a clock, to play its data through time: give it clock: "<name>" (or { id, duration, loop, autoplay }), ' +
     'and give a data kind time: "<field>" naming each row\'s moment. Rows from after the clock\'s moment are not drawn, and ' +
     "the clock's range is worked out from the rows. The controls are ordinary nodes beside the globe reading " +

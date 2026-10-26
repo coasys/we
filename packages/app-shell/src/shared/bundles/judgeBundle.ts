@@ -13,7 +13,7 @@
  * Pure apart from what is passed in, so the decisions are testable without an app.
  */
 import { type EntityManifest, validateManifest } from '@we/backend-shared';
-import type { Bundle, TemplateSchema } from '@we/schema-shared';
+import { type Bundle, bundleThemes, type SchemaNode, type TemplateSchema } from '@we/schema-shared';
 
 import { type CapabilityGroup, CHROME_TIER, SPACE_TIER } from '../registries/templateSurface';
 import { acceptTemplate, describeCapabilities } from '../templateAcceptance';
@@ -41,7 +41,17 @@ export interface BundleJudgement {
   /** Pieces that cannot be installed, each said in a sentence. Non-empty means refuse the bundle. */
   refusals: string[];
   /** What each piece is called, for "it adds…". */
-  adds: { app?: string; spaceTemplates: string[]; sections: string[]; theme?: string; recordTypes: string[] };
+  adds: {
+    app?: string;
+    spaceTemplates: string[];
+    sections: string[];
+    themes: string[];
+    recordTypes: string[];
+    /** The name it goes by, when it brings its own brand. */
+    brand?: string;
+    /** Whether it draws its own sign-in screen. */
+    bootScreen?: boolean;
+  };
   /** What it will be able to do, in the words a person reads. */
   capabilities: string[];
   /** The same, as the groups those words describe — what a later version is compared against. */
@@ -103,6 +113,17 @@ export function judgeBundle(bundle: Bundle, deps: BundleJudgeDeps): BundleJudgem
   const shells = (bundle.templates ?? []).filter((t) => t.meta?.role !== 'view');
   const sections = (bundle.templates ?? []).filter((t) => t.meta?.role === 'view');
   if (bundle.app) judge(bundle.app, CHROME_TIER, `Its app "${bundle.app.meta?.name ?? bundle.app.id}"`);
+  /*
+    A sign-in screen is drawn as the app is, at the chrome tier — judged as a template of its own so
+    what it reaches counts towards what the person is agreeing to. It must place the host's
+    `CredentialField`: a screen with no password field of the host's could only collect a password
+    in a field of its own, which signs nobody in (see `protected-pieces.md`).
+  */
+  if (bundle.bootScreen) {
+    judge(bootScreenTemplate(bundle), CHROME_TIER, 'Its sign-in screen');
+    if (!placesNode(bundle.bootScreen, 'CredentialField'))
+      refusals.push("Its sign-in screen has no password field of the app's own (CredentialField)");
+  }
   for (const template of [...shells, ...sections])
     judge(template, SPACE_TIER, `"${template.meta?.name ?? template.id}"`);
 
@@ -132,8 +153,10 @@ export function judgeBundle(bundle: Bundle, deps: BundleJudgeDeps): BundleJudgem
       ...(bundle.app ? { app: bundle.app.meta?.name ?? bundle.name } : {}),
       spaceTemplates: shells.map((t) => t.meta?.name ?? t.id),
       sections: sections.map((t) => t.meta?.name ?? t.id),
-      ...(bundle.theme ? { theme: bundle.theme.name } : {}),
+      themes: bundleThemes(bundle).map((theme) => theme.name),
       recordTypes: recordNames,
+      ...(bundle.brand ? { brand: bundle.brand.name } : {}),
+      ...(bundle.bootScreen ? { bootScreen: true } : {}),
     },
     capabilities: describeCapabilities([...groups]),
     groups: [...groups].sort(),
@@ -149,4 +172,21 @@ export function judgeBundle(bundle: Bundle, deps: BundleJudgeDeps): BundleJudgem
 /** Every template a bundle carries, its app first. */
 export function bundleTemplates(bundle: Bundle): Array<TemplateSchema & { id: string }> {
   return [...(bundle.app ? [bundle.app] : []), ...(bundle.templates ?? [])];
+}
+
+/** A bundle's sign-in screen as a template, so it is accepted and judged as one. */
+export function bootScreenTemplate(bundle: Pick<Bundle, 'bootScreen' | 'name'>): TemplateSchema {
+  return {
+    ...(bundle.bootScreen as SchemaNode),
+    meta: { name: `${bundle.name} sign-in`, description: 'The sign-in screen', icon: 'sign-in', role: 'app' },
+  } as TemplateSchema;
+}
+
+/** Whether a node of this type appears anywhere in a tree — through children, slots, routes and `$if` branches. */
+export function placesNode(tree: unknown, type: string): boolean {
+  if (Array.isArray(tree)) return tree.some((entry) => placesNode(entry, type));
+  if (!tree || typeof tree !== 'object') return false;
+  const node = tree as Record<string, unknown>;
+  if (node.type === type) return true;
+  return Object.entries(node).some(([key, value]) => key !== 'meta' && placesNode(value, type));
 }

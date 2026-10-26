@@ -40,15 +40,15 @@ export const signalTypeCard: SchemaNode = {
                 condition: { $: 'signalType.retired' },
                 then: {
                   type: 'we-badge',
-                  props: { variant: 'warning' },
+                  props: { tone: 'warning' },
                   children: ['Retired'],
                 },
               },
             },
-            { type: 'we-badge', props: { variant: 'neutral' }, children: ['Mode: ', { $: 'signalType.mode' }] },
+            { type: 'we-badge', props: {}, children: ['Mode: ', { $: 'signalType.mode' }] },
             {
               type: 'we-badge',
-              props: { variant: 'neutral' },
+              props: {},
               children: ['Aggregate: ', { $: 'signalType.aggregate' }],
             },
             /*
@@ -71,7 +71,7 @@ export const signalTypeCard: SchemaNode = {
                     size: 'sm',
                     label: 'Bring this reaction back',
                     onClick: {
-                      $action: 'spaceStore.setSignalTypeRetired',
+                      $invoke: 'spaceStore.setSignalTypeRetired',
                       args: [{ $: 'signalType.id' }, false],
                     },
                   },
@@ -84,7 +84,7 @@ export const signalTypeCard: SchemaNode = {
                     size: 'sm',
                     label: 'Retire this reaction',
                     onClick: {
-                      $action: 'spaceStore.setSignalTypeRetired',
+                      $invoke: 'spaceStore.setSignalTypeRetired',
                       args: [{ $: 'signalType.id' }, true],
                     },
                   },

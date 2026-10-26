@@ -89,7 +89,7 @@ the seed's list is correct code that never appears.
 
 | Surface | Lives in | Rules | Register | Verify |
 |---|---|---|---|---|
-| Theme | \`design-system/2-themes/src/<name>/\` | its \`CONVENTIONS.md\` | \`themeRegistry.ts\` | \`--filter @we/themes test\` |
+| Theme | \`design-system/2-themes/src/presets.ts\` (+ \`src/<name>/\` for CSS) | \`THEME_AUTHORING.md\`, \`docs/architecture/theming.md\` | \`themeRegistry.ts\` | \`--filter @we/themes test\` |
 | Shell template | \`templates/showcase/src/\` | \`docs/architecture/views.md\` | seed \`templates\` + \`--filter @we/app-shell generate-templates\` | \`validate:schemas\`, \`role-audit\` |
 | View | \`templates/views/src/views/\` | \`docs/architecture/views.md\` | \`CATALOGUE\` in \`generateViewRegistry.mjs\` + seed \`views\` + \`generate-views\` | \`validate:schemas\` |
 | Portable fragment | \`schema-system/kit/src/\` | \`templates/kit/CONVENTIONS.md\` | export from \`index.ts\` | \`--filter @we/template-kit test\` |
@@ -115,7 +115,7 @@ widget there was retired once template-kit's rail fragments replaced it, and fea
 with their module family. Treat that as a strong prior that what you have is a fragment or a module.
 
 **A store member is public API, and classifying it is a security decision.** Every member is
-reachable from any template through an expression or \`$action\`, so name it for template authors and treat removal
+reachable from any template through an expression or \`$invoke\`, so name it for template authors and treat removal
 as breaking. Before \`templateSurface.ts\` existed, all 388 members were in the bag a template rendered
 against — including \`runtimeStore.trustAgent\` and the settings holding the API key — so a template
 that merely *painted* could trust an attacker's DID. Put a new member in the narrowest group that

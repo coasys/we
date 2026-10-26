@@ -4,7 +4,7 @@
  * Three kinds of token reach here, and nothing else:
  *
  * - **An expression**, `{ $: '…' }` — the whole value layer. Every computed value is one of these.
- * - **A handler** — `$action`, `$setLocal`, `$toggleLocal`, `$toggleLocalIn`, `$callLocal`,
+ * - **A handler** — `$invoke`, `$setLocal`, `$toggleLocal`, `$toggleLocalIn`, `$callLocal`,
  *   `$touch`, `$resetLocal`, and `$if` as the conditional *between* handlers. The statement layer:
  *   a closed set of verbs, enumerable because capability grants attach to verbs.
  * - **A query**, `{ $query }`, which the renderer turns into a subscription before this ever sees
@@ -16,9 +16,9 @@
  * `{ $: 'item.name' }` now; there is nothing for a string to be but itself.
  */
 import { hasToken } from '../predicates';
-import { resolveActionProp } from './action';
 import { resolveIfHandler } from './conditional';
 import { resolveExpressionProp } from './expression';
+import { resolveInvokeProp } from './invoke';
 import {
   resolveCallLocalProp,
   resolveResetLocalProp,
@@ -68,7 +68,7 @@ export function resolveProp(value: unknown, stores: Props, context: Props, memo:
         resolveProp,
       );
     if (hasToken(value, '$callLocal', 'string')) return resolveCallLocalProp(value as { $callLocal: string }, context);
-    if (hasToken(value, '$action', 'string')) return resolveActionProp(value, context, stores, memo, resolveProp);
+    if (hasToken(value, '$invoke', 'string')) return resolveInvokeProp(value, context, stores, memo, resolveProp);
     if (hasToken(value, '$if', 'object')) return resolveIfHandler(value, stores, context, resolveProp);
     // `$query` is the renderer's; a `$localState`/`$queries` key beside `type` makes this a node,
     // which the renderer also owns. Neither is a value here.

@@ -41,7 +41,7 @@ export const fluxView: TemplateSchema = {
 
     // {
     //   type: 'we-button',
-    //   props: { onClick: { $action: 'spaceStore.queryFluxChannels' } },
+    //   props: { onClick: { $invoke: 'spaceStore.queryFluxChannels' } },
     //   children: ['Query flux channels'],
     // },
 

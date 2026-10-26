@@ -80,7 +80,7 @@ const CSS_STYLES = css`
     question is no longer "where could this go" but "is it going *there*" — and a ring alone is hard
     to attribute when zones are nested three deep, as they are in a folder inside a panel.
 
-    A wash mixed toward transparent, NOT the accent-muted role. This paints over the zone's
+    A wash mixed toward transparent, NOT the accent-soft role. This paints over the zone's
     contents, so an opaque fill hides them: covering a whole panel with a flat colour is the one
     thing a drop indicator must not do, since what is already in there is what you are deciding
     against. The dock's snap targets can use the solid role because they float over empty screen.
@@ -146,18 +146,23 @@ const CSS_STYLES = css`
       transition: none;
     }
   }
+  /* The person's own Motion setting, which a shadow root sees through its host's ancestors. */
+  :host-context([data-we-motion='reduced'])::after,
+  :host-context([data-we-motion='reduced']) [part='hint'] {
+    transition: none;
+  }
 `;
 
 /**
  * Anything a `we-draggable` can be dropped into.
  *
- * The receiving half of the pair, and the same rung: two custom elements and an existing `$action`,
+ * The receiving half of the pair, and the same rung: two custom elements and an existing `$invoke`,
  * so a template can make a region a drop target without a code change.
  *
  * ```json
  * { "type": "we-drop-zone",
  *   "props": { "accepts": "CollectionBlock,Space,Agent",
- *              "onDropped": { "$action": "modules.pocket.gather", "args": [{ "$": "event.detail" }] } },
+ *              "onDropped": { "$invoke": "modules.pocket.gather", "args": [{ "$": "event.detail" }] } },
  *   "children": [ "…the panel…" ] }
  * ```
  *

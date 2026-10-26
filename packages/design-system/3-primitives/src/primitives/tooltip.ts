@@ -8,11 +8,13 @@ import {
   shift,
 } from '@floating-ui/dom';
 import type { Placement } from '@we/design-types';
-import { css, html, type PropertyValues } from 'lit';
-import { customElement, property, query, state } from 'lit/decorators.js';
+import { typeRoleDeclarations } from '@we/tokens';
+import { css, html, type PropertyValues, unsafeCSS } from 'lit';
+import { customElement, property, query } from 'lit/decorators.js';
 
 import { anchorInSlot, DEV_BUILD, warnAboutBoxlessLayoutProps } from '../shared/boxless';
 import { LayoutElement } from '../shared/design-system-element';
+import { FLOATING_PANEL_SHADOW } from '../shared/panel-style';
 import sharedStyles from '../shared/styles';
 
 let tooltipIdCounter = 0;
@@ -85,7 +87,7 @@ const CSS_STYLES = css`
     white-space: normal;
     overflow-wrap: anywhere;
     font-size: var(--we-font-size-200, 14px);
-    font-weight: 500;
+    ${unsafeCSS(typeRoleDeclarations('label', { weight: '500' }, ['color']))}
     padding: var(--we-space-300, 8px) var(--we-space-300, 8px);
     /* The inverse pair. Not text/onInverse: those are scale positions, so they flip with the
        theme and a dark tooltip in light mode became a white one in dark. This pair is measured
@@ -108,8 +110,10 @@ const CSS_STYLES = css`
 
       (No backticks in here either: this is the same tagged template literal.)
     */
-    border-radius: var(--we-border-radius, 4px);
-    box-shadow: 0 2px 8px color-mix(in srgb, var(--we-role-shadow-color) 15%, transparent);
+    border-radius: var(--we-theme-tooltip-radius, var(--we-theme-control-radius, 4px));
+    /* The floating panels' shadow (panel-style.ts); the inverse fill and the small corner are this
+       bubble's own. */
+    box-shadow: ${unsafeCSS(FLOATING_PANEL_SHADOW)};
     /*
       Never takes the pointer, open or closed.
 
@@ -201,7 +205,11 @@ export default class Tooltip extends LayoutElement {
     return anchorInSlot(this.renderRoot?.querySelector('slot:not([name])') as HTMLSlotElement | null, this);
   }
 
-  @state() private cleanup?: () => void;
+  /**
+   * Stops following the trigger. A plain field, not `@state`: nothing renders from it, and it is set
+   * inside `updated()` when the tooltip opens, where a reactive field schedules a second update.
+   */
+  private cleanup?: () => void;
 
   firstUpdated() {
     /*

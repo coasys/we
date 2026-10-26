@@ -26,7 +26,7 @@
 import type { SchemaNode } from '@we/schema-shared';
 
 /** Answer with nothing — the cancellation every exit shares. */
-const cancel = { $action: 'shellStore.chooseScreenSource', args: [''] };
+const cancel = { $invoke: 'shellStore.chooseScreenSource', args: [''] };
 
 export const screenSourcePrompt: SchemaNode = {
   type: '$if',
@@ -66,7 +66,7 @@ export const screenSourcePrompt: SchemaNode = {
                     p: '200',
                     hoverProps: { bg: 'surface-hover' },
                     focusProps: { bg: 'surface-hover' },
-                    onClick: { $action: 'shellStore.chooseScreenSource', args: [{ $: 'source.id' }] },
+                    onClick: { $invoke: 'shellStore.chooseScreenSource', args: [{ $: 'source.id' }] },
                   },
                   children: [
                     {
@@ -106,7 +106,7 @@ export const screenSourcePrompt: SchemaNode = {
           type: 'Row',
           props: { ax: 'end', width: '100%' },
           slot: 'footer',
-          children: [{ type: 'we-button', props: { variant: 'secondary', onClick: cancel }, children: ['Cancel'] }],
+          children: [{ type: 'we-button', props: { variant: 'soft', onClick: cancel }, children: ['Cancel'] }],
         },
       ],
     },

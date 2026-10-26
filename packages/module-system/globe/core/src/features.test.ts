@@ -35,7 +35,7 @@ describe('points', () => {
   it('places the rows that have a place, and leaves out the rest', () => {
     const features = pointFeatures(base);
     expect(features.map((f) => f.id)).toEqual(['a', 'b', 'c']);
-    expect(features[0]).toMatchObject({ position: [-0.12, 51.5], label: 'Ann', color: 'primary-500', size: 12 });
+    expect(features[0]).toMatchObject({ position: [-0.12, 51.5], label: 'Ann', color: 'accent-500', size: 12 });
   });
 
   it('applies rules in the graph dialect: a when clause, a field metric, a field ref', () => {
@@ -88,7 +88,7 @@ describe('paths', () => {
     });
     expect(features.map((f) => [f.id, f.arcHeight, f.color])).toEqual([
       ['r1', 0.3, 'accent'],
-      ['r2', 0, 'primary-500'],
+      ['r2', 0, 'accent-500'],
     ]);
   });
 

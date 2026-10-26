@@ -1,5 +1,6 @@
 import type { DesignSystemProps } from '@we/design-types';
 import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
+import { FOCUS_RING_BEYOND_BORDER } from '@we/tokens';
 import { css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
@@ -29,7 +30,7 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   focusProps: {
     bg: 'surface-sunken-hover',
     border: '1px solid var(--we-ring-color)',
-    ring: '0 0 0 1px var(--we-ring-color)',
+    ring: FOCUS_RING_BEYOND_BORDER,
   },
 };
 
@@ -46,12 +47,12 @@ const styles = css`
     /*
       The resting border's width, as a number the padding maths can use.
 
-      [part='base'] carries a 1px border from DEFAULT_PROPS and sits outside the textarea, so the
-      row the text has to fit inside is the control height less that border, twice. CSS cannot read
-      a width back out of a border shorthand, so it is named here — once, so a theme changing the
-      border sets this beside it rather than hunting through a calc.
+      [part='base'] carries the theme's hairline border from DEFAULT_PROPS and sits outside the
+      textarea, so the row the text has to fit inside is the control height less that border,
+      twice. CSS cannot read a width back out of a border shorthand, so it is named here, from the
+      same variable the border is drawn with.
     */
-    --we-textarea-border-width: 1px;
+    --we-textarea-border-width: var(--we-border-width, 1px);
   }
 
   /* Provide icon sizing context for slotted we-icon children */
@@ -314,7 +315,7 @@ export default class Textarea extends DesignSystemElement {
   handleKeyDown(e: KeyboardEvent) {
     if (!this.submitOnEnter || e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
     e.preventDefault();
-    if (!this.value.trim()) return;
+    if (!(this.value ?? '').trim()) return;
     this.dispatchEvent(new CustomEvent('submit', { detail: this.value, bubbles: true, composed: true }));
   }
 
@@ -351,6 +352,36 @@ export default class Textarea extends DesignSystemElement {
     field.style.overflowY = wanted > cap ? 'auto' : 'hidden';
   }
 
+  /**
+   * Measured again whenever the box's width changes — which includes being shown at all.
+   *
+   * A box drawn while hidden (inside a folded section that keeps its contents mounted) measures its
+   * content as zero high and keeps that height when it is revealed, leaving a sliver a few pixels
+   * tall that can barely be clicked. Width rather than any resize, because the box sets its own
+   * height and would otherwise answer itself.
+   */
+  private sizeWatch_?: ResizeObserver;
+  private measuredWidth_ = -1;
+
+  protected firstUpdated(changed: Map<string, unknown>) {
+    super.firstUpdated(changed);
+    const field = this.renderRoot.querySelector('textarea');
+    if (!field || typeof ResizeObserver === 'undefined') return;
+    this.sizeWatch_ = new ResizeObserver(([entry]) => {
+      const width = entry?.contentRect.width ?? 0;
+      if (width === this.measuredWidth_) return;
+      this.measuredWidth_ = width;
+      if (width > 0) this.resize_();
+    });
+    this.sizeWatch_.observe(field);
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this.sizeWatch_?.disconnect();
+    this.sizeWatch_ = undefined;
+  }
+
   protected updated(changed: Map<string, unknown>) {
     // Chained, not optional-chained: the base class writes the DS custom properties here, and
     // `check-super-calls` fails the build for exactly the silent breakage skipping it would cause.
@@ -365,7 +396,11 @@ export default class Textarea extends DesignSystemElement {
         <textarea
           part="textarea"
           aria-label=${this.label || nothing}
-          .value=${this.value}
+          .value=${
+            // A missing value is an empty box. Handed to the native textarea as is, it becomes the
+            // text "undefined" — a field added to a model after a record was made has no value yet.
+            this.value ?? ''
+          }
           rows=${this.rows}
           maxlength=${this.maxlength}
           minlength=${this.minlength}

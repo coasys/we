@@ -39,7 +39,7 @@ export const runtimeError: SchemaNode = {
     condition: { $: 'runtimeStore.error' },
     then: {
       type: 'we-alert',
-      props: { variant: 'danger' },
+      props: { tone: 'danger' },
       children: [{ $: 'runtimeStore.error' }],
     },
   },
@@ -51,10 +51,15 @@ export const connectedApps: SchemaNode = {
   props: {
     condition: { $: 'runtimeStore.canManageApps' },
     then: adminSection({
-      title: 'Connected apps',
-      icon: 'squares-four',
+      title: 'Connections',
+      icon: 'plugs-connected',
       refresh: 'runtimeStore.loadAuthorizedApps',
       children: [
+        {
+          type: 'we-text',
+          props: { variant: 'body', color: 'text-muted' },
+          children: ['Apps and agents you’ve let act with your account, and what each may do.'],
+        },
         {
           type: '$if',
           props: {
@@ -95,7 +100,7 @@ export const connectedApps: SchemaNode = {
                                             condition: { $: 'app.revoked' },
                                             then: {
                                               type: 'we-badge',
-                                              props: { variant: 'neutral', size: 'xs' },
+                                              props: { size: 'xs' },
                                               children: ['Revoked'],
                                             },
                                           },
@@ -127,7 +132,7 @@ export const connectedApps: SchemaNode = {
                                         text: 'Revoke',
                                         variant: 'ghost',
                                         size: 'sm',
-                                        onClick: { $action: 'runtimeStore.revokeApp', args: [{ $: 'app.id' }] },
+                                        onClick: { $invoke: 'runtimeStore.revokeApp', args: [{ $: 'app.id' }] },
                                       },
                                     },
                                   },
@@ -137,7 +142,7 @@ export const connectedApps: SchemaNode = {
                                   props: {
                                     variant: 'ghost',
                                     size: 'sm',
-                                    onClick: { $action: 'runtimeStore.removeApp', args: [{ $: 'app.id' }] },
+                                    onClick: { $invoke: 'runtimeStore.removeApp', args: [{ $: 'app.id' }] },
                                   },
                                   children: [{ type: 'we-icon', props: { name: 'trash' } }],
                                 },
@@ -203,7 +208,7 @@ export const trustedAgents: SchemaNode = {
                           props: {
                             variant: 'ghost',
                             size: 'sm',
-                            onClick: { $action: 'runtimeStore.untrustAgent', args: [{ $: 'did' }] },
+                            onClick: { $invoke: 'runtimeStore.untrustAgent', args: [{ $: 'did' }] },
                           },
                           children: [{ type: 'we-icon', props: { name: 'x' } }],
                         },
@@ -235,10 +240,10 @@ export const trustedAgents: SchemaNode = {
               props: {
                 text: 'Trust',
                 size: 'sm',
-                variant: 'secondary',
+                variant: 'soft',
                 disabled: { $: '!local.newTrustedAgent' },
                 onClick: {
-                  $action: 'runtimeStore.trustAgent',
+                  $invoke: 'runtimeStore.trustAgent',
                   args: [{ $: 'local.newTrustedAgent' }],
                   onSuccess: [{ $setLocal: 'newTrustedAgent', value: '' }],
                 },
@@ -292,7 +297,7 @@ export const mcpServer: SchemaNode = {
               type: 'we-switch',
               props: {
                 checked: { $: 'runtimeStore.mcpEnabled' },
-                onChange: { $action: 'runtimeStore.setMcpEnabled', args: [{ $: 'event.detail' }] },
+                onChange: { $invoke: 'runtimeStore.setMcpEnabled', args: [{ $: 'event.detail' }] },
               },
             },
             { type: 'we-text', props: { variant: 'label' }, children: ['Serve MCP'] },
@@ -310,7 +315,7 @@ export const mcpServer: SchemaNode = {
                 max: 65535,
                 step: 1,
                 value: { $: 'runtimeStore.mcpPort' },
-                onChange: { $action: 'runtimeStore.setMcpPort', args: [{ $: 'event.detail' }] },
+                onChange: { $invoke: 'runtimeStore.setMcpPort', args: [{ $: 'event.detail' }] },
               },
             },
           ],
@@ -333,8 +338,8 @@ export const mcpServer: SchemaNode = {
                   props: {
                     text: 'Restart now',
                     size: 'sm',
-                    variant: 'secondary',
-                    onClick: { $action: 'runtimeStore.restartExecutor' },
+                    variant: 'soft',
+                    onClick: { $invoke: 'runtimeStore.restartExecutor' },
                   },
                 },
               ],
@@ -389,9 +394,9 @@ export const backup: SchemaNode = {
               props: {
                 text: 'Export',
                 size: 'sm',
-                variant: 'secondary',
+                variant: 'soft',
                 loading: { $: "'exportDatabase' in runtimeStore.pending" },
-                onClick: { $action: 'runtimeStore.exportDatabase' },
+                onClick: { $invoke: 'runtimeStore.exportDatabase' },
               },
             },
             {
@@ -401,7 +406,7 @@ export const backup: SchemaNode = {
                 size: 'sm',
                 variant: 'ghost',
                 loading: { $: "'importDatabase' in runtimeStore.pending" },
-                onClick: { $action: 'runtimeStore.importDatabase' },
+                onClick: { $invoke: 'runtimeStore.importDatabase' },
               },
             },
           ],
@@ -478,7 +483,7 @@ export const logging: SchemaNode = {
                             value: { $: 'entry.level' },
                             options: LOG_LEVEL_OPTIONS,
                             onChange: {
-                              $action: 'runtimeStore.setLogLevel',
+                              $invoke: 'runtimeStore.setLogLevel',
                               args: [{ $: 'entry.crate' }, { $: 'event.detail' }],
                             },
                           },
@@ -488,7 +493,7 @@ export const logging: SchemaNode = {
                           props: {
                             variant: 'ghost',
                             size: 'sm',
-                            onClick: { $action: 'runtimeStore.removeLogLevel', args: [{ $: 'entry.crate' }] },
+                            onClick: { $invoke: 'runtimeStore.removeLogLevel', args: [{ $: 'entry.crate' }] },
                           },
                           children: [{ type: 'we-icon', props: { name: 'x' } }],
                         },
@@ -532,10 +537,10 @@ export const logging: SchemaNode = {
               props: {
                 text: 'Set',
                 size: 'sm',
-                variant: 'secondary',
+                variant: 'soft',
                 disabled: { $: '!local.newLogCrate' },
                 onClick: {
-                  $action: 'runtimeStore.setLogLevel',
+                  $invoke: 'runtimeStore.setLogLevel',
                   args: [{ $: 'local.newLogCrate' }, { $: 'local.newLogLevel' }],
                   onSuccess: [{ $setLocal: 'newLogCrate', value: '' }],
                 },
@@ -609,7 +614,7 @@ const networkMetricsModal: SchemaNode = {
                 condition: { $: "runtimeStore.error && !('loadNetworkMetrics' in runtimeStore.pending)" },
                 then: {
                   type: 'we-alert',
-                  props: { variant: 'danger' },
+                  props: { tone: 'danger' },
                   children: [{ $: '`Could not get the network metrics: ${runtimeStore.error}`' }],
                 },
                 else: {
@@ -636,20 +641,20 @@ const networkMetricsModal: SchemaNode = {
             {
               type: 'we-button',
               props: {
-                variant: 'secondary',
+                variant: 'soft',
                 // Disabled rather than spinning: the body already shows the fetch in progress, and a
                 // second spinner in the button said the same thing twice.
                 disabled: { $: "'loadNetworkMetrics' in runtimeStore.pending" },
-                onClick: { $action: 'runtimeStore.loadNetworkMetrics' },
+                onClick: { $invoke: 'runtimeStore.loadNetworkMetrics' },
               },
               children: [{ type: 'we-icon', props: { name: 'arrows-clockwise' } }, 'Refresh'],
             },
             {
               type: 'we-button',
               props: {
-                variant: 'primary',
+                variant: 'solid',
                 disabled: { $: '!runtimeStore.networkMetrics' },
-                onClick: { $action: 'runtimeStore.copyNetworkMetrics' },
+                onClick: { $invoke: 'runtimeStore.copyNetworkMetrics' },
               },
               children: [{ type: 'we-icon', props: { name: 'copy' } }, 'Copy to clipboard'],
             },
@@ -705,7 +710,7 @@ const peerExchangeModal: SchemaNode = {
               type: '$if',
               props: {
                 condition: { $: 'runtimeStore.error && !count(runtimeStore.pending)' },
-                then: { type: 'we-alert', props: { variant: 'danger' }, children: [{ $: 'runtimeStore.error' }] },
+                then: { type: 'we-alert', props: { tone: 'danger' }, children: [{ $: 'runtimeStore.error' }] },
               },
             },
             {
@@ -732,9 +737,9 @@ const peerExchangeModal: SchemaNode = {
                       type: 'we-button',
                       props: {
                         size: 'sm',
-                        variant: 'secondary',
+                        variant: 'soft',
                         disabled: { $: '!count(runtimeStore.peerInfos)' },
-                        onClick: { $action: 'runtimeStore.copyPeerInfos' },
+                        onClick: { $invoke: 'runtimeStore.copyPeerInfos' },
                       },
                       children: [{ type: 'we-icon', props: { name: 'copy' } }, 'Copy all'],
                     },
@@ -816,11 +821,11 @@ const peerExchangeModal: SchemaNode = {
             {
               type: 'we-button',
               props: {
-                variant: 'primary',
+                variant: 'solid',
                 disabled: { $: "!trim(local.peerInfoText) || 'addPeerInfos' in runtimeStore.pending" },
                 loading: { $: "'addPeerInfos' in runtimeStore.pending" },
                 onClick: {
-                  $action: 'runtimeStore.addPeerInfos',
+                  $invoke: 'runtimeStore.addPeerInfos',
                   args: [{ $: 'local.peerInfoText' }],
                   // `result` is whether they were added; a failed attempt keeps the paste to retry.
                   onSuccess: [{ $if: { condition: { $: 'result' }, then: { $setLocal: 'peerInfoText', value: '' } } }],
@@ -938,10 +943,10 @@ export const peerNetwork: SchemaNode = {
               type: 'we-button',
               props: {
                 size: 'sm',
-                variant: 'secondary',
+                variant: 'soft',
                 onClick: [
                   { $setLocal: 'showNetworkMetrics', value: true },
-                  { $action: 'runtimeStore.loadNetworkMetrics' },
+                  { $invoke: 'runtimeStore.loadNetworkMetrics' },
                 ],
               },
               children: [{ type: 'we-icon', props: { name: 'chart-line-up' } }, 'Get network metrics'],
@@ -950,11 +955,11 @@ export const peerNetwork: SchemaNode = {
               type: 'we-button',
               props: {
                 size: 'sm',
-                variant: 'secondary',
+                variant: 'soft',
                 onClick: [
                   { $setLocal: 'peerInfoText', value: '' },
                   { $setLocal: 'showPeerExchange', value: true },
-                  { $action: 'runtimeStore.loadPeerInfos' },
+                  { $invoke: 'runtimeStore.loadPeerInfos' },
                 ],
               },
               children: [{ type: 'we-icon', props: { name: 'handshake' } }, 'Exchange peer info'],
@@ -969,9 +974,9 @@ export const peerNetwork: SchemaNode = {
                   type: 'we-button',
                   props: {
                     size: 'sm',
-                    variant: 'secondary',
+                    variant: 'soft',
                     loading: { $: "'restartNetwork' in runtimeStore.pending" },
-                    onClick: { $action: 'runtimeStore.restartNetwork' },
+                    onClick: { $invoke: 'runtimeStore.restartNetwork' },
                   },
                   children: [{ type: 'we-icon', props: { name: 'arrows-clockwise' } }, 'Restart networking'],
                 },

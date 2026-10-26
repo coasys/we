@@ -1,4 +1,173 @@
-import type { TemplateSchema } from '@we/schema-shared';
+import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
+
+/**
+ * The fields a person edits about themselves — name, handle, bio, where they are. The profile page
+ * draws it under the cover and the picture, and Settings → Profile draws it on its own, so there is
+ * one form and two places to reach it.
+ */
+export const profileEditor: SchemaNode = {
+  type: 'Card',
+  props: { bg: 'surface' },
+  children: [
+    {
+      type: 'Row',
+      props: { gap: '300', ay: 'center', mb: '200' },
+      children: [
+        { type: 'we-icon', props: { name: 'pencil' } },
+        {
+          type: 'we-text',
+          children: ['Edit Profile'],
+        },
+      ],
+    },
+    {
+      type: 'Row',
+      props: { gap: '300', wrap: true },
+      children: [
+        {
+          type: 'we-form-field',
+          props: { label: 'First Name' },
+          children: [
+            {
+              type: 'we-input',
+              props: {
+                placeholder: 'First name',
+                value: { $: 'profileStore.ownProfile.firstName' },
+                onChange: {
+                  $invoke: 'profileStore.updateOwnProfile',
+                  args: [{ firstName: { $: 'arg.detail' } }],
+                },
+              },
+            },
+          ],
+        },
+        {
+          type: 'we-form-field',
+          props: { label: 'Last Name' },
+          children: [
+            {
+              type: 'we-input',
+              props: {
+                placeholder: 'Last name',
+                value: { $: 'profileStore.ownProfile.lastName' },
+                onChange: {
+                  $invoke: 'profileStore.updateOwnProfile',
+                  args: [{ lastName: { $: 'arg.detail' } }],
+                },
+              },
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: 'we-form-field',
+      props: { label: 'Handle' },
+      children: [
+        {
+          type: 'we-input',
+          props: {
+            placeholder: 'yourhandle',
+            value: { $: 'profileStore.ownProfile.handle' },
+            onChange: {
+              $invoke: 'profileStore.updateOwnProfile',
+              args: [{ handle: { $: 'arg.detail' } }],
+            },
+          },
+        },
+      ],
+    },
+    {
+      type: 'we-form-field',
+      props: { label: 'Bio' },
+      children: [
+        {
+          type: 'we-textarea',
+          props: {
+            placeholder: 'Tell us about yourself...',
+            value: { $: 'profileStore.ownProfile.bio' },
+            onChange: {
+              $invoke: 'profileStore.updateOwnProfile',
+              args: [{ bio: { $: 'arg.detail' } }],
+            },
+          },
+        },
+      ],
+    },
+    {
+      type: 'we-form-field',
+      props: { label: 'Location' },
+      children: [
+        {
+          type: 'we-location-picker',
+          props: {
+            latitude: { $: 'profileStore.ownProfile.location.latitude' },
+            longitude: { $: 'profileStore.ownProfile.location.longitude' },
+            placeholder: 'Pin your location on the globe…',
+            onChange: {
+              $invoke: 'profileStore.updateOwnLocation',
+              args: [
+                {
+                  latitude: { $: 'arg.detail.latitude' },
+                  longitude: { $: 'arg.detail.longitude' },
+                  city: { $: 'arg.detail.city' },
+                  country: { $: 'arg.detail.country' },
+                  countryCode: { $: 'arg.detail.countryCode' },
+                },
+              ],
+            },
+          },
+        },
+      ],
+    },
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'profileStore.ownProfile.location' },
+        then: {
+          type: 'Row',
+          props: { gap: '300', wrap: true },
+          children: [
+            {
+              type: 'we-form-field',
+              props: { label: 'City', flex: '1' },
+              children: [
+                {
+                  type: 'we-input',
+                  props: {
+                    placeholder: 'City',
+                    value: { $: 'profileStore.ownProfile.location.city' },
+                    onChange: {
+                      $invoke: 'profileStore.updateOwnLocation',
+                      args: [{ city: { $: 'arg.detail' } }],
+                    },
+                  },
+                },
+              ],
+            },
+            {
+              type: 'we-form-field',
+              props: { label: 'Country', flex: '1' },
+              children: [
+                {
+                  type: 'we-input',
+                  props: {
+                    placeholder: 'Country',
+                    value: { $: 'profileStore.ownProfile.location.country' },
+                    onChange: {
+                      $invoke: 'profileStore.updateOwnLocation',
+                      args: [{ country: { $: 'arg.detail' } }],
+                    },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      },
+    },
+  ],
+};
 
 export const profileTemplate: TemplateSchema = {
   meta: { name: 'Profile', description: 'Agent profile page', icon: 'user' },
@@ -18,8 +187,8 @@ export const profileTemplate: TemplateSchema = {
         placeholderIcon: 'panorama',
         uploadLabel: 'Upload cover image',
         editLabel: 'Change cover image',
-        onImageChange: { $action: 'profileStore.updateProfileImage', args: ['coverImage', { $: 'arg' }] },
-        onImageRemove: { $action: 'profileStore.clearProfileImage', args: ['coverImage'] },
+        onImageChange: { $invoke: 'profileStore.updateProfileImage', args: ['coverImage', { $: 'arg' }] },
+        onImageRemove: { $invoke: 'profileStore.clearProfileImage', args: ['coverImage'] },
       },
     },
 
@@ -53,8 +222,8 @@ export const profileTemplate: TemplateSchema = {
             uploadLabel: 'Add photo',
             editLabel: 'Change photo',
             fontSize: '200',
-            onImageChange: { $action: 'profileStore.updateProfileImage', args: ['avatar', { $: 'arg' }] },
-            onImageRemove: { $action: 'profileStore.clearProfileImage', args: ['avatar'] },
+            onImageChange: { $invoke: 'profileStore.updateProfileImage', args: ['avatar', { $: 'arg' }] },
+            onImageRemove: { $invoke: 'profileStore.clearProfileImage', args: ['avatar'] },
           },
         },
 
@@ -138,169 +307,7 @@ export const profileTemplate: TemplateSchema = {
         },
 
         // ── Editable fields ──
-        {
-          type: 'Card',
-          props: { bg: 'surface' },
-          children: [
-            {
-              type: 'Row',
-              props: { gap: '300', ay: 'center', mb: '200' },
-              children: [
-                { type: 'we-icon', props: { name: 'pencil' } },
-                {
-                  type: 'we-text',
-                  children: ['Edit Profile'],
-                },
-              ],
-            },
-            {
-              type: 'Row',
-              props: { gap: '300', wrap: true },
-              children: [
-                {
-                  type: 'we-form-field',
-                  props: { label: 'First Name' },
-                  children: [
-                    {
-                      type: 'we-input',
-                      props: {
-                        placeholder: 'First name',
-                        value: { $: 'profileStore.ownProfile.firstName' },
-                        onChange: {
-                          $action: 'profileStore.updateOwnProfile',
-                          args: [{ firstName: { $: 'arg.detail' } }],
-                        },
-                      },
-                    },
-                  ],
-                },
-                {
-                  type: 'we-form-field',
-                  props: { label: 'Last Name' },
-                  children: [
-                    {
-                      type: 'we-input',
-                      props: {
-                        placeholder: 'Last name',
-                        value: { $: 'profileStore.ownProfile.lastName' },
-                        onChange: {
-                          $action: 'profileStore.updateOwnProfile',
-                          args: [{ lastName: { $: 'arg.detail' } }],
-                        },
-                      },
-                    },
-                  ],
-                },
-              ],
-            },
-            {
-              type: 'we-form-field',
-              props: { label: 'Handle' },
-              children: [
-                {
-                  type: 'we-input',
-                  props: {
-                    placeholder: 'yourhandle',
-                    value: { $: 'profileStore.ownProfile.handle' },
-                    onChange: {
-                      $action: 'profileStore.updateOwnProfile',
-                      args: [{ handle: { $: 'arg.detail' } }],
-                    },
-                  },
-                },
-              ],
-            },
-            {
-              type: 'we-form-field',
-              props: { label: 'Bio' },
-              children: [
-                {
-                  type: 'we-textarea',
-                  props: {
-                    placeholder: 'Tell us about yourself...',
-                    value: { $: 'profileStore.ownProfile.bio' },
-                    onChange: {
-                      $action: 'profileStore.updateOwnProfile',
-                      args: [{ bio: { $: 'arg.detail' } }],
-                    },
-                  },
-                },
-              ],
-            },
-            {
-              type: 'we-form-field',
-              props: { label: 'Location' },
-              children: [
-                {
-                  type: 'we-location-picker',
-                  props: {
-                    latitude: { $: 'profileStore.ownProfile.location.latitude' },
-                    longitude: { $: 'profileStore.ownProfile.location.longitude' },
-                    placeholder: 'Pin your location on the globe…',
-                    onChange: {
-                      $action: 'profileStore.updateOwnLocation',
-                      args: [
-                        {
-                          latitude: { $: 'arg.detail.latitude' },
-                          longitude: { $: 'arg.detail.longitude' },
-                          city: { $: 'arg.detail.city' },
-                          country: { $: 'arg.detail.country' },
-                          countryCode: { $: 'arg.detail.countryCode' },
-                        },
-                      ],
-                    },
-                  },
-                },
-              ],
-            },
-            {
-              type: '$if',
-              props: {
-                condition: { $: 'profileStore.ownProfile.location' },
-                then: {
-                  type: 'Row',
-                  props: { gap: '300', wrap: true },
-                  children: [
-                    {
-                      type: 'we-form-field',
-                      props: { label: 'City', flex: '1' },
-                      children: [
-                        {
-                          type: 'we-input',
-                          props: {
-                            placeholder: 'City',
-                            value: { $: 'profileStore.ownProfile.location.city' },
-                            onChange: {
-                              $action: 'profileStore.updateOwnLocation',
-                              args: [{ city: { $: 'arg.detail' } }],
-                            },
-                          },
-                        },
-                      ],
-                    },
-                    {
-                      type: 'we-form-field',
-                      props: { label: 'Country', flex: '1' },
-                      children: [
-                        {
-                          type: 'we-input',
-                          props: {
-                            placeholder: 'Country',
-                            value: { $: 'profileStore.ownProfile.location.country' },
-                            onChange: {
-                              $action: 'profileStore.updateOwnLocation',
-                              args: [{ country: { $: 'arg.detail' } }],
-                            },
-                          },
-                        },
-                      ],
-                    },
-                  ],
-                },
-              },
-            },
-          ],
-        },
+        profileEditor,
       ],
     },
   ],

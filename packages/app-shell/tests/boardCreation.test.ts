@@ -21,7 +21,7 @@ interface Row {
 }
 
 const committed = new Map<string, Row>();
-const roles: { id: string; name: string; node: string[] }[] = [];
+const landmarks: { id: string; name: string; node: string[] }[] = [];
 const batches = new Map<string, { staged: Row[]; ops: Array<() => void> }>();
 let nextId = 0;
 
@@ -73,12 +73,12 @@ vi.mock('@we/entities', () => {
       findOne: async () => ({ id: 'space', root: { id: 'root' } }),
       addRelation: async () => {},
     },
-    SpaceRole: {
-      findAll: async () => roles,
+    SpaceLandmark: {
+      findAll: async () => landmarks,
       create: async (_p: unknown, data: { name: string; node: string[] }) => {
-        const role = { ...data, id: `role-${nextId++}` };
-        roles.push(role);
-        return role;
+        const landmark = { ...data, id: `landmark-${nextId++}` };
+        landmarks.push(landmark);
+        return landmark;
       },
     },
     getEntityForDataset: () => ({ findAll: async () => [{ id: 'task' }] }),
@@ -114,7 +114,7 @@ beforeEach(() => {
   nextId = 0;
   committed.set('call', { id: 'call', kind: 'call', title: 'Standup', children: ['task'] });
   committed.set('root', { id: 'root', kind: 'space', children: [] });
-  roles.length = 0;
+  landmarks.length = 0;
 });
 
 describe('making a board', () => {
@@ -132,13 +132,13 @@ describe('making a board', () => {
     expect(columnSlugs(boardId)).toEqual(['todo', 'doing', 'done']);
   });
 
-  it('makes the space’s own board once, gathering from the space collection, and names it by role', async () => {
-    const rolesChanged = vi.fn();
+  it('makes the space’s own board once, gathering from the space collection, and names it by landmark', async () => {
+    const landmarksChanged = vi.fn();
     const space = createBoardActions({
       dataset: () => ({}) as never,
       offeredStates: () => STATES,
       notify: () => {},
-      rolesChanged,
+      landmarksChanged,
     });
 
     const boardId = await space.openBoardFor();
@@ -146,11 +146,11 @@ describe('making a board', () => {
     expect(committed.get(boardId)?.gathers).toEqual(['root']);
     expect(committed.get('root')?.children).toContain(boardId);
     expect(columnSlugs(boardId)).toEqual(['todo', 'doing', 'done']);
-    expect(roles).toEqual([expect.objectContaining({ name: 'board', node: [boardId] })]);
-    expect(rolesChanged).toHaveBeenCalledTimes(1);
+    expect(landmarks).toEqual([expect.objectContaining({ name: 'board', node: [boardId] })]);
+    expect(landmarksChanged).toHaveBeenCalledTimes(1);
 
-    // Pressed again, it is the same board — the role names it — and nothing more is written.
+    // Pressed again, it is the same board — the landmark names it — and nothing more is written.
     expect(await space.openBoardFor()).toBe(boardId);
-    expect(roles).toHaveLength(1);
+    expect(landmarks).toHaveLength(1);
   });
 });

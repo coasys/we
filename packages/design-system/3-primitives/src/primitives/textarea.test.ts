@@ -51,7 +51,8 @@ describe('rows', () => {
       direction. CSS cannot read a width out of a border shorthand, so the primitive names it.
     */
     const sheet = (Textarea.styles as unknown as { cssText: string }[]).map((s) => s.cssText).join('\n');
-    expect(sheet).toContain('--we-textarea-border-width: 1px');
+    // The theme's border width, which the border itself is drawn with.
+    expect(sheet).toContain('--we-textarea-border-width: var(--we-border-width, 1px)');
     expect(sheet).toMatch(/2\s*\*\s*\n?\s*var\(--we-textarea-border-width\)/);
   });
 
@@ -289,5 +290,19 @@ describe('the vertical padding', () => {
     );
     expect(order.every((at) => at >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
+  });
+});
+
+describe('a missing value', () => {
+  it('is an empty box, not the text "undefined"', async () => {
+    // A field added to a model after a record was made has no value yet, and arrives as undefined.
+    const el = document.createElement('we-textarea') as HTMLElement & {
+      value: unknown;
+      updateComplete: Promise<unknown>;
+    };
+    el.value = undefined;
+    document.body.appendChild(el);
+    await el.updateComplete;
+    expect(el.shadowRoot?.querySelector('textarea')?.value).toBe('');
   });
 });

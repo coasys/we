@@ -51,9 +51,9 @@ describe('zodSchemas', () => {
 
   it('accepts token objects as SchemaProp records', () => {
     expect(() => zSchemaProp.parse({ $: 'userStore.name' })).not.toThrow();
-    expect(() => zSchemaProp.parse({ $action: 'routeStore.navigate', args: ['/'] })).not.toThrow();
+    expect(() => zSchemaProp.parse({ $invoke: 'routeStore.navigate', args: ['/'] })).not.toThrow();
     expect(() =>
-      zSchemaProp.parse({ $if: { condition: { $: 'local.ok' }, then: { $action: 'a.b' }, else: { $action: 'c.d' } } }),
+      zSchemaProp.parse({ $if: { condition: { $: 'local.ok' }, then: { $invoke: 'a.b' }, else: { $invoke: 'c.d' } } }),
     ).not.toThrow();
   });
 

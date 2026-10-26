@@ -14,7 +14,7 @@ export const Theme: CoreEntityDef = {
       version: { type: 'number', predicate: 'we://version', default: 1 },
       /** Raw CSS string (e.g. [data-we-theme='x'] { ... } rules, ::part() selectors, etc.) */
       css: { type: 'string', predicate: 'we://stylesheet', format: 'file', default: null },
-      /** Structured token overrides (primaryHue, saturation, neutralSaturation, etc.) */
+      /** Structured token overrides (accentHue, saturation, neutralSaturation, etc.) */
       overrides: { type: 'string', predicate: 'we://token_overrides', format: 'file', default: null },
     },
     relations: {

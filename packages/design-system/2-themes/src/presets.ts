@@ -24,6 +24,7 @@ import { CHROMA_CEILING } from '@we/tokens';
 
 import { THEME_SCHEMA_VERSION } from './migrate';
 import type { ThemeOverrides } from './overrides';
+import { VT323 } from './retro/vt323';
 
 /**
  * @deprecated One vocabulary, one declaration: `ThemeParameters` was the deliberately-narrow subset
@@ -93,7 +94,7 @@ const neutral = (lightness: number) => {
  * default uses.
  */
 const fill = (lightness: number, chromaFactor: number) =>
-  `oklch(calc(var(--we-accent-lightness, ${lightness}) * 1%) calc(var(--we-color-saturation) / 100 * var(--we-color-primary-fill-chroma-max, 0.2663) * ${chromaFactor}) var(--we-color-primary-hue))`;
+  `oklch(calc(var(--we-accent-lightness, ${lightness}) * 1%) calc(var(--we-color-accent-saturation, var(--we-color-saturation)) / 100 * var(--we-color-accent-fill-chroma-max, 0.2663) * ${chromaFactor}) var(--we-color-accent-hue))`;
 
 export const THEME_PRESETS = {
   light: {
@@ -196,6 +197,16 @@ export const THEME_PRESETS = {
           - **The status labels, `accentHover`, `accentActive`.** All derived from what is above.
         */
       },
+      // The middle heading in the accent's text colour — one variant of one component, which is
+      // what the component tier is for. It was a selector in this theme's CSS.
+      components: {
+        text: { variants: { 'heading-md': { text: 'accent-text' } } },
+        // A faint halo in the accent's hue around a dialog, where a dark theme's shadow cannot show.
+        modal: {
+          shadow:
+            '0 0 40px 20px oklch(20% calc(min(var(--we-color-accent-saturation, var(--we-color-saturation)) * 0.0035, 0.18) * 0.4) var(--we-color-accent-hue) / 5%)',
+        },
+      },
     },
   },
   black: {
@@ -231,12 +242,16 @@ export const THEME_PRESETS = {
     icon: 'floppy-disk',
     parameters: {
       schemaVersion: THEME_SCHEMA_VERSION,
-      primaryHue: 271,
+      accentHue: 271,
       polarity: 'light',
       lightnessFloor: '0%',
       lightnessCeiling: '100%',
       saturation: 97,
       neutralSaturation: 16,
+      // The face is carried by this theme's CSS (`@font-face` for VT323); choosing it is a setting.
+      fontFamily: "'VT323', monospace",
+      fontFaces: [VT323],
+      components: { tooltip: { radius: '0' } },
     },
   },
   cyberpunk: {
@@ -280,6 +295,10 @@ export const THEME_PRESETS = {
         The general lesson: a pin written against a defect outlives the defect. This one was three
         role-layer changes stale and nothing but a measurement would have said so.
       */
+      fontFamily: 'monospace',
+      // Headings in the accent itself — a fill colour used as text, which is this theme's look.
+      typeStyles: { heading: { color: 'accent' } },
+      components: { tooltip: { radius: '0' }, menu: { border: 'accent-border' } },
     },
   },
 
@@ -308,7 +327,7 @@ export const THEME_PRESETS = {
     name: 'Channels',
     icon: 'hash',
     parameters: {
-      primaryHue: 266,
+      accentHue: 266,
       neutralHue: 266,
       saturation: 100,
       neutralSaturation: 10,
@@ -377,7 +396,7 @@ export const THEME_PRESETS = {
     name: 'Timeline',
     icon: 'list-dashes',
     parameters: {
-      primaryHue: 245,
+      accentHue: 245,
       neutralHue: 255,
       saturation: 100,
       neutralSaturation: 15,
@@ -436,19 +455,76 @@ export function isThemeName(value: string): value is ThemeName {
   return value in THEME_PRESETS;
 }
 
+/**
+ * The side a theme is on before any light or dark block: its own polarity, else its base preset's,
+ * else light — which is what the ramp does with neither.
+ */
+export function basePolarity(theme: ThemeOverrides): 'light' | 'dark' {
+  if (theme.polarity) return theme.polarity;
+  const preset =
+    theme.themeName && isThemeName(theme.themeName)
+      ? (THEME_PRESETS[theme.themeName].parameters as ThemeOverrides)
+      : undefined;
+  return preset?.polarity === 'dark' ? 'dark' : 'light';
+}
+
+/**
+ * The lightness range a theme takes when it turns light or dark: its own base preset's, when that
+ * preset is already on that side, else the built-in light or dark one's.
+ *
+ * The editor's light/dark switch wrote fixed numbers, which were not any preset's — so turning a
+ * fork of `dark` light and back again left it at 12–112% where it had started at 20–121%, visibly
+ * darker than the theme somebody forked.
+ */
+export function rangeForPolarity(
+  polarity: 'light' | 'dark',
+  base?: string,
+): { lightnessFloor?: string; lightnessCeiling?: string } {
+  const own = base && isThemeName(base) ? (THEME_PRESETS[base].parameters as ThemeOverrides) : undefined;
+  const from = own?.polarity === polarity ? own : (THEME_PRESETS[polarity].parameters as ThemeOverrides);
+  return { lightnessFloor: from.lightnessFloor, lightnessCeiling: from.lightnessCeiling };
+}
+
 // The vocabulary and its mapping live beside the presets — one JS entry for the package.
 // `role` comes through here too: the editor reads the defaults to work out which roles are derived
 // from which, and parsing that out of the table is what keeps the answer from drifting away from it.
 export { role } from '@we/tokens';
-export type { ThemeOverrides, ThemeRole } from './overrides';
+export type { ComponentOverride, ThemeOverrides, ThemeRole, ThemeSide, TypeStyle } from './overrides';
+export { COMPONENT_TYPE_PROPERTIES, writeComponentOverrides, writeTypeStyles } from './componentStyles';
 export { migrateOverrides, parseOverrides, THEME_SCHEMA_VERSION } from './migrate';
+export { type ThemeSideName, themeSides, withThemeSide } from './sides';
+export { fontFaceFamilies, fontFaceProblem, type FontFaceSetting, MAX_FONT_FACE_BYTES } from './fontFaces';
+export { themingReference } from './reference';
+export {
+  currentDisplay,
+  DISPLAY_AXES,
+  type DisplayPreferences,
+  getDisplayPreferences,
+  onDisplayChange,
+  previewDisplay,
+  type ResolvedDisplay,
+  resolveDisplay,
+  setDisplayPreferences,
+  withDisplay,
+} from './display';
+export {
+  type DirectSetting,
+  readThemeSettings,
+  SPECIAL_SETTING_DOCS,
+  SPECIAL_SETTINGS,
+  type ThemeSetting,
+  THEME_SETTINGS,
+  writeThemeSettings,
+} from './themeSettings';
 export {
   applyThemeVars,
   clearThemeVars,
-  DARK_SURFACES,
   isDarkPolarity,
   reconcileSurfaces,
+  registerNamedThemes,
   roleVar,
+  setThemeLive,
   surfacesForPolarity,
+  BODY_TYPE,
   themeParametersToStyle,
 } from './themeStyles';

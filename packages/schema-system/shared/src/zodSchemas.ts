@@ -1,4 +1,4 @@
-import { role } from '@we/tokens';
+import { PALETTE_HUES, role, SURFACE_IMAGE_ROLES, TYPE_ROLES } from '@we/tokens';
 import { z } from 'zod';
 
 import type { RouteSchema, SchemaNode, SchemaProp, TemplateMeta, TemplateSchema, ThemeOverrides } from './types';
@@ -19,18 +19,49 @@ const lazyRouteSchema = z.lazy(() => zRouteSchema);
   density key came to fail `acceptTemplate` and the editor's validation. The `satisfies` makes the
   drift a type error that names the key, in either direction.
 
-  `multiplier` and `subtractor` predate `polarity` and the lightness range (see @we/themes
-  `migrate.ts`). They stay accepted so a template saved before then is not newly refused.
+  `multiplier` and `subtractor` predate `polarity` and the lightness range, and `primaryHue` is the
+  accent's hue before the accent had one name (see @we/themes `migrate.ts`). They stay accepted so a
+  template saved before then is not newly refused.
 */
-type LegacyThemeKey = 'multiplier' | 'subtractor';
+type LegacyThemeKey = 'multiplier' | 'subtractor' | 'primaryHue';
+
+const zTypeRole = z.enum(TYPE_ROLES);
+const zTypeStyle = z
+  .object({
+    family: z.string().optional(),
+    weight: z.union([z.string(), z.number()]).optional(),
+    letterSpacing: z.string().optional(),
+    lineHeight: z.string().optional(),
+    textTransform: z.enum(['none', 'uppercase', 'lowercase', 'capitalize']).optional(),
+    color: z.string().optional(),
+  })
+  .strict();
+const componentOverrideShape = {
+  radius: z.string().optional(),
+  padding: z.string().optional(),
+  gap: z.string().optional(),
+  borderWidth: z.string().optional(),
+  shadow: z.string().optional(),
+  type: zTypeRole.optional(),
+  fill: z.string().optional(),
+  text: z.string().optional(),
+  border: z.string().optional(),
+};
+const zComponentOverride = z
+  .object({
+    ...componentOverrideShape,
+    variants: z.record(z.string().regex(/^[a-z][a-z0-9-]*$/), z.object(componentOverrideShape).strict()).optional(),
+  })
+  .strict();
 
 // Role names come from the token table the runtime resolves them against, not from a restated list.
 const zThemeRole = z.enum(Object.keys(role) as [keyof typeof role, ...(keyof typeof role)[]]);
 
-const themeOverridesShape = {
+/** Every parameter a theme has, without its sides — what a side may hold, and the base of the whole. */
+const themeParameterShape = {
   schemaVersion: z.number().int().positive().optional(),
   themeName: z.string().optional(),
-  primaryHue: z.number().optional(),
+  accentHue: z.number().optional(),
   successHue: z.number().optional(),
   warningHue: z.number().optional(),
   dangerHue: z.number().optional(),
@@ -38,6 +69,25 @@ const themeOverridesShape = {
   // 0–100 numbers, not percentage strings: OKLCH takes an absolute chroma. See @we/tokens.
   saturation: z.number().optional(),
   neutralSaturation: z.number().optional(),
+  accentSaturation: z.number().optional(),
+  successSaturation: z.number().optional(),
+  warningSaturation: z.number().optional(),
+  dangerSaturation: z.number().optional(),
+  palette: z
+    .object({
+      saturation: z.number().optional(),
+      lightness: z.number().optional(),
+      hues: z
+        .partialRecord(
+          z.enum(PALETTE_HUES),
+          z
+            .object({ hue: z.number().optional(), lightness: z.number().optional(), saturation: z.number().optional() })
+            .strict(),
+        )
+        .optional(),
+    })
+    .strict()
+    .optional(),
   accentLightness: z.number().optional(),
   dangerLightness: z.number().optional(),
   successLightness: z.number().optional(),
@@ -49,9 +99,24 @@ const themeOverridesShape = {
   fontFamily: z.string().optional(),
   headingFontFamily: z.string().optional(),
   monoFontFamily: z.string().optional(),
+  fontFaces: z
+    .array(
+      z
+        .object({
+          family: z.string(),
+          src: z.string(),
+          weight: z.string().optional(),
+          style: z.enum(['normal', 'italic']).optional(),
+          unicodeRange: z.string().optional(),
+        })
+        .strict(),
+    )
+    .optional(),
   letterSpacing: z.string().optional(),
   lineHeight: z.string().optional(),
   fontScale: z.number().optional(),
+  typeStyles: z.partialRecord(zTypeRole, zTypeStyle).optional(),
+  components: z.record(z.string().regex(/^[a-z][a-z0-9-]*$/), zComponentOverride).optional(),
   controlRadius: z.string().optional(),
   surfaceRadius: z.string().optional(),
   inputRadius: z.string().optional(),
@@ -67,12 +132,30 @@ const themeOverridesShape = {
   inputPadding: z.string().optional(),
   spacingScale: z.number().optional(),
   disabledOpacity: z.number().optional(),
+  iconWeight: z.enum(['thin', 'light', 'regular', 'bold', 'fill', 'duotone']).optional(),
   shadowIntensity: z.enum(['flat', 'subtle', 'elevated', 'dramatic']).optional(),
+  glowIntensity: z.enum(['none', 'subtle', 'medium', 'strong']).optional(),
   surfaceOpacity: z.number().optional(),
   surfaceBlur: z.number().optional(),
+  surfaceImages: z.partialRecord(z.enum(SURFACE_IMAGE_ROLES), z.string()).optional(),
   animationSpeed: z.enum(['none', 'fast', 'normal', 'slow']).optional(),
   multiplier: z.number().optional(),
   subtractor: z.string().optional(),
+  primaryHue: z.number().optional(),
+};
+
+const zThemeSide = z
+  .object((({ schemaVersion: _version, themeName: _name, ...side }) => side)(themeParameterShape))
+  .strict()
+  .optional();
+
+const themeOverridesShape = {
+  ...themeParameterShape,
+  /** A theme's light and dark sides — see `ThemeOverrides.light`. */
+  light: zThemeSide,
+  dark: zThemeSide,
+  /** How the theme looks when somebody asks for more contrast — see `ThemeOverrides.contrast`. */
+  contrast: z.object({ more: zThemeSide }).strict().optional(),
 } satisfies {
   [K in keyof ThemeOverrides | LegacyThemeKey]-?: z.ZodType<(ThemeOverrides & Record<LegacyThemeKey, unknown>)[K]>;
 };
@@ -112,7 +195,7 @@ const lazyToken = z.lazy((): z.ZodType<unknown> => zPropToken);
 const lazyHandler = z.lazy((): z.ZodType<unknown> => z.union([zPropToken, z.array(zPropToken)]));
 const zActionToken = z
   .object({
-    $action: z.string().min(1),
+    $invoke: z.string().min(1),
     args: z.array(z.unknown()).optional(),
     onSuccess: z.array(lazyToken).optional(),
     onError: z.array(lazyToken).optional(),
@@ -344,6 +427,15 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
     icon: z.string(),
     /** A theme this template suggests. See `TemplateMeta.themeId` — a suggestion, not a setting. */
     themeId: z.string().optional(),
+    /** The themes this template is designed for, its default first. See `TemplateMeta.themeIds`. */
+    themeIds: z.array(z.string()).optional(),
+    /** What a record view draws. See `TemplateMeta.draws`. */
+    draws: z
+      .object({ entity: z.string().regex(/^[A-Z][A-Za-z0-9]*$/), kind: z.string().optional() })
+      .strict()
+      .optional(),
+    /** How this template draws one record, by type. See `TemplateMeta.recordViews`. */
+    recordViews: z.record(z.string(), z.union([z.string(), lazySchemaNode])).optional(),
     /** Whole interface, a section inside one, or the app around them. See `TemplateMeta.role`. Absent means shell. */
     role: z.enum(['shell', 'view', 'app']).optional(),
     /** A view's default URL segment. See `TemplateMeta.segment`. */

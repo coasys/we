@@ -27,8 +27,14 @@ export { instagramTemplate } from './InstagramTemplate.schema.ts';
 export { kanbanTemplate } from './KanbanTemplate.schema.ts';
 export { scrapbookTemplate } from './ScrapbookTemplate.schema.ts';
 export { twitterTemplate } from './TwitterTemplate.schema.ts';
+export { themeLabTemplate } from './ThemeLabTemplate.schema.ts';
 export { CALL_CHROME_BAND, workshopTemplate } from './WorkshopTemplate.schema.ts';
 export { youtubeTemplate } from './YoutubeTemplate.schema.ts';
+/*
+  The Workflows page — every workflow, the records going through one, and the editor — for another app to
+  place: the Coasys cartridge draws it as its own Workflows view.
+*/
+export { FLOWS_LOCALS, workflowsPage } from './WorkshopWorkflows.ts';
 export { KIND, MODE } from './shared.ts';
 
 /*

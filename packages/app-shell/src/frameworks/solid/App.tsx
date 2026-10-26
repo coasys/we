@@ -1,4 +1,5 @@
 import { installStaleBuildReload, watchForNewBuild } from '@shared/buildFreshness';
+import { currentProductName } from '@shared/bundles/brand';
 import StoreProvider from '@solid/providers/StoreProvider';
 import TemplateProvider from '@solid/providers/TemplateProvider';
 import { ToastContainer, toastService } from '@we/components/solid';
@@ -37,7 +38,7 @@ export default function App() {
   */
   onMount(() => {
     const stop = watchForNewBuild(() =>
-      toastService.info('A new version of WE is available.', 0, {
+      toastService.info(`A new version of ${currentProductName()} is available.`, 0, {
         label: 'Reload',
         run: () => window.location.reload(),
       }),

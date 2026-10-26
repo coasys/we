@@ -53,10 +53,11 @@ const SOLID_TESTS = [
   // Drives the shell's real dock memos through stacking, folding, collapsing a lane and revealing a
   // hidden panel — reactive derivations, which the node project's SSR build of solid-js never runs.
   'tests/dockStowAndReveal.test.tsx',
+  'tests/homeLaneState.test.tsx',
   // Mounts the real RecordStore over a stand-in data layer to drive a canvas's undo round trip.
   'tests/canvasHistory.test.tsx',
-  // Mounts the flow store, whose memos run as they are made — a boot crash the pure tests cannot see.
-  'tests/flowStoreProvider.test.tsx',
+  // Mounts the workflow store, whose memos run as they are made — a boot crash the pure tests cannot see.
+  'tests/workflowStoreProvider.test.tsx',
   // The same, for a card dragged to another place in a tree.
   'tests/treeUndo.test.tsx',
   // Mounts a card's reaction mark and presses it.

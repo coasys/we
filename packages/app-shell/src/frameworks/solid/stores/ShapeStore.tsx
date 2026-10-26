@@ -3,13 +3,13 @@
  *
  * Owns three things:
  *
- * 1. **The adoption rail.** On every switch into a WE space, Shape records are read from the
- *    space, their manifest documents validated through the same gate module manifests pass
+ * 1. **The adoption rail.** On every switch into a WE space, the space's models are read through its
+ *    backend's `SchemaPort.shapes` (a `Shape` record per model by default), validated through the same gate module manifests pass
  *    (`validateManifest`, against core vocabulary + sibling shapes + foreign entities), compiled
  *    and registered *for that dataset only*, and their SHACL ensured into the space — after which
  *    `$query { entity: "<ShapeName>" }`, derived forms and extraction all work through machinery
- *    that already existed. The manifest document is the source of truth; the SHACL is its
- *    projection (the relationship the decorated classes have with theirs).
+ *    that already existed. Where each model is kept — a manifest document, or the backend's own
+ *    schema read back as one — is the store's; everything here speaks in manifests.
  *
  * 2. **The shape wizard's draft.** Form state lives here rather than in `$localState` because the
  *    rows are structured, interdependent and validated as a whole (the `runtimeStore.aiForm`
@@ -21,9 +21,18 @@
  *    customized/reset lifecycle that decides whether release improvements still flow.
  */
 import { hostSlot } from '@shared/hostSlot';
-import { type EntityManifest, extractableEntities, manifestEntries, trace, validateManifest } from '@we/backend-shared';
+import {
+  type EntityManifest,
+  extractableEntities,
+  manifestEntries,
+  namePropertyOf,
+  type ShapeInput,
+  type ShapeStore as ShapeStorage,
+  trace,
+  validateManifest,
+} from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
-import { asFileField, decodeFileAsJson, encodeJsonFileData, Shape } from '@we/entities';
+import { createJsonShapeStore, Shape } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import type { BundleRecordType } from '@we/schema-shared';
 import {
@@ -113,6 +122,8 @@ export interface SpaceShapeView {
   /** Why this shape could not be adopted, empty for a healthy one. */
   problems: string[];
   manifest: EntityManifest | null;
+  /** The stored form says exactly what the manifest says — see `StoredShape.editable`. */
+  editable: boolean;
 }
 
 /**
@@ -195,6 +206,11 @@ export interface ShapeStore {
    * "None" for that would claim a record has no name, which is never true.
    */
   nameOptions: Accessor<{ label: string; value: string }[]>;
+  /**
+   * The row id of the field that will name a record of the open draft — the one chosen, or, while
+   * the picker is on "Work it out", the one worked out. Empty when no field qualifies.
+   */
+  draftNameMember: Accessor<string>;
   /** The hint editor's state, null while closed. */
   hintEditor: Accessor<HintEditorState | null>;
   /** The hint editor is loading or saving. */
@@ -422,6 +438,11 @@ export function ShapeStoreProvider(props: ParentProps) {
 
   const schemas = () => session.backendPorts()?.schemas;
   const handle = () => datasetStore.currentDataset()?.handle;
+  /** Where this backend keeps the space's models: its own store, or a `Shape` record each. */
+  const jsonShapes = createJsonShapeStore(async (dataset) => {
+    await schemas()?.ensure(dataset, Shape);
+  });
+  const storage = (): ShapeStorage => schemas()?.shapes ?? jsonShapes;
 
   /** Core entities worth offering the hint editor: the ones whose declaration carries any hint. */
   const coreHintEntities = Object.entries(CORE_MANIFEST.entities)
@@ -523,10 +544,32 @@ export function ShapeStoreProvider(props: ParentProps) {
     ...namedProperties(),
   ]);
 
-  const nameOptions = createMemo<{ label: string; value: string }[]>(() => [
-    { label: 'Work it out', value: 'none' },
-    ...namedProperties(),
-  ]);
+  /*
+    Worked out the way the saved model will be: the draft lowered as a save lowers it, then the rule
+    every surface names a record by. So the wizard shows the field a card will be headed with, not
+    a second guess at the guess.
+  */
+  const draftNameMember = createMemo<string>(() => {
+    const draft = shapeDraft();
+    if (!draft) return '';
+    if (draft.nameMember) return draft.nameMember;
+    const lowered = draftToManifest(draft, 'preview');
+    if (!lowered.ok) return '';
+    const entity = Object.values(lowered.manifest.entities)[0];
+    const field = entity ? namePropertyOf(entity) : '';
+    return draft.members.find((m) => m.kind === 'property' && m.name.trim() === field)?.rowId ?? '';
+  });
+
+  const nameOptions = createMemo<{ label: string; value: string }[]>(() => {
+    // "Work it out" says what it worked out, so a person sees which field heads the card.
+    const worked = shapeDraft()?.nameMember ? '' : draftNameMember();
+    const name = worked
+      ? shapeDraft()
+          ?.members.find((m) => m.rowId === worked)
+          ?.name.trim()
+      : '';
+    return [{ label: name ? `Work it out (${name})` : 'Work it out', value: 'none' }, ...namedProperties()];
+  });
 
   /** Entity names a shape may legitimately reference: core + foreign + this space's other shapes. */
   const knownEntityNames = (excludeShapeRecordId?: string) => [
@@ -539,17 +582,20 @@ export function ShapeStoreProvider(props: ParentProps) {
 
   // ── The adoption rail ─────────────────────────────────────────────────────────
 
-  async function adoptShape(
-    view: { name: string; shapeId: string },
-    manifest: EntityManifest,
-    dataset = handle(),
-  ): Promise<void> {
+  /**
+   * Compile a stored model and install its schema into the space — then let the store put back
+   * whatever of the model the install rewrote (`ShapeStore.keep`).
+   */
+  async function adoptShape(shape: ShapeInput, dataset = handle()): Promise<void> {
     const ports = schemas();
     if (!ports || !dataset) return;
+    const view = { name: shape.name, shapeId: shape.shapeId.replace('we://shapes/', '') };
+    const manifest = shape.manifest;
     const started = performance.now();
     const classes = ports.declareInDataset(dataset, manifest, { moduleId: `shape/${view.shapeId}` });
     const declared = performance.now();
     for (const cls of Object.values(classes)) await ports.ensure(dataset, cls);
+    await storage().keep?.(dataset, shape);
     trace('shapes', 'adopt', {
       name: view.name,
       classes: Object.keys(classes).length,
@@ -577,11 +623,7 @@ export function ShapeStoreProvider(props: ParentProps) {
       return ms;
     };
     try {
-      // Spaces created before the Shape entity existed never ran installSpace again — ensure is
-      // the diff-first idempotent path, a read in the common case.
-      await ports.ensure(dataset, Shape);
-      trace('shapes', 'catalogue', { space: uuid, ms: lap() });
-      const records = await Shape.findAll(dataset);
+      const records = await storage().list(dataset);
       trace('shapes', 'records', { space: uuid, count: records.length, ms: lap() });
       if (datasetStore.currentDataset()?.id !== uuid) return; // navigated away while loading
 
@@ -599,9 +641,9 @@ export function ShapeStoreProvider(props: ParentProps) {
           propertyCount: 0,
           problems: [],
           manifest: null,
+          editable: record.editable,
         };
-        const decoded = record.definition ? decodeFileAsJson(record.definition) : {};
-        const manifest = Object.keys(decoded).length ? (decoded as unknown as EntityManifest) : null;
+        const manifest = record.manifest;
         if (!manifest) {
           view.problems = ['definition document missing or unreadable'];
           views.push(view);
@@ -632,7 +674,7 @@ export function ShapeStoreProvider(props: ParentProps) {
         if (!view.manifest || view.problems.length || adopted.has(view.name)) continue;
         adopted.add(view.name);
         try {
-          await adoptShape(view, view.manifest);
+          await adoptShape({ ...view, manifest: view.manifest });
         } catch (err) {
           view.problems = [`adoption failed: ${err instanceof Error ? err.message : String(err)}`];
         }
@@ -663,7 +705,7 @@ export function ShapeStoreProvider(props: ParentProps) {
   // ── Wizard actions ────────────────────────────────────────────────────────────
 
   function openShapeWizard(shapeRecordId?: string): void {
-    // A schema $action with no declared args passes the DOM event as the first argument, so
+    // A schema $invoke with no declared args passes the DOM event as the first argument, so
     // anything but a real id means "new model" — without this, the New button arrived carrying a
     // MouseEvent and the wizard refused to open.
     const recordId = typeof shapeRecordId === 'string' && shapeRecordId ? shapeRecordId : undefined;
@@ -1084,26 +1126,17 @@ export function ShapeStoreProvider(props: ParentProps) {
         }
       }
 
-      const definition = asFileField(encodeJsonFileData(gate.manifest, 'shape-definition.json'));
-      if (existing) {
-        const record = (await Shape.findAll(dataset)).find((r) => r.id === existing.id);
-        if (!record) throw new Error('shape record disappeared while editing');
-        record.description = draft.description;
-        record.icon = draft.icon;
-        record.version = existing.version + 1;
-        record.definition = definition;
-        await record.save();
-      } else {
-        await Shape.create(dataset, {
-          name: entityName,
-          description: draft.description,
-          icon: draft.icon,
-          shapeId: `we://shapes/${shapeUuid}`,
-          version: 1,
-          definition,
-        });
-      }
-      await adoptShape({ name: entityName, shapeId: shapeUuid }, gate.manifest);
+      const shape: ShapeInput = {
+        name: entityName,
+        description: draft.description,
+        icon: draft.icon,
+        shapeId: `we://shapes/${shapeUuid}`,
+        version: existing ? existing.version + 1 : 1,
+        forkedFrom: existing?.forkedFrom ?? '',
+        manifest: gate.manifest,
+      };
+      await storage().save(dataset, shape, existing?.id);
+      await adoptShape(shape);
       /*
         Ticking the switch is the space's decision, so it does not need making twice.
 
@@ -1150,8 +1183,7 @@ export function ShapeStoreProvider(props: ParentProps) {
     if (onScreen) {
       present = new Map(spaceShapes().map((shape) => [shape.name, shape]));
     } else {
-      await ports.ensure(dataset, Shape);
-      present = new Map((await Shape.findAll(dataset)).map((record) => [record.name, record]));
+      present = new Map((await storage().list(dataset)).map((shape) => [shape.name, shape]));
     }
     const names = types.map((type) => type.name);
     for (const type of types) {
@@ -1171,16 +1203,18 @@ export function ShapeStoreProvider(props: ParentProps) {
         problems.push(`"${type.name}" is not a valid definition — ${gate.errors[0]?.message}`);
         continue;
       }
-      await Shape.create(dataset, {
+      const shape: ShapeInput = {
         name: type.name,
         description: type.description ?? '',
         icon: type.icon ?? 'shapes',
         shapeId,
         version: 1,
-        definition: asFileField(encodeJsonFileData(gate.manifest, 'shape-definition.json')),
-      });
-      // The record's own shapeId, as `loadShapes` adopts it on every later visit.
-      await adoptShape({ name: type.name, shapeId }, gate.manifest, dataset);
+        forkedFrom: '',
+        manifest: gate.manifest,
+      };
+      await storage().save(dataset, shape);
+      // Adopted as `loadShapes` adopts it on every later visit.
+      await adoptShape(shape, dataset);
     }
     if (onScreen) await loadShapes();
     return problems;
@@ -1190,8 +1224,7 @@ export function ShapeStoreProvider(props: ParentProps) {
     const dataset = handle();
     if (!dataset) return;
     try {
-      const record = (await Shape.findAll(dataset)).find((r) => r.id === shapeRecordId);
-      if (record) await record.delete();
+      await storage().remove(dataset, shapeRecordId);
       toastService.success('Model removed. Existing entries keep their data.');
       await loadShapes();
     } catch (err) {
@@ -1347,6 +1380,7 @@ export function ShapeStoreProvider(props: ParentProps) {
     relationshipTargets,
     identityOptions,
     nameOptions,
+    draftNameMember,
     hintEditor,
     hintBusy,
     openShapeWizard,

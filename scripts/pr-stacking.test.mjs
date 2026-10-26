@@ -13,7 +13,7 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { checkStacking, parseStacking } from './pr-stacking.mjs';
+import { checkStacking, parseStacking, withoutBlock } from './pr-stacking.mjs';
 
 const ALERT = '> [!IMPORTANT]';
 const stacked = (n) => `${ALERT}\n> ### Stacked on: #${n}\n\n## What\n\nA change.`;
@@ -148,6 +148,18 @@ describe('the description against the base branch', () => {
     assert.match(result.error.problem, /no longer stacked on #312: remove the block/);
   });
 
+  it('marks that leftover for clearing once the PR it names has merged — the end of every stack', async () => {
+    const merged = { ...parent, state: 'closed', merged_at: '2026-10-17T10:00:00Z' };
+    const result = await check('dev', stacked(312), [merged]);
+    assert.equal(result.error.clearable, true);
+    assert.equal(result.error.number, '312');
+  });
+
+  it('leaves it to a person while the PR it names is open, or cannot be read', async () => {
+    assert.equal((await check('dev', stacked(312))).error.clearable, undefined);
+    assert.equal((await check('dev', stacked(999))).error.clearable, undefined);
+  });
+
   it('fails a block naming a PR that has merged', async () => {
     const merged = { ...parent, state: 'closed', merged_at: '2026-10-17T10:00:00Z' };
     const result = await check('fix/electron-stop-own-executor', stacked(312), [merged]);
@@ -169,5 +181,22 @@ describe('the description against the base branch', () => {
     const result = await check('fix/electron-stop-own-executor', 'Stacked on #312, and based on its branch.');
     assert.match(result.error.problem, /not in the exact form/);
     assert.equal(result.error.number, '312');
+  });
+});
+
+describe('taking the block off a description', () => {
+  it('removes the alert, what was written under it and the blank lines after, and nothing else', () => {
+    const rest = '## What\n\n- A change.\n\n> A quote further down stays.\n';
+    const body = `${ALERT}\n>\n> ### Stacked on: #312\n>\n> Review the commits from "x" onwards.\n\n${rest}`;
+    assert.equal(withoutBlock(body), rest);
+  });
+
+  it('keeps Windows line endings as they were', () => {
+    assert.equal(withoutBlock(`${ALERT}\r\n> ### Stacked on: #312\r\n\r\n## What\r\n`), '## What\r\n');
+  });
+
+  it('changes nothing when something sits above the block', () => {
+    const body = `<!-- how to fill this in -->\n\n${stacked(312)}`;
+    assert.equal(withoutBlock(body), body);
   });
 });

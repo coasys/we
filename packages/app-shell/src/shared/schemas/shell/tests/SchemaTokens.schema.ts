@@ -7,7 +7,7 @@
  *
  * Groups:
  *   1. Data Access     — expressions ({ $: … }), including interpolation
- *   2. Actions         — $action, $arg
+ *   2. Actions         — $invoke, $arg
  *   3. Operators       — $eq, $ne, $not, $and, $or
  *   4. Control Flow    — $if, $each (flat, nested, empty)
  *   5. Data Transforms — $map (array, object), $pick (standalone, chained)
@@ -116,8 +116,8 @@ function filterModeButton(mode: string, label: string, icon: string): SchemaNode
   return {
     type: 'we-button',
     props: {
-      variant: expr`testStore.queryFilterMode == ${mode} ? 'primary' : 'secondary'`,
-      onClick: { $action: 'testStore.setQueryFilterMode', args: [mode] },
+      variant: expr`testStore.queryFilterMode == ${mode} ? 'solid' : 'soft'`,
+      onClick: { $invoke: 'testStore.setQueryFilterMode', args: [mode] },
     },
     children: [{ type: 'we-icon', props: { name: icon } }, label],
   };
@@ -203,10 +203,10 @@ const concatTest = section('interpolation', 'Concatenate strings and store value
 ]);
 
 // ---------------------------------------------------------------------------
-// 2. Actions — $action, $arg
+// 2. Actions — $invoke, $arg
 // ---------------------------------------------------------------------------
 
-const actionTest = section('$action', 'Trigger store mutations', [
+const actionTest = section('$invoke', 'Trigger store mutations', [
   interactiveLabel('Click button — counter should increment'),
   {
     type: 'Row',
@@ -214,7 +214,7 @@ const actionTest = section('$action', 'Trigger store mutations', [
     children: [
       {
         type: 'we-button',
-        props: { size: 'sm', onClick: { $action: 'testStore.increment' } },
+        props: { size: 'sm', onClick: { $invoke: 'testStore.increment' } },
         children: [{ type: 'we-icon', props: { name: 'plus' } }, 'Increment'],
       },
       { type: 'we-text', children: ['Counter:'] },
@@ -237,7 +237,7 @@ const argTest = section('$arg', 'Extract native event values', [
         type: 'we-input',
         props: {
           placeholder: 'Type here...',
-          onInput: { $action: 'testStore.setTypedText', args: [{ $: 'arg.detail' }] },
+          onInput: { $invoke: 'testStore.setTypedText', args: [{ $: 'arg.detail' }] },
         },
       },
       { type: 'we-text', props: { color: 'text-faint' }, children: ['Echo:'] },
@@ -301,19 +301,19 @@ const orTest = section('||', 'Logical OR', [
 
 const ifTest = section('$if', 'Conditional rendering (prop + node level)', [
   // Prop-level: button variant changes based on toggle
-  interactiveLabel('Toggle — button variant should switch between "primary" and "ghost"'),
+  interactiveLabel('Toggle — button variant should switch between "solid" and "ghost"'),
   {
     type: 'Row',
     props: { gap: '300', ay: 'center' },
     children: [
       {
         type: 'we-button',
-        props: { variant: 'outline', onClick: { $action: 'testStore.toggle' } },
+        props: { variant: 'outline', onClick: { $invoke: 'testStore.toggle' } },
         children: ['Toggle'],
       },
       {
         type: 'we-button',
-        props: { variant: { $: "testStore.toggleValue ? 'primary' : 'ghost'" } },
+        props: { variant: { $: "testStore.toggleValue ? 'solid' : 'ghost'" } },
         children: [{ $: "testStore.toggleValue ? 'ON' : 'OFF'" }],
       },
       { type: 'we-text', props: { color: 'text-faint' }, children: ['(prop-level $if)'] },
@@ -327,7 +327,7 @@ const ifTest = section('$if', 'Conditional rendering (prop + node level)', [
       condition: { $: 'testStore.toggleValue' },
       then: {
         type: 'Row',
-        props: { gap: '200', ay: 'center', p: '200', bg: 'success-surface', r: '300' },
+        props: { gap: '200', ay: 'center', p: '200', bg: 'success-soft', r: '300' },
         children: [
           { type: 'we-icon', props: { name: 'check', color: 'success-text' } },
           { type: 'we-text', props: { color: 'success-text' }, children: ['Visible!'] },
@@ -353,7 +353,7 @@ const ifTest = section('$if', 'Conditional rendering (prop + node level)', [
       exitTransition: { type: 'fade', duration: 1000, easing: 'ease-in-out' },
       then: {
         type: 'Row',
-        props: { gap: '200', ay: 'center', p: '200', bg: 'accent-muted', r: '300' },
+        props: { gap: '200', ay: 'center', p: '200', bg: 'accent-soft', r: '300' },
         children: [
           { type: 'we-icon', props: { name: 'sparkle', color: 'accent' } },
           {
@@ -586,7 +586,7 @@ const queryOneShotTest = section('$query (one-shot)', 'FindAll $query without su
       },
       else: {
         type: 'Row',
-        props: { gap: '200', p: '200', bg: 'warning-surface', r: '300', ay: 'center' },
+        props: { gap: '200', p: '200', bg: 'warning-soft', r: '300', ay: 'center' },
         children: [
           { type: 'we-icon', props: { name: 'clock', color: 'warning-text' } },
           {
@@ -625,7 +625,7 @@ const querySubscriptionTest = section('$query (subscription)', 'FindAll $query w
             children: [
               {
                 type: 'we-button',
-                props: { variant: 'primary', onClick: { $action: 'testStore.createTestItem' } },
+                props: { variant: 'solid', onClick: { $invoke: 'testStore.createTestItem' } },
                 children: [{ type: 'we-icon', props: { name: 'plus' } }, 'Add item'],
               },
               {
@@ -652,9 +652,9 @@ const querySubscriptionTest = section('$query (subscription)', 'FindAll $query w
                   {
                     type: 'we-button',
                     props: {
-                      variant: 'secondary',
+                      variant: 'soft',
                       size: 'xs', // TODO: not having any effect
-                      onClick: { $action: 'testStore.deleteTestItem', args: [{ $: 'q.id' }] },
+                      onClick: { $invoke: 'testStore.deleteTestItem', args: [{ $: 'q.id' }] },
                     },
                     children: [{ type: 'we-icon', props: { name: 'x', color: 'text-muted', size: 'xs' } }],
                   },
@@ -666,7 +666,7 @@ const querySubscriptionTest = section('$query (subscription)', 'FindAll $query w
       },
       else: {
         type: 'Row',
-        props: { gap: '200', p: '200', bg: 'warning-surface', r: '300', ay: 'center' },
+        props: { gap: '200', p: '200', bg: 'warning-soft', r: '300', ay: 'center' },
         children: [
           { type: 'we-icon', props: { name: 'clock', color: 'warning-text' } },
           { type: 'we-text', props: { color: 'warning-text' }, children: ['Waiting for AD4M perspective...'] },
@@ -712,7 +712,7 @@ const queryFilteringTest = section('$query (filtering)', 'Query with where, orde
       },
       else: {
         type: 'Row',
-        props: { gap: '200', p: '200', bg: 'warning-surface', r: '300', ay: 'center' },
+        props: { gap: '200', p: '200', bg: 'warning-soft', r: '300', ay: 'center' },
         children: [
           { type: 'we-icon', props: { name: 'clock', color: 'warning-text' } },
           {
@@ -765,7 +765,7 @@ const localStateBasicTest: SchemaNode = {
         { type: 'we-text', props: { fontWeight: '600' }, children: [{ $: 'local.name' }] },
       ],
     },
-    // --- $local in $action args ---
+    // --- $local in $invoke args ---
     interactiveLabel('Click increment then "Log name" — testStore.setTypedText receives $local value'),
     {
       type: 'Row',
@@ -774,8 +774,8 @@ const localStateBasicTest: SchemaNode = {
         {
           type: 'we-button',
           props: {
-            variant: 'primary',
-            onClick: { $action: 'testStore.setTypedText', args: [{ $: 'local.name' }] },
+            variant: 'solid',
+            onClick: { $invoke: 'testStore.setTypedText', args: [{ $: 'local.name' }] },
           },
           children: ['Log name'],
         },
@@ -811,7 +811,7 @@ const localStateBasicTest: SchemaNode = {
       children: [
         {
           type: 'we-button',
-          props: { variant: 'primary', disabled: { $: '!local.name' } },
+          props: { variant: 'solid', disabled: { $: '!local.name' } },
           children: [{ $: "`Submit: ${local.name ? local.name : '(empty)'}`" }],
         },
         {
@@ -977,10 +977,10 @@ const formValidationBasicTest: SchemaNode = {
         {
           type: 'we-button',
           props: {
-            variant: 'primary',
+            variant: 'solid',
             disabled: { $: '!formValid()' },
             onClick: {
-              $action: 'testStore.setTypedText',
+              $invoke: 'testStore.setTypedText',
               args: [{ $: '`${local.username} / ${local.email}`' }],
             },
           },
@@ -1059,7 +1059,7 @@ const formValidationActionsTest: SchemaNode = {
       type: 'Row',
       props: { gap: '300', ay: 'center' },
       children: [
-        { type: 'we-button', props: { variant: 'secondary', onClick: { $touch: '$all' } }, children: ['Touch All'] },
+        { type: 'we-button', props: { variant: 'soft', onClick: { $touch: '$all' } }, children: ['Touch All'] },
       ],
     },
     // --- Handler array: touch-all-then-submit pattern ---
@@ -1071,14 +1071,14 @@ const formValidationActionsTest: SchemaNode = {
         {
           type: 'we-button',
           props: {
-            variant: 'primary',
+            variant: 'solid',
             onClick: [
               { $touch: '$all' },
               {
                 $if: {
                   condition: { $: 'formValid()' },
                   then: {
-                    $action: 'testStore.setTypedText',
+                    $invoke: 'testStore.setTypedText',
                     args: [{ $: '`${local.firstName} ${local.lastName}`' }],
                   },
                 },
@@ -1099,18 +1099,18 @@ const formValidationActionsTest: SchemaNode = {
       children: [
         {
           type: 'we-button',
-          props: { variant: 'secondary', onClick: { $resetLocal: '$scope' } },
+          props: { variant: 'soft', onClick: { $resetLocal: '$scope' } },
           children: ['Reset'],
         },
         // --- Handler array: submit then reset ---
         {
           type: 'we-button',
           props: {
-            variant: 'primary',
+            variant: 'solid',
             disabled: { $: '!formValid()' },
             onClick: [
               {
-                $action: 'testStore.setTypedText',
+                $invoke: 'testStore.setTypedText',
                 args: [{ $: '`${local.firstName} ${local.lastName}`' }],
               },
               { $resetLocal: '$scope' },
@@ -1192,14 +1192,14 @@ const formValidationMatchTest: SchemaNode = {
         {
           type: 'we-button',
           props: {
-            variant: 'primary',
+            variant: 'solid',
             disabled: { $: '!formValid()' },
             onClick: [
               { $touch: '$all' },
               {
                 $if: {
                   condition: { $: 'formValid()' },
-                  then: { $action: 'testStore.setTypedText', args: ['Password set!'] },
+                  then: { $invoke: 'testStore.setTypedText', args: ['Password set!'] },
                 },
               },
             ],
@@ -1253,7 +1253,7 @@ const formValidationStylingTest: SchemaNode = {
       props: {
         p: '300',
         r: '300',
-        bg: { $: "touched('age') ? valid('age') ? 'success-surface' : 'danger-surface' : 'page'" },
+        bg: { $: "touched('age') ? valid('age') ? 'success-soft' : 'danger-soft' : 'page'" },
       },
       children: [
         {
@@ -1324,7 +1324,7 @@ const wcReactivePropsTest = section('WC reactive props', 'Web component props up
   interactiveLabel('Toggle to switch text color between success-600 and danger-600'),
   {
     type: 'we-button',
-    props: { variant: 'secondary', onClick: { $action: 'testStore.toggle' } },
+    props: { variant: 'soft', onClick: { $invoke: 'testStore.toggle' } },
     children: ['Toggle'],
   },
   {
@@ -1343,8 +1343,8 @@ const wcReactivePropsTest = section('WC reactive props', 'Web component props up
   },
   {
     type: 'we-button',
-    props: { variant: { $: "testStore.toggleValue ? 'primary' : 'outline'" } },
-    children: [{ $: "`Variant: ${testStore.toggleValue ? 'primary' : 'outline'}`" }],
+    props: { variant: { $: "testStore.toggleValue ? 'solid' : 'outline'" } },
+    children: [{ $: "`Variant: ${testStore.toggleValue ? 'solid' : 'outline'}`" }],
   },
 ]);
 
@@ -1391,7 +1391,7 @@ const fragmentThemeTest = section('Fragment + theme', 'Themeable fragment wraps 
     children: ['A fragment with theme overrides wraps children in a themed div:'],
   },
   {
-    theme: { primaryHue: 234, saturation: 80 },
+    theme: { accentHue: 234, saturation: 80 },
     children: [
       { type: 'we-text', props: { color: 'accent' }, children: ['Fragment themed child (should be blue-ish)'] },
     ],
@@ -1404,9 +1404,9 @@ const fragmentThemeTest = section('Fragment + theme', 'Themeable fragment wraps 
 
 const tokenThemeTest: SchemaNode = {
   type: 'Column',
-  props: { gap: '300', p: '400', r: '400', bg: 'surface-sunken', border: '1px solid var(--we-role-accent-muted)' },
+  props: { gap: '300', p: '400', r: '400', bg: 'surface-sunken', border: '1px solid var(--we-role-accent-soft)' },
   // Apply theme overrides to this section
-  theme: { primaryHue: 344, saturation: 90 },
+  theme: { accentHue: 344, saturation: 90 },
   children: [
     {
       type: 'Row',
@@ -1420,13 +1420,13 @@ const tokenThemeTest: SchemaNode = {
     {
       type: 'we-text',
       props: { color: 'text-faint' },
-      children: ['This section has primaryHue: 344 (pink) — the "primary" colors below should appear pink:'],
+      children: ['This section has accentHue: 344 (pink) — the "primary" colors below should appear pink:'],
     },
     {
       type: 'Row',
       props: { gap: '200', ay: 'center' },
       children: [
-        { type: 'we-button', props: { variant: 'primary' }, children: ['Primary Button'] },
+        { type: 'we-button', props: { variant: 'solid' }, children: ['Primary Button'] },
         { type: 'we-text', props: { color: 'accent' }, children: ['Primary Text'] },
       ],
     },
@@ -1435,7 +1435,7 @@ const tokenThemeTest: SchemaNode = {
 
 const namedThemeTest: SchemaNode = {
   type: 'Column',
-  props: { gap: '300', p: '400', r: '400', bg: 'surface-sunken', border: '1px solid var(--we-role-accent-muted)' },
+  props: { gap: '300', p: '400', r: '400', bg: 'surface-sunken', border: '1px solid var(--we-role-accent-soft)' },
   theme: { themeName: 'cyberpunk' },
   children: [
     {
@@ -1456,7 +1456,7 @@ const namedThemeTest: SchemaNode = {
       type: 'Row',
       props: { gap: '200', ay: 'center' },
       children: [
-        { type: 'we-button', props: { variant: 'primary' }, children: ['Cyberpunk Theme Button'] },
+        { type: 'we-button', props: { variant: 'solid' }, children: ['Cyberpunk Theme Button'] },
         { type: 'we-text', props: { color: 'accent' }, children: ['Cyberpunk Theme Text'] },
       ],
     },
@@ -1528,8 +1528,8 @@ function navTab(group: (typeof groups)[number]): SchemaNode {
   return {
     type: 'we-button',
     props: {
-      variant: expr`${isActive} ? 'primary' : 'secondary'`,
-      onClick: { $action: 'routeStore.navigate', args: [navPath] },
+      variant: expr`${isActive} ? 'solid' : 'soft'`,
+      onClick: { $invoke: 'routeStore.navigate', args: [navPath] },
     },
     children: [group.label],
   };
