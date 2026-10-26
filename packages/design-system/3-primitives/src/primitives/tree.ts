@@ -8,116 +8,26 @@ import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
 
 /*
+  The space between rows, at every depth: between a tree's top-level items, between a row and the
+  rows under it, and between those. A theme sets it as the tree's own gap (components.tree.gap).
+  On the tree's and each item's base, as their DS gap, since a primitive's base reads its gap
+  from its own DS variable and a stylesheet rule never reaches it; and on an item's children.
+  Rows used to touch, so two rows lit at once — the one hovered and the one you are on — read as one
+  block.
+*/
+const ROW_GAP_VALUE = `var(${componentThemeVar('tree', 'gap')}, var(--we-space-100))`;
+
+/*
   Rows stack. A DesignSystemElement host is a flex container around its `base` part, which is laid
   out as a row unless the element says otherwise: a tree left at the default drew its groups side by
   side on one line, and an open row's children beside it rather than under it. `we-menu` declares
   the same for the same reason.
 */
-const STACKED: Partial<DesignSystemProps> = { direction: 'column' };
+const STACKED: Partial<DesignSystemProps> = { direction: 'column', gap: ROW_GAP_VALUE };
 
 const TREE_STYLES = css`
   :host {
     display: block;
-  }
-`;
-
-/*
-  A row's corners read its own override slot (--we-theme-tree-radius), so a theme can round rows
-  without rounding every control.
-
-  The selected row reads the tree's `selected` variant, the component tier's usual vocabulary:
-  `components: { tree: { variants: { selected: { fill, text, border, borderWidth } } } }`. Fill and
-  text replace the selected role's. Border and its width draw a bar on the row's leading edge — the
-  mark a navigation tree draws on the row you are on, and what Coasys Glow asks for in mint. Unset,
-  the bar has no width, so every theme that says nothing renders as before.
-
-  Read from the variant only, not the tree's own keys: a `fill` set for every row would otherwise
-  paint the selected one too, and the selection would disappear into it.
-*/
-const SELECTED = (key: string, fallback: string) =>
-  unsafeCSS(`var(${componentThemeVar('tree', key, 'selected')}, ${fallback})`);
-
-const ITEM_STYLES = css`
-  :host {
-    display: block;
-  }
-  [part='row'] {
-    display: flex;
-    align-items: center;
-    gap: var(--we-space-200);
-    padding: var(--we-tree-row-padding, var(--we-space-100) var(--we-space-200));
-    /* A level indents by one caret and the gap after it — see the nested leaf below. */
-    padding-inline-start: calc(
-      var(--we-tree-indent, calc(16px + var(--we-space-200))) * var(--we-tree-level, 0) + var(--we-space-200)
-    );
-    border-radius: var(--we-theme-tree-radius, var(--we-radius-300));
-    color: var(--we-role-text-muted);
-    cursor: pointer;
-    outline: none;
-    min-height: var(--we-tree-row-height, 32px);
-    box-sizing: border-box;
-    position: relative;
-  }
-  [part='row']:hover {
-    background: var(--we-role-item-hover);
-    color: var(--we-role-text);
-  }
-  :host([selected]) [part='row'] {
-    background: ${SELECTED('fill', 'var(--we-role-selected)')};
-    color: ${SELECTED('text', 'var(--we-role-on-selected)')};
-  }
-  /* The leading bar, inside the row's own rounding on that side. */
-  :host([selected]) [part='row']::before {
-    content: '';
-    position: absolute;
-    inset-block: 0;
-    inset-inline-start: 0;
-    width: ${SELECTED('border-width', '0px')};
-    background: ${SELECTED('border', 'transparent')};
-    border-start-start-radius: inherit;
-    border-end-start-radius: inherit;
-    pointer-events: none;
-  }
-  [part='row']:focus-visible {
-    box-shadow: ${unsafeCSS(FOCUS_RING)};
-  }
-  [part='caret'] {
-    all: unset;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 16px;
-    height: 16px;
-    flex: 0 0 auto;
-    color: var(--we-role-text-faint);
-    transition: transform var(--we-transition-200, 150ms) ease;
-  }
-  :host([open]) [part='caret'] {
-    transform: rotate(90deg);
-  }
-  /*
-    A leaf at the top keeps the caret's space with nothing in it, so it lines up with the rows beside
-    it that have one. Not the hidden attribute: the shared sheet makes that display: none !important,
-    which takes the space away.
-  */
-  [part='caret'][data-leaf] {
-    visibility: hidden;
-    pointer-events: none;
-  }
-  /*
-    A nested leaf has no caret at all, and its level's indent is that caret's width: so its glyph
-    sits under its parent's glyph, and its label under its parent's label. A nested row with rows of
-    its own keeps its caret there instead, and its own rows line up under it the same way.
-  */
-  [part='caret'][data-nested-leaf] {
-    display: none;
-  }
-  [part='content'] {
-    display: flex;
-    align-items: center;
-    gap: var(--we-space-200);
-    flex: 1 1 auto;
-    min-width: 0;
   }
 `;
 
@@ -284,6 +194,111 @@ export class Tree extends DesignSystemElement {
     return html`<div part="base" role="tree" aria-label=${this.label || ''}><slot></slot></div>`;
   }
 }
+
+/*
+  A row's corners read its own override slot (--we-theme-tree-radius), so a theme can round rows
+  without rounding every control.
+
+  The selected row reads the tree's `selected` variant, the component tier's usual vocabulary:
+  `components: { tree: { variants: { selected: { fill, text, border, borderWidth } } } }`. Fill and
+  text replace the selected role's. Border and its width draw a bar on the row's leading edge — the
+  mark a navigation tree draws on the row you are on, and what Coasys Glow asks for in mint. Unset,
+  the bar has no width, so every theme that says nothing renders as before.
+
+  Read from the variant only, not the tree's own keys: a `fill` set for every row would otherwise
+  paint the selected one too, and the selection would disappear into it.
+*/
+const SELECTED = (key: string, fallback: string) =>
+  unsafeCSS(`var(${componentThemeVar('tree', key, 'selected')}, ${fallback})`);
+
+const ITEM_STYLES = css`
+  :host {
+    display: block;
+  }
+  [part='children'] {
+    display: flex;
+    flex-direction: column;
+    gap: ${unsafeCSS(ROW_GAP_VALUE)};
+  }
+  [part='row'] {
+    display: flex;
+    align-items: center;
+    gap: var(--we-space-200);
+    padding: var(--we-tree-row-padding, var(--we-space-100) var(--we-space-200));
+    /* A level indents by one caret and the gap after it — see the nested leaf below. */
+    padding-inline-start: calc(
+      var(--we-tree-indent, calc(16px + var(--we-space-200))) * var(--we-tree-level, 0) + var(--we-space-200)
+    );
+    border-radius: var(--we-theme-tree-radius, var(--we-radius-300));
+    color: var(--we-role-text-muted);
+    cursor: pointer;
+    outline: none;
+    min-height: var(--we-tree-row-height, 32px);
+    box-sizing: border-box;
+    position: relative;
+  }
+  [part='row']:hover {
+    background: var(--we-role-item-hover);
+    color: var(--we-role-text);
+  }
+  :host([selected]) [part='row'] {
+    background: ${SELECTED('fill', 'var(--we-role-selected)')};
+    color: ${SELECTED('text', 'var(--we-role-on-selected)')};
+  }
+  /* The leading bar, inside the row's own rounding on that side. */
+  :host([selected]) [part='row']::before {
+    content: '';
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    width: ${SELECTED('border-width', '0px')};
+    background: ${SELECTED('border', 'transparent')};
+    border-start-start-radius: inherit;
+    border-end-start-radius: inherit;
+    pointer-events: none;
+  }
+  [part='row']:focus-visible {
+    box-shadow: ${unsafeCSS(FOCUS_RING)};
+  }
+  [part='caret'] {
+    all: unset;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+    color: var(--we-role-text-faint);
+    transition: transform var(--we-transition-200, 150ms) ease;
+  }
+  :host([open]) [part='caret'] {
+    transform: rotate(90deg);
+  }
+  /*
+    A leaf at the top keeps the caret's space with nothing in it, so it lines up with the rows beside
+    it that have one. Not the hidden attribute: the shared sheet makes that display: none !important,
+    which takes the space away.
+  */
+  [part='caret'][data-leaf] {
+    visibility: hidden;
+    pointer-events: none;
+  }
+  /*
+    A nested leaf has no caret at all, and its level's indent is that caret's width: so its glyph
+    sits under its parent's glyph, and its label under its parent's label. A nested row with rows of
+    its own keeps its caret there instead, and its own rows line up under it the same way.
+  */
+  [part='caret'][data-nested-leaf] {
+    display: none;
+  }
+  [part='content'] {
+    display: flex;
+    align-items: center;
+    gap: var(--we-space-200);
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+`;
 
 /**
  * One row of a `we-tree`, and the rows under it.

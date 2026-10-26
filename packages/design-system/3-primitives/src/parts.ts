@@ -124,6 +124,4 @@ export const INTERNAL_PARTS: Record<string, string> = {
   'pin-icon': 'a location picker’s marker',
   coords: 'a location picker’s coordinate readout',
   confirm: 'a location picker’s confirm control',
-  row: 'a tree item’s row box',
-  content: 'an inner box a primitive lays out itself',
 };
