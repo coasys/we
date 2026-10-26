@@ -12,7 +12,7 @@
  * - {@link propertyExpander} — the level below an entity: its own fields, and shared value nodes.
  * - {@link schemaExpander} — the level *above* an entity: a type node, opened into its instances.
  * - {@link schemaPropertiesExpander} — a type node opened into what it *is*: its fields, and a Records node.
- * - {@link vocabularyPlugins} — what a space has defined, in buckets: its words, its models, its flows.
+ * - {@link vocabularyPlugins} — what a space has defined, in buckets: its words, its models, its workflows.
  * - {@link querySeed} / {@link schemaSeed} / {@link datasetSeed} / {@link canvasSeed} — where a graph starts.
  */
 export { collectionExpander } from './collection';
@@ -25,11 +25,11 @@ export type { PropertyExpanderOptions } from './property';
 export { INSTANCES_TYPE, SCHEMA_TYPE, schemaExpander } from './schema';
 export { schemaPropertiesExpander } from './schemaProperties';
 export {
-  FLOW_STEP_TYPE,
-  FLOW_TYPE,
+  WORKFLOW_STATE_TYPE,
+  WORKFLOW_TYPE,
   VOCABULARY_TYPE,
   type VocabularyBucket,
-  type VocabularyFlow,
+  type VocabularyWorkflow,
   vocabularyPlugins,
   type VocabularySeedOptions,
 } from './vocabulary';

@@ -316,19 +316,19 @@ involvements.
 A task state can ask for agreement before work enters it: `TaskState.approvals` (how many distinct
 people) and `TaskState.approverKind` (an involvement kind whose holders on the task are the only ones
 who count — its reviewers, say). The first state that asks for any turns the space's states into a
-**flow**, and the rest of this section is what changes when it does. The mechanism is the backend's
-flow port (`FlowPort` in `@we/backend-shared`; see [flows.md](./flows.md)); what task states mean as a
-flow is `packages/app-shell/src/shared/taskFlow.ts`.
+**workflow**, and the rest of this section is what changes when it does. The mechanism is the backend's
+workflow port (`WorkflowPort` in `@we/backend-shared`; see [workflows.md](./workflows.md)); what task states mean as a
+workflow is `packages/app-shell/src/shared/taskWorkflow.ts`.
 
-**A state can also ask for something to be there, and the states can have a rule.** `TaskState.guards`
+**A state can also ask for something to be there, and the states can have a rule.** `TaskState.evidence`
 says what must exist before a task enters the state — "a document in response to it" — and a drop
-into it is refused until it does. `Space.taskFlowRule` says how a card may move between the states in
+into it is refused until it does. `Space.taskWorkflowRule` says how a card may move between the states in
 their order: anywhere (the default), on to the next, or on and back one. A move the rule does not allow
 is refused on the board before anything is sent, since every member holds the rule and the answer
 would be the same after a round trip. Both are edited in the space's Vocabulary settings with the
-fields a flow's step uses in the Flows editor (`stepRequirementFields` in the template kit), and both
-compile through the same lanes compiler a written flow does, so "on and back one" means the same thing
-on a board and in a flow.
+fields a workflow's step uses in the Workflows editor (`stepRequirementFields` in the template kit), and both
+compile through the same lanes compiler a written workflow does, so "on and back one" means the same thing
+on a board and in a workflow.
 
 **A drop asks rather than writes.** Into a state that asks for nothing, it moves the card as before,
 drawn ahead of the round trip. Into a state that asks for agreement, nothing is written and nothing
@@ -336,29 +336,29 @@ is drawn ahead: the card stays in its column and gains a line saying where it as
 of the approvals it has and whose they are. Somebody whose approval would count sees Approve;
 somebody who asked sees Withdraw. When enough people have asked, the move happens on every device.
 
-**State is read from the flow, where it can say.** A task enters the flow the first time anybody moves
-it. `arrangedBoard` reads a card's state from the flow and falls back to `status` for a task the flow
-has not seen, or whose state the backend cannot say yet (`FlowItem.state` is `null`). `status` goes on
+**State is read from the workflow, where it can say.** A task enters the workflow the first time anybody moves
+it. `arrangedBoard` reads a card's state from the workflow and falls back to `status` for a task the workflow
+has not seen, or whose state the backend cannot say yet (`WorkflowItem.state` is `null`). `status` goes on
 being written, by whoever's action made a move, so every surface that reads it keeps working without
-knowing flows exist.
+knowing workflows exist.
 
-**A task enters the flow where it already stands.** By the time anybody moves a task it already has a
-state, so every move passes it as `from`, and a task the flow has not seen enters there rather than
+**A task enters the workflow where it already stands.** By the time anybody moves a task it already has a
+state, so every move passes it as `from`, and a task the workflow has not seen enters there rather than
 restarting in the first column. How a backend does that is its own: the AD4M adapter keeps an entry
 state no board shows and places the run out of it. A task made straight into a column that asks for
 agreement starts in the first column that does not, and asks.
 
 **What this does and does not protect.** A move nobody agreed to is one nobody's board shows. How far
-a rule holds beyond that is the backend's to say, and it says so in `FlowCapabilities.enforcement`.
+a rule holds beyond that is the backend's to say, and it says so in `WorkflowCapabilities.enforcement`.
 On a peer-to-peer backend (`peers`) the rules are data in the space like everything else, and a member
 with a modified client can still rewrite them or write `status` directly — which other surfaces would
 then show: a board a group moves forward together, not enforcement. A backend with one authority
-(`server`) can refuse such a write outright. Either way, writing `status` past the flow is something
-every surface that reads `status` has to live with until it moves through the flow too.
+(`server`) can refuse such a write outright. Either way, writing `status` past the workflow is something
+every surface that reads `status` has to live with until it moves through the workflow too.
 
 **Not built yet:** other writers of `status` — the inspector, extraction's suggestions — still write
-it directly in a space with a flow, so such an edit shows everywhere except the board. Routing them
-through the flow is the natural next step.
+it directly in a space with a workflow, so such an edit shows everywhere except the board. Routing them
+through the workflow is the natural next step.
 
 ## Boards a person does not create
 
@@ -452,7 +452,7 @@ module writing `tag: 'transcript'` into `TextBlock.style`. Which board is canoni
 | The writes         | `packages/app-shell/src/shared/boards.ts`, surfaced on `spaceStore` — `createBoard`, `openBoardFor`, `addBoardColumn`, `removeBoardColumn`, `renameBoardColumn`, `reorderBoardColumns`, `arrangeColumn`, `moveCardToColumn`, `addTaskToColumn` |
 | The vocabulary     | `packages/entities/src/manifest/TaskState.ts`, and Settings → Vocabulary                                                                                                                                                                       |
 | Who is on the work | `packages/entities/src/manifest/Involvement.ts` and `InvolvementType.ts`; the writes in `packages/app-shell/src/shared/involvements.ts`; the read in `sources/involvement.ts`; the filter in `packages/templates/kit/src/we/peopleFilter.ts`   |
-| Agreement          | `packages/app-shell/src/shared/taskFlow.ts` (what task states mean as a flow), the flow port in `packages/backend-system/shared/src/flows.ts`, and its AD4M and in-memory implementations                                                      |
+| Agreement          | `packages/app-shell/src/shared/taskWorkflow.ts` (what task states mean as a workflow), the workflow port in `packages/backend-system/shared/src/workflows.ts`, and its AD4M and in-memory implementations                                      |
 | The order splice   | `packages/app-shell/src/shared/shapes/subsetOrder.ts`                                                                                                                                                                                          |
 | The anchor         | `packages/templates/kit/src/we/anchor.ts`                                                                                                                                                                                                      |
 | The showcase       | `packages/templates/showcase/src/KanbanTemplate.schema.ts` — the same fragment, over posts, as lanes                                                                                                                                           |

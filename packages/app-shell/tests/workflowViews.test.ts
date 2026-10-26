@@ -1,21 +1,21 @@
 /**
- * A flow as a template draws it — steps and requirements in words, and a record's walk.
+ * A workflow as a template draws it — steps and requirements in words, and a record's walk.
  */
-import type { FlowDefinition } from '@we/backend-shared';
+import type { WorkflowDefinition } from '@we/backend-shared';
 import { describe, expect, it } from 'vitest';
 
-import { definitionOf, presetDraft } from '../src/shared/flowDraft';
-import { toLanes } from '../src/shared/flowLanes';
+import { definitionOf, presetDraft } from '../src/shared/workflowDraft';
+import { toLanes } from '../src/shared/workflowLanes';
 import {
   approvalsRule,
   editorView,
-  guardLabel,
+  evidenceLabel,
   historyView,
   involvementRole,
   kindOf,
   recordView,
   refusalWords,
-} from '../src/shared/flowViews';
+} from '../src/shared/workflowViews';
 
 const proposal = definitionOf(presetDraft('proposal', 'Proposal', ['TextBlock']));
 
@@ -43,17 +43,17 @@ describe('editorView', () => {
     });
   });
 
-  it('names whose approval counts in the community’s words, and what a guard needs', () => {
-    const definition: FlowDefinition = {
+  it('names whose approval counts in the community’s words, and what a requirement needs', () => {
+    const definition: WorkflowDefinition = {
       name: 'Review',
-      subjects: ['TaskBlock'],
+      entities: ['TaskBlock'],
       states: [
         { name: 'draft' },
         {
           name: 'review',
           requires: [
             { kind: 'approvals', count: 2, from: involvementRole('reviewer') },
-            { kind: 'guard', entity: 'FileBlock', tie: { relation: 'responses' } },
+            { kind: 'evidence', entity: 'FileBlock', via: { relation: 'responses' } },
           ],
         },
       ],
@@ -67,18 +67,18 @@ describe('editorView', () => {
 
   it('says a comment requirement as a comment, and anything else by its entity', () => {
     expect(
-      guardLabel({
-        kind: 'guard',
+      evidenceLabel({
+        kind: 'evidence',
         entity: 'CollectionBlock',
         where: { kind: 'reply' },
-        tie: { relation: 'responses' },
+        via: { relation: 'responses' },
       }),
     ).toBe('at least 1 comment in response to it');
-    expect(guardLabel({ kind: 'guard', entity: 'CollectionBlock', where: { kind: 'reply' }, min: 2 })).toBe(
+    expect(evidenceLabel({ kind: 'evidence', entity: 'CollectionBlock', where: { kind: 'reply' }, min: 2 })).toBe(
       'at least 2 comments',
     );
     // A collection of another kind is not a comment — a call held about a record is one too.
-    expect(guardLabel({ kind: 'guard', entity: 'CollectionBlock', where: { kind: 'note' } })).toBe(
+    expect(evidenceLabel({ kind: 'evidence', entity: 'CollectionBlock', where: { kind: 'note' } })).toBe(
       'at least 1 CollectionBlock',
     );
   });
@@ -90,7 +90,7 @@ describe('recordView', () => {
     const view = recordView(
       proposal,
       model,
-      { subject: 'p1', state: 'vote', waiting: [{ to: 'adopted', voters: ['did:a', 'did:b'] }], stalled: false },
+      { record: 'p1', state: 'vote', waiting: [{ to: 'adopted', approvers: ['did:a', 'did:b'] }], stalled: false },
       'Buy a kettle',
       'did:a',
     );
@@ -100,18 +100,18 @@ describe('recordView', () => {
     expect(view.walk.map((s) => s.at)).toEqual(['done', 'done', 'current', 'ahead']);
     expect(view.next.map((s) => s.label)).toEqual(['Adopted', 'Rejected']);
     expect(view.waiting).toEqual([
-      { to: 'adopted', toLabel: 'Adopted', voters: ['did:a', 'did:b'], needs: 3, note: '', mine: true },
+      { to: 'adopted', toLabel: 'Adopted', approvers: ['did:a', 'did:b'], needs: 3, note: '', mine: true },
     ]);
   });
 });
 
 describe('when a record started', () => {
-  it('reads the time it entered the flow as a date a timestamp shows', () => {
+  it('reads the time it entered the workflow as a date a timestamp shows', () => {
     const { model } = toLanes(proposal);
     const view = recordView(
       proposal,
       model,
-      { subject: 'p1', state: 'draft', waiting: [], stalled: false, since: 0 },
+      { record: 'p1', state: 'draft', waiting: [], stalled: false, since: 0 },
       '',
       undefined,
     );
@@ -130,13 +130,13 @@ describe('rules from the editor', () => {
   });
 
   it('labels a history step in words', () => {
-    expect(historyView([{ from: 'draft', to: 'review', voters: ['did:a'], evidence: ['x'], at: 5 }])).toEqual([
+    expect(historyView([{ from: 'draft', to: 'review', approvers: ['did:a'], evidence: ['x'], at: 5 }])).toEqual([
       {
         from: 'draft',
         to: 'review',
         fromLabel: 'Draft',
         toLabel: 'Review',
-        voters: ['did:a'],
+        approvers: ['did:a'],
         at: 5,
         when: '1970-01-01T00:00:00.005Z',
         evidence: ['x'],
@@ -173,16 +173,16 @@ describe('lanes on a line', () => {
 });
 
 describe('why a move was refused', () => {
-  const board: FlowDefinition = {
+  const board: WorkflowDefinition = {
     name: 'TaskStates',
-    subjects: ['TaskBlock'],
+    entities: ['TaskBlock'],
     states: [
       { name: 'todo' },
       { name: 'doing' },
       {
         name: 'done',
         requires: [
-          { kind: 'guard', entity: 'CollectionBlock', where: { kind: 'reply' }, tie: { relation: 'responses' } },
+          { kind: 'evidence', entity: 'CollectionBlock', where: { kind: 'reply' }, via: { relation: 'responses' } },
         ],
       },
     ],

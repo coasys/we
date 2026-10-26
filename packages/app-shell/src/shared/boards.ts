@@ -24,8 +24,8 @@
 import { CollectionBlock, type DatasetProxy, getEntityForDataset, runEntityTransaction, Space } from '@we/entities';
 
 import { spliceSubsetOrder } from './shapes/subsetOrder';
-import { readSpaceRoles, writeSpaceRole } from './spaceRoles';
-import type { TaskMoveOutcome } from './taskFlow';
+import { readSpaceLandmarks, writeSpaceLandmark } from './spaceLandmarks';
+import type { TaskMoveOutcome } from './taskWorkflow';
 
 /** What the board actions need from the app around them. */
 export interface BoardDeps {
@@ -41,8 +41,8 @@ export interface BoardDeps {
   offeredStates: () => { name: string; slug: string }[];
   /** How a failure reaches the person who caused it. */
   notify: (message: string) => void;
-  /** The space's roles changed — a board was made the space's — so whatever holds them reads again. */
-  rolesChanged?: () => void;
+  /** The space's landmarks changed — a board was made the space's — so whatever holds them reads again. */
+  landmarksChanged?: () => void;
   /**
    * Drop a staged suggestion for one property of one record, if extraction left one there.
    *
@@ -84,25 +84,25 @@ export interface BoardDeps {
   releaseStatus?: (recordId: string) => void;
   doneStatus?: (recordId: string) => void;
   /**
-   * The space's task flow, where its states ask for agreement — see `taskFlow.ts`.
+   * The space's task workflow, where its states ask for agreement — see `taskWorkflow.ts`.
    *
    * With one, a drop into a bound column *asks* for the card's new state rather than writing it: the
    * move happens, and the arrangement and `status` are written as before, only once enough people
    * have asked; otherwise the card stays where it was and its card says what it is waiting on.
    * Optional, and a space whose states ask for nothing behaves exactly as if it were absent.
    */
-  flow?: BoardFlow;
+  workflow?: BoardWorkflow;
 }
 
-/** What the board needs from a task flow. */
-export interface BoardFlow {
-  /** Whether the space's states run as a flow at all. */
+/** What the board needs from a task workflow. */
+export interface BoardWorkflow {
+  /** Whether the space's states run as a workflow at all. */
   enabled: () => boolean;
   /** Whether a drop into this state waits for agreement, so nothing should be drawn ahead of it. */
   needsAgreement: (slug: string) => boolean;
   /** The state a task's run is in, where it has one. */
   stateOf: (taskId: string) => string | undefined;
-  /** Ask for a move. `null` means the space has no flow after all, and the caller writes the state. */
+  /** Ask for a move. `null` means the space has no workflow after all, and the caller writes the state. */
   move: (taskId: string, from: string, to: string) => Promise<TaskMoveOutcome>;
   /** The state a task made into a column that asks for agreement starts in instead. */
   entryFor: (to: string) => string;
@@ -145,7 +145,7 @@ export interface BoardActions {
 const ids = (value: unknown): string[] => (Array.isArray(value) ? (value as string[]) : []);
 
 export function createBoardActions(deps: BoardDeps): BoardActions {
-  const { dataset, offeredStates, notify, resolveSuggestion, flow } = deps;
+  const { dataset, offeredStates, notify, resolveSuggestion, workflow } = deps;
   const hold = deps.hold ?? (() => {});
   const release = deps.release ?? (() => {});
   const holdStatus = deps.holdStatus ?? (() => {});
@@ -286,10 +286,10 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
       }
 
       /*
-        The space's own board is the record playing its `board` role — a new space's starter makes
+        The space's own board is its `board` landmark — a new space's starter makes
         one; this makes it for a space whose starter did not.
       */
-      const existing = (await readSpaceRoles(p)).board;
+      const existing = (await readSpaceLandmarks(p)).board;
       if (existing) return existing;
       const space = await Space.findOne(p, { include: { root: true } });
       if (!space) return '';
@@ -305,8 +305,8 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
         gathers: root || space.id,
       });
       if (made) {
-        await writeSpaceRole(p, space.id, 'board', made);
-        deps.rolesChanged?.();
+        await writeSpaceLandmark(p, space.id, 'board', made);
+        deps.landmarksChanged?.();
       }
       return made;
     } catch (error) {
@@ -410,7 +410,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
     const p = dataset();
     if (!p || !slug) return;
     try {
-      const boardId = (await readSpaceRoles(p)).board;
+      const boardId = (await readSpaceLandmarks(p)).board;
       const board = boardId ? await CollectionBlock.findOne(p, { where: { id: boardId } }) : undefined;
       if (!board?.id) return;
       // The board's columns cannot be hydrated through `findOne` (see `ensureBoardFor`), so ask the
@@ -674,7 +674,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
       opposite of what is going on: nothing has moved, somebody has asked. The card stays put and its
       chip says so.
     */
-    const asking = Boolean(toSlug && flow?.enabled() && flow.needsAgreement(toSlug));
+    const asking = Boolean(toSlug && workflow?.enabled() && workflow.needsAgreement(toSlug));
     if (!asking && Array.isArray(orderedIds) && orderedIds.includes(cardId)) hold(toColumnId, 'arranges', orderedIds);
     if (!asking && toSlug) holdStatus(cardId, toSlug);
     try {
@@ -702,13 +702,13 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
       // cannot race.
       if (task && resolveSuggestion) await resolveSuggestion(cardId, 'status');
       /*
-        Where the space's states run as a flow, the drop asks rather than writes. Only a move that
+        Where the space's states run as a workflow, the drop asks rather than writes. Only a move that
         happened goes on to the writes below — the arrangement, and `status` as the mirror every other
         surface reads. One that is waiting leaves the board as it was; its card shows the question.
       */
-      if (task && to.slug && flow?.enabled()) {
-        const current = flow.stateOf(cardId) ?? String((task as { status?: unknown }).status ?? '');
-        const outcome = await flow.move(cardId, current, to.slug);
+      if (task && to.slug && workflow?.enabled()) {
+        const current = workflow.stateOf(cardId) ?? String((task as { status?: unknown }).status ?? '');
+        const outcome = await workflow.move(cardId, current, to.slug);
         /*
           Already there counts as moved: the writes below put `status` and the arrangement where the
           run already is, which is what every other surface should say. Only the column this board
@@ -722,7 +722,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
           if (outcome === 'stalled') notify('That card is stuck between two moves — one of them has to be withdrawn');
           if (outcome === 'slow') notify('The node is still counting that vote — the card will move when it has');
           if (outcome === 'unmet' || outcome === 'not-allowed') {
-            const why = flow.explain?.(current, to.slug, outcome);
+            const why = workflow.explain?.(current, to.slug, outcome);
             notify(
               why ??
                 (outcome === 'unmet'
@@ -834,8 +834,8 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
         a way round the question. The task starts in the first state that asks for nothing, and asks
         for this one straight away, so it appears where the rest of the waiting work does, saying so.
       */
-      const asking = Boolean(column.slug && flow?.enabled() && flow.needsAgreement(column.slug));
-      const initial = asking && flow ? flow.entryFor(column.slug!) : column.slug;
+      const asking = Boolean(column.slug && workflow?.enabled() && workflow.needsAgreement(column.slug));
+      const initial = asking && workflow ? workflow.entryFor(column.slug!) : column.slug;
       let taskId = '';
       await runEntityTransaction(p, async (tx) => {
         const task = await Task.create(p, { title: title.trim(), ...(initial ? { status: initial } : {}) }, {
@@ -845,7 +845,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
         taskId = (task as { id: string }).id;
         if (!asking) await CollectionBlock.addRelation(p, column.id, 'arranges', taskId, tx.batchId);
       });
-      if (asking && flow && taskId && initial) await flow.move(taskId, initial, column.slug!);
+      if (asking && workflow && taskId && initial) await workflow.move(taskId, initial, column.slug!);
     } catch (error) {
       console.error('SpaceStore: could not add that task', error);
       notify('Could not add that task');

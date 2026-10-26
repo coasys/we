@@ -9,7 +9,7 @@
  * so no layer can remove either.
  *
  * A **starter** adds what *is* an opinion: defaults for the space's settings, the records it begins
- * with, names for some of them (`roles`), and switches for the opinionated behaviours (`input`:
+ * with, names for some of them (`landmarks`), and switches for the opinionated behaviours (`input`:
  * extract the loose messages typed into the space). The seed carries the deployment's starters under
  * `spaceStarters`, the first being the one a new space gets; later levels (a cartridge, a template,
  * the person in the create dialog) will carry their own in the same format.
@@ -41,7 +41,7 @@
  * ## Why a starter is separate from a template
  *
  * A template can recommend one, but must never assume its records exist, because a space can switch
- * template. Templates find what a starter made by role (`spaceStore.roles`), and handle a role being
+ * template. Templates find what a starter made through its landmarks (`spaceStore.landmarks`), and handle a landmark being
  * absent.
  *
  * ## Writes happen on the create press
@@ -52,7 +52,7 @@
 
 /** One record a starter writes. */
 export interface SpaceStarterRecord {
-  /** A name other records and `roles` refer to it by, as `$<name>` — before it has a real id. */
+  /** A name other records and `landmarks` refer to it by, as `$<name>` — before it has a real id. */
   $id?: string;
   /** The entity to create, by manifest name. */
   entity: string;
@@ -76,8 +76,8 @@ export interface SpaceStarter {
    */
   settings?: Record<string, unknown>;
   records?: SpaceStarterRecord[];
-  /** Role name → `$<id>` of the record playing it. One `SpaceRole` record each. */
-  roles?: Record<string, string>;
+  /** Landmark name → `$<id>` of the record that is it. One `SpaceLandmark` record each. */
+  landmarks?: Record<string, string>;
   /**
    * Whether the space collection — the messages typed outside any call — is extracted as it grows.
    * Written onto that collection when it is made (`CollectionBlock.autoExtract`); absent, it starts
@@ -164,7 +164,7 @@ export interface StarterWriter {
   /** Create one record, contained by `parentId` when there is one, and answer its id. */
   create(entity: string, fields: Record<string, unknown>, parentId: string | null): Promise<string>;
   /** Record that `nodeId` plays `name` in this space. */
-  role(name: string, nodeId: string): Promise<void>;
+  landmark(name: string, nodeId: string): Promise<void>;
   /** Write relations on the `Space` record: each value one id, or a list of them in order. */
   linkSpace(relations: Record<string, string | string[]>): Promise<void>;
   /**
@@ -210,14 +210,14 @@ export interface StarterTarget extends StarterContext {
 }
 
 /**
- * Write a starter's records, the space's relations and the roles, in that order.
+ * Write a starter's records, the space's relations and the landmarks, in that order.
  *
  * Records are written in the order listed, so a record can only be contained by, or refer to, one
  * written before it — which is also what makes a cycle impossible to express. A record that fails is
  * reported and skipped, and so is anything that refers to it: the space already exists, and a
  * starter that half-applied is better than a create that threw away what somebody typed.
  *
- * Answers the roles written, by name.
+ * Answers the landmarks written, by name.
  */
 export async function applyStarterRecords(
   starter: SpaceStarter | undefined,
@@ -299,26 +299,26 @@ export async function applyStarterRecords(
     }
   }
 
-  const roles: Record<string, string> = {};
-  for (const [name, ref] of Object.entries(starter?.roles ?? {})) {
+  const landmarks: Record<string, string> = {};
+  for (const [name, ref] of Object.entries(starter?.landmarks ?? {})) {
     const target = referenceName(ref);
     const nodeId = target ? ids.get(target) : undefined;
     if (!nodeId) {
-      report(`space starter: role ${name} names a record that was not written (${ref})`);
+      report(`space starter: landmark ${name} names a record that was not written (${ref})`);
       continue;
     }
     try {
-      await writer.role(name, nodeId);
-      roles[name] = nodeId;
+      await writer.landmark(name, nodeId);
+      landmarks[name] = nodeId;
     } catch (error) {
-      report(`space starter: could not record role ${name}`, error);
+      report(`space starter: could not record landmark ${name}`, error);
     }
   }
-  return roles;
+  return landmarks;
 }
 
 /**
- * The `$id`s nothing in the starter refers to — no record's `in`, no field, no setting, no role.
+ * The `$id`s nothing in the starter refers to — no record's `in`, no field, no setting, no landmark.
  *
  * An `$id` exists so something can refer to a record before it has a real id; one nothing refers
  * to suggests a connection that is not there. Not a problem a create press would hit, so
@@ -337,7 +337,7 @@ export function unreferencedIds(starter: SpaceStarter): string[] {
     for (const value of Object.values(record.fields ?? {})) collect(value);
   }
   for (const value of Object.values(starter.settings ?? {})) collect(value);
-  for (const ref of Object.values(starter.roles ?? {})) collect(ref);
+  for (const ref of Object.values(starter.landmarks ?? {})) collect(ref);
   return (starter.records ?? []).map((record) => record.$id).filter((id): id is string => !!id && !referred.has(id));
 }
 
@@ -432,10 +432,10 @@ export function starterProblems(starter: SpaceStarter, vocabulary: StarterVocabu
     }
   }
 
-  for (const [name, ref] of Object.entries(starter.roles ?? {})) {
+  for (const [name, ref] of Object.entries(starter.landmarks ?? {})) {
     const target = referenceName(ref);
     if (!target || target === referenceName(ROOT_REF) || target === referenceName(SPACE_REF) || !defined.has(target)) {
-      problems.push(`roles.${name} must name a record's $id: ${ref}`);
+      problems.push(`landmarks.${name} must name a record's $id: ${ref}`);
     }
   }
   return problems;

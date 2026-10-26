@@ -7,9 +7,9 @@
  * asking for a `TextBlock` (what a comment *contains*) matches nothing in response to a record at all.
  * So the editor offers these by key, and each key says exactly which records count.
  */
-import type { FlowGuard } from '@we/backend-shared';
+import type { EvidenceRequirement } from '@we/backend-shared';
 
-export interface GuardSubject {
+export interface EvidenceSubject {
   /** What the form's picker holds. */
   key: string;
   one: string;
@@ -18,7 +18,7 @@ export interface GuardSubject {
   where?: Record<string, string>;
 }
 
-export const GUARD_SUBJECTS: readonly GuardSubject[] = [
+export const EVIDENCE_SUBJECTS: readonly EvidenceSubject[] = [
   { key: 'comment', one: 'comment', many: 'comments', entity: 'CollectionBlock', where: { kind: 'reply' } },
   { key: 'call', one: 'call', many: 'calls', entity: 'CollectionBlock', where: { kind: 'call' } },
   { key: 'task', one: 'task', many: 'tasks', entity: 'TaskBlock' },
@@ -28,18 +28,20 @@ export const GUARD_SUBJECTS: readonly GuardSubject[] = [
 ];
 
 /** The records a picker's key stands for. Anything else is taken as an entity name, unconditioned. */
-export function guardSubjectOf(what: string): { entity: string; where?: Record<string, string> } {
-  const subject = GUARD_SUBJECTS.find((s) => s.key === what);
+export function evidenceSubjectOf(what: string): { entity: string; where?: Record<string, string> } {
+  const subject = EVIDENCE_SUBJECTS.find((s) => s.key === what);
   return subject
     ? { entity: subject.entity, ...(subject.where ? { where: { ...subject.where } } : {}) }
     : { entity: what };
 }
 
 /** The catalogue entry a stored requirement is, when it is one — for saying it in words. */
-export function subjectOfGuard(guard: Pick<FlowGuard, 'entity' | 'where'>): GuardSubject | undefined {
-  const where = guard.where ?? {};
-  return GUARD_SUBJECTS.find((s) => {
-    if (s.entity !== guard.entity) return false;
+export function subjectOfEvidence(
+  requirement: Pick<EvidenceRequirement, 'entity' | 'where'>,
+): EvidenceSubject | undefined {
+  const where = requirement.where ?? {};
+  return EVIDENCE_SUBJECTS.find((s) => {
+    if (s.entity !== requirement.entity) return false;
     const wanted = s.where ?? {};
     const keys = new Set([...Object.keys(wanted), ...Object.keys(where)]);
     return [...keys].every((k) => wanted[k] === where[k]);

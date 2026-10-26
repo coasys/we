@@ -15,8 +15,8 @@ file in Settings.
 | `assets/BricolageGrotesque-latin.woff2` | Glow's typeface (SIL OFL 1.1), carried in its `fontFaces` as a `data:` URL                           |
 | `app.ts`                                | The chrome around every space: one rail, no module rail                                              |
 | `space/shell.ts`                        | A space as one tree and one view, on a home lane                                                     |
-| `space/tree.ts`                         | The tree: channels, calls, flows, people, Social DNA                                                 |
-| `space/views.ts`                        | A channel as chat or canvas, the flows, and a call's own page                                        |
+| `space/tree.ts`                         | The tree: channels, calls, workflows, people, Social DNA                                             |
+| `space/views.ts`                        | A channel as chat or canvas, the workflows, and a call's own page                                    |
 | `space/paths.ts`                        | The addresses the tree and the views share                                                           |
 | `space/marks.ts`                        | The live dot and the count pill the tree and the views share                                         |
 

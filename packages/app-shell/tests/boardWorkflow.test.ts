@@ -72,7 +72,7 @@ const holds: string[] = [];
 const releases: string[] = [];
 
 function actions(
-  outcome: 'moved' | 'waiting' | 'already-voted' | 'stalled' | 'already-there' | 'slow' | null,
+  outcome: 'moved' | 'waiting' | 'already-approved' | 'stalled' | 'already-there' | 'slow' | null,
   asking = new Set(['done']),
 ) {
   const move = vi.fn(async () => outcome);
@@ -88,7 +88,7 @@ function actions(
     release: (id, relation) => releases.push(`${relation} ${id}`),
     holdStatus: (id, status) => holds.push(`status ${id} ${status}`),
     releaseStatus: (id) => releases.push(`status ${id}`),
-    flow: {
+    workflow: {
       enabled: () => outcome !== null,
       needsAgreement: (slug) => asking.has(slug),
       stateOf: () => undefined,

@@ -208,7 +208,7 @@ A starter has four parts:
     and a forgotten `in` on a post or a channel shows up there.
   - **A field value that is exactly `"$name"`** refers to an earlier record, `$root` or `$space`.
     A list of them is a to-many relation.
-- **`roles`:** how templates find what the starter made, e.g. `"canvas": "$canvas"`.
+- **`landmarks`:** how templates find what the starter made, e.g. `"canvas": "$canvas"`.
 - **`input`:** whether messages typed straight into the space are extracted.
 
 Two further rules:

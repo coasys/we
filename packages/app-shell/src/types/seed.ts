@@ -301,7 +301,7 @@ export interface WeSeedFile {
 
   /**
    * What a new space can start with, beyond the structure the host always makes — settings defaults,
-   * the records it begins with, the roles templates find them by, and the opinionated switches. See
+   * the records it begins with, the landmarks templates find them by, and the opinionated switches. See
    * `shared/spaceStarter.ts`. A new space gets the first; the others are there for a create dialog
    * to offer. Absent, a space starts with its structure and nothing else.
    */

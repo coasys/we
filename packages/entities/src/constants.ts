@@ -26,5 +26,5 @@ export const PREDICATES = {
    * behind whatever a single canvas decides for itself through its own children.
    */
   TYPE_STYLE: 'we://type_style',
-  SPACE_ROLE: 'we://space_role',
+  SPACE_LANDMARK: 'we://space_landmark',
 } as const;

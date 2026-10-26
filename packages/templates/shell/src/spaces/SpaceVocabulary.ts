@@ -111,10 +111,10 @@ export const spaceVocabularySection: SchemaNode = {
         // The state being edited, by slug — a name per row is impossible when the rows come from
         // data, and only one can be open at a time. See `editModal` in TaskStatesSection.
         editTaskStateSlug: { type: 'string', initial: '' },
-        guardTaskStateSlug: { type: 'string', initial: '' },
+        evidenceTaskStateSlug: { type: 'string', initial: '' },
         // The edited state's requirements until its Save — here rather than in the edit form, because
         // the form that adds one is a modal of its own beside it. See `editModal` in TaskStatesSection.
-        editTaskStateGuards: { type: 'array', initial: [] },
+        editTaskStateEvidence: { type: 'array', initial: [] },
         createInvolvementTypeOpen: { type: 'boolean', initial: false },
         editInvolvementTypeSlug: { type: 'string', initial: '' },
       },
