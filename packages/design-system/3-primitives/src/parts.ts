@@ -72,6 +72,7 @@ export const PUBLIC_PARTS: Record<string, readonly string[]> = {
   'we-tooltip': ['tooltip', 'arrow'],
   'we-tree': ['base'],
   'we-tree-item': ['base', 'row', 'caret', 'content', 'children'],
+  'we-typewriter': ['base', 'phrase', 'caret'],
   'we-video': ['base'],
 };
 

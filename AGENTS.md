@@ -1640,8 +1640,23 @@ inside an `$if` on the same open state, so nothing is read for a row nobody has 
 bound as `onOpenChange`) and the template answers by setting it, so a row's open state can live in the address, in local
 state or anywhere else.
   Props: value: string = '', open: boolean = false, expandable: boolean = false, selected: boolean = false, tabStop: boolean = false, level: number = 0, scope: boolean = false, caretAt: 'start' | 'end' = 'start'
+- we-typewriter (DesignSystemElement) — A line whose last part types itself, holds, deletes and types the next phrase — "We are building
+a global brain", then "We are building intelligence no one owns".
+
+A primitive because it is behaviour: timers, the reader's motion setting, and what a screen reader
+hears are code's to own, and a template has no timers. It takes its type from where it sits, so a
+heading's size and weight reach it; put it inside the `we-text` that sets them.
+
+- **Still for anyone who asked for less motion** — the system's setting or the app's. It shows the
+  first phrase in full, with no caret, and nothing moves.
+- **One sentence to a screen reader.** The fixed part and every phrase, read once; the typing is
+  hidden from it, since a sentence rewriting itself a letter at a time is noise.
+- **The page under it does not jump.** A hidden copy of the longest phrase holds the line's size.
+
+The first phrase is drawn in full before anything types, so the line reads right at once.
+  Props: text: string = '', phrases: string[] = [], phraseColor: string = '', typeMs: number = 65, deleteMs: number = 32, holdMs: number = 2600
 - we-video (LayoutVisualElement)
-  Props: src: string = '', poster?: string | undefined, controls: boolean = false, preload: 'none' | 'metadata' | 'auto' = 'metadata', fit: '' | 'cover' | 'contain' | 'fill' | 'none' | 'scale-down' = '', autoplay: boolean = false, loop: boolean = false, muted: boolean = false, playsinline: boolean = false, stream?: MediaStream | null | undefined
+  Props: src: string = '', poster?: string | undefined, controls: boolean = false, preload: 'none' | 'metadata' | 'auto' = 'metadata', fit: '' | 'cover' | 'contain' | 'fill' | 'none' | 'scale-down' = '', autoplay: boolean = false, loop: boolean = false, muted: boolean = false, playsinline: boolean = false, tracks: VideoTrack[] = [], crossorigin?: 'anonymous' | 'use-credentials' | undefined, stream?: MediaStream | null | undefined
 
 @we/components:
 - AudioDisplay

@@ -2176,6 +2176,50 @@
       ]
     },
     {
+      "tagName": "we-typewriter",
+      "className": "Typewriter",
+      "description": "A line whose last part types itself, holds, deletes and types the next phrase — \"We are building\na global brain\", then \"We are building intelligence no one owns\".\n\nA primitive because it is behaviour: timers, the reader's motion setting, and what a screen reader\nhears are code's to own, and a template has no timers. It takes its type from where it sits, so a\nheading's size and weight reach it; put it inside the `we-text` that sets them.\n\n- **Still for anyone who asked for less motion** — the system's setting or the app's. It shows the\n  first phrase in full, with no caret, and nothing moves.\n- **One sentence to a screen reader.** The fixed part and every phrase, read once; the typing is\n  hidden from it, since a sentence rewriting itself a letter at a time is noise.\n- **The page under it does not jump.** A hidden copy of the longest phrase holds the line's size.\n\nThe first phrase is drawn in full before anything types, so the line reads right at once.",
+      "superclass": "DesignSystemElement",
+      "ownProps": [
+        {
+          "name": "text",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "phrases",
+          "type": "string[]",
+          "optional": false,
+          "default": "[]"
+        },
+        {
+          "name": "phraseColor",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "typeMs",
+          "type": "number",
+          "optional": false,
+          "default": "65"
+        },
+        {
+          "name": "deleteMs",
+          "type": "number",
+          "optional": false,
+          "default": "32"
+        },
+        {
+          "name": "holdMs",
+          "type": "number",
+          "optional": false,
+          "default": "2600"
+        }
+      ]
+    },
+    {
       "tagName": "we-video",
       "className": "Video",
       "superclass": "LayoutVisualElement",
@@ -2232,6 +2276,17 @@
           "type": "boolean",
           "optional": false,
           "default": "false"
+        },
+        {
+          "name": "tracks",
+          "type": "VideoTrack[]",
+          "optional": false,
+          "default": "[]"
+        },
+        {
+          "name": "crossorigin",
+          "type": "'anonymous' | 'use-credentials' | undefined",
+          "optional": true
         },
         {
           "name": "stream",
