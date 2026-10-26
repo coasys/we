@@ -629,6 +629,38 @@ describe('dataset lifecycle through the real stores', () => {
     expect(rowOf()).toBe(before);
   }, 10000);
 
+  /*
+    A shared space is published in the background, after it exists and usually after it is open. The
+    open space was set before the publish and nothing set it again, so everything keyed on its shared
+    address stayed dead until a reload: no way to start a call, no presence, and a URL — and so a
+    copied link — carrying the local id.
+  */
+  it('gives the open space its shared address when a background publish finishes', async () => {
+    const stores = mountShell();
+    await ready(stores);
+
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const publish = lifecycle.publish.bind(lifecycle);
+    vi.spyOn(lifecycle, 'publish').mockImplementationOnce(async (...args: Parameters<typeof publish>) => {
+      await held;
+      // AD4M's shared id is the neighbourhood's, not the local one; the in-memory backend reuses it.
+      return { ...(await publish(...args)), sharedId: 'shared-xyz' };
+    });
+
+    const id = (await stores.spaces.createSpace('Shared', '', 'shared', 'hidden'))!;
+    await stores.spaces.navigateToSpace(id);
+    route.go(`/space/${id}/chat`);
+    await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(id));
+    expect(stores.datasets.currentDataset()?.sharedUri).toBeUndefined();
+
+    navigate.mockClear();
+    release();
+
+    await vi.waitFor(() => expect(stores.datasets.currentDataset()?.sharedUri).toBe(`inmemory://${id}`));
+    expect(navigate).toHaveBeenCalledWith('/space/shared-xyz/chat', { replace: true });
+  }, 10000);
+
   it("joins a peer's published dataset and switches to it", async () => {
     const stores = mountShell();
     await ready(stores);

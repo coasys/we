@@ -2012,6 +2012,20 @@ export function SpaceStoreProvider(props: ParentProps) {
       // and the transport for presence and calls is opened from the handle. A fresh read carries both.
       const ref = await lifecycle.get(uuid);
       if (ref) await datasetStore.trackDataset(ref);
+      /*
+        The address on screen, where it names this space by its local id: by the one that travels.
+        The space was opened before it had a shared address, so the URL was built from the local
+        one, and a link copied from it reached nobody else. Replaced rather than pushed: it is the
+        same page, and Back should not lead to its old spelling.
+      */
+      const segments = routeStore.segments();
+      if (sharedId && segments[0] === 'space' && segments[1] === uuid) {
+        const rest = segments
+          .slice(2)
+          .map((s) => `/${s}`)
+          .join('');
+        routeStore.navigate(`/space/${sharedId}${rest}${window.location.search}`, { replace: true });
+      }
       // Only now does the space show as shared: before this, a failure leaves it retryable.
       const shared = Object.assign(Object.create(Object.getPrototypeOf(space)), space, { url: sharedId }) as Space;
       setMySpaces((prev) => prev.map((s) => (s.uuid === uuid ? shared : s)));
