@@ -128,6 +128,15 @@ export { aggregateSignals } from './utils/signalAggregate';
 export { decodeFileAsString, decodeFileAsJson, encodeJsonFileData } from './utils/fileTransforms';
 export { createJsonShapeStore } from './shapeStore';
 export { decodeTemplateFile, encodeTemplateFile, type StoredSchema, TEMPLATE_FILE_NAME } from './utils/templateFile';
+export {
+  collectionExtractionDefaults,
+  LEGACY_EXTRACTION_TARGETS,
+  parseEntityList,
+  resolveCollectionAutoExtract,
+  resolveCollectionExtractionTargets,
+  resolveSpaceExtractionTargets,
+  withExtractionDefaults,
+} from './utils/collectionExtraction';
 export { completeResponse, respondsThrough } from './utils/responses';
 
 /**

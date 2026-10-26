@@ -1,5 +1,4 @@
 import { boardOptimism } from '@shared/boardOptimism';
-import { withExtractionDefaults } from '@shared/collectionExtraction';
 import { datasetAddressedBy } from '@shared/datasetIdentity';
 import { collectionFacts } from '@shared/destructiveFacts';
 import { involvementOptimism } from '@shared/involvementOptimism';
@@ -17,6 +16,7 @@ import { hostSourceBag } from '@shared/sources';
 import { workflowStateOf } from '@shared/taskWorkflow';
 import { taskWorkflowLive } from '@shared/taskWorkflowLive';
 import { copyText } from '@shared/utils';
+import { withExtractionDefaults } from '@we/entities';
 import { completeResponse, respondsThrough } from '@we/entities';
 
 import { signalOptimism } from '../../../shared/signalOptimism';
@@ -221,7 +221,7 @@ export default function TemplateProvider() {
    * A new feed starts with its space's extraction defaults — written onto it, not inherited.
    *
    * Every collection that conversations happen in holds its own answer to "is this extracted as it
-   * grows, and for what", copied from the space when it is made; see `@shared/collectionExtraction`
+   * grows, and for what", copied from the space when it is made; see `collectionExtraction` in `@we/entities`
    * for why a copy. Done here because this is where both of the ways a new one arrives meet: a
    * template's `record.create` (a channel) and a module's write (a call). Anything the caller
    * already said wins, and a dataset with no space gets nothing, which leaves the collection unset.
