@@ -30,9 +30,17 @@ const kebab = (name: string): string => name.replace(/[A-Z]/g, (c) => `-${c.toLo
 export const TYPE_ROLES = ['heading', 'body', 'label', 'control', 'badge', 'overline'] as const;
 export type TypeRole = (typeof TYPE_ROLES)[number];
 
-/** What a type role can set, and the CSS property each becomes. */
+/**
+ * What a type role can set, and the CSS property each becomes.
+ *
+ * `size` is for the roles drawn at one size — body, label, control, badge, overline. A theme's
+ * eyebrows were otherwise sized on every template node that drew one. Headings are a scale rather
+ * than a size (`we-text` has four, markdown six), so the heading role takes no size: one value would
+ * flatten them.
+ */
 export const TYPE_ROLE_KEYS = {
   family: 'font-family',
+  size: 'font-size',
   weight: 'font-weight',
   letterSpacing: 'letter-spacing',
   lineHeight: 'line-height',
@@ -40,6 +48,9 @@ export const TYPE_ROLE_KEYS = {
   color: 'color',
 } as const;
 export type TypeRoleKey = keyof typeof TYPE_ROLE_KEYS;
+
+/** Whether a role takes a key at all: every key but the heading role's size (see TYPE_ROLE_KEYS). */
+export const roleTakes = (role: TypeRole, key: TypeRoleKey): boolean => !(role === 'heading' && key === 'size');
 
 /** The variable one key of one role writes: `--we-type-heading-weight`. */
 export const typeRoleVar = (role: TypeRole, key: TypeRoleKey): string => `--we-type-${role}-${kebab(key)}`;
@@ -93,7 +104,7 @@ export function typeRoleDeclarations(
   omit: readonly TypeRoleKey[] = [],
 ): string {
   return (Object.entries(TYPE_ROLE_KEYS) as [TypeRoleKey, string][])
-    .filter(([key]) => !omit.includes(key))
+    .filter(([key]) => !omit.includes(key) && roleTakes(role, key))
     .map(([key, property]) => {
       const fallback = fallbacks[key];
       return `${property}: var(${typeRoleVar(role, key)}${fallback ? `, ${fallback}` : ''});`;

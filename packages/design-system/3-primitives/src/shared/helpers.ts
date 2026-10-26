@@ -32,6 +32,7 @@ import {
 } from '@we/design-utils';
 import {
   componentChain,
+  roleTakes,
   surfaceImageFixed,
   type SurfaceImageRole,
   surfaceImageRoleOf,
@@ -921,6 +922,14 @@ const THEMED_KEYS: ThemedKey[] = [
     explicit: (raw) => raw.fontFamily !== undefined,
   },
   {
+    prop: 'fontSize',
+    suffix: 'font-size',
+    key: 'fontSize',
+    roleKey: 'size',
+    value: (p) => (p.fontSize ? tokenVar('font-size', p.fontSize) : undefined),
+    explicit: (raw) => raw.fontSize !== undefined,
+  },
+  {
     prop: 'fontWeight',
     suffix: 'font-weight',
     key: 'fontWeight',
@@ -963,7 +972,9 @@ function roleFor(componentName: string, variant: string | null): TypeRole | unde
 
 /** The type role's variable for one key, ahead of `fallback`, or `fallback` alone without a role. */
 const roleChain = (role: TypeRole | undefined, key: ThemedKey, fallback: string | undefined) =>
-  role && key.roleKey ? `var(${typeRoleVar(role, key.roleKey)}${fallback ? `, ${fallback}` : ''})` : fallback;
+  role && key.roleKey && roleTakes(role, key.roleKey)
+    ? `var(${typeRoleVar(role, key.roleKey)}${fallback ? `, ${fallback}` : ''})`
+    : fallback;
 
 /**
  * The static sheet's fallback for one themable key: the component's theme value, then its type role.

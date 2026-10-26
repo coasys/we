@@ -108,6 +108,7 @@ export {
   COMPONENT_THEME_KEYS,
   componentChain,
   componentThemeVar,
+  roleTakes,
   TYPE_ROLE_KEYS,
   TYPE_ROLES,
   typeRoleDeclarations,

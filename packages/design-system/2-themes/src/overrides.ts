@@ -53,6 +53,11 @@ export interface PaletteSettings {
 export interface TypeStyle {
   /** A font stack: `'Bricolage Grotesque', var(--we-font-family)`. */
   family?: string;
+  /**
+   * A font-size token (`'200'`) or a length: `'13.5px'`. Not for `heading`, which is a scale of
+   * sizes rather than one — it is ignored there.
+   */
+  size?: string;
   /** `400`, `600`, or a token name: `'semibold'`. */
   weight?: string | number;
   /** `'-0.01em'`, or a token name: `'wide'`. */

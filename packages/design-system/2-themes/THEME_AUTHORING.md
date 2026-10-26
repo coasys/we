@@ -66,8 +66,9 @@ numbers, and held within 20° of the colour the hue is named for. Text on a pale
 ## 4. Type roles
 
 `typeStyles` sets how each kind of text looks — `heading`, `body`, `label`, `control`, `badge`,
-`overline` — with `family`, `weight`, `letterSpacing`, `lineHeight`, `textTransform` and `color` (a
-role name). A role has no defaults: each component keeps what it had for any key left unset, so
+`overline` — with `family`, `size`, `weight`, `letterSpacing`, `lineHeight`, `textTransform` and
+`color` (a role name). `size` is a font-size token (`'200'`) or a length, and is not taken by
+`heading`: headings are a scale of sizes, not one. A role has no defaults: each component keeps what it had for any key left unset, so
 setting `heading.weight` changes heading weights and nothing else.
 
 `control` is a control's own words — a button's label, a tab, a menu item. What a field holds, and

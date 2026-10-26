@@ -5605,7 +5605,7 @@ are corrected when the theme is applied — but only where they are left unset.
 ### Type roles
 
 `typeStyles` sets how each kind of text looks: `heading`, `body`, `label`, `control`, `badge`, `overline`. Each role takes
-`family`, `weight`, `letterSpacing`, `lineHeight`, `textTransform`, `color` — `color` is a role name. A role holds no defaults:
+`family`, `size`, `weight`, `letterSpacing`, `lineHeight`, `textTransform`, `color` — `color` is a role name. A role holds no defaults:
 each component keeps the value it had for any key the theme leaves unset.
 
 ### Components
