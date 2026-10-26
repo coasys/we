@@ -70,6 +70,10 @@ numbers, and held within 20° of the colour the hue is named for. Text on a pale
 role name). A role has no defaults: each component keeps what it had for any key left unset, so
 setting `heading.weight` changes heading weights and nothing else.
 
+`control` is a control's own words — a button's label, a tab, a menu item. What a field holds, and
+its placeholder, is `body`: it is what somebody wrote or chose, so a strong `control` weight makes
+buttons emphatic without setting every field in bold. A field's label is `label`.
+
 `fontFamily`, `headingFontFamily`, `letterSpacing` and `lineHeight` at the top level are the broad
 settings the roles fall back to. A face nobody has installed goes in `fontFaces`, as a `data:` URL —
 see `retro/vt323.ts`. A theme never fetches a font.

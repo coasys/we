@@ -249,10 +249,15 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
   'progress-bar': { radiusGroup: '--we-theme-control-radius' },
   // A strip of page controls: the space between them is the control group's, like a button's.
   pagination: { gapGroup: '--we-theme-control-gap' },
-  // Inputs
-  input: { radiusGroup: '--we-theme-input-radius', paddingGroup: '--we-theme-input-padding', typeRole: 'control' },
+  /*
+    Inputs. Their words are set as body text, not in the control role a button's label takes: what a
+    field holds is what somebody wrote or chose, and its placeholder stands in for that. In the
+    control role a theme that sets buttons strong (Coasys Glow, at 600) set every field's text and
+    placeholder bold. A field's label is the label role's, on the form field.
+  */
+  input: { radiusGroup: '--we-theme-input-radius', paddingGroup: '--we-theme-input-padding', typeRole: 'body' },
   textarea: {
-    typeRole: 'control',
+    typeRole: 'body',
     radiusGroup: '--we-theme-input-radius',
     radiusCapGroup: '--we-theme-surface-radius',
     // As button and badge — `nativePadding` says who writes the rule, not which family this belongs
@@ -264,21 +269,21 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
     nativePadding: true,
   },
   select: {
-    typeRole: 'control',
+    typeRole: 'body',
     radiusGroup: '--we-theme-input-radius',
     radiusDefault: 'var(--we-radius-300)', // Explicit: wrapper — no r in DEFAULT_PROPS
     paddingGroup: '--we-theme-input-padding',
     paddingDefault: '0', // Explicit: wrapper div — inner parts own their own padding
   },
   'number-input': {
-    typeRole: 'control',
+    typeRole: 'body',
     radiusGroup: '--we-theme-input-radius',
     radiusDefault: 'var(--we-radius-300)', // Explicit: intentionally matches input theme, not DEFAULT_PROPS r:'400'
     paddingGroup: '--we-theme-input-padding',
     paddingDefault: '0 var(--we-space-300)', // Explicit: no px in DEFAULT_PROPS
   },
   'date-picker': {
-    typeRole: 'control',
+    typeRole: 'body',
     radiusGroup: '--we-theme-input-radius',
     radiusDefault: 'var(--we-radius-300)', // Explicit: wrapper — no r in DEFAULT_PROPS
     paddingGroup: '--we-theme-input-padding',
