@@ -1,5 +1,5 @@
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
-import { field, formModal, treeRow } from '@we/template-kit';
+import { field, formModal, TREE_LEAD, treeRow } from '@we/template-kit';
 
 import { countPill, liveDot } from './marks.ts';
 import { callPath, channelPath, GROUP_PAGES, ROW_ID, SELECTED_EXPR } from './paths.ts';
@@ -530,7 +530,11 @@ export const treeSection: SchemaNode = {
         { type: 'we-text', props: { variant: 'overline', px: '200', pb: '100' }, children: ['Space'] },
         {
           type: 'we-tree',
-          props: { label: 'This space', selected: { $: SELECTED_EXPR }, onSelect },
+          /*
+            The caret at the end: a row is a place, pressed to go there, and the caret beside its count
+            is the one thing that folds. Guides drop from each row's glyph, so a lead's width is given.
+          */
+          props: { label: 'This space', selected: { $: SELECTED_EXPR }, onSelect, caret: 'end', lead: TREE_LEAD },
           children: [channels, calls, workflows, people, socialDna],
         },
       ],

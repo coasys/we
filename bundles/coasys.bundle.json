@@ -943,7 +943,9 @@
                               }
                             }
                           }
-                        ]
+                        ],
+                        "caret": "end",
+                        "lead": "24px"
                       },
                       "children": [
                         {
