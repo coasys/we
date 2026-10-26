@@ -20,7 +20,7 @@
  */
 import { type EntityManifestEntry, type EntityManifestProperty, manifestEntries } from '@we/backend-shared';
 import { type ContentBlock, createBlocks, type TextContentBlock } from '@we/block-shared';
-import { completeResponse, getEntityForDataset } from '@we/entities';
+import { completeResponse, getEntityForDataset, withExtractionDefaults } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 
 import type { SessionAnswer, SessionTool, SessionToolset } from '../core/conversation';
@@ -133,13 +133,18 @@ export function createDataToolset(options: DataToolsetOptions): SessionToolset {
 
   const model = (name: string) => getEntityForDataset(name, dataset) as RecordModel | undefined;
 
-  async function spaceRoot(): Promise<{ id: string; name: string }> {
+  /** The space's own record, or null for a dataset with none. */
+  async function spaceRecord(): Promise<Record<string, unknown> | null> {
     try {
-      const space = await model('Space')?.findOne(dataset, { include: { root: true } });
-      return { id: (space?.root as { id?: string } | undefined)?.id ?? '', name: String(space?.name ?? '') };
+      return (await model('Space')?.findOne(dataset, { include: { root: true } })) ?? null;
     } catch {
-      return { id: '', name: '' };
+      return null;
     }
+  }
+
+  async function spaceRoot(): Promise<{ id: string; name: string }> {
+    const space = await spaceRecord();
+    return { id: (space?.root as { id?: string } | undefined)?.id ?? '', name: String(space?.name ?? '') };
   }
 
   function row(entry: EntityManifestEntry, record: Record<string, unknown>): Record<string, unknown> {
@@ -256,9 +261,12 @@ export function createDataToolset(options: DataToolsetOptions): SessionToolset {
     if (problem) return { text: problem };
     const placed = placement(args);
     if (placed.error) return { text: placed.error };
-    const created = (await Model.create(dataset, fields, placed.parent ? { parent: placed.parent } : undefined)) as {
-      id: string;
-    };
+    // A new feed starts with its space's extraction defaults, as the app's own `record.create` writes it.
+    const stamped =
+      name === 'CollectionBlock' && fields.mode === 'feed'
+        ? withExtractionDefaults(name, fields, (await spaceRecord()) as Parameters<typeof withExtractionDefaults>[2])
+        : fields;
+    const created = await Model.create(dataset, stamped, placed.parent ? { parent: placed.parent } : undefined);
     if (placed.parent?.relation === 'responses') await completeResponse(dataset, created.id, String(placed.parent.id));
     return {
       text: `Made a ${name}: ${created.id}.`,
