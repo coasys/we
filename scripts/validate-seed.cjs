@@ -68,10 +68,8 @@ function main() {
   if (!seed.ad4m) {
     error('Missing required field: ad4m');
   } else {
-    if (!seed.ad4m.executorPath) {
-      error('Missing required field: ad4m.executorPath');
-    } else {
-      success('ad4m.executorPath defined');
+    if (seed.ad4m.executorPath) {
+      info(`ad4m.executorPath names a build of its own; without it the pinned executor runs`);
     }
 
     if (!seed.ad4m.repoPath) {
@@ -270,7 +268,7 @@ function main() {
       success(`AD4M executor found at ${seed.ad4m.executorPath}`);
     } else {
       warn(`AD4M executor not found at ${seed.ad4m.executorPath}`);
-      info('  Run: cd ../ad4m && cargo build --release');
+      info('  Build it there, or remove ad4m.executorPath to run the pinned one (pnpm ad4m:executor)');
     }
   }
 

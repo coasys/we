@@ -283,8 +283,11 @@ How the bundled executor is set up:
 - `dataPath` — where the executor keeps the agent's keys and data. Defaults to
   `~/.ad4m` (shared with Flux and the ADAM launcher). **Changing it is a data
   migration, not a preference** — an existing agent does not follow the path.
-- `executorPath` — the bundled `ad4m-executor` binary (required;
-  `setup-workspace` and `validate-seed` fail without it).
+- `executorPath` — an `ad4m-executor` build of your own, to run and bundle instead
+  of the one the ad4m pin stands for. Leave it out, as the checked-in seeds do,
+  and the pinned commit's executor is downloaded and used (`pnpm ad4m:executor`;
+  see "The executor you run locally" in
+  [ad4m-and-deploys.md](../contributing/ad4m-and-deploys.md#the-executor-you-run-locally)).
 - `repoPath` — an ad4m source checkout, needed by the Tauri build only.
 - `ai`, `perspectives`, `languages`, `executor` — optional executor-side setup.
 

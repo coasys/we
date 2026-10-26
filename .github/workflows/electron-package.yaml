@@ -87,9 +87,9 @@ jobs:
       # From the commit the ad4m pin stands for, or the ref a manual run names:
       # restored when cached, built and cached when not. The same action, key and path as the live
       # tests (`ad4m-live.yaml`), so the app ships the binary those tests ran against and either
-      # workflow's build serves the other. It lands at `../ad4m/target/release/ad4m-executor`, where
-      # `we-seed.json`'s `executorPath` finds it.
+      # workflow's build serves the other. Packaging takes it from `AD4M_EXECUTOR`, below.
       - name: AD4M executor
+        id: executor
         uses: ./.github/actions/ad4m-executor
         with:
           ref: ${{ inputs.ad4m_ref }}
@@ -113,10 +113,14 @@ jobs:
       # `generate-seed-config.cjs` runs as a `preelectron:build` script
       # and resolves the executor path into `seed-extra-resources.json`,
       # which electron-builder reads to copy the binary into the package.
+      # AD4M_EXECUTOR names the action's binary, which wins over the
+      # pinned download a local build would use (scripts/ad4m-executor.mjs).
 
       - name: Package Electron app
         run: pnpm electron:build
         working-directory: apps/we-electron
+        env:
+          AD4M_EXECUTOR: ${{ steps.executor.outputs.path }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
