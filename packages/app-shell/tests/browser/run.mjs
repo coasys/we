@@ -82,7 +82,9 @@ async function bundle() {
     write: false,
     sourcemap: 'inline',
     logLevel: 'error',
-    conditions: ['browser', 'import'],
+    // `development` first, as Vite's dev server resolves: the primitives and the components are read
+    // from source, so a case checks the code on disk rather than whatever `dist` last built.
+    conditions: ['development', 'browser', 'import'],
     // Vite supplies this at build time and esbuild does not; a dev build is what the app runs as.
     define: { 'import.meta.env': JSON.stringify({ DEV: true, PROD: false, MODE: 'development', SSR: false }) },
     // Layout is the subject, so an image or a model is an import to satisfy, not a byte to serve.

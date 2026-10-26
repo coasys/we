@@ -5969,8 +5969,16 @@ touched and what depends on it:
 
 ```sh
 pnpm --filter @we/tokens --filter @we/themes build     # a design-token change
-pnpm --filter @we/primitives build                      # a Lit primitive
 ```
+
+**Some packages are read from source while developing.** `@we/primitives`, `@we/components` and
+`@we/backend-inmemory` declare a `development` export condition pointing at `src`, which Vite's dev
+server, app-shell's component tests and the browser harness resolve — so an edit there shows up
+without a build. A production build still takes `dist`. Every other package with a `dist` still needs
+rebuilding, as below. After changing which file a package's exports point at, clear the test caches
+(`node_modules/.vitest-cache`, `packages/app-shell/node_modules/.vite`): a cached transform keeps the
+import paths it resolved, so an untouched test file goes on running the old copy while an edited one
+picks up the new.
 
 **Do rebuild, though — a stale `dist` is invisible and wastes more time than the build saves.** Three
 symptoms worth recognising, all of which have happened here:
