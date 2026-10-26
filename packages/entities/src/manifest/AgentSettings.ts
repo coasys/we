@@ -53,7 +53,6 @@ export const AgentSettings: CoreEntityDef = {
        * The colour scheme replaces `themeMode`, which held that one axis alone.
        */
       displayPreferences: { type: 'string', predicate: 'we://display_preferences', default: '' },
-      claudeApiKey: { type: 'string', predicate: 'we://claude_api_key', default: '' },
       datasetOrder: { type: 'string', predicate: 'we://dataset_order', default: '' },
       globalSpaceJoined: { type: 'boolean', predicate: 'we://global_space_joined', default: false },
       globalSpaceUrl: { type: 'string', predicate: 'we://global_space_url', default: '' },

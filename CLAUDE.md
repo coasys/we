@@ -2521,7 +2521,6 @@ AgentSettings extends Ad4mModel:
   - systemLightThemeId: string [we://system_light_theme]
   - systemDarkThemeId: string [we://system_dark_theme]
   - displayPreferences: string [we://display_preferences]
-  - claudeApiKey: string [we://claude_api_key]
   - datasetOrder: string [we://dataset_order]
   - globalSpaceJoined: boolean = false [we://global_space_joined]
   - globalSpaceUrl: string [we://global_space_url]

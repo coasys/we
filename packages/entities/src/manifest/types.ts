@@ -30,7 +30,6 @@ export interface AgentSettingsRecord extends RecordInstance {
   systemLightThemeId: string;
   systemDarkThemeId: string;
   displayPreferences: string;
-  claudeApiKey: string;
   datasetOrder: string;
   globalSpaceJoined: boolean;
   globalSpaceUrl: string;
