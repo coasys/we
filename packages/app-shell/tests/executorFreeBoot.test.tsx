@@ -642,10 +642,10 @@ describe('dataset lifecycle through the real stores', () => {
     let release!: () => void;
     const held = new Promise<void>((resolve) => (release = resolve));
     const publish = lifecycle.publish.bind(lifecycle);
+    // Held, so the space is open before its publish finishes — the order the background share has.
     vi.spyOn(lifecycle, 'publish').mockImplementationOnce(async (...args: Parameters<typeof publish>) => {
       await held;
-      // AD4M's shared id is the neighbourhood's, not the local one; the in-memory backend reuses it.
-      return { ...(await publish(...args)), sharedId: 'shared-xyz' };
+      return publish(...args);
     });
 
     const id = (await stores.spaces.createSpace('Shared', '', 'shared', 'hidden'))!;
@@ -657,8 +657,9 @@ describe('dataset lifecycle through the real stores', () => {
     navigate.mockClear();
     release();
 
-    await vi.waitFor(() => expect(stores.datasets.currentDataset()?.sharedUri).toBe(`inmemory://${id}`));
-    expect(navigate).toHaveBeenCalledWith('/space/shared-xyz/chat', { replace: true });
+    await vi.waitFor(() => expect(stores.datasets.currentDataset()?.sharedUri).toBe(`inmemory://shared-${id}`));
+    // The address on screen moves from the local id to the shared one.
+    expect(navigate).toHaveBeenCalledWith(`/space/shared-${id}/chat`, { replace: true });
   }, 10000);
 
   it("joins a peer's published dataset and switches to it", async () => {
