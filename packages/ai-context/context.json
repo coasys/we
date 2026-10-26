@@ -7148,6 +7148,9 @@
           "type": "array",
           "properties": ["label", "value"]
         },
+        "draftNameMember": {
+          "type": "string"
+        },
         "hintEditor": {
           "type": "object",
           "properties": ["entity", "classHint", "defaultClassHint", "rows", "customized"]

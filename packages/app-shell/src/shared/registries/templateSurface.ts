@@ -762,6 +762,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     relationshipTargets: state('space-settings'),
     identityOptions: state('space-settings'),
     nameOptions: state('space-settings'),
+    draftNameMember: state('space-settings'),
     hintEditor: state('space-settings'),
     hintBusy: state('space-settings'),
     openShapeWizard: ambient('space-settings'),

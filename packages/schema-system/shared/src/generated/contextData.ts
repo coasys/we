@@ -2874,6 +2874,7 @@ export const contextData: ContextData = {
         relationshipTargets: { type: 'array', properties: ['label', 'value'] },
         identityOptions: { type: 'array', properties: ['label', 'value'] },
         nameOptions: { type: 'array', properties: ['label', 'value'] },
+        draftNameMember: { type: 'string' },
         hintEditor: { type: 'object', properties: ['entity', 'classHint', 'defaultClassHint', 'rows', 'customized'] },
         hintBusy: { type: 'boolean' },
         extractionNeedsIdentity: { type: 'boolean' },
