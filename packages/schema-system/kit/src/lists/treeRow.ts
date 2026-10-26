@@ -38,6 +38,13 @@ export interface TreeRowOptions {
  * so a row an `$each` draws has to carry it. A caller reading them lazily puts its query inside an
  * `$if` on the same `open`, so nothing is read for a row nobody has opened.
  */
+/**
+ * How wide the lead `treeRow` draws is — its 24px glyph or face. A tree of these rows passes it as
+ * `we-tree`'s `lead`, so with the caret at the end its levels indent by it and its guides fall at its
+ * centre.
+ */
+export const TREE_LEAD = '24px';
+
 export function treeRow(opts: TreeRowOptions): SchemaNode {
   const lead: SchemaNode[] = opts.avatar
     ? [

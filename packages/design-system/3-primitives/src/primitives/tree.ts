@@ -69,6 +69,21 @@ export class Tree extends DesignSystemElement {
   @property({ type: String }) selected = '';
   /** What the tree is, for a screen reader: "Space", "Channels". */
   @property({ type: String }) label = '';
+  /**
+   * Where a row's caret sits: before its content, as a file tree has it, or at the end of the row.
+   *
+   * At the end, nothing sits in the indent: leaf and group glyphs share one column with no empty
+   * slots, each guide drops from the centre of its row's glyph, and the carets line up down the right
+   * edge whatever their depth. It also keeps the caret apart from the row, which is what a tree whose
+   * rows go somewhere when pressed wants — the caret is the one control that folds.
+   */
+  @property({ type: String }) caret: 'start' | 'end' = 'start';
+  /**
+   * The width of what leads each row — its glyph or its face — as a length. With the caret at the
+   * end, a level indents by it and a guide falls at its centre. The kit's `treeRow` draws 24px leads
+   * (`TREE_LEAD`). Absent, the caret's width.
+   */
+  @property({ type: String }) lead = '';
 
   /*
     `querySelectorAll` rather than slotted elements: the schema renderer wraps children in
@@ -87,6 +102,9 @@ export class Tree extends DesignSystemElement {
 
   updated(changed: Map<PropertyKey, unknown>) {
     super.updated(changed);
+    // Inherited by every row's shadow, where the indent and the guides are worked out from it.
+    if (this.lead) this.style.setProperty('--we-tree-lead', this.lead);
+    else this.style.removeProperty('--we-tree-lead');
     this.syncItems();
   }
 
@@ -118,6 +136,7 @@ export class Tree extends DesignSystemElement {
     for (const item of this.items) {
       item.selected = !!this.selected && item.value === this.selected;
       item.level = item.depthInTree();
+      item.caretAt = this.caret === 'end' ? 'end' : 'start';
     }
     // The row whose children hold the selected one: its guide draws a little stronger.
     const holder = this.items.find((item) => item.selected)?.parentItem();
@@ -214,17 +233,39 @@ export class Tree extends DesignSystemElement {
 const SELECTED = (key: string, fallback: string) =>
   unsafeCSS(`var(${componentThemeVar('tree', key, 'selected')}, ${fallback})`);
 
+const ROW_RADIUS = unsafeCSS('var(--we-theme-tree-radius, var(--we-radius-300))');
 const GUIDE_WIDTH = unsafeCSS(`var(${componentThemeVar('tree', 'borderWidth')}, 1px)`);
 const GUIDE_COLOR = unsafeCSS(`var(${componentThemeVar('tree', 'border')}, var(--we-role-border))`);
 const SCOPE_COLOR = unsafeCSS(`var(${componentThemeVar('tree', 'border', 'selected')}, var(--we-role-border-strong))`);
 
+/*
+  The geometry, in three values the rest is worked out from, so the indent, the guides and where a
+  lit row starts cannot drift apart:
+
+  - `--_step`: how far a level indents. With the caret first, the caret and its gap, so a child sits
+    one step in. With the caret at the end, the lead's width, so a child's glyph starts half a lead
+    to the right of its parent's guide.
+  - `--_guide`: where a row's own guide falls, from the row's start padding: the caret's centre with
+    the caret first, the lead's centre with it at the end.
+  - `--_bar`: the selected row's bar, which a lit row is placed to put on its parent's guide.
+*/
 const ITEM_STYLES = css`
   :host {
     display: block;
+    --_caret: 16px;
+    --_lead: var(--we-tree-lead, var(--_caret));
+    --_step: var(--we-tree-indent, calc(var(--_caret) + var(--we-space-200)));
+    --_guide: calc(var(--we-space-200) + var(--_caret) / 2);
+    --_bar: ${SELECTED('border-width', '0px')};
+  }
+  :host([caret-at='end']) {
+    --_step: var(--we-tree-indent, var(--_lead));
+    --_guide: calc(var(--we-space-200) + var(--_lead) / 2);
   }
   /*
-    The guide: a hairline down an open row's children, centred under its caret, from just below the
-    row to its last descendant. The indent already says a row is a child; the line says whose, so an
+    The guide: a hairline down an open row's children, from just below the row to its last
+    descendant, at the row's own guide position (its caret's centre, or its glyph's with the caret at
+    the end). Drawn above the rows, so a lit row does not cut it. The indent already says a row is a child; the line says whose, so an
     open group's rows and the group after it cannot be mistaken for one another. Indent guides
     rather than branch connectors: a tick into every row would meet the rows' rounding and the
     selected row's bar, and in a tree mostly one level deep it repeats what the indent says.
@@ -238,13 +279,11 @@ const ITEM_STYLES = css`
     content: '';
     position: absolute;
     inset-block: 0;
-    inset-inline-start: calc(
-      var(--we-tree-indent, calc(16px + var(--we-space-200))) * var(--we-tree-level, 0) + var(--we-space-200) + 8px -
-        ${GUIDE_WIDTH} / 2
-    );
+    inset-inline-start: calc(var(--_step) * var(--we-tree-level, 0) + var(--_guide) - ${GUIDE_WIDTH} / 2);
     width: ${GUIDE_WIDTH};
     background: ${GUIDE_COLOR};
     pointer-events: none;
+    z-index: 1;
   }
   :host([scope]) [part='children']::before {
     background: color-mix(in oklab, ${SCOPE_COLOR} 55%, transparent);
@@ -261,11 +300,17 @@ const ITEM_STYLES = css`
     gap: var(--we-space-200);
     /* A theme sets a tree's density as its padding (components.tree.padding); the start is the indent's. */
     padding: var(--we-theme-tree-padding, var(--we-tree-row-padding, var(--we-space-100) var(--we-space-200)));
-    /* A level indents by one caret and the gap after it — see the nested leaf below. */
-    padding-inline-start: calc(
-      var(--we-tree-indent, calc(16px + var(--we-space-200))) * var(--we-tree-level, 0) + var(--we-space-200)
-    );
-    border-radius: var(--we-theme-tree-radius, var(--we-radius-300));
+    /*
+      A nested row starts on its parent's guide, less half the bar, so what lights it — the hover, the
+      selection and its bar — begins at the line it hangs from rather than at the tree's edge: the lit
+      row does not cover the guides beside it, and the bar sits on the guide, which widens into it.
+      The padding gives back the difference, so the content is exactly where the indent puts it.
+      A top-level row has no parent guide and starts at the edge.
+    */
+    --_start: max(0px, calc(var(--_step) * (var(--we-tree-level, 0) - 1) + var(--_guide) - var(--_bar) / 2));
+    margin-inline-start: var(--_start);
+    padding-inline-start: calc(var(--_step) * var(--we-tree-level, 0) + var(--we-space-200) - var(--_start));
+    border-radius: ${ROW_RADIUS};
     color: var(--we-role-text-muted);
     cursor: pointer;
     outline: none;
@@ -280,14 +325,21 @@ const ITEM_STYLES = css`
   :host([selected]) [part='row'] {
     background: ${SELECTED('fill', 'var(--we-role-selected)')};
     color: ${SELECTED('text', 'var(--we-role-on-selected)')};
+    /*
+      Square where the bar is, so the guide, the bar and the row's edge run as one straight line. A
+      3px bar cannot take the row's 10px rounding, and the two curves side by side did not match.
+      Only where a theme draws a bar: with none, this resolves to the row's own radius.
+    */
+    border-start-start-radius: clamp(0px, calc(${ROW_RADIUS} - var(--_bar) * 1000), ${ROW_RADIUS});
+    border-end-start-radius: clamp(0px, calc(${ROW_RADIUS} - var(--_bar) * 1000), ${ROW_RADIUS});
   }
-  /* The leading bar, inside the row's own rounding on that side. */
+  /* The leading bar, square with the row's start. */
   :host([selected]) [part='row']::before {
     content: '';
     position: absolute;
     inset-block: 0;
     inset-inline-start: 0;
-    width: ${SELECTED('border-width', '0px')};
+    width: var(--_bar);
     background: ${SELECTED('border', 'transparent')};
     border-start-start-radius: inherit;
     border-end-start-radius: inherit;
@@ -323,17 +375,26 @@ const ITEM_STYLES = css`
     transform: rotate(90deg);
   }
   /*
-    A leaf keeps the caret's space with nothing in it, at every depth, so its glyph lines up with
-    the glyphs of the rows beside it that have a caret. Each level then indents by a caret and its
-    gap, so a row's children start under its label: a child is one step in from its parent, never in
-    line with the next row along. A nested leaf used to drop the slot, which put its glyph in the same
-    column as a top-level leaf's — under an open group, its children and the group after it could not
-    be told apart. Not the hidden attribute: the shared sheet makes that display: none !important,
-    which takes the space away.
+    With the caret first, a leaf keeps the caret's space with nothing in it, at every depth, so its
+    glyph lines up with the glyphs of the rows beside it that have a caret, and a child sits one step
+    in from its parent rather than in line with the next row along. Not the hidden attribute: the
+    shared sheet makes that display: none !important, which takes the space away.
   */
   [part='caret'][data-leaf] {
     visibility: hidden;
     pointer-events: none;
+  }
+  /*
+    With the caret at the end there is no slot to keep: the caret follows the row's content, faint,
+    and a leaf has none at all, so its trailing marks end at the row's edge.
+  */
+  :host([caret-at='end']) [part='caret'] {
+    order: 2;
+    margin-inline-start: var(--we-space-200);
+    opacity: 0.6;
+  }
+  :host([caret-at='end']) [part='caret'][data-leaf] {
+    display: none;
   }
   [part='content'] {
     display: flex;
@@ -381,6 +442,8 @@ export class TreeItem extends DesignSystemElement {
   @property({ type: Number }) level = 0;
   /** Its children hold the selected row, so its guide is the active scope. Set by the tree. */
   @property({ type: Boolean, reflect: true }) scope = false;
+  /** Where its caret sits, as the tree says (`caret`). Set by the tree. */
+  @property({ type: String, reflect: true, attribute: 'caret-at' }) caretAt: 'start' | 'end' = 'start';
 
   /** Whether every row above this one is open, so this one is on screen. */
   isVisibleInTree(): boolean {

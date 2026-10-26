@@ -724,6 +724,8 @@ export const contextData: ContextData = {
       ownProps: [
         { name: 'selected', type: 'string', optional: false, default: "''" },
         { name: 'label', type: 'string', optional: false, default: "''" },
+        { name: 'caret', type: "'start' | 'end'", optional: false, default: "'start'" },
+        { name: 'lead', type: 'string', optional: false, default: "''" },
       ],
     },
     {
@@ -740,6 +742,7 @@ export const contextData: ContextData = {
         { name: 'tabStop', type: 'boolean', optional: false, default: 'false' },
         { name: 'level', type: 'number', optional: false, default: '0' },
         { name: 'scope', type: 'boolean', optional: false, default: 'false' },
+        { name: 'caretAt', type: "'start' | 'end'", optional: false, default: "'start'" },
       ],
     },
     {

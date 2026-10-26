@@ -1628,7 +1628,7 @@ template has to write it.
 `select` — `{ value }` — when a row is chosen, by click or key. What choosing means (navigating,
 filtering) is the template's business. Which row is selected is the template's too: pass
 `selected` and the matching item marks itself, so a selection driven by the address stays in step.
-  Props: selected: string = '', label: string = ''
+  Props: selected: string = '', label: string = '', caret: 'start' | 'end' = 'start', lead: string = ''
 - we-tree-item (DesignSystemElement) — One row of a `we-tree`, and the rows under it.
 
 The row's own content goes in the default slot — an icon, a label, a badge, a count, whatever the
@@ -1639,7 +1639,7 @@ inside an `$if` on the same open state, so nothing is read for a row nobody has 
 `open` is the template's to hold, as `selected` is the tree's: the row asks (`openchange`, `{ open }`,
 bound as `onOpenChange`) and the template answers by setting it, so a row's open state can live in the address, in local
 state or anywhere else.
-  Props: value: string = '', open: boolean = false, expandable: boolean = false, selected: boolean = false, tabStop: boolean = false, level: number = 0, scope: boolean = false
+  Props: value: string = '', open: boolean = false, expandable: boolean = false, selected: boolean = false, tabStop: boolean = false, level: number = 0, scope: boolean = false, caretAt: 'start' | 'end' = 'start'
 - we-video (LayoutVisualElement)
   Props: src: string = '', poster?: string | undefined, controls: boolean = false, preload: 'none' | 'metadata' | 'auto' = 'metadata', fit: '' | 'cover' | 'contain' | 'fill' | 'none' | 'scale-down' = '', autoplay: boolean = false, loop: boolean = false, muted: boolean = false, playsinline: boolean = false, stream?: MediaStream | null | undefined
 

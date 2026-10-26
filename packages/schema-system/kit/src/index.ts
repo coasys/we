@@ -55,7 +55,7 @@ export type { AnchorId, Content } from './types.ts';
 // States — what a surface shows when it has nothing to show.
 export { lineComposer } from './input/lineComposer.ts';
 export type { LineComposerOptions } from './input/lineComposer.ts';
-export { treeRow } from './lists/treeRow.ts';
+export { TREE_LEAD, treeRow } from './lists/treeRow.ts';
 export type { TreeRowOptions } from './lists/treeRow.ts';
 export { comingSoon } from './states/comingSoon.ts';
 export type { ComingSoonOptions } from './states/comingSoon.ts';

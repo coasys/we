@@ -18,7 +18,7 @@ import {
   timelineOrder,
 } from '@we/schema-kit';
 import type { SchemaNode } from '@we/schema-shared';
-import { discussionSection, foldingSectionLabel, signalDisplay, treeRow } from '@we/template-kit';
+import { discussionSection, foldingSectionLabel, signalDisplay, TREE_LEAD, treeRow } from '@we/template-kit';
 import { bundlePrompt, safeModeBanner } from '@we/template-shell';
 import { CALL_CHROME_BAND, themeLabTemplate, TREE_LOCALS, TREE_QUERIES, treeStrip } from '@we/template-showcase';
 import { THEME_PRESETS, type ThemeOverrides, themeSides, withThemeSide } from '@we/themes/presets';
@@ -1839,7 +1839,62 @@ const coasysTreeTop = (): Scenario => {
   };
 };
 
+/**
+ * A tree with its caret at the end, four levels deep under Glow, with a deep row selected: the layout
+ * the Coasys tree uses. Its guides drop from each row's glyph, and a lit row starts on its parent's
+ * guide with Glow's mint bar on the line.
+ */
+const treeCaretEnd = (): Scenario => {
+  const glow = BUNDLE_LAB_THEMES.find((t) => t.label === 'coasys-glow')?.theme ?? {};
+  const count = (n: number): SchemaNode => ({
+    type: 'we-badge',
+    props: { variant: 'soft', size: 'xs' },
+    children: [String(n)],
+  });
+  const row = (value: string, label: string, icon: string, children?: SchemaNode[], nested = true): SchemaNode =>
+    treeRow({
+      value,
+      label,
+      icon,
+      nested,
+      ...(children ? { open: true, children, badge: count(children.length) } : {}),
+    });
+  return {
+    node: {
+      type: 'Column',
+      theme: glow,
+      props: { width: '280px', p: '300', bg: 'chrome' },
+      children: [
+        {
+          type: 'we-tree',
+          props: { label: 'This space', selected: 'icons', caret: 'end', lead: TREE_LEAD },
+          children: [
+            row(
+              'channels',
+              'Channels',
+              'chats-circle',
+              [
+                row('general', 'General', 'hash'),
+                row('product', 'Product', 'hash', [
+                  row('design', 'Design', 'hash', [row('icons', 'Icons', 'hash'), row('type', 'Type', 'hash')]),
+                  row('roadmap', 'Roadmap', 'hash'),
+                ]),
+                row('random', 'Random', 'hash'),
+              ],
+              false,
+            ),
+            row('calls', 'Calls', 'phone', undefined, false),
+            row('people', 'People', 'users', [row('ada', 'Ada', 'user'), row('lin', 'Lin', 'user')], false),
+          ],
+        },
+      ],
+    },
+    tables: {},
+  };
+};
+
 export const scenarios: Record<string, (scale?: number) => Scenario> = {
+  'tree:caret-end': treeCaretEnd,
   'rail:app': appRail,
   'coasys:tree-top': coasysTreeTop,
   'bundle:prompt': bundleInstallPrompt,

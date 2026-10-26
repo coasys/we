@@ -2104,6 +2104,18 @@
           "type": "string",
           "optional": false,
           "default": "''"
+        },
+        {
+          "name": "caret",
+          "type": "'start' | 'end'",
+          "optional": false,
+          "default": "'start'"
+        },
+        {
+          "name": "lead",
+          "type": "string",
+          "optional": false,
+          "default": "''"
         }
       ]
     },
@@ -2154,6 +2166,12 @@
           "type": "boolean",
           "optional": false,
           "default": "false"
+        },
+        {
+          "name": "caretAt",
+          "type": "'start' | 'end'",
+          "optional": false,
+          "default": "'start'"
         }
       ]
     },
