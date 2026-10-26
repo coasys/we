@@ -5867,9 +5867,32 @@ in that folder's README. Most PRs make no such decision; a few a month is the ex
 
 ---
 
-### Building the AD4M Executor Binary (CRITICAL)
+### The executor must match the pin (CRITICAL)
 
-The ad4m repo has two artefacts with confusingly similar names:
+The pin installs the ad4m **client**, and the **executor** has to come from the same commit. A
+mismatch does not fail at start — it shows up as a WS method that does not exist or a call that
+hangs, which looks like a bug in your change. `scripts/ad4m-executor.mjs` chooses the executor for
+the app, the live tests and setup: `AD4M_EXECUTOR`, else the seed's `ad4m.executorPath`, else (the
+default — the checked-in seeds name none) the pinned commit's executor, downloaded from ad4m's CI
+into `~/.cache/we/ad4m-executor/<commit>/`. Before running the app or `pnpm verify:ad4m`:
+
+```sh
+pnpm ad4m:executor                      # fetches the pinned executor if it is missing
+node scripts/ad4m-executor.mjs --path   # which binary would run
+```
+
+**Download, do not build**: it takes seconds, `cargo build` the better part of an hour. Build only
+when you are changing ad4m itself or nothing is published (macOS, a commit too old), and run that
+build with `AD4M_EXECUTOR=<path> pnpm dev:electron` (or the same before `pnpm verify:ad4m`) —
+nothing checks it against the pin, so check the commit yourself (`node scripts/ad4m-pin.mjs
+--commit`). Do not commit an `ad4m.executorPath` into a checked-in seed: it would make every
+checkout run a local build path. `pnpm dev:electron` runs the same command without failing; read its
+`[ad4m:executor]` line rather than scrolling past it. Details:
+`docs/contributing/ad4m-and-deploys.md`, "The executor you run locally".
+
+### Building the AD4M Executor Binary
+
+Only when changing ad4m (see above). The ad4m repo has two artefacts with confusingly similar names:
 
 | Artefact | Cargo flag | Crate location | What it builds |
 |---|---|---|---|
