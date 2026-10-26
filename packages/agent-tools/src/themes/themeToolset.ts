@@ -60,7 +60,8 @@ function fileData(content: string, name: string, type: string) {
   return { data_base64: btoa(binary), name, file_type: type };
 }
 
-function readRecord(record: RecordInput) {
+function readRecord(record: RecordInput | undefined) {
+  if (!record) throw new Error('The theme tools work on a Theme record, and none was given.');
   if (!themeToolset.appliesTo.includes(record.className))
     throw new Error(`The theme tools work on Theme records, not ${record.className}.`);
   return {
