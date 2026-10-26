@@ -18,7 +18,7 @@
     "serve": "vite preview",
     "preelectron:dev": "node scripts/generate-seed-config.cjs",
     "electron:dev": "node scripts/ensure-electron.cjs && node ../../scripts/ad4m-executor.mjs --soft && concurrently \"vite\" \"wait-on http://localhost:3002 && VITE_DEV_SERVER_URL=http://localhost:3002 electron electron/main.js\"",
-    "preelectron:build": "node scripts/generate-seed-config.cjs",
+    "preelectron:build": "node scripts/generate-seed-config.cjs && node ../../scripts/ad4m-executor.mjs",
     "electron:build": "vite build && electron-builder --config electron-builder.config.js",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
