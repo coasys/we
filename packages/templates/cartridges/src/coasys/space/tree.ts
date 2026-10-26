@@ -17,6 +17,14 @@ import { callPath, channelPath, ROW_ID, SELECTED_EXPR } from './paths.ts';
  * root is a channel too, "General" here. Chat lines are never rows: a channel is opened to read them.
  */
 
+/**
+ * How far the lane's blocks sit in from its edges — the header, the purpose prompt, the search and
+ * the running call — so they line up with each other. The tree's own list sits closer to the edge
+ * (`px: '200'`): its rows draw their own padding, and a lit row's background reaches nearer the edge
+ * than the words above it.
+ */
+const INSET = '300';
+
 /** Open groups and channels, by row value. Kept on this device, not in the address. */
 const OPEN = 'local.openRows';
 const isOpen = (value: string): SchemaProp => ({ $: `'${value}' in ${OPEN}` });
@@ -255,7 +263,7 @@ const onSelect: SchemaProp = [
  */
 const header: SchemaNode = {
   type: 'Row',
-  props: { gap: '300', ay: 'center', px: '300', pt: '400', pb: '300' },
+  props: { gap: '300', ay: 'center', px: INSET, pt: '400', pb: '300' },
   children: [
     {
       type: 'we-avatar',
@@ -274,7 +282,7 @@ const header: SchemaNode = {
       children: [
         {
           type: 'we-text',
-          props: { variant: 'body', fontSize: '400', fontWeight: 'semibold', truncate: true },
+          props: { variant: 'subheading', fontWeight: 'semibold', truncate: true },
           children: [{ $: 'spaceStore.currentSpace.name' }],
         },
         {
@@ -337,7 +345,7 @@ const purpose: SchemaNode = {
     condition: { $: '!spaceStore.currentSpace.description && spaceStore.canAdministerCurrentSpace' },
     then: {
       type: 'Column',
-      props: { px: '300', pb: '300' },
+      props: { px: INSET, pb: '300' },
       children: [
         {
           type: 'we-button',
@@ -369,7 +377,7 @@ const purpose: SchemaNode = {
  */
 const findOrAsk: SchemaNode = {
   type: 'Column',
-  props: { px: '300', pb: '500' },
+  props: { px: INSET, pb: '500' },
   children: [{ type: 'Search', props: { placeholder: 'Find or ask' } }],
 };
 
@@ -407,7 +415,7 @@ const callRunning: SchemaNode = {
     condition: { $: 'count(modules.call.liveCalls)' },
     then: {
       type: 'Row',
-      props: { gap: '200', ay: 'center', px: '300', pb: '300' },
+      props: { gap: '200', ay: 'center', px: INSET, pb: '300' },
       children: [
         liveDot,
         {
@@ -498,7 +506,7 @@ export const treeSection: SchemaNode = {
       type: 'Column',
       props: { flex: '1', minHeight: '0', overflowY: 'auto', px: '200' },
       children: [
-        { type: 'we-text', props: { variant: 'overline', fontSize: '200', px: '200', pb: '100' }, children: ['Space'] },
+        { type: 'we-text', props: { variant: 'overline', px: '200', pb: '100' }, children: ['Space'] },
         {
           type: 'we-tree',
           props: { label: 'This space', selected: { $: SELECTED_EXPR }, onSelect },

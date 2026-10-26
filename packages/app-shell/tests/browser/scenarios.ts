@@ -1822,6 +1822,8 @@ const coasysTreeTop = (): Scenario => {
           ],
         },
         { type: 'Search', props: { placeholder: 'Find or ask' } },
+        // An eyebrow with no size of its own: Glow's overline role sizes it.
+        { type: 'we-text', props: { id: 'eyebrow', variant: 'overline' }, children: ['Space'] },
       ],
     },
     tables: {},

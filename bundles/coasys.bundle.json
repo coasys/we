@@ -692,7 +692,7 @@
                       "children": [
                         {
                           "type": "we-text",
-                          "props": { "variant": "body", "fontSize": "400", "fontWeight": "semibold", "truncate": true },
+                          "props": { "variant": "subheading", "fontWeight": "semibold", "truncate": true },
                           "children": [{ "$": "spaceStore.currentSpace.name" }]
                         },
                         {
@@ -847,7 +847,7 @@
                   "children": [
                     {
                       "type": "we-text",
-                      "props": { "variant": "overline", "fontSize": "200", "px": "200", "pb": "100" },
+                      "props": { "variant": "overline", "px": "200", "pb": "100" },
                       "children": ["Space"]
                     },
                     {
@@ -6581,7 +6581,13 @@
           "heading": { "weight": 300, "letterSpacing": "-0.01em" },
           "control": { "weight": 600, "letterSpacing": "0.01em" },
           "badge": { "weight": 700, "letterSpacing": "0.02em" },
-          "overline": { "weight": 700, "letterSpacing": "0.1em", "textTransform": "uppercase", "color": "text-faint" }
+          "overline": {
+            "size": "200",
+            "weight": 700,
+            "letterSpacing": "0.1em",
+            "textTransform": "uppercase",
+            "color": "text-faint"
+          }
         },
         "surfaceImages": {
           "page": "radial-gradient(45vmax 40vmax at 32% -12%, rgba(117, 255, 190, 0.15), transparent 70%), radial-gradient(50vmax 45vmax at 104% 112%, rgba(109, 38, 183, 0.24), transparent 70%), radial-gradient(40vmax 36vmax at -8% 110%, rgba(37, 40, 125, 0.3), transparent 70%)",

@@ -74,5 +74,9 @@ export async function check({ measure, measurePart, measureParts, partStyle }) {
     if (!(weight <= 500)) problems.push(`the search field${pseudo ? "'s placeholder" : ''} is set at ${weight}`);
   }
 
+  // Glow sizes every eyebrow through its overline role, so a template draws one with no size of its own.
+  const eyebrow = await measurePart('#eyebrow', 'base');
+  if (eyebrow?.fontSize !== '14px') problems.push(`an eyebrow is ${eyebrow?.fontSize}, not Glow's 14px`);
+
   return problems;
 }

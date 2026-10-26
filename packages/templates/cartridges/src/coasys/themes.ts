@@ -177,7 +177,8 @@ export const glowTheme: BundleTheme = {
       heading: { weight: 300, letterSpacing: '-0.01em' },
       control: { weight: 600, letterSpacing: '0.01em' },
       badge: { weight: 700, letterSpacing: '0.02em' },
-      overline: { weight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'text-faint' },
+      // Eyebrows a step up from the default 12px, so the tree's "Space" and the first steps read at a glance.
+      overline: { size: '200', weight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'text-faint' },
     },
     surfaceImages: { page: ORBS, chrome: CHROME_HAZE },
     components: {
