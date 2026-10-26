@@ -535,6 +535,7 @@ export const storeEntries: StoreEntry[] = [
       relationshipTargets: { type: 'array', properties: ['label', 'value'] },
       identityOptions: { type: 'array', properties: ['label', 'value'] },
       nameOptions: { type: 'array', properties: ['label', 'value'] },
+      draftNameMember: { type: 'string' },
       hintEditor: {
         type: 'object',
         properties: ['entity', 'classHint', 'defaultClassHint', 'rows', 'customized'],
@@ -1583,7 +1584,9 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       identityOptions:
         '{ label, value }[] — "None" plus every named property of the open draft, for the identity picker. Built in the store because a schema can map options but cannot prepend one',
       nameOptions:
-        '{ label, value }[] — "Work it out" plus every named property of the open draft, for the naming-field picker. A different first entry from identityOptions on purpose: no identity means no dedup key, where no naming field means the name is DERIVED (a property called name or title, else whichever string is required or first) — there is no such thing as a record with no name',
+        '{ label, value }[] — "Work it out" (naming the field it worked out, "Work it out (title)") plus every named property of the open draft, for the naming-field picker. A different first entry from identityOptions on purpose: no identity means no dedup key, where no naming field means the name is DERIVED (a property called name or title, else whichever string is required or first) — there is no such thing as a record with no name',
+      draftNameMember:
+        "string — the row id of the field that will name a record of the open draft: the one chosen, or the one worked out while the picker says Work it out. Empty when no field qualifies. For a badge on that field's row: { $: 'member.rowId == shapeStore.draftNameMember' }",
       hintEditor:
         'the hint editor state ({ entity, classHint, defaultClassHint, rows: { name, hint, defaultHint }[], customized }) or null while closed — non-nullness mounts the hint editor modal',
       hintBusy: 'boolean — the hint editor is loading or saving',
