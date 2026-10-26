@@ -626,6 +626,15 @@ export interface RailGroupOptions {
    * group is folded.
    */
   after?: SchemaNode[];
+  /**
+   * Whether the heading folds the group away. Defaults to true.
+   *
+   * False for a rail's only group: folding the one group there is empties the rail, and with the
+   * rail closed nothing on it then says anything is there at all. The heading is a plain label, and
+   * the group cannot be left folded. Folding earns its place beside other groups — putting away the
+   * ones not in use — and a long list is the rail's scrolling to handle, not a fold's.
+   */
+  foldable?: boolean;
 }
 
 /**
@@ -657,8 +666,29 @@ function actionNode(action: NonNullable<RailGroupOptions['action']>): SchemaNode
 }
 
 export function railGroup(opts: RailGroupOptions): SchemaNode {
+  const foldable = opts.foldable ?? true;
   const isCollapsed = expr`${opts.id} in local.collapsedGroups`;
   const isExpanded = { $: 'local.expanded' };
+
+  const words: SchemaNode[] = [
+    ...(foldable
+      ? [{ type: 'we-icon', props: { name: expr`${isCollapsed} ? 'caret-right' : 'caret-down'`, size: 'xs' } }]
+      : []),
+    { type: 'we-text', props: { fontSize: '200', fontWeight: '600', truncate: true }, children: [opts.label] },
+    ...(opts.badge !== undefined
+      ? [{ type: 'we-badge', props: { size: 'sm', bg: 'surface-active', color: 'text-muted' }, children: [opts.badge] }]
+      : []),
+  ];
+  const headingBox = {
+    flex: '1',
+    minWidth: '0',
+    ax: 'start',
+    ay: 'center',
+    gap: '200',
+    py: '200',
+    px: { $: 'local.railInset' },
+    color: 'text-faint',
+  };
 
   const items: SchemaNode = opts.reorderable
     ? {
@@ -704,47 +734,24 @@ export function railGroup(opts: RailGroupOptions): SchemaNode {
             A label that folds its group, not a button among the rows: `bare`, so it has no surface
             to light up, and it answers the pointer by brightening instead. The colour is the
             button's and the caret and the text inherit it — set on each of them, as it was, a hover
-            on the button could not reach either. Its caret starts where the faces do.
+            on the button could not reach either. Its caret starts where the faces do. A group that
+            does not fold has the same label, standing still.
           */
-          {
-            type: 'we-button',
-            props: {
-              variant: 'bare',
-              size: 'sm',
-              flex: '1',
-              minWidth: '0',
-              ax: 'start',
-              ay: 'center',
-              gap: '200',
-              py: '200',
-              px: { $: 'local.railInset' },
-              height: 'auto',
-              color: 'text-faint',
-              hoverProps: { color: 'text-muted' },
-              expanded: expr`!${isCollapsed}`,
-              onClick: { $toggleLocalIn: 'collapsedGroups', value: opts.id },
-            },
-            children: [
-              {
-                type: 'we-icon',
-                props: { name: expr`${isCollapsed} ? 'caret-right' : 'caret-down'`, size: 'xs' },
-              },
-              {
-                type: 'we-text',
-                props: { fontSize: '200', fontWeight: '600', truncate: true },
-                children: [opts.label],
-              },
-              ...(opts.badge !== undefined
-                ? [
-                    {
-                      type: 'we-badge',
-                      props: { size: 'sm', bg: 'surface-active', color: 'text-muted' },
-                      children: [opts.badge],
-                    },
-                  ]
-                : []),
-            ],
-          },
+          foldable
+            ? {
+                type: 'we-button',
+                props: {
+                  ...headingBox,
+                  variant: 'bare',
+                  size: 'sm',
+                  height: 'auto',
+                  hoverProps: { color: 'text-muted' },
+                  expanded: expr`!${isCollapsed}`,
+                  onClick: { $toggleLocalIn: 'collapsedGroups', value: opts.id },
+                },
+                children: words,
+              }
+            : { type: 'Row', props: headingBox, children: words },
           /*
             Beside the heading, never inside it: the heading is a button, and a button nested in
             a button is invalid markup that would also collapse the group on the way past.
@@ -770,15 +777,17 @@ export function railGroup(opts: RailGroupOptions): SchemaNode {
         remounting the whole row list synchronously the instant a group reopened, right before the
         reveal could even start — a small but real hitch this avoids by never unmounting at all.
       */
-      {
-        type: '$animate',
-        props: {
-          condition: expr`!${isCollapsed}`,
-          enterTransition: revealBlock,
-          exitTransition: revealBlock,
-        },
-        children: [body],
-      },
+      foldable
+        ? {
+            type: '$animate',
+            props: {
+              condition: expr`!${isCollapsed}`,
+              enterTransition: revealBlock,
+              exitTransition: revealBlock,
+            },
+            children: [body],
+          }
+        : body,
     ],
   };
 }

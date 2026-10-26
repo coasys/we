@@ -112,3 +112,33 @@ describe('rows after a rail group’s own', () => {
     );
   });
 });
+
+/**
+ * A group that does not fold — a rail's only group, which folded would leave the rail empty, and
+ * with the rail closed nothing on it would say anything was there.
+ */
+describe('a rail group that does not fold', () => {
+  const row: SchemaNode = { type: 'div', props: { 'data-we-id': 's1' } };
+
+  it('has a label for a heading, with nothing to press and no caret', () => {
+    const group = railGroup({ id: 'spaces', label: 'Spaces', foldable: false, children: [row] }) as Node;
+    const heading = (group.children?.[0] as Node).children?.[0] as Node;
+
+    expect(heading.type).toBe('Row');
+    expect(JSON.stringify(heading)).not.toContain('caret');
+    expect(JSON.stringify(heading)).toContain('Spaces');
+  });
+
+  it('draws its rows outright, so nothing can leave them folded', () => {
+    const group = railGroup({ id: 'spaces', label: 'Spaces', foldable: false, children: [row] }) as Node;
+
+    expect((group.children?.[1] as Node).type).toBe('Column');
+    expect(JSON.stringify(group)).not.toContain('collapsedGroups');
+  });
+
+  it('still folds by default', () => {
+    const group = railGroup({ id: 'spaces', label: 'Spaces', children: [row] }) as Node;
+    expect(((group.children?.[0] as Node).children?.[0] as Node).type).toBe('we-button');
+    expect((group.children?.[1] as Node).type).toBe('$animate');
+  });
+});
