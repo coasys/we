@@ -10,11 +10,11 @@
  * **interpretation metadata becomes space-owned once a space customizes it** — a marker link on the
  * shape node records the customization, and the staleness check yields to it.
  *
- * Known v1 edge, deliberate: a *structural* refresh (the model gained a property) rewrites the
- * whole shape graph, dropping both the customized hints and the marker. Structure changes ship in
- * releases and are rare; the settings surface re-offers customization afterwards. Preserving
- * customizations across structural rewrites needs the merge story the shape-versioning design note
- * owns, not a quick fix here.
+ * A *structural* refresh (the model gained a property) rewrites the whole shape graph, which would
+ * drop the customized hints and the marker with it. `registerEntities` reads a customized shape's
+ * hints before such a refresh and writes them back after, so the community's tuning outlives a
+ * release that changes the model's structure. A hint on a property the new shape no longer has has
+ * nowhere to go, and is lost with the property.
  */
 import { Link, LinkQuery, Literal, type PerspectiveProxy } from '@coasys/ad4m';
 import type { EntityHintState } from '@we/backend-shared';

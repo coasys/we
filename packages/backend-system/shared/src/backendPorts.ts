@@ -21,6 +21,7 @@ import type { ModelAdminPort } from './modelAdmin';
 import type { PersonPort } from './persons';
 import type { AgentProfileSummary, PublishProfileFields } from './profileTypes';
 import type { RuntimeAdminPort } from './runtimeAdmin';
+import type { ShapeStore } from './shapes';
 import type { TranscriptionPort } from './transcription';
 import type { WorkflowPort } from './workflows';
 
@@ -143,6 +144,11 @@ export interface SchemaPort {
   resetInterpretationHints(dataset: DatasetHandle, entity: string): Promise<void>;
   /** Optional remediation for duplicated schema installs (backend-specific failure mode). */
   dedupe?(dataset: DatasetHandle): Promise<{ removed: number; authors: string[] }>;
+  /**
+   * Where the space keeps its own models. Optional: absent, each model is a manifest document on a
+   * `Shape` record — see {@link ShapeStore}.
+   */
+  shapes?: ShapeStore;
 }
 
 /** A file to store, as `ProfileDirectoryPort.uploadFile` takes it. */

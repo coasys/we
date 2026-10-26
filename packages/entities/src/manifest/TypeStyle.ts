@@ -28,6 +28,13 @@ import type { CoreEntityDef } from './defs';
  * on a shared board two people colouring two different types would clobber each other. One record
  * per fact means two independent changes are two independent writes.
  *
+ * ## Beside colour: how a card and a form are laid out
+ *
+ * The same record carries the rest of a type's presentation where this community wants something
+ * other than the model's own — a card's title and summary, the control a field uses, the fields a
+ * form asks for. A model ships its author's defaults; a record here overrides only what it sets, and
+ * a template can still override both. See `shared/shapes/presentation.ts` in `@we/app-shell`.
+ *
  * ## What this is the start of
  *
  * Colour is the first rule, not the only conceivable one. The board's key is a legend today and a
@@ -45,6 +52,21 @@ export const TypeStyle: CoreEntityDef = {
       nodeType: { type: 'string', predicate: 'we://node_type', default: '' },
       /** Design token or CSS colour. Empty is unset, and the board's own rules decide again. */
       color: { type: 'string', predicate: 'we://color', default: '' },
+      /*
+        How a card of this type is laid out, where the model's own display is not what this space or
+        board wants — which field titles it, which summarises it, which pictures it, which it lists.
+        JSON of the same shape as an entity's `display`; a key it leaves out falls through to the
+        model's. Empty is unset.
+
+        Presentation and not meaning, so it lives here rather than on the model: a community choosing
+        what its sighting cards show must not need to change the model itself — nor bump its version,
+        nor mark it changed against wherever it came from.
+      */
+      display: { type: 'string', predicate: 'we://type_display', default: '' },
+      /** The form control a field uses here, by field name — JSON. Empty is unset. */
+      controls: { type: 'string', predicate: 'we://type_controls', default: '' },
+      /** The fields a form for this type asks for, in order — JSON list. Empty is unset. */
+      authoring: { type: 'string', predicate: 'we://type_authoring', default: '' },
     },
     // None. A type is a name here rather than a record: the entity being styled may be a shape this
     // community defined last week, which has no node to point a relation at.

@@ -859,6 +859,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     setCardStyle: action('content'),
     setTypeColor: action('content'),
     setSpaceTypeColor: action('content'),
+    // The rest of a type's presentation in the space's key, written as the colour beside it is.
+    setSpaceTypePresentation: action('content'),
     dropOnCanvas: action('content'),
     // Writes posts into the space on screen and nowhere else; what it reads from elsewhere is only
     // what this agent already holds. A space's template offering a drop target is the product.

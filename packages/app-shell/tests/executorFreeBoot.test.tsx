@@ -1204,6 +1204,32 @@ describe('blocks on a canvas', () => {
   }, 10000);
 });
 
+describe('how a space presents a type', () => {
+  it('lays its own presentation over the model’s, and keeps it through a colour coming and going', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace('Presented', 'x', 'personal', 'hidden');
+    const ref = (await lifecycle.list()).find((d) => d.name === 'Presented')!;
+    await stores.datasets.switchDataset(ref.id);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.name).toBe('Presented'));
+    const spaceId = stores.spaces.currentSpace()!.id;
+    const summary = () => stores.records.displays().TaskBlock?.fields.find((f) => f.role === 'summary')?.name;
+    expect(summary()).toBe('description');
+
+    await stores.records.setSpaceTypePresentation(spaceId, 'TaskBlock', { display: { summary: 'assignee' } });
+    await vi.waitFor(() => expect(summary()).toBe('assignee'));
+
+    // A colour set and cleared in the key does not take the presentation with it.
+    await stores.records.setSpaceTypeColor(spaceId, 'TaskBlock', 'accent');
+    await stores.records.setSpaceTypeColor(spaceId, 'TaskBlock', '');
+    await stores.records.setSpaceTypePresentation(spaceId, 'EventBlock', null);
+    await vi.waitFor(() => expect(summary()).toBe('assignee'));
+
+    await stores.records.setSpaceTypePresentation(spaceId, 'TaskBlock', null);
+    await vi.waitFor(() => expect(summary()).toBe('description'));
+  }, 10000);
+});
+
 describe('a record form with something typed in it', () => {
   it('knows it has changed as soon as a field is typed into, not only when the draft is replaced', async () => {
     const stores = mountShell();
