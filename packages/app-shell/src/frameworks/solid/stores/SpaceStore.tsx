@@ -61,6 +61,18 @@ import { getSeed } from '@shared/seedRegistry';
 import { type SharingPickerOption, sharingPickerOptions } from '@shared/sharingOptions';
 import { readSpaceLandmarks, writeSpaceLandmark } from '@shared/spaceLandmarks';
 import {
+  ADMIN_ROLE,
+  ADMIN_ROLE_RECORD,
+  administers,
+  cannotRevoke,
+  type GrantRow,
+  type RoleRow,
+  rolesByPerson,
+  rolesOf,
+  rolesView,
+  type RoleView,
+} from '@shared/spaceRoles';
+import {
   applyStarterRecords,
   defaultSpaceStarter,
   linkSpaceRelations,
@@ -110,7 +122,7 @@ import {
 } from '@shared/viewResolution';
 import { evidenceLabel, refusalWords } from '@shared/workflowViews';
 import type { AgentProfileSummary, DatasetRef, WorkflowView } from '@we/backend-shared';
-import { displayName, trace } from '@we/backend-shared';
+import { displayName, SELF_PERSONS, trace } from '@we/backend-shared';
 import type { ContentInput } from '@we/block-shared';
 import {
   contentHash,
@@ -138,6 +150,8 @@ import {
   MutedAgent,
   ReadMarker,
   RelationshipType,
+  Role,
+  RoleGrant,
   Signal,
   SignalType,
   Space,
@@ -611,6 +625,17 @@ export interface SpaceStore {
   offeredInvolvementTypes: Accessor<InvolvementTypeView[]>;
   /** The space has been asked for its kinds. */
   involvementTypesLoaded: Accessor<boolean>;
+  /**
+   * The standings people hold across the space — admin, moderator, whatever this community names —
+   * each with the people holding it: `{ id, slug, name, description, holders }`. Admin first.
+   */
+  roles: Accessor<RoleView[]>;
+  /** The slugs of the roles the viewer holds here. */
+  myRoles: Accessor<string[]>;
+  /** By person, the slugs of the roles they hold — for a badge beside a member. */
+  memberRoles: Accessor<Record<string, string[]>>;
+  /** The space has been asked for its roles. An empty list is otherwise "not fetched yet". */
+  rolesLoaded: Accessor<boolean>;
   /** Options for the per-space template override picker, including a "follow the space" entry. */
   templateOverrideOptions: Accessor<{ label: string; value: string }[]>;
   /** Options for the per-space theme override picker, including a "follow the space" entry. */
@@ -1049,6 +1074,14 @@ export interface SpaceStore {
   canAdministerSpace: (uuid: string) => boolean;
   /** The same, about the space on screen, as something an expression can read. */
   canAdministerCurrentSpace: Accessor<boolean>;
+  /** Name a role this community holds — "Moderator". Only whoever administers the space. */
+  createRole: (config: { name: string; description?: string }) => Promise<void>;
+  /** Rename a role or change what it says it means. Its slug, which grants hold, stays. */
+  updateRole: (slug: string, updates: { name?: string; description?: string }) => Promise<void>;
+  /** Give `agent` the role. Only whoever administers the space; holding it already is no change. */
+  grantRole: (slug: string, agent: string) => Promise<void>;
+  /** Take the role from `agent`. Refused for the last admin — see `cannotRevoke`. */
+  revokeRole: (slug: string, agent: string) => Promise<void>;
   /** Copy a space's share link to the clipboard. No-op for a space that has none. */
   copyShareLink: (uuid: string) => Promise<void>;
   /** Copy a guest invite link — auto-creates account, auto-joins the space. No-op without a host. */
@@ -1160,10 +1193,13 @@ export function SpaceStoreProvider(props: ParentProps) {
    * *offer* the controls, which is worth doing — an owner should see what is theirs to manage — but
    * it must never be described to the user as protection.
    *
-   * A predicate rather than an inline `author === me` in each template, because creator-only is
-   * today's answer and not the last one: multiple admins, roles, or an SDNA-level constraint all
-   * change what "may administer" means. Templates asking the question by name keep working; templates
-   * that had compared two DIDs would all need editing.
+   * Answered from the space's roles: whoever holds `admin` administers it, or its creator while nobody
+   * does (`administers` in `shared/spaceRoles.ts`). A space's roles are read once it is open, so a
+   * space in the list that is not the one on screen still answers by who made it.
+   *
+   * A predicate rather than an inline `author === me` in each template, because what "may
+   * administer" means keeps growing: templates asking the question by name follow it; templates that
+   * had compared two DIDs would all need editing.
    */
   /**
    * The same question about the space on screen, as a value a schema can read.
@@ -1175,6 +1211,19 @@ export function SpaceStoreProvider(props: ParentProps) {
    * removed by anybody else, the space's own author included. Asked here, the answer can grow
    * (several admins, roles) without every template being rewritten.
    */
+  /*
+    The space on screen's roles, as read — declared here rather than with the rest of the roles
+    further down because the question above is answered from them. Filled by the `── Roles ──`
+    section.
+  */
+  const [roleRows, setRoleRows] = createSignal<RoleRow[]>([]);
+  const [grantRows, setGrantRows] = createSignal<GrantRow[]>([]);
+  const [rolesLoaded, setRolesLoaded] = createSignal(false);
+  const roleViews = createMemo<RoleView[]>(() => rolesView(roleRows(), grantRows()));
+  /** Who the viewer is as a person, and who made the space on screen — see `PersonPort`. */
+  const [mePerson, setMePerson] = createSignal<string | null>(null);
+  const [authorPerson, setAuthorPerson] = createSignal<string | null>(null);
+
   // A plain accessor rather than a memo: it reads its signals when called, so it is reactive either
   // way — and a memo here runs eagerly at creation, before `currentSpace` further down the file
   // exists. Cheap enough that memoising buys nothing.
@@ -1189,6 +1238,11 @@ export function SpaceStoreProvider(props: ParentProps) {
     // A personal space has no one else to answer to.
     if (!space.url) return true;
     const me = session.me()?.did;
+    // The space on screen answers from its roles. Any other space, whose roles are not read until it
+    // is opened, answers as it always has: by who made it.
+    if (uuid === datasetStore.currentDataset()?.id && rolesLoaded()) {
+      return administers(roleViews(), mePerson() ?? me ?? null, authorPerson() ?? space.author ?? null);
+    }
     return Boolean(me && space.author === me);
   }
 
@@ -1859,6 +1913,14 @@ export function SpaceStoreProvider(props: ParentProps) {
         deployment that wants different defaults can say so without editing this file.
       */
       await writeSpaceStructure(spaceHandle, spaceRecord, starter);
+      /*
+        Before the space is shared, so it is never shared without somebody who administers it — and
+        written only here, by its creator: a member joining later must never write a first admin of
+        their own. See `Role`.
+      */
+      await writeAdminGrant(spaceHandle).catch((error) =>
+        console.error('SpaceStore: could not make the space’s creator its admin', error),
+      );
 
       // Track locally so the sidebar updates with the action rather than with the backend's
       // change event (which may lag, or on web may not fire at all).
@@ -3937,6 +3999,163 @@ export function SpaceStoreProvider(props: ParentProps) {
     ...involvementOptimism.ports,
   });
 
+  /*
+    ── Roles ────────────────────────────────────────────────────────────────────────────────────
+
+    The standings people hold across the space: its `Role` records, and the `RoleGrant`s saying who
+    holds which. Read live rather than once, for the reason landmarks are: somebody made an admin by
+    another member is owed the controls that come with it now, not after a space switch. What the
+    records mean, and the one change refused, are `shared/spaceRoles.ts`.
+
+    Everything compares persons rather than signing keys, through the backend's `PersonPort` — so a
+    role granted to somebody covers every device they speak from.
+  */
+  const persons = () => session.backendPorts()?.persons ?? SELF_PERSONS;
+  const personOf = async (did: string): Promise<string> => (await persons().personOf(did)) ?? did;
+
+  createEffect(() => {
+    const did = session.me()?.did;
+    if (!did) return setMePerson(null);
+    void personOf(did).then((person) => {
+      if (session.me()?.did === did) setMePerson(person);
+    });
+  });
+  createEffect(() => {
+    const author = currentSpace()?.author;
+    if (!author) return setAuthorPerson(null);
+    void personOf(author).then((person) => {
+      if (currentSpace()?.author === author) setAuthorPerson(person);
+    });
+  });
+
+  async function reloadRoles(): Promise<void> {
+    const dataset = datasetStore.currentDataset()?.handle;
+    const uuid = datasetStore.currentDataset()?.id;
+    if (!dataset || !datasetStore.isWeSpace()) {
+      setRoleRows([]);
+      setGrantRows([]);
+      setRolesLoaded(true);
+      return;
+    }
+    try {
+      const [roles, grants] = await Promise.all([Role.findAll(dataset), RoleGrant.findAll(dataset)]);
+      if (datasetStore.currentDataset()?.id !== uuid) return;
+      setRoleRows(roles.map((r) => ({ id: r.id, slug: r.slug, name: r.name, description: r.description })));
+      setGrantRows(grants.map((g) => ({ id: g.id, role: g.role, agent: g.agent })));
+    } catch (error) {
+      console.warn('SpaceStore: could not read the space’s roles', error);
+    } finally {
+      if (datasetStore.currentDataset()?.id === uuid) setRolesLoaded(true);
+    }
+  }
+
+  createEffect(() => {
+    const dataset = datasetStore.currentDataset()?.handle;
+    const weSpace = datasetStore.isWeSpace();
+    let stopped = false;
+    const watches: { dispose(): void }[] = [];
+    onCleanup(() => {
+      stopped = true;
+      for (const watch of watches) watch.dispose();
+    });
+    setRoleRows([]);
+    setGrantRows([]);
+    setRolesLoaded(false);
+    void (async () => {
+      const schemas = session.backendPorts()?.schemas;
+      if (dataset && weSpace && schemas) {
+        // A space made before roles existed has neither entity installed; `ensure` is the diff-first
+        // install `loadInvolvementTypes` uses.
+        for (const Model of [Role, RoleGrant]) await schemas.ensure(dataset, Model as never).catch(() => undefined);
+      }
+      await untrack(reloadRoles);
+      if (stopped || !dataset || !weSpace) return;
+      for (const Model of [Role, RoleGrant]) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const watch = (Model as any).query(dataset, {}) as
+          { subscribe(cb: () => void): Promise<unknown>; dispose(): void } | undefined;
+        if (!watch) continue;
+        watches.push(watch);
+        watch
+          .subscribe(() => void (!stopped && reloadRoles()))
+          .catch((error: unknown) => console.warn('SpaceStore: could not watch the space’s roles', error));
+      }
+    })();
+  });
+
+  const myRoles = createMemo<string[]>(() => rolesOf(roleViews(), mePerson() ?? session.me()?.did));
+  const memberRoles = createMemo<Record<string, string[]>>(() => rolesByPerson(roleViews()));
+
+  /** The `admin` role, when the space has none yet, and its creator's grant of it — see `Role`. */
+  async function writeAdminGrant(dataset: DatasetProxy): Promise<void> {
+    const me = session.me()?.did;
+    if (!me) return;
+    const existing = (await Role.findAll(dataset, { where: { slug: ADMIN_ROLE } }).catch(() => [])) as Role[];
+    if (!existing.length) await Role.create(dataset, { ...ADMIN_ROLE_RECORD });
+    await RoleGrant.create(dataset, { role: ADMIN_ROLE, agent: await personOf(me) });
+  }
+
+  /** The open space's dataset, for a change only whoever administers it may make. Throws otherwise. */
+  function administeredDataset(what: string): DatasetProxy {
+    const p = datasetStore.currentDataset()?.handle;
+    if (!p) throw new Error('No space is open');
+    if (!canAdministerCurrentSpace()) throw new Error(`Only whoever administers this space can ${what}`);
+    return p;
+  }
+
+  async function createRole(config: { name: string; description?: string }): Promise<void> {
+    const name = config?.name?.trim();
+    if (!name) return;
+    const p = administeredDataset('name its roles');
+    const slug = deriveSlug(name);
+    if (!slug) return;
+    if (roleViews().some((role) => role.slug === slug && role.id)) {
+      toastService.error(`A role called "${name}" already exists`);
+      return;
+    }
+    await Role.create(p, { slug, name, description: config.description?.trim() ?? '' });
+    await reloadRoles();
+  }
+
+  async function updateRole(slug: string, updates: { name?: string; description?: string }): Promise<void> {
+    const p = administeredDataset('change its roles');
+    const record = ((await Role.findAll(p, { where: { slug } }).catch(() => [])) as Role[])[0];
+    if (!record) return;
+    if (updates?.name !== undefined && updates.name.trim()) record.name = updates.name.trim();
+    if (updates?.description !== undefined) record.description = updates.description.trim();
+    await record.save();
+    await reloadRoles();
+  }
+
+  async function grantRole(slug: string, agent: string): Promise<void> {
+    if (!slug || !agent) return;
+    const p = administeredDataset('give its roles');
+    const person = await personOf(agent);
+    if (
+      roleViews()
+        .find((role) => role.slug === slug)
+        ?.holders.includes(person)
+    )
+      return;
+    await RoleGrant.create(p, { role: slug, agent: person });
+    await reloadRoles();
+  }
+
+  async function revokeRole(slug: string, agent: string): Promise<void> {
+    if (!slug || !agent) return;
+    const p = administeredDataset('take its roles away');
+    const person = await personOf(agent);
+    const refused = cannotRevoke(roleViews(), slug, person);
+    if (refused) {
+      toastService.error(refused);
+      return;
+    }
+    for (const grant of grantRows().filter((g) => g.role === slug && g.agent === person)) {
+      await RoleGrant.delete(p, grant.id);
+    }
+    await reloadRoles();
+  }
+
   /** The record behind a kind, by slug — or null when there is none. See `taskStateRecord`. */
   async function involvementTypeRecord(p: DatasetProxy, slug: string): Promise<InvolvementType | null> {
     const existing = (await InvolvementType.findAll(p, { where: { slug } }).catch(() => [])) as InvolvementType[];
@@ -5891,6 +6110,14 @@ export function SpaceStoreProvider(props: ParentProps) {
     openRecordRef,
     canAdministerSpace,
     canAdministerCurrentSpace,
+    roles: roleViews,
+    myRoles,
+    memberRoles,
+    rolesLoaded,
+    createRole,
+    updateRole,
+    grantRole,
+    revokeRole,
     copyShareLink,
     copyGuestLink,
     exportCallTranscript,

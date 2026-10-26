@@ -839,7 +839,7 @@ describe('what the stores actually wrote', () => {
 
   it('gives a new space its collection, and writes the starter under it', async () => {
     /*
-      The space collection is the host's and is made whatever the starter says; the canvas, its role
+      The space collection is the host's and is made whatever the starter says; the canvas, its landmark
       and the settings are the starter's. Both halves are written at the create press, and nothing on
       screen says when either is missing — a space simply arrives without its canvas.
     */
@@ -910,6 +910,61 @@ describe('what the stores actually wrote', () => {
     await writeSpaceLandmark(ref.handle as never, space.id, 'board', board.id);
 
     await vi.waitFor(() => expect(stores.spaces.landmarks().board).toBe(board.id));
+  }, 10000);
+
+  it('makes the creator of a space its admin, and lets an admin give and take back a role', async () => {
+    /*
+      The admin role is the host's, written at the create press like the space collection: a shared
+      space must always have somebody who administers it. Every other role is the community's.
+    */
+    const stores = mountShell();
+    await ready(stores);
+    const me = stores.session.me()?.did ?? '';
+
+    await stores.spaces.createSpace('Stewarded', 'x', 'personal', 'hidden');
+    const ref = (await lifecycle.list()).find((d) => d.name === 'Stewarded')!;
+    await stores.datasets.switchDataset(ref.id);
+    await vi.waitFor(() => expect(stores.spaces.roles().map((r) => [r.slug, r.holders])).toEqual([['admin', [me]]]));
+    expect(stores.spaces.myRoles()).toEqual(['admin']);
+
+    await stores.spaces.createRole({ name: 'Moderator', description: 'Looks after posts' });
+    await stores.spaces.grantRole('moderator', 'did:test:ben');
+    await vi.waitFor(() => expect(stores.spaces.memberRoles()['did:test:ben']).toEqual(['moderator']));
+    expect(stores.spaces.roles().find((r) => r.slug === 'moderator')).toMatchObject({
+      name: 'Moderator',
+      description: 'Looks after posts',
+    });
+
+    // The last admin keeps the role: somebody else has to be made one first.
+    await stores.spaces.revokeRole('admin', me);
+    expect(stores.spaces.myRoles()).toEqual(['admin']);
+
+    await stores.spaces.revokeRole('moderator', 'did:test:ben');
+    await vi.waitFor(() => expect(stores.spaces.memberRoles()['did:test:ben']).toBeUndefined());
+  }, 10000);
+
+  it('answers who administers a shared space from its roles, not from who made it', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    const me = stores.session.me()?.did ?? '';
+
+    await stores.spaces.createSpace('Handed On', 'x', 'shared', 'hidden');
+    await vi.waitFor(() =>
+      expect(stores.spaces.spaceList().find((s) => s.name === 'Handed On')).toMatchObject({ kind: 'shared' }),
+    );
+    const ref = (await lifecycle.list()).find((d) => d.name === 'Handed On')!;
+    await stores.datasets.switchDataset(ref.id);
+    await vi.waitFor(() => expect(stores.spaces.myRoles()).toEqual(['admin']));
+    expect(stores.spaces.canAdministerCurrentSpace()).toBe(true);
+
+    // Hand the space on: another admin first, then step down.
+    await stores.spaces.grantRole('admin', 'did:test:ben');
+    await stores.spaces.revokeRole('admin', me);
+    await vi.waitFor(() => expect(stores.spaces.myRoles()).toEqual([]));
+
+    // Having made the space is no way back in while somebody holds the role.
+    expect(stores.spaces.canAdministerCurrentSpace()).toBe(false);
+    await expect(stores.spaces.grantRole('admin', me)).rejects.toThrow(/administers/);
   }, 10000);
 
   it('persists sidebar order as settings, not just as store state', async () => {
@@ -1550,18 +1605,11 @@ describe('what a collection extracts', () => {
     const root = stores.spaces.root();
     const call = await CollectionBlock.create(handle, { kind: 'call', mode: 'feed', autoExtract: true } as never);
 
-    // Somebody else's shared space: its author is who administers it. Rewritten in place — no write
-    // path lets one agent sign as another.
-    const space = stores.spaces.currentSpace()!;
-    const row = (handle as unknown as { tables: Record<string, { id: string; author?: string }[]> }).tables.Space.find(
-      (r) => r.id === space.id,
-    )!;
-    row.author = 'did:test:somebody-else';
-    // And the store's own copy of the space list, which is re-read only when the datasets change —
-    // the state a member who joined somebody else's space starts in.
-    const listed = stores.spaces.mySpaces().find((s) => s.id === space.id) as unknown as { author: string };
-    listed.author = 'did:test:somebody-else';
-    expect(stores.spaces.canAdministerCurrentSpace()).toBe(false);
+    // A space somebody else administers: they hold its admin role, and this agent no longer does.
+    await vi.waitFor(() => expect(stores.spaces.myRoles()).toEqual(['admin']));
+    await stores.spaces.grantRole('admin', 'did:test:somebody-else');
+    await stores.spaces.revokeRole('admin', stores.session.me()?.did ?? '');
+    await vi.waitFor(() => expect(stores.spaces.canAdministerCurrentSpace()).toBe(false));
 
     expect(stores.spaces.canSetExtractionFor(root)).toBe(false);
     expect(stores.spaces.canSetExtractionFor(call.id)).toBe(true);

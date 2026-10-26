@@ -2722,6 +2722,17 @@ RelationshipType extends WeNode:
   - directed: boolean = true [we://directed]
   - schemaVersion: number = 1 [we://schema_version]
 
+Role extends Ad4mModel:
+  Fields:
+  - slug: string [we://slug]
+  - name: string (required) [we://name]
+  - description: string [we://description]
+
+RoleGrant extends Ad4mModel:
+  Fields:
+  - role: string (required) [we://granted_role]
+  - agent: string (required) [we://granted_to]
+
 Shape extends WeNode:
   Fields:
   - name: string (required) [we://name]
@@ -3465,6 +3476,10 @@ SpaceStore:
   - involvementTypes: { id, name, slug, semantic, reflexive, appliesTo, icon, color, retired }[] — the kinds of part a person can have in a record: "Assigned" and "Reviewing" on a task, "Going", "Maybe" and "Not going" on an event, plus whatever this community has named: its InvolvementType records, which a new space’s starter writes. `slug` is what Involvement.kind holds. `semantic` is the closed meaning underneath the name — responsible, reviewing, committed, interested, declined — so a board still finds the assignee after "Assigned" is renamed. `reflexive` kinds are an agent’s own answer, which nobody else may give, and an agent holds one per record. `appliesTo` is the entity names the kind is offered on, empty for all — filter with `'TaskBlock' in kind.appliesTo || !count(kind.appliesTo)`. Includes withdrawn kinds; offer offeredInvolvementTypes. Read who holds them through the `involvement` host function
   - offeredInvolvementTypes: { id, name, slug, semantic, reflexive, appliesTo, icon, color, retired }[] — the same list without the withdrawn ones. What an assign menu or an RSVP control should offer
   - involvementTypesLoaded: boolean — the space has been asked for its kinds of involvement
+  - roles: { id, slug, name, description, holders }[] — the standings people hold across this space, admin first: its Role records, with `holders` the people granted each. Not the same thing as an involvement kind, which is a part in one record; a role is a part in the space. `slug` is what a grant and a rule name it by. `admin` is the role administering the space takes. A role a grant names that no record describes is listed under its slug, so nobody's standing is hidden
+  - myRoles: string[] — the slugs of the roles the viewer holds here: `'moderator' in spaceStore.myRoles`
+  - memberRoles: Record<did, string[]> — by person, the slugs of the roles they hold, for a badge beside a member: `spaceStore.memberRoles[member.did] ?? []`. A person here is who a member speaks for, so a member on two devices holds one set of roles
+  - rolesLoaded: boolean — the space has been asked for its roles. An empty `roles` before then is not yet an answer
   - templateOverrideOptions: { label, value }[] — options for the per-space template override picker: "Use the space’s default" (space-default), "Use my default" (agent-default), then every template. Each of the first two names what it resolves to. Pre-built because a schema can map a store array into options but cannot prepend one, and without those entries overriding would be one-way
   - themeOverrideOptions: { label, value }[] — the same, for themes
   - spaceThemePinned: boolean — this agent has pinned a theme for the space on screen that differs from what would otherwise apply, so there is something for a reset to undo. False outside a space, and false for a pin that happens to name what the space resolves to anyway. Gate a "pinned here / reset" affordance on it rather than on the pin merely existing
@@ -3566,7 +3581,11 @@ SpaceStore:
   - withdrawSignal(nodeId: string, signalTypeId: string): takes back this agent's reaction of one type on one record. The named form of `upsertSignal(node, type, null)`, for a control that only clears
   - navigateToSpace(spaceId: string, view?: string): navigates to a space — accepts a dataset id or a shared id (sharedUrl without its scheme prefix); pre-loads space templates before switching so the template and data arrive together
   - openRecordRef(ref: string): goes to whatever a record reference names — the space, and the record's own page within it. Takes the whole `we:…` reference rather than its parts, so nothing outside the host restates where a record's page lives. A reference naming only a dataset opens the space; a relative one (`we:./…`) resolves against the space on screen; a person has no page, so nothing happens
-  - canAdministerSpace(uuid: string): whether this agent may change what every member of that space sees — true for a personal space, and for a shared one they authored. A UI affordance for deciding whether to offer the controls, NOT enforcement: a shared space is a neighbourhood every member can write to. Ask by name rather than comparing author to me.did, so the answer can grow (multiple admins, roles) without every template changing
+  - canAdministerSpace(uuid: string): whether this agent may change what every member of that space sees — true for a personal space; for the shared space on screen, for whoever holds its `admin` role (its author, while nobody does); for any other shared space, for its author, since its roles are read once it is open. A UI affordance for deciding whether to offer the controls, NOT enforcement: a shared space is a neighbourhood every member can write to. Ask by name rather than comparing author to me.did, so the answer follows the space’s roles without every template changing
+  - createRole(config: { name, description? }): names a role this community holds — "Moderator", "Steward". Its slug is derived from the name and fixed: grants and rules hold it. A name already used is refused, in a toast. Only whoever administers the space; rejects otherwise
+  - updateRole(slug: string, updates: { name?, description? }): renames a role or changes what it says it means; the slug stays. Only whoever administers the space
+  - grantRole(slug: string, agent: string): gives a member the role. Holding it already changes nothing. Only whoever administers the space; rejects otherwise
+  - revokeRole(slug: string, agent: string): takes the role from a member. The last admin cannot lose `admin` — somebody else has to be made one first — and is told so in a toast. Only whoever administers the space
   - copyShareLink(uuid: string): copies that space's share link to the clipboard, with a toast either way. No-op for a personal space, which has no global id and so no shareable link — read `spaceList[].shareLink` to decide whether to offer the control at all
   - copyGuestLink(uuid: string): copies that space's guest invite link — a URL that creates an account on the space's host and joins, with no sign-up and no download. Empty, and the control hidden, unless BOTH this app's origin and the node's URL are addresses a recipient could reach: a loopback address on either half resolves to the reader's own machine. Read `spaceList[].guestLink` to decide whether to offer it; `shareLink` is the one for somebody who already has WE
   - exportCallTranscript(callId: string): writes the call's transcript to a .txt file (one line per utterance: name, timestamp, text) and downloads it. Read-only and client-side — it reads the shared record and writes to the caller's own device

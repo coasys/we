@@ -261,6 +261,17 @@ export interface RelationshipTypeRecord extends WeNodeRecord {
   schemaVersion: number;
 }
 
+export interface RoleRecord extends RecordInstance {
+  slug: string;
+  name: string;
+  description: string;
+}
+
+export interface RoleGrantRecord extends RecordInstance {
+  role: string;
+  agent: string;
+}
+
 export interface ShapeRecord extends WeNodeRecord {
   name: string;
   description: string;

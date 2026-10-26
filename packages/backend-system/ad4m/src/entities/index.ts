@@ -30,6 +30,8 @@ export * from './Placement';
 export * from './ReadMarker';
 export * from './Relationship';
 export * from './RelationshipType';
+export * from './Role';
+export * from './RoleGrant';
 export * from './Shape';
 export * from './Signal';
 export * from './SignalType';
