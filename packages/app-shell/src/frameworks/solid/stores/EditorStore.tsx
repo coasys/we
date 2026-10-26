@@ -1076,6 +1076,7 @@ export function EditorStoreProvider(props: ParentProps) {
       turns: buildTurns(text, prepared.sent),
       tools: prepared.tools,
       resolveTool: prepared.resolveTool,
+      patchTool: prepared.patchTool,
       schema: modelTree.schema,
       mint: modelTree.mint,
       uses: modelTree.uses,
