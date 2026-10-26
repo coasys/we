@@ -139,41 +139,6 @@
                                     "children": ["Spaces"]
                                   }
                                 ]
-                              },
-                              {
-                                "type": "$if",
-                                "props": {
-                                  "condition": { "$": "local.expanded" },
-                                  "then": {
-                                    "type": "DropdownMenu",
-                                    "props": {
-                                      "triggerIcon": "plus",
-                                      "triggerVariant": "ghost",
-                                      "triggerTitle": "Add a space",
-                                      "size": "sm",
-                                      "itemSize": "sm",
-                                      "placement": "right-start",
-                                      "items": [
-                                        { "id": "create", "label": "Create a space", "icon": "plus" },
-                                        { "id": "join", "label": "Join a space", "icon": "link" }
-                                      ],
-                                      "onSelect": [
-                                        {
-                                          "$if": {
-                                            "condition": { "$": "arg.id == 'create'" },
-                                            "then": { "$invoke": "shellStore.setCreateSpaceOpen", "args": [true] }
-                                          }
-                                        },
-                                        {
-                                          "$if": {
-                                            "condition": { "$": "arg.id == 'join'" },
-                                            "then": { "$invoke": "shellStore.setJoinSpaceOpen", "args": [true] }
-                                          }
-                                        }
-                                      ]
-                                    }
-                                  }
-                                }
                               }
                             ]
                           },
@@ -192,145 +157,230 @@
                             },
                             "children": [
                               {
-                                "type": "we-sortable",
-                                "props": {
-                                  "direction": "vertical",
-                                  "gap": "var(--we-space-200)",
-                                  "width": "100%",
-                                  "onReorder": {
-                                    "$invoke": "datasetStore.reorderDatasets",
-                                    "args": [{ "$": "arg.detail" }]
-                                  }
-                                },
+                                "type": "Column",
+                                "props": { "width": "100%", "gap": "200" },
                                 "children": [
                                   {
-                                    "type": "$each",
-                                    "props": { "items": { "$": "spaceStore.orderedSidebarItems" }, "as": "space" },
+                                    "type": "we-sortable",
+                                    "props": {
+                                      "direction": "vertical",
+                                      "gap": "var(--we-space-200)",
+                                      "width": "100%",
+                                      "onReorder": {
+                                        "$invoke": "datasetStore.reorderDatasets",
+                                        "args": [{ "$": "arg.detail" }]
+                                      }
+                                    },
                                     "children": [
                                       {
-                                        "type": "div",
-                                        "props": { "data-we-id": { "$": "space.uuid" }, "style": { "width": "100%" } },
+                                        "type": "$each",
+                                        "props": { "items": { "$": "spaceStore.orderedSidebarItems" }, "as": "space" },
                                         "children": [
                                           {
-                                            "type": "we-button",
+                                            "type": "div",
                                             "props": {
-                                              "variant": "ghost",
-                                              "size": "lg",
-                                              "width": "100%",
-                                              "height": "auto",
-                                              "ax": "start",
-                                              "ay": "center",
-                                              "gap": "300",
-                                              "p": "300",
-                                              "onClick": [
-                                                { "$invoke": "shellStore.closeShellView" },
-                                                {
-                                                  "$invoke": "spaceStore.navigateToSpace",
-                                                  "args": [{ "$": "space.spaceId" }]
-                                                }
-                                              ],
-                                              "bg": {
-                                                "$": "(space.spaceId == routeStore.segments[1] && !shellStore.activeShellView) ? 'accent-soft' : ''"
-                                              },
-                                              "color": {
-                                                "$": "(space.spaceId == routeStore.segments[1] && !shellStore.activeShellView) ? 'accent-text' : 'text-muted'"
-                                              },
-                                              "hoverProps": {
-                                                "$": "(space.spaceId == routeStore.segments[1] && !shellStore.activeShellView) ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-hover', color: 'text' }"
-                                              },
-                                              "activeProps": {
-                                                "$": "(space.spaceId == routeStore.segments[1] && !shellStore.activeShellView) ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-active', color: 'text' }"
-                                              }
+                                              "data-we-id": { "$": "space.uuid" },
+                                              "style": { "width": "100%" }
                                             },
                                             "children": [
                                               {
-                                                "type": "$if",
+                                                "type": "we-button",
                                                 "props": {
-                                                  "condition": {
-                                                    "$": "modules.call.active && `neighbourhood://${space.spaceId}` == modules.call.callSpace.uri"
+                                                  "variant": "ghost",
+                                                  "size": "lg",
+                                                  "width": "100%",
+                                                  "height": "auto",
+                                                  "ax": "start",
+                                                  "ay": "center",
+                                                  "gap": "300",
+                                                  "p": "300",
+                                                  "onClick": [
+                                                    { "$invoke": "shellStore.closeShellView" },
+                                                    {
+                                                      "$invoke": "spaceStore.navigateToSpace",
+                                                      "args": [{ "$": "space.spaceId" }]
+                                                    }
+                                                  ],
+                                                  "bg": {
+                                                    "$": "(space.spaceId == routeStore.segments[1] && !shellStore.activeShellView) ? 'accent-soft' : ''"
                                                   },
-                                                  "then": {
-                                                    "type": "Column",
+                                                  "color": {
+                                                    "$": "(space.spaceId == routeStore.segments[1] && !shellStore.activeShellView) ? 'accent-text' : 'text-muted'"
+                                                  },
+                                                  "hoverProps": {
+                                                    "$": "(space.spaceId == routeStore.segments[1] && !shellStore.activeShellView) ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-hover', color: 'text' }"
+                                                  },
+                                                  "activeProps": {
+                                                    "$": "(space.spaceId == routeStore.segments[1] && !shellStore.activeShellView) ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-active', color: 'text' }"
+                                                  }
+                                                },
+                                                "children": [
+                                                  {
+                                                    "type": "$if",
                                                     "props": {
-                                                      "position": "relative",
-                                                      "flex": "0 0 auto",
-                                                      "flexShrink": "0"
-                                                    },
-                                                    "children": [
-                                                      {
+                                                      "condition": {
+                                                        "$": "modules.call.active && `neighbourhood://${space.spaceId}` == modules.call.callSpace.uri"
+                                                      },
+                                                      "then": {
+                                                        "type": "Column",
+                                                        "props": {
+                                                          "position": "relative",
+                                                          "flex": "0 0 auto",
+                                                          "flexShrink": "0"
+                                                        },
+                                                        "children": [
+                                                          {
+                                                            "type": "we-avatar",
+                                                            "props": {
+                                                              "image": { "$": "space.avatar" },
+                                                              "initials": { "$": "space.name" },
+                                                              "hash": { "$": "space.uuid" },
+                                                              "size": "sm",
+                                                              "ringColor": "success",
+                                                              "ringWidth": "2.5px"
+                                                            }
+                                                          },
+                                                          {
+                                                            "type": "Column",
+                                                            "props": {
+                                                              "position": "absolute",
+                                                              "bottom": "calc(var(--we-avatar-size-sm) * -0.1348)",
+                                                              "right": "calc(var(--we-avatar-size-sm) * -0.1348)",
+                                                              "bg": "var(--we-role-success)",
+                                                              "r": "full",
+                                                              "p": "calc(var(--we-avatar-size-sm) * 0.125)",
+                                                              "ax": "center",
+                                                              "ay": "center"
+                                                            },
+                                                            "children": [
+                                                              {
+                                                                "type": "we-icon",
+                                                                "props": {
+                                                                  "name": "phone-call",
+                                                                  "size": "calc(var(--we-avatar-size-sm) * 0.3125)",
+                                                                  "color": "on-success"
+                                                                }
+                                                              }
+                                                            ]
+                                                          }
+                                                        ]
+                                                      },
+                                                      "else": {
                                                         "type": "we-avatar",
                                                         "props": {
                                                           "image": { "$": "space.avatar" },
                                                           "initials": { "$": "space.name" },
                                                           "hash": { "$": "space.uuid" },
                                                           "size": "sm",
-                                                          "ringColor": "success",
-                                                          "ringWidth": "2.5px"
+                                                          "flexShrink": "0"
                                                         }
-                                                      },
-                                                      {
-                                                        "type": "Column",
-                                                        "props": {
-                                                          "position": "absolute",
-                                                          "bottom": "calc(var(--we-avatar-size-sm) * -0.1348)",
-                                                          "right": "calc(var(--we-avatar-size-sm) * -0.1348)",
-                                                          "bg": "var(--we-role-success)",
-                                                          "r": "full",
-                                                          "p": "calc(var(--we-avatar-size-sm) * 0.125)",
-                                                          "ax": "center",
-                                                          "ay": "center"
-                                                        },
+                                                      }
+                                                    }
+                                                  },
+                                                  {
+                                                    "type": "$if",
+                                                    "props": {
+                                                      "condition": { "$": "local.expanded" },
+                                                      "enterTransition": [
+                                                        { "type": "reveal", "axis": "inline", "duration": 250 },
+                                                        { "type": "fade", "duration": 150 }
+                                                      ],
+                                                      "exitTransition": [
+                                                        { "type": "reveal", "axis": "inline", "duration": 250 },
+                                                        { "type": "fade", "duration": 150 }
+                                                      ],
+                                                      "then": {
+                                                        "type": "Row",
+                                                        "props": { "gap": "200", "ay": "center", "minWidth": "0" },
                                                         "children": [
                                                           {
-                                                            "type": "we-icon",
-                                                            "props": {
-                                                              "name": "phone-call",
-                                                              "size": "calc(var(--we-avatar-size-sm) * 0.3125)",
-                                                              "color": "on-success"
-                                                            }
+                                                            "type": "we-text",
+                                                            "props": { "truncate": true, "fontSize": "300" },
+                                                            "children": [{ "$": "space.name" }]
                                                           }
                                                         ]
                                                       }
-                                                    ]
-                                                  },
-                                                  "else": {
-                                                    "type": "we-avatar",
-                                                    "props": {
-                                                      "image": { "$": "space.avatar" },
-                                                      "initials": { "$": "space.name" },
-                                                      "hash": { "$": "space.uuid" },
-                                                      "size": "sm",
-                                                      "flexShrink": "0"
                                                     }
                                                   }
-                                                }
-                                              },
-                                              {
-                                                "type": "$if",
-                                                "props": {
-                                                  "condition": { "$": "local.expanded" },
-                                                  "enterTransition": [
-                                                    { "type": "reveal", "axis": "inline", "duration": 250 },
-                                                    { "type": "fade", "duration": 150 }
-                                                  ],
-                                                  "exitTransition": [
-                                                    { "type": "reveal", "axis": "inline", "duration": 250 },
-                                                    { "type": "fade", "duration": 150 }
-                                                  ],
-                                                  "then": {
-                                                    "type": "Row",
-                                                    "props": { "gap": "200", "ay": "center", "minWidth": "0" },
-                                                    "children": [
-                                                      {
-                                                        "type": "we-text",
-                                                        "props": { "truncate": true, "fontSize": "300" },
-                                                        "children": [{ "$": "space.name" }]
-                                                      }
-                                                    ]
-                                                  }
-                                                }
+                                                ]
                                               }
                                             ]
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "DropdownMenu",
+                                    "props": {
+                                      "placement": "right-start",
+                                      "itemSize": "sm",
+                                      "items": [
+                                        { "id": "create", "label": "Create a space", "icon": "plus" },
+                                        { "id": "join", "label": "Join a space", "icon": "link" }
+                                      ],
+                                      "onSelect": [
+                                        {
+                                          "$if": {
+                                            "condition": { "$": "arg.id == 'create'" },
+                                            "then": { "$invoke": "shellStore.setCreateSpaceOpen", "args": [true] }
+                                          }
+                                        },
+                                        {
+                                          "$if": {
+                                            "condition": { "$": "arg.id == 'join'" },
+                                            "then": { "$invoke": "shellStore.setJoinSpaceOpen", "args": [true] }
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    "children": [
+                                      {
+                                        "type": "we-button",
+                                        "props": {
+                                          "variant": "ghost",
+                                          "size": "lg",
+                                          "width": "100%",
+                                          "height": "auto",
+                                          "ax": "start",
+                                          "ay": "center",
+                                          "gap": "300",
+                                          "p": "300",
+                                          "bg": { "$": "false ? 'accent-soft' : ''" },
+                                          "color": { "$": "false ? 'accent-text' : 'text-muted'" },
+                                          "hoverProps": {
+                                            "$": "false ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-hover', color: 'text' }"
+                                          },
+                                          "activeProps": {
+                                            "$": "false ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-active', color: 'text' }"
+                                          }
+                                        },
+                                        "children": [
+                                          { "type": "we-icon", "props": { "name": "plus", "flexShrink": "0" } },
+                                          {
+                                            "type": "$if",
+                                            "props": {
+                                              "condition": { "$": "local.expanded" },
+                                              "enterTransition": [
+                                                { "type": "reveal", "axis": "inline", "duration": 250 },
+                                                { "type": "fade", "duration": 150 }
+                                              ],
+                                              "exitTransition": [
+                                                { "type": "reveal", "axis": "inline", "duration": 250 },
+                                                { "type": "fade", "duration": 150 }
+                                              ],
+                                              "then": {
+                                                "type": "Row",
+                                                "props": { "gap": "200", "ay": "center", "minWidth": "0" },
+                                                "children": [
+                                                  {
+                                                    "type": "we-text",
+                                                    "props": { "truncate": true, "fontSize": "300" },
+                                                    "children": ["Add a space"]
+                                                  }
+                                                ]
+                                              }
+                                            }
                                           }
                                         ]
                                       }

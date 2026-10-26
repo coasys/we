@@ -5,7 +5,7 @@ import { confirmModal, railGroup, railItem, railShell } from '@we/template-kit';
  * The Coasys app: the chrome around every space.
  *
  * One rail down the left, as Josh's design draws it: the Coasys mark, the spaces this device holds
- * with a + to create or join one, Settings, and at its foot the person — a menu for their profile,
+ * with a row beneath them to create or join one, Settings, and at its foot the person — a menu for their profile,
  * About Coasys and logging out. Settings is on the rail rather than in the menu, being one click
  * either way and always in sight there. Collapsed it is icons only at 72px, and it opens over the
  * page while the pointer is on it, so nothing beside it reflows.
@@ -74,6 +74,41 @@ const accountMenu: SchemaNode = {
   ],
 };
 
+/*
+  The way to a new space: a row at the foot of the spaces, offering to create one or join one.
+
+  A row rather than a + beside the "Spaces" heading, because the heading is only there while the
+  rail is open. Closed, the rail had no way to add a space at all — and on a first run, with no
+  spaces yet, nothing on it said spaces existed. A row is drawn either way, icon-only when closed.
+  One way, not two: the heading's + went when this arrived.
+*/
+const addSpace: SchemaNode = {
+  type: 'DropdownMenu',
+  props: {
+    placement: 'right-start',
+    itemSize: 'sm',
+    items: [
+      { id: 'create', label: 'Create a space', icon: 'plus' },
+      { id: 'join', label: 'Join a space', icon: 'link' },
+    ],
+    onSelect: [
+      {
+        $if: {
+          condition: { $: "arg.id == 'create'" },
+          then: { $invoke: 'shellStore.setCreateSpaceOpen', args: [true] },
+        },
+      },
+      {
+        $if: {
+          condition: { $: "arg.id == 'join'" },
+          then: { $invoke: 'shellStore.setJoinSpaceOpen', args: [true] },
+        },
+      },
+    ],
+  },
+  children: [railItem({ icon: 'plus', label: 'Add a space' })],
+};
+
 const rail: SchemaNode = railShell({
   collapsedWidth: COLLAPSED,
   expandedWidth: '256px',
@@ -129,35 +164,7 @@ const rail: SchemaNode = railShell({
       label: 'Spaces',
       reorderable: true,
       onReorder: { $invoke: 'datasetStore.reorderDatasets', args: [{ $: 'arg.detail' }] },
-      action: {
-        type: 'DropdownMenu',
-        props: {
-          triggerIcon: 'plus',
-          triggerVariant: 'ghost',
-          triggerTitle: 'Add a space',
-          size: 'sm',
-          itemSize: 'sm',
-          placement: 'right-start',
-          items: [
-            { id: 'create', label: 'Create a space', icon: 'plus' },
-            { id: 'join', label: 'Join a space', icon: 'link' },
-          ],
-          onSelect: [
-            {
-              $if: {
-                condition: { $: "arg.id == 'create'" },
-                then: { $invoke: 'shellStore.setCreateSpaceOpen', args: [true] },
-              },
-            },
-            {
-              $if: {
-                condition: { $: "arg.id == 'join'" },
-                then: { $invoke: 'shellStore.setJoinSpaceOpen', args: [true] },
-              },
-            },
-          ],
-        },
-      },
+      after: [addSpace],
       children: [
         {
           type: '$each',

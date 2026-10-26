@@ -82,3 +82,32 @@ describe('a rail group’s heading action', () => {
     expect(json).not.toContain('"we-tooltip"');
   });
 });
+
+/**
+ * Rows at the foot of a group — the spaces group's "Add a space".
+ *
+ * The two ways to place such a row both went wrong: inside `children` it sits in the `we-sortable`,
+ * where it can be dragged among the spaces and is reported as one; after the group it stays on
+ * screen when the group is folded. `after` is the place between.
+ */
+describe('rows after a rail group’s own', () => {
+  const add: Node = { type: 'we-button', props: { label: 'Add a space' } };
+  const row: Node = { type: 'div', props: { 'data-we-id': 's1' } };
+  /** What the group folds: the single child of its `$animate`. */
+  const folded = (group: Node) => (group.children?.[1] as Node).children?.[0] as Node;
+
+  it('follows the reorderable rows, outside the sortable', () => {
+    const body = folded(
+      railGroup({ id: 'spaces', label: 'Spaces', reorderable: true, children: [row], after: [add] }) as Node,
+    );
+
+    expect(body.children?.map((c) => c.type)).toEqual(['we-sortable', 'we-button']);
+    expect(body.children?.[0].children).toEqual([row]);
+  });
+
+  it('leaves a group without them as it was', () => {
+    expect(folded(railGroup({ id: 'spaces', label: 'Spaces', reorderable: true, children: [row] }) as Node).type).toBe(
+      'we-sortable',
+    );
+  });
+});

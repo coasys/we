@@ -560,6 +560,13 @@ export interface RailGroupOptions {
   reorderable?: boolean;
   /** Receives the reordered ids. Pass `$arg.detail`, which is where `we-sortable` puts them. */
   onReorder?: SchemaProp;
+  /**
+   * Rows below the group's own, folded away with them but never part of a `reorderable` set — an
+   * "Add a space" row at the foot of the spaces. Placed in `children` it could be dragged in among
+   * the spaces and would be reported as one; placed after the group it would stay put when the
+   * group is folded.
+   */
+  after?: SchemaNode[];
 }
 
 /**
@@ -606,6 +613,9 @@ export function railGroup(opts: RailGroupOptions): SchemaNode {
         children: opts.children,
       }
     : { type: 'Column', props: { width: '100%', gap: '200' }, children: opts.children };
+  const body: SchemaNode = opts.after?.length
+    ? { type: 'Column', props: { width: '100%', gap: '200' }, children: [items, ...opts.after] }
+    : items;
 
   return {
     type: 'Column',
@@ -703,7 +713,7 @@ export function railGroup(opts: RailGroupOptions): SchemaNode {
           enterTransition: revealBlock,
           exitTransition: revealBlock,
         },
-        children: [items],
+        children: [body],
       },
     ],
   };
