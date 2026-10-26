@@ -3,6 +3,19 @@ import { discardGuard, field } from '@we/template-kit';
 
 const close = { $invoke: 'shellStore.setCreateSpaceOpen', args: [false] };
 
+/** The sharing option the picker shows: the one chosen, or the store's default until somebody chooses. */
+const chosenSharing =
+  'find(spaceStore.sharingOptions, { value: local.sharing ? local.sharing : spaceStore.defaultSharing })';
+
+/**
+ * Forgets a server choice, for when the control it was made in goes away. A typed address that does
+ * not parse would otherwise keep `formValid()` false from a field nobody can see.
+ */
+const forgetServer = [
+  { $setLocal: 'server', value: '' },
+  { $setLocal: 'customServer', value: '' },
+];
+
 /**
  * Written out rather than through `formModal`, because this is the validating form — a `required`
  * rule on the name and a `$touch: '$all'` submit guard, which is deliberately a different shape
@@ -18,7 +31,9 @@ const guard = discardGuard({
     and a picker, so they are set from the first frame, and including them would make the guard fire
     on a form nobody has touched — which is the failure mode that teaches people to click through it.
   */
-  dirty: { $: 'local.name || local.description || local.avatar || local.coverImage || local.location' },
+  dirty: {
+    $: 'local.name || local.description || local.avatar || local.coverImage || local.location || local.customServer',
+  },
   close,
   title: 'Discard this space?',
   body: 'The name, description and images you have entered will be lost. The space has not been created yet.',
@@ -41,6 +56,28 @@ export const createSpaceModal = {
     coverImage: { type: 'file', initial: null },
     location: { type: 'object', initial: null },
     sharing: { type: 'string', initial: '' },
+    /*
+      Which server a server option syncs through: '' for the option's default, one of its servers,
+      or 'custom' for the address in `customServer`. Empty rather than the default copied in, for
+      the same reason as `sharing`: the options may not have loaded when the modal opens.
+    */
+    server: { type: 'string', initial: '' },
+    /*
+      Empty passes, so the rule only judges an address somebody typed; an empty one with 'custom'
+      chosen is refused at submit. `parseServerUrl` in the store is the full check — this pattern is
+      what can say so beside the field.
+    */
+    customServer: {
+      type: 'string',
+      initial: '',
+      validate: [
+        {
+          rule: 'pattern',
+          value: '^$|^https?://[^\\s/?#]+([/?#]\\S*)?$',
+          message: 'Enter an address starting with https:// or http://',
+        },
+      ],
+    },
     submitting: { type: 'boolean', initial: false },
     ...guard.localState,
   },
@@ -272,7 +309,12 @@ export const createSpaceModal = {
                   else: { $setLocal: 'access', value: 'personal' },
                 },
               },
-              { $if: { condition: { $: '!event.detail' }, then: { $setLocal: 'discovery', value: 'hidden' } } },
+              {
+                $if: {
+                  condition: { $: '!event.detail' },
+                  then: [{ $setLocal: 'discovery', value: 'hidden' }, ...forgetServer],
+                },
+              },
             ],
           },
         },
@@ -313,7 +355,7 @@ export const createSpaceModal = {
                   props: { variant: 'footnote', color: 'text-faint' },
                   children: [
                     {
-                      $: 'find(spaceStore.sharingOptions, { value: local.sharing ? local.sharing : spaceStore.defaultSharing }).description',
+                      $: `${chosenSharing}.description`,
                     },
                   ],
                 },
@@ -325,7 +367,78 @@ export const createSpaceModal = {
                 label: 'How this space syncs',
                 value: { $: 'local.sharing ? local.sharing : spaceStore.defaultSharing' },
                 options: { $: 'spaceStore.sharingOptions' },
-                onChange: { $setLocal: 'sharing', value: { $: 'event.detail' } },
+                onChange: [{ $setLocal: 'sharing', value: { $: 'event.detail' } }, ...forgetServer],
+              },
+            },
+          ],
+        },
+      },
+    },
+
+    /*
+      Which server a server option syncs through: the backend's suggestions, default first, or an
+      address typed in. Its own row rather than more entries in the picker above, because it is a
+      second question that only one kind of answer to the first one asks — and shown even when that
+      picker is not, for a deployment whose only option is a server.
+    */
+    {
+      type: '$if',
+      props: {
+        condition: { $: `local.access == 'shared' && count(${chosenSharing}.servers) > 0` },
+        then: {
+          type: 'Column',
+          props: { gap: '200' },
+          children: [
+            {
+              type: 'Column',
+              props: { gap: '100' },
+              children: [
+                {
+                  type: 'we-text',
+                  props: { variant: 'body', fontWeight: 'medium' },
+                  children: ['Link server'],
+                },
+                {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'text-faint' },
+                  children: ['Every member of the space syncs through this server.'],
+                },
+              ],
+            },
+            {
+              type: 'we-select',
+              props: {
+                label: 'Link server',
+                value: { $: `local.server ? local.server : first(${chosenSharing}.servers).value` },
+                options: { $: `${chosenSharing}.servers` },
+                onChange: { $setLocal: 'server', value: { $: 'event.detail' } },
+              },
+            },
+            {
+              type: '$if',
+              props: {
+                condition: { $: "local.server == 'custom'" },
+                then: {
+                  type: 'we-form-field',
+                  key: 'customServer',
+                  props: {
+                    label: 'Server address',
+                    error: {
+                      $: "touched('customServer') && !local.customServer ? 'Enter the server’s address' : error('customServer')",
+                    },
+                  },
+                  children: [
+                    {
+                      type: 'we-input',
+                      props: {
+                        type: 'url',
+                        placeholder: 'https://link.example.org',
+                        value: { $: 'local.customServer' },
+                        onInput: { $setLocal: 'customServer', value: { $: 'event.detail' } },
+                      },
+                    },
+                  ],
+                },
               },
             },
           ],
@@ -446,7 +559,8 @@ export const createSpaceModal = {
               { $setLocal: 'submitting', value: true },
               {
                 $if: {
-                  condition: { $: 'formValid()' },
+                  // A typed address is judged by its rule; 'custom' with nothing typed, here.
+                  condition: { $: "formValid() && (local.server != 'custom' || local.customServer)" },
                   then: {
                     $invoke: 'spaceStore.createSpace',
                     args: [
@@ -458,6 +572,7 @@ export const createSpaceModal = {
                       { $: 'local.coverImage' },
                       { $: 'local.location' },
                       { $: 'local.sharing' },
+                      { $: "local.server == 'custom' ? local.customServer : local.server" },
                     ],
                     onSuccess: [{ $invoke: 'shellStore.setCreateSpaceOpen', args: [false] }],
                     onFinally: [{ $setLocal: 'submitting', value: false }],

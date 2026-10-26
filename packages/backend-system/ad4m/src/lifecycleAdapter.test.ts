@@ -15,6 +15,9 @@ const OLD_SERVER = {
 };
 const UNDECLARED = { address: 'Qm-undeclared', name: 'legacy', params: null };
 
+const PRODUCTION = 'https://link.ad4m.dev';
+const STAGING = 'https://link-staging.ad4m.dev';
+
 type Template = { address: string; name: string; params: string[] | null };
 
 function mockClient(templates: Template[]) {
@@ -61,18 +64,14 @@ describe('sharingOptions', () => {
     ]);
   });
 
-  it('offers a current server build with no link server configured, naming no host', async () => {
-    // The bundle carries its own default server, which the backend cannot read.
+  it('offers a current server build with no link server configured, with AD4M’s servers', async () => {
     const client = mockClient([HOLOCHAIN, SERVER]);
     const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
 
-    const options = await lifecycle.sharingOptions?.();
-
-    expect(options).toEqual([
+    expect(await lifecycle.sharingOptions?.()).toEqual([
       { id: HOLOCHAIN.address, name: HOLOCHAIN.name, kind: 'peer-to-peer' },
-      { id: SERVER.address, name: SERVER.name, kind: 'server' },
+      { id: SERVER.address, name: SERVER.name, kind: 'server', servers: [PRODUCTION, STAGING] },
     ]);
-    expect(options?.[1]).not.toHaveProperty('serverUrl', expect.anything());
   });
 
   it('offers it once a link server is configured, after the peer-to-peer templates', async () => {
@@ -85,8 +84,20 @@ describe('sharingOptions', () => {
 
     expect(await lifecycle.sharingOptions?.()).toEqual([
       { id: HOLOCHAIN.address, name: HOLOCHAIN.name, kind: 'peer-to-peer' },
-      { id: SERVER.address, name: SERVER.name, kind: 'server', serverUrl: 'https://links.example.org' },
+      {
+        id: SERVER.address,
+        name: SERVER.name,
+        kind: 'server',
+        servers: ['https://links.example.org', PRODUCTION, STAGING],
+      },
     ]);
+  });
+
+  it('lists a configured server that is one of AD4M’s once, as the default', async () => {
+    const client = mockClient([SERVER]);
+    const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient, { linkServerUrl: STAGING });
+
+    expect((await lifecycle.sharingOptions?.())?.[0].servers).toEqual([STAGING, PRODUCTION]);
   });
 
   it('keeps a template that declares no parameters', async () => {
@@ -136,13 +147,61 @@ describe('publish', () => {
     expect(first.UID).not.toBe(second.UID);
   });
 
-  it('leaves the server to the bundle when none is configured', async () => {
+  it('names the default server when none is configured or chosen', async () => {
     const client = mockClient([HOLOCHAIN, SERVER]);
     const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
 
     await lifecycle.publish?.('dataset-1', { sharing: SERVER.address });
 
-    expect(Object.keys(templateData(client))).toEqual(['UID']);
+    const data = templateData(client);
+    expect(Object.keys(data).sort()).toEqual(['SERVER_URL', 'UID']);
+    expect(data.SERVER_URL).toBe(PRODUCTION);
+  });
+
+  it.each([
+    ['the default', PRODUCTION],
+    ['staging', STAGING],
+    ['a custom server', 'https://links.example.org:8443/sync'],
+  ])('gives a server template the server chosen: %s', async (_name, server) => {
+    const client = mockClient([HOLOCHAIN, SERVER]);
+    const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
+
+    await lifecycle.publish?.('dataset-1', { sharing: SERVER.address, server });
+
+    expect(templateData(client).SERVER_URL).toBe(server);
+  });
+
+  it('prefers the server chosen over the configured one', async () => {
+    const client = mockClient([HOLOCHAIN, SERVER]);
+    const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient, {
+      linkServerUrl: 'https://links.example.org',
+    });
+
+    await lifecycle.publish?.('dataset-1', { sharing: SERVER.address, server: STAGING });
+
+    expect(templateData(client).SERVER_URL).toBe(STAGING);
+  });
+
+  it.each(['links.example.org', 'ftp://links.example.org', 'javascript:alert(1)', 'https://', 'not a url'])(
+    'refuses %s as a server, publishing nothing',
+    async (server) => {
+      const client = mockClient([HOLOCHAIN, SERVER]);
+      const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
+
+      await expect(lifecycle.publish?.('dataset-1', { sharing: SERVER.address, server })).rejects.toThrow(
+        /not an http\(s\) address/,
+      );
+      expect(client.languages.applyTemplateAndPublish).not.toHaveBeenCalled();
+    },
+  );
+
+  it('gives a Holochain template no server, whichever was chosen', async () => {
+    const client = mockClient([HOLOCHAIN, SERVER]);
+    const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
+
+    await lifecycle.publish?.('dataset-1', { sharing: HOLOCHAIN.address, server: STAGING });
+
+    expect(templateData(client)).not.toHaveProperty('SERVER_URL');
   });
 
   it('gives an old server build its room as ROOM_ID', async () => {

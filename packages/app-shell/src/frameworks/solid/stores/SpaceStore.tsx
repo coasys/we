@@ -134,7 +134,7 @@ import {
 } from '@shared/viewResolution';
 import { evidenceLabel, refusalWords } from '@shared/workflowViews';
 import type { AgentProfileSummary, DatasetRef, WorkflowView } from '@we/backend-shared';
-import { displayName, isPolicyRefusal, SELF_PERSONS, trace, validatePolicy } from '@we/backend-shared';
+import { displayName, isPolicyRefusal, parseServerUrl, SELF_PERSONS, trace, validatePolicy } from '@we/backend-shared';
 import type { ContentInput } from '@we/block-shared';
 import {
   contentHash,
@@ -293,9 +293,13 @@ export interface SpaceListEntry {
   shareError: string;
 }
 
-/** What sharing a space was asked for: the backend's sharing option, and the listing to write after. */
+/**
+ * What sharing a space was asked for: the backend's sharing option, the server it syncs through when
+ * that option uses one, and the listing to write after.
+ */
 interface ShareTask {
   sharing?: string;
+  server?: string;
   /** Set when the space is listed in global discovery — the images and place to list it with. */
   listing?: SpaceSyncOptions;
 }
@@ -723,12 +727,19 @@ export interface SpaceStore {
   enabledViewIds: Accessor<string[]>;
   /** The same list as a nav strip reads it — one source, so routes and nav cannot disagree. */
   viewNav: Accessor<{ id: string; segment: string; label: string; icon: string; path: string }[]>;
-  /** How a shared space can sync, as picker entries: label, icon and a description per template. */
+  /**
+   * How a shared space can sync, as picker entries: label, icon and a description per template, and
+   * for one syncing through a server, the servers to pick from.
+   */
   sharingOptions: Accessor<SharingPickerOption[]>;
   /** Address of the link language template publishing uses when none is chosen. */
   defaultSharing: Accessor<string>;
 
   // Actions
+  /**
+   * `server` is the http(s) address a server sharing option syncs through, '' or absent for its
+   * default. One that is not an http(s) address rejects before anything is created.
+   */
   createSpace: (
     name: string,
     description: string,
@@ -738,6 +749,7 @@ export interface SpaceStore {
     coverImageFile?: File,
     location?: LocationData | null,
     sharing?: string,
+    server?: string,
   ) => Promise<void>;
   /**
    * Share a space that is still local — what retries a share that failed. Uses the sharing option
@@ -1883,12 +1895,19 @@ export function SpaceStoreProvider(props: ParentProps) {
     coverImageFile?: File,
     location?: LocationData | null,
     sharing?: string,
+    server?: string,
   ): Promise<void> {
     const lifecycle = session.lifecycle();
     if (!lifecycle) return;
     setCreatingSpace(true);
 
     try {
+      // Sharing follows in the background, so a server it would refuse is caught here, before a
+      // space exists that could then only be left unshared.
+      if (access === 'shared' && server && !parseServerUrl(server)) {
+        throw new Error(`${server} is not an http(s) address.`);
+      }
+
       // Create the dataset
       const spaceRef = await lifecycle.create(name);
       const spaceHandle = spaceRef.handle as DatasetProxy;
@@ -1959,7 +1978,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       if (access === 'shared') {
         // The person waits for the local space only. Sharing talks to the network, and the
         // listing needs the address sharing mints, so both follow, reported on `spaceList`.
-        void share(spaceRecord, { sharing, listing });
+        void share(spaceRecord, { sharing, server, listing });
       } else if (listing) {
         await listInGlobal(spaceRecord, listing);
       }
@@ -1999,7 +2018,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     try {
       // A retry after a later step failed finds the dataset already published: keep its address.
       const sharedId =
-        (await lifecycle.get(uuid))?.sharedId ?? (await lifecycle.publish(uuid, { sharing: task.sharing })).sharedId;
+        (await lifecycle.get(uuid))?.sharedId ??
+        (await lifecycle.publish(uuid, { sharing: task.sharing, server: task.server })).sharedId;
       const ds = datasetStore.datasets().find((d) => d.id === uuid);
       if (ds) await Space.update(ds.handle, space.id, { url: sharedId });
       // Re-read rather than patching the ref: the handle it carries was minted before the publish,

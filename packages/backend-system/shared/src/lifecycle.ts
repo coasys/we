@@ -51,8 +51,28 @@ export interface SharingOption {
    * What a person choosing between options actually needs to know, so it is what a picker labels.
    */
   kind: 'peer-to-peer' | 'server';
-  /** The server it syncs through, for `kind: 'server'`. */
-  serverUrl?: string;
+  /**
+   * The servers it can sync through, for `kind: 'server'`, default first. A suggestion rather than
+   * a limit: `publish` takes any other http(s) server as well.
+   */
+  servers?: string[];
+}
+
+/**
+ * `url` trimmed, when it is an http(s) address `URL` can parse; null otherwise.
+ *
+ * A server named here is written into what a shared dataset syncs through, so anything else — a
+ * typo, a `javascript:` URL, a bare host — is refused before it is published rather than found out
+ * when the dataset never syncs.
+ */
+export function parseServerUrl(url: string): string | null {
+  const trimmed = url.trim();
+  try {
+    const { protocol, host } = new URL(trimmed);
+    return (protocol === 'https:' || protocol === 'http:') && host ? trimmed : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -73,9 +93,12 @@ export interface DatasetLifecyclePort {
   remove(id: string): Promise<void>;
   /**
    * Publish an existing local dataset for sharing. `sharing` chooses how it syncs, by the id of one
-   * of `sharingOptions`; omit it (or pass '') for the first of them.
+   * of `sharingOptions`; omit it (or pass '') for the first of them. `server` is where an option of
+   * `kind: 'server'` syncs — one of its `servers` or any other http(s) address, its first when
+   * omitted. A `server` that is not an http(s) address is refused whichever option it comes with;
+   * a peer-to-peer option ignores a good one.
    */
-  publish?(id: string, options?: { sharing?: string }): Promise<{ uri: string; sharedId: string }>;
+  publish?(id: string, options?: { sharing?: string; server?: string }): Promise<{ uri: string; sharedId: string }>;
   /**
    * Join a shared dataset. Accepts the backend's full URI or a bare shared id — normalization is
    * the adapter's dialect, not the caller's.

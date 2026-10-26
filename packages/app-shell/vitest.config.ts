@@ -81,6 +81,8 @@ const SOLID_TESTS = [
   'tests/spaceDeepLink.test.tsx',
   // Real signals and effects: the failure was an effect that never heard what arrived after it.
   'tests/spaceRecordWait.test.ts',
+  // Drives the create-space modal's schema through the real renderer: what reaches createSpace.
+  'tests/createSpaceServer.test.tsx',
 ];
 
 export default defineConfig({
