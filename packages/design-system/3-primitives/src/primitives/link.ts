@@ -15,6 +15,16 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
 };
 
 const styles = css`
+  /*
+    Inline on the outside as well as the inside. A link sits in a sentence; the host's shared default
+    is a flex box, which is block-level, so a link inside a we-text started a line of its own and the
+    words after it another. In a flex or grid parent the host is blockified anyway, so a link placed
+    as a row's child lays out as before.
+  */
+  :host {
+    --we-link-host-display: inline;
+  }
+
   [part='base'] {
     text-decoration: underline;
     text-underline-offset: 2px;
@@ -60,9 +70,8 @@ export default class Link extends DesignSystemElement {
         download=${this.download || nothing}
         aria-disabled=${this.disabled ? 'true' : 'false'}
         style=${styleMap(this.styles || {})}
-      >
-        <slot></slot>
-      </a>
+        ><slot></slot
+      ></a>
     `;
   }
 }

@@ -14,8 +14,10 @@ import sharedStyles from '../shared/styles';
 const styles = css`
   :host {
     --we-typewriter-host-display: inline;
+    --we-typewriter-display: inline;
   }
-  [part='base'] {
+  /* On a span of its own, since the base's display is the design system's to set. */
+  .stack {
     display: inline-grid;
   }
   .layer {
@@ -152,12 +154,14 @@ export default class Typewriter extends DesignSystemElement {
     const current = (phrases[this.index] ?? '').slice(0, this.shown);
     const fixed = this.text ? `${this.text} ` : '';
     const spoken = `${fixed}${phrases.map((p) => p.replace(/[.!?]$/, '')).join(', ')}.`;
-    return html`<span part="base">
-      <span class="sr">${spoken}</span>
-      <span class="layer sizer" aria-hidden="true">${fixed}<span part="phrase">${longest}</span></span>
-      <span class="layer" aria-hidden="true"
-        >${fixed}<span part="phrase">${current}</span>${moving ? html`<span part="caret"></span>` : ''}</span
-      >
-    </span>`;
+    return html`<span part="base"
+      ><span class="sr">${spoken}</span
+      ><span class="stack"
+        ><span class="layer sizer" aria-hidden="true">${fixed}<span part="phrase">${longest}</span></span
+        ><span class="layer" aria-hidden="true"
+          >${fixed}<span part="phrase">${current}</span>${moving ? html`<span part="caret"></span>` : ''}</span
+        ></span
+      ></span
+    >`;
   }
 }
