@@ -22,6 +22,7 @@
  */
 import type { EntityManifest } from '@we/backend-shared';
 
+import { type SpaceStarter, STARTER_KEYS } from './spaceStarter';
 import type { SchemaNode, TemplateSchema } from './types';
 
 export const BUNDLE_FORMAT = 'we-bundle';
@@ -123,6 +124,13 @@ export interface Bundle {
    * the chrome tier, as the app is. See `docs/architecture/protected-pieces.md`.
    */
   bootScreen?: SchemaNode;
+  /**
+   * What a space made while in this app starts with, its first being the one that applies — in the
+   * shape a seed's `spaceStarters` take. `defaultTemplateId` and `defaultThemeId` may name the
+   * bundle's own pieces by their ids here. Only a bundle the seed builds in has its starter applied;
+   * see `spaceStarter.ts`.
+   */
+  starters?: SpaceStarter[];
 }
 
 /** Every theme a bundle brings, whichever of `theme` and `themes` it used. */
@@ -279,6 +287,31 @@ export function readBundle(
 
   if (input.bootScreen !== undefined && (!isObject(input.bootScreen) || typeof input.bootScreen.type !== 'string'))
     problem('bootScreen', 'The sign-in screen must be a template node');
+
+  if (input.starters !== undefined) {
+    if (!Array.isArray(input.starters))
+      problem('starters', 'starters must be a list, the first being the one that applies');
+    else {
+      const starterIds = new Set<string>();
+      input.starters.forEach((starter, index) => {
+        const path = `starters.${index}`;
+        if (!isObject(starter)) return problem(path, 'Not a space starter');
+        if (typeof starter.id !== 'string' || !starter.id) problem(`${path}.id`, 'Needs an id');
+        else if (starterIds.has(starter.id)) problem(`${path}.id`, `"${starter.id}" is used twice`);
+        else starterIds.add(starter.id);
+        for (const key of Object.keys(starter)) {
+          if (!STARTER_KEYS.has(key))
+            problem(`${path}.${key}`, `Not part of a starter (${[...STARTER_KEYS].join(', ')})`);
+        }
+        for (const key of ['settings', 'landmarks'] as const) {
+          if (starter[key] !== undefined && !isObject(starter[key]))
+            problem(`${path}.${key}`, `${key} must be an object`);
+        }
+        if (starter.records !== undefined && !Array.isArray(starter.records))
+          problem(`${path}.records`, 'records must be a list');
+      });
+    }
+  }
 
   if (input.recordTypes !== undefined) {
     if (!Array.isArray(input.recordTypes)) problem('recordTypes', 'recordTypes must be a list');

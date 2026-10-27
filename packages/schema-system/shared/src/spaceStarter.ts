@@ -10,9 +10,20 @@
  *
  * A **starter** adds what *is* an opinion: defaults for the space's settings, the records it begins
  * with, names for some of them (`landmarks`), and switches for the opinionated behaviours (`input`:
- * extract the loose messages typed into the space). The seed carries the deployment's starters under
- * `spaceStarters`, the first being the one a new space gets; later levels (a cartridge, a template,
- * the person in the create dialog) will carry their own in the same format.
+ * extract the loose messages typed into the space).
+ *
+ * ## Two levels, the app's first
+ *
+ * The seed carries the deployment's starters under `spaceStarters`, and a bundle carries its app's
+ * under `starters` (`Bundle.starters`), in this same format. A new space gets the first starter of
+ * the app in use when that app came in a bundle the seed builds in, and otherwise the seed's first —
+ * which is what WE's own app gets. The app wins because a space made inside Coasys is meant to be a
+ * Coasys space; a deployment that needs every space to start its way has no switch for that yet.
+ *
+ * Only a built-in bundle's starter applies. One installed from a file is somebody else's, and its
+ * starter would write into every space made while in that app, for everyone in it; until an install
+ * asks about that, it is ignored. Here because `readBundle` checks a bundle's starters with the rules
+ * a seed's get, and the bundle format lives beside it.
  *
  * ## Records are records
  *
@@ -347,6 +358,18 @@ export function unreferencedIds(starter: SpaceStarter): string[] {
   return (starter.records ?? []).map((record) => record.$id).filter((id): id is string => !!id && !referred.has(id));
 }
 
+/** Every key a starter has — anything else is read by nothing. */
+export const STARTER_KEYS: ReadonlySet<string> = new Set([
+  'id',
+  'name',
+  'description',
+  'settings',
+  'records',
+  'landmarks',
+  'policy',
+  'input',
+]);
+
 /** What a starter may name, for checking one before it ships. */
 export interface StarterVocabulary {
   /** Entity names the space's schema declares. */
@@ -368,6 +391,15 @@ export interface StarterVocabulary {
 export function starterProblems(starter: SpaceStarter, vocabulary: StarterVocabulary): string[] {
   const problems: string[] = [];
   if (!starter.id) problems.push('a starter needs an id');
+  /*
+    A key nothing reads is a starter that silently does less than it says. Coasys's said `roles` for
+    weeks after the field became `landmarks`, so no Coasys space ever had its canvas named.
+  */
+  for (const key of Object.keys(starter)) {
+    if (!STARTER_KEYS.has(key)) problems.push(`${key} is not part of a starter (${[...STARTER_KEYS].join(', ')})`);
+  }
+  if (starter.policy !== undefined && starter.policy !== 'open' && starter.policy !== 'community')
+    problems.push(`policy must be "open" or "community": ${String(starter.policy)}`);
 
   for (const key of Object.keys(starter.settings ?? {})) {
     if (IDENTITY_FIELDS.has(key)) problems.push(`settings.${key} is the space's identity, not a setting`);

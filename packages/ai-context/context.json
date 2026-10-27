@@ -7718,6 +7718,10 @@
         "defaultSharing": {
           "type": "string"
         },
+        "startsAs": {
+          "type": "object",
+          "properties": ["app", "description"]
+        },
         "mutedDids": {
           "type": "array"
         },

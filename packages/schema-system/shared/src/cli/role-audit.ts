@@ -146,6 +146,10 @@ const CODE_PALETTES: { path: RegExp; why: string }[] = [
   { path: /primitives\/color-picker\./, why: 'the swatch grid IS the ramp, offered for somebody to pick from' },
   { path: /leaflet-css\./, why: 'vendored third-party CSS, kept verbatim so it can be diffed against upstream' },
   { path: /\/schemas\/shell\/tests\//, why: 'the schema-test fixtures, which paint every role on purpose' },
+  {
+    path: /seedBundles\.generated\.ts$/,
+    why: 'a copy of the bundles the seed builds in, judged where they are written, under templates/',
+  },
 ];
 
 /**

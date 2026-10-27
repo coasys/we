@@ -23,6 +23,7 @@ import {
   type BundleRecordType,
   type BundleTheme,
   type SchemaNode,
+  type SpaceStarter,
   type TemplateSchema,
 } from '@we/schema-shared';
 import type { Fixture, FixtureAgent, FixtureRecord, FixtureShape, FixtureTheme } from '@we/template-fixtures';
@@ -49,6 +50,11 @@ export interface Cartridge {
   modules: string[];
   /** How the app shows spaces: its own shell for every space, or each space's own. */
   display: 'ours' | 'theirs';
+  /**
+   * What a space made in the app starts with, its first being the one that applies. Names the
+   * cartridge's template and theme by their ids in the bundle (`space`, `glow`).
+   */
+  starters?: SpaceStarter[];
   sample: {
     space: { name: string; description: string; avatar?: string };
     agents: FixtureAgent[];
@@ -182,5 +188,6 @@ export function toBundle(cartridge: Cartridge, version = '1.0.0'): Bundle {
     display: cartridge.display === 'ours' ? { spaces: 'ours', template: shellId } : { spaces: 'theirs' },
     ...(cartridge.brand ? { brand: cartridge.brand } : {}),
     ...(cartridge.bootScreen ? { bootScreen: cartridge.bootScreen } : {}),
+    ...(cartridge.starters?.length ? { starters: cartridge.starters } : {}),
   };
 }

@@ -93,6 +93,21 @@ describe('the pieces a bundle lands as', () => {
     expect(branded.bootScreen).toEqual({ type: 'Column' });
     expect(pieces.brand).toBeUndefined();
   });
+
+  it('points a starter’s template and theme at the landed pieces, and leaves a built-in’s name alone', () => {
+    const started = bundlePieces({
+      ...bundle,
+      starters: [
+        { id: 'own', settings: { defaultTemplateId: 'shell', defaultThemeId: 'moss', autoInterpret: true } },
+        { id: 'builtIn', settings: { defaultTemplateId: 'workshop', defaultThemeId: 'dark' } },
+      ],
+    } as unknown as Bundle);
+    expect(started.starters.map((s) => s.settings)).toEqual([
+      { defaultTemplateId: 'field-guide--shell', defaultThemeId: 'field-guide--moss', autoInterpret: true },
+      { defaultTemplateId: 'workshop', defaultThemeId: 'dark' },
+    ]);
+    expect(pieces.starters).toEqual([]);
+  });
 });
 
 describe('the app’s display policy', () => {

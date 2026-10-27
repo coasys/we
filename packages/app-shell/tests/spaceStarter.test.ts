@@ -6,10 +6,6 @@
  * contains each, and that a broken reference costs that record rather than the space.
  */
 import { CORE_MANIFEST } from '@we/entities/manifest';
-import { DEFAULT_SIGNAL_TYPE } from '@we/template-kit';
-import { describe, expect, it } from 'vitest';
-
-import weSeed from '../../../we-seed.json';
 import {
   applyStarterRecords,
   defaultSpaceStarter,
@@ -20,7 +16,12 @@ import {
   starterSettings,
   type StarterWriter,
   unreferencedIds,
-} from '../src/shared/spaceStarter';
+} from '@we/schema-shared';
+import { DEFAULT_SIGNAL_TYPE } from '@we/template-kit';
+import { describe, expect, it } from 'vitest';
+
+import weSeed from '../../../we-seed.json';
+import { seedBundlePieces } from '../src/shared/registries/seedBundles';
 import type { WeSeedFile } from '../src/types/seed';
 
 const seed = weSeed as unknown as WeSeedFile;
@@ -248,6 +249,34 @@ describe('checking a starter', () => {
         landmarks: { canvas: '$canvas' },
       }),
     ).toEqual(['lonely']);
+  });
+
+  it('refuses a key nothing reads, and a policy that is not one', () => {
+    expect(starterProblems({ id: 'x', roles: {} } as unknown as SpaceStarter, vocabulary)).toEqual([
+      'roles is not part of a starter (id, name, description, settings, records, landmarks, policy, input)',
+    ]);
+    expect(starterProblems({ id: 'x', policy: 'closed' } as unknown as SpaceStarter, vocabulary)).toEqual([
+      'policy must be "open" or "community": closed',
+    ]);
+  });
+
+  /*
+    The starters the seed's bundles bring, checked as the seed's own are: one that names a record of a
+    type the space does not have, or a template the bundle does not bring, would half-apply at a
+    create press, in a space somebody made inside the app.
+  */
+  it('passes every starter a built-in bundle brings', () => {
+    const modules = (seed.modules ?? []).map((m) => (typeof m === 'string' ? m : m.id));
+    const withStarters = seedBundlePieces.filter((pieces) => pieces.starters.length);
+    expect(withStarters.map((pieces) => pieces.bundleId)).toContain('coasys');
+    for (const pieces of withStarters) {
+      const templates = new Set([...(seed.templates ?? []), ...pieces.shells.map((t) => t.id)]);
+      for (const starter of pieces.starters) {
+        expect(unreferencedIds(starter)).toEqual([]);
+        expect(starterProblems(starter, { ...vocabulary, templates, modules: new Set(modules) })).toEqual([]);
+        expect(pieces.themes.map((t) => t.id)).toContain(starter.settings?.defaultThemeId);
+      }
+    }
   });
 
   it('ships starters whose every $id is referred to', () => {

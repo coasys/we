@@ -175,6 +175,24 @@ export {
   svgProblem,
 } from './bundle';
 export {
+  applyStarterRecords,
+  defaultSpaceStarter,
+  linkSpaceRelations,
+  type RelationWrites,
+  ROOT_REF,
+  SPACE_COLLECTION_KIND,
+  SPACE_REF,
+  type SpaceStarter,
+  type SpaceStarterRecord,
+  type StarterContext,
+  starterProblems,
+  starterSettings,
+  type StarterTarget,
+  type StarterVocabulary,
+  type StarterWriter,
+  unreferencedIds,
+} from './spaceStarter';
+export {
   expandViewRoutes,
   hasViewsMarker,
   SPACE_ROUTE_DEPTH,

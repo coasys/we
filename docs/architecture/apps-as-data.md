@@ -13,20 +13,21 @@ data the host already understands.
 
 `readBundle` in `@we/schema-shared` (`src/bundle.ts`) is the reader and the definition:
 
-| Field                                   | What it is                                                                                         |
-| --------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `format`, `formatVersion`               | `we-bundle`, `1`. Checked before anything else.                                                    |
-| `id`, `version`                         | The app's own. Lowercase with single dashes; an install is recognised by the id.                   |
-| `name`, `description`, `icon`, `author` | `author` is a claim — a file attests nothing.                                                      |
-| `app`                                   | A template with `meta.role: 'app'`: the chrome around every space (see `chrome-and-panels.md`).    |
-| `templates`                             | Space templates (no role) and sections (`meta.role: 'view'`).                                      |
-| `pages`                                 | Pages of the app's own (`meta.role: 'page'`) — an About page, a guide. See "Pages".                |
-| `theme`                                 | `{ id, name, icon?, overrides, css? }`, the parameter object a theme is.                           |
-| `themes`                                | The same, for an app offering several looks, its default first. A bundle uses one or the other.    |
-| `brand`                                 | `{ name, mark?, wordmark?, about?, aboutPage? }`: what the app calls itself. See "Whitelabelling". |
-| `bootScreen`                            | A node: the app's own sign-in screen, placing the host's `CredentialField`. See below.             |
-| `recordTypes`                           | `{ name, icon?, description?, manifest }`, one entity each, as the model wizard writes it.         |
-| `display`                               | `{ spaces: 'ours' \| 'theirs', template? }` — see "How an app shows spaces".                       |
+| Field                                   | What it is                                                                                            |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `format`, `formatVersion`               | `we-bundle`, `1`. Checked before anything else.                                                       |
+| `id`, `version`                         | The app's own. Lowercase with single dashes; an install is recognised by the id.                      |
+| `name`, `description`, `icon`, `author` | `author` is a claim — a file attests nothing.                                                         |
+| `app`                                   | A template with `meta.role: 'app'`: the chrome around every space (see `chrome-and-panels.md`).       |
+| `templates`                             | Space templates (no role) and sections (`meta.role: 'view'`).                                         |
+| `pages`                                 | Pages of the app's own (`meta.role: 'page'`) — an About page, a guide. See "Pages".                   |
+| `theme`                                 | `{ id, name, icon?, overrides, css? }`, the parameter object a theme is.                              |
+| `themes`                                | The same, for an app offering several looks, its default first. A bundle uses one or the other.       |
+| `brand`                                 | `{ name, mark?, wordmark?, about?, aboutPage? }`: what the app calls itself. See "Whitelabelling".    |
+| `bootScreen`                            | A node: the app's own sign-in screen, placing the host's `CredentialField`. See below.                |
+| `recordTypes`                           | `{ name, icon?, description?, manifest }`, one entity each, as the model wizard writes it.            |
+| `display`                               | `{ spaces: 'ours' \| 'theirs', template? }` — see "How an app shows spaces".                          |
+| `starters`                              | Space starters, as a seed's `spaceStarters` are: what a space made in the app begins with. See below. |
 
 **What a bundle needs and what it can do are not in it.** `judgeBundle`
 (`app-shell/src/shared/bundles/judgeBundle.ts`) works both out from its templates — the app at the
@@ -42,7 +43,7 @@ written by `pnpm --filter @we/template-cartridges bundle` from the spike's cartr
 piece is put under the bundle's id (`field-guide--species`), so a second install updates the same
 records and nothing can take a built-in's id; every template is stamped `source: { bundle, version,
 piece }`; and references to the bundle's own pieces (`meta.themeId`, `display.template`,
-`brand.aboutPage`) are rewritten.
+`brand.aboutPage`, a starter's `defaultTemplateId` and `defaultThemeId`) are rewritten.
 
 **Built in, from the seed.** `bundles: ["field-guide"]` in `we-seed.json`, and `generate-bundles`
 writes them into the build. Their app, templates, sections and theme join the built-in registries —
@@ -156,6 +157,32 @@ template (a toast, the failure screen) reads `currentProductName()` from `shared
 A deployment that builds a bundle in (`seed.bundles`) is whitelabelled by it from the first frame;
 what its desktop builds are called and installed as is the seed's `desktop` block, not the bundle's
 (see `docs/getting-started/seed-system.md`).
+
+## What a space made in the app starts with
+
+A bundle's `starters` are space starters in the format a seed's `spaceStarters` take
+(`spaceStarter.ts` in `@we/schema-shared`, which `readBundle` checks them against). A starter names
+the bundle's own template and theme by their ids in the bundle (`"defaultTemplateId": "space"`), and
+they land on the bundle's pieces (`coasys--space`).
+
+A new space gets, in order:
+
+1. the first starter of the bundle whose app is in use, when the seed builds that bundle in;
+2. otherwise the seed's first, which is what WE's own app gets.
+
+The app wins because a space made inside Coasys is meant to be a Coasys space. The create dialog says
+so ("Starts as a Coasys space", with the starter's `description` under it) whenever the app's starter
+is the one that applies, since a space is the community's and the app somebody happens to be in should
+not decide its defaults silently. In WE's own app it shows nothing new.
+
+**Only a built-in bundle's starter applies.** One installed from a file is somebody else's, and its
+starter would write into every space made while in that app, for everyone in it, so it is ignored
+until an install asks about that. A starter applies to new spaces only: changing one never changes a
+space made from an earlier version.
+
+A built-in bundle's record types are not built in, so its starter may only write records of the
+space's own schema; the app shell's starter tests check every built-in starter the way `validate:seed` checks
+a seed's.
 
 ## Not yet
 

@@ -14,6 +14,7 @@ import { coasysApp } from './app.ts';
 import { coasysBootScreen } from './boot.ts';
 import { coasysBrand } from './brand.ts';
 import { coasysSpace } from './space/shell.ts';
+import { coasysStarter } from './starter.ts';
 import { coasysTheme, glowTheme } from './themes.ts';
 
 export const coasys: Cartridge = {
@@ -34,6 +35,8 @@ export const coasys: Cartridge = {
   modules: ['call', 'transcribe', 'feed', 'graph'],
   // Every space a member opens in Coasys is drawn as a Coasys space.
   display: 'ours',
+  // A space made while in Coasys is a Coasys space: its template, Glow, its vocabulary, a canvas.
+  starters: [coasysStarter],
   sample: {
     space: { name: 'October pilot', description: 'Planning the October pilot with the Riverside team' },
     agents: [],

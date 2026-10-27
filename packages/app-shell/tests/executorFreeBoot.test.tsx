@@ -80,16 +80,26 @@ vi.mock('../src/frameworks/solid/stores/RouteStore', async () => {
 // file is about the boot and dataset flow. The cost is that they must carry every member SpaceStore
 // reads — a missing one is a `not a function` at provider construction, which fails every test in
 // the file at once rather than the one that cares.
-vi.mock('../src/frameworks/solid/stores/TemplateStore', () => ({
-  useTemplateStore: () => ({
-    provideSpaceLookup: () => {},
-    preloadSpaceTemplates: async () => {},
-    allTemplates: () => [],
-    currentTemplate: () => undefined,
-    defaultTemplateId: () => 'default',
-    replaceTemplate: () => {},
-  }),
-}));
+/** The app in use, as the stub hands it out: WE's own unless a test puts the agent in another. */
+type AppInUse = { id: string; source?: { bundle: string } };
+const app = vi.hoisted(() => ({ use: (_app: AppInUse) => {} }));
+
+vi.mock('../src/frameworks/solid/stores/TemplateStore', async () => {
+  const { createSignal } = await import('solid-js');
+  const [inUse, setInUse] = createSignal<AppInUse>({ id: 'we-app' });
+  app.use = setInUse;
+  return {
+    useTemplateStore: () => ({
+      appTemplate: inUse,
+      provideSpaceLookup: () => {},
+      preloadSpaceTemplates: async () => {},
+      allTemplates: () => [],
+      currentTemplate: () => undefined,
+      defaultTemplateId: () => 'default',
+      replaceTemplate: () => {},
+    }),
+  };
+});
 
 vi.mock('../src/frameworks/solid/stores/ThemeStore', () => ({
   useThemeStore: () => ({
@@ -608,6 +618,34 @@ describe('dataset lifecycle through the real stores', () => {
     expect(stores.spaces.mySpaces().map((s) => s.name)).toEqual(['My Space']);
     const created = refs.find((d) => d.name === 'My Space')!;
     expect(stores.datasets.getDatasetOrder()).toContain(created.id);
+  }, 10000);
+
+  /*
+    The app somebody is in decides what a space made there starts as: Coasys's, built into this
+    deployment's seed, carries its own starter. Its template and theme land under the bundle's id,
+    and its landmarks are written — the Coasys seed's starter named them under a key nothing read.
+  */
+  it('starts a space made in a built-in app as that app’s, and one made in WE’s own as the seed’s', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    app.use({ id: 'coasys--app', source: { bundle: 'coasys' } });
+    try {
+      expect(stores.spaces.startsAs()?.app).toBe('Coasys');
+      await stores.spaces.createSpace('In Coasys', '', 'personal', 'hidden');
+    } finally {
+      app.use({ id: 'we-app' });
+    }
+    expect(stores.spaces.startsAs()).toBeNull();
+    await stores.spaces.createSpace('In WE', '', 'personal', 'hidden');
+
+    const rowOf = async (name: string) => {
+      const uuid = (await lifecycle.list()).find((d) => d.name === name)!.id;
+      await vi.waitFor(() => expect(stores.spaces.spaceList().find((r) => r.uuid === uuid)?.isWeSpace).toBe(true));
+      return stores.spaces.spaceList().find((r) => r.uuid === uuid)!;
+    };
+    expect((await rowOf('In Coasys')).defaultThemeId).toBe('coasys--glow');
+    // The test seed has no starter of its own, so a space made in WE's app keeps every default.
+    expect((await rowOf('In WE')).defaultThemeId).not.toBe('coasys--glow');
   }, 10000);
 
   /*

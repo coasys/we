@@ -150,6 +150,22 @@ describe('a sign-in screen', () => {
   });
 });
 
+describe('space starters', () => {
+  const starter = { id: 'default', settings: { defaultTemplateId: 'shell' }, records: [], landmarks: {} };
+
+  it('reads a list of starters in the shape a seed’s take', () => {
+    expect(paths({ ...minimal(), starters: [starter] })).toEqual([]);
+  });
+
+  it('refuses a starter that is not one, an id used twice, and a key nothing reads', () => {
+    expect(paths({ ...minimal(), starters: starter })).toEqual(['starters']);
+    expect(paths({ ...minimal(), starters: [starter, starter] })).toEqual(['starters.1.id']);
+    // `roles` became `landmarks`; a starter still saying it named nothing, silently.
+    expect(paths({ ...minimal(), starters: [{ ...starter, roles: {} }] })).toEqual(['starters.0.roles']);
+    expect(paths({ ...minimal(), starters: [{ ...starter, records: {} }] })).toEqual(['starters.0.records']);
+  });
+});
+
 describe('the id a piece installs under', () => {
   it('is the bundle’s id and the piece’s, which no id of either can contain', () => {
     expect(bundlePieceId('field-guide', 'species')).toBe('field-guide--species');

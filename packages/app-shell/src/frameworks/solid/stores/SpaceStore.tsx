@@ -1,5 +1,6 @@
 import { boardOptimism } from '@shared/boardOptimism';
 import { createBoardActions, type CreateBoardOptions } from '@shared/boards';
+import { newSpaceStarter } from '@shared/bundles/bundleStarter';
 import { callParamToWrite } from '@shared/callOnScreen';
 import {
   collectionExtractionDefaults,
@@ -54,6 +55,7 @@ import {
   type ModuleSurface,
   moduleSurface,
 } from '@shared/registries/moduleRegistry';
+import { seedBundlePieces } from '@shared/registries/seedBundles';
 import { defaultViewOrder, viewRegistry } from '@shared/registries/viewRegistry';
 import { completeResponse } from '@shared/responses';
 import { seedDefaultEnabledModules } from '@shared/seedModules';
@@ -84,14 +86,6 @@ import {
   rolesView,
   type RoleView,
 } from '@shared/spaceRoles';
-import {
-  applyStarterRecords,
-  defaultSpaceStarter,
-  linkSpaceRelations,
-  SPACE_COLLECTION_KIND,
-  type SpaceStarter,
-  starterSettings,
-} from '@shared/spaceStarter';
 import {
   isSpaceSelf,
   type LocationData,
@@ -174,6 +168,13 @@ import {
   TaskState,
 } from '@we/entities';
 import type { ResolvedView, TemplateSchema } from '@we/schema-shared';
+import {
+  applyStarterRecords,
+  linkSpaceRelations,
+  SPACE_COLLECTION_KIND,
+  type SpaceStarter,
+  starterSettings,
+} from '@we/schema-shared';
 import { hasViewsMarker, templateThemeId } from '@we/schema-shared';
 import {
   Accessor,
@@ -728,6 +729,13 @@ export interface SpaceStore {
   /** Address of the link language template publishing uses when none is chosen. */
   defaultSharing: Accessor<string>;
 
+  /**
+   * What a space made now starts as, when the app in use brings a starter of its own — the app's name
+   * and what its starter says about itself — or null when it is the deployment's. A space is the
+   * community's, so the create dialog says so rather than letting the app decide its defaults silently.
+   */
+  startsAs: Accessor<{ app: string; description: string } | null>;
+
   // Actions
   /**
    * Create a space and resolve with its id once the local space exists — sharing a shared one
@@ -1178,6 +1186,15 @@ export function SpaceStoreProvider(props: ParentProps) {
   const shellStore = useShellStore();
 
   const [mySpaces, setMySpaces] = createSignal<Space[]>([]);
+
+  /** The starter a space made now gets: the app's, if it brings one, else the deployment's. See `bundleStarter.ts`. */
+  const spaceStarter = createMemo(() =>
+    newSpaceStarter({ app: templateStore.appTemplate(), builtIn: seedBundlePieces, seed: getSeed()?.spaceStarters }),
+  );
+  const startsAs = createMemo(() => {
+    const { starter, app } = spaceStarter();
+    return app && starter ? { app, description: starter.description ?? '' } : null;
+  });
   const [creatingSpace, setCreatingSpace] = createSignal(false);
   /**
    * Spaces being shared, or whose share failed, by dataset id — with what the share was asked for,
@@ -1912,7 +1929,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       const coverImageData = coverImageFile ? await compressImageToFileData(coverImageFile, 'space-cover') : undefined;
 
       // Assemble Space + optional location data — used for both own and parent datasets
-      const starter = defaultSpaceStarter(getSeed()?.spaceStarters);
+      const starter = spaceStarter().starter;
       const spaceData = {
         uuid: spaceRef.id,
         name,
@@ -2076,7 +2093,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       avatarData = dataURIToFileData(avatarValue, 'space-avatar');
     }
 
-    const starter = defaultSpaceStarter(getSeed()?.spaceStarters);
+    const starter = spaceStarter().starter;
     const spaceData: SpaceInput = {
       uuid: ds.id,
       url: ds.sharedId,
@@ -6315,6 +6332,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     autoInterpret,
     root: spaceRoot,
     landmarks: spaceLandmarks,
+    startsAs,
     autoExtractFor,
     setAutoExtractFor,
     canSetExtractionFor,

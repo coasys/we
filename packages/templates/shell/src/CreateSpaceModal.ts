@@ -56,6 +56,47 @@ export const createSpaceModal = {
     { type: 'we-text', props: { variant: 'heading-md' }, slot: 'header', children: ['Create a New Space'] },
 
     /*
+      Which app's starter the space gets, when it is not the deployment's own: a space is the
+      community's, and the app somebody happens to be in should not decide its defaults silently.
+      Nothing in WE's own app, where the deployment's starter applies.
+    */
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'spaceStore.startsAs' },
+        then: {
+          type: 'Row',
+          props: { gap: '300', ay: 'start', p: '400', r: 'control', bg: 'surface-sunken' },
+          children: [
+            { type: 'we-icon', props: { name: 'app-window', color: 'text-muted' } },
+            {
+              type: 'Column',
+              props: { gap: '100' },
+              children: [
+                {
+                  type: 'we-text',
+                  props: { fontWeight: '600' },
+                  children: [{ $: '`Starts as a ${spaceStore.startsAs.app} space`' }],
+                },
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: 'spaceStore.startsAs.description' },
+                    then: {
+                      type: 'we-text',
+                      props: { variant: 'footnote', color: 'text-muted' },
+                      children: [{ $: 'spaceStore.startsAs.description' }],
+                    },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      },
+    },
+
+    /*
       Cover and avatar, arranged the way the space header this is composing arranges them: the
       banner, and the avatar cut out of its bottom-left corner.
 

@@ -629,6 +629,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     foreignSpacePrefill: state('space-settings'),
     sharingOptions: state('space-admin'),
     defaultSharing: state('space-admin'),
+    startsAs: state('space-admin'),
     enabledModules: state('space-admin'),
     /*
       Reading it is `space-settings`, writing it is still admin-gated below.
