@@ -57,7 +57,7 @@ describe('a typewriter', () => {
     const seen: string[] = [];
     for (let t = 0; t < 1200; t += 5) {
       await advance(el, 5);
-      if (seen.at(-1) !== typed(el)) seen.push(typed(el));
+      if (seen[seen.length - 1] !== typed(el)) seen.push(typed(el));
     }
     const empty = seen.indexOf('');
     // Shrinking a letter at a time down to nothing...
