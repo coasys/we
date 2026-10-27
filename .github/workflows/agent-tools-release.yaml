@@ -35,7 +35,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The whole history, so the next step can tell whether the tagged commit is on dev.
+          fetch-depth: 0
       - uses: ./.github/actions/setup
+
+      # A host pins a release by its hashes, so one built from a commit that never merged would be
+      # hard to take back. Only what is on dev is released.
+      - name: Check the tagged commit is on dev
+        run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/dev; then
+            echo "::error::$GITHUB_REF_NAME points at $GITHUB_SHA, which is not on dev. Merge the change first, then tag the merge."
+            exit 1
+          fi
 
       # The tag names the release, and the manifest says which version it is from package.json. A
       # tag that disagrees would publish files that call themselves something else.

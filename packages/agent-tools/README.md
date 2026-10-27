@@ -113,8 +113,9 @@ space's own models are passed in as `models`.
 
 A host that compiles the bundle in takes it from a GitHub release rather than from a WE checkout.
 Pushing the tag `agent-tools-v<version>`, `<version>` being this package's, runs
-`.github/workflows/agent-tools-release.yaml`: it builds the whole workspace, fails if the build
-changed a tracked file, runs the Deno smoke test, and publishes a pre-release with three files.
+`.github/workflows/agent-tools-release.yaml`: it refuses a tag on a commit that is not on `dev`,
+builds the whole workspace, fails if the build changed a tracked file, runs the Deno smoke test, and
+publishes a pre-release with three files.
 
 | File                    | What it is                                                                                    |
 | ----------------------- | --------------------------------------------------------------------------------------------- |
@@ -124,5 +125,4 @@ changed a tracked file, runs the Deno smoke test, and publishes a pre-release wi
 
 To release: set `version` in this `package.json` on `dev`, merge, then tag the merge and push the
 tag: `git tag agent-tools-v<version> <commit> && git push origin agent-tools-v<version>`. A host
-then takes it by moving its pin to the new version and the hashes in `SHA256SUMS`. The AD4M
-executor pins it in `rust-executor/build.rs`.
+then takes it by moving its pin to the new version and the hashes in `SHA256SUMS`.
