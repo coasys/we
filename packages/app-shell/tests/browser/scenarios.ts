@@ -9,13 +9,14 @@ import { transcriptLines } from '@we/module-transcribe';
 import { cardShell, lineComposer, panelScroll, timeline, timelineMoreAt, timelineOrder } from '@we/schema-kit';
 import type { SchemaNode } from '@we/schema-shared';
 import { discussionSection, foldingSectionLabel, signalDisplay } from '@we/template-kit';
-import { bundlePrompt, safeModeBanner } from '@we/template-shell';
+import { bundlePrompt, createSpaceModal, safeModeBanner } from '@we/template-shell';
 import { CALL_CHROME_BAND, themeLabTemplate, TREE_LOCALS, TREE_QUERIES, treeStrip } from '@we/template-showcase';
 import { THEME_PRESETS, type ThemeOverrides, themeSides, withThemeSide } from '@we/themes/presets';
 
 import coasysBundle from '../../../../bundles/coasys.bundle.json';
 import fieldGuideBundle from '../../../../bundles/field-guide.bundle.json';
 import toolLibraryBundle from '../../../../bundles/tool-library.bundle.json';
+import { sharingPickerOptions } from '../../src/shared/sharingOptions';
 
 export interface Scenario {
   /** The schema to mount, exactly as the app would render it. */
@@ -1701,6 +1702,34 @@ const bundleUpdatePrompt =
  * The safe-mode banner after an app did not finish loading, with another app to leave into. Which way
  * out was taken is marked on the body.
  */
+/**
+ * The create-space modal on a deployment that can share a space both ways, listed as the AD4M
+ * backend lists them: peer-to-peer first, then the server link language with AD4M's two link
+ * servers. The sharing option and server `createSpace` was given are marked on the body.
+ */
+const createSpaceShared = (): Scenario => ({
+  node: createSpaceModal as SchemaNode,
+  tables: {},
+  stores: {
+    spaceStore: {
+      sharingOptions: sharingPickerOptions([
+        { id: 'Qm-p2p', name: 'perspective-diff-sync', kind: 'peer-to-peer' },
+        {
+          id: 'Qm-server',
+          name: 'server-link-language',
+          kind: 'server',
+          servers: ['https://link.ad4m.dev', 'https://link-staging.ad4m.dev'],
+        },
+      ]),
+      defaultSharing: 'Qm-p2p',
+      createSpace: async (...args: unknown[]) =>
+        document.body.setAttribute('data-created', JSON.stringify(args.slice(7))),
+    },
+    shellStore: { setCreateSpaceOpen: () => {} },
+    datasetStore: { globalDataset: null, globalSpaceConfigured: false },
+  },
+});
+
 const safeModeLeaving = (): Scenario => ({
   node: safeModeBanner,
   tables: {},
@@ -1720,6 +1749,7 @@ const safeModeLeaving = (): Scenario => ({
 export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'bundle:prompt': bundleInstallPrompt,
   'safe-mode:leaving': safeModeLeaving,
+  'space:create-shared': createSpaceShared,
   'bundle:update-asks-more': bundleUpdatePrompt({
     capabilities: ['See who is in this space'],
     modules: ['Calls'],
