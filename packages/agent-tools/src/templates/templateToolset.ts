@@ -152,6 +152,15 @@ async function read({ record, args, models = [] }: ToolCall): Promise<string> {
     currentSchema: bounded.sent,
     ...datasetModelExtras(models, validation(models).base.entityNames),
     reference: referenceFor(await loadReference(), about, bounded.sent),
+    /*
+      Last, because a model answers whatever it read last. On a large template this answer is tens
+      of thousands of characters, and a small model that reaches the end of it describes the
+      template it was shown rather than making the edit it was asked for — every run of the
+      workshop cases did, in the 4B eval of October 2026.
+    */
+    ...(about.trim() && {
+      next: `The edit asked for: "${about.trim()}". Make it with ${TEMPLATE_UPDATE}, passing version ${version}.`,
+    }),
   });
 }
 

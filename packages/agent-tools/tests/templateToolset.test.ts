@@ -289,4 +289,16 @@ describe('what a read brings beside the template', () => {
     expect(answer.reference.length).toBeLessThan(READ_REFERENCE_BUDGET + 2_000);
     expect(answer.reference).toContain('- Card');
   });
+
+  /*
+    A small model answers what it read last, and on a large template that is the template: given the
+    workshop outline and no restatement, it described the workspace instead of editing it.
+  */
+  it('ends with the edit it was read for, and says nothing of one when not told', async () => {
+    const answer = JSON.parse(await read({ about: 'make the button bigger' }));
+    expect(Object.keys(answer).at(-1)).toBe('next');
+    expect(answer.next).toContain('"make the button bigger"');
+    expect(answer.next).toContain(`version ${answer.version}.`);
+    expect(JSON.parse(await read()).next).toBeUndefined();
+  });
 });
