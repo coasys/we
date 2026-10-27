@@ -10,6 +10,8 @@
  * pass through as CSS, so `'600'` and `'0.02em'` work without a token.
  */
 import {
+  COMPONENT_THEME_STATE_KEYS,
+  COMPONENT_THEME_STATES,
   componentThemeVar,
   font,
   GLOW_SHADOW,
@@ -116,6 +118,13 @@ function writeOverride(
     'text',
     override.text ? roleColor(override.text) : override.type && `var(${typeRoleVar(override.type, 'color')})`,
   );
+  // `hover: { fill }` → `--we-theme-button--outline-hover-fill`.
+  for (const state of COMPONENT_THEME_STATES) {
+    for (const key of COMPONENT_THEME_STATE_KEYS) {
+      const value = override[state]?.[key];
+      set(`${state}-${key}`, value && roleColor(value));
+    }
+  }
 }
 
 /** Write each component override: `--we-theme-button-radius`, `--we-theme-button--soft-border-width`. */

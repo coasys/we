@@ -106,6 +106,8 @@ export {
 } from './states.js';
 export {
   COMPONENT_THEME_KEYS,
+  COMPONENT_THEME_STATE_KEYS,
+  COMPONENT_THEME_STATES,
   componentChain,
   componentThemeVar,
   roleTakes,
@@ -114,7 +116,13 @@ export {
   typeRoleDeclarations,
   typeRoleVar,
 } from './componentTheme.js';
-export type { ComponentThemeKey, TypeRole, TypeRoleKey } from './componentTheme.js';
+export type {
+  ComponentThemeKey,
+  ComponentThemeState,
+  ComponentThemeStateKey,
+  TypeRole,
+  TypeRoleKey,
+} from './componentTheme.js';
 export type { FamilyRole } from './familyRoles.js';
 export type { Polarity } from './color.js';
 export { AVATAR_TONE_ROLES, AVATAR_TONES, avatarToneColor, avatarToneLabel } from './color.js';

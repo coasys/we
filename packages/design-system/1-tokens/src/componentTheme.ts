@@ -74,6 +74,18 @@ export const COMPONENT_THEME_KEYS = [
 ] as const;
 export type ComponentThemeKey = (typeof COMPONENT_THEME_KEYS)[number];
 
+/**
+ * The states a component override can colour, and the keys it can set in them.
+ *
+ * Colours only: a state changes what a control looks like under the pointer and when pressed, and
+ * its shape holds still. Written as `<state>-<key>` beside the resting keys, so the outline button's
+ * hover fill is `--we-theme-button--outline-hover-fill`.
+ */
+export const COMPONENT_THEME_STATES = ['hover', 'active'] as const;
+export type ComponentThemeState = (typeof COMPONENT_THEME_STATES)[number];
+export const COMPONENT_THEME_STATE_KEYS = ['fill', 'text', 'border'] as const;
+export type ComponentThemeStateKey = (typeof COMPONENT_THEME_STATE_KEYS)[number];
+
 /** The variable a component override writes, for every variant or for one. */
 export const componentThemeVar = (component: string, key: string, variant?: string): string =>
   `--we-theme-${component}${variant ? `--${variant}` : ''}-${kebab(key)}`;

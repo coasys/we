@@ -67,6 +67,30 @@ describe('a border', () => {
       'var(--we-theme-button--outline-border-width, var(--we-theme-button-border-width, var(--we-border-width, 1px)))',
     );
   });
+
+  it('keeps a themed width under the pointer', async () => {
+    const el = await mount('we-button', { variant: 'outline' });
+    expect(el.style.getPropertyValue('--we-button-hover-border-width')).toBe(
+      'var(--we-theme-button--outline-border-width, var(--we-theme-button-border-width, var(--we-border-width, 1px)))',
+    );
+  });
+});
+
+describe('a state’s colours', () => {
+  it('read the theme’s colour for that state ahead of the component’s own', async () => {
+    const el = await mount('we-button', { variant: 'outline' });
+    expect(el.style.getPropertyValue('--we-button-hover-bg')).toBe(
+      'var(--we-theme-button--outline-hover-fill, var(--we-theme-button-hover-fill, var(--we-role-surface-hover)))',
+    );
+    expect(el.style.getPropertyValue('--we-button-active-border-color')).toBe(
+      'var(--we-theme-button--outline-active-border, var(--we-theme-button-active-border, var(--we-role-border-hover)))',
+    );
+  });
+
+  it('leave a state the author wrote alone', async () => {
+    const el = await mount('we-button', { variant: 'outline', hoverProps: { bg: 'surface' } });
+    expect(el.style.getPropertyValue('--we-button-hover-bg')).toBe('var(--we-role-surface)');
+  });
 });
 
 describe('the static sheet', () => {

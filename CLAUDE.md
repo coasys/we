@@ -5633,6 +5633,10 @@ a component's own name (`card`). `type` names a type role; `fill`, `text` and `b
 roles. An explicit prop on an element still wins; then the variant, the component, the family, and
 the default.
 
+Either may also take `hover` and `active`, each with `fill`, `text` and `border`:
+the colours under the pointer and while pressed — `button: { variants: { outline: { hover: { fill: 'accent', text: 'on-accent' } } } }`.
+They replace the colours the component already changes in that state and add no change of their own.
+
 ### Surfaces and elevation
 
 `surfaceImages` lays a gradient over every surface of a kind: `chrome`, `page`, `surface`, `surfaceRaised`, `surfaceSunken`.

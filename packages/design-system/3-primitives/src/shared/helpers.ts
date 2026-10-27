@@ -34,6 +34,8 @@ import {
   zIndexVar,
 } from '@we/design-utils';
 import {
+  COMPONENT_THEME_STATE_KEYS,
+  COMPONENT_THEME_STATES,
   componentChain,
   roleTakes,
   surfaceImageFixed,
@@ -1030,6 +1032,55 @@ function applyComponentTheme(
   }
 }
 
+/** The keys a theme can set per state: the colours that change under the pointer and when pressed. */
+const STATE_THEMED_KEYS = THEMED_KEYS.filter((key) =>
+  (COMPONENT_THEME_STATE_KEYS as readonly string[]).includes(key.key),
+);
+const BORDER_WIDTH_KEY = THEMED_KEYS.find((key) => key.key === 'borderWidth')!;
+
+/**
+ * Put the component tier in front of the colours a component's own state defaults chose.
+ *
+ * `components.button.variants.outline.hover.fill` is read ahead of the fill an outline button takes
+ * under the pointer, as `…outline.fill` is read ahead of its resting one. Only where the component
+ * already changes that colour in that state: the theme says what the change is, not whether there
+ * is one. A state the author wrote on the node is left alone, as the resting props are.
+ *
+ * The resting width follows into every state. A width is the component's shape, and a state that
+ * restates its border (an outline button does, to recolour it) would otherwise put it back to the
+ * default width under the pointer.
+ */
+function applyComponentStateTheme(
+  el: HTMLElement,
+  componentName: string,
+  state: ElementState,
+  stateProps: Partial<DesignSystemProps>,
+  raw: Partial<DesignSystemProps> | undefined,
+): void {
+  if (!raw) return; // Everything was passed as explicit.
+  const authored = (raw[`${state}Props`] ?? {}) as Partial<DesignSystemProps>;
+  const own = (el as { variant?: unknown }).variant;
+  const variant = typeof own === 'string' && own !== '' ? own : null;
+  if ((COMPONENT_THEME_STATES as readonly string[]).includes(state)) {
+    for (const key of STATE_THEMED_KEYS) {
+      const value = key.value(stateProps);
+      if (value === undefined || key.explicit(authored)) continue;
+      setProperty(
+        el,
+        `--we-${componentName}-${state}-${key.suffix}`,
+        componentChain(componentName, `${state}-${key.key}`, variant, value),
+      );
+    }
+  }
+  const width = BORDER_WIDTH_KEY.value(stateProps);
+  if (width !== undefined && !BORDER_WIDTH_KEY.explicit(authored) && !BORDER_WIDTH_KEY.explicit(raw))
+    setProperty(
+      el,
+      `--we-${componentName}-${state}-${BORDER_WIDTH_KEY.suffix}`,
+      componentChain(componentName, BORDER_WIDTH_KEY.key, variant, width),
+    );
+}
+
 export function updateAllCustomVars(
   el: HTMLElement,
   componentName: string,
@@ -1047,6 +1098,7 @@ export function updateAllCustomVars(
     if (stateProps && typeof stateProps === 'object') {
       hasState = true;
       updateCustomVars(el, componentName, withBoxSidesFilled(stateProps, [props]), undefined, state);
+      applyComponentStateTheme(el, componentName, state, stateProps, rawExplicitProps);
     }
   });
   /*

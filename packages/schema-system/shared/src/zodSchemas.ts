@@ -36,6 +36,12 @@ const zTypeStyle = z
     color: z.string().optional(),
   })
   .strict();
+// What a component override says about one state: the colours (COMPONENT_THEME_STATE_KEYS).
+const componentStateShape = {
+  fill: z.string().optional(),
+  text: z.string().optional(),
+  border: z.string().optional(),
+};
 const componentOverrideShape = {
   radius: z.string().optional(),
   padding: z.string().optional(),
@@ -46,6 +52,8 @@ const componentOverrideShape = {
   fill: z.string().optional(),
   text: z.string().optional(),
   border: z.string().optional(),
+  hover: z.object(componentStateShape).strict().optional(),
+  active: z.object(componentStateShape).strict().optional(),
 };
 const zComponentOverride = z
   .object({
