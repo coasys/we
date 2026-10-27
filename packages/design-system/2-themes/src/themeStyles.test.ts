@@ -15,7 +15,7 @@ import { applyThemeVars, registerNamedThemes, themeParametersToStyle } from './t
 
 /*
   The showcase themes resolve by name the way the app makes them resolve: through the lookup it
-  registers for every theme it holds that this package does not. `channels` is the preset that pins
+  registers for every theme it holds that this package does not. `discord` is the preset that pins
   its own roles, which several tests below need.
 */
 beforeAll(() =>
@@ -272,7 +272,7 @@ describe('roles resolve against the theme they belong to', () => {
 
   it('carries the pins a named preset brings with it', () => {
     /*
-      `channels` is a reproduction of a real chat client, measured rather than designed by eye, and
+      `discord` is a reproduction of a real chat client, measured rather than designed by eye, and
       its surfaces are uneven in a way no single lightness range can express — page and cards
       identical, the rail further out. That is what a pin is *for*, so it is the honest example here.
 
@@ -286,7 +286,7 @@ describe('roles resolve against the theme they belong to', () => {
       decision that moves, and a test repeating them only says the file was copied correctly. That
       the *ordering* holds is checked in contrast.test.ts, which is the property that matters.
     */
-    const raised = themeParametersToStyle({ themeName: 'channels' })['--we-role-surface-raised'];
+    const raised = themeParametersToStyle({ themeName: 'discord' })['--we-role-surface-raised'];
     expect(raised).toMatch(/^oklch\(\d/);
   });
 });
@@ -312,12 +312,12 @@ describe('the shape, density and typography keys added alongside the roles edito
 describe('a preset and a theme both pinning roles', () => {
   /*
     `roles` is the one override that merges rather than replaces. A shallow spread meant pinning a
-    single role on a preset that pins its own threw the rest away: editing the accent on `channels`
+    single role on a preset that pins its own threw the rest away: editing the accent on `discord`
     dropped the twelve measured surface and text pins that make it that theme, and it came apart
     from one click in the colour picker.
   */
   it('keeps the preset’s pins for roles the theme does not mention', () => {
-    const style = themeParametersToStyle({ themeName: 'channels', roles: { accent: '#ff0000' } });
+    const style = themeParametersToStyle({ themeName: 'discord', roles: { accent: '#ff0000' } });
     /*
       Asserted as "three distinct pins survived" rather than as three exact lightnesses. The numbers
       moved once already, when the ramp went to OKLCH and every hand-measured percentage had to be
@@ -327,7 +327,7 @@ describe('a preset and a theme both pinning roles', () => {
     // Named rather than derived from the preset, so this keeps asserting something after a pin is
     // dropped. `text-muted` went when it became derived; `page`, `surface-sunken`, `surface-hover`
     // and `text` went in the pin audit, where each measured within half a point of what the theme's
-    // own ramp already produced. These three are ones channels still states for itself.
+    // own ramp already produced. These three are ones discord still states for itself.
     for (const role of ['--we-role-surface-raised', '--we-role-surface-active', '--we-role-border-strong']) {
       expect(style[role], `${role} was dropped`).toMatch(/^oklch\([\d.]+%/);
     }
@@ -376,14 +376,14 @@ describe('a preset and a theme both pinning roles', () => {
   });
 
   it('still lets the theme win on the role it does pin', () => {
-    expect(themeParametersToStyle({ themeName: 'channels', roles: { accent: '#ff0000' } })['--we-role-accent']).toBe(
+    expect(themeParametersToStyle({ themeName: 'discord', roles: { accent: '#ff0000' } })['--we-role-accent']).toBe(
       '#ff0000',
     );
   });
 
   it('leaves a theme with no roles of its own exactly as the preset had it', () => {
-    const bare = themeParametersToStyle({ themeName: 'channels' });
-    const withOther = themeParametersToStyle({ themeName: 'channels', accentHue: 100 });
+    const bare = themeParametersToStyle({ themeName: 'discord' });
+    const withOther = themeParametersToStyle({ themeName: 'discord', accentHue: 100 });
     expect(withOther['--we-role-surface-raised']).toBe(bare['--we-role-surface-raised']);
   });
 });

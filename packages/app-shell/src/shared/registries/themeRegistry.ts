@@ -43,15 +43,15 @@ export const themeRegistry: Record<string, ThemeRegistryEntry> = {
     two were built to find out how far it stretches.
   */
   ...(DEV_FEATURES && {
-    channels: {
-      ...SHOWCASE_THEME_PRESETS.channels,
+    discord: {
+      ...SHOWCASE_THEME_PRESETS.discord,
       css: null,
-      overrides: SHOWCASE_THEME_PRESETS.channels.parameters,
+      overrides: SHOWCASE_THEME_PRESETS.discord.parameters,
     },
-    timeline: {
-      ...SHOWCASE_THEME_PRESETS.timeline,
+    twitter: {
+      ...SHOWCASE_THEME_PRESETS.twitter,
       css: null,
-      overrides: SHOWCASE_THEME_PRESETS.timeline.parameters,
+      overrides: SHOWCASE_THEME_PRESETS.twitter.parameters,
     },
   }),
   // The themes the seed's bundles bring, built in beside these.

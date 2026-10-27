@@ -426,7 +426,7 @@ const withoutGraphs = (node: SchemaNode): SchemaNode => ({
     : {}),
 });
 
-export const THEME_LAB_THEMES = ['light', 'dark', 'black', 'cyberpunk', 'retro', 'channels', 'timeline'] as const;
+export const THEME_LAB_THEMES = ['light', 'dark', 'black', 'cyberpunk', 'retro', 'discord', 'twitter'] as const;
 const themeLab = (index = 0): Scenario => {
   const { meta: _meta, ...page } = themeLabTemplate as SchemaNode & { meta?: unknown };
   // The showcase pair too: the theme lab is a developer's page, and a harness run is one.

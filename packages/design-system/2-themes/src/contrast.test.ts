@@ -698,7 +698,7 @@ const MEASURED: Record<string, Record<string, [number, number, number]>> = {
   dark: { 'neutral-200': [59, 57, 82], 'neutral-700': [184, 183, 201], 'accent-500': [127, 114, 206] },
   black: { 'neutral-200': [37, 35, 56], 'neutral-700': [162, 160, 188], 'accent-500': [106, 83, 198] },
   cyberpunk: { 'neutral-200': [67, 66, 81], 'neutral-700': [187, 187, 197], 'accent-500': [132, 114, 225] },
-  channels: { 'neutral-200': [54, 58, 66], 'neutral-700': [182, 185, 191], 'accent-500': [79, 120, 230] },
+  discord: { 'neutral-200': [54, 58, 66], 'neutral-700': [182, 185, 191], 'accent-500': [79, 120, 230] },
 };
 
 describe('the resolver agrees with the browser', () => {

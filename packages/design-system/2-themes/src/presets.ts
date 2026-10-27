@@ -316,7 +316,7 @@ export const THEME_PRESETS = {
  */
 export const SHOWCASE_THEME_PRESETS = {
   /**
-   * A near-neutral dark, for the channels template. Built from measurements of a real chat client
+   * A near-neutral dark, for the Discord template. Built from measurements of a real chat client
    * rather than by eye — see `apps/we-preview/scripts/measure.mjs`.
    *
    * Two things it demonstrates about the theme system, one comfortable and one not.
@@ -336,7 +336,7 @@ export const SHOWCASE_THEME_PRESETS = {
    * The pins stay parametric in hue and saturation, so changing `neutralHue` still moves the whole
    * theme together. Only the lightnesses are fixed, because the lightnesses are the design.
    */
-  channels: {
+  discord: {
     name: 'Discord',
     icon: 'hash',
     parameters: {
@@ -396,7 +396,7 @@ export const SHOWCASE_THEME_PRESETS = {
   },
 
   /**
-   * A light, quiet theme for the timeline template — the other reference, and the opposite problem.
+   * A light, quiet theme for the Twitter template — the other reference, and the opposite problem.
    *
    * Almost the whole design is one flat white with hairline rules; there is no card, no elevation
    * and no shadow anywhere in the column. What carries it is the *accent* and the type, so the only
@@ -405,7 +405,7 @@ export const SHOWCASE_THEME_PRESETS = {
    * `shadowIntensity: 'flat'` is doing real work here: every surface primitive still wants to cast
    * something, and a timeline that shadows its rows stops reading as a single sheet.
    */
-  timeline: {
+  twitter: {
     name: 'Twitter',
     icon: 'list-dashes',
     parameters: {
