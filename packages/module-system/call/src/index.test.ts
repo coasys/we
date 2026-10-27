@@ -10,7 +10,7 @@
  * silent. Structural rather than behavioural, because the failure is structural — every piece
  * rendered exactly as written, in the wrong dependency.
  */
-import { moduleCapabilities } from '@we/module-shared';
+import { moduleCapabilities, type ModulePart } from '@we/module-shared';
 import type { SchemaNode } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
@@ -637,7 +637,7 @@ describe('naming a call', () => {
 
   it('is about the call on screen, and says so for a placer to substitute', () => {
     const subject = 'routeStore.params.call ? routeStore.params.call : modules.call.callRecordId';
-    expect(callModule.contributes?.parts?.renameCallButton?.subject).toBe(subject);
+    expect((callModule.contributes?.parts?.renameCallButton as ModulePart).subject).toBe(subject);
     // Every place the call is named is the whole subject token, so a placer's subject replaces them all.
     expect(json().split(`{"$":"${subject}"}`).length - 1).toBe(3);
   });
