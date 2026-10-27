@@ -48,7 +48,7 @@ import {
   useContext,
 } from 'solid-js';
 
-import type { RouteStore } from './RouteStore';
+import { queryString, type RouteStore } from './RouteStore';
 import { useShellStore } from './ShellStore';
 
 /**
@@ -81,13 +81,28 @@ export function ShellRouteStoreProvider(props: ParentProps) {
   }
   const segments = createMemo(() => currentPath().split('/').filter(Boolean));
   const params = createMemo(() => Object.fromEntries(new URLSearchParams(search())));
+  // As `RouteStore.page`: the path, and the record the page is about.
+  const page = createMemo(() => {
+    const id = params().id;
+    return id ? `${currentPath()}?${queryString({ id })}` : currentPath();
+  });
 
   // `number` as well as a path: the router takes a delta for history movement, which is what `back`
   // needs and what the store's public `navigate` deliberately does not offer.
-  function navigate(to: string | number, options?: Record<string, unknown>) {
+  function go(to: string | number, options?: Record<string, unknown>) {
     const nav = navigateFunction();
     if (nav) nav(to as string, options);
     else console.warn('ShellRouteStore: navigate called before router was ready');
+  }
+
+  /** As `RouteStore.navigate`: `query` is written for the caller, the rest goes to the router. */
+  function navigate(to: string, options?: { query?: Record<string, unknown> } & Record<string, unknown>) {
+    const { query, ...routerOptions } = options ?? {};
+    const written = query && typeof query === 'object' ? queryString(query) : '';
+    go(
+      written ? `${to}${to.includes('?') ? '&' : '?'}${written}` : to,
+      Object.keys(routerOptions).length ? routerOptions : undefined,
+    );
   }
 
   /**
@@ -103,8 +118,8 @@ export function ShellRouteStoreProvider(props: ParentProps) {
     const next = new URLSearchParams(search());
     if (value === null || value === undefined || value === '') next.delete(name);
     else next.set(name, value);
-    const query = next.toString();
-    navigate(`${currentPath()}${query ? `?${query}` : ''}`, { replace: !options?.push });
+    const query = queryString(next);
+    go(`${currentPath()}${query ? `?${query}` : ''}`, { replace: !options?.push });
   }
 
   const store: ShellRouteStore = {
@@ -117,6 +132,7 @@ export function ShellRouteStoreProvider(props: ParentProps) {
     */
     templateSegments: segments,
     params,
+    page,
     setNavigateFunction: provideNavigate,
     setCurrentPath,
     setSearch,
@@ -130,7 +146,7 @@ export function ShellRouteStoreProvider(props: ParentProps) {
       router. `navigate(-1)` is how a memory router expresses that, and at the start of its history
       it does nothing, which matches what the browser does.
     */
-    back: () => navigate(-1),
+    back: () => go(-1),
   };
 
   return <ShellRouteContext.Provider value={store}>{props.children}</ShellRouteContext.Provider>;

@@ -3,7 +3,7 @@
  * fixture writes is the shape the renderer reads.
  *
  * Both are load-bearing rather than tidy. A screenshot script navigates straight to
- * `/channel/discord-general` on first load, which is only possible because that id is derived rather
+ * `/channel?id=discord-general` on first load, which is only possible because that id is derived rather
  * than minted — the backend is in memory, so anything minted is different on the next load. And an
  * editor state in the wrong shape renders as a silently empty message body with a decode error
  * several frames from the cause.
@@ -62,7 +62,7 @@ describe('deterministic ids', () => {
     const { result } = await apply(discordFixture);
     const path = pathFor(discordFixture);
     // No space prefix: template routes mount at the router root.
-    expect(path).toBe('/channel/discord-general');
+    expect(path).toBe('/channel?id=discord-general');
     expect(result.nodes.some((n) => path.endsWith(n.id))).toBe(true);
   });
 });

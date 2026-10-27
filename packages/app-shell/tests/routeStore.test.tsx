@@ -119,6 +119,23 @@ describe('routeStore params', () => {
     expect(nav).toHaveBeenLastCalledWith('/flows?new=1&id=ad4m://obj/x', { replace: true });
   });
 
+  /*
+    Two boards are one path with different ids. Presence compares pages, so a page that left the id
+    out would show everybody on any board as here.
+  */
+  it('page is the path and the record it is about, and nothing else in the query', () => {
+    window.history.replaceState(null, '', '/space/x/board?id=ad4m://obj/a&sort=new');
+    const store = mountStore();
+    store.setCurrentPath('/space/x/board', '?id=ad4m://obj/a&sort=new');
+    expect(store.page()).toBe('/space/x/board?id=ad4m://obj/a');
+
+    store.setCurrentPath('/space/x/board', '?id=ad4m://obj/b');
+    expect(store.page()).toBe('/space/x/board?id=ad4m://obj/b');
+
+    store.setCurrentPath('/space/x', '?sort=new');
+    expect(store.page()).toBe('/space/x');
+  });
+
   it('clearing the param clears the memory — returning lands bare', () => {
     const store = mountStore();
     const nav = vi.fn();

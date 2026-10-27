@@ -40,6 +40,14 @@ export interface RouteStore {
    * the view for whoever receives it. See docs/architecture/routing-and-view-state.md.
    */
   params: Accessor<Record<string, string>>;
+  /**
+   * The page on screen: the path, and the record it is about when the query names one (`id`).
+   *
+   * Two boards are `/board?id=a` and `/board?id=b`, so the path alone says only "a board". Anything
+   * asking whether two people are on the same page (presence) asks this, not `currentPath`. The
+   * rest of the query is a view of the page, not which page it is, and is left out.
+   */
+  page: Accessor<string>;
 
   // Setters
   /**
@@ -127,6 +135,10 @@ export function RouteStoreProvider(props: ParentProps) {
     },
   });
   const segments = createMemo(() => currentPath().split('/').filter(Boolean));
+  const page = createMemo(() => {
+    const id = params().id;
+    return id ? `${currentPath()}?${queryString({ id })}` : currentPath();
+  });
   const templateSegments = createMemo(() => {
     const all = segments();
     return all[0] === 'space' ? all.slice(SPACE_ROUTE_DEPTH) : all;
@@ -233,6 +245,7 @@ export function RouteStoreProvider(props: ParentProps) {
     segments,
     templateSegments,
     params,
+    page,
 
     // Setters
     setNavigateFunction: provideNavigate,
