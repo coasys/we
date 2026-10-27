@@ -93,9 +93,10 @@ export function toolsPreamble(tools: { read: string; update: string; create: str
   return `# Editing a WE template
 
 A template is the JSON tree a WE space renders as its interface. You edit one with two tools, each
-given the id of the Template record to work on, and make a new one with a third.
+given the id of the Template record to work on. Where the host also offers a third, you can make a
+new one.
 
-- **${create}** — makes a new template and SAVES it: a shell (a space's whole interface), a view
+- **${create}** — only where your host offers it. Makes a new template and SAVES it: a shell (a space's whole interface), a view
   (one section of a space) or an app (the chrome around every space). Name it, and say where it
   goes: \`library\`, the person's own, unless they asked for it to be in this space. It starts from
   a working template of its kind, from a template it is given to fork, or from a whole \`schema\`
