@@ -165,7 +165,11 @@ const boardRoute: RouteSchema = {
       children: [
         {
           type: 'we-button',
-          props: { variant: 'ghost', size: 'sm', onClick: { $invoke: 'routeStore.navigate', args: ['.'] } },
+          props: {
+            variant: 'ghost',
+            size: 'sm',
+            onClick: { $invoke: 'routeStore.navigate', args: [{ $: "spaceStore.spacePath + '/'" }] },
+          },
           children: [{ type: 'we-icon', props: { name: 'arrow-left' } }],
         },
         {
@@ -252,7 +256,11 @@ export const kanbanTemplate: TemplateSchema = {
         { type: 'we-text', props: { color: 'text-faint' }, children: ['No such board.'] },
         {
           type: 'we-button',
-          props: { variant: 'soft', size: 'sm', onClick: { $invoke: 'routeStore.navigate', args: ['.'] } },
+          props: {
+            variant: 'soft',
+            size: 'sm',
+            onClick: { $invoke: 'routeStore.navigate', args: [{ $: "spaceStore.spacePath + '/'" }] },
+          },
           children: ['All boards'],
         },
       ],
