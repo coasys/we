@@ -18,6 +18,16 @@ const MESH =
   'radial-gradient(55% 45% at 18% 22%, red, transparent 70%), radial-gradient(45% 40% at 82% 12%, blue, transparent)';
 
 describe('bgImageLayer', () => {
+  it('reads none as no image, not as a file called none', () => {
+    expect(bgImageLayer('none')).toBe('none');
+  });
+
+  it('lets none take the surface’s image away and keep its colour', () => {
+    const style = buildLayoutStyles({ bg: 'page', bgImage: 'none' }, 'column');
+    expect(style['background-image']).toBe('none');
+    expect(style['background-color']).toBe('var(--we-role-page)');
+  });
+
   it('passes a gradient through verbatim rather than wrapping it as a URL', () => {
     // The old path produced url("radial-gradient(55%45%at18%22%,red,transparent70%)…") — mangled
     // by whitespace stripping *and* invalid as a URL, so nothing rendered.

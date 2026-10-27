@@ -1122,6 +1122,8 @@ export function isGradientValue(raw: string): boolean {
  * has no quoted strings, but collapsing costs nothing and removes the class of problem.
  */
 export function bgImageLayer(raw: string): string {
+  // No image at all — not even the one the theme lays on the element's surface role.
+  if (raw.trim() === 'none') return 'none';
   if (isGradientValue(raw)) return raw.trim().replace(/\s+/g, ' ');
   return `url("${resolveBgImageUrl(raw)}")`;
 }
