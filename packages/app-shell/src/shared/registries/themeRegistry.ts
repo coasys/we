@@ -68,6 +68,12 @@ export const themeRegistry: Record<string, ThemeRegistryEntry> = {
   ),
 };
 
+/**
+ * The themes above that are developer features: offered in a picker only while developer tools are
+ * showing, as their templates are. Empty in a production build, which has none of them.
+ */
+export const devOnlyThemeIds: ReadonlySet<string> = new Set(DEV_FEATURES ? Object.keys(SHOWCASE_THEME_PRESETS) : []);
+
 export type ThemeKey = keyof typeof themeRegistry;
 
 export function isValidThemeKey(key: unknown): key is ThemeKey {

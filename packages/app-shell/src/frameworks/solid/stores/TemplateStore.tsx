@@ -11,12 +11,13 @@ import { readDeviceApp, writeDeviceApp } from '@shared/bundles/deviceApp';
 import { appSpaceTemplate, followedTemplateId } from '@shared/bundles/display';
 import { displaySourceOf, readInstalledBundles } from '@shared/bundles/installedBundles';
 import { bootScreenTemplate, placesNode } from '@shared/bundles/judgeBundle';
+import { offeredInPickers } from '@shared/devOnlyOffers';
 import { appTemplateRegistry, DEFAULT_APP_ID, resolveAppTemplate } from '@shared/registries/appTemplates';
 import { withDerivedIds } from '@shared/registries/derivedIds';
 import { reservedTemplateIds } from '@shared/registries/reservedTemplateIds';
 import { seedBundleAppId, seedBundlePieces } from '@shared/registries/seedBundles';
 import { slotRegistry } from '@shared/registries/slotRegistry';
-import { templateRegistry } from '@shared/registries/templateRegistry';
+import { devOnlyTemplateIds, templateRegistry } from '@shared/registries/templateRegistry';
 import { profileTemplate, settingsTemplate } from '@shared/schemas';
 import { getSeed } from '@shared/seedRegistry';
 import { reserveId } from '@shared/templateIdentity';
@@ -498,7 +499,13 @@ export function TemplateStoreProvider(props: ParentProps) {
     It is stored like any template, so every list a space's template is chosen from leaves it out.
   */
   const isApp = (t: TemplateSchema) => t.meta?.role === 'app';
-  const spaceChoosable = () => allTemplates().filter((t) => !isApp(t));
+  // A showcase template only while developer tools are showing — see `offeredInPickers`.
+  const spaceChoosable = () =>
+    offeredInPickers(
+      allTemplates().filter((t) => !isApp(t)),
+      session.devTools(),
+      devOnlyTemplateIds,
+    );
 
   const personalTemplates = () => {
     const installed = installedIds();

@@ -125,7 +125,20 @@ ${imports}
 export const bundledTemplates: Record<string, TemplateSchema> = {
 ${members}
 };
-`;
+${
+  devOnly.length
+    ? `
+/**
+ * The bundled templates that are developer features: offered in a picker only while developer tools
+ * are showing (sessionStore.devTools). Empty in a production build, which has none of them.
+ */
+export const devOnlyTemplateIds: ReadonlySet<string> = new Set(DEV_FEATURES ? ${JSON.stringify(devOnly)} : []);
+`
+    : `
+/** The bundled templates that are developer features. This build's seed bundles none. */
+export const devOnlyTemplateIds: ReadonlySet<string> = new Set();
+`
+}`;
 
 /*
   Formatted before writing, following `@we/ai-context`'s generator.

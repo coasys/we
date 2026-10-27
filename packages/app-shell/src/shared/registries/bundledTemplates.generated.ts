@@ -38,3 +38,11 @@ export const bundledTemplates: Record<string, TemplateSchema> = {
     'theme-lab': themeLabTemplate,
   }),
 };
+
+/**
+ * The bundled templates that are developer features: offered in a picker only while developer tools
+ * are showing (sessionStore.devTools). Empty in a production build, which has none of them.
+ */
+export const devOnlyTemplateIds: ReadonlySet<string> = new Set(
+  DEV_FEATURES ? ['discord', 'twitter', 'instagram', 'youtube', 'trello', 'events', 'scrapbook', 'theme-lab'] : [],
+);
