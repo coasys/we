@@ -15,10 +15,10 @@ a product that has not shipped since #248.
 
 | Strategy   | System prompt                                                                                                                                  | The rest of the reference                                                                                        |
 | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `full`     | Everything, as the editor ships (~88K tokens)                                                                                                  | —                                                                                                                |
+| `full`     | Everything (~88K tokens)                                                                                                                       | —                                                                                                                |
 | `sections` | A core (~9K): structure, rules, routing, models, tokens                                                                                        | One tool per section, loaded whole (Josh's split from #196)                                                      |
 | `lookup`   | A larger core (~30K), adding the expression grammar and design-system props, plus the components and stores the template and request implicate | One `we_reference` tool fetching components, stores or sections by name                                          |
-| `toolset`  | The `template` documentation topic (~7K), as a host's agent gets it                                                                            | `template_read`'s first answer carries the entries the edit needs; the rest are topics `get_documentation` reads |
+| `toolset`  | The `template` documentation topic (~7K), as a host's agent gets it. **What the editor ships.**                                                | `template_read`'s first answer carries the entries the edit needs; the rest are topics `get_documentation` reads |
 
 See `packages/agent-tools/src/templates/contextStrategies.ts`.
 

@@ -35,8 +35,11 @@ export interface EditSessionOptions {
   turns: ConversationTurn[];
   /** Every tool the model is offered. The patch tool is handled here; anything else goes to `resolveTool`. */
   tools: ConversationTool[];
-  /** The answer to a call other than the patch tool — a context lookup — or undefined for a tool nobody knows. */
-  resolveTool?: (call: ConversationToolCall) => string | undefined;
+  /**
+   * The answer to a call other than the patch tool — a context lookup — or undefined for a tool
+   * nobody knows. `current` is the tree with every patch kept so far, for a lookup that reads nodes.
+   */
+  resolveTool?: (call: ConversationToolCall, current: SchemaNode) => string | undefined;
   /**
    * The tool whose calls carry patches: `update_schema`, or `template_update` when the request was
    * prepared with the template tools a host offers (`prepareTemplateRequest` says which).
@@ -211,7 +214,7 @@ export async function runEditSession(options: EditSessionOptions): Promise<EditS
         return pending.shift()!;
       }
       stats.contextCalls++;
-      const answer = options.resolveTool?.(call);
+      const answer = options.resolveTool?.(call, session.current());
       return answer === undefined
         ? { callId: call.id, content: `Unknown tool: ${call.name}`, isError: true }
         : { callId: call.id, content: answer };

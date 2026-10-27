@@ -71,10 +71,12 @@ Where the 4B fails under `toolset`, it is for one of three reasons:
 
 ### What it decides
 
-For a capable model the editor can move to `toolset`: equal accuracy, a fifth of the prompt, and
-one set of tools for the editor and a host's agent. For a 4B it is the trade above, and the
-editor has neither the 300s cap nor a way to say which model is weak. That decision is left
-open. The editor still ships `lookup`.
+**The editor moves to `toolset`.** On a capable model it is as accurate, from a fifth of the
+prompt, and it is the same set of tools a host's agent uses. A 4B fails about 70% of edits under
+either strategy, so neither makes it a usable template editor, and it should not decide what the
+editor ships. If the small-model question comes back, re-run it once the 300s cap is gone, and
+compare against `full` as the control and `lookup` as the previous default. All the strategies
+stay in the eval for that.
 
 ---
 

@@ -9,9 +9,10 @@
  * as its prompt, the template and the reference entries it needs as `template_read`'s answer, the
  * rest of the reference as topics it reads, and `template_update` to patch with. It exists so the
  * editor and a host's agent can run on one set of tools, and so the eval can say whether that costs
- * anything before the editor moves.
+ * anything before the editor moves. The editor runs on it: the October 2026 eval found it as
+ * accurate as `lookup` on a capable model, from a fifth of the prompt (`eval/BASELINE.md`).
  */
-import type { ConversationTool, ConversationToolCall, ConversationTurn } from '@we/backend-shared';
+import type { ConversationTool, ConversationToolCall, ConversationTurn, EntityManifestEntry } from '@we/backend-shared';
 import { encodeTemplateFile } from '@we/entities';
 import type { SchemaNode } from '@we/schema-shared';
 
@@ -36,8 +37,8 @@ export interface TemplateRequest {
   tools: ConversationTool[];
   /** The name of the tool whose calls carry patches. Pass it to `runEditSession`. */
   patchTool: string;
-  /** The answer to a lookup tool, or undefined for a name no tool here claims. */
-  resolveTool: (call: ConversationToolCall) => string | undefined;
+  /** The answer to a lookup tool, or undefined for a name no tool here claims. See `EditSessionOptions.resolveTool`. */
+  resolveTool: (call: ConversationToolCall, current?: SchemaNode) => string | undefined;
   /**
    * The turns this request adds to the conversation: the request with the template, or — for
    * `toolset` — the request, a `template_read` call and its answer.
@@ -67,14 +68,17 @@ export async function prepareTemplateRequest(options: {
   /** The template as stored: expanded, with permanent ids. */
   template: SchemaNode;
   request: string;
-  /** How much of the reference goes in the prompt. The editor's choice when absent. */
+  /** How much of the reference goes in the prompt. `toolset`, the editor's, when absent. */
   strategy?: TemplateStrategyId;
+  /** The dataset's own models, which the template may query. Only `toolset` sends them, with its read. */
+  models?: EntityManifestEntry[];
   /** The template's share of the budget, in characters. See `boundTemplate`. */
   budget?: number;
 }): Promise<TemplateRequest> {
-  if (options.strategy === 'toolset') return toolsetRequest(options);
+  const strategy = options.strategy ?? 'toolset';
+  if (strategy === 'toolset') return toolsetRequest(options);
   const tree = prepareForModel(options.template);
-  const context = await chatContext({ request: options.request, schema: tree.schema }, options.strategy);
+  const context = await chatContext({ request: options.request, schema: tree.schema }, strategy);
   /*
     How much of the TEMPLATE goes with it. `chatContext` bounds the reference; this bounds the
     other half, which on a real template is the larger one. A template inside the budget is sent
@@ -104,10 +108,10 @@ async function toolsetRequest(options: {
   template: SchemaNode;
   request: string;
   budget?: number;
+  models?: EntityManifestEntry[];
 }): Promise<TemplateRequest> {
   const tree = prepareForModel(options.template);
   const bounded = boundTemplate(tree.schema, options.request, options.budget, TEMPLATE_READ);
-  const lookup = boundTemplate(tree.schema, '', 0, TEMPLATE_READ);
 
   // The same answer an agent on a host gets from its first read, from the same tool.
   const record = {
@@ -115,7 +119,11 @@ async function toolsetRequest(options: {
     className: 'Template',
     properties: { version: 1, schema: encodeTemplateFile(options.template) },
   };
-  const read = await templateToolset.call(TEMPLATE_READ, { record, args: { about: options.request } });
+  const read = await templateToolset.call(TEMPLATE_READ, {
+    record,
+    args: { about: options.request },
+    models: options.models,
+  });
 
   const topics = await templateToolset.docs.list();
   const texts = new Map(
@@ -145,7 +153,7 @@ async function toolsetRequest(options: {
       docsTool,
     ],
     patchTool: TEMPLATE_UPDATE,
-    resolveTool: (call) => {
+    resolveTool: (call, current = tree.schema) => {
       if (call.name === DOCS_TOOL) {
         const topic = String((call.arguments as { topic?: unknown }).topic ?? '');
         return texts.get(topic) ?? `No topic "${topic}". The \`template\` topic lists them all.`;
@@ -153,8 +161,14 @@ async function toolsetRequest(options: {
       if (call.name !== TEMPLATE_READ) return undefined;
       const args = call.arguments as { ids?: unknown; find?: unknown };
       const asks = (Array.isArray(args.ids) && args.ids.length) || (typeof args.find === 'string' && args.find.trim());
-      // A budget of nothing, as `template_read` itself uses, so a tree of any size answers by id.
-      return asks ? `Template version 1.\n\n${lookup.resolveTool?.(call) ?? ''}` : ALREADY_READ;
+      if (!asks) return ALREADY_READ;
+      /*
+        From the tree as it is now, with this conversation's patches in it: a node read back after
+        the model changed it is the changed node. A budget of nothing, as `template_read` itself
+        uses, so a tree of any size answers by id.
+      */
+      const lookup = boundTemplate(current, '', 0, TEMPLATE_READ);
+      return `Template version 1.\n\n${lookup.resolveTool?.(call) ?? ''}`;
     },
     opening: [
       { role: 'user', text: options.request },
