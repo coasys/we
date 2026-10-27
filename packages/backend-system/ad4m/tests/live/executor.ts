@@ -35,6 +35,11 @@ export interface LiveExecutor {
    * (`AD4M_LIVE_URL`) unless `AD4M_LIVE_MCP_URL` names it.
    */
   mcpUrl?: string;
+  /**
+   * True when this run started the executor and made its agent, so tests may write to the agent
+   * itself (its profile). An executor already running is somebody's agent: never write to it.
+   */
+  disposable?: boolean;
 }
 
 declare module 'vitest' {
@@ -205,6 +210,6 @@ export default async function setup(project: TestProject): Promise<() => Promise
     throw new Error(`${(error as Error).message}\n--- executor output ---\n${output.join('').slice(-8_000)}`);
   }
 
-  project.provide('ad4mExecutor', { url, token, mcpUrl: `http://127.0.0.1:${mcpPort}/mcp` });
+  project.provide('ad4mExecutor', { url, token, mcpUrl: `http://127.0.0.1:${mcpPort}/mcp`, disposable: true });
   return stop;
 }
