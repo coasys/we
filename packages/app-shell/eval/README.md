@@ -13,11 +13,12 @@ a product that has not shipped since #248.
 
 ## What it compares
 
-| Strategy   | System prompt                                                                                                                                  | The rest of the reference                                               |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| `full`     | Everything, as the editor ships (~88K tokens)                                                                                                  | —                                                                       |
-| `sections` | A core (~9K): structure, rules, routing, models, tokens                                                                                        | One tool per section, loaded whole (Josh's split from #196)             |
-| `lookup`   | A larger core (~30K), adding the expression grammar and design-system props, plus the components and stores the template and request implicate | One `we_reference` tool fetching components, stores or sections by name |
+| Strategy   | System prompt                                                                                                                                  | The rest of the reference                                                                                        |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `full`     | Everything, as the editor ships (~88K tokens)                                                                                                  | —                                                                                                                |
+| `sections` | A core (~9K): structure, rules, routing, models, tokens                                                                                        | One tool per section, loaded whole (Josh's split from #196)                                                      |
+| `lookup`   | A larger core (~30K), adding the expression grammar and design-system props, plus the components and stores the template and request implicate | One `we_reference` tool fetching components, stores or sections by name                                          |
+| `toolset`  | The `template` documentation topic (~7K), as a host's agent gets it                                                                            | `template_read`'s first answer carries the entries the edit needs; the rest are topics `get_documentation` reads |
 
 See `packages/agent-tools/src/templates/contextStrategies.ts`.
 
@@ -51,7 +52,7 @@ it was, and nothing says so.
 | `WE_EVAL_URL`        | `http://localhost:12000` | The executor's HTTP base.                                                                                        |
 | `WE_EVAL_TOKEN`      | none                     | A token with `AI_PROMPT`. For the desktop app's executor, the `--admin-credential` in `pgrep -fa ad4m-executor`. |
 | `WE_EVAL_MODELS`     | `default`                | Model names or ids as Settings → AI shows them, comma-separated. `default` is the node's default LLM.            |
-| `WE_EVAL_STRATEGIES` | all three                | Any of `full,sections,lookup`.                                                                                   |
+| `WE_EVAL_STRATEGIES` | all four                 | Any of `full,sections,lookup,toolset`.                                                                           |
 | `WE_EVAL_CASES`      | all at the chosen scale  | Case ids from `cases.ts`. Overrides `WE_EVAL_SCALE`.                                                             |
 | `WE_EVAL_SCALE`      | `small`                  | `small`, `large`, or both. See **Two scales** below — a large run costs several times more.                      |
 | `WE_EVAL_REPEAT`     | `1`                      | Runs per combination. Models are not deterministic; use 3 before drawing a conclusion.                           |
