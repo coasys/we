@@ -7065,6 +7065,9 @@
         "isDevelopment": {
           "type": "boolean"
         },
+        "devFeatures": {
+          "type": "boolean"
+        },
         "devTools": {
           "type": "boolean"
         },
