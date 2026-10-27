@@ -14,7 +14,7 @@ export const widths = [1280, 420];
 
 const near = (a, b, tolerance = 1.5) => Math.abs(a - b) <= tolerance;
 
-export async function check({ measure, measureAll, measureText, evaluate, screenshot }, width) {
+export async function check({ measureAll, measureText, evaluate, moveTo, screenshot }, width) {
   const problems = [];
   const frame = async () => {
     const boxes = await evaluate(() =>
@@ -61,6 +61,33 @@ export async function check({ measure, measureAll, measureText, evaluate, screen
   const see = await measureText('See the app', 'we-button');
   if (!watch || !see) problems.push('the two buttons are missing');
   else if (width >= 768 && !near(watch.y, see.y, 4)) problems.push('the buttons are not side by side');
+
+  // The site's secondary button: a 2px mint outline round white words, filled mint under the pointer.
+  // Mint is read off the solid button beside it, so this follows the theme rather than a hex.
+  const buttonStyle = () =>
+    evaluate(() => {
+      const base = (text) =>
+        [...document.querySelectorAll('we-button')]
+          .find((b) => b.textContent.includes(text))
+          ?.shadowRoot.querySelector('[part=base]');
+      const see = getComputedStyle(base('See the app'));
+      return {
+        mint: getComputedStyle(base('Watch the film')).backgroundColor,
+        border: see.borderTopColor,
+        width: see.borderTopWidth,
+        bg: see.backgroundColor,
+        text: see.color,
+      };
+    });
+  const rest = await buttonStyle();
+  if (rest.width !== '2px' || rest.border !== rest.mint || rest.text !== 'rgb(255, 255, 255)')
+    problems.push(`"See the app" rests as ${rest.width} ${rest.border} round ${rest.text}, not 2px mint round white`);
+  await moveTo('we-button:has-text("See the app")');
+  await evaluate(() => new Promise((resolve) => setTimeout(resolve, 300)));
+  const hover = await buttonStyle();
+  if (hover.bg === rest.bg || hover.bg !== hover.border)
+    problems.push(`"See the app" does not fill under the pointer: ${hover.bg} inside ${hover.border}`);
+  await moveTo('we-text');
 
   await screenshot('coasys-about');
 
