@@ -35,9 +35,11 @@ const outPath = seedFile.generatedPath(
  * developer features (`DEV_FEATURES` in `@we/module-shared` — a dev server, Netlify's `dev` and its
  * previews), whatever a seed asks for. Marked here, where the template is registered, rather than in
  * a seed, which would have to repeat it in every seed, or in its `meta`, which travels with a shared
- * template to somebody for whom it means nothing. Shipping one is one edit: drop the mark, and give
- * it a descriptive name in the picker, since the four marked below are named after the products
- * they imitate, and are fine only while they ship to nobody.
+ * template to somebody for whom it means nothing. Every showcase template is marked: they are
+ * studies of what the template and theme systems can express, not yet things to ship, and only
+ * `default` and `workshop` are in a production build. Shipping one is one edit: drop the mark, and
+ * give a template named after a product it imitates a descriptive name in the picker, since that
+ * name is fine only while it ships to nobody.
  *
  * The catalogue lives here rather than being discovered from the filesystem, because a template's
  * *id* is a stable public name — it appears in `we-seed.json`, in `AgentSettings.defaultTemplateId`,
@@ -51,10 +53,10 @@ const CATALOGUE = {
   twitter: { module: '@we/template-showcase', export: 'twitterTemplate', dev: true },
   instagram: { module: '@we/template-showcase', export: 'instagramTemplate', dev: true },
   youtube: { module: '@we/template-showcase', export: 'youtubeTemplate', dev: true },
-  kanban: { module: '@we/template-showcase', export: 'kanbanTemplate' },
-  events: { module: '@we/template-showcase', export: 'eventsTemplate' },
-  scrapbook: { module: '@we/template-showcase', export: 'scrapbookTemplate' },
-  'theme-lab': { module: '@we/template-showcase', export: 'themeLabTemplate' },
+  kanban: { module: '@we/template-showcase', export: 'kanbanTemplate', dev: true },
+  events: { module: '@we/template-showcase', export: 'eventsTemplate', dev: true },
+  scrapbook: { module: '@we/template-showcase', export: 'scrapbookTemplate', dev: true },
+  'theme-lab': { module: '@we/template-showcase', export: 'themeLabTemplate', dev: true },
   workshop: { module: '@we/template-showcase', export: 'workshopTemplate' },
 };
 

@@ -27,14 +27,14 @@ import {
 export const bundledTemplates: Record<string, TemplateSchema> = {
   default: defaultTemplate,
   workshop: workshopTemplate,
-  kanban: kanbanTemplate,
-  events: eventsTemplate,
-  scrapbook: scrapbookTemplate,
-  'theme-lab': themeLabTemplate,
   ...(DEV_FEATURES && {
     discord: discordTemplate,
     twitter: twitterTemplate,
     instagram: instagramTemplate,
     youtube: youtubeTemplate,
+    kanban: kanbanTemplate,
+    events: eventsTemplate,
+    scrapbook: scrapbookTemplate,
+    'theme-lab': themeLabTemplate,
   }),
 };

@@ -67,10 +67,11 @@ A thing declares that it is not ready where it is registered, and the build
 decides what that means:
 
 - **A template:** `dev: true` in the catalogue in
-  `packages/app-shell/scripts/generateTemplateRegistry.mjs`. When one is ready to
-  ship, drop the mark and give it a descriptive name in the picker. The Discord,
-  Twitter, Instagram and YouTube clones are named after what they imitate, which
-  is fine only while they ship to nobody.
+  `packages/app-shell/scripts/generateTemplateRegistry.mjs`. Every showcase
+  template is marked, so a production build has only `default` and `workshop`.
+  When one is ready to ship, drop the mark, and if it is named after a product it
+  imitates (Discord, Twitter, Instagram, YouTube, Trello), give it a descriptive
+  name in the picker: that name is fine only while it ships to nobody.
 - **A theme:** the showcase templates' two themes are `SHOWCASE_THEME_PRESETS` in
   `@we/themes`, kept apart from the shipped `THEME_PRESETS`, and the shell's
   `themeRegistry` adds them behind `DEV_FEATURES`. They are named Discord and

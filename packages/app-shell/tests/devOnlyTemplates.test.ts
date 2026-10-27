@@ -2,9 +2,9 @@
  * A template marked `dev` in the template catalogue is in a build only where the build has developer
  * features, and a production build does not contain it at all.
  *
- * "Does not contain" is the claim worth testing, and only a real build can test it. The four marked
- * templates are named after the products they imitate, which is fine only while they ship to
- * nobody, so hidden from the picker is not enough. This builds the generated registry the way the
+ * "Does not contain" is the claim worth testing, and only a real build can test it. Every showcase
+ * template but Workshop is marked, and several are named after the products they imitate, which is
+ * fine only while they ship to nobody, so hidden from the picker is not enough. This builds the generated registry the way the
  * apps do, with the seed plugin that defines `__WE_DEV_FEATURES__`, minified, and looks for each
  * template's description in what comes out.
  */
@@ -14,9 +14,13 @@ import { join, resolve } from 'node:path';
 
 import {
   discordTemplate,
+  eventsTemplate,
   instagramTemplate,
   kanbanTemplate,
+  scrapbookTemplate,
+  themeLabTemplate,
   twitterTemplate,
+  workshopTemplate,
   youtubeTemplate,
 } from '@we/template-showcase';
 import { build } from 'vite';
@@ -29,7 +33,17 @@ const REGISTRY = resolve(import.meta.dirname, '../src/shared/registries/bundledT
 const THEMES = resolve(import.meta.dirname, '../src/shared/registries/themeRegistry.ts');
 /** What the marked templates and their themes are named after, which a production build must not say. */
 const PRODUCTS = ['Discord', 'Twitter', 'Instagram', 'YouTube'];
-const DEV_ONLY = [discordTemplate, twitterTemplate, instagramTemplate, youtubeTemplate];
+/** Every showcase template but Workshop, which ships. */
+const DEV_ONLY = [
+  discordTemplate,
+  twitterTemplate,
+  instagramTemplate,
+  youtubeTemplate,
+  kanbanTemplate,
+  eventsTemplate,
+  scrapbookTemplate,
+  themeLabTemplate,
+];
 const out = mkdtempSync(join(tmpdir(), 'we-dev-only-'));
 afterAll(() => rmSync(out, { recursive: true, force: true }));
 
@@ -62,7 +76,7 @@ async function built(devFeatures: boolean): Promise<string> {
 describe('templates the catalogue marks dev', () => {
   it('are not in a production build at all', async () => {
     const code = await built(false);
-    expect(code).toContain(kanbanTemplate.meta!.description);
+    expect(code).toContain(workshopTemplate.meta!.description);
     for (const template of DEV_ONLY) expect(code).not.toContain(template.meta!.description);
   }, 120_000);
 
