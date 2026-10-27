@@ -174,6 +174,7 @@ export {
   readBundle,
   svgProblem,
 } from './bundle';
+export { isRelativePath, type PathBase, resolvePath } from './navigationPaths';
 export {
   expandViewRoutes,
   hasViewsMarker,
