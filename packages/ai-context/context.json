@@ -913,6 +913,12 @@
           "default": "''"
         },
         {
+          "name": "label",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
           "name": "disabled",
           "type": "boolean",
           "optional": false,

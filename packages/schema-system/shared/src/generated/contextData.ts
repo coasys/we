@@ -310,6 +310,7 @@ export const contextData: ContextData = {
         { name: 'target', type: 'string', optional: false, default: "''" },
         { name: 'rel', type: 'string', optional: false, default: "''" },
         { name: 'download', type: 'string', optional: false, default: "''" },
+        { name: 'label', type: 'string', optional: false, default: "''" },
         { name: 'disabled', type: 'boolean', optional: false, default: 'false' },
       ],
     },
