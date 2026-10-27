@@ -29,6 +29,7 @@ const zTypeRole = z.enum(TYPE_ROLES);
 const zTypeStyle = z
   .object({
     family: z.string().optional(),
+    size: z.string().optional(),
     weight: z.union([z.string(), z.number()]).optional(),
     letterSpacing: z.string().optional(),
     lineHeight: z.string().optional(),

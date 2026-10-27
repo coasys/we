@@ -9,6 +9,17 @@ describe('zodSchemas', () => {
     expect(() => zSchemaNode.parse(node)).not.toThrow();
   });
 
+  it('takes a node theme with every key a theme has — a sized type role, a button’s hover', () => {
+    const node = {
+      type: 'Column',
+      theme: {
+        typeStyles: { overline: { size: '200', weight: 700 } },
+        components: { button: { variants: { outline: { hover: { fill: 'accent', text: 'on-accent' } } } } },
+      },
+    };
+    expect(() => zSchemaNode.parse(node)).not.toThrow();
+  });
+
   it('parses a schema node with no type (fragment)', () => {
     const node = { children: [{ type: 'div' }] };
     expect(() => zSchemaNode.parse(node)).not.toThrow();
