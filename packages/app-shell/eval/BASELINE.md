@@ -10,6 +10,9 @@ the payload was: that is the part that goes stale. **Say which scale it was**, a
 separate tables — `small` and `large` answer different questions and a combined pass rate is a
 figure about nothing. See "Two scales" in `README.md`.
 
+Template names changed on 2026-10-27: what the sections below call `kanban` (its cases
+`kanban-*`) is the `trello` template now (`trello-*`). The records are left as they were written.
+
 ---
 
 ## 2026-10-26 — `toolset` against `lookup`, Sonnet 5.5 and qwen3:4b

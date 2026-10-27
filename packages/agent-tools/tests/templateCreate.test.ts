@@ -8,7 +8,7 @@
  */
 import { decodeTemplateFile, encodeTemplateFile } from '@we/entities';
 import { buildValidationContext, contextData, type SchemaNode, type TemplateSchema } from '@we/schema-shared';
-import { kanbanTemplate } from '@we/template-showcase';
+import { trelloTemplate } from '@we/template-showcase';
 import { describe, expect, it } from 'vitest';
 
 import type { RecordInput } from '../src/core/toolset';
@@ -80,17 +80,17 @@ describe('template_create', () => {
   });
 
   it('records who made it when told, and drops whoever saved the template it was forked from', async () => {
-    const source = { ...kanbanTemplate, author: 'did:somebody-else' } as TemplateSchema;
+    const source = { ...trelloTemplate, author: 'did:somebody-else' } as TemplateSchema;
     const answer = await create({ name: 'My kanban' }, { record: asRecord(source), author: 'did:me' });
     expect(answer.text).not.toMatch(/^Error/);
     const template = written(answer.properties);
     expect(template.author).toBe('did:me');
     expect(template.meta.name).toBe('My kanban');
-    expect(template.routes?.map((r) => r.path)).toEqual(kanbanTemplate.routes?.map((r) => r.path));
+    expect(template.routes?.map((r) => r.path)).toEqual(trelloTemplate.routes?.map((r) => r.path));
   });
 
   it('refuses a role the template it forks is not', async () => {
-    const answer = await create({ name: 'X', role: 'view' }, { record: asRecord(kanbanTemplate as TemplateSchema) });
+    const answer = await create({ name: 'X', role: 'view' }, { record: asRecord(trelloTemplate as TemplateSchema) });
     expect(answer.text).toMatch(/^Error: The template to start from is a shell/);
   });
 

@@ -15,7 +15,7 @@ import type { Fixture } from './types';
 export const discordFixture: Fixture = {
   id: 'discord',
   templateId: 'discord',
-  themeId: 'channels',
+  themeId: 'discord',
 
   space: {
     name: 'Cartography Club',

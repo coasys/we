@@ -283,7 +283,7 @@ const playlistsRoute: RouteSchema = {
 
 export const youtubeTemplate: TemplateSchema = {
   meta: {
-    name: 'Videos',
+    name: 'YouTube',
     description: 'The same posts as a video library, with playlists and comments. Embeds only.',
     icon: 'video-camera',
     // The triptych's shared theme — see the Timeline template.

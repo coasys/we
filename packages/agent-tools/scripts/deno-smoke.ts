@@ -23,7 +23,7 @@ import { fileURLToPath } from 'node:url';
 
 import { encodeTemplateFile } from '@we/entities';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
-import { kanbanTemplate, workshopTemplate } from '@we/template-showcase';
+import { trelloTemplate, workshopTemplate } from '@we/template-showcase';
 
 import { prepareForModel } from '../src/templates/nodeAliases';
 
@@ -51,7 +51,7 @@ try {
       JSON.stringify({ id: `${name}-record`, className: 'Template', properties }),
     );
   };
-  record('kanban', kanbanTemplate);
+  record('trello', trelloTemplate);
   record('workshop', workshopTemplate);
 
   const run = spawnSync(

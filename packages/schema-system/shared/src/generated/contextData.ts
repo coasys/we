@@ -2834,6 +2834,7 @@ export const contextData: ContextData = {
           ],
         },
         isDevelopment: { type: 'boolean' },
+        devFeatures: { type: 'boolean' },
         devTools: { type: 'boolean' },
         credentialEntered: { type: 'boolean' },
         credentialConfirmed: { type: 'boolean' },

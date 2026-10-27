@@ -72,12 +72,12 @@ half of the context budget: which parts of the generated schema reference a stra
 of the model. They are nearly blind to the template half — a strategy that sent no template at all
 would still pass most of them.
 
-**`large`** — four cases on `kanban`, a real template (57,440 chars, 37,516 compacted). Here the
+**`large`** — four cases on `trello` (until 2026-10-27 `kanban`, and "Boards" in the picker), a real template (57,440 chars, 37,516 compacted). Here the
 proportions invert and the template is the bigger half. These exist to measure what bounding the
 template does, which the small cases cannot see.
 
-One of the four turns on something no small case can reach. Kanban shares shapes: its card is one
-shape used four times, its column header one used twice. So `kanban-card-radius` ("the cards") is
+One of the four turns on something no small case can reach. Trello shares shapes: its card is one
+shape used four times, its column header one used twice. So `trello-card-radius` ("the cards") is
 right only when the shape itself changes — a model that patches one use leaves three cards behind.
 
 A second case asked for the opposite, a `split`, and was removed after the calibration run

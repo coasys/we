@@ -206,7 +206,7 @@ const photoDetail: RouteSchema = {
 
 export const instagramTemplate: TemplateSchema = {
   meta: {
-    name: 'Photos',
+    name: 'Instagram',
     description: 'The same posts as a photo grid — one space, a different lens.',
     icon: 'image',
     // The triptych's shared theme — see the Timeline template. Dark also lets photographs carry the page.

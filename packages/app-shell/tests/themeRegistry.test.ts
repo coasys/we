@@ -9,20 +9,27 @@
  *
  * That is the same silent-omission failure the theme-selector guard exists for one layer down.
  */
-import { THEME_PRESETS } from '@we/themes/presets';
+import { SHOWCASE_THEME_PRESETS, THEME_PRESETS } from '@we/themes/presets';
 import { describe, expect, it } from 'vitest';
 
 import { themeRegistry } from '../src/shared/registries/themeRegistry';
 
+/*
+  These tests run as a build with developer features (app-shell's vitest config), so the registry
+  holds the showcase pair as well. That a production build leaves them out is
+  `devOnlyTemplates.test.ts`'s to prove, by building one.
+*/
+const PRESETS = { ...THEME_PRESETS, ...SHOWCASE_THEME_PRESETS };
+
 describe('themeRegistry', () => {
-  it('carries every preset the design system defines', () => {
-    expect(Object.keys(themeRegistry).sort()).toEqual(Object.keys(THEME_PRESETS).sort());
+  it('carries every preset the design system defines, and the showcase pair with developer features', () => {
+    expect(Object.keys(themeRegistry).sort()).toEqual(Object.keys(PRESETS).sort());
   });
 
   it('takes each theme’s parameters from the preset rather than restating them', () => {
     for (const [id, entry] of Object.entries(themeRegistry)) {
-      expect(entry.overrides, id).toBe(THEME_PRESETS[id as keyof typeof THEME_PRESETS].parameters);
-      expect(entry.name, id).toBe(THEME_PRESETS[id as keyof typeof THEME_PRESETS].name);
+      expect(entry.overrides, id).toBe(PRESETS[id as keyof typeof PRESETS].parameters);
+      expect(entry.name, id).toBe(PRESETS[id as keyof typeof PRESETS].name);
     }
   });
 });

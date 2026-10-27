@@ -32,6 +32,17 @@ AD4M_PIN_VERSION="$(printf '%s\n' "$PIN" | sed -n 's/^version=//p')"
 AD4M_SHA="$(node scripts/ad4m-pin.mjs --commit 2>/dev/null || true)"
 echo "── ad4m: $AD4M_PIN_KIND ${AD4M_PIN_VERSION:-${AD4M_SHA:0:9}}"
 
+# Developer features (the showcase templates, pretend people, Settings → Developer) for everything
+# but production: `dev` and pull-request previews are where work in progress is looked at.
+# Production (`main`) is a published version and gets none of them. See
+# packages/module-system/shared/src/devFeatures.ts.
+# Named rather than "anything but production", so a build with no context says no.
+case "${CONTEXT:-}" in
+  branch-deploy | deploy-preview) export WE_DEV_FEATURES=true ;;
+  *) export WE_DEV_FEATURES=false ;;
+esac
+echo "── developer features: $WE_DEV_FEATURES (context: ${CONTEXT:-unset})"
+
 NODE_OPTIONS='--max-old-space-size=8192' pnpm build
 
 # --- Say what this build is -------------------------------------------------

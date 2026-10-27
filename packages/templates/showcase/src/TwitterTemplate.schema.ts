@@ -369,12 +369,12 @@ const postDetail: RouteSchema = {
 
 export const twitterTemplate: TemplateSchema = {
   meta: {
-    name: 'Timeline',
+    name: 'Twitter',
     description: 'A reverse-chronological feed of the space’s posts, with replies and community signals.',
     icon: 'newspaper',
     // Shared with Photos and Videos deliberately: those three exist to show one space rendered three
     // ways, so the theme must not be a second variable moving at the same time.
-    themeId: 'timeline',
+    themeId: 'twitter',
     /*
       The two sections beside the feed start in the right-hand lane. Named `snap`s say where each
       goes when broken out by a click rather than a drag — the corner every picture-in-picture uses.

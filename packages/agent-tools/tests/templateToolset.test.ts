@@ -10,7 +10,7 @@
 import type { EntityManifestEntry } from '@we/backend-shared';
 import { decodeTemplateFile, encodeTemplateFile } from '@we/entities';
 import { ensureNodeIds, forEachNode, type SchemaNode, type TemplateSchema } from '@we/schema-shared';
-import { kanbanTemplate } from '@we/template-showcase';
+import { trelloTemplate } from '@we/template-showcase';
 import { describe, expect, it } from 'vitest';
 
 import type { RecordInput } from '../src/core/toolset';
@@ -107,7 +107,7 @@ describe('the template tools', () => {
   it('read the same ids for a template with shared shapes, whose own ids are minted afresh each time', async () => {
     // Compaction gives a shared shape's nodes new ids on every pass, so only the aliases — numbered
     // by walking the tree — can be the same twice. This is what a read and the update after it rely on.
-    const tree = prepareForModel(kanbanTemplate as SchemaNode);
+    const tree = prepareForModel(trelloTemplate as SchemaNode);
     const kanban = record({}, tree.restore(tree.schema) as TemplateSchema);
     const readKanban = async () => (await templateToolset.call(TEMPLATE_READ, { record: kanban, args: {} })).text;
 
@@ -291,7 +291,7 @@ describe('what a read brings beside the template', () => {
   });
 
   it('keeps the entries within their budget on a large template, and names what it left out', async () => {
-    const big = record({}, kanbanTemplate as TemplateSchema);
+    const big = record({}, trelloTemplate as TemplateSchema);
     const answer = JSON.parse(
       (await templateToolset.call(TEMPLATE_READ, { record: big, args: { about: 'restyle the card' } })).text,
     );

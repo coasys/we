@@ -301,9 +301,22 @@ export const THEME_PRESETS = {
       components: { tooltip: { radius: '0' }, menu: { border: 'accent-border' } },
     },
   },
+} as const satisfies Record<string, ThemePreset>;
 
+/**
+ * The two themes the showcase templates were built with, modelled on the products those templates
+ * imitate, and named after them. Kept apart from `THEME_PRESETS` because they are not shipped: an
+ * app adds them only to a build with developer features (`themeRegistry` in the shell), and
+ * nothing a production build reaches refers to this, so it is left out of one. A theme built to be
+ * a theme in its own right belongs in `THEME_PRESETS`; one of these that ships takes a descriptive
+ * name and moves there.
+ *
+ * Their ids stay what the templates name in `themeId`. By name they resolve through the app's
+ * registered lookup (`registerNamedThemes`), like any theme the app holds and this package does not.
+ */
+export const SHOWCASE_THEME_PRESETS = {
   /**
-   * A near-neutral dark, for the channels template. Built from measurements of a real chat client
+   * A near-neutral dark, for the Discord template. Built from measurements of a real chat client
    * rather than by eye — see `apps/we-preview/scripts/measure.mjs`.
    *
    * Two things it demonstrates about the theme system, one comfortable and one not.
@@ -323,8 +336,8 @@ export const THEME_PRESETS = {
    * The pins stay parametric in hue and saturation, so changing `neutralHue` still moves the whole
    * theme together. Only the lightnesses are fixed, because the lightnesses are the design.
    */
-  channels: {
-    name: 'Channels',
+  discord: {
+    name: 'Discord',
     icon: 'hash',
     parameters: {
       accentHue: 266,
@@ -383,7 +396,7 @@ export const THEME_PRESETS = {
   },
 
   /**
-   * A light, quiet theme for the timeline template — the other reference, and the opposite problem.
+   * A light, quiet theme for the Twitter template — the other reference, and the opposite problem.
    *
    * Almost the whole design is one flat white with hairline rules; there is no card, no elevation
    * and no shadow anywhere in the column. What carries it is the *accent* and the type, so the only
@@ -392,8 +405,8 @@ export const THEME_PRESETS = {
    * `shadowIntensity: 'flat'` is doing real work here: every surface primitive still wants to cast
    * something, and a timeline that shadows its rows stops reading as a single sheet.
    */
-  timeline: {
-    name: 'Timeline',
+  twitter: {
+    name: 'Twitter',
     icon: 'list-dashes',
     parameters: {
       accentHue: 245,
