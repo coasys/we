@@ -174,24 +174,73 @@ describe('lifecycle dispatch resolves without a reactive owner', () => {
   });
 });
 
-describe('relative navigation with a render-time memo', () => {
+/*
+  A path a template writes is relative to the route the node is rendered in, which only the renderer
+  knows. It hands that route's depth to `navigate` as the base, and the router resolves the path
+  against its own address (`resolvePath`, `RouteStore.navigate`).
+*/
+describe('navigating from a route', () => {
+  const memo = ((fn: () => unknown) => fn) as <T>(fn: () => T) => T;
+
   /**
    * A nav strip's `args: [{ $: 'view.path' }]` resolves through the renderer's `createMemo`, so the
-   * path arrives as a reactive accessor rather than a string. The relative-path branch used to test
-   * the accessor's type and skip itself — `./cards` reached the router as written and landed on the
-   * catch-all route, while an absolute path survived unchanged. This is the space header's bug.
+   * path arrives as a reactive accessor rather than a string. The relative-path handling used to
+   * test the accessor's type and skip itself, and `./cards` landed on the catch-all route.
    */
-  it('resolves a relative path that arrives as an accessor', () => {
+  it('hands the route over with a path that arrives as an accessor', () => {
     const navigate = vi.fn();
-    const memo = ((fn: () => unknown) => fn) as <T>(fn: () => T) => T;
     const handler = resolveProp(
       { $invoke: 'routeStore.navigate', args: [{ $: 'view.path' }] },
       { routeStore: { navigate } },
-      { view: { path: './cards' }, $nav: { baseDepth: 2, pathname: '/space/abc' } },
+      { view: { path: './cards' }, $nav: { baseDepth: 2 } },
       memo,
     ) as () => void;
 
     handler();
-    expect(navigate).toHaveBeenCalledWith('/space/abc/cards');
+    expect(navigate).toHaveBeenCalledWith('./cards', { base: { depth: 2 } });
+  });
+
+  /*
+    Known only when the handler runs: a tree's `select` or a menu's `onSelect` carrying the path. The
+    path used to be rewritten at render time, so this one reached the router as written and was
+    resolved from the app's root, which leaves the space.
+  */
+  it('hands the route over with a path that arrives with the event', () => {
+    const navigate = vi.fn();
+    const handler = resolveProp(
+      { $invoke: 'routeStore.navigate', args: [{ $: 'event.detail' }] },
+      { routeStore: { navigate } },
+      { $nav: { baseDepth: 3 } },
+      memo,
+    ) as (event: unknown) => void;
+
+    handler({ detail: '../wall' });
+    expect(navigate).toHaveBeenCalledWith('../wall', { base: { depth: 3 } });
+  });
+
+  it('keeps the options written beside it', () => {
+    const navigate = vi.fn();
+    const handler = resolveProp(
+      { $invoke: 'routeStore.navigate', args: ['./board', { $: '{ query: { id: board.id } }' }] },
+      { routeStore: { navigate } },
+      { board: { id: 'ad4m://obj/x' }, $nav: { baseDepth: 2 } },
+      memo,
+    ) as () => void;
+
+    handler();
+    expect(navigate).toHaveBeenCalledWith('./board', { query: { id: 'ad4m://obj/x' }, base: { depth: 2 } });
+  });
+
+  it('leaves a navigation outside any route as written', () => {
+    const navigate = vi.fn();
+    (
+      resolveProp(
+        { $invoke: 'routeStore.navigate', args: ['~/'] },
+        { routeStore: { navigate } },
+        {},
+        memo,
+      ) as () => void
+    )();
+    expect(navigate).toHaveBeenCalledWith('~/');
   });
 });
