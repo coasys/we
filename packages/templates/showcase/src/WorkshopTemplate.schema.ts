@@ -66,6 +66,7 @@ import {
   emptyNote,
   emptyState,
   field,
+  FLOWS_LOCALS,
   foldingBody,
   foldingSectionLabel,
   formModal,
@@ -85,6 +86,8 @@ import {
   taskBoardLoading,
   UNCONFIRMED,
   withoutHiddenSuggestions,
+  workflowsPage,
+  workflowsSection,
 } from '@we/template-kit';
 
 import {
@@ -141,7 +144,6 @@ import {
   vocabularyEditLink,
   vocabularyToggle,
 } from './WorkshopVocabulary.ts';
-import { FLOWS_LOCALS, workflowsPage, workflowsSection } from './WorkshopWorkflows.ts';
 
 /**
  * The call on screen — **named in the address**, or the one being recorded when it names none.
@@ -323,7 +325,7 @@ const NAV = [
   // already used this one, so the strip and the page it led to disagreed about what was there.
   { segment: ROUTE.kanban, icon: 'kanban', label: 'Kanban' },
   { segment: ROUTE.calendar, icon: 'calendar', label: 'Calendar' },
-  // The space's workflows and what is going through them — see `WorkshopWorkflows.ts`. Named for what it
+  // The space's workflows and what is going through them — see `workflows.ts` in the template kit. Named for what it
   // lists, unlike its neighbours: a workflow has no arrangement of its own to name the page after.
   { segment: ROUTE.workflows, icon: 'flow-arrow', label: 'Workflows' },
 ];
@@ -5128,7 +5130,7 @@ const eventList: SchemaNode = {
  */
 /**
  * Every workflow in the space, the records going through each, and the editor. The page is in
- * `WorkshopWorkflows.ts`; this gives it the route's padding under the pinned chrome.
+ * `workflows.ts` in the template kit; this gives it the route's padding under the pinned chrome.
  */
 const workflowsRoute: RouteSchema = {
   path: '/workflows',

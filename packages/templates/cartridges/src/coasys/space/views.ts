@@ -1,6 +1,5 @@
 import type { RouteSchema, SchemaNode, SchemaProp } from '@we/schema-shared';
-import { lineComposer, recordFormModal } from '@we/template-kit';
-import { FLOWS_LOCALS, workflowsPage } from '@we/template-showcase';
+import { FLOWS_LOCALS, lineComposer, recordFormModal, workflowsPage } from '@we/template-kit';
 
 import { viewBar } from './bar.ts';
 import { groupRoutes } from './groups.ts';

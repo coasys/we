@@ -2120,9 +2120,6 @@ importers:
       '@we/template-kit':
         specifier: workspace:*
         version: link:../kit
-      '@we/template-showcase':
-        specifier: workspace:*
-        version: link:../showcase
     devDependencies:
       '@types/node':
         specifier: ^26.6.5
