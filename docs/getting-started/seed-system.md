@@ -49,6 +49,35 @@ them, ignored by git, and the apps' Vite plugin (`scripts/seed-vite.mjs`) and
 the shell's tsup build read them from there. Building a second deployment never
 changes a tracked file, and nothing from it can be committed as WE's.
 
+## Developer features are the build's, not the seed's
+
+A seed says which deployment this is. Whether a build has **developer features**
+is a separate question, and it is the build's: the showcase templates that are
+not ready to ship, the pretend people on a canvas, the synthetic participants in
+a call, and Settings → Developer. They are in a build Vite serves, and in a build
+made with `WE_DEV_FEATURES=true`, which Netlify sets for the `dev` branch and pull
+request previews. A production build does not contain them at all.
+
+So a seed can list a template marked `dev` and a production build of that seed
+still leaves it out. Separate dev and production seeds were considered and
+rejected: every deployment needs both kinds of build, so they would double every
+seed.
+
+A thing declares that it is not ready where it is registered, and the build
+decides what that means:
+
+- **A template:** `dev: true` in the catalogue in
+  `packages/app-shell/scripts/generateTemplateRegistry.mjs`. When one is ready to
+  ship, drop the mark and give it a descriptive name in the picker. The Discord,
+  Twitter, Instagram and YouTube clones are named after what they imitate, which
+  is fine only while they ship to nobody.
+- **Anything else:** guard it with `DEV_FEATURES` from `@we/module-shared`, as
+  `pretendPeople.ts` and the call module's `devPeers.ts` do. It is a constant the
+  build writes, so a production build folds the guarded code away.
+
+Whether developer features are _showing_ is a separate switch, Settings →
+Developer, for looking at what a user sees without building for production.
+
 ## The sections
 
 ### `project` (required)
