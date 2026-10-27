@@ -7069,7 +7069,7 @@
         ],
         "typeStyles": {
           "heading": { "weight": 300, "letterSpacing": "-0.01em" },
-          "control": { "weight": 600, "letterSpacing": "0.01em" },
+          "control": { "weight": 600, "letterSpacing": "0.01em", "size": "18px" },
           "badge": { "weight": 700, "letterSpacing": "0.02em" },
           "overline": {
             "size": "200",
@@ -7130,7 +7130,10 @@
           "blueSoft": "color-mix(in oklab, var(--we-role-blue) 16%, var(--we-role-surface))",
           "purpleSoft": "color-mix(in oklab, var(--we-role-purple) 16%, var(--we-role-surface))",
           "pinkSoft": "color-mix(in oklab, var(--we-role-pink) 16%, var(--we-role-surface))"
-        }
+        },
+        "stateDuration": "300ms",
+        "controlPaddingX": "60px",
+        "controlGap": "8px"
       },
       "$localState": {
         "playing": { "type": "boolean", "initial": false },
@@ -7361,7 +7364,7 @@
                         "size": "lg",
                         "onClick": { "$setLocal": "playing", "value": true }
                       },
-                      "children": [{ "type": "we-icon", "props": { "name": "play" } }, "Watch the film"]
+                      "children": [{ "type": "we-icon", "props": { "name": "play", "size": "20px" } }, "Watch the film"]
                     },
                     {
                       "type": "we-button",
@@ -7476,7 +7479,8 @@
                                         "left": "600",
                                         "bottom": "500",
                                         "gap": "400",
-                                        "ay": "center"
+                                        "ay": "center",
+                                        "pointerEvents": "none"
                                       },
                                       "children": [
                                         {
@@ -7659,11 +7663,310 @@
         },
         {
           "type": "Column",
+          "props": { "width": "100%", "ax": "center", "bg": "#ffffff", "pt": "46px", "pb": "50px" },
+          "children": [
+            {
+              "type": "Column",
+              "props": {
+                "width": "100%",
+                "maxWidth": "1200px",
+                "px": "22px",
+                "smUpProps": { "px": "40px" },
+                "ax": "center",
+                "gap": "18px"
+              },
+              "children": [
+                {
+                  "type": "we-text",
+                  "props": { "variant": "overline", "color": "#1a1c43", "opacity": 0.6 },
+                  "children": ["Partners"]
+                },
+                {
+                  "type": "Row",
+                  "props": {
+                    "wrap": true,
+                    "ax": "center",
+                    "ay": "center",
+                    "gap": "20px 30px",
+                    "smUpProps": { "gap": "26px 48px" }
+                  },
+                  "children": [
+                    {
+                      "type": "we-link",
+                      "props": {
+                        "href": "https://www.holochain.org",
+                        "target": "_blank",
+                        "display": "flex",
+                        "opacity": 0.9,
+                        "hoverProps": { "opacity": 1 }
+                      },
+                      "children": [
+                        {
+                          "type": "we-image",
+                          "props": {
+                            "src": "https://coasys.org/partners/holochain.svg",
+                            "alt": "holochain",
+                            "height": "24px",
+                            "width": "auto",
+                            "maxWidth": "130px",
+                            "fit": "contain",
+                            "smUpProps": { "maxWidth": "180px" }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "we-link",
+                      "props": {
+                        "href": "https://www.holo.host",
+                        "target": "_blank",
+                        "display": "flex",
+                        "opacity": 0.9,
+                        "hoverProps": { "opacity": 1 }
+                      },
+                      "children": [
+                        {
+                          "type": "we-image",
+                          "props": {
+                            "src": "https://coasys.org/partners/holo.svg",
+                            "alt": "holo",
+                            "height": "17px",
+                            "width": "auto",
+                            "maxWidth": "130px",
+                            "fit": "contain",
+                            "smUpProps": { "maxWidth": "180px" }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "we-link",
+                      "props": {
+                        "href": "https://holoventures.io",
+                        "target": "_blank",
+                        "display": "flex",
+                        "opacity": 0.9,
+                        "hoverProps": { "opacity": 1 }
+                      },
+                      "children": [
+                        {
+                          "type": "we-image",
+                          "props": {
+                            "src": "https://coasys.org/partners/holoventures.svg",
+                            "alt": "Holo Ventures",
+                            "height": "29px",
+                            "width": "auto",
+                            "maxWidth": "130px",
+                            "fit": "contain",
+                            "smUpProps": { "maxWidth": "180px" }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "we-link",
+                      "props": {
+                        "href": "https://corenexus.is",
+                        "target": "_blank",
+                        "display": "flex",
+                        "opacity": 0.9,
+                        "hoverProps": { "opacity": 1 }
+                      },
+                      "children": [
+                        {
+                          "type": "we-image",
+                          "props": {
+                            "src": "https://coasys.org/partners/corenexus.svg",
+                            "alt": "corenexus",
+                            "height": "21px",
+                            "width": "auto",
+                            "maxWidth": "130px",
+                            "fit": "contain",
+                            "smUpProps": { "maxWidth": "180px" }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "we-link",
+                      "props": {
+                        "href": "https://trustgraph.net",
+                        "target": "_blank",
+                        "display": "flex",
+                        "opacity": 0.9,
+                        "hoverProps": { "opacity": 1 }
+                      },
+                      "children": [
+                        {
+                          "type": "we-image",
+                          "props": {
+                            "src": "https://coasys.org/partners/trustgraph.svg",
+                            "alt": "trustgraph",
+                            "height": "32px",
+                            "width": "auto",
+                            "maxWidth": "130px",
+                            "fit": "contain",
+                            "smUpProps": { "maxWidth": "180px" }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "we-link",
+                      "props": {
+                        "href": "https://www.symphonics.life",
+                        "target": "_blank",
+                        "display": "flex",
+                        "opacity": 0.9,
+                        "hoverProps": { "opacity": 1 }
+                      },
+                      "children": [
+                        {
+                          "type": "we-image",
+                          "props": {
+                            "src": "https://coasys.org/partners/symphonics.svg",
+                            "alt": "symphonics",
+                            "height": "29px",
+                            "width": "auto",
+                            "maxWidth": "130px",
+                            "fit": "contain",
+                            "smUpProps": { "maxWidth": "180px" }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "we-link",
+                      "props": {
+                        "href": "https://www.michkaelbaker.com",
+                        "target": "_blank",
+                        "display": "flex",
+                        "opacity": 0.9,
+                        "hoverProps": { "opacity": 1 }
+                      },
+                      "children": [
+                        {
+                          "type": "we-image",
+                          "props": {
+                            "src": "https://coasys.org/partners/cacoon.svg",
+                            "alt": "cacoon",
+                            "height": "18px",
+                            "width": "auto",
+                            "maxWidth": "130px",
+                            "fit": "contain",
+                            "smUpProps": { "maxWidth": "180px" }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "we-link",
+                      "props": {
+                        "href": "https://asraya.io",
+                        "target": "_blank",
+                        "display": "flex",
+                        "opacity": 0.9,
+                        "hoverProps": { "opacity": 1 }
+                      },
+                      "children": [
+                        {
+                          "type": "we-image",
+                          "props": {
+                            "src": "https://coasys.org/partners/asraya.svg",
+                            "alt": "asraya",
+                            "height": "40px",
+                            "width": "auto",
+                            "maxWidth": "130px",
+                            "fit": "contain",
+                            "smUpProps": { "maxWidth": "180px" }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "we-link",
+                      "props": {
+                        "href": "https://nillion.com/",
+                        "target": "_blank",
+                        "display": "flex",
+                        "opacity": 0.9,
+                        "hoverProps": { "opacity": 1 }
+                      },
+                      "children": [
+                        {
+                          "type": "we-image",
+                          "props": {
+                            "src": "https://coasys.org/partners/nillion.svg",
+                            "alt": "nillion",
+                            "height": "22px",
+                            "width": "auto",
+                            "maxWidth": "130px",
+                            "fit": "contain",
+                            "smUpProps": { "maxWidth": "180px" }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "we-link",
+                      "props": {
+                        "href": "https://weco.io/",
+                        "target": "_blank",
+                        "display": "flex",
+                        "opacity": 0.9,
+                        "hoverProps": { "opacity": 1 }
+                      },
+                      "children": [
+                        {
+                          "type": "we-image",
+                          "props": {
+                            "src": "https://coasys.org/partners/weco.svg",
+                            "alt": "weco",
+                            "height": "40px",
+                            "width": "auto",
+                            "maxWidth": "130px",
+                            "fit": "contain",
+                            "smUpProps": { "maxWidth": "180px" }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "we-link",
+                      "props": {
+                        "href": "https://www.holons.io/",
+                        "target": "_blank",
+                        "display": "flex",
+                        "opacity": 0.9,
+                        "hoverProps": { "opacity": 1 }
+                      },
+                      "children": [
+                        {
+                          "type": "we-image",
+                          "props": {
+                            "src": "https://coasys.org/partners/holons.svg",
+                            "alt": "holons",
+                            "height": "32px",
+                            "width": "auto",
+                            "maxWidth": "130px",
+                            "fit": "contain",
+                            "smUpProps": { "maxWidth": "180px" }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "Column",
           "props": {
             "id": "app",
             "width": "100%",
             "ax": "center",
-            "borderTop": "1px solid rgba(199,201,220,.08)",
             "py": "70px",
             "mdUpProps": { "py": "110px" },
             "bgImage": "linear-gradient(180deg, rgba(92,74,168,.14), rgba(19,21,51,0))"
@@ -7817,7 +8120,8 @@
                                             "right": "0",
                                             "bottom": "0",
                                             "ax": "center",
-                                            "ay": "center"
+                                            "ay": "center",
+                                            "pointerEvents": "none"
                                           },
                                           "children": [
                                             {
@@ -8074,14 +8378,7 @@
         },
         {
           "type": "Column",
-          "props": {
-            "id": "layers",
-            "width": "100%",
-            "ax": "center",
-            "borderTop": "1px solid rgba(199,201,220,.08)",
-            "py": "70px",
-            "mdUpProps": { "py": "110px" }
-          },
+          "props": { "id": "layers", "width": "100%", "ax": "center", "py": "70px", "mdUpProps": { "py": "110px" } },
           "children": [
             {
               "type": "Column",
@@ -8127,15 +8424,22 @@
                   "props": { "wrap": true, "gap": "22px", "mt": "12px", "ay": "stretch" },
                   "children": [
                     {
-                      "type": "Column",
+                      "type": "we-link",
                       "props": {
+                        "href": "https://coasys.org/adam",
+                        "target": "_blank",
+                        "display": "flex",
+                        "direction": "column",
                         "flex": "1 1 260px",
                         "minWidth": "0",
                         "r": "16px",
                         "overflow": "hidden",
                         "bg": "rgba(27,30,69,.7)",
                         "border": "1px solid border",
-                        "borderTop": "4px solid cyan"
+                        "borderTop": "4px solid cyan",
+                        "color": "text",
+                        "textDecoration": "none",
+                        "hoverProps": { "borderColor": "cyan" }
                       },
                       "children": [
                         {
@@ -8228,37 +8532,37 @@
                               "children": ["Works today"]
                             },
                             {
-                              "type": "Row",
-                              "props": { "mt": "auto", "pt": "18px" },
-                              "children": [
-                                {
-                                  "type": "we-link",
-                                  "props": {
-                                    "href": "https://coasys.org/adam",
-                                    "target": "_blank",
-                                    "fontSize": "16px",
-                                    "fontWeight": "600",
-                                    "color": "cyan",
-                                    "textDecoration": "none"
-                                  },
-                                  "children": ["More →"]
-                                }
-                              ]
+                              "type": "we-text",
+                              "props": {
+                                "mt": "auto",
+                                "pt": "18px",
+                                "fontSize": "16px",
+                                "fontWeight": "600",
+                                "color": "cyan"
+                              },
+                              "children": ["More →"]
                             }
                           ]
                         }
                       ]
                     },
                     {
-                      "type": "Column",
+                      "type": "we-link",
                       "props": {
+                        "href": "https://coasys.org/we",
+                        "target": "_blank",
+                        "display": "flex",
+                        "direction": "column",
                         "flex": "1 1 260px",
                         "minWidth": "0",
                         "r": "16px",
                         "overflow": "hidden",
                         "bg": "rgba(27,30,69,.7)",
                         "border": "1px solid border",
-                        "borderTop": "4px solid accent"
+                        "borderTop": "4px solid accent",
+                        "color": "text",
+                        "textDecoration": "none",
+                        "hoverProps": { "borderColor": "accent" }
                       },
                       "children": [
                         {
@@ -8351,37 +8655,37 @@
                               "children": ["Works today · alpha"]
                             },
                             {
-                              "type": "Row",
-                              "props": { "mt": "auto", "pt": "18px" },
-                              "children": [
-                                {
-                                  "type": "we-link",
-                                  "props": {
-                                    "href": "https://coasys.org/we",
-                                    "target": "_blank",
-                                    "fontSize": "16px",
-                                    "fontWeight": "600",
-                                    "color": "accent",
-                                    "textDecoration": "none"
-                                  },
-                                  "children": ["More →"]
-                                }
-                              ]
+                              "type": "we-text",
+                              "props": {
+                                "mt": "auto",
+                                "pt": "18px",
+                                "fontSize": "16px",
+                                "fontWeight": "600",
+                                "color": "accent"
+                              },
+                              "children": ["More →"]
                             }
                           ]
                         }
                       ]
                     },
                     {
-                      "type": "Column",
+                      "type": "we-link",
                       "props": {
+                        "href": "https://coasys.org/synergy",
+                        "target": "_blank",
+                        "display": "flex",
+                        "direction": "column",
                         "flex": "1 1 260px",
                         "minWidth": "0",
                         "r": "16px",
                         "overflow": "hidden",
                         "bg": "rgba(27,30,69,.7)",
                         "border": "1px solid border",
-                        "borderTop": "4px solid orange"
+                        "borderTop": "4px solid orange",
+                        "color": "text",
+                        "textDecoration": "none",
+                        "hoverProps": { "borderColor": "orange" }
                       },
                       "children": [
                         {
@@ -8472,22 +8776,15 @@
                               "children": ["In design"]
                             },
                             {
-                              "type": "Row",
-                              "props": { "mt": "auto", "pt": "18px" },
-                              "children": [
-                                {
-                                  "type": "we-link",
-                                  "props": {
-                                    "href": "https://coasys.org/synergy",
-                                    "target": "_blank",
-                                    "fontSize": "16px",
-                                    "fontWeight": "600",
-                                    "color": "orange",
-                                    "textDecoration": "none"
-                                  },
-                                  "children": ["More →"]
-                                }
-                              ]
+                              "type": "we-text",
+                              "props": {
+                                "mt": "auto",
+                                "pt": "18px",
+                                "fontSize": "16px",
+                                "fontWeight": "600",
+                                "color": "orange"
+                              },
+                              "children": ["More →"]
                             }
                           ]
                         }

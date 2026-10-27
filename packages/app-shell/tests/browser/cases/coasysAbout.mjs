@@ -62,6 +62,17 @@ export async function check({ measureAll, measureText, evaluate, moveTo, screens
   if (!watch || !see) problems.push('the two buttons are missing');
   else if (width >= 768 && !near(watch.y, see.y, 4)) problems.push('the buttons are not side by side');
 
+  // A status pill is the same height in a card as in the list. A we-text's margin once landed on its
+  // inner box as well as on itself, and in a card, whose column has a definite height, the inner box
+  // (100% high) grew by it: the pill came out 28px with its words in the top 20.
+  const pills = await evaluate(() =>
+    [...document.querySelectorAll('we-text')]
+      .filter((t) => t.textContent.trim() === 'Works today')
+      .map((t) => t.shadowRoot.querySelector('[part=base]').getBoundingClientRect().height),
+  );
+  if (pills.length !== 2 || Math.abs(pills[0] - pills[1]) > 0.5)
+    problems.push(`the "Works today" pills are ${pills.join(' and ')}px tall, not one height`);
+
   // The site's secondary button: a 2px mint outline round white words, filled mint under the pointer.
   // Mint is read off the solid button beside it, so this follows the theme rather than a hex.
   const buttonStyle = () =>
@@ -77,6 +88,7 @@ export async function check({ measureAll, measureText, evaluate, moveTo, screens
         width: see.borderTopWidth,
         bg: see.backgroundColor,
         text: see.color,
+        size: see.fontSize,
       };
     });
   const rest = await buttonStyle();
@@ -88,6 +100,54 @@ export async function check({ measureAll, measureText, evaluate, moveTo, screens
   if (hover.bg === rest.bg || hover.bg !== hover.border)
     problems.push(`"See the app" does not fill under the pointer: ${hover.bg} inside ${hover.border}`);
   await moveTo('we-text');
+  if (rest.size !== '18px') problems.push(`the buttons' words are ${rest.size}, not the site's 18px`);
+
+  // A layer card is a link as a whole, and is ringed in its own colour under the pointer.
+  const card = () =>
+    evaluate(() => {
+      // Found by its words: the scenario strips the site's addresses, the card's included.
+      const link = [...document.querySelectorAll('we-link')].find((l) => l.textContent.includes('The interface layer'));
+      const base = link?.shadowRoot.querySelector('[part=base]');
+      const style = base && getComputedStyle(base);
+      return (
+        link && {
+          tag: base.tagName,
+          border: style.borderRightColor,
+          top: style.borderTopColor,
+          words: link.textContent,
+        }
+      );
+    });
+  const cardRest = await card();
+  if (!cardRest || cardRest.tag !== 'A' || !cardRest.words.includes('More'))
+    problems.push('the We card is not one link round the whole card');
+  else {
+    // On screen first: the pointer cannot reach what is below the fold.
+    await evaluate(() => {
+      const card = [...document.querySelectorAll('we-link')].find((l) => l.textContent.includes('The interface layer'));
+      // Where every scroller around it stood, to put back after.
+      window.__scrolled = [];
+      for (let el = card.parentElement; el; el = el.parentElement) window.__scrolled.push([el, el.scrollTop]);
+      card.scrollIntoView({ block: 'center' });
+    });
+    await moveTo('we-link:has-text("The interface layer")');
+    await evaluate(() => new Promise((resolve) => setTimeout(resolve, 400)));
+    const cardHover = await card();
+    if (cardHover.border !== cardHover.top || cardHover.border === cardRest.border)
+      problems.push(`the We card is not ringed in its colour under the pointer: ${cardHover.border}`);
+    // And back to the top, where the rest of this case measures, and the next width starts.
+    await evaluate(() => {
+      for (const [el, top] of window.__scrolled) el.scrollTop = top;
+    });
+    await moveTo('we-text');
+  }
+
+  // The poster brightens under the pointer, over the site's 300ms rather than at once.
+  const posterFade = await evaluate(() => {
+    const image = [...document.querySelectorAll('we-image')].find((i) => i.closest('we-button'));
+    return image && getComputedStyle(image.shadowRoot.querySelector('[part=base]') ?? image).transition;
+  });
+  if (!posterFade?.includes('opacity')) problems.push(`the poster has no opacity transition: ${posterFade}`);
 
   await screenshot('coasys-about');
 

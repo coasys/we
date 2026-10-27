@@ -13,6 +13,7 @@ import { glowTheme } from './themes.ts';
  * - the hero — the eyebrow, the typing headline, the line under it, the film with its captions and
  *   transcript, and the photo credit the film owes. "Watch the film" plays it in place; "See the
  *   app" goes down to the app section, as the site's does;
+ * - the partners — the site's white band of their logos, which is also what ends the hero's light;
  * - the app — its own film and what it does, with how far along each part is. Where the site asks
  *   for an email for its waitlist, this has a way into your spaces;
  * - underneath — the three layers, each linking to its page on the site.
@@ -169,9 +170,23 @@ const LAYERS: {
   },
 ];
 
-/** The faint violet wash at the top of the app section, and the hairline above each section. */
+/** Who the site thanks, in its order; each logo at four fifths of its drawn height, as the site sets them. */
+const PARTNERS: { name: string; alt?: string; href: string; h: number }[] = [
+  { name: 'holochain', href: 'https://www.holochain.org', h: 30 },
+  { name: 'holo', href: 'https://www.holo.host', h: 21 },
+  { name: 'holoventures', alt: 'Holo Ventures', href: 'https://holoventures.io', h: 36 },
+  { name: 'corenexus', href: 'https://corenexus.is', h: 26 },
+  { name: 'trustgraph', href: 'https://trustgraph.net', h: 40 },
+  { name: 'symphonics', href: 'https://www.symphonics.life', h: 36 },
+  { name: 'cacoon', href: 'https://www.michkaelbaker.com', h: 22 },
+  { name: 'asraya', href: 'https://asraya.io', h: 50 },
+  { name: 'nillion', href: 'https://nillion.com/', h: 27 },
+  { name: 'weco', href: 'https://weco.io/', h: 50 },
+  { name: 'holons', href: 'https://www.holons.io/', h: 40 },
+];
+
+/** The faint violet wash at the top of the app section. */
 const APP_WASH = 'linear-gradient(180deg, rgba(92,74,168,.14), rgba(19,21,51,0))';
-const SECTION_RULE = '1px solid rgba(199,201,220,.08)';
 
 /**
  * The page's theme: Glow, which is the site's look, with the site's secondary button — a 2px mint
@@ -188,6 +203,14 @@ const SECTION_RULE = '1px solid rgba(199,201,220,.08)';
 const glow = glowTheme.overrides as ThemeOverrides;
 const SITE_THEME: ThemeOverrides = {
   ...glow,
+  // The site's pace: a hover arrives over 300ms (its --transition-speed), where the app's controls
+  // answer in 50ms. Leaving a state still snaps, as it does everywhere in the design system.
+  stateDuration: '300ms',
+  // The site's buttons: 18px words, smaller than the app's large size, 60px either side of them, and
+  // 8px between an icon and its words. The app runs on a desktop, so the site's desktop measure.
+  typeStyles: { ...glow.typeStyles, control: { ...glow.typeStyles?.control, size: '18px' } },
+  controlPaddingX: '60px',
+  controlGap: '8px',
   components: {
     ...glow.components,
     button: {
@@ -397,7 +420,9 @@ function filmFrame(
         type: 'Column',
         props: { position: 'relative', width: '100%', height: '100%' },
         children: [
-          // Dimmed until pointed at, and darkened along the bottom so the caption reads, as on the site.
+          // Dimmed until pointed at, brightening over the site's 300ms (the page theme's state
+          // duration), and darkened along the bottom so the caption reads, as on the site. Nothing
+          // over it takes the pointer, so pointing at the play button still counts as the picture.
           {
             type: 'we-image',
             props: {
@@ -425,7 +450,14 @@ function filmFrame(
           hero
             ? {
                 type: 'Row',
-                props: { position: 'absolute', left: '600', bottom: '500', gap: '400', ay: 'center' },
+                props: {
+                  position: 'absolute',
+                  left: '600',
+                  bottom: '500',
+                  gap: '400',
+                  ay: 'center',
+                  pointerEvents: 'none',
+                },
                 children: [playButton, captionText],
               }
             : {
@@ -438,6 +470,7 @@ function filmFrame(
                   bottom: '0',
                   ax: 'center',
                   ay: 'center',
+                  pointerEvents: 'none',
                 },
                 children: [
                   playButton,
@@ -596,7 +629,7 @@ const hero: SchemaNode = {
               type: 'we-button',
               props: { variant: 'solid', size: 'lg', onClick: { $setLocal: 'playing', value: true } },
               // Outlined, as the site's is.
-              children: [{ type: 'we-icon', props: { name: 'play' } }, 'Watch the film'],
+              children: [{ type: 'we-icon', props: { name: 'play', size: '20px' } }, 'Watch the film'],
             },
             {
               type: 'we-button',
@@ -665,12 +698,52 @@ const statusPill = (status: Status, color = 'text-muted'): SchemaNode => ({
   children: [status],
 });
 
-/** A full-width band with the hairline over it and its words in the section measure. */
+/** A full-width band with its words in the section measure. */
 const section = (id: string, props: Record<string, unknown>, children: SchemaNode[]): SchemaNode => ({
   type: 'Column',
-  props: { id, width: '100%', ax: 'center', borderTop: SECTION_RULE, py: '70px', mdUpProps: { py: '110px' }, ...props },
+  props: { id, width: '100%', ax: 'center', py: '70px', mdUpProps: { py: '110px' }, ...props },
   children: [{ type: 'Column', props: SECTION_BOX, children }],
 });
+
+/**
+ * The site's white band of partners, between the hero and the app. It is what ends the hero's light:
+ * without it the hero's gradients stopped dead against the plain page of the section below.
+ */
+const partners: SchemaNode = {
+  type: 'Column',
+  props: { width: '100%', ax: 'center', bg: '#ffffff', pt: '46px', pb: '50px' },
+  children: [
+    {
+      type: 'Column',
+      props: { ...HERO_BOX, ax: 'center', gap: '18px' },
+      children: [
+        { type: 'we-text', props: { variant: 'overline', color: '#1a1c43', opacity: 0.6 }, children: ['Partners'] },
+        {
+          type: 'Row',
+          props: { wrap: true, ax: 'center', ay: 'center', gap: '20px 30px', smUpProps: { gap: '26px 48px' } },
+          children: PARTNERS.map((partner) => ({
+            type: 'we-link',
+            props: { href: partner.href, target: '_blank', display: 'flex', opacity: 0.9, hoverProps: { opacity: 1 } },
+            children: [
+              {
+                type: 'we-image',
+                props: {
+                  src: `${SITE}/partners/${partner.name}.svg`,
+                  alt: partner.alt ?? partner.name,
+                  height: `${Math.round(partner.h * 0.8)}px`,
+                  width: 'auto',
+                  maxWidth: '130px',
+                  fit: 'contain',
+                  smUpProps: { maxWidth: '180px' },
+                },
+              },
+            ],
+          })),
+        },
+      ],
+    },
+  ],
+};
 
 const appSection = section('app', { bgImage: APP_WASH }, [
   ...sectionHead('The Coasys app', 'A space for your group', 'and its agents.'),
@@ -734,9 +807,17 @@ const appSection = section('app', { bgImage: APP_WASH }, [
   },
 ]);
 
+/**
+ * One layer, as the site draws it: the whole card is the link to the layer's page, and it is ringed
+ * in the layer's colour under the pointer.
+ */
 const layerCard = (layer: (typeof LAYERS)[number]): SchemaNode => ({
-  type: 'Column',
+  type: 'we-link',
   props: {
+    href: layer.href,
+    target: '_blank',
+    display: 'flex',
+    direction: 'column',
     // Three across where each has 260px, one per row on a phone, two and one in between.
     flex: '1 1 260px',
     minWidth: '0',
@@ -745,6 +826,9 @@ const layerCard = (layer: (typeof LAYERS)[number]): SchemaNode => ({
     bg: 'rgba(27,30,69,.7)',
     border: '1px solid border',
     borderTop: `4px solid ${layer.color}`,
+    color: 'text',
+    textDecoration: 'none',
+    hoverProps: { borderColor: layer.color },
   },
   children: [
     {
@@ -811,25 +895,11 @@ const layerCard = (layer: (typeof LAYERS)[number]): SchemaNode => ({
           children: [layer.line],
         },
         statusPill(layer.status),
-        // At the foot of the card, however long its line: a link is inline, so the box around it
-        // takes the space.
+        // At the foot of the card, however long its line.
         {
-          type: 'Row',
-          props: { mt: 'auto', pt: '18px' },
-          children: [
-            {
-              type: 'we-link',
-              props: {
-                href: layer.href,
-                target: '_blank',
-                fontSize: '16px',
-                fontWeight: '600',
-                color: layer.color,
-                textDecoration: 'none',
-              },
-              children: ['More →'],
-            },
-          ],
+          type: 'we-text',
+          props: { mt: 'auto', pt: '18px', fontSize: '16px', fontWeight: '600', color: layer.color },
+          children: ['More →'],
         },
       ],
     },
@@ -869,5 +939,5 @@ export const coasysAbout: TemplateSchema & { id: string } = {
   // The page's colour without the theme's orbs, which are the app's: the hero brings the site's own
   // light, and the sections below it are plain, as the site's are.
   props: { width: '100%', minHeight: '100%', bg: 'page', bgImage: 'none', ax: 'center' },
-  children: [hero, appSection, layersSection],
+  children: [hero, partners, appSection, layersSection],
 };
