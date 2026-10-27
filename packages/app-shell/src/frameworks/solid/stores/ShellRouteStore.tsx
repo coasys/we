@@ -110,6 +110,11 @@ export function ShellRouteStoreProvider(props: ParentProps) {
     );
   }
 
+  /** As `RouteStore.resolve`, against the overlay's own address. */
+  function resolve(to: string, options?: Pick<NavigateOptions, 'base'>): string {
+    return resolveNavigation(to, currentPath(), 0, options?.base);
+  }
+
   /**
    * Writes one query parameter by navigating the memory router.
    *
@@ -142,6 +147,7 @@ export function ShellRouteStoreProvider(props: ParentProps) {
     setCurrentPath,
     setSearch,
     navigate,
+    resolve,
     setParam,
     /*
       The overlay's own history, not the browser's.

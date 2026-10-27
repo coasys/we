@@ -161,6 +161,18 @@ describe('routeStore params', () => {
     expect(nav).toHaveBeenLastCalledWith('/settings', undefined);
   });
 
+  it('resolve gives the address navigate would go to, without going there', () => {
+    window.history.replaceState(null, '', '/space/abc/board');
+    const store = mountStore();
+    const nav = vi.fn();
+    store.setNavigateFunction(nav as never);
+    store.setCurrentPath('/space/abc/board');
+
+    expect(store.resolve('..', { base: { depth: 3 } })).toBe('/space/abc');
+    expect(store.resolve('~/wall')).toBe('/space/abc/wall');
+    expect(nav).not.toHaveBeenCalled();
+  });
+
   it('clearing the param clears the memory — returning lands bare', () => {
     const store = mountStore();
     const nav = vi.fn();

@@ -76,6 +76,12 @@ export interface RouteStore {
    */
   navigate: (to: string, options?: NavigateOptions) => void;
   /**
+   * The address `to` leads to, resolved as `navigate` would resolve it, without going there. What a
+   * relative `href` is rendered as, so a link a template draws and a press it handles agree.
+   * Reactive: it follows the address on screen.
+   */
+  resolve: (to: string, options?: Pick<NavigateOptions, 'base'>) => string;
+  /**
    * Write one query parameter (null removes it). Defaults to replaceState —
    * filter/sort changes should not spam history; pass { push: true } for
    * changes that deserve a Back entry (a content-type switch).
@@ -237,6 +243,11 @@ export function RouteStoreProvider(props: ParentProps) {
     else console.warn('Navigate function not available yet');
   }
 
+  function resolve(to: string, options?: Pick<NavigateOptions, 'base'>): string {
+    const here = currentPath() || (typeof window === 'undefined' ? '/' : window.location.pathname);
+    return resolveNavigation(to, here, templateRootDepth(here), options?.base);
+  }
+
   function setParam(name: string, value: string | null, options?: { push?: boolean }) {
     if (typeof window === 'undefined') return;
     /*
@@ -281,6 +292,7 @@ export function RouteStoreProvider(props: ParentProps) {
 
     // Actions
     navigate,
+    resolve,
     setParam,
     back: () => window.history.back(),
   };

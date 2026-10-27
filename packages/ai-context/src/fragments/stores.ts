@@ -269,7 +269,7 @@ export const storeEntries: StoreEntry[] = [
       templateSegments: { type: 'array' },
       params: { type: 'object' },
     },
-    actions: ['navigate', 'setParam', 'back'],
+    actions: ['navigate', 'resolve', 'setParam', 'back'],
   },
   {
     name: 'themeStore',
@@ -1005,6 +1005,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
     actions: {
       navigate:
         "(to: string, options?: { query? }): navigates to a route (a bare path restores that route's remembered query string). A record's id goes in `query`, never in the path: { $invoke: 'routeStore.navigate', args: ['./board', { $: '{ query: { id: board.id } }' }] }, read back on that page as routeStore.params.id. An id is a URI, so in the path it is several segments and the route never matches; navigate writes it so it reads back exactly",
+      resolve:
+        '(to: string): the address a path leads to, resolved as navigate would, without going there. A relative href is rendered through it already, so a template rarely needs it',
       setParam:
         '(name: string, value: string | null, options?: { push?: boolean }): writes one query parameter (null removes); replaceState by default, push: true for changes that deserve a Back entry. Prefer $localState syncParam over calling this directly',
       back: "(): goes back one entry, the browser's own way. Use it on a page reached from several places — a record page is opened from a list, from a search and from a link somebody sent, and only one of those has a parent worth guessing. Does nothing at the start of the session's history",
