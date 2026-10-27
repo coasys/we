@@ -207,6 +207,10 @@ export const glowTheme: BundleTheme = {
       // paler, greyer step of the same hue, which read as faded beside the buttons. Pinned to the
       // fill rather than to a colour, so it still follows the accent when somebody moves it.
       accentText: 'var(--we-role-accent)',
+      // The site's hover mint (its --color-green-light, #c1ffdf): lighter and paler than the accent.
+      // Derived, the hover step landed at the accent's own lightness on a mint this light, and a
+      // button barely answered the pointer. Said from the accent, so it moves when the accent does.
+      accentHover: 'oklch(from var(--we-role-accent) calc(l + 0.067) calc(c * 0.57) calc(h + 5.6))',
       ...TINTS,
     },
   },

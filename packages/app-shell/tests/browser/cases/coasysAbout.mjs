@@ -99,13 +99,51 @@ export async function check({ measureAll, measureText, evaluate, moveTo, screens
   const hover = await buttonStyle();
   if (hover.bg === rest.bg || hover.bg !== hover.border)
     problems.push(`"See the app" does not fill under the pointer: ${hover.bg} inside ${hover.border}`);
+  // With the site's lighter mint, not the resting one: a hover the same colour as the button beside
+  // it is no answer to the pointer.
+  // The site's #c1ffdf: lighter than the mint, and much paler — its whiteness is what reads as
+  // bright. The derived hover was lighter by 0.05 at the mint's full chroma, and read as no change.
+  const oklch = (color) => (/^oklch\(([\d.]+) ([\d.]+)/.exec(color) ?? []).slice(1).map(Number);
+  const [mintL, mintC] = oklch(rest.mint);
+  const [hoverL, hoverC] = oklch(hover.bg);
+  if (!(hoverL - mintL > 0.06 && hoverC < mintC * 0.7))
+    problems.push(`"See the app" fills with ${hover.bg}, not the site's paler, lighter mint beside ${rest.mint}`);
   await moveTo('we-text');
   if (rest.size !== '18px') problems.push(`the buttons' words are ${rest.size}, not the site's 18px`);
 
-  // A layer card is a link as a whole, and is ringed in its own colour under the pointer.
+  /*
+    The pointer on something further down the page: scrolled to first, since the pointer cannot reach
+    what is below the fold, and every scroller put back after, since the scroll would otherwise carry
+    into what this case measures next and into the next width's run.
+  */
+  const pointAt = async (which) => {
+    await evaluate((which) => {
+      const el =
+        which === 'card'
+          ? // Found by its words: the scenario strips the site's addresses, the card's included.
+            [...document.querySelectorAll('we-link')].find((l) => l.textContent.includes('The interface layer'))
+          : [...document.querySelectorAll('we-image')].find((i) => i.closest('we-button'));
+      window.__scrolled = [];
+      for (let up = el.parentElement; up; up = up.parentElement) window.__scrolled.push([up, up.scrollTop]);
+      el.setAttribute('data-case-target', '');
+      el.scrollIntoView({ block: 'center' });
+    }, which);
+    await moveTo('[data-case-target]');
+    await evaluate(() => new Promise((resolve) => setTimeout(resolve, 400)));
+  };
+  const pointAway = async () => {
+    await evaluate(() => {
+      for (const [el, top] of window.__scrolled) el.scrollTop = top;
+      document.querySelector('[data-case-target]')?.removeAttribute('data-case-target');
+    });
+    await moveTo('we-text');
+  };
+
+  // A layer card is a link as a whole, ringed in its own colour under the pointer — and only
+  // recoloured, so nothing moves. Its coloured top is 4px at rest; it was once dropped, and came
+  // back as a 1px line on hover, which shifted the card.
   const card = () =>
     evaluate(() => {
-      // Found by its words: the scenario strips the site's addresses, the card's included.
       const link = [...document.querySelectorAll('we-link')].find((l) => l.textContent.includes('The interface layer'));
       const base = link?.shadowRoot.querySelector('[part=base]');
       const style = base && getComputedStyle(base);
@@ -114,6 +152,8 @@ export async function check({ measureAll, measureText, evaluate, moveTo, screens
           tag: base.tagName,
           border: style.borderRightColor,
           top: style.borderTopColor,
+          topWidth: style.borderTopWidth,
+          height: base.getBoundingClientRect().height,
           words: link.textContent,
         }
       );
@@ -122,32 +162,28 @@ export async function check({ measureAll, measureText, evaluate, moveTo, screens
   if (!cardRest || cardRest.tag !== 'A' || !cardRest.words.includes('More'))
     problems.push('the We card is not one link round the whole card');
   else {
-    // On screen first: the pointer cannot reach what is below the fold.
-    await evaluate(() => {
-      const card = [...document.querySelectorAll('we-link')].find((l) => l.textContent.includes('The interface layer'));
-      // Where every scroller around it stood, to put back after.
-      window.__scrolled = [];
-      for (let el = card.parentElement; el; el = el.parentElement) window.__scrolled.push([el, el.scrollTop]);
-      card.scrollIntoView({ block: 'center' });
-    });
-    await moveTo('we-link:has-text("The interface layer")');
-    await evaluate(() => new Promise((resolve) => setTimeout(resolve, 400)));
+    if (cardRest.topWidth !== '4px') problems.push(`the We card's coloured top is ${cardRest.topWidth}, not 4px`);
+    await pointAt('card');
     const cardHover = await card();
     if (cardHover.border !== cardHover.top || cardHover.border === cardRest.border)
       problems.push(`the We card is not ringed in its colour under the pointer: ${cardHover.border}`);
-    // And back to the top, where the rest of this case measures, and the next width starts.
-    await evaluate(() => {
-      for (const [el, top] of window.__scrolled) el.scrollTop = top;
-    });
-    await moveTo('we-text');
+    if (cardHover.height !== cardRest.height)
+      problems.push(`the We card changes size under the pointer: ${cardRest.height} → ${cardHover.height}`);
+    await pointAway();
   }
 
-  // The poster brightens under the pointer, over the site's 300ms rather than at once.
-  const posterFade = await evaluate(() => {
-    const image = [...document.querySelectorAll('we-image')].find((i) => i.closest('we-button'));
-    return image && getComputedStyle(image.shadowRoot.querySelector('[part=base]') ?? image).transition;
-  });
-  if (!posterFade?.includes('opacity')) problems.push(`the poster has no opacity transition: ${posterFade}`);
+  // The poster is dimmed, and brightens under the pointer.
+  const posterOpacity = () =>
+    evaluate(() => {
+      const image = [...document.querySelectorAll('we-image')].find((i) => i.closest('we-button'));
+      return Number(getComputedStyle(image.shadowRoot.querySelector('[part=base]')).opacity);
+    });
+  const posterRest = await posterOpacity();
+  await pointAt('poster');
+  const posterHover = await posterOpacity();
+  if (!(posterRest < 1 && posterHover === 1))
+    problems.push(`the poster does not brighten under the pointer: ${posterRest} → ${posterHover}`);
+  await pointAway();
 
   await screenshot('coasys-about');
 
