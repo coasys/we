@@ -7,7 +7,9 @@
  *
  * Generated rather than filtered at runtime so an unselected template leaves the import graph
  * entirely — a deployment that wants none of the showcase templates ships none of their bytes.
+ * A template the catalogue marks `dev` is in only where the build has developer features.
  */
+import { DEV_FEATURES } from '@we/module-shared';
 import type { TemplateSchema } from '@we/schema-shared';
 import { defaultTemplate } from '@we/template-default';
 import {
@@ -25,12 +27,14 @@ import {
 export const bundledTemplates: Record<string, TemplateSchema> = {
   default: defaultTemplate,
   workshop: workshopTemplate,
-  discord: discordTemplate,
-  twitter: twitterTemplate,
-  instagram: instagramTemplate,
-  youtube: youtubeTemplate,
   kanban: kanbanTemplate,
   events: eventsTemplate,
   scrapbook: scrapbookTemplate,
   'theme-lab': themeLabTemplate,
+  ...(DEV_FEATURES && {
+    discord: discordTemplate,
+    twitter: twitterTemplate,
+    instagram: instagramTemplate,
+    youtube: youtubeTemplate,
+  }),
 };
