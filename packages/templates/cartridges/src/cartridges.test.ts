@@ -84,7 +84,54 @@ describe('the Coasys cartridge', () => {
     // Nothing in it reaches out: no stylesheet carrying a url(), and no face that is not data.
     expect(glow.css ?? '').not.toMatch(/url\(/);
   });
+
+  /*
+    The canvas is the workshop's, from the kit: it was drawn once more by hand and had no suggestions,
+    no card toolbar and no lines, and a double-click wrote an empty audio block where it should have
+    asked what to make.
+  */
+  it('draws the workshop’s canvas, on the space’s canvas landmark', () => {
+    const graph = findNode(coasys.shell, (n) => n.type === 'GraphView')!;
+    const props = graph.props as Record<string, unknown>;
+    const options = (props.seeds as { options: Record<string, unknown> }).options;
+    expect(JSON.stringify(options.canvas)).toContain('spaceStore.landmarks.canvas');
+    expect(options.contains).toEqual({ $: 'shapeStore.extractionCandidates' });
+    expect(options.connections).toBe('Relationship');
+    expect(options.pending).toBeTruthy();
+    expect((props.nodeActions as { id: string }[]).map((a) => a.id)).toEqual(
+      expect.arrayContaining(['accept', 'reject', 'review', 'color', 'delete']),
+    );
+    expect(props.onEdgeCreate).toBeTruthy();
+    expect(JSON.stringify(props.onCanvasDoubleClick)).toContain('chooserOpen');
+    expect(JSON.stringify(props)).not.toContain('createOnCanvas');
+    // Reviewing a suggested change opens the record's own page: there is no inspector beside it.
+    expect(JSON.stringify(props.onNodeAction)).toContain("'/record/'");
+    const canvasRoute = findNode(coasys.shell, (n) => (n as { path?: string }).path === '/canvas')!;
+    expect(JSON.stringify(canvasRoute)).toContain('Add to the canvas');
+  });
 });
+
+/** The first node under `root`, depth first, that `match` accepts — through children, slots and routes. */
+function findNode(root: unknown, match: (node: { type?: string; props?: unknown }) => boolean) {
+  const walk = (node: unknown): { type?: string; props?: unknown } | undefined => {
+    if (!node || typeof node !== 'object') return undefined;
+    if (Array.isArray(node)) {
+      for (const child of node) {
+        const found = walk(child);
+        if (found) return found;
+      }
+      return undefined;
+    }
+    const n = node as { type?: string; props?: unknown };
+    if (match(n)) return n;
+    for (const value of Object.values(node)) {
+      const found = walk(value);
+      if (found) return found;
+    }
+    return undefined;
+  };
+  return walk(root);
+}
 
 describe('the lookup that read every tool as available', () => {
   /*

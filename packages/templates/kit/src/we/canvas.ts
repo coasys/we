@@ -67,6 +67,42 @@ export function canvasSeedOptions({ canvas, members }: CanvasSeedOptions): Recor
   };
 }
 
+/**
+ * A card's own look on this canvas, as its placement holds it: the box somebody dragged out, the
+ * colour, shape and content size its toolbar set. A reference a card cannot answer contributes
+ * nothing, so a card nobody has styled falls through to the rules above this one.
+ */
+export const PLACED_CARD_STYLE = {
+  width: { from: 'data.canvasWidth' },
+  height: { from: 'data.canvasHeight' },
+  color: { from: 'data.canvasColor' },
+  cardShape: { from: 'data.canvasCardShape' },
+  contentScale: { from: 'data.canvasContentScale' },
+};
+
+/**
+ * How a suggestion looks, for the end of a `nodeStyle` list so it survives a card's own colour.
+ *
+ * Faded rather than hidden. The cards are worth seeing as they arrive — that is the point of a canvas
+ * beside a live call — and half opacity says "this is not settled yet" without asking anybody to go
+ * and look somewhere else first. Dashed as well, as a draft is on a board: the fade alone read as a
+ * card with a pale colour rather than as one waiting on somebody. The decision is on the card, in
+ * `canvasEditing`'s `nodeActions`.
+ *
+ * `data.pending`, with the prefix: a bare key reads a node's own field, and anything a seed put in the
+ * node's data bag is behind `data.`. Written without it this matched nothing at all, silently.
+ *
+ * An agreed card with a change suggested is drawn at full strength with an amber edge: the record is
+ * not in doubt, only the change is. Amber rather than the accent, which is what a selected card wears.
+ */
+export const SUGGESTION_STYLES = [
+  {
+    when: { 'data.pending': true },
+    style: { opacity: 0.5, borderStyle: 'dashed', borderColor: 'border-strong', borderWidth: 2 },
+  },
+  { when: { 'data.changed': true }, style: { borderColor: 'warning-text', borderWidth: 2 } },
+];
+
 export interface CanvasEditingOptions {
   /** The canvas record every gesture writes against. */
   canvas: SchemaProp;

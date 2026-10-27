@@ -71,7 +71,7 @@ export type { InstalledListOptions } from './we/installedList.ts';
 export { RECORD_ROUTE_PATH, recordLink } from './we/recordLink.ts';
 export { profileEditor, profilePage } from './we/profile.ts';
 export { FLOWS_LOCALS, workflowsPage, workflowsSection } from './we/workflows.ts';
-export { canvasEditing, canvasSeedOptions, EXTRACTABLE } from './we/canvas.ts';
+export { canvasEditing, canvasSeedOptions, EXTRACTABLE, PLACED_CARD_STYLE, SUGGESTION_STYLES } from './we/canvas.ts';
 export type { CanvasEditingOptions, CanvasSeedOptions } from './we/canvas.ts';
 export { askWhatGoesHere, BACK_TO_CHOOSER, CARD_LOCALS, newNoteModal, newThingChooser } from './we/canvasCards.ts';
 export type { CanvasCardOptions } from './we/canvasCards.ts';

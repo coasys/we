@@ -87,6 +87,7 @@ import {
   recordFormModal,
   signalDisplay,
   suggestedChanges,
+  SUGGESTION_STYLES,
   SUGGESTIONS_HIDDEN,
   suggestionsToggle,
   taskBoard,
@@ -3477,31 +3478,8 @@ const canvas: SchemaNode = {
       { style: TREE_CARD_STYLE },
       // A field opened out of a card is not a record: no record content, no lens colour.
       FIELD_NODE_RULE,
-      /*
-        Last, so it survives the card's own colour: a suggestion is faded whatever shade it is.
-
-        Faded rather than hidden. The cards are worth seeing as they arrive — that is the point of a
-        canvas beside a live call — and half opacity says "this is not settled yet" without asking
-        anybody to go and look somewhere else first. What it is *not* is a decision: that is on the
-        card, in `nodeActions` below.
-
-        `data.pending`, with the prefix. A bare key reads a node's *own* field — `type`, `label` —
-        and anything a seed put in the node's data bag is behind `data.`. Written without it this
-        matched nothing at all, silently, which is the failure mode a match clause has: no card
-        faded and no card offered the decision, on a canvas full of suggestions.
-      */
-      // Dashed as well as faded, as a draft is on the board and in the key: the fade alone read as a
-      // card with a pale colour rather than as one waiting on somebody.
-      {
-        when: { 'data.pending': true },
-        style: { opacity: 0.5, borderStyle: 'dashed', borderColor: 'border-strong', borderWidth: 2 },
-      },
-      /*
-        An agreed card with a change suggested: full strength, and an amber edge. Not faded — the
-        record is not in doubt, only the change is, and the change is read in the inspector. Amber
-        rather than the accent, which is what a *selected* card wears: the two would be one outline.
-      */
-      { when: { 'data.changed': true }, style: { borderColor: 'warning-text', borderWidth: 2 } },
+      // Last, so it survives the card's own colour: a suggestion is faded whatever shade it is.
+      ...SUGGESTION_STYLES,
       /*
         The "this call" lens, dimming: everything the call on screen did not produce. See `FROM_PARAM`.
 

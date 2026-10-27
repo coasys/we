@@ -2882,6 +2882,12 @@
               }
             }
           },
+          "$localState": {
+            "newAt": { "type": "object", "initial": null },
+            "chooserOpen": { "type": "boolean", "initial": false },
+            "newNoteOpen": { "type": "boolean", "initial": false },
+            "noteOpen": { "type": "boolean", "initial": false }
+          },
           "children": [
             {
               "type": "Row",
@@ -2917,7 +2923,15 @@
                     }
                   }
                 },
-                { "type": "we-icon", "props": { "name": "hash", "color": "text-muted" } },
+                {
+                  "type": "we-icon",
+                  "props": {
+                    "name": {
+                      "$": "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? 'chats-circle' : 'hash'"
+                    },
+                    "color": "text-muted"
+                  }
+                },
                 {
                   "type": "Row",
                   "props": { "flex": "1", "minWidth": "0", "gap": "100", "ay": "center" },
@@ -2994,12 +3008,20 @@
                     "seeds": {
                       "source": "canvas",
                       "options": {
-                        "canvas": { "$": "routeStore.params.channel ? routeStore.params.channel : spaceStore.root" },
+                        "canvas": {
+                          "$": "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)"
+                        },
                         "members": {
                           "id": { "$": "routeStore.params.channel ? routeStore.params.channel : spaceStore.root" },
                           "via": "children"
                         },
-                        "connections": "Relationship"
+                        "contains": { "$": "shapeStore.extractionCandidates" },
+                        "origin": "extractedFrom",
+                        "connections": "Relationship",
+                        "routes": "EdgeRoute",
+                        "pending": { "$": "modules.transcribe.unconfirmedIds" },
+                        "changed": { "$": "modules.transcribe.changedIds" },
+                        "counts": ["signals", "responses"]
                       }
                     },
                     "layout": { "type": "manual", "options": { "size": { "width": 200, "height": 140 } } },
@@ -3013,38 +3035,311 @@
                           "content": "record",
                           "contentMinZoom": 0.4
                         }
-                      }
+                      },
+                      {
+                        "style": {
+                          "width": { "from": "data.canvasWidth" },
+                          "height": { "from": "data.canvasHeight" },
+                          "color": { "from": "data.canvasColor" },
+                          "cardShape": { "from": "data.canvasCardShape" },
+                          "contentScale": { "from": "data.canvasContentScale" }
+                        }
+                      },
+                      {
+                        "when": { "data.pending": true },
+                        "style": {
+                          "opacity": 0.5,
+                          "borderStyle": "dashed",
+                          "borderColor": "border-strong",
+                          "borderWidth": 2
+                        }
+                      },
+                      { "when": { "data.changed": true }, "style": { "borderColor": "warning-text", "borderWidth": 2 } }
                     ],
                     "behaviours": [
+                      { "type": "connect-nodes", "options": { "button": "secondary" } },
                       "node-double-click",
                       "canvas-double-click",
+                      "marquee-select",
                       "select",
                       { "type": "drag-node", "options": { "pin": true } },
                       "pan-zoom"
                     ],
-                    "empty": "Nothing here yet. Double-click to make something, or drop something in from Pocket.",
+                    "resizable": true,
+                    "empty": {
+                      "$": "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (routeStore.params.channel ? routeStore.params.channel : spaceStore.root) ? 'Nothing here yet. Double-click to make something, or drop something in from Pocket.' : 'This space has no canvas.'"
+                    },
                     "emptyIcon": "squares-four",
+                    "onEdgeCreate": {
+                      "$invoke": "recordStore.connectNodesNow",
+                      "args": [{ "$": "event" }],
+                      "onSuccess": []
+                    },
                     "onNodeDragEnd": {
                       "$invoke": "recordStore.dragOnCanvas",
                       "args": [
-                        { "$": "routeStore.params.channel ? routeStore.params.channel : spaceStore.root" },
+                        {
+                          "$": "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)"
+                        },
+                        { "$": "event" }
+                      ]
+                    },
+                    "onNodeResize": {
+                      "$invoke": "recordStore.resizeOnCanvas",
+                      "args": [
+                        {
+                          "$": "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)"
+                        },
+                        { "$": "event" }
+                      ]
+                    },
+                    "onEdgeAnchor": {
+                      "$invoke": "recordStore.anchorOnCanvas",
+                      "args": [
+                        {
+                          "$": "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)"
+                        },
+                        { "$": "event" }
+                      ]
+                    },
+                    "onEdgeReroute": {
+                      "$invoke": "recordStore.rerouteOnCanvas",
+                      "args": [
+                        {
+                          "$": "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)"
+                        },
+                        { "$": "event" }
+                      ]
+                    },
+                    "onEdgeRetarget": {
+                      "$invoke": "recordStore.retargetOnCanvas",
+                      "args": [
+                        {
+                          "$": "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)"
+                        },
                         { "$": "event" }
                       ]
                     },
                     "onDrop": {
                       "$invoke": "recordStore.dropOnCanvas",
                       "args": [
-                        { "$": "routeStore.params.channel ? routeStore.params.channel : spaceStore.root" },
+                        {
+                          "$": "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)"
+                        },
                         { "$": "event" }
                       ]
                     },
-                    "onCanvasDoubleClick": {
-                      "$invoke": "recordStore.createOnCanvas",
+                    "onDeleteSelection": [
+                      {
+                        "$if": {
+                          "condition": { "$": "count(event.records)" },
+                          "then": { "$invoke": "recordStore.deleteRecords", "args": [{ "$": "event.records" }] }
+                        }
+                      },
+                      {
+                        "$if": {
+                          "condition": { "$": "event.kind == 'edge' && event.recordId" },
+                          "then": {
+                            "$invoke": "recordStore.deleteRecords",
+                            "args": [{ "$": "[{ recordId: event.recordId, recordType: event.recordType }]" }]
+                          }
+                        }
+                      }
+                    ],
+                    "onUndo": {
+                      "$invoke": "recordStore.undoCanvas",
                       "args": [
-                        { "$": "routeStore.params.channel ? routeStore.params.channel : spaceStore.root" },
-                        { "$": "event.x" },
-                        { "$": "event.y" }
+                        {
+                          "$": "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)"
+                        }
                       ]
+                    },
+                    "onRedo": {
+                      "$invoke": "recordStore.redoCanvas",
+                      "args": [
+                        {
+                          "$": "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)"
+                        }
+                      ]
+                    },
+                    "carry": true,
+                    "selectionActions": [
+                      { "id": "color", "control": "color", "title": "Colour", "value": { "from": "data.canvasColor" } },
+                      { "id": "delete", "icon": "trash", "title": "Delete", "tone": "danger" }
+                    ],
+                    "onSelectionAction": [
+                      {
+                        "$if": {
+                          "condition": { "$": "event.action == 'delete'" },
+                          "then": { "$invoke": "recordStore.deleteRecords", "args": [{ "$": "event.records" }] }
+                        }
+                      },
+                      {
+                        "$if": {
+                          "condition": { "$": "event.action == 'color' && event.preview" },
+                          "then": {
+                            "$invoke": "recordStore.previewCardStyle",
+                            "args": [{ "$": "event.records.map(r, r.recordId)" }, "color", { "$": "event.value" }]
+                          }
+                        }
+                      },
+                      {
+                        "$if": {
+                          "condition": { "$": "event.action == 'color' && !event.preview" },
+                          "then": {
+                            "$invoke": "recordStore.setCardStyle",
+                            "args": [
+                              {
+                                "$": "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)"
+                              },
+                              { "$": "event.records.map(r, r.recordId)" },
+                              "color",
+                              { "$": "event.value" }
+                            ]
+                          }
+                        }
+                      }
+                    ],
+                    "nodeActions": [
+                      {
+                        "id": "accept",
+                        "icon": "check",
+                        "title": "Accept",
+                        "when": { "data.pending": true },
+                        "tone": "positive"
+                      },
+                      {
+                        "id": "reject",
+                        "icon": "x",
+                        "title": "Reject",
+                        "when": { "data.pending": true },
+                        "tone": "danger"
+                      },
+                      {
+                        "id": "review",
+                        "icon": "pencil-simple-line",
+                        "title": "Review pending change",
+                        "when": { "data.changed": true }
+                      },
+                      {
+                        "id": "color",
+                        "control": "color",
+                        "title": "Colour",
+                        "value": { "from": "data.canvasColor" },
+                        "when": { "data.pending": { "exists": false } }
+                      },
+                      {
+                        "id": "cardShape",
+                        "control": "shape",
+                        "title": "Shape",
+                        "value": { "from": "data.canvasCardShape" },
+                        "when": { "data.pending": { "exists": false } }
+                      },
+                      {
+                        "id": "contentScale",
+                        "control": "scale",
+                        "title": "Content size",
+                        "value": { "from": "data.canvasContentScale" },
+                        "when": { "data.pending": { "exists": false } }
+                      },
+                      {
+                        "id": "delete",
+                        "icon": "trash",
+                        "title": "Delete",
+                        "when": { "data.pending": { "exists": false } },
+                        "tone": "danger"
+                      }
+                    ],
+                    "onNodeAction": [
+                      {
+                        "$if": {
+                          "condition": { "$": "event.action == 'review'" },
+                          "then": {
+                            "$invoke": "routeStore.navigate",
+                            "args": [
+                              { "$": "spaceStore.spacePath + '/record/' + event.recordType + '?id=' + event.recordId" }
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "$if": {
+                          "condition": { "$": "event.action == 'accept'" },
+                          "then": [
+                            { "$invoke": "modules.transcribe.acceptProposal", "args": [{ "$": "event.recordId" }] },
+                            {
+                              "$invoke": "recordStore.placeOnCanvas",
+                              "args": [
+                                {
+                                  "$": "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)"
+                                },
+                                { "$": "event.recordId" },
+                                { "$": "event.recordType" },
+                                { "$": "event.x" },
+                                { "$": "event.y" }
+                              ]
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "$if": {
+                          "condition": { "$": "event.action == 'reject'" },
+                          "then": {
+                            "$invoke": "modules.transcribe.rejectProposal",
+                            "args": [{ "$": "event.recordId" }]
+                          }
+                        }
+                      },
+                      {
+                        "$if": {
+                          "condition": { "$": "event.action == 'delete'" },
+                          "then": {
+                            "$invoke": "record.delete",
+                            "args": [{ "$": "event.recordType" }, { "$": "event.recordId" }]
+                          }
+                        }
+                      },
+                      {
+                        "$if": {
+                          "condition": {
+                            "$": "event.action in ['color', 'cardShape', 'contentScale'] && event.preview"
+                          },
+                          "then": {
+                            "$invoke": "recordStore.previewCardStyle",
+                            "args": [{ "$": "event.recordId" }, { "$": "event.action" }, { "$": "event.value" }]
+                          }
+                        }
+                      },
+                      {
+                        "$if": {
+                          "condition": {
+                            "$": "event.action in ['color', 'cardShape', 'contentScale'] && !event.preview"
+                          },
+                          "then": {
+                            "$invoke": "recordStore.setCardStyle",
+                            "args": [
+                              {
+                                "$": "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)"
+                              },
+                              { "$": "event.recordId" },
+                              { "$": "event.action" },
+                              { "$": "event.value" }
+                            ]
+                          }
+                        }
+                      }
+                    ],
+                    "onCanvasDoubleClick": {
+                      "$if": {
+                        "condition": {
+                          "$": "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)"
+                        },
+                        "then": [
+                          { "$setLocal": "newAt", "value": { "$": "event" } },
+                          { "$setLocal": "chooserOpen", "value": true }
+                        ]
+                      }
                     },
                     "onNodeDoubleClick": {
                       "$invoke": "routeStore.navigate",
@@ -3073,8 +3368,47 @@
                     }
                   },
                   "$queries": { "relationshipKinds": { "entity": "RelationshipType", "order": { "name": "asc" } } },
-                  "$localState": { "confirmDiscardOpen": { "type": "boolean", "initial": false } },
+                  "$localState": {
+                    "confirmDiscardOpen": { "type": "boolean", "initial": false },
+                    "discardGoesBack": { "type": "boolean", "initial": false }
+                  },
                   "children": [
+                    {
+                      "type": "$if",
+                      "props": {
+                        "condition": { "$": "!recordStore.pendingLink" },
+                        "then": {
+                          "type": "we-tooltip",
+                          "props": { "content": "Back" },
+                          "children": [
+                            {
+                              "type": "we-button",
+                              "props": {
+                                "variant": "ghost",
+                                "size": "sm",
+                                "square": true,
+                                "label": "Back",
+                                "onClick": {
+                                  "$if": {
+                                    "condition": { "$": "recordStore.recordDraftDirty" },
+                                    "then": [
+                                      { "$setLocal": "discardGoesBack", "value": true },
+                                      { "$setLocal": "confirmDiscardOpen", "value": true }
+                                    ],
+                                    "else": [
+                                      { "$invoke": "recordStore.cancelRecordForm" },
+                                      { "$setLocal": "chooserOpen", "value": true }
+                                    ]
+                                  }
+                                }
+                              },
+                              "children": [{ "type": "we-icon", "props": { "name": "arrow-left" } }]
+                            }
+                          ],
+                          "slot": "start-button"
+                        }
+                      }
+                    },
                     {
                       "type": "Row",
                       "props": { "gap": "300", "ay": "center", "width": "100%" },
@@ -3192,32 +3526,6 @@
                                   }
                                 }
                               ]
-                            }
-                          ]
-                        }
-                      }
-                    },
-                    {
-                      "type": "$if",
-                      "props": {
-                        "condition": {
-                          "$": "!recordStore.pendingLink && count(recordStore.creatableEntities.filter(k, k.via == 'form')) > 1"
-                        },
-                        "then": {
-                          "type": "we-form-field",
-                          "props": { "label": "Entity", "width": "100%" },
-                          "children": [
-                            {
-                              "type": "we-select",
-                              "props": {
-                                "width": "100%",
-                                "options": { "$": "recordStore.creatableEntities.filter(k, k.via == 'form')" },
-                                "value": { "$": "recordStore.recordDraft.entity" },
-                                "onChange": {
-                                  "$invoke": "recordStore.setRecordEntity",
-                                  "args": [{ "$": "event.detail" }]
-                                }
-                              }
                             }
                           ]
                         }
@@ -4397,7 +4705,13 @@
                         "condition": { "$": "local.confirmDiscardOpen" },
                         "then": {
                           "type": "we-modal",
-                          "props": { "size": "sm", "close": { "$setLocal": "confirmDiscardOpen", "value": false } },
+                          "props": {
+                            "size": "sm",
+                            "close": [
+                              { "$setLocal": "confirmDiscardOpen", "value": false },
+                              { "$setLocal": "discardGoesBack", "value": false }
+                            ]
+                          },
                           "children": [
                             {
                               "type": "Row",
@@ -4433,7 +4747,10 @@
                                   "type": "we-button",
                                   "props": {
                                     "variant": "soft",
-                                    "onClick": { "$setLocal": "confirmDiscardOpen", "value": false }
+                                    "onClick": [
+                                      { "$setLocal": "confirmDiscardOpen", "value": false },
+                                      { "$setLocal": "discardGoesBack", "value": false }
+                                    ]
                                   },
                                   "children": ["Keep editing"]
                                 },
@@ -4442,10 +4759,774 @@
                                   "props": {
                                     "variant": "solid",
                                     "tone": "danger",
-                                    "onClick": {
-                                      "$invoke": "recordStore.cancelRecordForm",
-                                      "onSuccess": [{ "$setLocal": "confirmDiscardOpen", "value": false }]
+                                    "onClick": [
+                                      {
+                                        "$if": {
+                                          "condition": { "$": "local.discardGoesBack" },
+                                          "then": [
+                                            { "$invoke": "recordStore.cancelRecordForm" },
+                                            { "$setLocal": "chooserOpen", "value": true }
+                                          ],
+                                          "else": { "$invoke": "recordStore.cancelRecordForm" }
+                                        }
+                                      },
+                                      { "$setLocal": "confirmDiscardOpen", "value": false },
+                                      { "$setLocal": "discardGoesBack", "value": false }
+                                    ]
+                                  },
+                                  "children": ["Discard"]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "type": "$if",
+              "props": {
+                "condition": { "$": "local.chooserOpen" },
+                "then": {
+                  "type": "we-modal",
+                  "props": { "size": "lg", "close": { "$setLocal": "chooserOpen", "value": false } },
+                  "children": [
+                    {
+                      "type": "we-text",
+                      "slot": "header",
+                      "props": { "variant": "heading-md" },
+                      "children": ["Add to the canvas"]
+                    },
+                    {
+                      "type": "Column",
+                      "props": { "gap": "400", "width": "100%" },
+                      "$localState": { "typeSearch": { "type": "string", "initial": "" } },
+                      "children": [
+                        {
+                          "type": "we-input",
+                          "props": {
+                            "value": { "$": "local.typeSearch" },
+                            "placeholder": "Search types…",
+                            "autofocus": true,
+                            "width": "100%",
+                            "onInput": { "$setLocal": "typeSearch", "value": { "$": "event.detail" } },
+                            "onKeyDown": {
+                              "$if": {
+                                "condition": {
+                                  "$": "arg.detail.key == 'Enter' && count(distinct(recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via == 'composer'), recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via != 'composer' && k.group == 'This space'), distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).map(k, k.value)).filter(n, recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).exists(k, k.value == n && k.via != 'composer' && k.group != 'This space')).map(n, find(recordStore.creatableEntities, { value: n }))))"
+                                },
+                                "then": [
+                                  { "$setLocal": "chooserOpen", "value": false },
+                                  {
+                                    "$if": {
+                                      "condition": {
+                                        "$": "first(distinct(recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via == 'composer'), recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via != 'composer' && k.group == 'This space'), distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).map(k, k.value)).filter(n, recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).exists(k, k.value == n && k.via != 'composer' && k.group != 'This space')).map(n, find(recordStore.creatableEntities, { value: n })))).via == 'composer'"
+                                      },
+                                      "then": { "$setLocal": "newNoteOpen", "value": true },
+                                      "else": [
+                                        {
+                                          "$invoke": "recordStore.createOnCanvas",
+                                          "args": [
+                                            {
+                                              "$": "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)"
+                                            },
+                                            { "$": "local.newAt.x" },
+                                            { "$": "local.newAt.y" }
+                                          ]
+                                        },
+                                        {
+                                          "$invoke": "recordStore.setRecordEntity",
+                                          "args": [
+                                            {
+                                              "$": "first(distinct(recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via == 'composer'), recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via != 'composer' && k.group == 'This space'), distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).map(k, k.value)).filter(n, recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).exists(k, k.value == n && k.via != 'composer' && k.group != 'This space')).map(n, find(recordStore.creatableEntities, { value: n })))).value"
+                                            }
+                                          ]
+                                        }
+                                      ]
                                     }
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          "children": [
+                            {
+                              "type": "we-icon",
+                              "slot": "start",
+                              "props": { "name": "magnifying-glass", "color": "text-muted", "mr": "200" }
+                            }
+                          ]
+                        },
+                        {
+                          "type": "$if",
+                          "props": {
+                            "condition": {
+                              "$": "count(recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via == 'composer'))"
+                            },
+                            "then": {
+                              "type": "Column",
+                              "props": { "gap": "200", "width": "100%" },
+                              "children": [
+                                {
+                                  "type": "Row",
+                                  "props": { "width": "100%", "ay": "center", "gap": "200", "flex": "0 0 auto" },
+                                  "children": [
+                                    {
+                                      "type": "we-text",
+                                      "props": {
+                                        "variant": "footnote",
+                                        "color": "text-faint",
+                                        "textTransform": "uppercase",
+                                        "letterSpacing": "wide",
+                                        "flex": "1"
+                                      },
+                                      "children": ["Documents"]
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "Grid",
+                                  "props": { "minChildWidth": "220px", "gap": "200", "width": "100%" },
+                                  "children": [
+                                    {
+                                      "type": "$each",
+                                      "props": {
+                                        "items": {
+                                          "$": "recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via == 'composer')"
+                                        },
+                                        "as": "kind"
+                                      },
+                                      "children": [
+                                        {
+                                          "type": "we-button",
+                                          "props": {
+                                            "variant": "bare",
+                                            "width": "100%",
+                                            "height": "100%",
+                                            "ax": "start",
+                                            "ay": "start",
+                                            "p": "300",
+                                            "r": "300",
+                                            "bg": "surface-sunken",
+                                            "border": "1px solid color-mix(in srgb, var(--we-role-border) 65%, var(--we-role-border-strong))",
+                                            "hoverProps": { "bg": "surface-hover" },
+                                            "label": { "$": "(kind.via == 'composer' ? 'Note' : kind.label)" },
+                                            "onClick": [
+                                              { "$setLocal": "chooserOpen", "value": false },
+                                              {
+                                                "$if": {
+                                                  "condition": { "$": "kind.via == 'composer'" },
+                                                  "then": { "$setLocal": "newNoteOpen", "value": true },
+                                                  "else": [
+                                                    {
+                                                      "$invoke": "recordStore.createOnCanvas",
+                                                      "args": [
+                                                        {
+                                                          "$": "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)"
+                                                        },
+                                                        { "$": "local.newAt.x" },
+                                                        { "$": "local.newAt.y" }
+                                                      ]
+                                                    },
+                                                    {
+                                                      "$invoke": "recordStore.setRecordEntity",
+                                                      "args": [{ "$": "kind.value" }]
+                                                    }
+                                                  ]
+                                                }
+                                              }
+                                            ]
+                                          },
+                                          "children": [
+                                            {
+                                              "type": "Row",
+                                              "props": { "gap": "300", "ay": "start", "width": "100%" },
+                                              "children": [
+                                                {
+                                                  "type": "Column",
+                                                  "props": {
+                                                    "width": "48px",
+                                                    "height": "48px",
+                                                    "flexShrink": "0",
+                                                    "r": "full",
+                                                    "ax": "center",
+                                                    "ay": "center",
+                                                    "bg": "surface-raised"
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "type": "we-icon",
+                                                      "props": {
+                                                        "name": {
+                                                          "$": "kind.via == 'composer' ? 'note' : kind.icon ? kind.icon : 'cube'"
+                                                        },
+                                                        "color": "text"
+                                                      }
+                                                    }
+                                                  ]
+                                                },
+                                                {
+                                                  "type": "Column",
+                                                  "props": { "gap": "100", "flex": "1", "minWidth": "0" },
+                                                  "children": [
+                                                    {
+                                                      "type": "we-text",
+                                                      "props": { "variant": "label" },
+                                                      "children": [
+                                                        { "$": "(kind.via == 'composer' ? 'Note' : kind.label)" }
+                                                      ]
+                                                    },
+                                                    {
+                                                      "type": "$if",
+                                                      "props": {
+                                                        "condition": { "$": "kind.description" },
+                                                        "then": {
+                                                          "type": "we-text",
+                                                          "props": { "variant": "footnote", "color": "text-muted" },
+                                                          "children": [{ "$": "kind.description" }]
+                                                        }
+                                                      }
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "$if",
+                          "props": {
+                            "condition": {
+                              "$": "count(recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via != 'composer' && k.group == 'This space'))"
+                            },
+                            "then": {
+                              "type": "Column",
+                              "props": { "gap": "200", "width": "100%" },
+                              "children": [
+                                {
+                                  "type": "Row",
+                                  "props": { "width": "100%", "ay": "center", "gap": "200", "flex": "0 0 auto" },
+                                  "children": [
+                                    {
+                                      "type": "we-text",
+                                      "props": {
+                                        "variant": "footnote",
+                                        "color": "text-faint",
+                                        "textTransform": "uppercase",
+                                        "letterSpacing": "wide",
+                                        "flex": "1"
+                                      },
+                                      "children": ["This space"]
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "Grid",
+                                  "props": { "minChildWidth": "220px", "gap": "200", "width": "100%" },
+                                  "children": [
+                                    {
+                                      "type": "$each",
+                                      "props": {
+                                        "items": {
+                                          "$": "recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via != 'composer' && k.group == 'This space')"
+                                        },
+                                        "as": "kind"
+                                      },
+                                      "children": [
+                                        {
+                                          "type": "we-button",
+                                          "props": {
+                                            "variant": "bare",
+                                            "width": "100%",
+                                            "height": "100%",
+                                            "ax": "start",
+                                            "ay": "start",
+                                            "p": "300",
+                                            "r": "300",
+                                            "bg": "surface-sunken",
+                                            "border": "1px solid color-mix(in srgb, var(--we-role-border) 65%, var(--we-role-border-strong))",
+                                            "hoverProps": { "bg": "surface-hover" },
+                                            "label": { "$": "(kind.via == 'composer' ? 'Note' : kind.label)" },
+                                            "onClick": [
+                                              { "$setLocal": "chooserOpen", "value": false },
+                                              {
+                                                "$if": {
+                                                  "condition": { "$": "kind.via == 'composer'" },
+                                                  "then": { "$setLocal": "newNoteOpen", "value": true },
+                                                  "else": [
+                                                    {
+                                                      "$invoke": "recordStore.createOnCanvas",
+                                                      "args": [
+                                                        {
+                                                          "$": "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)"
+                                                        },
+                                                        { "$": "local.newAt.x" },
+                                                        { "$": "local.newAt.y" }
+                                                      ]
+                                                    },
+                                                    {
+                                                      "$invoke": "recordStore.setRecordEntity",
+                                                      "args": [{ "$": "kind.value" }]
+                                                    }
+                                                  ]
+                                                }
+                                              }
+                                            ]
+                                          },
+                                          "children": [
+                                            {
+                                              "type": "Row",
+                                              "props": { "gap": "300", "ay": "start", "width": "100%" },
+                                              "children": [
+                                                {
+                                                  "type": "Column",
+                                                  "props": {
+                                                    "width": "48px",
+                                                    "height": "48px",
+                                                    "flexShrink": "0",
+                                                    "r": "full",
+                                                    "ax": "center",
+                                                    "ay": "center",
+                                                    "bg": "surface-raised"
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "type": "we-icon",
+                                                      "props": {
+                                                        "name": {
+                                                          "$": "kind.via == 'composer' ? 'note' : kind.icon ? kind.icon : 'cube'"
+                                                        },
+                                                        "color": "text"
+                                                      }
+                                                    }
+                                                  ]
+                                                },
+                                                {
+                                                  "type": "Column",
+                                                  "props": { "gap": "100", "flex": "1", "minWidth": "0" },
+                                                  "children": [
+                                                    {
+                                                      "type": "we-text",
+                                                      "props": { "variant": "label" },
+                                                      "children": [
+                                                        { "$": "(kind.via == 'composer' ? 'Note' : kind.label)" }
+                                                      ]
+                                                    },
+                                                    {
+                                                      "type": "$if",
+                                                      "props": {
+                                                        "condition": { "$": "kind.description" },
+                                                        "then": {
+                                                          "type": "we-text",
+                                                          "props": { "variant": "footnote", "color": "text-muted" },
+                                                          "children": [{ "$": "kind.description" }]
+                                                        }
+                                                      }
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "$if",
+                          "props": {
+                            "condition": {
+                              "$": "count(distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).map(k, k.value)).filter(n, recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).exists(k, k.value == n && k.via != 'composer' && k.group != 'This space')).map(n, find(recordStore.creatableEntities, { value: n })))"
+                            },
+                            "then": {
+                              "type": "Column",
+                              "props": { "gap": "200", "width": "100%" },
+                              "children": [
+                                {
+                                  "type": "Row",
+                                  "props": { "width": "100%", "ay": "center", "gap": "200", "flex": "0 0 auto" },
+                                  "children": [
+                                    {
+                                      "type": "we-text",
+                                      "props": {
+                                        "variant": "footnote",
+                                        "color": "text-faint",
+                                        "textTransform": "uppercase",
+                                        "letterSpacing": "wide",
+                                        "flex": "1"
+                                      },
+                                      "children": ["Blocks"]
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "Grid",
+                                  "props": { "minChildWidth": "220px", "gap": "200", "width": "100%" },
+                                  "children": [
+                                    {
+                                      "type": "$each",
+                                      "props": {
+                                        "items": {
+                                          "$": "distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).map(k, k.value)).filter(n, recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).exists(k, k.value == n && k.via != 'composer' && k.group != 'This space')).map(n, find(recordStore.creatableEntities, { value: n }))"
+                                        },
+                                        "as": "kind"
+                                      },
+                                      "children": [
+                                        {
+                                          "type": "we-button",
+                                          "props": {
+                                            "variant": "bare",
+                                            "width": "100%",
+                                            "height": "100%",
+                                            "ax": "start",
+                                            "ay": "start",
+                                            "p": "300",
+                                            "r": "300",
+                                            "bg": "surface-sunken",
+                                            "border": "1px solid color-mix(in srgb, var(--we-role-border) 65%, var(--we-role-border-strong))",
+                                            "hoverProps": { "bg": "surface-hover" },
+                                            "label": { "$": "(kind.via == 'composer' ? 'Note' : kind.label)" },
+                                            "onClick": [
+                                              { "$setLocal": "chooserOpen", "value": false },
+                                              {
+                                                "$if": {
+                                                  "condition": { "$": "kind.via == 'composer'" },
+                                                  "then": { "$setLocal": "newNoteOpen", "value": true },
+                                                  "else": [
+                                                    {
+                                                      "$invoke": "recordStore.createOnCanvas",
+                                                      "args": [
+                                                        {
+                                                          "$": "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)"
+                                                        },
+                                                        { "$": "local.newAt.x" },
+                                                        { "$": "local.newAt.y" }
+                                                      ]
+                                                    },
+                                                    {
+                                                      "$invoke": "recordStore.setRecordEntity",
+                                                      "args": [{ "$": "kind.value" }]
+                                                    }
+                                                  ]
+                                                }
+                                              }
+                                            ]
+                                          },
+                                          "children": [
+                                            {
+                                              "type": "Row",
+                                              "props": { "gap": "300", "ay": "start", "width": "100%" },
+                                              "children": [
+                                                {
+                                                  "type": "Column",
+                                                  "props": {
+                                                    "width": "48px",
+                                                    "height": "48px",
+                                                    "flexShrink": "0",
+                                                    "r": "full",
+                                                    "ax": "center",
+                                                    "ay": "center",
+                                                    "bg": "surface-raised"
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "type": "we-icon",
+                                                      "props": {
+                                                        "name": {
+                                                          "$": "kind.via == 'composer' ? 'note' : kind.icon ? kind.icon : 'cube'"
+                                                        },
+                                                        "color": "text"
+                                                      }
+                                                    }
+                                                  ]
+                                                },
+                                                {
+                                                  "type": "Column",
+                                                  "props": { "gap": "100", "flex": "1", "minWidth": "0" },
+                                                  "children": [
+                                                    {
+                                                      "type": "we-text",
+                                                      "props": { "variant": "label" },
+                                                      "children": [
+                                                        { "$": "(kind.via == 'composer' ? 'Note' : kind.label)" }
+                                                      ]
+                                                    },
+                                                    {
+                                                      "type": "$if",
+                                                      "props": {
+                                                        "condition": { "$": "kind.description" },
+                                                        "then": {
+                                                          "type": "we-text",
+                                                          "props": { "variant": "footnote", "color": "text-muted" },
+                                                          "children": [{ "$": "kind.description" }]
+                                                        }
+                                                      }
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "$if",
+                          "props": {
+                            "condition": {
+                              "$": "!count(recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)))"
+                            },
+                            "then": {
+                              "type": "we-text",
+                              "props": { "variant": "footnote", "color": "text-muted" },
+                              "children": [{ "$": "'Nothing matches \"' + local.typeSearch + '\"'" }]
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "type": "$if",
+              "props": {
+                "condition": { "$": "local.newNoteOpen" },
+                "then": {
+                  "type": "we-modal",
+                  "props": {
+                    "size": "lg",
+                    "close": {
+                      "$if": {
+                        "condition": { "$": "local.draftDirty" },
+                        "then": { "$setLocal": "confirmDiscardOpen", "value": true },
+                        "else": { "$setLocal": "newNoteOpen", "value": false }
+                      }
+                    }
+                  },
+                  "$localState": {
+                    "savePost": { "type": "function", "initial": null },
+                    "submitting": { "type": "boolean", "initial": false },
+                    "draftDirty": { "type": "boolean", "initial": false },
+                    "confirmDiscardOpen": { "type": "boolean", "initial": false },
+                    "discardGoesBack": { "type": "boolean", "initial": false }
+                  },
+                  "children": [
+                    {
+                      "type": "we-tooltip",
+                      "props": { "content": "Back" },
+                      "children": [
+                        {
+                          "type": "we-button",
+                          "props": {
+                            "variant": "ghost",
+                            "size": "sm",
+                            "square": true,
+                            "label": "Back",
+                            "onClick": {
+                              "$if": {
+                                "condition": { "$": "local.draftDirty" },
+                                "then": [
+                                  { "$setLocal": "discardGoesBack", "value": true },
+                                  { "$setLocal": "confirmDiscardOpen", "value": true }
+                                ],
+                                "else": [
+                                  { "$setLocal": "newNoteOpen", "value": false },
+                                  { "$setLocal": "chooserOpen", "value": true }
+                                ]
+                              }
+                            }
+                          },
+                          "children": [{ "type": "we-icon", "props": { "name": "arrow-left" } }]
+                        }
+                      ],
+                      "slot": "start-button"
+                    },
+                    {
+                      "type": "Row",
+                      "props": { "gap": "300", "ay": "center", "width": "100%" },
+                      "children": [
+                        {
+                          "type": "Column",
+                          "props": {
+                            "width": "56px",
+                            "height": "56px",
+                            "flexShrink": "0",
+                            "r": "full",
+                            "ax": "center",
+                            "ay": "center",
+                            "bg": "surface-sunken"
+                          },
+                          "children": [{ "type": "we-icon", "props": { "name": "note", "color": "text" } }]
+                        },
+                        { "type": "we-text", "props": { "variant": "heading-md" }, "children": ["New note"] }
+                      ]
+                    },
+                    {
+                      "type": "Column",
+                      "props": {
+                        "width": "100%",
+                        "bg": "surface-raised",
+                        "p": "600",
+                        "pl": "900",
+                        "r": "400",
+                        "overflow": "auto"
+                      },
+                      "children": [
+                        {
+                          "type": "BlockComposer",
+                          "props": {
+                            "onDirtyChange": { "$setLocal": "draftDirty", "value": { "$": "event" } },
+                            "onReady": { "$setLocal": "savePost", "value": { "$": "event.save" } },
+                            "onSave": [
+                              { "$setLocal": "submitting", "value": true },
+                              {
+                                "$invoke": "recordStore.createCardOnCanvas",
+                                "args": [
+                                  { "$": "arg" },
+                                  {
+                                    "canvas": {
+                                      "$": "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)"
+                                    },
+                                    "at": { "$": "local.newAt" }
+                                  }
+                                ],
+                                "onSuccess": [
+                                  { "$setLocal": "newNoteOpen", "value": false },
+                                  { "$setLocal": "newAt", "value": null }
+                                ],
+                                "onFinally": [{ "$setLocal": "submitting", "value": false }]
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "Row",
+                      "props": { "gap": "300", "ax": "end", "mt": "200", "width": "100%" },
+                      "children": [
+                        {
+                          "type": "we-button",
+                          "props": {
+                            "variant": "soft",
+                            "onClick": {
+                              "$if": {
+                                "condition": { "$": "local.draftDirty" },
+                                "then": { "$setLocal": "confirmDiscardOpen", "value": true },
+                                "else": { "$setLocal": "newNoteOpen", "value": false }
+                              }
+                            }
+                          },
+                          "children": ["Cancel"]
+                        },
+                        {
+                          "type": "we-button",
+                          "props": {
+                            "variant": "solid",
+                            "loading": { "$": "local.submitting" },
+                            "disabled": { "$": "local.submitting" },
+                            "onClick": { "$callLocal": "savePost" }
+                          },
+                          "children": ["Add"]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "$if",
+                      "props": {
+                        "condition": { "$": "local.confirmDiscardOpen" },
+                        "then": {
+                          "type": "we-modal",
+                          "props": {
+                            "size": "sm",
+                            "close": [
+                              { "$setLocal": "confirmDiscardOpen", "value": false },
+                              { "$setLocal": "discardGoesBack", "value": false }
+                            ]
+                          },
+                          "children": [
+                            {
+                              "type": "Row",
+                              "slot": "header",
+                              "props": { "gap": "300", "ay": "center" },
+                              "children": [
+                                { "type": "we-icon", "props": { "name": "warning", "color": "danger-text" } },
+                                {
+                                  "type": "we-text",
+                                  "props": { "variant": "heading-sm" },
+                                  "children": ["Discard your changes?"]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "Column",
+                              "props": { "gap": "300" },
+                              "children": [
+                                {
+                                  "type": "we-text",
+                                  "children": ["What you have typed will be lost. Nothing has been saved yet."]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "Row",
+                              "slot": "footer",
+                              "props": { "ax": "end", "gap": "300" },
+                              "children": [
+                                {
+                                  "type": "we-button",
+                                  "props": {
+                                    "variant": "soft",
+                                    "onClick": [
+                                      { "$setLocal": "confirmDiscardOpen", "value": false },
+                                      { "$setLocal": "discardGoesBack", "value": false }
+                                    ]
+                                  },
+                                  "children": ["Keep editing"]
+                                },
+                                {
+                                  "type": "we-button",
+                                  "props": {
+                                    "variant": "solid",
+                                    "tone": "danger",
+                                    "onClick": [
+                                      {
+                                        "$if": {
+                                          "condition": { "$": "local.discardGoesBack" },
+                                          "then": [
+                                            { "$setLocal": "newNoteOpen", "value": false },
+                                            { "$setLocal": "chooserOpen", "value": true }
+                                          ],
+                                          "else": { "$setLocal": "newNoteOpen", "value": false }
+                                        }
+                                      },
+                                      { "$setLocal": "confirmDiscardOpen", "value": false },
+                                      { "$setLocal": "discardGoesBack", "value": false }
+                                    ]
                                   },
                                   "children": ["Discard"]
                                 }
