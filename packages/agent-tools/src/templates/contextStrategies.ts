@@ -327,6 +327,75 @@ function storesIn(...texts: string[]): Set<string> {
   return found;
 }
 
+/** The component and store entries a request implicates, as `selectReference` picks them. */
+export interface SelectedReference {
+  componentsIntro: string;
+  storesIntro: string;
+  /** The entries' text, in the order picked. */
+  components: string[];
+  stores: string[];
+  /** Names implicated and left out to keep within the budget, components first. */
+  omitted: string[];
+}
+
+/**
+ * The entries a change probably needs: the components the template already uses and the request
+ * names in its own words ("button" is `we-button`), and every store either mentions.
+ *
+ * This is what makes a small model edit well. Given the entries up front it uses them; left to ask,
+ * it does not — on a 4B, 0.1 reference calls a case against Sonnet's 1.2 (`aiInfra.ts`). `budget`
+ * caps the entries' characters, since on a large template "every component it uses" is most of the
+ * registry; what the cap leaves out is named, so it is still one lookup away.
+ */
+export function selectReference(
+  reference: string,
+  subject: { request: string; schema: unknown },
+  budget = Infinity,
+): SelectedReference {
+  const section = sectionsByTitle(reference);
+  const components = parseEntries(section('Component Registry'), COMPONENT_ENTRY, (m) => m[1]);
+  const stores = parseEntries(section('Stores'), STORE_ENTRY, (m) => m[1][0].toLowerCase() + m[1].slice(1));
+
+  const words = subject.request.toLowerCase().match(/[a-z]+/g) ?? [];
+  const named = words.flatMap((word) => COMPONENT_WORDS[word] ?? []);
+  const wanted = new Set([...componentsIn(subject.schema), ...named]);
+  const schemaText = JSON.stringify(subject.schema);
+  const wantedStores = storesIn(schemaText, subject.request);
+
+  /*
+    What fits the budget is decided with the request's own words first — they say what the change is
+    about, where the template's tags only say what it might touch — and stores before components'
+    long tail. The entries then come out in the order `lookup` has always written them.
+  */
+  const priority: [Entries, string][] = [
+    ...named.map((name): [Entries, string] => [components, name]),
+    ...[...wantedStores].map((name): [Entries, string] => [stores, name]),
+    ...[...wanted].map((name): [Entries, string] => [components, name]),
+  ];
+  const kept = new Set<string>();
+  const omitted: string[] = [];
+  let left = budget;
+  for (const [from, name] of priority) {
+    const key = `${from === stores ? 's' : 'c'}:${name}`;
+    const entry = from.entries.get(name);
+    if (!entry || kept.has(key) || omitted.includes(name)) continue;
+    if (entry.length > left) omitted.push(name);
+    else {
+      kept.add(key);
+      left -= entry.length;
+    }
+  }
+  const pick = (from: Entries, names: Set<string>, prefix: string) =>
+    [...names].filter((name) => kept.has(`${prefix}:${name}`)).map((name) => from.entries.get(name)!);
+  return {
+    componentsIntro: components.intro,
+    storesIntro: stores.intro,
+    components: pick(components, wanted, 'c'),
+    stores: pick(stores, wantedStores, 's'),
+    omitted,
+  };
+}
+
 export function lookupContext(
   preamble: string,
   reference: string,
@@ -335,14 +404,7 @@ export function lookupContext(
   const section = sectionsByTitle(reference);
   const components = parseEntries(section('Component Registry'), COMPONENT_ENTRY, (m) => m[1]);
   const stores = parseEntries(section('Stores'), STORE_ENTRY, (m) => m[1][0].toLowerCase() + m[1].slice(1));
-
-  const words = subject.request.toLowerCase().match(/[a-z]+/g) ?? [];
-  const wanted = new Set([...componentsIn(subject.schema), ...words.flatMap((word) => COMPONENT_WORDS[word] ?? [])]);
-  const schemaText = JSON.stringify(subject.schema);
-  const wantedStores = storesIn(schemaText, subject.request);
-
-  const pick = (from: Entries, names: Set<string>) =>
-    [...names].map((name) => from.entries.get(name)).filter((entry): entry is string => !!entry);
+  const selected = selectReference(reference, subject);
 
   const preselected = [
     '## Selected Reference',
@@ -351,11 +413,11 @@ export function lookupContext(
     'is one `we_reference` call away — look up a component, store or section before using it rather',
     'than guessing its props or members.',
     '',
-    components.intro,
-    ...pick(components, wanted),
+    selected.componentsIntro,
+    ...selected.components,
     '',
-    stores.intro,
-    ...pick(stores, wantedStores),
+    selected.storesIntro,
+    ...selected.stores,
     '',
     '### Everything that can be looked up',
     '',

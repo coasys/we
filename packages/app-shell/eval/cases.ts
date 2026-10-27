@@ -582,48 +582,50 @@ export const EVAL_CASES: EvalCase[] = [
       }),
   },
   {
-    id: 'delete-with-confirm',
+    /*
+      A dialog opened from a row, which is what this case measures: state per card, a modal that
+      reads the row it was opened from, and a way to close it. It used to be a delete confirmation,
+      until the host began confirming deletes itself and refusing a template's own dialog in front
+      of one as a second question about one click.
+    */
+    id: 'post-details-dialog',
     template: 'feed',
     request:
-      "Add a delete button to each post card. It should ask 'Delete this post?' in a dialog, and only then delete the post with spaceStore.deleteCollection.",
-    check: (s) =>
-      all(
-        expect(ofType(s, 'we-modal').length > 0, 'no dialog'),
-        expect(/Delete this post\?/.test(source(s)), 'the dialog does not ask Delete this post?'),
-        expect(/spaceStore\.deleteCollection/.test(source(s)), 'nothing calls spaceStore.deleteCollection'),
-      ),
+      "Add a Details button to each post card. It should open a dialog headed 'About this post' that shows the post's text, with a Close button.",
+    check: (s) => {
+      const modals = ofType(s, 'we-modal');
+      return all(
+        expect(modals.length > 0, 'no dialog'),
+        expect(/About this post/.test(source(s)), 'the dialog is not headed About this post'),
+        expect(
+          modals.some((m) => /post\.textContent/.test(JSON.stringify(m))),
+          'the dialog does not show the post’s text',
+        ),
+        expect(/"\$toggleLocal"|"\$setLocal"/.test(source(s)), 'nothing opens or closes it'),
+      );
+    },
     solve: (s) =>
       edited(s, (r) => {
         const card = postCard(r);
-        card.$localState = { confirmOpen: { type: 'boolean', initial: false } } as never;
+        card.$localState = { detailsOpen: { type: 'boolean', initial: false } } as never;
+        const close = { $setLocal: 'detailsOpen', value: false };
         card.children!.push(
           {
             type: 'we-button',
-            props: { variant: 'solid', tone: 'danger', onClick: { $setLocal: 'confirmOpen', value: true } },
-            children: ['Delete'],
+            props: { variant: 'ghost', onClick: { $setLocal: 'detailsOpen', value: true } },
+            children: ['Details'],
           },
           {
             type: '$if',
             props: {
-              condition: { $: 'local.confirmOpen' },
+              condition: { $: 'local.detailsOpen' },
               then: {
                 type: 'we-modal',
-                props: { size: 'sm', close: { $setLocal: 'confirmOpen', value: false } },
+                props: { size: 'sm', close },
                 children: [
-                  { type: 'we-text', props: { variant: 'heading-md' }, children: ['Delete this post?'] },
-                  {
-                    type: 'we-button',
-                    props: {
-                      variant: 'solid',
-                      tone: 'danger',
-                      onClick: {
-                        $invoke: 'spaceStore.deleteCollection',
-                        args: [{ $: 'post.id' }],
-                        onSuccess: [{ $setLocal: 'confirmOpen', value: false }],
-                      },
-                    },
-                    children: ['Delete'],
-                  },
+                  { type: 'we-text', props: { variant: 'heading-md' }, children: ['About this post'] },
+                  { type: 'we-text', children: [{ $: 'post.textContent' }] },
+                  { type: 'we-button', props: { variant: 'soft', onClick: close }, children: ['Close'] },
                 ],
               },
             },

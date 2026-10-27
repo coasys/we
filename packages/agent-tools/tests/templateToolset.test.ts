@@ -15,7 +15,13 @@ import { describe, expect, it } from 'vitest';
 
 import type { RecordInput } from '../src/core/toolset';
 import { prepareForModel } from '../src/templates/nodeAliases';
-import { TEMPLATE_CREATE, TEMPLATE_READ, TEMPLATE_UPDATE, templateToolset } from '../src/templates/templateToolset';
+import {
+  READ_REFERENCE_BUDGET,
+  TEMPLATE_CREATE,
+  TEMPLATE_READ,
+  TEMPLATE_UPDATE,
+  templateToolset,
+} from '../src/templates/templateToolset';
 import { toolsets } from '../src/toolsets';
 
 const schema = ensureNodeIds({
@@ -198,6 +204,13 @@ describe('the template tools', () => {
     expect(await read('{not json')).toMatch(/^Error: The arguments/);
   });
 
+  it('take the patches as the JSON text of the list, which a model sometimes sends instead', async () => {
+    expect((await update({ version: 3, patches: JSON.stringify(world.patches) })).properties?.version).toBe(4);
+    const broken = (await update({ version: 3, patches: '[{"targetId":""' })).text;
+    expect(broken).toMatch(/patches must be an array\. It arrived as text that is not valid JSON \(.+\)/);
+    expect((await update({ version: 3, patches: { targetId: '' } })).text).toMatch(/patches must be an array$/);
+  });
+
   it('refuse a tool they do not have rather than throwing', async () => {
     expect((await templateToolset.call('delete_everything', { record: record(), args: {} })).text).toBe(
       'Error: Unknown tool: delete_everything',
@@ -258,5 +271,34 @@ describe('the template documentation', () => {
     expect(await templateToolset.docs.read('template/components/we-button')).toMatch(/- we-button/);
     expect(await templateToolset.docs.read('template/stores/spaceStore')).toContain('SpaceStore:');
     expect(await templateToolset.docs.read('template/nothing')).toBeUndefined();
+  });
+});
+
+describe('what a read brings beside the template', () => {
+  it('carries the entries for the components it uses and the ones the request names', async () => {
+    const answer = JSON.parse(await read({ about: 'make the button bigger' }));
+    expect(answer.reference).toContain('- we-text');
+    expect(answer.reference).toContain('- we-button');
+  });
+
+  it('keeps the entries within their budget on a large template, and names what it left out', async () => {
+    const big = record({}, kanbanTemplate as TemplateSchema);
+    const answer = JSON.parse(
+      (await templateToolset.call(TEMPLATE_READ, { record: big, args: { about: 'restyle the card' } })).text,
+    );
+    expect(answer.reference.length).toBeLessThan(READ_REFERENCE_BUDGET + 2_000);
+    expect(answer.reference).toContain('- Card');
+  });
+
+  /*
+    A small model answers what it read last, and on a large template that is the template: given the
+    workshop outline and no restatement, it described the workspace instead of editing it.
+  */
+  it('ends with the edit it was read for, and says nothing of one when not told', async () => {
+    const answer = JSON.parse(await read({ about: 'make the button bigger' }));
+    expect(Object.keys(answer).at(-1)).toBe('next');
+    expect(answer.next).toContain('"make the button bigger"');
+    expect(answer.next).toContain(`version ${answer.version}.`);
+    expect(JSON.parse(await read()).next).toBeUndefined();
   });
 });
