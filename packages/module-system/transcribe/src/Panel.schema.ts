@@ -104,11 +104,10 @@ const TRANSCRIPT_FROM_START = 'modules.transcribe.transcriptFromStart';
 export const TIMELINE_ORIENTATION = 'modules.transcribe.timelineOrientation';
 
 /**
- * Newest at the top or the bottom — the reader's own setting, which both lists read.
+ * Newest at the top or the bottom — the reader's own setting for transcripts.
  *
- * In the header of the Feed and of the transcript alike: it is one setting, so pressing it in either
- * turns both round, and a list that is drawn the reader's chosen way round should be where the
- * choice is made.
+ * In the transcript's header, because a list drawn the reader's chosen way round should be where the
+ * choice is made. The Feed, its own module now, keeps its own.
  */
 export const timelineOrderButton: SchemaNode = {
   type: 'we-tooltip',

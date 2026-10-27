@@ -7,23 +7,53 @@
  * only) is a different question from what a conversation contains.
  *
  * Read through the store's window (`feedRows`, see `feed.ts`), drawn with the shared `timeline`, so
- * it scrolls, pages and re-anchors exactly as the transcript does, and follows the same per-viewer
- * orientation.
+ * it scrolls, pages and re-anchors exactly as the transcript does, which way round its reader chose.
+ * Two placements of one stream: the module's panel, and a view a template places as a page.
  */
 import { messageLine } from '@we/messages';
 import { lineComposer, panelShell, timeline, timelineMoreAt, timelineOrder } from '@we/schema-kit';
 import type { SchemaNode } from '@we/schema-shared';
 
-import { TIMELINE_ORIENTATION, timelineOrderButton } from './Panel.schema';
+const FROM_START = 'modules.feed.feedFromStart';
 
-const FROM_START = 'modules.transcribe.feedFromStart';
+/** Which way round this reader draws the Feed — their own setting (`timelineOrder`). */
+const TIMELINE_ORIENTATION = 'modules.feed.timelineOrientation';
 
-/** A reply started from the Feed's own lines — see `replyingTo`'s surface. */
-const FEED_REPLY = "modules.transcribe.replyingTo.surface == 'feed'";
+/** Newest at the top or the bottom, pressed where the list is. */
+const timelineOrderButton: SchemaNode = {
+  type: 'we-tooltip',
+  props: { content: 'Newest at the top or the bottom' },
+  children: [
+    {
+      type: 'we-button',
+      props: {
+        size: 'xs',
+        variant: 'ghost',
+        label: 'Newest at the top or the bottom',
+        onClick: {
+          $invoke: 'spaceStore.setAgentModuleSetting',
+          args: [
+            'feed',
+            'timelineOrder',
+            { $: `${TIMELINE_ORIENTATION} == 'newestTop' ? 'newestBottom' : 'newestTop'` },
+          ],
+        },
+      },
+      children: [
+        {
+          type: 'we-icon',
+          props: { name: { $: `${TIMELINE_ORIENTATION} == 'newestTop' ? 'sort-descending' : 'sort-ascending'` } },
+        },
+      ],
+    },
+  ],
+};
+
+/** A reply is being written to one of the Feed's lines — the Feed's own `replyingTo`. */
+const FEED_REPLY = 'modules.feed.replyingTo';
 
 /** What the window draws: everything, or only messages when the reader put activity away. */
-const ROWS =
-  "local.feedActivity ? modules.transcribe.feedRows : modules.transcribe.feedRows.filter(r, r.kind == 'line')";
+const ROWS = "local.feedActivity ? modules.feed.feedRows : modules.feed.feedRows.filter(r, r.kind == 'line')";
 
 /** The words on the "more is coming" line, by which way the window grows. */
 const MORE_WORDS = { $: `${FROM_START} ? 'Later in the space…' : 'Earlier in the space…'` };
@@ -31,7 +61,7 @@ const MORE_WORDS = { $: `${FROM_START} ? 'Later in the space…' : 'Earlier in t
 const more = (end: 'start' | 'end'): SchemaNode => ({
   type: '$if',
   props: {
-    condition: { $: `modules.transcribe.feedHasMore && ${timelineMoreAt(end, FROM_START, TIMELINE_ORIENTATION)}` },
+    condition: { $: `modules.feed.feedHasMore && ${timelineMoreAt(end, FROM_START, TIMELINE_ORIENTATION)}` },
     then: {
       type: 'Row',
       props: { 'data-we-more': end, ay: 'center', gap: '300', py: '200' },
@@ -75,7 +105,7 @@ const origin: SchemaNode = {
 /** One message, drawn exactly as the transcript draws one — see `messageLine`. */
 const line: SchemaNode = messageLine({
   as: 'row',
-  actions: 'modules.transcribe',
+  actions: 'modules.feed',
   surface: 'feed',
   relative: false,
   extra: origin,
@@ -167,11 +197,11 @@ const composer: SchemaNode = {
             {
               type: 'we-text',
               props: { variant: 'footnote', color: 'text-muted', flex: '1', minWidth: '0', truncate: true },
-              children: [{ $: "'Replying to: ' + modules.transcribe.replyingTo.text" }],
+              children: [{ $: "'Replying to: ' + modules.feed.replyingTo.text" }],
             },
             {
               type: 'we-button',
-              props: { size: 'xs', variant: 'ghost', onClick: { $invoke: 'modules.transcribe.cancelReply', args: [] } },
+              props: { size: 'xs', variant: 'ghost', onClick: { $invoke: 'modules.feed.cancelReply', args: [] } },
               children: ['Cancel'],
             },
           ],
@@ -191,12 +221,12 @@ const composer: SchemaNode = {
               $if: {
                 condition: { $: FEED_REPLY },
                 then: {
-                  $invoke: 'modules.transcribe.reply',
-                  args: [{ $: 'modules.transcribe.replyingTo.id' }, { $: 'event.text' }, { $: 'event.marks' }],
+                  $invoke: 'modules.feed.reply',
+                  args: [{ $: 'modules.feed.replyingTo.id' }, { $: 'event.text' }, { $: 'event.marks' }],
                   onFinally: [{ $setLocal: 'sending', value: false }],
                 },
                 else: {
-                  $invoke: 'modules.transcribe.sendToFeed',
+                  $invoke: 'modules.feed.sendToFeed',
                   args: [{ $: 'event.text' }, { $: 'event.marks' }],
                   onFinally: [{ $setLocal: 'sending', value: false }],
                 },
@@ -209,82 +239,109 @@ const composer: SchemaNode = {
   ],
 };
 
+/** The stream itself: every line and activity row, in the window, which way round the reader chose. */
+const feedTimeline: SchemaNode = timeline({
+  fromStart: FROM_START,
+  orientation: TIMELINE_ORIENTATION,
+  onLoadOlder: { $invoke: 'modules.feed.showMoreFeed' },
+  onLoadNewer: { $invoke: 'modules.feed.showMoreFeed' },
+  onJumpNewest: { $invoke: 'modules.feed.readFeedLive' },
+  onJumpOldest: { $invoke: 'modules.feed.readFeedFromStart' },
+  children: [
+    {
+      type: 'Column',
+      props: { gap: '400' },
+      children: [
+        more('start'),
+        {
+          type: '$if',
+          props: {
+            condition: { $: `count(${ROWS})` },
+            then: {
+              type: '$each',
+              props: { items: { $: timelineOrder(ROWS, FROM_START, TIMELINE_ORIENTATION) }, as: 'row' },
+              children: [
+                {
+                  type: '$if',
+                  props: { condition: { $: "row.kind == 'line'" }, then: line, else: activity },
+                },
+              ],
+            },
+            else: {
+              type: '$if',
+              props: {
+                condition: { $: 'modules.feed.feedLoaded' },
+                then: {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'text-muted' },
+                  children: ['Nothing said here yet. Calls, messages and what is found in them appear here.'],
+                },
+                else: { type: 'we-spinner', props: { size: 'sm' } },
+              },
+            },
+          },
+        },
+        more('end'),
+      ],
+    },
+  ],
+});
+
+/** Messages only or with what was found, and which way round — the reader's own two choices. */
+const feedControls: SchemaNode = {
+  type: 'Row',
+  props: { gap: '100', ay: 'center' },
+  children: [
+    {
+      type: 'we-button',
+      props: {
+        size: 'xs',
+        variant: { $: "local.feedActivity ? 'soft' : 'ghost'" },
+        onClick: { $setLocal: 'feedActivity', value: { $: '!local.feedActivity' } },
+      },
+      children: [{ $: "local.feedActivity ? 'Messages and activity' : 'Messages only'" }],
+    },
+    timelineOrderButton,
+  ],
+};
+
+/** The reader's choice of messages only, kept on this device — declared where the controls and the list meet. */
+const FEED_LOCALS = {
+  feedActivity: { type: 'boolean', initial: true, persist: 'feed.activity' },
+} as const;
+
+/**
+ * The Feed as a panel, beside whatever is on screen — the module's own placement, with its help.
+ */
 export const feedPanel: SchemaNode = {
   type: 'Column',
   props: { width: '100%', height: '100%' },
-  $localState: {
-    // Messages only, or messages and what was found — the reader's own, kept on this device.
-    feedActivity: { type: 'boolean', initial: true, persist: 'feed.activity' },
-  },
+  $localState: FEED_LOCALS,
   children: [
     panelShell({
       title: 'Feed',
-      aside: {
-        type: 'Row',
-        props: { gap: '100', ay: 'center' },
-        children: [
-          {
-            type: 'we-button',
-            props: {
-              size: 'xs',
-              variant: { $: "local.feedActivity ? 'soft' : 'ghost'" },
-              onClick: { $setLocal: 'feedActivity', value: { $: '!local.feedActivity' } },
-            },
-            children: [{ $: "local.feedActivity ? 'Messages and activity' : 'Messages only'" }],
-          },
-          timelineOrderButton,
-        ],
-      },
-      help: 'Everything said and written in this space — every call, messages typed outside calls, and replies — with what was found in it as it is found. Newest at the top or the bottom is yours to choose, and applies to transcripts too.',
-      children: [
-        timeline({
-          fromStart: FROM_START,
-          orientation: TIMELINE_ORIENTATION,
-          onLoadOlder: { $invoke: 'modules.transcribe.showMoreFeed' },
-          onLoadNewer: { $invoke: 'modules.transcribe.showMoreFeed' },
-          onJumpNewest: { $invoke: 'modules.transcribe.readFeedLive' },
-          onJumpOldest: { $invoke: 'modules.transcribe.readFeedFromStart' },
-          children: [
-            {
-              type: 'Column',
-              props: { gap: '400' },
-              children: [
-                more('start'),
-                {
-                  type: '$if',
-                  props: {
-                    condition: { $: `count(${ROWS})` },
-                    then: {
-                      type: '$each',
-                      props: { items: { $: timelineOrder(ROWS, FROM_START, TIMELINE_ORIENTATION) }, as: 'row' },
-                      children: [
-                        {
-                          type: '$if',
-                          props: { condition: { $: "row.kind == 'line'" }, then: line, else: activity },
-                        },
-                      ],
-                    },
-                    else: {
-                      type: '$if',
-                      props: {
-                        condition: { $: 'modules.transcribe.feedLoaded' },
-                        then: {
-                          type: 'we-text',
-                          props: { variant: 'footnote', color: 'text-muted' },
-                          children: ['Nothing said here yet. Calls, messages and what is found in them appear here.'],
-                        },
-                        else: { type: 'we-spinner', props: { size: 'sm' } },
-                      },
-                    },
-                  },
-                },
-                more('end'),
-              ],
-            },
-          ],
-        }),
-        composer,
-      ],
+      aside: feedControls,
+      help: 'Everything said and written in this space — every call, messages typed outside calls, and replies — with what was found in it as it is found. Newest at the top or the bottom is yours to choose.',
+      children: [feedTimeline, composer],
     }),
+  ],
+};
+
+/**
+ * The Feed as a view: the same stream and the same box, for a template to place as a page — a space
+ * whose main view is its Feed. The template draws its own header; the reader's two choices sit at the
+ * top of the stream.
+ *
+ * Kept live while it is drawn, as the panel is while open: the part declares `whileShown`, and the
+ * host tells the store as it is drawn and taken down.
+ */
+export const feedView: SchemaNode = {
+  type: 'Column',
+  props: { width: '100%', height: '100%', gap: '200' },
+  $localState: FEED_LOCALS,
+  children: [
+    { type: 'Row', props: { ax: 'end' }, children: [feedControls] },
+    { type: 'Column', props: { flex: '1', minHeight: '0' }, children: [feedTimeline] },
+    composer,
   ],
 };

@@ -3,7 +3,6 @@ import { CORRECTED, SPOKEN, TYPED } from '@we/messages';
 import type { DatasetTarget, ModuleStoreDeps, RecordsKernel } from '@we/module-shared';
 import { namespace } from '@we/schema-shared';
 
-import { createFeed } from './feedStore';
 import { WORKLET_NAME, WORKLET_SOURCE } from './workletSource';
 
 /**
@@ -2751,45 +2750,22 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   }
 
   /*
-    The line a reply is being written to — the store's rather than a local, because a list's lines and
-    its composer are separate parts of a panel with no scope in common.
+    The line a reply is being written to — the store's rather than a local, because the transcript's
+    lines and its composer are separate parts of a panel with no scope in common. Put down when the
+    call on screen changes: it belongs to the conversation it was started in.
 
-    With the list it was started from, because the transcript and the Feed draw the same lines and
-    can both be open: a reply started in one is offered, and sent, only by that one's composer.
-
-    A transcript's reply is put down when the call on screen changes — it belongs to the conversation
-    it was started in. A Feed's is not: the Feed is the whole space, whichever call is on screen. The
-    surface is kept beside the signal so that effect does not read, and so follow, the reply itself.
+    `surface` is always 'transcript', kept because templates read it; the Feed, which shared this
+    once, is its own module with its own reply now.
   */
-  type ReplyTarget = { id: string; text: string; author: string; surface: 'transcript' | 'feed' };
+  type ReplyTarget = { id: string; text: string; author: string; surface: 'transcript' };
   const [replyingTo, setReplyingTo] = signal<ReplyTarget | null>(null);
-  let replySurface: ReplyTarget['surface'] | '' = '';
-  const replyTo = (target: ReplyTarget | null) => {
-    replySurface = target?.surface ?? '';
-    setReplyingTo(target);
-  };
+  const replyTo = (target: ReplyTarget | null) => setReplyingTo(target);
   effect?.(() => {
     void deps.callOnScreen?.();
-    if (replySurface !== 'feed') replyTo(null);
-  });
-
-  const feed = createFeed({
-    signal,
-    effect,
-    state,
-    action,
-    onDispose,
-    dataset,
-    records,
-    interpretation,
-    unconfirmedIds,
-    // Into the space on screen: the Feed is about the space somebody is reading.
-    write: (collection, text, marks) =>
-      writeMessage({ id: collection, relation: 'children', entity: 'CollectionBlock' }, text, marks),
+    replyTo(null);
   });
 
   return {
-    ...feed,
     // ── State ────────────────────────────────────────────────────────────────
     status: state(
       onScreen(status, 'idle'),
@@ -3747,7 +3723,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     }, 'Answers one line with a typed line of its own, linked from it as a reply.'),
     replyingTo: state(
       replyingTo,
-      "The line a reply is being written to — { id, text, author, surface } — or null. `surface` is 'transcript' or 'feed': the list it was started from, whose composer sends it.",
+      "The line a reply is being written to — { id, text, author, surface } — or null. `surface` is always 'transcript'.",
     ),
     startReply: action(
       (line: { id?: unknown; text?: unknown; author?: unknown; surface?: unknown }) =>
@@ -3758,11 +3734,11 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
                 id: line.id,
                 text: String(line.text ?? ''),
                 author: String(line.author ?? ''),
-                surface: line.surface === 'feed' ? 'feed' : 'transcript',
+                surface: 'transcript',
               }
             : null,
         ),
-      "Starts a reply to one line — pass { id, text, author, surface } — which that surface's composer then sends as a reply. `surface` is 'transcript' (the default) or 'feed'.",
+      "Starts a reply to one line of the transcript — pass { id, text, author } — which the transcript's composer then sends as a reply.",
       { ambient: true },
     ),
     cancelReply: action(() => replyTo(null), 'Puts a reply down without sending it.', { ambient: true }),

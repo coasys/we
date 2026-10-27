@@ -15,7 +15,7 @@ import { createInMemoryBackendPorts, type InMemoryAgentOptions, type InMemoryLif
 import { createBlocks, registerCoreBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
 import { AgentSettings, CollectionBlock, getEntity, Policy, Space, SpaceLandmark } from '@we/entities';
-import { type FeedFind, readFeedWindow } from '@we/module-transcribe';
+import { type FeedFind, readFeedWindow } from '@we/module-feed';
 import { createEffect, createRoot, createSignal } from 'solid-js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 

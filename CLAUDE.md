@@ -3897,12 +3897,6 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - extractionOpen — Whether the extraction panel is open.
   - extractStatus — How the last one-shot extraction pass went — idle, running, done or error.
   - extractTurns — How many transcript turns the last pass read.
-  - feedFromStart — Whether the Feed is read from the beginning rather than the live end.
-  - feedHasMore — Whether there is more of the space beyond the Feed’s window.
-  - feedLoaded — Whether the Feed has answered for this space yet.
-  - feedOpen — Whether the Feed panel is open.
-  - feedRoot — The space collection the Feed reads, and writes typed messages into.
-  - feedRows — The Feed's window: every message in the space and a row per group of things extracted or made, merged by time — newest first while following the live end, oldest first from the start. A row is { kind: 'line', id, at, author, text, marks, source, call, callTitle, replyTo } or { kind: 'activity', id, at, author, origin, originTitle, summary, items, suggested }.
   - heard — Something has been said that the record does not hold yet — buffered, being written or still with the model.
   - inCall — Whether this agent is in a call right now.
   - installError — Why the last model install failed; empty otherwise.
@@ -3928,7 +3922,7 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - proposalsFor — Suggestions staged on one conversation, by record id — read as proposalsFor[id].
   - reconnecting — The link to the speech model dropped and is being re-established; what is said meanwhile is held.
   - recordingCall — This agent’s recording of the call it is in, wherever the call is — { enabled, listening, available }. For the call bar; the other members answer for the space on screen.
-  - replyingTo — The line a reply is being written to — { id, text, author, surface } — or null. `surface` is 'transcript' or 'feed': the list it was started from, whose composer sends it.
+  - replyingTo — The line a reply is being written to — { id, text, author, surface } — or null. `surface` is always 'transcript'.
   - speaking — Whether the microphone level currently counts as speech.
   - status — What the session is doing — idle, no-backend, no-model, no-audio, downloading, starting, listening or error.
   - thresholdPercent — The speech-onset threshold as a CSS width, to mark on the same meter.
@@ -3949,7 +3943,6 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - cancelReply — Puts a reply down without sending it.
   - cancelTiedDecision — Puts the decision waiting in tiedDecision down without making it.
   - closeExtractionPanel — Closes the extraction panel.
-  - closeFeed — Closes the Feed panel.
   - closePanel — Closes the transcript panel.
   - confirmTiedDecision — Carries out the decision waiting in tiedDecision, with everything tied to it.
   - dismissChange — Dismisses one suggested change, leaving the record as it was.
@@ -3960,25 +3953,20 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - flushNow — Writes what has been heard so far without waiting for the buffer to fill.
   - installModel — Installs the model the backend offers and resumes recording that was waiting on one.
   - openExtractionPanel — Opens the extraction panel.
-  - openFeed — Opens the Feed panel.
   - openPanel — Opens the transcript panel.
-  - readFeedFromStart — Re-anchors the Feed at the beginning of the space.
-  - readFeedLive — Re-anchors the Feed at the newest message.
   - readTranscriptFromStart — Shows the beginning of the transcript, to be read forwards.
   - readTranscriptLive — Goes back to following the end of the transcript.
   - refreshProposals — Re-reads what is staged on a call, or on the live one.
   - rejectProposal — Drops a suggestion.
   - reply — Answers one line with a typed line of its own, linked from it as a reply.
-  - sendToFeed — Writes a message straight into the space, outside any call — with its marks, when the composer gave any.
   - setProposalField — Sets one field of the open draft, by property name.
-  - showMoreFeed — Grows the Feed’s window by a page.
   - showMoreTranscript — Loads one more page of the transcript, in whichever direction it is being read.
-  - startReply — Starts a reply to one line — pass { id, text, author, surface } — which that surface's composer then sends as a reply. `surface` is 'transcript' (the default) or 'feed'.
+  - startReply — Starts a reply to one line of the transcript — pass { id, text, author } — which the transcript's composer then sends as a reply.
   - toggle — Starts or stops recording this agent’s microphone into the call, and opens the transcript when starting.
   - toggleAutoExtract — Turns automatic extraction on or off for one collection, for everyone in it; defaults to the live call.
   - toggleExtractionTarget — Includes or excludes one model from what a call extracts, for everyone in it; defaults to the live call.
 - Parts: `transcribe.transcriptFeed` (subject: routeStore.params.call ? routeStore.params.call : modules.transcribe.collectionId), `transcribe.transcriptLines` (subject: modules.transcribe.collectionId), `transcribe.transcriptComposer`, `transcribe.captureMeter`, `transcribe.captureStatus`, `transcribe.coverage`, `transcribe.extractionTargets`, `transcribe.pendingUtterance`
-- Panels (`meta.panels[].dock`): `transcript` "Transcript" (module-owned openness), `extraction` "Extraction" (module-owned openness), `feed` "Feed" (module-owned openness)
+- Panels (`meta.panels[].dock`): `transcript` "Transcript" (module-owned openness), `extraction` "Extraction" (module-owned openness)
 - Settings: `recordCalls` (boolean; deployment, agent, space, agent-in-space) — Record calls automatically; `timelineOrder` (enum; agent) — Newest messages
 - Presence activities: `transcribe` { id: string, recording: boolean, anchor: object, collection: string }
 - Functions:

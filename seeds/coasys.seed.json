@@ -15,7 +15,7 @@
     "images": ["https://coasys.org"],
     "media": ["https://coasys.org"]
   },
-  "modules": ["call", "transcribe", "live", "graph"],
+  "modules": ["call", "transcribe", "feed", "live", "graph"],
   "templates": ["default", "workshop"],
   "views": ["about", "cards", "graph", "boards", "calendar"],
   "spaceStarters": [

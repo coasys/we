@@ -277,6 +277,17 @@ export interface ModulePart {
    * warns about a name a part reads that it neither binds nor declares.
    */
   inputs?: Record<string, PartInput>;
+  /**
+   * Store actions the host calls as this part is drawn and taken down — `show` once each time it is
+   * placed on screen, `hide` once each time one is removed.
+   *
+   * For a part whose module does work only while somebody is looking at it, the way a panel's `show`
+   * and `close` tell its module it is open. A part drawn by the renderer from `$queries` needs none:
+   * its subscriptions already live and die with it. This is for a part fed by its module's store —
+   * the Feed's window, read whole and refreshed — which otherwise could not tell a page showing it
+   * from nobody looking. Called once per drawing, so a part shown twice is shown until both are gone.
+   */
+  whileShown?: { show: string; hide: string };
 }
 
 /** One name a part needs from where it is placed. */
