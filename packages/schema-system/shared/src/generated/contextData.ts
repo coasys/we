@@ -2620,9 +2620,9 @@ export const contextData: ContextData = {
         params: { type: 'object' },
         page: { type: 'string' },
       },
-      actions: ['navigate', 'setParam', 'back'],
-      ambient: ['navigate', 'setParam', 'back'],
-      needsArgs: ['navigate', 'setParam'],
+      actions: ['navigate', 'resolve', 'setParam', 'back'],
+      ambient: ['navigate', 'resolve', 'setParam', 'back'],
+      needsArgs: ['navigate', 'resolve', 'setParam'],
     },
     {
       name: 'runtimeStore',

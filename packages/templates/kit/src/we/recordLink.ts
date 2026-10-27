@@ -15,11 +15,12 @@ import type { SchemaNode } from '@we/schema-shared';
  * `/space/:spaceId` — so a bare `/record/…` is a different route entirely and lands on the
  * template's not-found. That was the first version of this, and it 404'd on every click.
  *
- * A *relative* href does not fix it either: a browser resolves one against the current URL, not
- * against the route tree, so `./record/…` is right from `/space/x/cards` and wrong the moment a
- * section has a sub-route of its own. The prefix has to come from the host, and the segment it
- * contains is not a value a schema can compute — for a shared space it is the neighbourhood CID and
- * for a personal one the dataset id.
+ * Not `~/record/…`, though a relative href resolves from the template's root now: this link is also
+ * drawn in Settings, inside the shell overlay, which has a router of its own, so `~/` there would be
+ * the overlay's root. The record page is in the space's router, and an absolute address reaches it
+ * from any surface. The prefix comes from the host, since the segment it contains is not a value a
+ * schema can compute — for a shared space it is the neighbourhood CID and for a personal one the
+ * dataset id.
  *
  * ## Why the id is a query value
  *

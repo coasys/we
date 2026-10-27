@@ -55,7 +55,7 @@ const rail: SchemaNode = {
     },
 
     channelRail({
-      path: './channel',
+      path: '~/channel',
       categories: true,
       empty: emptyState({ icon: 'hash', label: 'channels', delay: 0 }),
       footer: {
@@ -81,7 +81,7 @@ const rail: SchemaNode = {
       title: 'New channel',
       kind: KIND.channel,
       placeholder: 'general',
-      navigateTo: './channel',
+      navigateTo: '~/channel',
     }),
     newContainerModal({
       openLocal: 'newCategoryOpen',

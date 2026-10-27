@@ -30,7 +30,7 @@ import type { SchemaNode } from '@we/schema-shared';
 
 export interface ChannelRailOptions {
   /**
-   * The page a channel opens on, e.g. `'./channel'`. It is given the channel's id as the query value
+   * The page a channel opens on, e.g. `'~/channel'`. It is given the channel's id as the query value
    * `id` — never as a path segment, because an id is a URI and is several of them.
    */
   path: string;

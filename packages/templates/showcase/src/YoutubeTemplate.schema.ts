@@ -47,7 +47,7 @@ const videoCard: SchemaNode = {
       props: {
         variant: 'bare',
         width: '100%',
-        onClick: { $invoke: 'routeStore.navigate', args: ['./watch', { $: '{ query: { id: video.id } }' }] },
+        onClick: { $invoke: 'routeStore.navigate', args: ['~/watch', { $: '{ query: { id: video.id } }' }] },
       },
       children: [
         {
@@ -134,7 +134,7 @@ const watchRoute: RouteSchema = {
             variant: 'ghost',
             size: 'sm',
             alignSelf: 'start',
-            onClick: { $invoke: 'routeStore.navigate', args: [{ $: "spaceStore.spacePath + '/'" }] },
+            onClick: { $invoke: 'routeStore.navigate', args: ['~/'] },
           },
           children: [{ type: 'we-icon', props: { name: 'arrow-left' } }, 'Back'],
         },
@@ -315,7 +315,7 @@ export const youtubeTemplate: TemplateSchema = {
                 items: [
                   // `segment` rather than a whole-path comparison — see the note on Twitter's nav.
                   { label: 'Library', path: '.', segment: '' },
-                  { label: 'Playlists', path: './playlists', segment: 'playlists' },
+                  { label: 'Playlists', path: '~/playlists', segment: 'playlists' },
                 ],
                 as: 'nav',
               },

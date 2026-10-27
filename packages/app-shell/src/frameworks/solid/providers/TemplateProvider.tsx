@@ -15,6 +15,7 @@ import { installRenderSettleOnExit, installSafeModeShortcut } from '@shared/safe
 import { hostSourceBag } from '@shared/sources';
 import { workflowStateOf } from '@shared/taskWorkflow';
 import { taskWorkflowLive } from '@shared/taskWorkflowLive';
+import { landsOnRoot } from '@shared/templateLanding';
 import { copyText } from '@shared/utils';
 import { withExtractionDefaults } from '@we/entities';
 import { completeResponse, respondsThrough } from '@we/entities';
@@ -1451,6 +1452,39 @@ export default function TemplateProvider() {
     const dataset = datasetStore.currentDataset();
     if (!dataset) return;
     routeStore.navigate(`/space/${dataset.sharedId ?? dataset.id}`, { replace: true });
+  });
+
+  /*
+    A template that changes under an address that is not one of its pages lands on its root.
+
+    The address belonged to the template before: a fork made from one of its pages, a new template
+    started from one, a link with `?template=`, a space's default changing. Kept, it lands on the
+    new template's catch-all, a page about a mistake nobody made ("No such board." after forking
+    Boards). Kept when it *is* one of the new template's pages, so moving between two templates
+    with the same screens does not lose your place.
+
+    Only on a change, never on arrival: an address somebody followed into a template that does not
+    have it is a broken link, and the template's own catch-all is the right answer to that. A
+    template hosting the space's sections is kept on one by the effect above; `switchTemplate`'s
+    own navigation lands on the root before this looks.
+  */
+  let landedTemplate: string | undefined;
+  createEffect(() => {
+    if (routeKey() === LOADING_SPACE_DATA) return;
+    const id = templateSchema.id || 'empty';
+    const previous = landedTemplate;
+    landedTemplate = id;
+    const routes = templateSchema.routes ?? [];
+    untrack(() => {
+      const lands = landsOnRoot({
+        previous,
+        current: id,
+        routes,
+        segments: routeStore.segments(),
+        templateSegments: routeStore.templateSegments(),
+      });
+      if (lands) routeStore.navigate('~/', { replace: true });
+    });
   });
 
   // Any theme the template names by `theme: { themeName }` needs its stylesheet present before the

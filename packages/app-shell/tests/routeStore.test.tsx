@@ -102,7 +102,8 @@ describe('routeStore params', () => {
     store.setNavigateFunction(nav as never);
 
     store.navigate('./board', { query: { id: 'ad4m://obj/xkav' } });
-    expect(nav).toHaveBeenLastCalledWith('./board?id=ad4m://obj/xkav', undefined);
+    // Resolved from the root, which outside a space is `/`.
+    expect(nav).toHaveBeenLastCalledWith('/board?id=ad4m://obj/xkav', undefined);
 
     const awkward = 'literal://string:a+b&c=d#e%20f';
     store.navigate('./board', { query: { id: awkward } });
@@ -134,6 +135,42 @@ describe('routeStore params', () => {
 
     store.setCurrentPath('/space/x', '?sort=new');
     expect(store.page()).toBe('/space/x');
+  });
+
+  /*
+    A relative path is resolved here, against the router's own address: from the route the node is in
+    (the base the renderer hands over), or from the template's root, which is the space.
+  */
+  it('resolves a relative path from the route it was written in, or from the template’s root', () => {
+    window.history.replaceState(null, '', '/space/abc/board?id=x');
+    const store = mountStore();
+    const nav = vi.fn();
+    store.setNavigateFunction(nav as never);
+    store.setCurrentPath('/space/abc/board', '?id=x');
+
+    store.navigate('..', { base: { depth: 3 } });
+    expect(nav).toHaveBeenLastCalledWith('/space/abc', undefined);
+    store.navigate('./cards', { base: { depth: 3 } });
+    expect(nav).toHaveBeenLastCalledWith('/space/abc/board/cards', undefined);
+    store.navigate('~/wall');
+    expect(nav).toHaveBeenLastCalledWith('/space/abc/wall', undefined);
+    // No base: from the root, never from wherever the router happens to sit.
+    store.navigate('./wall');
+    expect(nav).toHaveBeenLastCalledWith('/space/abc/wall', undefined);
+    store.navigate('/settings');
+    expect(nav).toHaveBeenLastCalledWith('/settings', undefined);
+  });
+
+  it('resolve gives the address navigate would go to, without going there', () => {
+    window.history.replaceState(null, '', '/space/abc/board');
+    const store = mountStore();
+    const nav = vi.fn();
+    store.setNavigateFunction(nav as never);
+    store.setCurrentPath('/space/abc/board');
+
+    expect(store.resolve('..', { base: { depth: 3 } })).toBe('/space/abc');
+    expect(store.resolve('~/wall')).toBe('/space/abc/wall');
+    expect(nav).not.toHaveBeenCalled();
   });
 
   it('clearing the param clears the memory — returning lands bare', () => {

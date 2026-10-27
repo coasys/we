@@ -1088,6 +1088,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     templateSegments: state('view-state'),
     params: state('view-state'),
     navigate: ambient('navigation'),
+    resolve: ambient('navigation'),
     setParam: ambient('view-state'),
     back: ambient('navigation'),
 

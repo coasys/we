@@ -1,5 +1,5 @@
 import { useNavigate } from '@solidjs/router';
-import { SPACE_ROUTE_DEPTH } from '@we/schema-shared';
+import { resolvePath, SPACE_ROUTE_DEPTH } from '@we/schema-shared';
 import {
   Accessor,
   createContext,
@@ -69,8 +69,18 @@ export interface RouteStore {
    * matches; pasted into a query by hand, an id holding `&`, `#`, `+` or `%` reads back as
    * something else. Written here, it reads back exactly. The rest of `options` goes to the router
    * (`replace`, `state`).
+   *
+   * A relative `to` is resolved here, against the address on screen — see `resolvePath`: `./x` and
+   * `..` from the route a template node is in (`base`, which the renderer supplies), `~/x` from the
+   * template's root. Called with no base, a relative path is from the root.
    */
-  navigate: (to: string, options?: { query?: Record<string, unknown> } & Record<string, unknown>) => void;
+  navigate: (to: string, options?: NavigateOptions) => void;
+  /**
+   * The address `to` leads to, resolved as `navigate` would resolve it, without going there. What a
+   * relative `href` is rendered as, so a link a template draws and a press it handles agree.
+   * Reactive: it follows the address on screen.
+   */
+  resolve: (to: string, options?: Pick<NavigateOptions, 'base'>) => string;
   /**
    * Write one query parameter (null removes it). Defaults to replaceState —
    * filter/sort changes should not spam history; pass { push: true } for
@@ -89,6 +99,27 @@ export interface RouteStore {
    * nowhere back to go, and inventing a destination would be the same guess.
    */
   back: () => void;
+}
+
+/** What `navigate` takes beside the path. */
+export type NavigateOptions = {
+  query?: Record<string, unknown>;
+  /** The route a relative path is from, as its depth in segments. The renderer supplies it. */
+  base?: { depth: number };
+} & Record<string, unknown>;
+
+/**
+ * How many segments of an address are the template's root: the space it is mounted under, or
+ * nothing outside one.
+ */
+export function templateRootDepth(path: string): number {
+  return path.split('/').filter(Boolean)[0] === 'space' ? SPACE_ROUTE_DEPTH : 0;
+}
+
+/** `to` resolved from `here`, for a router whose template root is `root` segments deep. */
+export function resolveNavigation(to: string, here: string, root: number, base?: unknown): string {
+  const depth = (base as { depth?: unknown } | undefined)?.depth;
+  return resolvePath(to, here, { depth: typeof depth === 'number' ? depth : root, root });
 }
 
 const RouteContext = createContext<RouteStore>();
@@ -189,15 +220,18 @@ export function RouteStoreProvider(props: ParentProps) {
     onCleanup(() => window.removeEventListener('popstate', onPopState));
   }
 
-  function navigate(to: string, options?: { query?: Record<string, unknown> } & Record<string, unknown>) {
-    const { query, ...routerOptions } = options ?? {};
+  function navigate(to: string, options?: NavigateOptions) {
+    const { query, base, ...routerOptions } = options ?? {};
+    // The router's address, not the bar's, for `setParam`'s reason below.
+    const here = untrack(currentPath) || window.location.pathname;
+    const resolved = resolveNavigation(to, here, templateRootDepth(here), base);
     const written = query && typeof query === 'object' ? queryString(query) : '';
-    const path = written ? `${to}${to.includes('?') ? '&' : '?'}${written}` : to;
+    const path = written ? `${resolved}${resolved.includes('?') ? '&' : '?'}${written}` : resolved;
 
     // Skip if already on the exact target path (no-op router push). The router's path, not the
     // address bar's, for `setParam`'s reason below: against a stale bar this refused to go to the
     // page the bar wrongly named, and let through a navigation to the page already on screen.
-    if ((untrack(currentPath) || window.location.pathname) === path) return;
+    if (here === path) return;
 
     // A bare path restores that route's remembered query string, so a
     // kept-alive route's URL params survive leaving and returning. An explicit
@@ -207,6 +241,11 @@ export function RouteStoreProvider(props: ParentProps) {
     const nav = navigateFunction();
     if (nav) nav(target, Object.keys(routerOptions).length ? routerOptions : undefined);
     else console.warn('Navigate function not available yet');
+  }
+
+  function resolve(to: string, options?: Pick<NavigateOptions, 'base'>): string {
+    const here = currentPath() || (typeof window === 'undefined' ? '/' : window.location.pathname);
+    return resolveNavigation(to, here, templateRootDepth(here), options?.base);
   }
 
   function setParam(name: string, value: string | null, options?: { push?: boolean }) {
@@ -253,6 +292,7 @@ export function RouteStoreProvider(props: ParentProps) {
 
     // Actions
     navigate,
+    resolve,
     setParam,
     back: () => window.history.back(),
   };
