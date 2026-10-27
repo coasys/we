@@ -5,6 +5,7 @@
  * than restated — plus the rows a seeded backend should answer with. Nothing here describes layout;
  * the assertions live beside the cases, so one scenario can be measured several ways.
  */
+import { feedView } from '@we/module-feed';
 import { transcriptLines } from '@we/module-transcribe';
 import {
   cardShell,
@@ -2045,8 +2046,68 @@ const coasysTreeDna = (): Scenario => {
   };
 };
 
+/**
+ * The Feed as a page: a few lines, one of them from a call, and what extraction found — in a box the
+ * height of a view, so its stream scrolls and its box sits at the foot.
+ */
+const feedViewPage = (): Scenario => {
+  const line = (id: string, author: string, text: string, at: string, call = '', callTitle = '') => ({
+    kind: 'line',
+    id,
+    at,
+    createdAt: at,
+    updatedAt: at,
+    author,
+    text,
+    marks: '',
+    source: 'typed',
+    call,
+    callTitle,
+    replyTo: null,
+    content: null,
+  });
+  return {
+    node: { type: 'Column', props: { width: '100%', height: '600px' }, children: [feedView] },
+    tables: {},
+    stores: {
+      modules: {
+        feed: {
+          feedRows: [
+            line('m3', 'did:them', 'See you all on Friday', '2026-10-27T10:03:00Z'),
+            {
+              kind: 'activity',
+              id: 'a1',
+              at: '2026-10-27T10:02:00Z',
+              author: 'did:me',
+              origin: 'call-1',
+              originTitle: 'Monday sync',
+              summary: '2 tasks',
+              items: [],
+              suggested: 1,
+            },
+            line('m2', 'did:me', 'Who has the venue?', '2026-10-27T10:01:00Z', 'call-1', 'Monday sync'),
+            line('m1', 'did:them', 'Morning all', '2026-10-27T10:00:00Z'),
+          ],
+          feedLoaded: true,
+          feedHasMore: false,
+          feedFromStart: false,
+          timelineOrientation: 'newestBottom',
+          replyingTo: null,
+        },
+      },
+      profileStore: {
+        profiles: [
+          { did: 'did:them', name: 'Theodora Fairweather', avatar: '' },
+          { did: 'did:me', name: 'Alexandra Whitfield', avatar: '' },
+        ],
+      },
+    },
+  };
+};
+
 export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'coasys:about': coasysAbout,
+  'feed:view': feedViewPage,
   'coasys:tree-dna': coasysTreeDna,
   'profile:pages': profilePages,
   'tree:caret-end': treeCaretEnd,

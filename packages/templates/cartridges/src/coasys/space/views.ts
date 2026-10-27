@@ -6,17 +6,16 @@ import { groupRoutes } from './groups.ts';
 import { liveDot } from './marks.ts';
 import { CHANNEL, CHANNEL_EXPR, channelPath, IN_ROOT_EXPR, PAGE_EXPR } from './paths.ts';
 import { personRoute } from './person.ts';
-import { newChannelDialog } from './tree.ts';
 
 /**
  * What the view beside the tree draws: a channel as chat or as a canvas, the space's workflows, and — as
  * its own page — a call.
  */
 
-/** The channel record, for its title. The root channel is the space's own collection and has none. */
-const CHANNEL_TITLE = `${IN_ROOT_EXPR} ? 'General' : (first(local.channelRecord).title ? first(local.channelRecord).title : 'Channel')`;
+/** The channel record, for its title. The root channel is the space's own collection: the Feed. */
+const CHANNEL_TITLE = `${IN_ROOT_EXPR} ? 'Feed' : (first(local.channelRecord).title ? first(local.channelRecord).title : 'Channel')`;
 
-/** Chat or canvas, for the channel on screen — the address keeps which channel. */
+/** Chat or canvas, for the channel on screen — the address keeps which channel. The root's chat is its Feed. */
 const channelModes: SchemaNode = {
   type: 'Row',
   props: { gap: '100', p: '100', r: 'control', bg: 'surface-sunken' },
@@ -37,7 +36,10 @@ const channelModes: SchemaNode = {
         ],
       },
     },
-    children: [{ type: 'we-icon', props: { name: icon } }, label],
+    children: [
+      { type: 'we-icon', props: { name: icon } },
+      page ? label : { $: `(${IN_ROOT_EXPR}) ? 'Feed' : '${label}'` },
+    ],
   })),
 };
 
@@ -62,40 +64,43 @@ const LIFT = 'padding-bottom 300 ease';
 
 /**
  * Where to start, in a space with nothing in it yet: a card for each first thing worth doing, which
- * does it when pressed. Shown in the root channel until the space has a call or a channel of its own.
+ * does it when pressed. Shown above the Feed until the space has held a call.
  *
  * Each card is a bare button around the card itself, so it is reachable from the keyboard and
  * announced as what it does. It lights under the pointer — an accent border and a glow, as a
  * highlighted card is in Nico's design; how bright the glow is, is the theme's.
  */
-const hint = (icon: string, title: string, body: string, onClick: SchemaProp, disabled?: SchemaProp): SchemaNode => ({
-  type: 'we-button',
-  props: { variant: 'bare', label: title, flex: '1 1 200px', onClick, ...(disabled ? { disabled } : {}) },
-  children: [
-    {
-      type: 'Card',
-      props: {
-        bg: 'surface',
-        gap: '200',
-        width: '100%',
-        height: '100%',
-        border: '1px solid transparent',
-        hoverProps: { border: '1px solid accent-border', shadow: 'glow' },
-      },
-      children: [
-        { type: 'we-icon', props: { name: icon, color: 'accent-text', size: 'md' } },
-        { type: 'we-text', props: { fontWeight: 'semibold' }, children: [title] },
-        { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: [body] },
-      ],
+const hint = (icon: string, title: string, body: string, onClick?: SchemaProp, disabled?: SchemaProp): SchemaNode => {
+  const card: SchemaNode = {
+    type: 'Card',
+    props: {
+      bg: 'surface',
+      gap: '200',
+      width: '100%',
+      height: '100%',
+      border: '1px solid transparent',
+      ...(onClick ? { hoverProps: { border: '1px solid accent-border', shadow: 'glow' } } : {}),
     },
-  ],
-});
+    children: [
+      { type: 'we-icon', props: { name: icon, color: 'accent-text', size: 'md' } },
+      { type: 'we-text', props: { fontWeight: 'semibold' }, children: [title] },
+      { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: [body] },
+    ],
+  };
+  // Without something to do it is a card to read, not a button: nothing lights that does nothing.
+  if (!onClick) return { type: 'Column', props: { flex: '1 1 200px' }, children: [card] };
+  return {
+    type: 'we-button',
+    props: { variant: 'bare', label: title, flex: '1 1 200px', onClick, ...(disabled ? { disabled } : {}) },
+    children: [card],
+  };
+};
 
 const firstSteps: SchemaNode = {
   type: '$if',
   props: {
     condition: {
-      $: `(${IN_ROOT_EXPR}) && local.anyCallLoaded && local.anyChannelLoaded && !count(local.anyCall) && !count(local.anyChannel)`,
+      $: `(${IN_ROOT_EXPR}) && local.anyCallLoaded && !count(local.anyCall)`,
     },
     then: {
       type: 'Column',
@@ -130,13 +135,7 @@ const firstSteps: SchemaNode = {
               { $invoke: 'modules.call.goToCall' },
               { $: '!modules.call.canCall' },
             ),
-            hint('hash', 'Make a channel', 'A place for one subject, also from the + beside Channels.', {
-              $setLocal: 'newChannelOpen',
-              value: true,
-            }),
-            hint('chat-circle', 'Say hello', 'Write below. Everyone in the space reads General.', {
-              $callLocal: 'focusLine',
-            }),
+            hint('chat-circle', 'Say hello', 'Write in the box below. Everyone in the space reads the Feed.'),
           ],
         },
       ],
@@ -176,33 +175,32 @@ const sendLine: SchemaProp = {
  * `addMessage`, as a line typed into a transcript does. So a call and a channel read alike, which is
  * what lets a call held in a channel sit among its messages later.
  */
-const chatRoute: RouteSchema = {
-  path: '/',
+/**
+ * The root channel is the space's Feed: everything said and written here and what was found in it,
+ * the Feed module's own view, with its own box to write in. The first steps sit above it until the
+ * space has held a call.
+ */
+const rootFeed: SchemaNode = {
   type: 'Column',
-  props: { width: '100%', height: '100%' },
-  $queries: {
-    ...channelQueries,
-    anyCall: { entity: 'CollectionBlock', where: { kind: 'call' }, limit: 1 },
-    // Under the root, as the tree's own list is: the root is a channel too ("General"), so asking for
-    // any channel in the space always found it, and the first steps never showed.
-    anyChannel: {
-      entity: 'CollectionBlock',
-      where: { kind: 'channel' },
-      scope: { anchor: 'CollectionBlock', via: 'children', anchorId: { $: 'spaceStore.root' } },
-      limit: 1,
-      when: { $: 'spaceStore.root' },
-    },
-  },
-  $localState: {
-    sending: { type: 'boolean', initial: false },
-    // For the first steps: the new-channel dialog, and the composer's own focus once it is ready.
-    newChannelOpen: { type: 'boolean', initial: false },
-    focusLine: { type: 'function', initial: null },
-  },
+  props: { flex: '1', minHeight: '0', width: '100%' },
   children: [
-    viewBar([{ $: CHANNEL_TITLE }], 'hash', [channelModes]),
     firstSteps,
-    newChannelDialog('newChannelOpen'),
+    {
+      type: 'Column',
+      props: { flex: '1', minHeight: '0', px: '500', pt: '300', pb: CLEAR_OF_THE_BAR, transition: LIFT },
+      children: [{ type: '$part', props: { id: 'feed.feedView' } }],
+    },
+  ],
+};
+
+/**
+ * A sub-channel, as chat: its lines and a box to write into it. No sub-channel is made while a space is
+ * one integrated conversation, but one that exists still opens here by its address.
+ */
+const subChannelChat: SchemaNode = {
+  type: 'Column',
+  props: { flex: '1', minHeight: '0', width: '100%' },
+  children: [
     {
       type: 'Column',
       props: { flex: '1', minHeight: '0', px: '500', py: '300' },
@@ -241,6 +239,31 @@ const chatRoute: RouteSchema = {
           focusLocal: 'focusLine',
         }),
       ],
+    },
+  ],
+};
+
+const chatRoute: RouteSchema = {
+  path: '/',
+  type: 'Column',
+  props: { width: '100%', height: '100%' },
+  $queries: {
+    ...channelQueries,
+    anyCall: { entity: 'CollectionBlock', where: { kind: 'call' }, limit: 1 },
+  },
+  $localState: {
+    sending: { type: 'boolean', initial: false },
+    focusLine: { type: 'function', initial: null },
+  },
+  children: [
+    viewBar([{ $: CHANNEL_TITLE }], { $: `(${IN_ROOT_EXPR}) ? 'chats-circle' : 'hash'` }, [channelModes]),
+    {
+      type: '$if',
+      props: {
+        condition: { $: IN_ROOT_EXPR },
+        then: rootFeed,
+        else: subChannelChat,
+      },
     },
   ],
 };

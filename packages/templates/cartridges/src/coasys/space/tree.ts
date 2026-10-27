@@ -5,16 +5,17 @@ import { countPill, liveDot } from './marks.ts';
 import { callPath, channelPath, GROUP_PAGES, personPath, ROW_ID, SELECTED_EXPR } from './paths.ts';
 
 /**
- * The space as a tree: its channels, its calls, its workflows, its people and its Social DNA, under the
+ * The space as a tree: its Feed, its calls, its workflows, its people and its Social DNA, under the
  * space's name and what it is for. Nico's d12 inner sidebar, built on `we-tree`.
  *
- * Each group is a query, not a list somebody keeps: a channel made anywhere, a call held, a workflow
- * written, a member joining — each appears here because it exists. Choosing a row navigates; the view
- * beside the tree draws whatever was chosen. What is selected comes from the address, so arriving by
- * a link lights the same row a click would.
+ * Each group is a query, not a list somebody keeps: a call held, a workflow written, a member joining
+ * — each appears here because it exists. Choosing a row navigates; the view beside the tree draws
+ * whatever was chosen. What is selected comes from the address, so arriving by a link lights the same
+ * row a click would.
  *
- * A sub-channel is a `CollectionBlock` of kind `channel` among the space collection's children — the
- * root is a channel too, "General" here. Chat lines are never rows: a channel is opened to read them.
+ * The Feed is the space collection, the root channel. Sub-channels (`CollectionBlock`s of kind
+ * `channel` under it) are not listed while a space is one integrated conversation; a sub-channel that
+ * exists still opens by its address. Chat lines are never rows: the Feed is opened to read them.
  */
 
 /**
@@ -75,31 +76,13 @@ const addButton = (label: string, onClick: SchemaProp): SchemaNode => ({
   ],
 });
 
-const channels = group(
-  'channels',
-  'Channels',
-  'chats-circle',
-  [
-    treeRow({ nested: true, value: { $: "'channel|' + spaceStore.root" }, label: 'General', icon: 'hash' }),
-    {
-      type: '$each',
-      props: { items: { $: 'local.subChannels' }, as: 'channel' },
-      children: [
-        treeRow({
-          nested: true,
-          value: { $: "'channel|' + channel.id" },
-          label: { $: "channel.title ? channel.title : 'Untitled channel'" },
-          icon: 'hash',
-        }),
-      ],
-    },
-  ],
-  {
-    // General, the space's root, and the channels under it.
-    count: '1 + count(local.subChannels)',
-    action: addButton('New channel', { $setLocal: 'newChannelOpen', value: true }),
-  },
-);
+/**
+ * The Feed: the space's own conversation, every call and message and what was found in them, in one
+ * stream — the root channel, drawn by the Feed module. One row rather than a group of channels: a
+ * space starts as one integrated conversation, and channels of its own come later, each a whole
+ * space in miniature. Nothing here makes one yet.
+ */
+const feedRow = treeRow({ value: { $: "'channel|' + spaceStore.root" }, label: 'Feed', icon: 'chats-circle' });
 
 /** A call still running carries a Live tag, so the way back into it is on the row. */
 export const LIVE = 'find(modules.call.liveCalls, { recordId: call.id })';
@@ -730,12 +713,11 @@ export const treeSection: SchemaNode = {
   $localState: {
     openRows: {
       type: 'array',
-      initial: ['group|channels', 'group|calls', 'group|workflows'],
+      initial: ['group|calls', 'group|workflows'],
       persist: 'coasys.tree.open',
     },
-    newChannelOpen: { type: 'boolean', initial: false },
   },
-  $queries: { subChannels: SUB_CHANNELS, calls: { ...CALLS, limit: 12 }, ...DNA_QUERIES },
+  $queries: { calls: { ...CALLS, limit: 12 }, ...DNA_QUERIES },
   children: [
     header,
     purpose,
@@ -753,11 +735,10 @@ export const treeSection: SchemaNode = {
             is the one thing that folds. Guides drop from each row's glyph, so a lead's width is given.
           */
           props: { label: 'This space', selected: { $: SELECTED_EXPR }, onSelect, caret: 'end', lead: TREE_LEAD },
-          children: [channels, calls, workflows, people, socialDna],
+          children: [feedRow, calls, workflows, people, socialDna],
         },
       ],
     },
     callButton,
-    newChannelDialog('newChannelOpen'),
   ],
 };

@@ -9408,6 +9408,157 @@
       "entities": []
     },
     {
+      "id": "feed",
+      "name": "Feed",
+      "description": "Everything said and written in a space, and what was found in it, in one stream.",
+      "icon": "chats-circle",
+      "scope": "space",
+      "requires": {
+        "kernels": ["records", "interpretation"]
+      },
+      "capabilities": ["kernel:records", "kernel:interpretation", "dock"],
+      "members": [
+        {
+          "name": "cancelReply",
+          "kind": "action",
+          "doc": "Puts a reply down without sending it.",
+          "ambient": true
+        },
+        {
+          "name": "closeFeed",
+          "kind": "action",
+          "doc": "Closes the Feed panel.",
+          "ambient": true
+        },
+        {
+          "name": "editUtterance",
+          "kind": "action",
+          "doc": "Corrects the words on a line, marking a heard line as corrected."
+        },
+        {
+          "name": "feedFromStart",
+          "kind": "state",
+          "doc": "Whether the Feed is read from the beginning rather than the live end."
+        },
+        {
+          "name": "feedHasMore",
+          "kind": "state",
+          "doc": "Whether there is more of the space beyond the Feed’s window."
+        },
+        {
+          "name": "feedLoaded",
+          "kind": "state",
+          "doc": "Whether the Feed has answered for this space yet."
+        },
+        {
+          "name": "feedOpen",
+          "kind": "state",
+          "doc": "Whether the Feed panel is open."
+        },
+        {
+          "name": "feedRoot",
+          "kind": "state",
+          "doc": "The space collection the Feed reads, and writes typed messages into."
+        },
+        {
+          "name": "feedRows",
+          "kind": "state",
+          "doc": "The Feed's window: every message in the space and a row per group of things extracted or made, merged by time — newest first while following the live end, oldest first from the start. A row is { kind: 'line', id, at, author, text, marks, source, call, callTitle, replyTo } or { kind: 'activity', id, at, author, origin, originTitle, summary, items, suggested }."
+        },
+        {
+          "name": "openFeed",
+          "kind": "action",
+          "doc": "Opens the Feed panel.",
+          "ambient": true
+        },
+        {
+          "name": "readFeedFromStart",
+          "kind": "action",
+          "doc": "Re-anchors the Feed at the beginning of the space.",
+          "ambient": true
+        },
+        {
+          "name": "readFeedLive",
+          "kind": "action",
+          "doc": "Re-anchors the Feed at the newest message.",
+          "ambient": true
+        },
+        {
+          "name": "reply",
+          "kind": "action",
+          "doc": "Answers one line with a typed line of its own, linked from it as a reply."
+        },
+        {
+          "name": "replyingTo",
+          "kind": "state",
+          "doc": "The line a reply is being written to — { id, text, author } — or null."
+        },
+        {
+          "name": "sendToFeed",
+          "kind": "action",
+          "doc": "Writes a message straight into the space, outside any call — with its marks, when the composer gave any."
+        },
+        {
+          "name": "showMoreFeed",
+          "kind": "action",
+          "doc": "Grows the Feed’s window by a page.",
+          "ambient": true
+        },
+        {
+          "name": "startReply",
+          "kind": "action",
+          "doc": "Starts a reply to one line — pass { id, text, author } — which the Feed’s composer then sends as a reply.",
+          "ambient": true
+        },
+        {
+          "name": "timelineOrientation",
+          "kind": "state",
+          "doc": "Which way round this reader draws the Feed — 'newestBottom' or 'newestTop'. Their own setting."
+        },
+        {
+          "name": "unwatchFeed",
+          "kind": "action",
+          "doc": "One drawing of the Feed was taken down.",
+          "ambient": true
+        },
+        {
+          "name": "watchFeed",
+          "kind": "action",
+          "doc": "The Feed is drawn somewhere: keep it live.",
+          "ambient": true
+        }
+      ],
+      "parts": [
+        {
+          "name": "feedView"
+        }
+      ],
+      "panels": [
+        {
+          "name": "feed",
+          "title": "Feed",
+          "icon": "chats-circle",
+          "hostOwned": false
+        }
+      ],
+      "launchers": [],
+      "settings": [
+        {
+          "key": "timelineOrder",
+          "label": "Newest messages",
+          "description": "Where the newest line of the Feed is drawn.",
+          "type": "enum",
+          "levels": ["agent"]
+        }
+      ],
+      "activities": {},
+      "components": [],
+      "functions": [],
+      "views": [],
+      "blocks": [],
+      "entities": []
+    },
+    {
       "id": "live",
       "name": "Live presence",
       "description": "See each other’s cursors, and follow one person’s screen.",

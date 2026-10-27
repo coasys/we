@@ -1,4 +1,4 @@
-import type { SchemaNode } from '@we/schema-shared';
+import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
 /**
  * The bar across the top of every view beside the tree: the way back to a folded sidebar, what the
@@ -41,7 +41,8 @@ const showTree: SchemaNode = {
  */
 export const viewBar = (
   title: SchemaNode['children'],
-  icon: string,
+  /** A glyph's name, or an expression choosing one. */
+  icon: SchemaProp,
   aside: SchemaNode[] = [],
   beside: SchemaNode[] = [],
 ): SchemaNode => ({

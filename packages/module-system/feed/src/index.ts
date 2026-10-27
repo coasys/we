@@ -16,6 +16,7 @@ import { feedPanel, feedView } from './Feed.schema';
 import { createFeedStore } from './store';
 
 export { type FeedFind, readFeedWindow } from './feed';
+export { feedPanel, feedView } from './Feed.schema';
 export { createFeedStore } from './store';
 
 export const feedModule = defineModule({

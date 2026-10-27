@@ -528,6 +528,9 @@ importers:
       '@we/module-call':
         specifier: workspace:*
         version: link:../module-system/call
+      '@we/module-feed':
+        specifier: workspace:*
+        version: link:../module-system/feed
       '@we/module-flux':
         specifier: workspace:*
         version: link:../module-system/flux

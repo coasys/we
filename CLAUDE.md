@@ -96,7 +96,8 @@ Glossary (these terms pervade stores, models, and `$query`/`perspective` in sche
 | `@we/backend-conformance` | backend-system/conformance | One suite of the contract's behaviour every backend runs, with each backend's known gaps listed and run inverted | Agnostic |
 | `@we/module-shared` | module-system/shared | The feature-module contract — manifest, contributions, kernels, store markers, `lintModule` — what a module author installs | Agnostic |
 | `@we/module-testing` | module-system/testing | Fakes for testing a module store without a host: `fakeDeps`, `fakeRecords`, `fakePresence`, `buildStore` | Agnostic |
-| `@we/module-globe` · `-call` · `-notes` · `-pocket` · `-polls` · `-transcribe` · `-graph` | module-system/* | Bundled feature modules — each exports `createModule(host)` and the seed's `modules` list generates the registry; globe is a *family* (module · protocol · layers · widget) | Agnostic (components injected) |
+| `@we/messages` | module-system/messages | What a message is and how one is drawn — the line, threads, how a line arrived — shared by the transcript and the Feed, which may not depend on each other | Agnostic |
+| `@we/module-globe` · `-call` · `-feed` · `-notes` · `-pocket` · `-polls` · `-transcribe` · `-graph` | module-system/* | Bundled feature modules — each exports `createModule(host)` and the seed's `modules` list generates the registry; globe is a *family* (module · protocol · layers · widget) | Agnostic (components injected) |
 | `@we/graph-protocol` · `-core` · `-expanders` · `-layouts` · `-solid` | graph-system/* | The graph engine: expander/layout/renderer contracts, the neutral engine, first-party plugins, and the Solid adapter | **Agnostic** (Solid only in the adapter) |
 | `@we/block-shared` | block-system/shared | Block content types + serialization | Agnostic |
 | `@we/optimism` | packages/optimism | A write drawn before it has been seen come back — hold, baseline, settle, and when to stop believing it | Agnostic (signal injected) |
@@ -3971,6 +3972,35 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
 - Presence activities: `transcribe` { id: string, recording: boolean, anchor: object, collection: string }
 - Functions:
   - threadLines(options) — A page of a conversation’s lines with every reply to them, each once, in time order — newest first when `newestFirst` is true. A reply is a child of nothing: it is in the `thread` of the line it answers, so read the page with `include: { thread: true }` and this flattens each line’s thread in beside it, leaving out any call held about a line. Each reply carries `replyTo: { id, author, text }`, its direct parent, for the quote drawn above it, and a line with marks carries `content` — the one block a BlockRenderer draws it from. Options: rows (the page), newestFirst (boolean).  e.g. threadLines({ rows: local.utterances, newestFirst: !modules.transcribe.transcriptFromStart })
+
+### Feed (`feed`)
+Everything said and written in a space, and what was found in it, in one stream.
+Needs: kernels records, interpretation.
+- State (read in an expression as `modules.feed.<name>`):
+  - feedFromStart — Whether the Feed is read from the beginning rather than the live end.
+  - feedHasMore — Whether there is more of the space beyond the Feed’s window.
+  - feedLoaded — Whether the Feed has answered for this space yet.
+  - feedOpen — Whether the Feed panel is open.
+  - feedRoot — The space collection the Feed reads, and writes typed messages into.
+  - feedRows — The Feed's window: every message in the space and a row per group of things extracted or made, merged by time — newest first while following the live end, oldest first from the start. A row is { kind: 'line', id, at, author, text, marks, source, call, callTitle, replyTo } or { kind: 'activity', id, at, author, origin, originTitle, summary, items, suggested }.
+  - replyingTo — The line a reply is being written to — { id, text, author } — or null.
+  - timelineOrientation — Which way round this reader draws the Feed — 'newestBottom' or 'newestTop'. Their own setting.
+- Actions (`{ "$invoke": "modules.feed.<name>" }`):
+  - cancelReply — Puts a reply down without sending it.
+  - closeFeed — Closes the Feed panel.
+  - editUtterance — Corrects the words on a line, marking a heard line as corrected.
+  - openFeed — Opens the Feed panel.
+  - readFeedFromStart — Re-anchors the Feed at the beginning of the space.
+  - readFeedLive — Re-anchors the Feed at the newest message.
+  - reply — Answers one line with a typed line of its own, linked from it as a reply.
+  - sendToFeed — Writes a message straight into the space, outside any call — with its marks, when the composer gave any.
+  - showMoreFeed — Grows the Feed’s window by a page.
+  - startReply — Starts a reply to one line — pass { id, text, author } — which the Feed’s composer then sends as a reply.
+  - unwatchFeed — One drawing of the Feed was taken down.
+  - watchFeed — The Feed is drawn somewhere: keep it live.
+- Parts: `feed.feedView`
+- Panels (`meta.panels[].dock`): `feed` "Feed" (module-owned openness)
+- Settings: `timelineOrder` (enum; agent) — Newest messages
 
 ### Live presence (`live`)
 See each other’s cursors, and follow one person’s screen.
