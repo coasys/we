@@ -175,6 +175,7 @@ export {
   svgProblem,
 } from './bundle';
 export { isRelativePath, type PathBase, resolvePath } from './navigationPaths';
+export { isTemplatePage } from './routeMatching';
 export {
   expandViewRoutes,
   hasViewsMarker,
