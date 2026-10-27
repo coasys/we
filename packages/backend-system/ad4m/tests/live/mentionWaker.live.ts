@@ -310,7 +310,7 @@ async function botWithWaker() {
     channel,
     /**
      * Everything composed since the fixture was made arrives in the watched neighbourhood under a
-     * person's own signature, as sync delivers it; then the bot's wakes, once one came or after 30 s.
+     * person's own signature, as sync delivers it; then the bot's wakes, 1 s after the first one came, or none after 30 s.
      */
     async deliver(): Promise<{ woken: MentionMessage[]; why: string }> {
       const someone = person();
@@ -322,6 +322,8 @@ async function botWithWaker() {
       }
       const deadline = Date.now() + 30_000;
       while (!wakes.length && Date.now() < deadline) await new Promise((r) => setTimeout(r, 250));
+      // Ten debounce windows more, so a wrong wake that came after the first one is seen too.
+      if (wakes.length) await new Promise((r) => setTimeout(r, 1_000));
       return { woken: wakes.flat(), why: `config: ${JSON.stringify(config)}` };
     },
   };
