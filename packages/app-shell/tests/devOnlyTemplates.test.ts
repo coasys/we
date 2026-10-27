@@ -16,9 +16,9 @@ import {
   discordTemplate,
   eventsTemplate,
   instagramTemplate,
-  kanbanTemplate,
   scrapbookTemplate,
   themeLabTemplate,
+  trelloTemplate,
   twitterTemplate,
   workshopTemplate,
   youtubeTemplate,
@@ -32,14 +32,14 @@ import { devFeatures, weSeed } from '../../../scripts/seed-vite.mjs';
 const REGISTRY = resolve(import.meta.dirname, '../src/shared/registries/bundledTemplates.generated.ts');
 const THEMES = resolve(import.meta.dirname, '../src/shared/registries/themeRegistry.ts');
 /** What the marked templates and their themes are named after, which a production build must not say. */
-const PRODUCTS = ['Discord', 'Twitter', 'Instagram', 'YouTube'];
+const PRODUCTS = ['Discord', 'Twitter', 'Instagram', 'YouTube', 'Trello'];
 /** Every showcase template but Workshop, which ships. */
 const DEV_ONLY = [
   discordTemplate,
   twitterTemplate,
   instagramTemplate,
   youtubeTemplate,
-  kanbanTemplate,
+  trelloTemplate,
   eventsTemplate,
   scrapbookTemplate,
   themeLabTemplate,

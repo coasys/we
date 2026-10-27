@@ -53,7 +53,7 @@ const CATALOGUE = {
   twitter: { module: '@we/template-showcase', export: 'twitterTemplate', dev: true },
   instagram: { module: '@we/template-showcase', export: 'instagramTemplate', dev: true },
   youtube: { module: '@we/template-showcase', export: 'youtubeTemplate', dev: true },
-  kanban: { module: '@we/template-showcase', export: 'kanbanTemplate', dev: true },
+  trello: { module: '@we/template-showcase', export: 'trelloTemplate', dev: true },
   events: { module: '@we/template-showcase', export: 'eventsTemplate', dev: true },
   scrapbook: { module: '@we/template-showcase', export: 'scrapbookTemplate', dev: true },
   'theme-lab': { module: '@we/template-showcase', export: 'themeLabTemplate', dev: true },
