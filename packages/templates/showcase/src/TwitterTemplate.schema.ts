@@ -190,7 +190,7 @@ const postCard = (opts: { clickable?: boolean }): SchemaNode => {
         props: {
           variant: 'bare',
           width: '100%',
-          onClick: { $invoke: 'routeStore.navigate', args: [{ $: '`./post/${post.id}`' }] },
+          onClick: { $invoke: 'routeStore.navigate', args: ['./post', { $: '{ query: { id: post.id } }' }] },
         },
         children: [
           {
@@ -295,7 +295,7 @@ const timeline: SchemaNode = {
 };
 
 const postDetail: RouteSchema = {
-  path: '/post/:postId',
+  path: '/post',
   type: 'Column',
   props: { width: '100%' },
   $localState: { replyOpen: { type: 'boolean', initial: false } },
@@ -307,7 +307,7 @@ const postDetail: RouteSchema = {
         item: {
           $query: {
             entity: 'CollectionBlock',
-            where: { id: { $: 'routeStore.segments[1]' } },
+            where: { id: { $: 'routeStore.params.id' } },
             include: { signals: true },
             limit: 1,
           },
@@ -341,7 +341,7 @@ const postDetail: RouteSchema = {
           props: { px: '400', pb: '600', width: '100%' },
           children: [
             commentThread({
-              anchorId: { $: 'routeStore.segments[1]' },
+              anchorId: { $: 'routeStore.params.id' },
               empty: noReplies(),
               reply: (as) => [
                 {

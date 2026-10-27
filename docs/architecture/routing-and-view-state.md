@@ -103,7 +103,7 @@ in it. `SPACE_ROUTE_PATH` is the single literal.
 
 `$views` therefore means one thing only: **the community picks the sections
 here.** It is not a statement about where the template lives. A template that
-declares its own screens (`/canvas`, `/channel/:id`) is still a space template
+declares its own screens (`/canvas`, `/channel`) is still a space template
 and still lives under the prefix; it simply names its children itself.
 
 Two consequences worth stating, because both were learned the hard way:
@@ -115,7 +115,19 @@ Two consequences worth stating, because both were learned the hard way:
 - **A template reads positions from `routeStore.templateSegments`, not
   `segments`.** The latter is the whole URL, so an index into it is pinned to
   wherever the host mounts things; the former is relative to the template's own
-  root, so `/photo/:postId` reads `[1]` regardless of the prefix.
+  root, so a template's first screen is `[0]` regardless of the prefix.
+- **A record's id goes in the query, never the path.** A record id is a URI
+  (`ad4m://obj/x`), so as a path segment it is several: the browser folds its
+  `//`, splits the rest, and `/board/:boardId` never matches. The page opens on
+  its fallback and nothing says why. The record page shipped it twice, and five
+  showcase templates after it. So a detail page is opened with
+  `navigate('./board', { query: { id: board.id } })` and reads
+  `routeStore.params.id`; `navigate` writes the value, so an id holding `&`, `#`,
+  `+` or `%` still reads back exactly, with its `:` and `/` left readable. `id` is
+  the one query value that names the page's subject rather than a view of it.
+  The validator warns about an id put into a path. Where the id appears is
+  decided in `navigate` alone, so a prettier address later would change no
+  template.
 
 **One space, one address.** Both the local id and the shared id resolve, so a
 shared space could be reached at two URLs depending on which code path built the
@@ -170,8 +182,10 @@ boot still gets honored.
 ## Store surface
 
 `routeStore.params` (reactive `Record<string, string>`, readable from schemas
-as `{ $: 'routeStore.params.<name>' }`) and
-`routeStore.setParam(name, value | null, { push? })`. `setParam` writes
+as `{ $: 'routeStore.params.<name>' }`),
+`routeStore.setParam(name, value | null, { push? })`, and
+`routeStore.navigate(to, { query? })`, which writes `query` the way `setParam`
+writes a value. `setParam` writes
 history directly — the path doesn't change, so the route tree must not
 re-resolve.
 

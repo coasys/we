@@ -63,7 +63,7 @@ export interface AppliedFixture {
   datasetId: string;
   /** Every node written, in creation order. */
   nodes: Array<{ id: string; kind: string; title?: string }>;
-  /** The path this fixture's route lands on, e.g. `/channel/discord-general`. */
+  /** The path this fixture's route lands on, e.g. `/channel?id=discord-general`. */
   path: string;
 }
 
@@ -76,7 +76,7 @@ export function datasetIdFor(fixture: Pick<Fixture, 'id'>): string {
  * The path the fixture's route lands on.
  *
  * The route as written, with no space prefix: `buildRoutes` mounts a template's routes at the
- * router *root*, so `/channel/:channelId` is exactly that. The `/space/<id>/<view>` shape
+ * router *root*, so `/channel?id=discord-general` is exactly that. The `/space/<id>/<view>` shape
  * `navigateToSpace` builds is a different convention that only the default template's own
  * `/space/:spaceId` route satisfies — see `PreviewBootstrap` in the preview host.
  */

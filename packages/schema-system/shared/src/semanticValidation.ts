@@ -1473,6 +1473,7 @@ function checkProps(
     if (propName === '$localState') continue;
 
     const propPath = `${path}.props.${propName}`;
+    if (propName === 'href') checkIdInPath(propValue, propPath, errors);
 
     /*
       Every token in the prop, however deep it sits in plain data.
@@ -1729,6 +1730,9 @@ function checkTokenValue(
   if ('$invoke' in obj && typeof obj.$invoke === 'string') {
     checkInvokeRef(obj.$invoke, `${path}.$invoke`, ctx, errors);
     if (Array.isArray(obj.args)) checkInvokeArgs(obj.args, `${path}.args`, errors);
+    if (obj.$invoke === 'routeStore.navigate' && Array.isArray(obj.args)) {
+      checkIdInPath(obj.args[0], `${path}.args[0]`, errors);
+    }
     /*
       A call with nothing, to a method that needs something. The method is passed only the `args`
       written — never what the element emitted — so this is wrong on any event: a click no longer
@@ -1954,6 +1958,65 @@ function checkInvokeArgs(args: unknown[], path: string, errors: ValidationError[
   };
 
   args.forEach((arg, i) => walk(arg, `${path}[${i}]`, false));
+}
+
+/**
+ * A record id put into the path of an address, where it does not survive.
+ *
+ * A record id is a URI — `ad4m://obj/x` — so as a path segment it is several: the browser folds its
+ * `//` and splits the rest, the route expecting one segment never matches, and the page opens on its
+ * fallback with nothing said anywhere. Five templates shipped exactly this, and so did the record
+ * page twice before it. An id goes in the query instead, written by `navigate`:
+ * `navigate('./board', { query: { id: board.id } })`, read back as `routeStore.params.id`.
+ *
+ * What counts: a path built by a backtick string or `+`, with a read ending in `id` or `Id`
+ * (`post.id`, `local.cardId`) before any `?`. A value after the `?` is a query value already, and a
+ * path built from anything else (a section's segment, a space's uuid) is left alone.
+ */
+function checkIdInPath(value: unknown, path: string, errors: ValidationError[]): void {
+  if (!isExpressionToken(value)) return;
+  let expr: Expr;
+  try {
+    expr = parseExpression(value.$);
+  } catch {
+    return;
+  }
+  const parts = pathParts(expr);
+  if (!parts) return;
+  for (const part of parts) {
+    if (typeof part === 'string') {
+      if (part.includes('?')) return;
+      continue;
+    }
+    if (readsId(part)) {
+      errors.push({
+        path,
+        message:
+          'A record id is put into the path of this address. An id is a URI, so the browser splits it across ' +
+          "segments and the route never matches. Pass it as a query value instead — navigate('./board', " +
+          '{ query: { id: board.id } }) — and read it back as routeStore.params.id',
+        severity: 'warning',
+      });
+      return;
+    }
+  }
+}
+
+/** An address built by a backtick string or by `+`, as its pieces in order; undefined for anything else. */
+function pathParts(expr: Expr): (string | Expr)[] | undefined {
+  if (expr.kind === 'template') return expr.parts;
+  if (expr.kind === 'binary' && expr.op === '+') {
+    const side = (e: Expr): (string | Expr)[] =>
+      e.kind === 'literal' && typeof e.value === 'string' ? [e.value] : (pathParts(e) ?? [e]);
+    return [...side(expr.left), ...side(expr.right)];
+  }
+  return undefined;
+}
+
+/** Whether a piece of an address reads an id: `post.id`, `result.id`, `local.cardId`. */
+function readsId(expr: Expr): boolean {
+  const name = expr.kind === 'member' ? expr.property : expr.kind === 'ident' ? expr.name : '';
+  return name === 'id' || name.endsWith('Id');
 }
 
 function checkInvokeRef(ref: string, path: string, ctx: ValidationContext, errors: ValidationError[]): void {

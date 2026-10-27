@@ -13,7 +13,6 @@
  * is `kind: 'channel', mode: 'feed'`. That is the whole extension mechanism.
  */
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
-import { expr } from '@we/schema-shared';
 import {
   composerModal as kitComposerModal,
   field,
@@ -111,7 +110,7 @@ export function newContainerModal(opts: {
   placeholder: string;
   /** Attach inside another container — a channel inside a category. */
   parentId?: unknown;
-  /** Where to go once it exists. Receives the new id as `result.id`. */
+  /** The page to open it on once it exists, which is given its id as the query value `id`. */
   navigateTo?: string;
 }): SchemaNode {
   return formModal({
@@ -144,7 +143,7 @@ export function newContainerModal(opts: {
         { parent: { id: opts.parentId ?? { $: 'spaceStore.root' }, relation: 'children', entity: 'CollectionBlock' } },
       ],
       ...(opts.navigateTo && {
-        onSuccess: [{ $invoke: 'routeStore.navigate', args: [expr`${opts.navigateTo} + result.id`] }],
+        onSuccess: [{ $invoke: 'routeStore.navigate', args: [opts.navigateTo, { $: '{ query: { id: result.id } }' }] }],
       }),
     },
   });
