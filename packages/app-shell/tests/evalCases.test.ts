@@ -28,7 +28,7 @@ describe('the eval’s starting templates', () => {
 
   /*
     The large suite only measures what it claims to while a `large` template is actually large.
-    `kanban` is imported live, so somebody could gut it and every case here would go on passing
+    `trello` is imported live, so somebody could gut it and every case here would go on passing
     against a template that no longer exercises the template half of the budget at all.
   */
   it.each(EVAL_TEMPLATES.filter((t) => scaleOf(t) === 'large'))('%s is big enough to be worth it', (template) => {
@@ -45,7 +45,7 @@ describe('the eval’s starting templates', () => {
 
     An authored template aliases — a fragment called twice with the same arguments returns the
     same object — so `ensureNodeIds` over an authored tree hands the same id to several positions:
-    62 of them on kanban, 343 on workshop. The editor never does that, because it compacts first
+    62 of them on trello, 343 on workshop. The editor never does that, because it compacts first
     and compaction gives every use its own `$ref`. That ordering is the whole reason ids are
     trustworthy, and it is one line in `EditorStore.sendMessage` with nothing holding it in place.
 
@@ -57,14 +57,14 @@ describe('the eval’s starting templates', () => {
   /*
     The shared-shape case is only a shared-shape case while the shape is shared.
 
-    `kanban-card-radius` means something because the four cards are one definition: editing it
+    `trello-card-radius` means something because the four cards are one definition: editing it
     changes all four, and patching one use leaves three behind. If the template were edited so the
     cards stopped being identical, compaction would stop hoisting them, every use would become
     independent, and the case would quietly turn into "change four separate nodes" — still
     passable, no longer about anything.
   */
-  it('kanban’s cards really are one shape, which is what its case is about', () => {
-    const { schema } = compactDefinitions(startingTemplate('kanban'));
+  it('trello’s cards really are one shape, which is what its case is about', () => {
+    const { schema } = compactDefinitions(startingTemplate('trello'));
     const refs = allNodes(schema).filter((n) => n.type === '$ref');
     const used = new Map<string, number>();
     for (const ref of refs) {

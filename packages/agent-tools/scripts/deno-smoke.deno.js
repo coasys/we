@@ -93,7 +93,7 @@ const host = Deno;
 const now = performance.now.bind(performance);
 const fullCrypto = crypto;
 const [bundlePath, dir] = host.args;
-const names = ['kanban', 'workshop'];
+const names = ['trello', 'workshop'];
 const records = {};
 for (const name of names) records[name] = JSON.parse(await host.readTextFile(`${dir}/${name}.json`));
 

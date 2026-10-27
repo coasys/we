@@ -87,6 +87,13 @@ const SOLID_TESTS = [
 ];
 
 export default defineConfig({
+  /*
+    Tests run as a build with developer features, so a test that walks every bundled template walks
+    the ones marked `dev` too. Without it they would be left out of the registry here, and checks
+    over "every template" would quietly pass over four of them. See `devFeatures.ts` in
+    `@we/module-shared`; `devOnlyTemplates.test.ts` builds for production itself.
+  */
+  define: { __WE_DEV_FEATURES__: 'true' },
   test: {
     coverage: {
       provider: 'v8',

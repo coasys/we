@@ -42,6 +42,9 @@ export const templateRegistry = withDerivedIdsAll({ ...bundledTemplates, ...seed
 
 export type TemplateId = keyof typeof templateRegistry;
 
+/** The bundled templates that are developer features — see `bundledTemplates.generated.ts`. */
+export { devOnlyTemplateIds } from './bundledTemplates.generated';
+
 export function isValidTemplateId(key: unknown): key is TemplateId {
   return typeof key === 'string' && key in templateRegistry;
 }

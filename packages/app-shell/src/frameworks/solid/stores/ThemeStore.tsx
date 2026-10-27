@@ -1,9 +1,10 @@
 import { readBootSnapshot } from '@shared/bundles/bootSnapshot';
 import { readDeviceApp } from '@shared/bundles/deviceApp';
+import { offeredInPickers } from '@shared/devOnlyOffers';
 import { appTemplateRegistry } from '@shared/registries/appTemplates';
 import { seedBundleAppId, seedBundleApps } from '@shared/registries/seedBundles';
 import type { ThemeKey } from '@shared/registries/themeRegistry';
-import { isValidThemeKey, themeRegistry } from '@shared/registries/themeRegistry';
+import { devOnlyThemeIds, isValidThemeKey, themeRegistry } from '@shared/registries/themeRegistry';
 import { getSeed } from '@shared/seedRegistry';
 import { explain } from '@shared/userMessage';
 import type { NewRecord } from '@we/backend-shared';
@@ -538,7 +539,15 @@ export function ThemeStoreProvider(props: ParentProps) {
     css: null,
   });
 
-  const builtInThemes: Accessor<ThemeData[]> = () => Object.keys(themeRegistry).map(registryToThemeData);
+  /** Every built-in theme this build has — what a theme is looked up in by name. */
+  const registryThemes = (): ThemeData[] => Object.keys(themeRegistry).map(registryToThemeData);
+  /*
+    The ones offered: a showcase theme only while developer tools are showing — see
+    `offeredInPickers`. A space already using one still resolves it, through `registryThemes` in the
+    named-theme lookup below.
+  */
+  const builtInThemes: Accessor<ThemeData[]> = () =>
+    offeredInPickers(registryThemes(), session.devTools(), devOnlyThemeIds);
 
   /**
    * "Follow system", on its own, because it is not one of the built-ins.
@@ -761,7 +770,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     theme it names finishes loading.
   */
   registerNamedThemes((name) => {
-    const named = allThemes().find((theme) => theme.id === name || theme.slug === name);
+    const named = [...registryThemes(), ...allThemes()].find((theme) => theme.id === name || theme.slug === name);
     return named ? parseOverrides(named.overrides) : undefined;
   });
   onCleanup(() => registerNamedThemes(undefined));

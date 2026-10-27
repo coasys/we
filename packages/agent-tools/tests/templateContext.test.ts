@@ -7,7 +7,7 @@
  * address, and the symptom is an edit that lands somewhere plausible instead.
  */
 import type { SchemaNode } from '@we/schema-shared';
-import { kanbanTemplate } from '@we/template-showcase';
+import { trelloTemplate } from '@we/template-showcase';
 import { describe, expect, it } from 'vitest';
 
 import { prepareForModel } from '../src/templates/nodeAliases';
@@ -16,7 +16,7 @@ import { boundTemplate, outlineText } from '../src/templates/templateContext';
 // The tree as the model is shown it: compacted, and aliased.
 const prepared = (template: unknown) => prepareForModel(template as SchemaNode).schema;
 
-const kanban = () => prepared(kanbanTemplate);
+const kanban = () => prepared(trelloTemplate);
 
 const small = (): SchemaNode =>
   ({

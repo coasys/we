@@ -229,9 +229,9 @@ const boardRoute: RouteSchema = {
   ],
 };
 
-export const kanbanTemplate: TemplateSchema = {
+export const trelloTemplate: TemplateSchema = {
   meta: {
-    name: 'Boards',
+    name: 'Trello',
     description: 'Kanban boards where a card’s column is its status — coordination on the same substrate.',
     icon: 'kanban',
     // The board's suggestion controls name `modules.transcribe.*` — see `taskBoard`. Declared so a

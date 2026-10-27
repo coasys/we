@@ -244,12 +244,12 @@ const channelRoute: RouteSchema = {
 
 export const discordTemplate: TemplateSchema = {
   meta: {
-    name: 'Channels',
+    name: 'Discord',
     description: 'Categories, channels and messages — a Discord-shaped community space.',
     icon: 'hash',
     // A theme built from measurements of a real chat client rather than the stock dark preset —
     // near-neutral surfaces, and rails that sit *below* the page rather than above it.
-    themeId: 'channels',
+    themeId: 'discord',
   },
   type: 'Row',
   props: { bg: 'page', width: '100%', minHeight: '100%', ay: 'stretch' },

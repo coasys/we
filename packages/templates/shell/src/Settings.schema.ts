@@ -1422,7 +1422,7 @@ function navGroup(label: string, items: SchemaNode[]): SchemaNode {
 /**
  * The one switch every developer affordance is gated on.
  *
- * ## Why this page gates on `isDevelopment` and the switch reads `devTools`
+ * ## Why this page gates on `devFeatures` and the switch reads `devTools`
  *
  * They are deliberately different stores' worth of question, and using one for both breaks the
  * page: gate the nav entry on `devTools` and turning the switch off removes the page holding the
@@ -1630,9 +1630,9 @@ export const settingsTemplate: TemplateSchema = {
                   {
                     type: '$if',
                     props: {
-                      // `isDevelopment`, NOT `devTools` — see `developerSection`. Gating the way to
+                      // `devFeatures`, NOT `devTools` — see `developerSection`. Gating the way to
                       // the switch on the switch would make turning it off a one-way door.
-                      condition: { $: 'sessionStore.isDevelopment' },
+                      condition: { $: 'sessionStore.devFeatures' },
                       then: navItem('Developer', 'flask', '/developer'),
                     },
                   },
