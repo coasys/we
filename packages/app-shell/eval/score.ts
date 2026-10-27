@@ -59,7 +59,7 @@ export function scoreCase(
   const changed = JSON.stringify(final) !== JSON.stringify(stripNodeIds(structuredClone(start)));
   const check = evalCase.check(final);
 
-  const asked = !result.log.some((action) => action.tool === 'update_schema');
+  const asked = result.stats.patchCalls === 0;
 
   const reason =
     check !== true

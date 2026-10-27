@@ -11,23 +11,23 @@ import { readDeviceApp, writeDeviceApp } from '@shared/bundles/deviceApp';
 import { appSpaceTemplate, followedTemplateId } from '@shared/bundles/display';
 import { displaySourceOf, readInstalledBundles } from '@shared/bundles/installedBundles';
 import { bootScreenTemplate, placesNode } from '@shared/bundles/judgeBundle';
+import { offeredInPickers } from '@shared/devOnlyOffers';
 import { appTemplateRegistry, DEFAULT_APP_ID, resolveAppTemplate } from '@shared/registries/appTemplates';
 import { withDerivedIds } from '@shared/registries/derivedIds';
 import { reservedTemplateIds } from '@shared/registries/reservedTemplateIds';
 import { seedBundleAppId, seedBundlePages, seedBundlePieces } from '@shared/registries/seedBundles';
 import { slotRegistry } from '@shared/registries/slotRegistry';
-import { templateRegistry } from '@shared/registries/templateRegistry';
+import { devOnlyTemplateIds, templateRegistry } from '@shared/registries/templateRegistry';
 import { profileTemplate, settingsTemplate } from '@shared/schemas';
 import { getSeed } from '@shared/seedRegistry';
 import { reserveId } from '@shared/templateIdentity';
-import { withLibrary } from '@shared/templateLists';
+import { withLibrary, withLibraryListed } from '@shared/templateLists';
 import { explain } from '@shared/userMessage';
 import { deepClone } from '@shared/utils';
 import { type NewRecord, trace } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import {
   AGENT_DEFAULT,
-  AgentSettings,
   asFileField,
   compressImageToFileData,
   decodeTemplateFile,
@@ -372,22 +372,33 @@ export function TemplateStoreProvider(props: ParentProps) {
   }
 
   /**
-   * Make a template in this agent's library and mark it installed, as one write.
+   * Make a template in this agent's library.
    *
-   * Two writes before: the record, then the link that puts it in the pickers. Another of this
-   * agent's devices, watching the library, could read the first without the second, and the new
-   * template stayed out of its lists until a reload.
+   * The record is all there is to write: a library template is listed unless the agent hid it
+   * (`AgentSettings.hiddenTemplates`), so another device watching the library lists it as soon as
+   * it arrives, and so does one written by an agent or a bundle.
    */
+  /**
+   * Hides and unhides this session made, by record id, until the agent's settings read them back. A
+   * reload of the library can land before the settings it reads have heard of the change, and would
+   * otherwise put back a template just hidden.
+   */
+  const hiddenHere = new Map<string, boolean>();
+
+  /** Whether this agent hid a library record from their lists. */
+  function isHidden(recordId: string): boolean {
+    const here = hiddenHere.get(recordId);
+    if (here !== undefined) return here;
+    // Without `include` a relation reads back as ids, or as records carrying one.
+    const refs = (datasetStore.agentSettings()?.hiddenTemplates ?? []) as (string | { id: string })[];
+    return refs.some((ref) => (typeof ref === 'string' ? ref : ref.id) === recordId);
+  }
+
   async function createLibraryTemplate(
     handle: unknown,
     data: Parameters<typeof Template.create>[1],
   ): Promise<NewRecord<Template>> {
-    const prefs = datasetStore.agentSettings();
-    const record = await runEntityTransaction(handle, async (tx) => {
-      const created = await Template.create(handle, data, { batchId: tx.batchId });
-      if (prefs) await AgentSettings.addRelation(handle, prefs.id, 'installedTemplates', created.id, tx.batchId);
-      return created;
-    });
+    const record = await Template.create(handle, data);
     noteOwnWrite(record);
     return record;
   }
@@ -498,7 +509,13 @@ export function TemplateStoreProvider(props: ParentProps) {
   const isApp = (t: TemplateSchema) => t.meta?.role === 'app';
   // A bundle's page is the app's own as well: opened by the host, never chosen for a space.
   const isPage = (t: TemplateSchema) => t.meta?.role === 'page';
-  const spaceChoosable = () => allTemplates().filter((t) => !isApp(t) && !isPage(t));
+  // A showcase template only while developer tools are showing — see `offeredInPickers`.
+  const spaceChoosable = () =>
+    offeredInPickers(
+      allTemplates().filter((t) => !isApp(t) && !isPage(t)),
+      session.devTools(),
+      devOnlyTemplateIds,
+    );
 
   const personalTemplates = () => {
     const installed = installedIds();
@@ -763,28 +780,8 @@ export function TemplateStoreProvider(props: ParentProps) {
       setAllTemplates((prev) => withLibrary(prev, [...filteredCore, ...savedTemplates]));
       setLibraryLoaded(true);
 
-      // Build installed ID set from AgentSettings HasMany relation
-      // HasMany without .include() returns raw URI strings, not model instances.
-      // Build a reverse map from AD4M model ID → template slug so we can match them.
-      // Merge with existing installedIds to preserve any just-added entries
-      // (HasMany may not reflect recent addInstalledTemplates calls yet).
-      const prefs = datasetStore.agentSettings();
-      if (prefs) {
-        const installedRefs = prefs.installedTemplates || [];
-        const modelIdToSlug = new Map<string, string>();
-        for (const [slug, model] of savedTemplateMap.entries()) {
-          modelIdToSlug.set(model.id, slug);
-        }
-
-        const ids = new Set<string>(installedIds());
-        for (const ref of installedRefs) {
-          // ref may be a string URI or an object with .id
-          const modelId = typeof ref === 'string' ? ref : ref.id;
-          const slug = modelIdToSlug.get(modelId);
-          if (slug) ids.add(slug);
-        }
-        setInstalledIds(ids);
-      }
+      const library = [...savedTemplateMap].map(([id, model]): [string, string] => [id, model.id]);
+      setInstalledIds((prev) => withLibraryListed(prev, library, isHidden, (id) => spaceTemplateMap.has(id)));
     } catch (error) {
       console.error('TemplateStore: loadSavedTemplates error', error);
     }
@@ -1338,7 +1335,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       });
       // Unlink from AgentSettings and delete template
       const prefs = datasetStore.agentSettings();
-      if (prefs) await prefs.removeInstalledTemplates(template).catch(() => {});
+      if (prefs) await prefs.removeHiddenTemplates(template).catch(() => {});
       template.delete?.().catch((err: unknown) => console.error('TemplateStore: delete error', err));
     }
 
@@ -1355,7 +1352,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     // Delete from AD4M first, before updating local state
     try {
       const prefs = datasetStore.agentSettings();
-      if (prefs) await prefs.removeInstalledTemplates(template).catch(() => {});
+      if (prefs) await prefs.removeHiddenTemplates(template).catch(() => {});
       await template.delete();
     } catch (err) {
       console.error('TemplateStore: deleteTemplate AD4M error', err);
@@ -1396,7 +1393,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     setOperationLoading(`delete:${recordId}`);
     try {
       const prefs = datasetStore.agentSettings();
-      if (prefs) await prefs.removeInstalledTemplates(template).catch(() => {});
+      if (prefs) await prefs.removeHiddenTemplates(template).catch(() => {});
       await template.delete();
       refusedRecords.delete(recordId);
       setRefusedTemplates((rows) => rows.filter((row) => row.id !== recordId));
@@ -1418,7 +1415,8 @@ export function TemplateStoreProvider(props: ParentProps) {
       const prefs = datasetStore.agentSettings();
       // `.catch(() => {})` swallowed the only write this function makes, so the sidebar gained a
       // template that the next boot would not have — the state moved and the record did not.
-      if (prefs) await prefs.addInstalledTemplates(template);
+      if (prefs) await prefs.removeHiddenTemplates(template);
+      hiddenHere.set(template.id, false);
 
       setInstalledIds((prev) => {
         const next = new Set(prev);
@@ -1442,7 +1440,8 @@ export function TemplateStoreProvider(props: ParentProps) {
     setOperationLoading(`uninstall:${templateId}`);
     try {
       const prefs = datasetStore.agentSettings();
-      if (prefs) await prefs.removeInstalledTemplates(template);
+      if (prefs) await prefs.addHiddenTemplates(template);
+      hiddenHere.set(template.id, true);
 
       setInstalledIds((prev) => {
         const next = new Set(prev);

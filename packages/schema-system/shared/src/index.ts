@@ -174,6 +174,8 @@ export {
   readBundle,
   svgProblem,
 } from './bundle';
+export { isRelativePath, type PathBase, resolvePath } from './navigationPaths';
+export { isTemplatePage } from './routeMatching';
 export {
   applyStarterRecords,
   defaultSpaceStarter,

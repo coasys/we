@@ -12,6 +12,10 @@
  *   names the window at runtime as well; this is the name before anything has run.
  * - In development, for a seed that builds bundles in, an edit to a cartridge reaches the page (see
  *   `rebuildBundlesOnChange`).
+ * - `__WE_DEV_FEATURES__` is `true` when Vite is serving, or when the build is made with
+ *   `WE_DEV_FEATURES=true`, and `false` otherwise. Every app takes this plugin, so this is the one
+ *   place that decides whether a build has developer features. See `devFeatures.ts` in
+ *   `@we/module-shared`.
  */
 import { execFile } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
@@ -41,8 +45,11 @@ export function weSeed() {
   return {
     name: 'we-seed',
     enforce: 'pre',
-    config() {
-      return { resolve: { alias: { '@we/seed-file': seedFile.seedPath() } } };
+    config(_config, { command }) {
+      return {
+        resolve: { alias: { '@we/seed-file': seedFile.seedPath() } },
+        define: { __WE_DEV_FEATURES__: JSON.stringify(devFeatures(command)) },
+      };
     },
     resolveId(source, importer) {
       if (!generated || !importer) return null;
@@ -140,6 +147,16 @@ function rebuildBundlesOnChange(server) {
     else if (isSource(file)) schedule('bundle', writeBundles);
   };
   for (const event of ['change', 'add', 'unlink']) server.watcher.on(event, onFile);
+}
+
+/**
+ * Whether a build has developer features: always while serving, and in a build only when asked for.
+ * An explicit `WE_DEV_FEATURES=false` turns them off while serving too, to look at what ships.
+ */
+export function devFeatures(command, env = process.env) {
+  if (env.WE_DEV_FEATURES === 'true') return true;
+  if (env.WE_DEV_FEATURES === 'false') return false;
+  return command === 'serve';
 }
 
 /**

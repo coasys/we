@@ -23,7 +23,7 @@ describe('reading the command line', () => {
         '-o',
         'out/a.png',
         '--fixture',
-        'kanban',
+        'trello',
         '--viewport',
         '390x844',
         '--scale',
@@ -40,7 +40,7 @@ describe('reading the command line', () => {
     ).toEqual({
       templatePath: 'feed.json',
       output: 'out/a.png',
-      fixture: 'kanban',
+      fixture: 'trello',
       width: 390,
       height: 844,
       scale: 3,

@@ -2,8 +2,8 @@ import type { CoreEntityDef } from './defs';
 
 export const AgentSettings: CoreEntityDef = {
   base: 'Ad4mModel',
-  methodRelations: ['installedTemplates', 'installedThemes', 'spaceTemplatePreferences'],
-  typedArrays: ['installedTemplates', 'installedThemes', 'spaceTemplatePreferences'],
+  methodRelations: ['hiddenTemplates', 'installedThemes', 'spaceTemplatePreferences'],
+  typedArrays: ['hiddenTemplates', 'installedThemes', 'spaceTemplatePreferences'],
   entity: {
     flag: { predicate: 'we://flag', value: 'we://root' },
     properties: {
@@ -53,7 +53,6 @@ export const AgentSettings: CoreEntityDef = {
        * The colour scheme replaces `themeMode`, which held that one axis alone.
        */
       displayPreferences: { type: 'string', predicate: 'we://display_preferences', default: '' },
-      claudeApiKey: { type: 'string', predicate: 'we://claude_api_key', default: '' },
       datasetOrder: { type: 'string', predicate: 'we://dataset_order', default: '' },
       globalSpaceJoined: { type: 'boolean', predicate: 'we://global_space_joined', default: false },
       globalSpaceUrl: { type: 'string', predicate: 'we://global_space_url', default: '' },
@@ -130,7 +129,13 @@ export const AgentSettings: CoreEntityDef = {
       moduleSettings: { type: 'string', predicate: 'we://module_settings', default: '' },
     },
     relations: {
-      installedTemplates: { target: 'Template', cardinality: 'many', predicate: 'we://installed_template' },
+      /**
+       * The library templates this agent took out of their lists — not deleted, only hidden. Every
+       * other template in the library is listed, so one written from anywhere (another device, an
+       * agent, a bundle) shows without anything else to write. A list of what is shown would leave
+       * those out until somebody also added them to it.
+       */
+      hiddenTemplates: { target: 'Template', cardinality: 'many', predicate: 'we://hidden_template' },
       installedThemes: { target: 'Theme', cardinality: 'many', predicate: 'we://installed_theme' },
       spaceTemplatePreferences: {
         target: 'SpaceTemplatePreference',

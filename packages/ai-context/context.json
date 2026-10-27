@@ -3798,12 +3798,6 @@
           "required": false
         },
         {
-          "name": "claudeApiKey",
-          "type": "string",
-          "predicate": "we://claude_api_key",
-          "required": false
-        },
-        {
           "name": "datasetOrder",
           "type": "string",
           "predicate": "we://dataset_order",
@@ -3864,9 +3858,9 @@
       ],
       "relations": [
         {
-          "name": "installedTemplates",
+          "name": "hiddenTemplates",
           "kind": "HasMany",
-          "predicate": "we://installed_template",
+          "predicate": "we://hidden_template",
           "target": "Template"
         },
         {
@@ -6828,11 +6822,14 @@
         },
         "params": {
           "type": "object"
+        },
+        "page": {
+          "type": "string"
         }
       },
-      "actions": ["navigate", "setParam", "back"],
-      "ambient": ["navigate", "setParam", "back"],
-      "needsArgs": ["navigate", "setParam"]
+      "actions": ["navigate", "resolve", "setParam", "back"],
+      "ambient": ["navigate", "resolve", "setParam", "back"],
+      "needsArgs": ["navigate", "resolve", "setParam"]
     },
     {
       "name": "runtimeStore",
@@ -7156,6 +7153,9 @@
           ]
         },
         "isDevelopment": {
+          "type": "boolean"
+        },
+        "devFeatures": {
           "type": "boolean"
         },
         "devTools": {

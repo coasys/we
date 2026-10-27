@@ -13,7 +13,7 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { checkStacking, parseStacking, withoutBlock } from './pr-stacking.mjs';
+import { checkStacking, parseStacking, stackedTitle, withoutBlock } from './pr-stacking.mjs';
 
 const ALERT = '> [!IMPORTANT]';
 const stacked = (n) => `${ALERT}\n> ### Stacked on: #${n}\n\n## What\n\nA change.`;
@@ -198,5 +198,29 @@ describe('taking the block off a description', () => {
   it('changes nothing when something sits above the block', () => {
     const body = `<!-- how to fill this in -->\n\n${stacked(312)}`;
     assert.equal(withoutBlock(body), body);
+  });
+});
+
+describe('the title of a stacked pull request', () => {
+  it('ends with the PR it is stacked on', () => {
+    assert.equal(stackedTitle('feat(x): a change', '312'), 'feat(x): a change (stacked on #312)');
+  });
+
+  it('is left alone when it already says so', () => {
+    assert.equal(stackedTitle('feat(x): a change (stacked on #312)', '312'), 'feat(x): a change (stacked on #312)');
+  });
+
+  it('names the new PR after a rebase onto another one, and only once', () => {
+    assert.equal(stackedTitle('feat(x): a change (stacked on #312)', '340'), 'feat(x): a change (stacked on #340)');
+  });
+
+  it('loses the suffix once the PR is based on a trunk, however it was written', () => {
+    assert.equal(stackedTitle('feat(x): a change (stacked on #312)', undefined), 'feat(x): a change');
+    assert.equal(stackedTitle('feat(x): a change  (Stacked on #312) ', undefined), 'feat(x): a change');
+  });
+
+  it('keeps a mention of stacking that is not the suffix', () => {
+    assert.equal(stackedTitle('docs: what (stacked on #N) means', undefined), 'docs: what (stacked on #N) means');
+    assert.equal(stackedTitle('fix(x): stacked on #12 was wrong', undefined), 'fix(x): stacked on #12 was wrong');
   });
 });

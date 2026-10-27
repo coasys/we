@@ -21,7 +21,7 @@ import {
   NO_IDENTITY_CAPABILITIES,
   trace,
 } from '@we/backend-shared';
-import { devToolsEnabled, setDevToolsMuted } from '@we/module-shared';
+import { DEV_FEATURES, devToolsEnabled, setDevToolsMuted } from '@we/module-shared';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
 
 import type { BackendAccountInfo, BackendHostInfo } from '../../../shared/backend/types';
@@ -103,6 +103,12 @@ export interface SessionStore {
   identityCapabilities: Accessor<IdentityCapabilities>;
   /** Whether this is a development build. A fact about the build, and only that. */
   isDevelopment: Accessor<boolean>;
+  /**
+   * Whether this build has developer features: a dev server, or a deploy of work in progress
+   * (Netlify's `dev` and its previews). The ceiling for every developer affordance, and what shows
+   * Settings → Developer. Not `isDevelopment`, which a preview is not. See `DEV_FEATURES`.
+   */
+  devFeatures: Accessor<boolean>;
   /**
    * Whether developer affordances should be *visible* — which is a different question.
    *
@@ -233,13 +239,13 @@ export function SessionStoreProvider(props: ParentProps) {
     A signal rather than a value read once, because the whole point of the switch is comparing:
     throw it, look at what a user would see, throw it back. That loop is worth nothing if each
     press costs a reload, and every affordance gated on it is chrome rendered from a schema, which
-    is reactive already. `platform.isDevelopment` is still the ceiling — `setDevTools` cannot raise
-    it, since `devToolsEnabled` ands with the build flag on the way back in.
+    is reactive already. `DEV_FEATURES` is still the ceiling — `setDevTools` cannot raise it, since
+    `devToolsEnabled` ands with the build flag on the way back in.
   */
-  const [devTools, setDevToolsSignal] = createSignal(devToolsEnabled(platform.isDevelopment));
+  const [devTools, setDevToolsSignal] = createSignal(devToolsEnabled(DEV_FEATURES));
   const setDevTools = (on: boolean) => {
     setDevToolsMuted(!on);
-    setDevToolsSignal(devToolsEnabled(platform.isDevelopment));
+    setDevToolsSignal(devToolsEnabled(DEV_FEATURES));
   };
 
   // EphemeralPort is a function (dataset → scope | null), so this stable delegate can exist
@@ -553,6 +559,7 @@ export function SessionStoreProvider(props: ParentProps) {
     isGuest,
     identityCapabilities,
     isDevelopment: () => platform.isDevelopment,
+    devFeatures: () => DEV_FEATURES,
     devTools,
     setDevTools,
     ephemeralPort,

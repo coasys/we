@@ -29,11 +29,10 @@
  *
  * ## Why it cannot reach production
  *
- * Two gates, and the second is the one doing the work. `import.meta.env.DEV` is `false` in a
- * production build, which a bundler may or may not use to drop the code entirely depending on how
- * it substitutes; the guarantee is the `localStorage` count key, which nobody sets by accident and
- * which no build carries. Together: it is not in a shipped app's behaviour, and it is not in a
- * developer's either until they ask.
+ * Two gates. `DEV_FEATURES` (`@we/module-shared`) is `false` in a production build, a constant the
+ * build writes, so the code folds away there. The `localStorage` count key, which nobody sets by
+ * accident and which no build carries, keeps it out of a developer's own session until they ask.
+ * Together: it is not in a shipped app, and it is not in a developer's either until they ask.
  *
  * ## Turning it off in a build that has it
  *
@@ -44,15 +43,12 @@
  * gated in the schema on `sessionStore.devTools`, so nothing here needs a reload.
  */
 
-import { devToolsEnabled } from '@we/module-shared';
+import { DEV_FEATURES, devToolsEnabled } from '@we/module-shared';
 
 const STORAGE_KEY = 'we.call.fakePeers';
 
 /** More than this is a stray keypress rather than a test. */
 const MAX = 24;
-
-/** True in a development build. Cast rather than `vite/client` types — see `devPeersAvailable`. */
-const DEV_BUILD = (import.meta as { env?: { DEV?: boolean } }).env?.DEV === true;
 
 /**
  * Whether any of this exists at all.
@@ -67,11 +63,11 @@ const DEV_BUILD = (import.meta as { env?: { DEV?: boolean } }).env?.DEV === true
  * the press — the controls would vanish when it was thrown off and never come back when it was
  * thrown on again. So: the build decides existence, and `visible` below decides visibility.
  *
- * Cast rather than `vite/client` types: a feature module must not take a build tool as a
- * dependency, since one may be loaded into a host that uses none. The cast is erased at compile
- * time and the emitted `import.meta.env?.DEV` is what a bundler sees.
+ * From `@we/module-shared` rather than `import.meta.env`: a feature module must not take a build
+ * tool as a dependency, since one may be loaded into a host that uses none, and the flag there is
+ * one the host's build writes.
  */
-export const devPeersAvailable = DEV_BUILD;
+export const devPeersAvailable = DEV_FEATURES;
 
 /**
  * Whether they should be showing *right now* — the switch, re-read rather than remembered.
@@ -81,7 +77,7 @@ export const devPeersAvailable = DEV_BUILD;
  * otherwise be looking at a stage with two synthetic participants still on it.
  */
 function visible(): boolean {
-  return devToolsEnabled(DEV_BUILD);
+  return devToolsEnabled(DEV_FEATURES);
 }
 
 /** Identity and media for one synthetic participant. The store turns these into tiles. */

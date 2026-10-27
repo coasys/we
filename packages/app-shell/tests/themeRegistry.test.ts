@@ -9,24 +9,30 @@
  *
  * That is the same silent-omission failure the theme-selector guard exists for one layer down.
  */
-import { THEME_PRESETS } from '@we/themes/presets';
+import { SHOWCASE_THEME_PRESETS, THEME_PRESETS } from '@we/themes/presets';
 import { describe, expect, it } from 'vitest';
 
 import { seedBundleThemes } from '../src/shared/registries/seedBundles';
 import { themeRegistry } from '../src/shared/registries/themeRegistry';
 
-// The design system's own, without the themes a bundle the seed builds in brings beside them.
+/*
+  These tests run as a build with developer features (app-shell's vitest config), so the registry
+  holds the showcase pair as well. That a production build leaves them out is
+  `devOnlyTemplates.test.ts`'s to prove, by building one. The themes a bundle the seed builds in
+  brings sit beside them, and are the bundle's to check.
+*/
+const PRESETS = { ...THEME_PRESETS, ...SHOWCASE_THEME_PRESETS };
 const builtIns = Object.fromEntries(Object.entries(themeRegistry).filter(([id]) => !(id in seedBundleThemes)));
 
 describe('themeRegistry', () => {
-  it('carries every preset the design system defines', () => {
-    expect(Object.keys(builtIns).sort()).toEqual(Object.keys(THEME_PRESETS).sort());
+  it('carries every preset the design system defines, and the showcase pair with developer features', () => {
+    expect(Object.keys(builtIns).sort()).toEqual(Object.keys(PRESETS).sort());
   });
 
   it('takes each theme’s parameters from the preset rather than restating them', () => {
     for (const [id, entry] of Object.entries(builtIns)) {
-      expect(entry.overrides, id).toBe(THEME_PRESETS[id as keyof typeof THEME_PRESETS].parameters);
-      expect(entry.name, id).toBe(THEME_PRESETS[id as keyof typeof THEME_PRESETS].name);
+      expect(entry.overrides, id).toBe(PRESETS[id as keyof typeof PRESETS].parameters);
+      expect(entry.name, id).toBe(PRESETS[id as keyof typeof PRESETS].name);
     }
   });
 });

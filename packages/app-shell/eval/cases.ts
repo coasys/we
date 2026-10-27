@@ -13,9 +13,9 @@
  * accident, would read as a result.
  */
 import type { SchemaNode } from '@we/schema-shared';
-import { kanbanTemplate, workshopTemplate } from '@we/template-showcase';
+import { trelloTemplate, workshopTemplate } from '@we/template-showcase';
 
-export type EvalTemplate = 'blank' | 'feed' | 'kanban' | 'workshop';
+export type EvalTemplate = 'blank' | 'feed' | 'trello' | 'workshop';
 
 /**
  * How big the template a case is made against is.
@@ -39,7 +39,7 @@ export interface EvalCase {
 }
 
 export const scaleOf = (template: EvalTemplate): EvalScale =>
-  template === 'kanban' || template === 'workshop' ? 'large' : 'small';
+  template === 'trello' || template === 'workshop' ? 'large' : 'small';
 
 // ─── The starting templates ───────────────────────────────────────────────────
 
@@ -95,14 +95,14 @@ const TEMPLATES: Record<EvalTemplate, SchemaNode> = {
     real template the first time somebody edited the live one — and because the per-case test
     beside this file then fails the moment an edit invalidates a case, which is the signal wanted.
 
-    Kanban is the middle rung on purpose. Templates in this repo run from 1,888 chars (`pollsView`)
-    to 571,024 (`workshopTemplate`); kanban is 57,440, which compacts to 37,516 with five `$defs`.
+    Trello is the middle rung on purpose. Templates in this repo run from 1,888 chars (`pollsView`)
+    to 571,024 (`workshopTemplate`); trello is 57,440, which compacts to 37,516 with five `$defs`.
     Big enough that what the editor sends is mostly template rather than mostly reference, small
     enough to run 51 times, and — the part neither `blank` nor `feed` can offer — it SHARES shapes:
     the card is used four times and the column header twice, so "change every card" and "change
     this one card" are different edits with different correct answers.
   */
-  kanban: kanbanTemplate as unknown as SchemaNode,
+  trello: trelloTemplate as unknown as SchemaNode,
 
   /*
     The template the bounding work exists for, and the only one here that does not fit.
@@ -112,7 +112,7 @@ const TEMPLATES: Record<EvalTemplate, SchemaNode> = {
     comparison possible at all; a year of template growth and only one of them would.
 
     Two cases, deliberately few: each whole-template call costs about as much as a whole run of
-    the kanban suite.
+    the trello suite.
   */
   workshop: workshopTemplate as unknown as SchemaNode,
 };
@@ -582,48 +582,50 @@ export const EVAL_CASES: EvalCase[] = [
       }),
   },
   {
-    id: 'delete-with-confirm',
+    /*
+      A dialog opened from a row, which is what this case measures: state per card, a modal that
+      reads the row it was opened from, and a way to close it. It used to be a delete confirmation,
+      until the host began confirming deletes itself and refusing a template's own dialog in front
+      of one as a second question about one click.
+    */
+    id: 'post-details-dialog',
     template: 'feed',
     request:
-      "Add a delete button to each post card. It should ask 'Delete this post?' in a dialog, and only then delete the post with spaceStore.deleteCollection.",
-    check: (s) =>
-      all(
-        expect(ofType(s, 'we-modal').length > 0, 'no dialog'),
-        expect(/Delete this post\?/.test(source(s)), 'the dialog does not ask Delete this post?'),
-        expect(/spaceStore\.deleteCollection/.test(source(s)), 'nothing calls spaceStore.deleteCollection'),
-      ),
+      "Add a Details button to each post card. It should open a dialog headed 'About this post' that shows the post's text, with a Close button.",
+    check: (s) => {
+      const modals = ofType(s, 'we-modal');
+      return all(
+        expect(modals.length > 0, 'no dialog'),
+        expect(/About this post/.test(source(s)), 'the dialog is not headed About this post'),
+        expect(
+          modals.some((m) => /post\.textContent/.test(JSON.stringify(m))),
+          'the dialog does not show the post’s text',
+        ),
+        expect(/"\$toggleLocal"|"\$setLocal"/.test(source(s)), 'nothing opens or closes it'),
+      );
+    },
     solve: (s) =>
       edited(s, (r) => {
         const card = postCard(r);
-        card.$localState = { confirmOpen: { type: 'boolean', initial: false } } as never;
+        card.$localState = { detailsOpen: { type: 'boolean', initial: false } } as never;
+        const close = { $setLocal: 'detailsOpen', value: false };
         card.children!.push(
           {
             type: 'we-button',
-            props: { variant: 'solid', tone: 'danger', onClick: { $setLocal: 'confirmOpen', value: true } },
-            children: ['Delete'],
+            props: { variant: 'ghost', onClick: { $setLocal: 'detailsOpen', value: true } },
+            children: ['Details'],
           },
           {
             type: '$if',
             props: {
-              condition: { $: 'local.confirmOpen' },
+              condition: { $: 'local.detailsOpen' },
               then: {
                 type: 'we-modal',
-                props: { size: 'sm', close: { $setLocal: 'confirmOpen', value: false } },
+                props: { size: 'sm', close },
                 children: [
-                  { type: 'we-text', props: { variant: 'heading-md' }, children: ['Delete this post?'] },
-                  {
-                    type: 'we-button',
-                    props: {
-                      variant: 'solid',
-                      tone: 'danger',
-                      onClick: {
-                        $invoke: 'spaceStore.deleteCollection',
-                        args: [{ $: 'post.id' }],
-                        onSuccess: [{ $setLocal: 'confirmOpen', value: false }],
-                      },
-                    },
-                    children: ['Delete'],
-                  },
+                  { type: 'we-text', props: { variant: 'heading-md' }, children: ['About this post'] },
+                  { type: 'we-text', children: [{ $: 'post.textContent' }] },
+                  { type: 'we-button', props: { variant: 'soft', onClick: close }, children: ['Close'] },
                 ],
               },
             },
@@ -641,7 +643,7 @@ export const EVAL_CASES: EvalCase[] = [
     half, there are 280 nodes to find the right one among, and — the part that nothing else in
     this file reaches — four of those nodes are the SAME node, shared through `$defs`.
 
-    `kanban-card-radius` is the shared-shape case: the four cards are one shape, so the edit is
+    `trello-card-radius` is the shared-shape case: the four cards are one shape, so the edit is
     right only when all four change together. A model that patches a single use leaves three
     cards square.
 
@@ -654,8 +656,8 @@ export const EVAL_CASES: EvalCase[] = [
     CONTEXT rather than by their data; see the follow-ups in the PR description.
   */
   {
-    id: 'kanban-card-radius',
-    template: 'kanban',
+    id: 'trello-card-radius',
+    template: 'trello',
     request: 'Make the cards on a board more rounded.',
     /*
       Every card, because the request says "the cards". They are one shape used four times, so the
@@ -733,8 +735,8 @@ export const EVAL_CASES: EvalCase[] = [
       }),
   },
   {
-    id: 'kanban-empty-icon',
-    template: 'kanban',
+    id: 'trello-empty-icon',
+    template: 'trello',
     request: 'The empty message on the boards list has a kanban icon — use a folder icon instead.',
     /*
       One node among 280, and among seventeen `we-icon`s. Nothing structural identifies it; the
@@ -762,8 +764,8 @@ export const EVAL_CASES: EvalCase[] = [
       }),
   },
   {
-    id: 'kanban-remove-load-more',
-    template: 'kanban',
+    id: 'trello-remove-load-more',
+    template: 'trello',
     request: 'Take the Load more button off the boards list.',
     /*
       Deletion in a large tree. Worth its own case because the patch format's `children` semantics
@@ -792,8 +794,8 @@ export const EVAL_CASES: EvalCase[] = [
       }),
   },
   {
-    id: 'kanban-back-tooltip',
-    template: 'kanban',
+    id: 'trello-back-tooltip',
+    template: 'trello',
     request: "Put a tooltip saying 'All boards' on the button that goes back from a board to the list.",
     /*
       The target is named by what it DOES, not by anything written on it — it is an icon button

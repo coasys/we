@@ -78,6 +78,8 @@ describe('Settings → Developer', () => {
       return node.type === '$if' && walk(props?.then).includes(navToDeveloper as Node);
     });
     expect(gate, 'the Developer nav entry must be behind an $if').toBeDefined();
-    expect((gate?.props as Node).condition).toEqual({ $: 'sessionStore.isDevelopment' });
+    // The build's answer: whether it has developer features, which a preview does and is not a
+    // development build.
+    expect((gate?.props as Node).condition).toEqual({ $: 'sessionStore.devFeatures' });
   });
 });

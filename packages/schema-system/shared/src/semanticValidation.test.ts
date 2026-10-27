@@ -753,3 +753,75 @@ describe('a template’s own record views', () => {
     expect(result.errors.filter((e) => e.path.startsWith('meta.recordViews'))).toEqual([]);
   });
 });
+
+/*
+  Boards, Twitter, YouTube, Instagram and Discord each opened a record with `./board/${board.id}`.
+  A record id is a URI, so the browser split it across segments, the route never matched, and every
+  detail page opened on its fallback. Nothing said so anywhere.
+*/
+describe('a record id in the path of an address', () => {
+  const PUT_IN_PATH = 'A record id is put into the path';
+  const go = (to: unknown, ...rest: unknown[]): SchemaNode => ({
+    type: 'we-button',
+    props: { onClick: { $invoke: 'routeStore.navigate', args: [to, ...rest] } },
+  });
+  const warned = (node: SchemaNode) => messages(node, 'warning').some((m) => m.startsWith(PUT_IN_PATH));
+
+  it('is warned about, however the path is built', () => {
+    expect(warned(go({ $: '`./board/${board.id}`' }))).toBe(true);
+    expect(warned(go({ $: "'./photo/' + media.id" }))).toBe(true);
+    expect(warned(go({ $: "'./channel/' + local.channelId" }))).toBe(true);
+    expect(warned({ type: 'we-link', props: { href: { $: '`/post/${post.id}`' } } })).toBe(true);
+  });
+
+  it('is not warned about as a query value, or when what the path holds is no id', () => {
+    expect(warned(go('./board', { $: '{ query: { id: board.id } }' }))).toBe(false);
+    expect(warned(go({ $: '`./board?id=${board.id}`' }))).toBe(false);
+    expect(warned(go({ $: '`/space/${space.uuid}/${nav.segment}`' }))).toBe(false);
+    expect(warned(go('./board'))).toBe(false);
+  });
+});
+
+/*
+  A relative path is from the route the node is in (`resolvePath`). Five templates wrote `.` inside a
+  route meaning "home", which is that route itself, so their back buttons did nothing.
+*/
+describe('a relative path that goes nowhere useful', () => {
+  const button = (to: string): SchemaNode => ({
+    type: 'we-button',
+    props: { onClick: { $invoke: 'routeStore.navigate', args: [to] } },
+  });
+  const template = (route: SchemaNode, chrome: SchemaNode[] = []) =>
+    ({
+      meta: { name: 'T', description: 'd', icon: 'users' },
+      type: 'Column',
+      children: [...chrome, { type: '$routes' }],
+      routes: [{ path: '/board', type: 'Column', children: [route] }],
+    }) as unknown as SchemaNode;
+  const warned = (node: SchemaNode, words: string) => messages(node, 'warning').some((m) => m.includes(words));
+  const SELF = 'goes to the page it is on';
+  const CLIMB = 'climbs above the template';
+
+  it('is warned about as . inside a route, or as a link to it', () => {
+    expect(warned(template(button('.')), SELF)).toBe(true);
+    expect(warned(template({ type: 'we-link', props: { href: './' } }), SELF)).toBe(true);
+  });
+
+  it('is warned about when it climbs above the template’s root', () => {
+    expect(warned(template(button('../..')), CLIMB)).toBe(true);
+    expect(warned(template({ type: 'Column' }, [button('../wall')]), CLIMB)).toBe(true);
+  });
+
+  it('is fine as the template’s root, the page above, a child, or . in chrome', () => {
+    for (const to of ['~/', '~/wall', '..', '../wall', './cards']) {
+      expect(warned(template(button(to)), SELF) || warned(template(button(to)), CLIMB), to).toBe(false);
+    }
+    expect(warned(template({ type: 'Column' }, [button('.')]), SELF)).toBe(false);
+  });
+
+  it('counts a section as a route, and leaves a fragment’s .. alone', () => {
+    const view = { ...(button('..') as object), meta: { name: 'V', description: 'd', icon: 'x', role: 'view' } };
+    expect(warned(view as SchemaNode, CLIMB)).toBe(false);
+    expect(warned(button('../..'), CLIMB)).toBe(false);
+  });
+});

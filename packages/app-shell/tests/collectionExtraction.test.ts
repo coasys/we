@@ -11,8 +11,6 @@
  * a reasonable person doing a tidy-up will try to migrate them, and the generic resolver would then
  * let a space's setting overrule every conversation. These assertions are what fails instead.
  */
-import { describe, expect, it } from 'vitest';
-
 import {
   collectionExtractionDefaults,
   LEGACY_EXTRACTION_TARGETS,
@@ -20,7 +18,8 @@ import {
   resolveCollectionAutoExtract,
   resolveCollectionExtractionTargets,
   resolveSpaceExtractionTargets,
-} from '../src/shared/collectionExtraction';
+} from '@we/entities';
+import { describe, expect, it } from 'vitest';
 
 const CANDIDATES = ['TaskBlock', 'EventBlock', 'Sighting', 'Decision'];
 

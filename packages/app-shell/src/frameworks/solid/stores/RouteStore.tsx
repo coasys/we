@@ -1,5 +1,5 @@
 import { useNavigate } from '@solidjs/router';
-import { SPACE_ROUTE_DEPTH } from '@we/schema-shared';
+import { resolvePath, SPACE_ROUTE_DEPTH } from '@we/schema-shared';
 import {
   Accessor,
   createContext,
@@ -40,6 +40,14 @@ export interface RouteStore {
    * the view for whoever receives it. See docs/architecture/routing-and-view-state.md.
    */
   params: Accessor<Record<string, string>>;
+  /**
+   * The page on screen: the path, and the record it is about when the query names one (`id`).
+   *
+   * Two boards are `/board?id=a` and `/board?id=b`, so the path alone says only "a board". Anything
+   * asking whether two people are on the same page (presence) asks this, not `currentPath`. The
+   * rest of the query is a view of the page, not which page it is, and is left out.
+   */
+  page: Accessor<string>;
 
   // Setters
   /**
@@ -54,7 +62,25 @@ export interface RouteStore {
   setCurrentPath: (path: string, search?: string) => void;
 
   // Actions
-  navigate: (to: string, options?: Record<string, unknown>) => void;
+  /**
+   * Go to `to`. `query` is the page's query values, written for it: a record id goes here, as
+   * `navigate('./board', { query: { id: board.id } })`, never pasted into `to`. A record id is a URI
+   * — `ad4m://obj/x` — so as a path segment it is several, and the route that expected one never
+   * matches; pasted into a query by hand, an id holding `&`, `#`, `+` or `%` reads back as
+   * something else. Written here, it reads back exactly. The rest of `options` goes to the router
+   * (`replace`, `state`).
+   *
+   * A relative `to` is resolved here, against the address on screen — see `resolvePath`: `./x` and
+   * `..` from the route a template node is in (`base`, which the renderer supplies), `~/x` from the
+   * template's root. Called with no base, a relative path is from the root.
+   */
+  navigate: (to: string, options?: NavigateOptions) => void;
+  /**
+   * The address `to` leads to, resolved as `navigate` would resolve it, without going there. What a
+   * relative `href` is rendered as, so a link a template draws and a press it handles agree.
+   * Reactive: it follows the address on screen.
+   */
+  resolve: (to: string, options?: Pick<NavigateOptions, 'base'>) => string;
   /**
    * Write one query parameter (null removes it). Defaults to replaceState —
    * filter/sort changes should not spam history; pass { push: true } for
@@ -75,7 +101,44 @@ export interface RouteStore {
   back: () => void;
 }
 
+/** What `navigate` takes beside the path. */
+export type NavigateOptions = {
+  query?: Record<string, unknown>;
+  /** The route a relative path is from, as its depth in segments. The renderer supplies it. */
+  base?: { depth: number };
+} & Record<string, unknown>;
+
+/**
+ * How many segments of an address are the template's root: the space it is mounted under, or
+ * nothing outside one.
+ */
+export function templateRootDepth(path: string): number {
+  return path.split('/').filter(Boolean)[0] === 'space' ? SPACE_ROUTE_DEPTH : 0;
+}
+
+/** `to` resolved from `here`, for a router whose template root is `root` segments deep. */
+export function resolveNavigation(to: string, here: string, root: number, base?: unknown): string {
+  const depth = (base as { depth?: unknown } | undefined)?.depth;
+  return resolvePath(to, here, { depth: typeof depth === 'number' ? depth : root, root });
+}
+
 const RouteContext = createContext<RouteStore>();
+
+/**
+ * Query values as a query string, without its `?`. Empty values are left out.
+ *
+ * `:` and `/` left as they are. Both are legal in a query, and a record id is a URI, so encoding
+ * them turned `?call=ad4m://obj/x` into `?call=ad4m%3A%2F%2Fobj%2Fx` — the same call written two
+ * ways, depending on whether a link or `setParam` wrote it. Every reader decodes either form alike.
+ */
+export function queryString(values: URLSearchParams | Record<string, unknown>): string {
+  const search = new URLSearchParams();
+  const entries = values instanceof URLSearchParams ? [...values] : Object.entries(values);
+  for (const [name, value] of entries) {
+    if (value !== null && value !== undefined && value !== '') search.set(name, String(value));
+  }
+  return search.toString().replace(/%3A/gi, ':').replace(/%2F/gi, '/');
+}
 
 function readParams(search?: string): Record<string, string> {
   if (search === undefined && typeof window === 'undefined') return {};
@@ -103,6 +166,10 @@ export function RouteStoreProvider(props: ParentProps) {
     },
   });
   const segments = createMemo(() => currentPath().split('/').filter(Boolean));
+  const page = createMemo(() => {
+    const id = params().id;
+    return id ? `${currentPath()}?${queryString({ id })}` : currentPath();
+  });
   const templateSegments = createMemo(() => {
     const all = segments();
     return all[0] === 'space' ? all.slice(SPACE_ROUTE_DEPTH) : all;
@@ -153,20 +220,32 @@ export function RouteStoreProvider(props: ParentProps) {
     onCleanup(() => window.removeEventListener('popstate', onPopState));
   }
 
-  function navigate(to: string, options?: Record<string, unknown>) {
+  function navigate(to: string, options?: NavigateOptions) {
+    const { query, base, ...routerOptions } = options ?? {};
+    // The router's address, not the bar's, for `setParam`'s reason below.
+    const here = untrack(currentPath) || window.location.pathname;
+    const resolved = resolveNavigation(to, here, templateRootDepth(here), base);
+    const written = query && typeof query === 'object' ? queryString(query) : '';
+    const path = written ? `${resolved}${resolved.includes('?') ? '&' : '?'}${written}` : resolved;
+
     // Skip if already on the exact target path (no-op router push). The router's path, not the
     // address bar's, for `setParam`'s reason below: against a stale bar this refused to go to the
     // page the bar wrongly named, and let through a navigation to the page already on screen.
-    if ((untrack(currentPath) || window.location.pathname) === to) return;
+    if (here === path) return;
 
     // A bare path restores that route's remembered query string, so a
     // kept-alive route's URL params survive leaving and returning. An explicit
-    // `?` in `to` always wins.
-    const target = !to.includes('?') && rememberedSearch.has(to) ? `${to}${rememberedSearch.get(to)}` : to;
+    // query, in `to` or in `query`, always wins.
+    const target = !path.includes('?') && rememberedSearch.has(path) ? `${path}${rememberedSearch.get(path)}` : path;
 
     const nav = navigateFunction();
-    if (nav) nav(target, options);
+    if (nav) nav(target, Object.keys(routerOptions).length ? routerOptions : undefined);
     else console.warn('Navigate function not available yet');
+  }
+
+  function resolve(to: string, options?: Pick<NavigateOptions, 'base'>): string {
+    const here = currentPath() || (typeof window === 'undefined' ? '/' : window.location.pathname);
+    return resolveNavigation(to, here, templateRootDepth(here), options?.base);
   }
 
   function setParam(name: string, value: string | null, options?: { push?: boolean }) {
@@ -188,12 +267,7 @@ export function RouteStoreProvider(props: ParentProps) {
     const search = new URLSearchParams(untrack(params));
     if (value === null || value === undefined || value === '') search.delete(name);
     else search.set(name, value);
-    /*
-      `:` and `/` left as they are. Both are legal in a query, and a record id is a URI, so encoding
-      them turned `?call=ad4m://obj/x` into `?call=ad4m%3A%2F%2Fobj%2Fx` — the same call written two
-      ways, depending on whether a link or this wrote it. Every reader decodes either form alike.
-    */
-    const query = search.toString().replace(/%3A/gi, ':').replace(/%2F/gi, '/');
+    const query = queryString(search);
     const url = `${untrack(currentPath) || window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`;
     // Written through history directly rather than the router: the path is
     // unchanged, so the route tree must not re-resolve — only the params signal
@@ -210,6 +284,7 @@ export function RouteStoreProvider(props: ParentProps) {
     segments,
     templateSegments,
     params,
+    page,
 
     // Setters
     setNavigateFunction: provideNavigate,
@@ -217,6 +292,7 @@ export function RouteStoreProvider(props: ParentProps) {
 
     // Actions
     navigate,
+    resolve,
     setParam,
     back: () => window.history.back(),
   };

@@ -109,7 +109,7 @@ Glossary (these terms pervade stores, models, and \`$query\`/\`perspective\` in 
 | \`@we/entities\` | packages/entities | WE's domain models: the authored neutral manifest (src/manifest, the source of truth), the neutral type contract, and the entity proxies backends register into | **Agnostic** |
 | \`@we/app-shell\` | packages/app-shell | App shell, stores, registries, built-in template schemas | Solid |
 | \`@we/ai-context\` | packages/ai-context | Generates this reference (CLAUDE.md et al.) from code + fragments | Build tool |
-| \`@we/agent-tools\` | packages/agent-tools | What a model can do with WE: template editing as tools and as the editor's loop, one set of rules for both, plus a single-file bundle for agent hosts | **Agnostic** |
+| \`@we/agent-tools\` | packages/agent-tools | What a model can do with WE: templates and themes as tools for any host, a space's records and WE's conventions for a conversation WE runs itself, and a single-file bundle for agent hosts | **Agnostic** |
 
 Apps (\`apps/we-web\`, \`apps/we-electron\`, \`apps/we-tauri\`) are thin hosts over \`@we/app-shell\`.
 Each supplies two things: a \`PlatformAdapter\` (where am I running) and a \`BackendConnector\`
@@ -181,6 +181,9 @@ that declares \`backends: ['ad4m']\` — nothing else. See \`docs/architecture/p
 - What no template may replace — the password field, the safety prompts, safe mode — and the one
   place each is enforced → docs/architecture/protected-pieces.md. Read it before touching the boot
   screen, a confirmation the host raises, or how a template becomes the live one.
+- What a language model can do with WE — which rules are WE's to ship as tools and which are the
+  backend's, where a new template or theme goes, and who runs the conversation →
+  docs/architecture/agents.md; the tools themselves → \`packages/agent-tools/\`.
 
 **Where a new thing goes** — module or host store, panel or fragment, who decides placement, and how
 two capabilities cooperate without depending on each other — is

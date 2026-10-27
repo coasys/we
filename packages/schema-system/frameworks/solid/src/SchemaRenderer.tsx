@@ -12,6 +12,7 @@ import {
   deepUnwrap,
   expandDefinitions,
   hasToken,
+  isRelativePath,
   isTemplateElement,
   markReactive,
   newGestureOwner,
@@ -1308,6 +1309,25 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
         return deepUnwrap(resolved);
       });
     }
+  }
+
+  /*
+    A relative `href` is resolved as `routeStore.navigate` resolves a relative path — from the route
+    this node is in (`$nav`), or from the template's root for `~/` — so a link a template draws goes
+    where a press on it would. Left alone, the browser resolved it against the address bar, a rule
+    no other path in a template follows. `resolve` reads the router's address, so the link follows
+    it.
+  */
+  const hrefMemo = propMemos.href;
+  if (hrefMemo) {
+    const router = (stores as Record<string, unknown>).routeStore as
+      { resolve?: (to: string, options?: { base?: { depth: number } }) => string } | undefined;
+    const depth = (effectiveContext.$nav as { baseDepth?: unknown } | undefined)?.baseDepth;
+    propMemos.href = createMemo(() => {
+      const value = hrefMemo();
+      if (typeof value !== 'string' || !isRelativePath(value) || !router?.resolve) return value;
+      return router.resolve(value, typeof depth === 'number' ? { base: { depth } } : undefined);
+    });
   }
 
   /**

@@ -146,6 +146,11 @@ at most one bump PR open, and it always names the newest commit: a later run upd
 opening another. Merging it ends it. To run it now, use "Run workflow" on the workflow's page in the
 Actions tab.
 
+It also keeps an open bump PR worth reading. When a feature PR moves `dev`'s pin to the bump's
+commit or past it, the bot closes the bump, since there is nothing left in it to merge. When a pin
+move on `dev` leaves the bump conflicting but still ahead, the bot rebuilds it on `dev` with the same
+commit and runs CI again. Both happen on the daily run, so a bump PR may look stale for up to a day.
+
 Daily rather than on every ad4m push, because each bump is a lockfile change that conflicts with
 every open PR that also moves the pin. `pnpm-lock.yaml` has no merge driver: resolve such a conflict
 by taking either side and running `pnpm bump:ad4m <the commit you want>`.

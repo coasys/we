@@ -13,16 +13,16 @@
  *
  * ## What this buys, measured rather than predicted
  *
- * 24 runs over four `kanban` cases, whole against bounded, in `eval/BASELINE.md`:
+ * 24 runs over four `kanban` cases (the template now called `trello`), whole against bounded, in `eval/BASELINE.md`:
  *
  * - **Accuracy is untouched** — 28 runs, every arm, both templates. A model edits from an outline
  *   plus the parts it was handed exactly as well as from the whole tree. Not obvious beforehand,
  *   and the finding the whole approach needed.
  * - **It saves about half on a large template.** `workshopTemplate`: 183K tokens a case against
  *   354K whole, in two model calls either way.
- * - **And costs a few percent on a small one.** `kanbanTemplate`: 120K against 116K. The saving
+ * - **And costs a few percent on a small one.** `trelloTemplate`: 120K against 116K. The saving
  *   is the template minus its outline and grows with the template; the cost is one extra call at
- *   system-prompt price and does not. Kanban sits below that crossover, workshop well above it —
+ *   system-prompt price and does not. Trello sits below that crossover, workshop well above it —
  *   which is what the budget is for.
  * - **Where preselection misses, the extra call can cost more than bounding saves.** That is the
  *   thing to protect: detail sent unasked is what stops the model reaching for `we_template`, so
@@ -32,7 +32,7 @@
  * Above the budget the model gets:
  *
  * - **an outline** — every node's id, type and a clue, nothing else. 12% of the compacted template
- *   on `kanbanTemplate`, 24% on `workshopTemplate`. This is the part that must be complete: a node
+ *   on `trelloTemplate`, 24% on `workshopTemplate`. This is the part that must be complete: a node
  *   the model cannot see is a node it cannot patch, and ids are how patches land.
  * - **detail** for the nodes the request implicates, as the JSON they really are.
  * - **`we_template`**, to fetch any subtree by id or find nodes by what they say.
@@ -53,7 +53,7 @@
  *
  * Ids are the whole addressing scheme, and an authored template ALIASES — a fragment called twice
  * with the same arguments returns the same object, so numbering one gives several positions the
- * same id (62 of them on `kanbanTemplate`, 343 on `workshopTemplate`). Compaction gives every use
+ * same id (62 of them on `trelloTemplate`, 343 on `workshopTemplate`). Compaction gives every use
  * its own `$ref` and the duplicates go. `EditorStore` compacts before numbering for this reason;
  * everything here assumes it has.
  */
@@ -63,7 +63,7 @@ import { definitionsOf, type OutlineEntry, outlineOf, type SchemaNode } from '@w
 /**
  * How much template to send before switching to an outline, in characters.
  *
- * Sized so the templates people actually edit today mostly fit — `kanbanTemplate` is 39K
+ * Sized so the templates people actually edit today mostly fit — `trelloTemplate` is 39K
  * compacted and `twitterTemplate` 27K — while the two that cannot be edited at all
  * (`workshopTemplate` at 400K, `cardsView` at 464K) do not. A character budget rather than a
  * token one because it is the thing we can measure exactly and cheaply; the ratio is about four.
@@ -77,7 +77,7 @@ export const DEFAULT_TEMPLATE_BUDGET = 60_000;
  * oversight. Every node has to stay addressable — a node missing from the outline cannot be
  * patched, and the symptom is not an error but the model editing the nearest node it can see —
  * so the outline is a floor the budget cannot push below. It scales with the node count:
- * `kanbanTemplate` 4,776 characters, `workshopTemplate` 96,706.
+ * `trelloTemplate` 4,776 characters, `workshopTemplate` 96,706.
  *
  * So bounding turns 400K into ~100K on the worst template here, not into 60K. Getting under the
  * floor needs a PARTIAL outline — subtrees the request does not touch collapsed to a "+N nodes"

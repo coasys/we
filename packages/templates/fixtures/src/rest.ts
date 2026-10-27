@@ -22,7 +22,7 @@ import type { Fixture } from './types';
 export const twitterFixture: Fixture = {
   id: 'twitter',
   templateId: 'twitter',
-  themeId: 'timeline',
+  themeId: 'twitter',
   space: { name: 'The Timeline', description: 'Short thoughts, mostly about maps.' },
   agents: CAST,
   signalTypes: [LIKE, BOOST],
@@ -195,12 +195,12 @@ export const youtubeFixture: Fixture = {
 };
 
 export const kanbanFixture: Fixture = {
-  id: 'kanban',
-  templateId: 'kanban',
+  id: 'trello',
+  templateId: 'trello',
   space: { name: 'Club Business', description: 'What needs doing before the exhibition.' },
   agents: CAST,
   signalTypes: [LIKE],
-  presence: [{ did: DEE, path: '/board/kanban-exhibition' }],
+  presence: [{ did: DEE, path: '/board?id=trello-exhibition' }],
   /*
     The cards are loose in the space and the columns *arrange* them, which is the shape the Boards
     template renders: a column positions a card, it does not own it, so deleting a column cannot
@@ -210,7 +210,7 @@ export const kanbanFixture: Fixture = {
   content: [
     {
       kind: 'board',
-      id: 'kanban-exhibition',
+      id: 'trello-exhibition',
       title: 'Exhibition',
       children: [
         { kind: 'column', title: 'To do', arranges: ['card-condition', 'card-wall-text', 'card-flat-files'] },
@@ -259,7 +259,7 @@ export const kanbanFixture: Fixture = {
       body: ['Book the room'],
     },
   ],
-  route: '/board/kanban-exhibition',
+  route: '/board?id=trello-exhibition',
 };
 
 export const eventsFixture: Fixture = {

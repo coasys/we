@@ -33,7 +33,7 @@ import { capitalise, chromaTaper, color, FILL_LIGHTNESS, PALETTE_HUES, type Pale
 import { describe, expect, it } from 'vitest';
 
 import type { ThemeOverrides, ThemeRole } from './overrides';
-import { THEME_PRESETS, type ThemeName } from './presets';
+import { SHOWCASE_THEME_PRESETS, THEME_PRESETS } from './presets';
 import { themeSides, withThemeSide } from './sides';
 import {
   DERIVED_FILLS,
@@ -43,6 +43,13 @@ import {
   pickReadableForeground,
   stateDelta,
 } from './themeStyles';
+
+/**
+ * Every theme a build can have, the showcase pair included: they ship only with developer features,
+ * but a theme that fails contrast is wrong wherever it is shown.
+ */
+const PRESETS = { ...THEME_PRESETS, ...SHOWCASE_THEME_PRESETS };
+type ThemeName = keyof typeof PRESETS;
 
 const PAIRS: { fg: ThemeRole; bg: ThemeRole; level: ContrastLevel; what: string }[] = [
   { fg: 'text', bg: 'page', level: 'body', what: 'body text on the page' },
@@ -519,8 +526,8 @@ describe('what the derivations cover, the assertions cover', () => {
   });
 });
 
-describe.each(Object.keys(THEME_PRESETS) as ThemeName[])('%s', (name) => {
-  const theme = THEME_PRESETS[name].parameters as ThemeOverrides;
+describe.each(Object.keys(PRESETS) as ThemeName[])('%s', (name) => {
+  const theme = PRESETS[name].parameters as ThemeOverrides;
 
   it.each(PAIRS)('clears AA for $what', (pair) => {
     const fg = roleColor(pair.fg, theme);
@@ -691,12 +698,12 @@ const MEASURED: Record<string, Record<string, [number, number, number]>> = {
   dark: { 'neutral-200': [59, 57, 82], 'neutral-700': [184, 183, 201], 'accent-500': [127, 114, 206] },
   black: { 'neutral-200': [37, 35, 56], 'neutral-700': [162, 160, 188], 'accent-500': [106, 83, 198] },
   cyberpunk: { 'neutral-200': [67, 66, 81], 'neutral-700': [187, 187, 197], 'accent-500': [132, 114, 225] },
-  channels: { 'neutral-200': [54, 58, 66], 'neutral-700': [182, 185, 191], 'accent-500': [79, 120, 230] },
+  discord: { 'neutral-200': [54, 58, 66], 'neutral-700': [182, 185, 191], 'accent-500': [79, 120, 230] },
 };
 
 describe('the resolver agrees with the browser', () => {
   for (const [themeName, steps] of Object.entries(MEASURED)) {
-    const theme = THEME_PRESETS[themeName as ThemeName].parameters as ThemeOverrides;
+    const theme = PRESETS[themeName as ThemeName].parameters as ThemeOverrides;
     it.each(Object.entries(steps))(`${themeName} %s`, (token, expected) => {
       const got = resolve(`var(--we-color-${token})`, theme);
       expect(got, `${token} did not resolve`).toBeTruthy();
@@ -707,8 +714,8 @@ describe('the resolver agrees with the browser', () => {
   }
 });
 
-describe.each(Object.keys(THEME_PRESETS) as ThemeName[])('%s pins', (name) => {
-  const theme = THEME_PRESETS[name].parameters as ThemeOverrides;
+describe.each(Object.keys(PRESETS) as ThemeName[])('%s pins', (name) => {
+  const theme = PRESETS[name].parameters as ThemeOverrides;
   const pinned = Object.keys(theme.roles ?? {}) as ThemeRole[];
 
   // `light`, `black`, `retro` and `cyberpunk` pin nothing at all — `it.each([])` is an empty suite,
@@ -746,8 +753,8 @@ describe.each(Object.keys(THEME_PRESETS) as ThemeName[])('%s pins', (name) => {
   });
 });
 
-describe.each(Object.keys(THEME_PRESETS) as ThemeName[])('%s elevation', (name) => {
-  const theme = THEME_PRESETS[name].parameters as ThemeOverrides;
+describe.each(Object.keys(PRESETS) as ThemeName[])('%s elevation', (name) => {
+  const theme = PRESETS[name].parameters as ThemeOverrides;
   const lum = (r: ThemeRole) => {
     const c = roleColor(r, theme);
     expect(c, `could not resolve ${r}`).toBeTruthy();
@@ -793,8 +800,8 @@ describe.each(Object.keys(THEME_PRESETS) as ThemeName[])('%s elevation', (name) 
  * relationship still holds", and what the relationship *is* lives in `role.ts`. What it must not
  * become is a number nudged down to accommodate a chip that has drifted back onto the stack.
  */
-describe.each(Object.keys(THEME_PRESETS) as ThemeName[])('%s tooltip separation', (name) => {
-  const theme = THEME_PRESETS[name].parameters as ThemeOverrides;
+describe.each(Object.keys(PRESETS) as ThemeName[])('%s tooltip separation', (name) => {
+  const theme = PRESETS[name].parameters as ThemeOverrides;
   const MINIMUM = 4;
 
   const lightness = (r: ThemeRole) => {
@@ -891,8 +898,8 @@ describe('how close a theme\u2019s status colours come under colour-vision defic
     moving them.
   */
   it('reports how close danger and success come under deuteranopia', () => {
-    const rows = (Object.keys(THEME_PRESETS) as ThemeName[]).map((name) => {
-      const theme = THEME_PRESETS[name].parameters as ThemeOverrides;
+    const rows = (Object.keys(PRESETS) as ThemeName[]).map((name) => {
+      const theme = PRESETS[name].parameters as ThemeOverrides;
       const danger = roleColor('danger', theme);
       const success = roleColor('success', theme);
       if (!danger || !success) return `${name}: unresolved`;

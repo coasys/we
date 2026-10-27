@@ -47,7 +47,7 @@ const videoCard: SchemaNode = {
       props: {
         variant: 'bare',
         width: '100%',
-        onClick: { $invoke: 'routeStore.navigate', args: [{ $: '`./watch/${video.id}`' }] },
+        onClick: { $invoke: 'routeStore.navigate', args: ['~/watch', { $: '{ query: { id: video.id } }' }] },
       },
       children: [
         {
@@ -118,7 +118,7 @@ const libraryGrid = collectionFeed({
 });
 
 const watchRoute: RouteSchema = {
-  path: '/watch/:postId',
+  path: '/watch',
   type: 'Column',
   props: { width: '100%', ax: 'center', p: '400' },
   $localState: { replyOpen: { type: 'boolean', initial: false } },
@@ -134,7 +134,7 @@ const watchRoute: RouteSchema = {
             variant: 'ghost',
             size: 'sm',
             alignSelf: 'start',
-            onClick: { $invoke: 'routeStore.navigate', args: ['.'] },
+            onClick: { $invoke: 'routeStore.navigate', args: ['~/'] },
           },
           children: [{ type: 'we-icon', props: { name: 'arrow-left' } }, 'Back'],
         },
@@ -144,7 +144,7 @@ const watchRoute: RouteSchema = {
             item: {
               $query: {
                 entity: 'CollectionBlock',
-                where: { id: { $: 'routeStore.templateSegments[1]' } },
+                where: { id: { $: 'routeStore.params.id' } },
                 include: { signals: true },
                 limit: 1,
               },
@@ -185,7 +185,7 @@ const watchRoute: RouteSchema = {
               saveLabel: 'Comment',
             }),
             commentThread({
-              anchorId: { $: 'routeStore.templateSegments[1]' },
+              anchorId: { $: 'routeStore.params.id' },
               empty: noReplies(),
               reply: (as) => [
                 {
@@ -283,7 +283,7 @@ const playlistsRoute: RouteSchema = {
 
 export const youtubeTemplate: TemplateSchema = {
   meta: {
-    name: 'Videos',
+    name: 'YouTube',
     description: 'The same posts as a video library, with playlists and comments. Embeds only.',
     icon: 'video-camera',
     // The triptych's shared theme — see the Timeline template.
@@ -315,7 +315,7 @@ export const youtubeTemplate: TemplateSchema = {
                 items: [
                   // `segment` rather than a whole-path comparison — see the note on Twitter's nav.
                   { label: 'Library', path: '.', segment: '' },
-                  { label: 'Playlists', path: './playlists', segment: 'playlists' },
+                  { label: 'Playlists', path: '~/playlists', segment: 'playlists' },
                 ],
                 as: 'nav',
               },

@@ -17,6 +17,10 @@
  * fixes its call and tries again, which is how an edit converges; a throw would end the
  * conversation instead. A throw from `call` means the host did something wrong, not the model —
  * a record of the wrong entity, or one with nothing readable in it.
+ *
+ * **A tool that creates answers with the new record, and the host makes it.** Its answer names the
+ * entity and the place (`ToolAnswer.create`), so what a new record holds stays WE's to decide —
+ * which fields, how a file is encoded, what a valid one is — and where it is made stays the host's.
  */
 import type { EntityManifestEntry } from '@we/backend-shared';
 
@@ -34,7 +38,20 @@ export interface AgentTool {
    * through tools it allowed checks this rather than knowing the tool.
    */
   writes: boolean;
+  /**
+   * Present on a tool that makes a new record rather than changing the one a call names: which
+   * entity it makes, and where one may go. The call says which of those places it wants
+   * (`ToolAnswer.create`), and a host refuses an answer naming a place not listed here.
+   */
+  creates?: { entity: string; places: Place[] };
 }
+
+/**
+ * Where a new record goes. `library` is the person's own, which nobody else sees; `space` is the
+ * space the agent is working in, which every member sees. Which dataset each one is, is the host's
+ * to know.
+ */
+export type Place = 'library' | 'space';
 
 /**
  * A stored record, as a host hands it to a toolset: the properties it read, with any file a
@@ -48,8 +65,11 @@ export interface RecordInput {
 }
 
 export interface ToolCall {
-  /** The record the call names, as it is stored now. */
-  record: RecordInput;
+  /**
+   * The record the call names, as it is stored now. A tool that edits needs one. A tool that
+   * creates may be given one to start from (a template to fork), and otherwise none.
+   */
+  record?: RecordInput;
   /** The tool's arguments, as the parsed object or the JSON string a provider sent. */
   args: unknown;
   /** The dataset's own models, which the record may name. See `TemplateToolsetOptions.models`. */
@@ -71,6 +91,11 @@ export interface ToolAnswer {
    * reads them as one change. Absent when there is nothing to write.
    */
   properties?: Record<string, unknown>;
+  /**
+   * Set when `properties` are a new record's rather than changes to the one the call named: the
+   * host makes a record of `entity` in `place`, and tells the agent its id.
+   */
+  create?: { entity: string; place: Place };
 }
 
 /** A documentation topic, listed without its text. */

@@ -20,12 +20,13 @@
  *
  * ## Gates
  *
- * The build decides whether any of this exists — `import.meta.env.DEV` is false in production, and the
- * bundler drops the control with it. `sessionStore.devTools` decides whether it shows, so a developer
+ * The build decides whether any of this exists — `DEV_FEATURES` (`@we/module-shared`) is false in
+ * production, and the bundler drops the control with it. `sessionStore.devTools` decides whether it shows, so a developer
  * looking at what a user sees loses the pretend people along with every other developer affordance.
  * Mirrors the call module's synthetic participants (`module-system/call/src/devPeers.ts`).
  */
 import type { Pretend } from '@we/graph-expanders';
+import { DEV_FEATURES } from '@we/module-shared';
 import { createSignal } from 'solid-js';
 
 const STORAGE_KEY = 'we.graph.pretendPeople';
@@ -36,7 +37,7 @@ const MAX = 12;
 const NAMES = ['Ada', 'Bo', 'Cai', 'Dee', 'Eli', 'Fen', 'Gus', 'Hal', 'Ivy', 'Jo', 'Kit', 'Lu'];
 
 /** Whether any of this exists at all — the build, and nothing else. */
-export const pretendPeopleAvailable = import.meta.env.DEV === true;
+export const pretendPeopleAvailable = DEV_FEATURES;
 
 interface Stored {
   count: number;

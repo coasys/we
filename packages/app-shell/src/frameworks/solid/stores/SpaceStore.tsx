@@ -3,14 +3,6 @@ import { createBoardActions, type CreateBoardOptions } from '@shared/boards';
 import { newSpaceStarter } from '@shared/bundles/bundleStarter';
 import { callParamToWrite } from '@shared/callOnScreen';
 import {
-  collectionExtractionDefaults,
-  LEGACY_EXTRACTION_TARGETS,
-  parseEntityList,
-  resolveCollectionAutoExtract,
-  resolveCollectionExtractionTargets,
-  resolveSpaceExtractionTargets,
-} from '@shared/collectionExtraction';
-import {
   CONTAINER_ACTIVITY_QUERY,
   type ContainerActivity,
   mentionsOf,
@@ -57,7 +49,6 @@ import {
 } from '@shared/registries/moduleRegistry';
 import { seedBundlePieces } from '@shared/registries/seedBundles';
 import { defaultViewOrder, viewRegistry } from '@shared/registries/viewRegistry';
-import { completeResponse } from '@shared/responses';
 import { seedDefaultEnabledModules } from '@shared/seedModules';
 import { getSeed } from '@shared/seedRegistry';
 import { type SharingPickerOption, sharingPickerOptions } from '@shared/sharingOptions';
@@ -128,7 +119,7 @@ import {
 } from '@shared/viewResolution';
 import { evidenceLabel, refusalWords } from '@shared/workflowViews';
 import type { AgentProfileSummary, DatasetRef, WorkflowView } from '@we/backend-shared';
-import { displayName, isPolicyRefusal, SELF_PERSONS, trace, validatePolicy } from '@we/backend-shared';
+import { displayName, isPolicyRefusal, parseServerUrl, SELF_PERSONS, trace, validatePolicy } from '@we/backend-shared';
 import type { ContentInput } from '@we/block-shared';
 import {
   contentHash,
@@ -141,6 +132,15 @@ import {
 } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
 import { saveFile, type SaveOutcome } from '@we/design-utils';
+import {
+  collectionExtractionDefaults,
+  LEGACY_EXTRACTION_TARGETS,
+  parseEntityList,
+  resolveCollectionAutoExtract,
+  resolveCollectionExtractionTargets,
+  resolveSpaceExtractionTargets,
+} from '@we/entities';
+import { completeResponse } from '@we/entities';
 import {
   AGENT_DEFAULT,
   CollectionBlock,
@@ -294,16 +294,20 @@ export interface SpaceListEntry {
   shareError: string;
 }
 
-/** What sharing a space was asked for: the backend's sharing option, and the listing to write after. */
+/**
+ * What sharing a space was asked for: the backend's sharing option, the server it syncs through when
+ * that option uses one, and the listing to write after.
+ */
 interface ShareTask {
   sharing?: string;
+  server?: string;
   /** Set when the space is listed in global discovery — the images and place to list it with. */
   listing?: SpaceSyncOptions;
 }
 
 /*
   The extraction-settings resolution — `LEGACY_EXTRACTION_TARGETS`, `parseEntityList` and the
-  per-collection resolvers below — lives in `@shared/collectionExtraction` so it can be tested
+  per-collection resolvers below — lives in `collectionExtraction` in `@we/entities` so it can be tested
   without mounting this provider. See that module for why a collection holds a copy.
 */
 
@@ -724,7 +728,10 @@ export interface SpaceStore {
   enabledViewIds: Accessor<string[]>;
   /** The same list as a nav strip reads it — one source, so routes and nav cannot disagree. */
   viewNav: Accessor<{ id: string; segment: string; label: string; icon: string; path: string }[]>;
-  /** How a shared space can sync, as picker entries: label, icon and a description per template. */
+  /**
+   * How a shared space can sync, as picker entries: label, icon and a description per template, and
+   * for one syncing through a server, the servers to pick from.
+   */
   sharingOptions: Accessor<SharingPickerOption[]>;
   /** Address of the link language template publishing uses when none is chosen. */
   defaultSharing: Accessor<string>;
@@ -741,6 +748,9 @@ export interface SpaceStore {
    * Create a space and resolve with its id once the local space exists — sharing a shared one
    * follows on the network, reported on `spaceList`. It does not navigate: the create dialog goes
    * to the space with `navigateToSpace`, and a caller making one as part of something else need not.
+   *
+   * `server` is the http(s) address a server sharing option syncs through, '' or absent for its
+   * default. One that is not an http(s) address rejects before anything is created.
    */
   createSpace: (
     name: string,
@@ -751,6 +761,7 @@ export interface SpaceStore {
     coverImageFile?: File,
     location?: LocationData | null,
     sharing?: string,
+    server?: string,
   ) => Promise<string | undefined>;
   /**
    * Share a space that is still local — what retries a share that failed. Uses the sharing option
@@ -1905,12 +1916,19 @@ export function SpaceStoreProvider(props: ParentProps) {
     coverImageFile?: File,
     location?: LocationData | null,
     sharing?: string,
+    server?: string,
   ): Promise<string | undefined> {
     const lifecycle = session.lifecycle();
     if (!lifecycle) return undefined;
     setCreatingSpace(true);
 
     try {
+      // Sharing follows in the background, so a server it would refuse is caught here, before a
+      // space exists that could then only be left unshared.
+      if (access === 'shared' && server && !parseServerUrl(server)) {
+        throw new Error(`${server} is not an http(s) address.`);
+      }
+
       // Create the dataset
       const spaceRef = await lifecycle.create(name);
       const spaceHandle = spaceRef.handle as DatasetProxy;
@@ -1981,7 +1999,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       if (access === 'shared') {
         // The person waits for the local space only. Sharing talks to the network, and the
         // listing needs the address sharing mints, so both follow, reported on `spaceList`.
-        void share(spaceRecord, { sharing, listing });
+        void share(spaceRecord, { sharing, server, listing });
       } else if (listing) {
         await listInGlobal(spaceRecord, listing);
       }
@@ -2022,7 +2040,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     try {
       // A retry after a later step failed finds the dataset already published: keep its address.
       const sharedId =
-        (await lifecycle.get(uuid))?.sharedId ?? (await lifecycle.publish(uuid, { sharing: task.sharing })).sharedId;
+        (await lifecycle.get(uuid))?.sharedId ??
+        (await lifecycle.publish(uuid, { sharing: task.sharing, server: task.server })).sharedId;
       const ds = datasetStore.datasets().find((d) => d.id === uuid);
       if (ds) await Space.update(ds.handle, space.id, { url: sharedId });
       // Re-read rather than patching the ref: the handle it carries was minted before the publish,
@@ -2360,7 +2379,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         anchor: { id: parentId, relation, ...(relation === 'children' && { entity: 'CollectionBlock' }) },
       }),
     });
-    // A reply is linked into its thread, and is a child of nothing — see `@shared/responses`.
+    // A reply is linked into its thread, and is a child of nothing — see `completeResponse` in `@we/entities`.
     if (root?.id && parentId && relation === 'responses') void completeResponse(p, root.id, parentId);
     return root?.id;
   }
@@ -4635,7 +4654,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     reads false: a decision nobody has made is not a decision to spend somebody's LLM budget.
 
     A default and nothing more. Each collection holds its own answer, copied from this when it was
-    made (`CollectionBlock.autoExtract`); see `@shared/collectionExtraction` for why a copy.
+    made (`CollectionBlock.autoExtract`); see `collectionExtraction` in `@we/entities` for why a copy.
   */
   const autoInterpret = createMemo<boolean>(() => currentSpace()?.autoInterpret === true);
   onCleanup(datasetStore.provideAutoInterpretGate(() => autoInterpret()));

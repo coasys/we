@@ -38,8 +38,8 @@ const navItems = [
     is, which is what an empty segment means below.
   */
   { label: 'Home', icon: 'house', path: '.', segment: '' },
-  { label: 'Photos', icon: 'image', path: './photos', segment: 'photos' },
-  { label: 'Profile', icon: 'user', path: './profile', segment: 'profile' },
+  { label: 'Photos', icon: 'image', path: '~/photos', segment: 'photos' },
+  { label: 'Profile', icon: 'user', path: '~/profile', segment: 'profile' },
 ];
 
 /**
@@ -190,7 +190,7 @@ const postCard = (opts: { clickable?: boolean }): SchemaNode => {
         props: {
           variant: 'bare',
           width: '100%',
-          onClick: { $invoke: 'routeStore.navigate', args: [{ $: '`./post/${post.id}`' }] },
+          onClick: { $invoke: 'routeStore.navigate', args: ['~/post', { $: '{ query: { id: post.id } }' }] },
         },
         children: [
           {
@@ -295,7 +295,7 @@ const timeline: SchemaNode = {
 };
 
 const postDetail: RouteSchema = {
-  path: '/post/:postId',
+  path: '/post',
   type: 'Column',
   props: { width: '100%' },
   $localState: { replyOpen: { type: 'boolean', initial: false } },
@@ -307,7 +307,7 @@ const postDetail: RouteSchema = {
         item: {
           $query: {
             entity: 'CollectionBlock',
-            where: { id: { $: 'routeStore.segments[1]' } },
+            where: { id: { $: 'routeStore.params.id' } },
             include: { signals: true },
             limit: 1,
           },
@@ -341,7 +341,7 @@ const postDetail: RouteSchema = {
           props: { px: '400', pb: '600', width: '100%' },
           children: [
             commentThread({
-              anchorId: { $: 'routeStore.segments[1]' },
+              anchorId: { $: 'routeStore.params.id' },
               empty: noReplies(),
               reply: (as) => [
                 {
@@ -369,12 +369,12 @@ const postDetail: RouteSchema = {
 
 export const twitterTemplate: TemplateSchema = {
   meta: {
-    name: 'Timeline',
+    name: 'Twitter',
     description: 'A reverse-chronological feed of the space’s posts, with replies and community signals.',
     icon: 'newspaper',
     // Shared with Photos and Videos deliberately: those three exist to show one space rendered three
     // ways, so the theme must not be a second variable moving at the same time.
-    themeId: 'timeline',
+    themeId: 'twitter',
     /*
       The two sections beside the feed start in the right-hand lane. Named `snap`s say where each
       goes when broken out by a click rather than a drag — the corner every picture-in-picture uses.

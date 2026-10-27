@@ -213,13 +213,15 @@ export interface WeSeedFile {
      */
     dataPath?: string;
     /**
-     * A link server shared spaces can sync through, e.g. `https://links.example.org`. Setting it
-     * is what offers the server link language when creating a shared space; each space gets a
-     * fresh room on it.
+     * The link server a shared space syncs through unless its creator picks another, e.g.
+     * `https://links.example.org`. Creating a space that syncs through a server offers it first,
+     * then AD4M's own servers (`https://link.ad4m.dev`, `https://link-staging.ad4m.dev`) and an
+     * address typed in; unset, `https://link.ad4m.dev` is the default. Each space gets a fresh
+     * room on the server chosen.
      *
      * The server has to be reachable by every member, and should run with `AUTO_ADMIT=true`:
      * otherwise only the space's creator is admitted to its room, and nothing in WE can admit
-     * anyone else. Unset, spaces keep publishing on the node's default link language.
+     * anyone else.
      */
     linkServerUrl?: string;
     /**

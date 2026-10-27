@@ -21,7 +21,8 @@ breakage points at one cause.
 - **The scope is optional**: the package or area, as in `fix(backend-ad4m)` or `ci(netlify)`.
 - **The description names the change and stops**: lowercase, imperative, no full stop, and short
   enough that the title fits in the PR list, which cuts it off at about 70 characters — aim for
-  under 60. The why belongs in the description, not the title.
+  under 60. The why belongs in the description, not the title. A stacked PR's title also carries
+  `(stacked on #N)`, which the workflow adds (see below); the 60 is before it.
 
 `fix(backend-ad4m): drop the removed subscribe argument` · `feat(board): agree on moves with flows`
 · `ci: pin ad4m by commit`. A release is `Release v<version>`.
@@ -104,7 +105,10 @@ where it merges if that is not `dev`. The PR template carries the block, comment
 
 GitHub shows a PR's base branch on its own page, as a branch name, and nowhere in the list. So the
 `PR stacking` workflow labels every PR based on anything but `dev` or `main` as `stacked`, which the
-list shows beside the title, and checks the block against the base. **`PR stacking / Stacked on the PR
+list shows beside the title, and checks the block against the base. It also ends the title with
+`(stacked on #N)`, naming the PR whose branch the base is, since a label can't say which one. Don't
+type the suffix yourself: the workflow writes it from the base, corrects it after a rebase onto
+another PR, and takes it off when the PR is retargeted at `dev`. **`PR stacking / Stacked on the PR
 it names`** fails when a stacked PR has no block, when the block names a PR whose branch is not the
 base, when that PR has merged or closed, and when a PR that now targets `dev` still has one. It says
 which and gives the block to paste. Editing the description, or retargeting the PR, re-runs it.
@@ -115,7 +119,7 @@ left as written. A PR from a fork cannot be edited by the check, so there the bl
 hand.
 
 Merge the stack from the bottom. When the PR below merges and its branch is deleted, GitHub retargets
-the next one at `dev`, and the label and the block go by themselves.
+the next one at `dev`, and the label, the block and the title's suffix go by themselves.
 
 ## Merging
 

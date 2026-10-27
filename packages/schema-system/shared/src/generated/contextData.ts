@@ -1367,7 +1367,6 @@ export const contextData: ContextData = {
         { name: 'systemLightThemeId', type: 'string', predicate: 'we://system_light_theme', required: false },
         { name: 'systemDarkThemeId', type: 'string', predicate: 'we://system_dark_theme', required: false },
         { name: 'displayPreferences', type: 'string', predicate: 'we://display_preferences', required: false },
-        { name: 'claudeApiKey', type: 'string', predicate: 'we://claude_api_key', required: false },
         { name: 'datasetOrder', type: 'string', predicate: 'we://dataset_order', required: false },
         {
           name: 'globalSpaceJoined',
@@ -1403,7 +1402,7 @@ export const contextData: ContextData = {
         { name: 'moduleSettings', type: 'string', predicate: 'we://module_settings', required: false },
       ],
       relations: [
-        { name: 'installedTemplates', kind: 'HasMany', predicate: 'we://installed_template', target: 'Template' },
+        { name: 'hiddenTemplates', kind: 'HasMany', predicate: 'we://hidden_template', target: 'Template' },
         { name: 'installedThemes', kind: 'HasMany', predicate: 'we://installed_theme', target: 'Theme' },
         {
           name: 'spaceTemplatePreferences',
@@ -2642,10 +2641,11 @@ export const contextData: ContextData = {
         segments: { type: 'array' },
         templateSegments: { type: 'array' },
         params: { type: 'object' },
+        page: { type: 'string' },
       },
-      actions: ['navigate', 'setParam', 'back'],
-      ambient: ['navigate', 'setParam', 'back'],
-      needsArgs: ['navigate', 'setParam'],
+      actions: ['navigate', 'resolve', 'setParam', 'back'],
+      ambient: ['navigate', 'resolve', 'setParam', 'back'],
+      needsArgs: ['navigate', 'resolve', 'setParam'],
     },
     {
       name: 'runtimeStore',
@@ -2857,6 +2857,7 @@ export const contextData: ContextData = {
           ],
         },
         isDevelopment: { type: 'boolean' },
+        devFeatures: { type: 'boolean' },
         devTools: { type: 'boolean' },
         credentialEntered: { type: 'boolean' },
         credentialConfirmed: { type: 'boolean' },

@@ -209,44 +209,13 @@ interface ChatTurn {
 }
 
 /**
- * Where the generation runs. `backend` prompts the node's own language model through the port —
- * the default, and the same place transcription and extraction already run. `anthropic` calls the
- * API directly with the agent's stored key, kept as the fallback for a node with no model.
+ * Where the generation runs: the backend's own language model, through the port — the same place
+ * transcription, extraction and the template editor run, so a model configured once serves them all.
  */
-export type ShapeGenerationTransport =
-  | { kind: 'backend'; port: { prompt(system: string, input: string): Promise<string> } }
-  | { kind: 'anthropic'; apiKey: string };
-
-/** One turn against the Anthropic API: history in, the forced tool call's input out. */
-async function anthropicTurn(apiKey: string, history: ChatTurn[]): Promise<ToolInput> {
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 4096,
-      system: SYSTEM,
-      tools: [defineEntityTool],
-      tool_choice: { type: 'tool', name: 'define_model' },
-      messages: history.map((t) => ({ role: t.role, content: t.text })),
-    }),
-  });
-  if (!response.ok) {
-    const body = await response.text().catch(() => '');
-    throw new Error(`Claude API error ${response.status}: ${body}`);
-  }
-  const result = (await response.json()) as {
-    content: Array<{ type: string; input?: unknown }>;
-  };
-  const toolUse = result.content.find((c) => c.type === 'tool_use');
-  if (!toolUse?.input) throw new Error('The model returned no tool call.');
-  return toolUse.input as ToolInput;
-}
+export type ShapeGenerationTransport = {
+  kind: 'backend';
+  port: { prompt(system: string, input: string): Promise<string> };
+};
 
 /**
  * One turn against the backend's model: history packed into a single prompt, JSON parsed back out.
@@ -311,10 +280,7 @@ export async function generateShapeDraft(
   const turns = 1 + (opts.maxRepairTurns ?? 2);
 
   for (let turn = 0; turn < turns; turn++) {
-    const input =
-      opts.transport.kind === 'anthropic'
-        ? await anthropicTurn(opts.transport.apiKey, history)
-        : await backendTurn(opts.transport.port, history);
+    const input = await backendTurn(opts.transport.port, history);
 
     const draft = toolInputToDraft(input);
     const problems = draftProblems(draft, opts.existingEntities, opts.referenceTargets);
