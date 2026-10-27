@@ -60,6 +60,11 @@ import type { RouteSchema, SchemaNode, SchemaProp, TemplateSchema } from '@we/sc
 import {
   anchorScope,
   answerButton,
+  askWhatGoesHere,
+  BACK_TO_CHOOSER,
+  canvasEditing,
+  canvasSeedOptions,
+  CARD_LOCALS,
   CHANGED,
   composerModal,
   discussionSection,
@@ -71,7 +76,9 @@ import {
   foldingSectionLabel,
   formModal,
   linkedRecords,
+  newNoteModal,
   newSignalTypeButton,
+  newThingChooser,
   panelHeader,
   panelScroll,
   peopleAtPath,
@@ -90,15 +97,7 @@ import {
   workflowsSection,
 } from '@we/template-kit';
 
-import {
-  askWhatGoesHere,
-  BACK_TO_CHOOSER,
-  CARD_LOCALS,
-  editNoteModal,
-  fieldEditor,
-  newNoteModal,
-  newThingChooser,
-} from './WorkshopCards.ts';
+import { editNoteModal, fieldEditor } from './WorkshopCards.ts';
 import {
   CANVAS_FILL,
   FOLD_FROM_GRAPH,
@@ -3381,72 +3380,20 @@ const canvas: SchemaNode = {
   props: {
     seeds: {
       source: 'canvas',
-      /*
-        `pending` is what makes a suggestion look like one.
-
-        An extraction pass can stage a *whole* record rather than writing it, and a staged record is
-        in the graph: it answers the canvas's query exactly as an accepted one does, so until now a
-        card nobody had agreed to was indistinguishable from a card somebody had. The proposal list
-        is the only thing that knows the difference, and its `id` is the record's own — so handing
-        the ids over is the whole of the connection.
-      */
       options: {
         /*
-          The space's canvas, over everything in the space.
-
-          The placements are the canvas's own; the cards are the space collection's children, so a
-          record anybody files into the space — a call's finds, a note made here, a channel — can be
-          placed without being moved anywhere. See `members` on the seed.
+          The space's canvas, over everything in the space, with what every space canvas has — the
+          placements its own, the cards the space collection's children, suggestions marked, lines
+          drawn and routed per canvas, the counts on each footer. See `canvasSeedOptions` in the kit.
         */
-        canvas: SPACE_CANVAS,
-        members: { id: { $: 'spaceStore.root' }, via: 'children' },
-        contains: EXTRACTABLE,
-        // Where each card came from, for the "this call" lens.
-        origin: 'extractedFrom',
+        ...canvasSeedOptions({ canvas: SPACE_CANVAS, members: { id: { $: 'spaceStore.root' }, via: 'children' } }),
         // The lens, hiding: only what the conversation in scope produced. See `SCOPE_PARAM`.
         onlyFrom: { $: `(${FROM_HIDE}) ? (${SCOPE_RECORD}) : ''` },
-        connections: 'Relationship',
-        // How this canvas draws those connections: which side of a card each line attaches to, and
-        // any points somebody bent it through. Per canvas, like a placement — the same claim shown
-        // elsewhere keeps its own shape there.
-        routes: 'EdgeRoute',
-        /*
-          Whether anybody has agreed to a record yet — which is a fact about the record, not about
-          the call being looked at.
-
-          It read a flat list that was really the live call's, so after a restart it marked nothing
-          at all and every suggestion came back looking already accepted. Keying it per call fixed
-          that and introduced a smaller version of the same lie: the outgoing call's cards stay on
-          the board for the moment its replacement is being queried, and against the incoming call's
-          list — empty, nothing having fetched it yet — every one of them flashed as settled.
-
-          The store's lists are unions across calls, and ask the question the marker actually means. The panel's
-          review list stays keyed, because "which decisions am I being asked for" *is* about a
-          conversation.
-        */
-        pending: { $: UNCONFIRMED },
-        /*
-          The two kinds of suggestion, told apart — see `suggestions.ts` in the template kit. `pending`
-          is a record a pass made and nobody has kept, which is provisional and faded; `changed` is an
-          agreed record carrying a suggested edit, which is settled and only marked. They were one
-          list, so an agreed card a pass had an opinion about was faded like a draft.
-        */
-        changed: { $: CHANGED },
         // Put away while the reader hides suggestions — the switch in the key, shared with the board
         // and the calendar through the address. Changed records are never hidden.
         hidden: { $: `(${SUGGESTIONS_HIDDEN}) ? ${UNCONFIRMED} : []` },
         // Kinds the reader put away from the key's eye — every card of each, and the lines to them.
         hiddenTypes: { $: HIDDEN_KINDS },
-        /*
-          How many reactions and replies each card has collected, as two numbers on its footer.
-
-          The counts ride in the reads the seed already makes — one projection each, no extra round
-          trip and no subscription per card, which is what a canvas of three hundred things needs.
-          The breakdown by type and the controls are the inspector's, one press away: a card here is
-          a preview inside an arrangement, and what it owes the reader is that there is something to
-          open.
-        */
-        counts: ['signals', 'responses'],
         /*
           What each card weighs, whenever the tree is shown or the order is a reaction — see `TREE_WEIGH`
           in `WorkshopTree` for why both.
@@ -3691,54 +3638,32 @@ const canvas: SchemaNode = {
     folded: { $: FOLDED_CARDS },
     onNodeFold: FOLD_FROM_GRAPH,
     /*
-      The line, drawn — and written on the spot, with nothing filled in.
-
-      `connectNodesNow` rather than `connectNodes`, which is the knowledge map's answer and stays it:
-      there, a claim two things are related is what the map is *for*, and the form is where somebody
-      says what they mean by it. Here the arrangement is the work. Drawing the line **is** the
-      assertion, and a modal per line is a mode change in the middle of a spatial gesture — on the one
-      surface where every other gesture writes silently, `onEdgeRetarget` included, which changes what
-      an existing line *says* with no dialog at all. Asking on the cheaper act and not on the dearer
-      one is the wrong way round.
-
-      Nothing is deferred that was ever enforced: the form saved with both fields empty, so an
-      unlabelled connection was always reachable and this only stops charging a modal for it. The
-      words are added where the line is read — click it, and the inspector has its label, its
-      description and the community's kinds.
-
-      Which is why the `onSuccess` matters as much as the call. A line that appears with nothing
-      selected teaches nobody that it is a record with an author and a thread; opening the inspector
-      on it puts the fields in front of the person who just drew it, in the same beat. Empty on a
-      failure, which clears the panel rather than leaving the last card in it — the same honesty
-      `onEdgeClick` keeps for a line with nothing behind it. And through `focus` below, the line is
-      selected on the canvas too, as soon as the canvas has re-read and drawn it.
+      Every gesture that changes the canvas or what is on it — moving and carrying cards, drops, lines
+      drawn and routed, undo, delete, a selection's colour, each card's toolbar — is the kit's, shared
+      with every space canvas (`canvasEditing`). What is the workshop's: a line just drawn, and a
+      change to review, open in the inspector; choosing a card's colour turns the lenses off, since a
+      card's own colour is hidden while a lens is on and a picker whose result stayed invisible would
+      read as broken.
     */
-    onEdgeCreate: {
-      $invoke: 'recordStore.connectNodesNow',
-      args: [{ $: 'event' }],
-      onSuccess: [
+    ...canvasEditing({
+      canvas: SPACE_CANVAS,
+      afterConnect: [
         { $setLocal: 'inspecting', value: { $: 'result' } },
         { $setLocal: 'inspectingType', value: { $: "result ? 'Relationship' : ''" } },
       ],
-    },
-    /*
-      The drop, written back — an upsert against the *canvas* rather than an update of the record.
-
-      A coordinate is a fact about the pair, so the same task can sit on two canvases in two places and
-      the record never learns it was on one. `recordId`/`recordType` rather than the node's address:
-      the graph names a node `we-graph://entity/<dataset>/<type>/<id>` and a template has no operator
-      that could take that apart.
-    */
-    /*
-      `dragOnCanvas` rather than `placeOnCanvas`, because a fold travels with its contents.
-
-      The whole payload rather than four values picked out of it: a folded card arrives carrying a
-      placement for each card hidden under it, and a schema cannot loop over a list whose length it
-      does not know — `$invoke` calls a method once. Without it, folding a cluster and carrying it
-      into a corner would scatter everything back where it was the moment you unfolded, which makes
-      a fold a way of hiding things rather than of tidying them.
-    */
-    onNodeDragEnd: { $invoke: 'recordStore.dragOnCanvas', args: [SPACE_CANVAS, { $: 'event' }] },
+      onReview: [
+        { $setLocal: 'inspecting', value: { $: 'event.recordId' } },
+        { $setLocal: 'inspectingType', value: { $: 'event.recordType' } },
+      ],
+      afterColour: [
+        {
+          $if: {
+            condition: { $: `!(${NO_LENS})` },
+            then: { $invoke: 'routeStore.setParam', args: [LENS_PARAM, 'none'] },
+          },
+        },
+      ],
+    }),
     /*
       The same gesture in the tree, where what a drag means is different.
 
@@ -3755,30 +3680,9 @@ const canvas: SchemaNode = {
     onNodeArrange: { $invoke: 'recordStore.arrangeOnTree', args: [SPACE_CANVAS, { $: 'local.spine' }, { $: 'event' }] },
     // Who answered with the reaction the tree is weighed by, for the strip's list of voices.
     onSeedSummary: TREE_VOICE_SUMMARY,
-    onNodeResize: { $invoke: 'recordStore.resizeOnCanvas', args: [SPACE_CANVAS, { $: 'event' }] },
     // Not in the tree, which gives every card one box: a resize there would change nothing on screen, and
     // its handles would sit over the card's reaction badge on the same edge.
     resizable: { $: `!${TREE_ON}` },
-    /*
-      Routing a line by hand, written back — and binding these is what puts the handles on one.
-
-      Two gestures over one record: `onEdgeAnchor` pins which side of a card an end attaches to,
-      dragged around the card's rim; `onEdgeReroute` carries the points the line is bent through, so
-      a connection can be taken round a card sitting between its two ends. Both land on an
-      `EdgeRoute` parented to this canvas rather than on the `Relationship` — how a claim is *drawn*
-      is a fact about a view, and the same claim on another canvas is untouched.
-    */
-    onEdgeAnchor: { $invoke: 'recordStore.anchorOnCanvas', args: [SPACE_CANVAS, { $: 'event' }] },
-    onEdgeReroute: { $invoke: 'recordStore.rerouteOnCanvas', args: [SPACE_CANVAS, { $: 'event' }] },
-    /*
-      And the same handle dropped on a *different* card, which re-attaches the connection.
-
-      The one gesture here that edits the claim rather than the view: an anchor and a bend are how
-      this canvas draws the line, and this is what the line *says* — so it changes wherever the
-      relationship is shown. That end's anchor is cleared with it, a side pinned against the card
-      that used to be there deciding nothing about the one that arrived.
-    */
-    onEdgeRetarget: { $invoke: 'recordStore.retargetOnCanvas', args: [SPACE_CANVAS, { $: 'event' }] },
     /*
       What is selected, in the address — because the inspector is a *panel*.
 
@@ -3814,13 +3718,6 @@ const canvas: SchemaNode = {
     // Double-click empty canvas to make something there — see `newThingChooser`.
     onCanvasDoubleClick: askWhatGoesHere(SPACE_CANVAS),
     /*
-      Something dragged in from the Pocket, or from anywhere else, lands where it was dropped.
-
-      A placement is the canvas's membership, so the store's one action is enough — and it refuses
-      a record from another space, which this canvas could not draw, with a sentence saying so.
-    */
-    onDrop: { $invoke: 'recordStore.dropOnCanvas', args: [SPACE_CANVAS, { $: 'event' }] },
-    /*
       A line is a record here too, so clicking one inspects it.
 
       The canvas draws its connections from `Relationship`, a reified entity — which means each line
@@ -3833,117 +3730,6 @@ const canvas: SchemaNode = {
     onEdgeClick: [
       { $setLocal: 'inspecting', value: { $: "event.recordId ?? ''" } },
       { $setLocal: 'inspectingType', value: { $: "event.recordType ?? ''" } },
-    ],
-    /*
-      Delete, on whatever is selected — a card, several cards, or a line.
-
-      An accelerator, not the only path: a card's own bar carries a bin (see `nodeActions`), and the
-      inspector carries one for whichever of the two is open. A key that was the sole way to remove
-      something would be a way nobody discovers. What it buys is the case where reaching for either
-      of those is disproportionate — tidying up a canvas, where the answer to "this line is wrong" is
-      wanted in the same beat as noticing it.
-
-      Cards go through `deleteRecords`, which raises the host's confirmation **once** for the whole
-      selection. Looping `record.delete` over a set stacks a dialog per card, which is what made
-      multi-select delete a thing to design rather than to fall into.
-
-      It was briefly the case that this took cards *off the canvas* instead, on the argument that the
-      reversible act is the better one to put behind a reflex key. That was wrong here, and worth
-      recording: almost every card on this canvas is extraction output owned by the call, and the
-      canvas seed reads owned-but-unplaced records back as the tray — so removing the placement
-      returned the card on the next read and parked it in the corner. The reversible act does not
-      exist on this canvas, so the guard in front of the key is the dialog.
-
-      A line goes through `record.delete`, which is the same guard by a different route: a connection
-      is a single record and there is no set to count.
-    */
-    onDeleteSelection: [
-      {
-        $if: {
-          condition: { $: 'count(event.records)' },
-          then: { $invoke: 'recordStore.deleteRecords', args: [{ $: 'event.records' }] },
-        },
-      },
-      {
-        $if: {
-          condition: { $: "event.kind == 'edge' && event.recordId" },
-          /*
-            Through the store rather than `record.delete`, which the store never sees: going through it is
-            what lets the line vanish on the press instead of lingering until the delete comes back.
-            Destructive either way, so the host asks the same question it always did.
-          */
-          then: {
-            $invoke: 'recordStore.deleteRecords',
-            args: [{ $: '[{ recordId: event.recordId, recordType: event.recordType }]' }],
-          },
-        },
-      },
-    ],
-    /*
-      Undo, over this canvas's arrangement — a move, a resize, a colour, a card taken off.
-
-      Replayed as new forward writes rather than as a rollback, so a peer rearranging the same canvas
-      during a call does not lose what they did, and a card they have moved since is left alone
-      rather than dragged back out from under them. Deleting a record is outside it, which is the
-      other half of why the key above no longer deletes.
-
-      Scoped to the call this canvas is about, so walking to another call's canvas does not leave a
-      press that would move cards on a canvas nobody is looking at.
-    */
-    onUndo: { $invoke: 'recordStore.undoCanvas', args: [SPACE_CANVAS] },
-    onRedo: { $invoke: 'recordStore.redoCanvas', args: [SPACE_CANVAS] },
-    /*
-      Cards can be carried off this canvas — into the Pocket, and from there into any other space.
-
-      The canvas beside a live call is exactly where somebody finds a thing worth keeping, and until
-      now there was no gesture that could take it anywhere: the graph received drops and could not
-      be dragged from. It is the ordinary card drag, with the release deciding — over the canvas a
-      move, over a drop zone a carry, and the card goes back where it started.
-    */
-    carry: true,
-    /*
-      What a selection of several offers. Two, and they are the two that mean something said about a
-      set — recolour them, or end them.
-
-      A "take off the canvas" sat here and has gone; see `onDeleteSelection` for why it could not
-      work on this canvas.
-    */
-    selectionActions: [
-      { id: 'color', control: 'color', title: 'Colour', value: { from: 'data.canvasColor' } },
-      { id: 'delete', icon: 'trash', title: 'Delete', tone: 'danger' },
-    ],
-    onSelectionAction: [
-      {
-        $if: {
-          condition: { $: "event.action == 'delete'" },
-          then: { $invoke: 'recordStore.deleteRecords', args: [{ $: 'event.records' }] },
-        },
-      },
-      /*
-        The colour, previewed as it is browsed and written once on Apply.
-
-        The picker confirms here (see `ColorControl`), so everything before the tick arrives as a
-        preview — which for a selection matters: without the guard, dragging the hue area would
-        write a record per selected card per frame.
-      */
-      {
-        $if: {
-          condition: { $: "event.action == 'color' && event.preview" },
-          then: {
-            $invoke: 'recordStore.previewCardStyle',
-            args: [{ $: 'event.records.map(r, r.recordId)' }, 'color', { $: 'event.value' }],
-          },
-        },
-      },
-      {
-        $if: {
-          condition: { $: "event.action == 'color' && !event.preview" },
-          then: {
-            $invoke: 'recordStore.setCardStyle',
-            args: [SPACE_CANVAS, { $: 'event.records.map(r, r.recordId)' }, 'color', { $: 'event.value' }],
-          },
-        },
-      },
     ],
     /*
       Clearing on a background click, and only then.
@@ -3962,167 +3748,6 @@ const canvas: SchemaNode = {
         ],
       },
     },
-    /*
-      The decision, on the card that raised it.
-
-      A suggestion is resolvable from the extraction panel too, and that is the right surface for
-      working through a backlog. It is the wrong one when the thing you are looking at is in front
-      of you: the card is what asked the question, so finding its line in a list somewhere else and
-      matching the two up by reading is work the canvas created and should absorb.
-
-      `when` is the style rules' own match clause against the same node data, so the tick and the
-      cross appear on exactly the cards the rule above faded — one fact, read twice, which is what
-      stops the two from ever disagreeing. `data.` prefix included: see the note up there.
-
-      Delete appears once a card is settled, and not before. On a suggestion it would be a second
-      button that looks like it does the same thing as the cross — and it is not the same thing:
-      discarding resolves the suggestion, where deleting only removes the record and leaves the
-      staged overlay behind it, so the extraction panel would go on offering a decision about
-      something that no longer exists. Two buttons, one of them subtly wrong, is worse than one.
-
-      `{ exists: false }` rather than `{ not: true }`, because the seed writes the flag only on the
-      cards it applies to — "not pending" is the absence of the field, which is what this asks.
-
-      It is still offered on everything else. Extraction proposes things that are simply wrong about
-      a conversation, and until now the only way to remove one that had been accepted was to find it
-      in another view.
-    */
-    nodeActions: [
-      { id: 'accept', icon: 'check', title: 'Accept', when: { 'data.pending': true }, tone: 'positive' },
-      { id: 'reject', icon: 'x', title: 'Reject', when: { 'data.pending': true }, tone: 'danger' },
-      /*
-        A suggested change is answered in the inspector, where there is room to read old → new — a card
-        on a canvas is a clipped preview. This opens it on the card.
-      */
-      { id: 'review', icon: 'pencil-simple-line', title: 'Review pending change', when: { 'data.changed': true } },
-      /*
-        How this card looks, on the card — colour, shape, and how large its content is drawn.
-
-        Presentation per placement, and it lives in the header with the other things you do *to* a
-        card rather than in the inspector, which is about what the record says. Host controls named
-        by `control`, so this stays JSON; each reads its value off the placement's data and reports
-        through `onNodeAction` with a `value`. Not on a suggestion: a card nobody has agreed to
-        offers the decision and nothing else.
-      */
-      {
-        id: 'color',
-        control: 'color',
-        title: 'Colour',
-        value: { from: 'data.canvasColor' },
-        when: { 'data.pending': { exists: false } },
-      },
-      {
-        id: 'cardShape',
-        control: 'shape',
-        title: 'Shape',
-        value: { from: 'data.canvasCardShape' },
-        when: { 'data.pending': { exists: false } },
-      },
-      {
-        id: 'contentScale',
-        control: 'scale',
-        title: 'Content size',
-        value: { from: 'data.canvasContentScale' },
-        when: { 'data.pending': { exists: false } },
-      },
-      {
-        id: 'delete',
-        icon: 'trash',
-        title: 'Delete',
-        when: { 'data.pending': { exists: false } },
-        tone: 'danger',
-      },
-    ],
-    /*
-      One handler, branching on which was pressed — the shape a handler array is for.
-
-      Delete goes through `record.delete` rather than a store action, so it is guarded by the host's
-      own confirmation like every destructive call a template can name. The other two need none:
-      discarding a suggestion removes something nobody has agreed to, and a second dialog in front of
-      that is a question about a question.
-    */
-    onNodeAction: [
-      {
-        $if: {
-          condition: { $: "event.action == 'review'" },
-          then: [
-            { $setLocal: 'inspecting', value: { $: 'event.recordId' } },
-            { $setLocal: 'inspectingType', value: { $: 'event.recordType' } },
-          ],
-        },
-      },
-      {
-        $if: {
-          condition: { $: "event.action == 'accept'" },
-          /*
-            Kept, and pinned where it is drawn. A suggestion is parked rather than placed — a placement
-            is shared, and nobody had agreed to the record — so without one a kept card went on being
-            parked, somewhere new on every reload. Keeping it is the moment it joins the arrangement.
-          */
-          then: [
-            { $invoke: 'modules.transcribe.acceptProposal', args: [{ $: 'event.recordId' }] },
-            {
-              $invoke: 'recordStore.placeOnCanvas',
-              args: [
-                SPACE_CANVAS,
-                { $: 'event.recordId' },
-                { $: 'event.recordType' },
-                { $: 'event.x' },
-                { $: 'event.y' },
-              ],
-            },
-          ],
-        },
-      },
-      {
-        $if: {
-          condition: { $: "event.action == 'reject'" },
-          then: { $invoke: 'modules.transcribe.rejectProposal', args: [{ $: 'event.recordId' }] },
-        },
-      },
-      {
-        $if: {
-          condition: { $: "event.action == 'delete'" },
-          then: { $invoke: 'record.delete', args: [{ $: 'event.recordType' }, { $: 'event.recordId' }] },
-        },
-      },
-      /*
-        The three presentation controls, through one action that takes the field name — the action's
-        id IS the placement field. A moving control previews without writing, so a slider shows its
-        result before the drag ends and the card never jumps; a settled one writes.
-      */
-      {
-        $if: {
-          condition: { $: "event.action in ['color', 'cardShape', 'contentScale'] && event.preview" },
-          then: {
-            $invoke: 'recordStore.previewCardStyle',
-            args: [{ $: 'event.recordId' }, { $: 'event.action' }, { $: 'event.value' }],
-          },
-        },
-      },
-      {
-        $if: {
-          condition: { $: "event.action in ['color', 'cardShape', 'contentScale'] && !event.preview" },
-          then: {
-            $invoke: 'recordStore.setCardStyle',
-            args: [SPACE_CANVAS, { $: 'event.recordId' }, { $: 'event.action' }, { $: 'event.value' }],
-          },
-        },
-      },
-      /*
-        Picking a colour turns the lenses off.
-
-        A card's own colour is hidden while a lens is on, so a picker whose result stayed invisible
-        would read as broken. Choosing one is a statement that this card's colour matters more than
-        the reading right now; the key is one click away for whoever wants the reading back.
-      */
-      {
-        $if: {
-          condition: { $: `event.action == 'color' && !event.preview && !(${NO_LENS})` },
-          then: { $invoke: 'routeStore.setParam', args: [LENS_PARAM, 'none'] },
-        },
-      },
-    ],
   },
   /*
     The way in, under the canvas's own sentence.
@@ -4256,8 +3881,8 @@ const canvasBody: Omit<RouteSchema, 'path'> = {
     // kind's colour, as the chooser's card did — `kindFill` reads the route's `typeStyles`.
     recordFormModal({ back: BACK_TO_CHOOSER, entityPicker: false, iconColor: kindFill }),
     // What goes here, a new note, and the selected note opened — see `WorkshopCards`.
-    newThingChooser(SPACE_CANVAS),
-    newNoteModal(SPACE_CANVAS),
+    newThingChooser(SPACE_CANVAS, { fill: kindFill }),
+    newNoteModal(SPACE_CANVAS, { fill: kindFill }),
     editNoteModal,
   ],
 };
