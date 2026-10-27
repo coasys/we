@@ -322,16 +322,22 @@ const ITEM_STYLES = css`
     background: var(--we-role-item-hover);
     color: var(--we-role-text);
   }
+  /*
+    Square where the bar is, so the guide, the bar and the row's edge run as one straight line. A 3px
+    bar cannot take the row's 10px rounding, and the two curves side by side did not match. Only where
+    a theme draws a bar: with none, this resolves to the row's own radius.
+
+    The hovered row takes the same shape. It is where the selection will land, and a row rounded on
+    its leading edge under the pointer and flat there once chosen read as two different shapes.
+  */
+  [part='row']:hover,
+  :host([selected]) [part='row'] {
+    border-start-start-radius: clamp(0px, calc(${ROW_RADIUS} - var(--_bar) * 1000), ${ROW_RADIUS});
+    border-end-start-radius: clamp(0px, calc(${ROW_RADIUS} - var(--_bar) * 1000), ${ROW_RADIUS});
+  }
   :host([selected]) [part='row'] {
     background: ${SELECTED('fill', 'var(--we-role-selected)')};
     color: ${SELECTED('text', 'var(--we-role-on-selected)')};
-    /*
-      Square where the bar is, so the guide, the bar and the row's edge run as one straight line. A
-      3px bar cannot take the row's 10px rounding, and the two curves side by side did not match.
-      Only where a theme draws a bar: with none, this resolves to the row's own radius.
-    */
-    border-start-start-radius: clamp(0px, calc(${ROW_RADIUS} - var(--_bar) * 1000), ${ROW_RADIUS});
-    border-end-start-radius: clamp(0px, calc(${ROW_RADIUS} - var(--_bar) * 1000), ${ROW_RADIUS});
   }
   /* The leading bar, square with the row's start. */
   :host([selected]) [part='row']::before {

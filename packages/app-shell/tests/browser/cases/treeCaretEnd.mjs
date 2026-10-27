@@ -16,7 +16,7 @@ export const widths = [420];
 
 const near = (a, b, tolerance = 1.5) => Math.abs(a - b) <= tolerance;
 
-export async function check({ measureAll, measureParts, partStyle, screenshot }) {
+export async function check({ measureAll, measureParts, partStyle, evaluate, moveTo, screenshot }) {
   const problems = [];
   const items = await measureAll('we-tree-item');
   const nth = (label) => items.findIndex((b) => b.text.startsWith(label));
@@ -64,6 +64,20 @@ export async function check({ measureAll, measureParts, partStyle, screenshot })
   const otherCorner = await partStyle('we-tree-item', 'border-top-left-radius', 'row', nth('Type'));
   if (litCorner !== '0px') problems.push(`the lit row's leading corner is ${litCorner}, not square`);
   if (otherCorner === '0px') problems.push('a row that is not lit lost its rounding');
+
+  // A hovered row takes the lit row's shape: square where the bar would be, round at its other end.
+  // Tagged rather than found by text: an open row's text includes its children's, so the first item
+  // holding "Type" is the one around it.
+  await evaluate(() =>
+    [...document.querySelectorAll('we-tree-item')]
+      .find((item) => item.textContent.trim().startsWith('Type'))
+      .setAttribute('data-case-target', ''),
+  );
+  await moveTo('[data-case-target]');
+  const hoverLead = await partStyle('we-tree-item', 'border-top-left-radius', 'row', nth('Type'));
+  const hoverEnd = await partStyle('we-tree-item', 'border-top-right-radius', 'row', nth('Type'));
+  if (hoverLead !== '0px') problems.push(`a hovered row's leading corner is ${hoverLead}, not square like a lit one`);
+  if (hoverEnd === '0px') problems.push('a hovered row lost the rounding at its trailing end');
 
   await screenshot?.('tree-caret-end');
   return problems;
