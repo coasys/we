@@ -76,6 +76,23 @@ describe('a border', () => {
   });
 });
 
+describe('a state that recolours a border', () => {
+  it('reaches every side, keeping a side written on its own at its own width', async () => {
+    const el = await mount('we-button', {
+      variant: 'solid',
+      border: '1px solid border',
+      borderTop: '4px solid accent',
+      hoverProps: { borderColor: 'accent' },
+    });
+    expect(el.style.getPropertyValue('--we-button-hover-border-right')).toBe(
+      'var(--we-button-border-width) solid var(--we-button-hover-border-color)',
+    );
+    expect(el.style.getPropertyValue('--we-button-hover-border-top')).toBe(
+      '4px solid var(--we-button-hover-border-color)',
+    );
+  });
+});
+
 describe('a state’s colours', () => {
   it('read the theme’s colour for that state ahead of the component’s own', async () => {
     const el = await mount('we-button', { variant: 'outline' });

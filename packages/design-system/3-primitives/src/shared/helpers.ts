@@ -1050,6 +1050,50 @@ const BORDER_WIDTH_KEY = THEMED_KEYS.find((key) => key.key === 'borderWidth')!;
  * restates its border (an outline button does, to recolour it) would otherwise put it back to the
  * default width under the pointer.
  */
+const BORDER_SIDES = ['Top', 'Right', 'Bottom', 'Left'] as const;
+
+/**
+ * A state that recolours or rethickens the border, and says nothing about its sides, reaches them.
+ *
+ * The sides are declared after `border-color` and `border-width`, and at rest each one is drawn from
+ * the element's own width and colour variables (see `syncBorderVars`) — the resting ones. A state's
+ * `borderColor` lands in the state's colour variable, which no side read, so `hoverProps:
+ * { borderColor }` on anything with a border did nothing at all: a card meant to ring in its colour
+ * under the pointer stayed grey. Here each side the element has a border on is restated for the
+ * state, from its resting width and style, with the state's colour or width in place.
+ */
+function syncStateBorderSides(
+  el: HTMLElement,
+  componentName: string,
+  state: ElementState,
+  stateProps: Partial<DesignSystemProps>,
+  props: Partial<DesignSystemProps>,
+): void {
+  const recolours = stateProps.borderColor !== undefined || stateProps.borderWidth !== undefined;
+  const ownSides = stateProps.border !== undefined || BORDER_SIDES.some((s) => stateProps[`border${s}`] !== undefined);
+  if (!recolours || ownSides) return;
+  const base = `--we-${componentName}-`;
+  const prefix = `--we-${componentName}-${state}-`;
+  for (const side of BORDER_SIDES) {
+    const own = props[`border${side}`];
+    const parts = borderParts(own ?? props.border ?? '');
+    if (!parts) continue;
+    // A side of the shorthand reads the resting variables, as at rest; a side written on its own
+    // has its own width and colour.
+    const width = stateProps.borderWidth
+      ? `var(${prefix}border-width)`
+      : own
+        ? parts.width
+        : `var(${base}border-width)`;
+    const color = stateProps.borderColor
+      ? `var(${prefix}border-color)`
+      : own
+        ? parts.color
+        : `var(${base}border-color)`;
+    setProperty(el, `${prefix}border-${side.toLowerCase()}`, `${width} ${parts.style} ${color}`);
+  }
+}
+
 function applyComponentStateTheme(
   el: HTMLElement,
   componentName: string,
@@ -1098,6 +1142,7 @@ export function updateAllCustomVars(
     if (stateProps && typeof stateProps === 'object') {
       hasState = true;
       updateCustomVars(el, componentName, withBoxSidesFilled(stateProps, [props]), undefined, state);
+      syncStateBorderSides(el, componentName, state, stateProps, props);
       applyComponentStateTheme(el, componentName, state, stateProps, rawExplicitProps);
     }
   });
