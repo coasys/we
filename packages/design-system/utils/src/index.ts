@@ -625,12 +625,28 @@ function topLevelParts(value: string): string[] {
 export function parseBorder(value: string | undefined, defaultValue = ''): string {
   const val = value ?? defaultValue;
   if (!val) return '';
-  const parts = topLevelParts(val);
-  if (parts.length < 3) return val;
+  const parts = borderParts(val);
+  return parts ? `${parts.width} ${parts.style} ${parts.color}` : val;
+}
+
+/**
+ * A `width style colour` border's three parts, resolved as `parseBorder` resolves them, or
+ * undefined for anything shorter (`'none'`, `'0'`).
+ *
+ * Read from the value as written, not from `parseBorder`'s output: that output's width is
+ * `var(--we-border-width, 1px)`, which has a space in it, so splitting it again on spaces took
+ * `var(--we-border-width,` for the width and `solid var(…)` for the colour.
+ */
+export function borderParts(value: string): { width: string; style: string; color: string } | undefined {
+  const parts = topLevelParts(value);
+  if (parts.length < 3) return undefined;
   const [width, style, ...colorParts] = parts;
   const color = colorParts.join(' ');
-  const resolvedColor = /[(#]/.test(color) ? color : tokenVar('color', color, '');
-  return `${width === '1px' ? 'var(--we-border-width, 1px)' : width} ${style} ${resolvedColor}`;
+  return {
+    width: width === '1px' ? 'var(--we-border-width, 1px)' : width,
+    style,
+    color: /[(#]/.test(color) ? color : tokenVar('color', color, ''),
+  };
 }
 
 export function getMarginValues(props: DesignSystemProps) {

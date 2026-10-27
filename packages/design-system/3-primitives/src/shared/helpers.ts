@@ -6,6 +6,7 @@ import {
   BASE_TYPOGRAPHY_SPECS as BASE_TYPOGRAPHY,
   BASE_VISUAL_SPECS as BASE_VISUAL,
   bgImageLayer,
+  borderParts,
   composeTransform,
   computeBgImageComposite,
   focusSelector,
@@ -622,18 +623,26 @@ function syncBorderVars(el: HTMLElement, prefix: string, props: Partial<DesignSy
   setProperty(el, `${prefix}border`, props.border ? parseBorder(props.border) : undefined);
 
   if (props.border) {
-    const parsed = parseBorder(props.border);
-    const parts = parsed.split(' ');
-    if (parts.length >= 3) {
-      const [width, , ...colorParts] = parts;
-      const color = colorParts.join(' ');
-      if (!props.borderColor) setProperty(el, `${prefix}border-color`, color);
-      if (!props.borderWidth) setProperty(el, `${prefix}border-width`, width);
+    const parts = borderParts(props.border);
+    if (parts) {
+      if (!props.borderColor) setProperty(el, `${prefix}border-color`, parts.color);
+      if (!props.borderWidth) setProperty(el, `${prefix}border-width`, parts.width);
     }
-    if (!props.borderTop) setProperty(el, `${prefix}border-top`, parsed);
-    if (!props.borderRight) setProperty(el, `${prefix}border-right`, parsed);
-    if (!props.borderBottom) setProperty(el, `${prefix}border-bottom`, parsed);
-    if (!props.borderLeft) setProperty(el, `${prefix}border-left`, parsed);
+    /*
+      Each side restates the shorthand, so a `border` in a state resets a side the resting element
+      set on its own. It restates it through this element's width and colour variables rather than
+      as the shorthand's text: the sides are declared after `border-color` and `border-width`, so a
+      side carrying its own colour beat both, and a theme's `components.<name>.border` (which lands
+      in the colour variable) never reached a component whose default border is a shorthand —
+      Glow's outline buttons drew 1px in the plain border colour, not its 1.5px muted outline.
+    */
+    const side = parts
+      ? `var(${prefix}border-width) ${parts.style} var(${prefix}border-color)`
+      : parseBorder(props.border);
+    if (!props.borderTop) setProperty(el, `${prefix}border-top`, side);
+    if (!props.borderRight) setProperty(el, `${prefix}border-right`, side);
+    if (!props.borderBottom) setProperty(el, `${prefix}border-bottom`, side);
+    if (!props.borderLeft) setProperty(el, `${prefix}border-left`, side);
   } else {
     setProperty(el, `${prefix}border-color`, props.borderColor ? tokenVar('color', props.borderColor, '') : undefined);
     setProperty(el, `${prefix}border-top`, props.borderTop ? parseBorder(props.borderTop) : undefined);
@@ -871,12 +880,8 @@ interface ThemedKey {
 }
 
 /** The parts of a `border` shorthand, as `syncBorderVars` reads them. */
-const borderPart = (props: Partial<DesignSystemProps>, part: 'width' | 'color'): string | undefined => {
-  if (!props.border) return undefined;
-  const parts = parseBorder(props.border).split(' ');
-  if (parts.length < 3) return undefined;
-  return part === 'width' ? parts[0] : parts.slice(2).join(' ');
-};
+const borderPart = (props: Partial<DesignSystemProps>, part: 'width' | 'color'): string | undefined =>
+  props.border ? borderParts(props.border)?.[part] : undefined;
 
 const THEMED_KEYS: ThemedKey[] = [
   {

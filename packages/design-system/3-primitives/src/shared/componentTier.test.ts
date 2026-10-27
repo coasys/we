@@ -49,6 +49,26 @@ describe('a primitive’s own defaults', () => {
   });
 });
 
+describe('a border', () => {
+  /*
+    The sides are declared after `border-color` and `border-width`. While each restated the
+    shorthand's text, a theme's border colour and width lost to them, and Glow's outline buttons
+    drew 1px in the plain border colour rather than the 1.5px muted outline the theme sets.
+  */
+  it('draws every side through the width and colour a theme can reach', async () => {
+    const el = await mount('we-button', { variant: 'outline' });
+    expect(el.style.getPropertyValue('--we-button-border-top')).toBe(
+      'var(--we-button-border-width) solid var(--we-button-border-color)',
+    );
+    expect(el.style.getPropertyValue('--we-button-border-color')).toBe(
+      'var(--we-theme-button--outline-border, var(--we-theme-button-border, var(--we-role-border)))',
+    );
+    expect(el.style.getPropertyValue('--we-button-border-width')).toBe(
+      'var(--we-theme-button--outline-border-width, var(--we-theme-button-border-width, var(--we-border-width, 1px)))',
+    );
+  });
+});
+
 describe('the static sheet', () => {
   it('falls back to the component’s value and then its role', () => {
     const css = getStaticDSStyles('badge');
