@@ -1,0 +1,96 @@
+# Publishes the single-file build of @we/agent-tools as a GitHub release, for hosts that compile it
+# in. The AD4M executor is one: its build downloads a release by version and checks the files
+# against the hashes it pins, so a new release reaches it by bumping that version.
+#
+# Runs when an `agent-tools-v<version>` tag is pushed, `<version>` being
+# packages/agent-tools/package.json's. The tags of WE's own releases are `v<version>` and start
+# electron-package.yaml instead; neither workflow matches the other's tags.
+#
+# The release holds three files:
+#   agent-tools.bundle.js  the bundle, as `pnpm build` writes it
+#   agent-tools.json       what it exports: each toolset's appliesTo and tools, the version, the commit
+#   SHA256SUMS             both files' sha256, in `sha256sum` format
+#
+# The bundle is reproducible: two clean `pnpm build`s of one commit give the same bytes. That
+# needs the whole workspace built in order (the root `build` is serial). A build of
+# @we/agent-tools and its dependencies alone regenerates the AI context without the packages it
+# reads, and the catalogue inside the bundle comes out different.
+name: Agent tools release
+
+on:
+  push:
+    tags: ['agent-tools-v*']
+
+# Two pushes of one tag must not race to create the same release.
+concurrency:
+  group: agent-tools-release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+
+      # The tag names the release, and the manifest says which version it is from package.json. A
+      # tag that disagrees would publish files that call themselves something else.
+      - name: Check the tag matches the version
+        run: |
+          VERSION="$(node -p "require('./packages/agent-tools/package.json').version")"
+          if [ "$GITHUB_REF_NAME" != "agent-tools-v$VERSION" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match @we/agent-tools version $VERSION. Set the version in packages/agent-tools/package.json and tag agent-tools-v<version>."
+            exit 1
+          fi
+
+      - name: Build
+        run: NODE_OPTIONS='--max-old-space-size=8192' pnpm build
+
+      # The same check as CI's: a build that rewrote tracked files built something other than the
+      # commit the tag names.
+      - name: Check generated files are committed
+        run: |
+          DRIFT="$(git status --porcelain)"
+          if [ -n "$DRIFT" ]; then
+            echo '::error::The build changed tracked files, so the bundle is not what the tagged commit says. Run `pnpm build` on dev, commit the regenerated output, and tag that commit.'
+            echo "$DRIFT"
+            exit 1
+          fi
+
+      # The bundle has to run with only what a host provides before anyone compiles it in.
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Run the bundle under Deno
+        run: pnpm --filter @we/agent-tools test:deno
+
+      - name: Collect the release files
+        run: |
+          mkdir release
+          cp packages/agent-tools/dist/agent-tools.bundle.js release/
+          node packages/agent-tools/scripts/release-manifest.mjs \
+            packages/agent-tools/dist/agent-tools.bundle.js "$GITHUB_SHA" > release/agent-tools.json
+          (cd release && sha256sum agent-tools.bundle.js agent-tools.json > SHA256SUMS)
+          cat release/SHA256SUMS
+
+      # A pre-release, so that it never becomes the repository's "Latest": that is WE's desktop
+      # release, which people download. These files are inputs to other builds.
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "@we/agent-tools ${GITHUB_REF_NAME#agent-tools-v}, built from $GITHUB_SHA by the Agent tools release workflow."
+            echo
+            echo '```'
+            cat release/SHA256SUMS
+            echo '```'
+          } > notes.md
+          gh release create "$GITHUB_REF_NAME" release/* \
+            --prerelease \
+            --title "Agent tools ${GITHUB_REF_NAME#agent-tools-v}" \
+            --notes-file notes.md
