@@ -48,7 +48,7 @@ import {
   useContext,
 } from 'solid-js';
 
-import { queryString, type RouteStore } from './RouteStore';
+import { type NavigateOptions, queryString, resolveNavigation, type RouteStore } from './RouteStore';
 import { useShellStore } from './ShellStore';
 
 /**
@@ -95,14 +95,24 @@ export function ShellRouteStoreProvider(props: ParentProps) {
     else console.warn('ShellRouteStore: navigate called before router was ready');
   }
 
-  /** As `RouteStore.navigate`: `query` is written for the caller, the rest goes to the router. */
-  function navigate(to: string, options?: { query?: Record<string, unknown> } & Record<string, unknown>) {
-    const { query, ...routerOptions } = options ?? {};
+  /**
+   * As `RouteStore.navigate`: a relative path is resolved, `query` is written for the caller, the
+   * rest goes to the router. Against the overlay's own address, whose root is its `/`: resolving
+   * against the browser's would put an overlay link under whatever page is behind the overlay.
+   */
+  function navigate(to: string, options?: NavigateOptions) {
+    const { query, base, ...routerOptions } = options ?? {};
+    const resolved = resolveNavigation(to, currentPath(), 0, base);
     const written = query && typeof query === 'object' ? queryString(query) : '';
     go(
-      written ? `${to}${to.includes('?') ? '&' : '?'}${written}` : to,
+      written ? `${resolved}${resolved.includes('?') ? '&' : '?'}${written}` : resolved,
       Object.keys(routerOptions).length ? routerOptions : undefined,
     );
+  }
+
+  /** As `RouteStore.resolve`, against the overlay's own address. */
+  function resolve(to: string, options?: Pick<NavigateOptions, 'base'>): string {
+    return resolveNavigation(to, currentPath(), 0, options?.base);
   }
 
   /**
@@ -137,6 +147,7 @@ export function ShellRouteStoreProvider(props: ParentProps) {
     setCurrentPath,
     setSearch,
     navigate,
+    resolve,
     setParam,
     /*
       The overlay's own history, not the browser's.

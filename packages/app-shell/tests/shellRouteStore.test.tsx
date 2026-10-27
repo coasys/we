@@ -70,6 +70,25 @@ async function mountStore(initial = '/settings'): Promise<RouteStore> {
   return store;
 }
 
+/*
+  The overlay has its own address, and a relative path in a shell schema is from it. It used to be
+  resolved against the browser's address, the page behind the overlay, so a Settings link written
+  relative would have gone under whatever space was open.
+*/
+describe('shellRouteStore relative paths', () => {
+  it('resolves against the overlay’s address, not the page behind it', async () => {
+    window.history.replaceState(null, '', '/space/abc/board');
+    const store = await mountStore('/settings/ai');
+
+    store.navigate('../modules', { base: { depth: 2 } });
+    await waitFor(() => expect(store.currentPath()).toBe('/settings/modules'));
+
+    store.navigate('~/profile');
+    await waitFor(() => expect(store.currentPath()).toBe('/profile'));
+    expect(window.location.pathname).toBe('/space/abc/board');
+  });
+});
+
 describe('shellRouteStore params', () => {
   it('exposes the RouteStore param members at all', async () => {
     // The regression itself: these were simply absent from the object literal.

@@ -82,6 +82,8 @@ const SOLID_TESTS = [
   'tests/spaceDeepLink.test.tsx',
   // Real signals and effects: the failure was an effect that never heard what arrived after it.
   'tests/spaceRecordWait.test.ts',
+  // The real router, buildRoutes and the renderer together: where a template's links go.
+  'tests/templateNavigation.test.tsx',
   // Drives the create-space modal's schema through the real renderer: what reaches createSpace.
   'tests/createSpaceServer.test.tsx',
 ];

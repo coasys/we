@@ -68,7 +68,7 @@ const boardsRoute: RouteSchema = {
               props: {
                 variant: 'bare',
                 width: '100%',
-                onClick: { $invoke: 'routeStore.navigate', args: ['./board', { $: '{ query: { id: board.id } }' }] },
+                onClick: { $invoke: 'routeStore.navigate', args: ['~/board', { $: '{ query: { id: board.id } }' }] },
               },
               children: [
                 {
@@ -111,7 +111,7 @@ const boardsRoute: RouteSchema = {
           title: 'New board',
           kind: KIND.board,
           placeholder: 'Roadmap',
-          navigateTo: './board',
+          navigateTo: '~/board',
         }),
       ],
     },
@@ -168,7 +168,7 @@ const boardRoute: RouteSchema = {
           props: {
             variant: 'ghost',
             size: 'sm',
-            onClick: { $invoke: 'routeStore.navigate', args: [{ $: "spaceStore.spacePath + '/'" }] },
+            onClick: { $invoke: 'routeStore.navigate', args: ['~/'] },
           },
           children: [{ type: 'we-icon', props: { name: 'arrow-left' } }],
         },
@@ -259,7 +259,7 @@ export const trelloTemplate: TemplateSchema = {
           props: {
             variant: 'soft',
             size: 'sm',
-            onClick: { $invoke: 'routeStore.navigate', args: [{ $: "spaceStore.spacePath + '/'" }] },
+            onClick: { $invoke: 'routeStore.navigate', args: ['~/'] },
           },
           children: ['All boards'],
         },

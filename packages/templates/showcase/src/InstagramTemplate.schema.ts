@@ -39,7 +39,7 @@ const header: SchemaNode = {
           type: 'we-button',
           props: {
             variant: 'bare',
-            onClick: { $invoke: 'routeStore.navigate', args: [{ $: "spaceStore.spacePath + '/'" }] },
+            onClick: { $invoke: 'routeStore.navigate', args: ['~/'] },
           },
           children: [
             {
@@ -57,7 +57,7 @@ const header: SchemaNode = {
       children: [
         {
           type: 'we-button',
-          props: { variant: 'ghost', size: 'sm', onClick: { $invoke: 'routeStore.navigate', args: ['./mine'] } },
+          props: { variant: 'ghost', size: 'sm', onClick: { $invoke: 'routeStore.navigate', args: ['~/mine'] } },
           children: [{ type: 'we-icon', props: { name: 'user' } }],
         },
         {
@@ -92,7 +92,7 @@ const grid = (opts: { author?: SchemaProp; empty: SchemaNode }): SchemaNode =>
     overlay: tileOverlay,
     onTileClick: (as) => ({
       $invoke: 'routeStore.navigate',
-      args: ['./photo', { $: `{ query: { id: ${as}.id } }` }],
+      args: ['~/photo', { $: `{ query: { id: ${as}.id } }` }],
     }),
     empty: opts.empty,
   });
@@ -114,7 +114,7 @@ const photoDetail: RouteSchema = {
             variant: 'ghost',
             size: 'sm',
             alignSelf: 'start',
-            onClick: { $invoke: 'routeStore.navigate', args: [{ $: "spaceStore.spacePath + '/'" }] },
+            onClick: { $invoke: 'routeStore.navigate', args: ['~/'] },
           },
           children: [{ type: 'we-icon', props: { name: 'arrow-left' } }, 'Back'],
         },

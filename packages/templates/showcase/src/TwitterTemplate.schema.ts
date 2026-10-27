@@ -38,8 +38,8 @@ const navItems = [
     is, which is what an empty segment means below.
   */
   { label: 'Home', icon: 'house', path: '.', segment: '' },
-  { label: 'Photos', icon: 'image', path: './photos', segment: 'photos' },
-  { label: 'Profile', icon: 'user', path: './profile', segment: 'profile' },
+  { label: 'Photos', icon: 'image', path: '~/photos', segment: 'photos' },
+  { label: 'Profile', icon: 'user', path: '~/profile', segment: 'profile' },
 ];
 
 /**
@@ -190,7 +190,7 @@ const postCard = (opts: { clickable?: boolean }): SchemaNode => {
         props: {
           variant: 'bare',
           width: '100%',
-          onClick: { $invoke: 'routeStore.navigate', args: ['./post', { $: '{ query: { id: post.id } }' }] },
+          onClick: { $invoke: 'routeStore.navigate', args: ['~/post', { $: '{ query: { id: post.id } }' }] },
         },
         children: [
           {

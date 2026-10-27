@@ -4,29 +4,6 @@ import { isDeferredArg } from './expression';
 import { deepUnwrap } from './reactive';
 import { type Memo, noMemo, type Props } from './types';
 
-// Resolves relative paths used in router navigation (e.g. '.', './', '../')
-export function resolveRelativePath(rawPath: string, baseDepth: number, pathname: string): string {
-  // Get current path segments and start from the base depth
-  const segs = pathname.split('/').filter(Boolean);
-  let depth = Math.min(baseDepth, segs.length);
-
-  // Navigate to the parent index for '' or '.'
-  if (rawPath === '' || rawPath === '.') return `/${segs.slice(0, depth).join('/')}`;
-
-  // Normalize './' and support parent navigation with '../'
-  let path = rawPath;
-  if (path.startsWith('./')) path = path.slice(2);
-  while (path.startsWith('../') && depth > 0) {
-    path = path.slice(3);
-    depth--;
-  }
-
-  // Rebuild the final path and clean up any double slashes
-  const base = '/' + segs.slice(0, depth).join('/');
-  const finalPath = (base === '/' ? '' : base.replace(/\/+$/, '')) + '/' + path.replace(/^\/+/, '');
-  return finalPath.replace(/\/{2,}/g, '/');
-}
-
 // Helper function to process $arg / $event tokens with access to callback arguments.
 // Recurses into nested objects and arrays so the tokens work at any depth.
 function processArgTokens(resolvedArgs: unknown[], callArgs: unknown[]): unknown[] {
@@ -129,8 +106,7 @@ export function resolveInvokeProp(
       memo to be *for*.
 
       It also keeps a lifecycle argument a plain value: a memoized argument arrives as an accessor,
-      and the relative-path branch below unwraps only what it needs to test — the rest reach the
-      store through `deepUnwrap` at call time.
+      and every argument reaches the store through `deepUnwrap` at call time.
     */
     function dispatchActions(actions: unknown[], ctx: Props): void {
       for (const item of actions) {
@@ -140,38 +116,26 @@ export function resolveInvokeProp(
     }
 
     return (...callArgs: unknown[]) => {
-      /*
-        Handle special case for relative paths used in router navigation.
-
-        The path is unwrapped before it is tested: an expression argument resolved at render time —
-        `args: [{ $: 'view.path' }]` on a nav strip — arrives as a reactive accessor, not a string,
-        and testing the accessor skipped this branch entirely. `./cards` then reached the router as
-        written and landed on the catch-all route, while an absolute path survived unchanged.
-      */
-      if (storeName === 'routeStore' && methodName === 'navigate') {
-        const first = deepUnwrap(resolvedArgs[0]);
-        if (typeof first === 'string') {
-          const path = first.trim();
-          const isAbsolute = path.startsWith('/') || path.startsWith('http');
-          const baseDepth = (context?.$nav as { baseDepth?: number })?.baseDepth;
-
-          if (!isAbsolute && typeof baseDepth === 'number') {
-            const pathname =
-              (context?.$nav as { pathname?: string })?.pathname ??
-              (typeof window !== 'undefined' ? window.location.pathname : '/');
-            const normalizedPath = resolveRelativePath(path, baseDepth, pathname);
-            const nextArgs = [normalizedPath, ...resolvedArgs.slice(1).map(deepUnwrap)];
-            return method.apply(store, nextArgs);
-          }
-        }
-      }
-
       // Hand deferred expressions the callback argument they were waiting for. Only what was written:
       // the callback's own arguments reach the method through an expression or not at all.
       const finalArgs = processArgTokens(resolvedArgs, callArgs);
 
       // Unwrap reactive accessors at all depths so store methods receive plain values
       const unwrappedArgs = finalArgs.map(deepUnwrap);
+
+      /*
+        A path a template writes is relative to the route the node is rendered in, and only the
+        renderer knows which route that is (`$nav`, from `buildRoutes`). So it is handed to
+        `navigate` as the base, and the router resolves the path against its own address — see
+        `resolvePath`. Added here, at call time, rather than by rewriting the path: a path that
+        arrives with the event (a tree's `select`, a menu's `onSelect`) is only known now.
+      */
+      const baseDepth = (context?.$nav as { baseDepth?: unknown } | undefined)?.baseDepth;
+      if (storeName === 'routeStore' && methodName === 'navigate' && typeof baseDepth === 'number') {
+        const given = unwrappedArgs[1];
+        unwrappedArgs[1] = { ...(given && typeof given === 'object' ? given : {}), base: { depth: baseDepth } };
+      }
+
       const result = method.apply(store, unwrappedArgs);
 
       /*

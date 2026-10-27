@@ -6,6 +6,7 @@ import { expandDefinitions } from './definitions';
 import { checkExpression, ExpressionSyntaxError, isCallTime, isExpressionToken, parseExpression } from './expressions';
 import type { Expr } from './expressions/ast';
 import { HOST_PART_IDS, isHostPartId } from './hostPartIds';
+import { isRelativePath } from './navigationPaths';
 import { parseRecordViewKey } from './recordViews';
 import { isTemplateElement } from './templateElements';
 import type { SchemaNode } from './types';
@@ -506,6 +507,12 @@ interface WalkState {
    *  actually reads routes arrays from. Child nodes that are not route entries must never own
    *  a routes array; if they do, nothing will render (the router never sees it). */
   isRouteEligible: boolean;
+  /**
+   * How many address segments the route a node is in spans below the template's root, for the
+   * checks on relative paths (`checkRelativeTarget`). Undefined in the template's chrome, which
+   * resolves a relative path from the root.
+   */
+  routeDepth?: number;
   /**
    * This schema is a fragment (a bare `SchemaNode` export), not a self-contained template.
    *
@@ -1473,7 +1480,10 @@ function checkProps(
     if (propName === '$localState') continue;
 
     const propPath = `${path}.props.${propName}`;
-    if (propName === 'href') checkIdInPath(propValue, propPath, errors);
+    if (propName === 'href') {
+      checkIdInPath(propValue, propPath, errors);
+      checkRelativeTarget(propValue, propPath, state, errors);
+    }
 
     /*
       Every token in the prop, however deep it sits in plain data.
@@ -1732,6 +1742,7 @@ function checkTokenValue(
     if (Array.isArray(obj.args)) checkInvokeArgs(obj.args, `${path}.args`, errors);
     if (obj.$invoke === 'routeStore.navigate' && Array.isArray(obj.args)) {
       checkIdInPath(obj.args[0], `${path}.args[0]`, errors);
+      checkRelativeTarget(obj.args[0], `${path}.args[0]`, state, errors);
     }
     /*
       A call with nothing, to a method that needs something. The method is passed only the `args`
@@ -1958,6 +1969,44 @@ function checkInvokeArgs(args: unknown[], path: string, errors: ValidationError[
   };
 
   args.forEach((arg, i) => walk(arg, `${path}[${i}]`, false));
+}
+
+/**
+ * A relative path that goes nowhere useful, by the rule in `resolvePath`.
+ *
+ * - `.` (or `./`, or nothing) inside a route is that route: a button that goes to the page it is
+ *   on, which does nothing. Five templates wrote it meaning "home", so their back buttons were dead.
+ * - More `..` than the route is deep climbs above the template's root, where it stops, so the link
+ *   lands on the root while reading as somewhere else.
+ *
+ * Both say to write `~/`, which is the template's root from anywhere. Only a path written as text
+ * is judged; one computed at runtime cannot be. A fragment is skipped for `..`: alone, it does not
+ * know how deep it will be placed.
+ */
+function checkRelativeTarget(value: unknown, path: string, state: WalkState, errors: ValidationError[]): void {
+  if (typeof value !== 'string' || !isRelativePath(value)) return;
+  const [written] = value.trim().split(/[?#]/);
+  if (written.startsWith('~')) return;
+  if (state.routeDepth !== undefined && ['', '.', './'].includes(written)) {
+    errors.push({
+      path,
+      message:
+        `"${value}" inside a route is that route, so this goes to the page it is on and does nothing. ` +
+        "Write '~/' for the template's home, or '..' for the page above this one",
+      severity: 'warning',
+    });
+    return;
+  }
+  const climbs = written.split('/').filter((part) => part === '..').length;
+  if (!state.isFragment && climbs > (state.routeDepth ?? 0)) {
+    errors.push({
+      path,
+      message:
+        `"${value}" climbs above the template's root, where a relative path stops, so it lands on the root. ` +
+        "Write '~/' and the path from the template's root instead",
+      severity: 'warning',
+    });
+  }
 }
 
 /**
@@ -2318,7 +2367,16 @@ function checkRoutes(
     contextScope: new Set<string>(),
   };
   for (let i = 0; i < routes.length; i++) {
-    walkNode(routes[i], `${path}.routes[${i}]`, ctx, routeState, errors);
+    const own = String((routes[i] as { path?: unknown } | undefined)?.path ?? '')
+      .split('/')
+      .filter(Boolean).length;
+    walkNode(
+      routes[i],
+      `${path}.routes[${i}]`,
+      ctx,
+      { ...routeState, routeDepth: (state.routeDepth ?? 0) + own },
+      errors,
+    );
   }
 }
 
@@ -2503,6 +2561,8 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
     isRouteEligible: true,
     isFragment: !meta,
     isApp: (schema as { meta?: { role?: string } } | null)?.meta?.role === 'app',
+    // A section is mounted as one route below the space, so its own nodes are already in a route.
+    ...((schema as { meta?: { role?: string } } | null)?.meta?.role === 'view' && { routeDepth: 1 }),
   };
 
   walkNode(schema, '', context, state, errors);
