@@ -3708,12 +3708,6 @@
           "required": false
         },
         {
-          "name": "claudeApiKey",
-          "type": "string",
-          "predicate": "we://claude_api_key",
-          "required": false
-        },
-        {
           "name": "datasetOrder",
           "type": "string",
           "predicate": "we://dataset_order",
@@ -3774,9 +3768,9 @@
       ],
       "relations": [
         {
-          "name": "installedTemplates",
+          "name": "hiddenTemplates",
           "kind": "HasMany",
-          "predicate": "we://installed_template",
+          "predicate": "we://hidden_template",
           "target": "Template"
         },
         {
@@ -7148,6 +7142,9 @@
           "type": "array",
           "properties": ["label", "value"]
         },
+        "draftNameMember": {
+          "type": "string"
+        },
         "hintEditor": {
           "type": "object",
           "properties": ["entity", "classHint", "defaultClassHint", "rows", "customized"]
@@ -7397,7 +7394,14 @@
         "openSpaceSettings",
         "closeSpaceSettings",
         "scrollToId",
+        "resizeDock",
+        "resizeColumn",
+        "endDockResize",
         "raiseDock",
+        "moveDock",
+        "moveTab",
+        "endTabDrag",
+        "endDockMove",
         "toggleLane",
         "setLaneCollapsed",
         "toggleCustomiseLayout",
@@ -8731,7 +8735,8 @@
           "anchor": "object",
           "media": "object",
           "record": "string",
-          "continued": "boolean"
+          "continued": "boolean",
+          "topology": "object"
         }
       },
       "components": [],

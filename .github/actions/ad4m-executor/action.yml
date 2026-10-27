@@ -7,7 +7,7 @@ description: The ad4m executor binary for one ad4m commit — restored from the 
 # different binary from the one the app ships.
 #
 # The binary lands at `<parent of the workspace>/ad4m/target/release/ad4m-executor`, beside the WE
-# checkout, where `we-seed.json`'s `../ad4m/target/release/ad4m-executor` finds it. That path is part
+# checkout, and the `path` output names it: callers pass it on as `AD4M_EXECUTOR`. That path is part
 # of the cache's version as well as its location: a restore naming any other path misses an entry
 # that is there. `AD4M_DIR` is exported for the steps after this one.
 #

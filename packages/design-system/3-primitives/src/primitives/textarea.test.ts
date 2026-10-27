@@ -292,3 +292,17 @@ describe('the vertical padding', () => {
     expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
 });
+
+describe('a missing value', () => {
+  it('is an empty box, not the text "undefined"', async () => {
+    // A field added to a model after a record was made has no value yet, and arrives as undefined.
+    const el = document.createElement('we-textarea') as HTMLElement & {
+      value: unknown;
+      updateComplete: Promise<unknown>;
+    };
+    el.value = undefined;
+    document.body.appendChild(el);
+    await el.updateComplete;
+    expect(el.shadowRoot?.querySelector('textarea')?.value).toBe('');
+  });
+});

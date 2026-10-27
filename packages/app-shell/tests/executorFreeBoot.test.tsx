@@ -104,6 +104,9 @@ vi.mock('../src/frameworks/solid/stores/ThemeStore', () => ({
 }));
 
 // ── Harness ───────────────────────────────────────────────────────────────────
+import { completeResponse } from '@we/entities';
+import { withExtractionDefaults } from '@we/entities';
+
 import { BootController } from '../src/frameworks/solid/providers/BootController';
 import { AccountStoreProvider } from '../src/frameworks/solid/stores/AccountStore';
 import { AppStoreProvider } from '../src/frameworks/solid/stores/AppStore';
@@ -111,12 +114,10 @@ import { type DatasetStore, DatasetStoreProvider, useDatasetStore } from '../src
 import { ProfileStoreProvider } from '../src/frameworks/solid/stores/ProfileStore';
 import { type RecordStore, RecordStoreProvider, useRecordStore } from '../src/frameworks/solid/stores/RecordStore';
 import { type SessionStore, SessionStoreProvider, useSessionStore } from '../src/frameworks/solid/stores/SessionStore';
-import { ShapeStoreProvider } from '../src/frameworks/solid/stores/ShapeStore';
+import { type ShapeStore, ShapeStoreProvider, useShapeStore } from '../src/frameworks/solid/stores/ShapeStore';
 import { ShellStoreProvider } from '../src/frameworks/solid/stores/ShellStore';
 import { type SpaceStore, SpaceStoreProvider, useSpaceStore } from '../src/frameworks/solid/stores/SpaceStore';
-import { withExtractionDefaults } from '../src/shared/collectionExtraction';
 import { createModuleStoreDeps } from '../src/shared/registries/moduleHostServices';
-import { completeResponse } from '../src/shared/responses';
 import { provideSeed } from '../src/shared/seedRegistry';
 import { writeSpaceLandmark } from '../src/shared/spaceLandmarks';
 
@@ -127,6 +128,7 @@ interface Stores {
   datasets: DatasetStore;
   spaces: SpaceStore;
   records: RecordStore;
+  shapes: ShapeStore;
 }
 
 function mountShell(): Stores {
@@ -136,6 +138,7 @@ function mountShell(): Stores {
     out.datasets = useDatasetStore();
     out.spaces = useSpaceStore();
     out.records = useRecordStore();
+    out.shapes = useShapeStore();
     return null;
   }
   render(() => (
@@ -910,6 +913,43 @@ describe('what the stores actually wrote', () => {
     await writeSpaceLandmark(ref.handle as never, space.id, 'board', board.id);
 
     await vi.waitFor(() => expect(stores.spaces.landmarks().board).toBe(board.id));
+  }, 10000);
+
+  it('says in the model wizard which field will name a record, worked out or chosen', async () => {
+    /*
+      "Work it out" picks a field called name or title, else the first text field — a rule nothing
+      in the list showed, so a field was treated specially on every card with no word of why.
+    */
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace('Named', 'x', 'personal', 'hidden');
+    const ref = (await lifecycle.list()).find((d) => d.name === 'Named')!;
+    await stores.datasets.switchDataset(ref.id);
+
+    const { shapes } = stores;
+    shapes.openShapeWizard();
+    shapes.setShapeField('name', 'Sighting');
+    shapes.addProperty();
+    shapes.addProperty();
+    const [species, notes] = shapes.shapeDraft()!.members.filter((m) => m.kind === 'property');
+    shapes.setMemberField(species.rowId, 'name', 'species');
+    shapes.setMemberField(notes.rowId, 'name', 'notes');
+
+    // Names are typed in place and announced on blur, as the name input does.
+    shapes.commitDraft();
+
+    expect(shapes.draftNameMember()).toBe(species.rowId);
+    expect(shapes.nameOptions()[0].label).toBe('Work it out (species)');
+
+    // The first text field, so it follows the order.
+    shapes.reorderMembers([notes.rowId, species.rowId]);
+    expect(shapes.draftNameMember()).toBe(notes.rowId);
+    expect(shapes.nameOptions()[0].label).toBe('Work it out (notes)');
+
+    // A field chosen is the one, and the option stops guessing.
+    shapes.setNameMember(species.rowId);
+    expect(shapes.draftNameMember()).toBe(species.rowId);
+    expect(shapes.nameOptions()[0].label).toBe('Work it out');
   }, 10000);
 
   it('makes the creator of a space its admin, and lets an admin give and take back a role', async () => {

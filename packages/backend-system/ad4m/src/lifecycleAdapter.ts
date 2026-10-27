@@ -271,13 +271,27 @@ export function createAd4mDatasetLifecycle(
    * a template declares none — it is then taken to want what every link language here has always
    * been given.
    */
+  interface LanguageMetaLike {
+    address: string;
+    name?: string;
+    possibleTemplateParams?: string[] | null;
+  }
+
   async function knownTemplates(): Promise<Array<{ address: string; name: string; params: string[] | null }>> {
-    const metas = (await client.runtime.knownLinkLanguageTemplates()) ?? [];
-    return metas.map((m) => ({
-      address: m.address,
-      name: m.name || m.address,
-      params: m.possibleTemplateParams ?? null,
-    }));
+    const metas = ((await client.runtime.knownLinkLanguageTemplates()) ?? []) as unknown[];
+    /*
+      An executor from before templates came with their metas answers with bare addresses. Read
+      either, and drop anything with no address: a template that cannot be named cannot be chosen,
+      and listed it showed as a nameless option that published nothing.
+    */
+    return metas
+      .map((m) => (typeof m === 'string' ? { address: m } : (m as Partial<LanguageMetaLike>)))
+      .filter((m): m is LanguageMetaLike => typeof m?.address === 'string' && m.address !== '')
+      .map((m) => ({
+        address: m.address,
+        name: m.name || m.address,
+        params: m.possibleTemplateParams ?? null,
+      }));
   }
 
   /** See `Ad4mLifecycleOptions.devLinkLanguageBundle`. Settles once; a failure is retried next list. */

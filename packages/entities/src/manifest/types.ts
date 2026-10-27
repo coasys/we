@@ -30,7 +30,6 @@ export interface AgentSettingsRecord extends RecordInstance {
   systemLightThemeId: string;
   systemDarkThemeId: string;
   displayPreferences: string;
-  claudeApiKey: string;
   datasetOrder: string;
   globalSpaceJoined: boolean;
   globalSpaceUrl: string;
@@ -40,12 +39,12 @@ export interface AgentSettingsRecord extends RecordInstance {
   themeScope: string;
   installedModules: string;
   moduleSettings: string;
-  installedTemplates: TemplateRecord[];
+  hiddenTemplates: TemplateRecord[];
   installedThemes: ThemeRecord[];
   spaceTemplatePreferences: SpaceTemplatePreferenceRecord[];
-  addInstalledTemplates(value: string | { id: string }, batch?: string): Promise<unknown>;
-  removeInstalledTemplates(value: string | { id: string }, batch?: string): Promise<unknown>;
-  setInstalledTemplates(values: (string | { id: string })[], batch?: string): Promise<unknown>;
+  addHiddenTemplates(value: string | { id: string }, batch?: string): Promise<unknown>;
+  removeHiddenTemplates(value: string | { id: string }, batch?: string): Promise<unknown>;
+  setHiddenTemplates(values: (string | { id: string })[], batch?: string): Promise<unknown>;
   addInstalledThemes(value: string | { id: string }, batch?: string): Promise<unknown>;
   removeInstalledThemes(value: string | { id: string }, batch?: string): Promise<unknown>;
   setInstalledThemes(values: (string | { id: string })[], batch?: string): Promise<unknown>;

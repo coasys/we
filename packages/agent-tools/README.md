@@ -4,7 +4,8 @@ What a language model can do with WE: the tools, their handlers, and the rules t
 Framework-free, so the editor's AI panel and any host that runs an agent use the same code.
 
 - **`@we/ai-context`** is what the model _knows_ about WE: the reference and the catalogue.
-- **`@we/agent-tools`** (this package) is what it can _do_: edit a template, today.
+- **`@we/agent-tools`** (this package) is what it can _do_: create and edit templates, and edit
+  themes.
 - **`@we/schema-shared`** holds the rules both use: validation, the catalogue, tree utilities.
 
 ## Two ways in
@@ -16,9 +17,10 @@ is stored now, and answers from that alone.
 
 ```ts
 const toolset = toolsets.template; // appliesTo: ['Template']
-toolset.tools; // template_read (writes: false), template_update (writes: true)
-const { text, properties } = await toolset.call(name, { record, args, models, author: agentDid });
+toolset.tools; // template_read (writes: false), template_update, template_create (writes: true)
+const { text, properties, create } = await toolset.call(name, { record, args, models, author: agentDid });
 // text → the model; failures start with "Error: ". properties → write them, all in one transaction
+// create → present when properties are a NEW record's: make one of create.entity in create.place
 const topics = await toolset.docs.list(); // `template` first, then template/core/*, components, stores…
 const start = await toolset.docs.read('template');
 ```
@@ -29,6 +31,13 @@ parameters, and passes the record it names. `author` is the DID the write goes o
 applies its own agent's changes on every device and offers anybody else's. What `properties` holds
 is exactly what the app's own save writes (`schema` and `version`), so an open screen picks it up
 like a save from another device.
+
+**A tool that creates** says so on the tool (`creates: { entity, places }`), takes no record — or
+one to start from, such as a template to fork — and answers with `create: { entity, place }` beside
+the new record's properties. The place is `library`, the person's own, or `space`, the space the
+agent works in, and which dataset each one is stays the host's to know. A host refuses an answer
+naming a place the tool does not list. `template_create` puts a template in the library unless the
+call asks for the space, and an app template only ever in the library.
 
 Two rules an agent is told and a host should know:
 
@@ -44,6 +53,36 @@ Two rules an agent is told and a host should know:
 Both run on `createTemplateSession`, which is the only place that decides what an edit may do:
 patches apply to a working copy, the result is judged as the tree it will render, only problems the
 edit introduced count against it, and an edit is kept whole or not at all.
+
+**WE runs an agent over a space** (where the backend does not run one): `runAgentConversation`,
+with tools bound to where the person is rather than handed a record per call.
+
+```ts
+const result = await runAgentConversation({
+  converse, // LanguageModelPort.converse
+  system,
+  turns, // the conversation so far, the request last
+  toolsets: [createDataToolset({ dataset, models }), bindRecordToolset(toolsets.template, host)],
+  mayWrite: true, // absent: tools that write are not offered at all
+  confirm: (question) => askThePerson(question), // absent: nothing that asks runs
+});
+// result.text, result.actions (offer as "Show me" buttons), result.wrote (what changed)
+```
+
+- **`createDataToolset`** is a space's records: describe, find, read, create, update, delete, over
+  the entity proxies and so through the app's own write path, the space's policy included. Beside
+  them, WE's conventions: `write_post` writes a composition, and a reply as a response threaded under
+  its subject; `in` puts a record in a collection. `define_model` is offered when the host can define
+  one.
+- **`bindRecordToolset`** runs a record toolset in the same conversation: each tool gains an `id`,
+  and the host's `read`, `write` and `create` stand where a backend's host would.
+- **The loop's guards** hold whatever the model asks for: a tool that writes is neither offered nor
+  run without `mayWrite`; a delete, a new kind of record and anything put in a space ask the person
+  first; what a read answers reaches the model fenced as other people's writing; the model is called
+  at most `maxModelCalls` times.
+
+`tests/feedConversation.test.ts` runs the feed's requests through all of it against the in-memory
+backend, with the model's replies scripted, and reads back what landed.
 
 ## The bundle
 

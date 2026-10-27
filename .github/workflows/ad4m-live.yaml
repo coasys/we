@@ -42,7 +42,7 @@ on:
       - 'package.json'
       - '.github/workflows/ad4m-live.yaml'
       - '.github/actions/ad4m-executor/**'
-      - 'scripts/ad4m-executor-download*'
+      - 'scripts/ad4m-executor*'
   # The same paths on `dev`, so a merged bump caches its executor where every PR can read it.
   push:
     branches: [dev]
@@ -52,7 +52,7 @@ on:
       - 'package.json'
       - '.github/workflows/ad4m-live.yaml'
       - '.github/actions/ad4m-executor/**'
-      - 'scripts/ad4m-executor-download*'
+      - 'scripts/ad4m-executor*'
   # The ad4m bump workflow starts this on its branch, as it does CI — a PR it opens with
   # GITHUB_TOKEN starts nothing. And by hand, from the Actions tab.
   workflow_dispatch:
@@ -79,6 +79,9 @@ jobs:
             scripts/ad4m-pin.mjs
             scripts/ad4m-executor-download.mjs
             scripts/ad4m-executor-download.test.mjs
+            scripts/ad4m-executor.mjs
+            scripts/ad4m-executor.test.mjs
+            scripts/seed.cjs
             .github/actions/ad4m-executor
           sparse-checkout-cone-mode: false
 
@@ -90,7 +93,7 @@ jobs:
           # zstd in node:zlib, which the tests compress with.
           node-version: 24
       - name: The executor download still checks what it fetches
-        run: node --test scripts/ad4m-executor-download.test.mjs
+        run: node --test scripts/ad4m-executor-download.test.mjs scripts/ad4m-executor.test.mjs
 
       - name: Is the pinned executor cached
         id: executor

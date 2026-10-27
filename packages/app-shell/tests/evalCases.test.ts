@@ -6,6 +6,7 @@
  * check and validates. A case that broke either would score every strategy the same for reasons
  * that have nothing to do with context.
  */
+import { judgeTemplate, templateIssues } from '@we/agent-tools';
 import {
   buildValidationContext,
   compactDefinitions,
@@ -97,6 +98,18 @@ describe('each eval case', () => {
       const solved = evalCase.solve(startingTemplate(evalCase.template));
       expect(evalCase.check(solved)).toBe(true);
       expect(validationErrors(solved, context)).toEqual([]);
+    });
+
+    /*
+      The editor refuses an edit that brings in a new warning as well as an error, so a solution
+      that only validates can still be one no model is allowed to write. That is how
+      `delete-with-confirm` came to fail every run once the host began confirming deletes itself:
+      the model wrote the case's dialog, was told it asked twice, and rightly took it out.
+    */
+    it('is an edit the editor would keep', () => {
+      const start = startingTemplate(evalCase.template);
+      const solved = evalCase.solve(start);
+      expect(judgeTemplate(solved, context, templateIssues(start, context))?.message).toBeUndefined();
     });
 
     /*

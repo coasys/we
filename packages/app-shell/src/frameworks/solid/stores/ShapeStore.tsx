@@ -25,6 +25,7 @@ import {
   type EntityManifest,
   extractableEntities,
   manifestEntries,
+  namePropertyOf,
   type ShapeInput,
   type ShapeStore as ShapeStorage,
   trace,
@@ -205,6 +206,11 @@ export interface ShapeStore {
    * "None" for that would claim a record has no name, which is never true.
    */
   nameOptions: Accessor<{ label: string; value: string }[]>;
+  /**
+   * The row id of the field that will name a record of the open draft — the one chosen, or, while
+   * the picker is on "Work it out", the one worked out. Empty when no field qualifies.
+   */
+  draftNameMember: Accessor<string>;
   /** The hint editor's state, null while closed. */
   hintEditor: Accessor<HintEditorState | null>;
   /** The hint editor is loading or saving. */
@@ -398,9 +404,9 @@ export function ShapeStoreProvider(props: ParentProps) {
   );
 
   /*
-    The backend's own model first — the node the community runs on, same as transcription and
-    extraction — with the agent's Anthropic key as fallback. Gating on the key alone hid the whole
-    AI surface from anyone who had not used the template editor, however capable their node was.
+    The backend's own model — the node the community runs on, same as transcription, extraction and
+    the template editor. There was a fallback to an Anthropic key the agent had pasted into the
+    editor; nothing has set that key since the editor moved onto the backend's model.
   */
   const [backendLlm, setBackendLlm] = createSignal(false);
   createEffect(() => {
@@ -414,14 +420,12 @@ export function ShapeStoreProvider(props: ParentProps) {
       .then(setBackendLlm)
       .catch(() => setBackendLlm(false));
   });
-  const aiAvailable = createMemo(() => backendLlm() || Boolean(datasetStore.agentSettings()?.claudeApiKey));
+  const aiAvailable = createMemo(() => backendLlm());
 
-  /** The transport a generation should run on right now, or null when neither is configured. */
+  /** The transport a generation should run on right now, or null while the backend has no model. */
   function generationTransport(): ShapeGenerationTransport | null {
     const port = session.backendPorts()?.languageModel;
-    if (backendLlm() && port) return { kind: 'backend', port };
-    const apiKey = datasetStore.agentSettings()?.claudeApiKey;
-    return apiKey ? { kind: 'anthropic', apiKey } : null;
+    return backendLlm() && port ? { kind: 'backend', port } : null;
   }
 
   /*
@@ -538,10 +542,32 @@ export function ShapeStoreProvider(props: ParentProps) {
     ...namedProperties(),
   ]);
 
-  const nameOptions = createMemo<{ label: string; value: string }[]>(() => [
-    { label: 'Work it out', value: 'none' },
-    ...namedProperties(),
-  ]);
+  /*
+    Worked out the way the saved model will be: the draft lowered as a save lowers it, then the rule
+    every surface names a record by. So the wizard shows the field a card will be headed with, not
+    a second guess at the guess.
+  */
+  const draftNameMember = createMemo<string>(() => {
+    const draft = shapeDraft();
+    if (!draft) return '';
+    if (draft.nameMember) return draft.nameMember;
+    const lowered = draftToManifest(draft, 'preview');
+    if (!lowered.ok) return '';
+    const entity = Object.values(lowered.manifest.entities)[0];
+    const field = entity ? namePropertyOf(entity) : '';
+    return draft.members.find((m) => m.kind === 'property' && m.name.trim() === field)?.rowId ?? '';
+  });
+
+  const nameOptions = createMemo<{ label: string; value: string }[]>(() => {
+    // "Work it out" says what it worked out, so a person sees which field heads the card.
+    const worked = shapeDraft()?.nameMember ? '' : draftNameMember();
+    const name = worked
+      ? shapeDraft()
+          ?.members.find((m) => m.rowId === worked)
+          ?.name.trim()
+      : '';
+    return [{ label: name ? `Work it out (${name})` : 'Work it out', value: 'none' }, ...namedProperties()];
+  });
 
   /** Entity names a shape may legitimately reference: core + foreign + this space's other shapes. */
   const knownEntityNames = (excludeShapeRecordId?: string) => [
@@ -1352,6 +1378,7 @@ export function ShapeStoreProvider(props: ParentProps) {
     relationshipTargets,
     identityOptions,
     nameOptions,
+    draftNameMember,
     hintEditor,
     hintBusy,
     openShapeWizard,

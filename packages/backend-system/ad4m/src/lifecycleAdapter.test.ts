@@ -55,6 +55,16 @@ const templateData = (client: ReturnType<typeof mockClient>) =>
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe('sharingOptions', () => {
+  it('reads an older executor that lists bare addresses, and drops anything with none', async () => {
+    const client = mockClient([HOLOCHAIN]);
+    client.runtime.knownLinkLanguageTemplates = vi.fn(async () => [HOLOCHAIN.address, {}, null]) as never;
+    const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
+
+    expect(await lifecycle.sharingOptions?.()).toEqual([
+      { id: HOLOCHAIN.address, name: HOLOCHAIN.address, kind: 'peer-to-peer' },
+    ]);
+  });
+
   it('hides an old server build when no link server is configured', async () => {
     const client = mockClient([HOLOCHAIN, OLD_SERVER]);
     const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);

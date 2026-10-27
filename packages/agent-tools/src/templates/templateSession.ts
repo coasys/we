@@ -119,6 +119,78 @@ function describeCopy(copy: SchemaNode): string {
   );
 }
 
+/**
+ * The patches a call carries. A model sometimes sends the array as the JSON text of one: Claude did
+ * three times in a row on one run of the eval and used up the session saying so. The text is the
+ * same patches, so they are read rather than refused.
+ *
+ * Text that does not parse is answered with where it broke. Told only that patches must be an array,
+ * a model resent the same broken text three times, since nothing said what was wrong with it.
+ */
+function patchList(value: unknown): SchemaPatch[] | string {
+  const refused = 'Invalid input: patches must be an array';
+  if (typeof value === 'string') {
+    try {
+      value = JSON.parse(value);
+    } catch (err) {
+      return (
+        `${refused}. It arrived as text that is not valid JSON (${(err as Error).message}). ` +
+        'Send the list itself rather than a string, and check that every bracket is closed.'
+      );
+    }
+  }
+  return Array.isArray(value) ? (value as SchemaPatch[]) : refused;
+}
+
+/** The semantic issues a template has as it will render — the baseline an edit is judged against. */
+export function templateIssues(schema: SchemaNode, validationContext: ValidationContext): Set<string> {
+  return new Set(validateSemantic(asRendered(schema), validationContext).errors.map(issueKey));
+}
+
+/** Why a template is refused: which check, the issues it found, and what the model is told. */
+export interface TemplateVerdict {
+  refused: 'structure' | 'semantic';
+  issues: { severity: string; path: string; message: string }[];
+  message: string;
+}
+
+/**
+ * Judge a template as the tree it will render, and answer why it is refused — or undefined when it
+ * can be kept. The structure first, since semantic checks mean nothing over a malformed tree.
+ *
+ * `baseline` holds the semantic issues the template already had, which are not held against it: an
+ * edit answers for what it introduced. A new template has no baseline, so all of them count.
+ */
+export function judgeTemplate(
+  schema: SchemaNode,
+  validationContext: ValidationContext,
+  baseline: Set<string> = new Set(),
+): TemplateVerdict | undefined {
+  const rendered = asRendered(schema);
+  const top = (issues: TemplateVerdict['issues']) =>
+    issues
+      .slice(0, 5)
+      .map((e) => `[${e.severity}] ${e.message}`)
+      .join('; ');
+
+  const structural = validateStructure(rendered);
+  if (!structural.valid)
+    return {
+      refused: 'structure',
+      issues: structural.errors,
+      message: `Structural validation failed (${structural.errors.length} issues). Top issues: ${top(structural.errors)}. Fix the schema structure and retry.`,
+    };
+
+  const fresh = validateSemantic(rendered, validationContext).errors.filter((e) => !baseline.has(issueKey(e)));
+  if (fresh.length > 0)
+    return {
+      refused: 'semantic',
+      issues: fresh,
+      message: `Semantic validation failed (${fresh.length} issues). Top issues: ${top(fresh)}. Fix the invalid tokens/props and retry.`,
+    };
+  return undefined;
+}
+
 export function createTemplateSession(options: TemplateSessionOptions): TemplateSession {
   const { mint, uses, validationContext, debug = () => {} } = options;
 
@@ -143,16 +215,16 @@ export function createTemplateSession(options: TemplateSessionOptions): Template
     const batchUses = uses && structuredClone(uses);
 
     // Only issues a batch introduces are held against it; a template may arrive already imperfect.
-    const baseline = new Set(validateSemantic(asRendered(accumulated), validationContext).errors.map(issueKey));
+    const baseline = templateIssues(accumulated, validationContext);
     let applied = true;
     let patches = 0;
 
     for (const call of calls) {
-      const list = (call.arguments as { patches?: SchemaPatch[] } | undefined)?.patches;
-      if (!Array.isArray(list)) {
+      const list = patchList((call.arguments as { patches?: unknown } | undefined)?.patches);
+      if (typeof list === 'string') {
         results.push({
           callId: call.id,
-          content: 'Invalid input: patches must be an array',
+          content: list,
           isError: true,
           failed: 'input',
         });
@@ -242,39 +314,14 @@ export function createTemplateSession(options: TemplateSessionOptions): Template
       return batch;
     }
 
-    const refuse = (message: string) => {
+    const verdict = judgeTemplate(accumulated, validationContext, baseline);
+    if (verdict) {
+      debug(`[editSession] ${verdict.refused} validation failed`, verdict.issues);
       for (const r of results) {
-        r.content = message;
+        r.content = verdict.message;
         r.isError = true;
       }
-    };
-    const rendered = asRendered(accumulated);
-
-    const structural = validateStructure(rendered);
-    if (!structural.valid) {
-      debug('[editSession] structural validation failed', structural.errors);
-      const top = structural.errors
-        .slice(0, 5)
-        .map((e) => `[${e.severity}] ${e.message}`)
-        .join('; ');
-      refuse(
-        `Structural validation failed (${structural.errors.length} issues). Top issues: ${top}. Fix the schema structure and retry.`,
-      );
-      batch.refused = 'structure';
-      return batch;
-    }
-
-    const fresh = validateSemantic(rendered, validationContext).errors.filter((e) => !baseline.has(issueKey(e)));
-    if (fresh.length > 0) {
-      debug('[editSession] semantic validation failed', fresh);
-      const top = fresh
-        .slice(0, 5)
-        .map((e) => `[${e.severity}] ${e.message}`)
-        .join('; ');
-      refuse(
-        `Semantic validation failed (${fresh.length} issues). Top issues: ${top}. Fix the invalid tokens/props and retry.`,
-      );
-      batch.refused = 'semantic';
+      batch.refused = verdict.refused;
       return batch;
     }
 
