@@ -424,7 +424,7 @@ Example node:
 {
   "type": "we-button",
   "props": {
-    "onClick": { "$invoke": "routeStore.navigate", "args": ["/home"] }
+    "onClick": { "$invoke": "routeStore.navigate", "args": ["~/"] }
   },
   "children": [
     { "type": "we-icon", "props": { "name": "house" } },
@@ -3230,7 +3230,7 @@ RouteStore:
   - params: Record<string, string> — the URL's query parameters, reactive; read one as { $: 'routeStore.params.<name>' }. Prefer $localState with syncParam for fields a view owns; read params directly only for parameters something else writes
   - page: string — the page on screen: currentPath, plus ?id=… when the query names the record the page is about. /board?id=a and /board?id=b are two pages where currentPath says only "a board". What presence compares to tell who is on the same page
 - Actions:
-  - navigate(to: string, options?: { query? }): navigates to a route (a bare path restores that route's remembered query string). A record's id goes in `query`, never in the path: { $invoke: 'routeStore.navigate', args: ['./board', { $: '{ query: { id: board.id } }' }] }, read back on that page as routeStore.params.id. An id is a URI, so in the path it is several segments and the route never matches; navigate writes it so it reads back exactly
+  - navigate(to: string, options?: { query? }): navigates to a route (a bare path restores that route's remembered query string). A path is relative to the route the node is in: '.' is that route itself (so a button navigating to '.' inside a route does nothing), '..' the route above, './x' a page below it. '~/x' is from the template's root, from anywhere — write it for home ('~/') and for links between a template's screens, since it means the same in a header and inside a page. '?q' is the page on screen with that query. An absolute path ('/settings') leaves the template. A relative href is resolved the same way. A record's id goes in `query`, never in the path: { $invoke: 'routeStore.navigate', args: ['~/board', { $: '{ query: { id: board.id } }' }] }, read back on that page as routeStore.params.id. An id is a URI, so in the path it is several segments and the route never matches; navigate writes it so it reads back exactly
   - resolve(to: string): the address a path leads to, resolved as navigate would, without going there. A relative href is rendered through it already, so a template rarely needs it
   - setParam(name: string, value: string | null, options?: { push?: boolean }): writes one query parameter (null removes); replaceState by default, push: true for changes that deserve a Back entry. Prefer $localState syncParam over calling this directly
   - back(): goes back one entry, the browser's own way. Use it on a page reached from several places — a record page is opened from a list, from a search and from a link somebody sent, and only one of those has a parent worth guessing. Does nothing at the start of the session's history
@@ -3491,7 +3491,7 @@ SpaceStore:
   - sharedSpaces: array of Space objects (shared/neighbourhood spaces; all Space fields)
   - spaceList: { uuid, name, description, avatar, kind: 'shared' | 'personal' | 'foreign', isWeSpace, canAdminister }[] — one row per joined dataset the agent can act on, ordered like the sidebar and excluding the system datasets. Includes datasets that are not WE spaces (kind 'foreign', isWeSpace false), which are waiting to be initialized. `uuid` is the dataset id, so it keys navigation and settings whether or not a Space record exists. `sharing` is 'sharing' while a new shared space is still being shared (it is usable meanwhile), 'failed' when that did not work — `shareError` says why, and shareSpace tries again — and '' otherwise; a shared space has a `shareLink`
   - routeSpaceUnjoined: boolean — the current route points at a space this agent has not joined, as a settled fact. What a join gate should read: `currentDataset` being null is also true for the first frames of a refresh, so gating on that flashes a join prompt at someone already inside. False while the answer is still unknown
-  - spacePath: string — the path a space's own pages hang off (`/space/<segment>`), empty outside a space. What a link to one record is built from: an href has to be absolute, since a browser resolves a relative one against the current URL rather than against the route tree, and the segment is the neighbourhood CID for a shared space and the dataset id for a personal one — only the URL says which
+  - spacePath: string — the path a space's own pages hang off (`/space/<segment>`), empty outside a space. For a link that has to reach the space's own pages from any surface, the shell overlay included, whose '~/' is the overlay's own root: recordLink builds on it. Within a template, write '~/' instead. The segment is the neighbourhood CID for a shared space and the dataset id for a personal one — only the URL says which
   - creatingSpace: boolean (true while a new space is being created)
   - joiningSpace: string — the shared id of the space a join is running for, '' when none is. The id rather than a flag so a list can spin only the row being joined; a gate compares it against its own route segment. Stays set for the whole join, which outlives the network call that starts it
   - joinSlow: boolean — that join has been going long enough to be worth mentioning. Joining a shared space has to fetch and install it before it exists anywhere, so a first join routinely takes a minute; pair with joiningSpace to say so instead of spinning in silence
@@ -4076,7 +4076,7 @@ Example: { "$": "routeStore.currentPath" }
 
 Calling actions:
 { "$invoke": "storeName.method", "args": [...] }
-Example: { "$invoke": "routeStore.navigate", "args": ["/home"] }
+Example: { "$invoke": "routeStore.navigate", "args": ["~/"] } (the template's home; see routeStore.navigate for where a path is from)
 
 Feature-module stores:
 { "$": "modules.<moduleId>.<member>" } and { "$invoke": "modules.<moduleId>.<action>" }
@@ -4194,7 +4194,7 @@ Example — Channel list → Conversation list:
           "type": "we-button",
           "props": {
             "variant": "ghost",
-            "onClick": { "$invoke": "routeStore.navigate", "args": ["./channels", { "$": "{ query: { id: channel.id } }" }] }
+            "onClick": { "$invoke": "routeStore.navigate", "args": ["~/channels", { "$": "{ query: { id: channel.id } }" }] }
           },
           "children": [{ "$": "channel.name" }]
         }]
@@ -4227,7 +4227,7 @@ Example — Channel list → Conversation list:
 Notes:
 - Use include when you need related data displayed inline (e.g. a post with its comments, a channel with its conversation count).
 - Use a scope drill-down when you're on a detail route and want only children belonging to the current record.
-- A detail route takes its record's id from the query, never the path: open it with navigate('./channels', { query: { id } }) and read routeStore.params.id. An id is a URI, so in a path it is several segments and the route never matches.
+- A detail route takes its record's id from the query, never the path: open it with navigate('~/channels', { query: { id } }) and read routeStore.params.id. An id is a URI, so in a path it is several segments and the route never matches.
 - dataset must point to the dataset that holds the data. For external apps (e.g. Flux) opened as a WE space, use { "$": "currentDataset" }.
 - The relation name (in include, or scope.via) is the HasMany field name on the parent entity.
 
