@@ -74,6 +74,17 @@ describe('sharingOptions', () => {
     ]);
   });
 
+  it('offers an old server build only the configured server, which is all it is offered for', async () => {
+    const client = mockClient([HOLOCHAIN, OLD_SERVER]);
+    const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient, {
+      linkServerUrl: 'https://links.example.org',
+    });
+
+    expect((await lifecycle.sharingOptions?.())?.find((o) => o.kind === 'server')?.servers).toEqual([
+      'https://links.example.org',
+    ]);
+  });
+
   it('offers a current server build with no link server configured, with AD4M’s servers', async () => {
     const client = mockClient([HOLOCHAIN, SERVER]);
     const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);

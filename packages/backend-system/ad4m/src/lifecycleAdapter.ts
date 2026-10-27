@@ -232,6 +232,14 @@ export function createAd4mDatasetLifecycle(
   const linkServers = [...new Set([options.linkServerUrl, ...AD4M_LINK_SERVERS].filter((url) => !!url))] as string[];
 
   /**
+   * The servers one server template is offered with. An old build (one without `UID`) gets only
+   * the deployment's own server, the one it is offered for: nobody has checked that it can talk to
+   * the servers AD4M runs today.
+   */
+  const serversFor = (params: readonly string[] | null): string[] =>
+    params && !hasDefaultServer(params) ? [options.linkServerUrl!] : [...linkServers];
+
+  /**
    * The values `publish` can give a template's parameters, for one neighbourhood.
    *
    * `uid` and the room are fresh each time, so every neighbourhood gets its own link language and,
@@ -256,8 +264,7 @@ export function createAd4mDatasetLifecycle(
    * Parameters a template declares that `publish` has no value for — empty when it can publish.
    *
    * A `SERVER_URL` always has a value now, but an old build (one without `UID`) is still only
-   * offered where the deployment named its server, as before: nobody has checked that it can talk
-   * to the servers AD4M runs today.
+   * offered where the deployment named its server, as before. See `serversFor`.
    */
   function unfillableParams(params: readonly string[]): string[] {
     const fillable = new Set([...Object.keys(templateValues('')), ...OPTIONAL_TEMPLATE_PARAMS]);
@@ -328,7 +335,7 @@ export function createAd4mDatasetLifecycle(
    * A template declaring a parameter `publish` cannot fill is left out rather than offered: it
    * would be published with that parameter still a placeholder and never sync. That is what hides
    * an old build of the server link language on a deployment that has not named a link server. A
-   * server template lists the servers it can be published with (see `linkServers`).
+   * server template lists the servers it can be published with (see `serversFor`).
    *
    * The first entry is the default, and the node's own order says nothing: AD4M sorts known
    * templates by address, which is a hash. So templates syncing through a server go last. Sending a
@@ -340,7 +347,7 @@ export function createAd4mDatasetLifecycle(
       .map(({ address, name, params }) => {
         if (params && unfillableParams(params).length) return null;
         return params?.includes('SERVER_URL')
-          ? { id: address, name, kind: 'server' as const, servers: [...linkServers] }
+          ? { id: address, name, kind: 'server' as const, servers: serversFor(params) }
           : { id: address, name, kind: 'peer-to-peer' as const };
       })
       .filter((t) => t !== null)

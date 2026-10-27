@@ -4,7 +4,7 @@ import { parseServerUrl } from './lifecycle';
 
 describe('parseServerUrl', () => {
   it.each([
-    ['https://link.ad4m.dev', 'https://link.ad4m.dev'],
+    ['https://links.example.org', 'https://links.example.org'],
     ['http://localhost:8080/sync', 'http://localhost:8080/sync'],
     ['  https://links.example.org/  ', 'https://links.example.org/'],
   ])('keeps the http(s) address %j, trimmed', (url, expected) => {
@@ -13,9 +13,9 @@ describe('parseServerUrl', () => {
 
   it.each([
     '',
-    'link.ad4m.dev',
-    'wss://link.ad4m.dev',
-    'ftp://link.ad4m.dev',
+    'links.example.org',
+    'wss://links.example.org',
+    'ftp://links.example.org',
     'javascript:alert(1)',
     'https://',
     'http://[::1',
