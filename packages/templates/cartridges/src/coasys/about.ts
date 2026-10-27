@@ -251,18 +251,22 @@ const headerLink = (href: string, text: string, props: Record<string, unknown> =
   children: [text],
 });
 
-/** The width the hero's words keep to, and its inset: the header shares it, so the two line up. */
-const HERO_BOX = { width: '100%', maxWidth: '1200px', px: '22px', smUpProps: { px: '40px' } };
-/** The narrower measure the sections below the hero keep to. */
-const SECTION_BOX = { width: '100%', maxWidth: '1040px', px: '22px', smUpProps: { px: '40px' } };
+/**
+ * The one column the whole page keeps to: 960px of content, inset 40px (22px on a phone). The
+ * header, the hero's words, its film and every section share its two edges, so nothing reaches past
+ * the rest. The site's hero is a wider box than its sections, and its film narrower than the hero, so
+ * its header seemed to run on to the right of everything under it; one column is what reads as
+ * balanced.
+ */
+const PAGE_BOX = { width: '100%', maxWidth: '1040px', px: '22px', smUpProps: { px: '40px' } };
 
 /**
  * The site's header, over the top of the hero: the logo and name, its two papers, Discord, and AD4M
  * on GitHub with its stars. The papers go below the site's tablet width and Discord below its phone
  * width, as on the site; the nearest of the app's widths stand in for the site's 1000px and 600px.
  *
- * It keeps to the hero's box, so the logo stands over the eyebrow and the pill ends where the words
- * may. The site's header is a wider box than its hero, and sits 20px out of line on each side.
+ * It keeps to the page's column, so the logo stands over the eyebrow and the pill ends over the film's
+ * right edge. The site's header is a wider box than its hero, and sits 20px out of line on each side.
  *
  * The site counts AD4M's stars live from GitHub's API and shows 100 until the count arrives. A
  * template cannot ask GitHub, so this shows the site's own figure, as the site does when it cannot.
@@ -273,7 +277,7 @@ const header: SchemaNode = {
   children: [
     {
       type: 'Row',
-      props: { ...HERO_BOX, height: '120px', ax: 'between', ay: 'center' },
+      props: { ...PAGE_BOX, height: '120px', ax: 'between', ay: 'center' },
       children: [
         {
           type: 'we-link',
@@ -433,6 +437,10 @@ function filmFrame(
               height: '100%',
               opacity: 0.75,
               hoverProps: { opacity: 1 },
+              // Fading back as well as up. Leaving a state snaps in the design system, which is right
+              // for a run of small controls a pointer crosses; this is one large picture, and the
+              // site fades it both ways. Its own transition is the resting one, so the departure.
+              transition: 'opacity var(--we-theme-state-duration, 300ms) ease-out',
             },
           },
           {
@@ -526,7 +534,8 @@ const filmMeta = (children: SchemaNode['children']): SchemaNode => ({
 
 const heroFilm: SchemaNode = {
   type: 'Column',
-  props: { width: '100%', maxWidth: '920px', gap: '200', mt: '300' },
+  // The column's full width, so the film's right edge is the header's.
+  props: { width: '100%', gap: '200', mt: '300' },
   children: [
     {
       type: 'we-text',
@@ -605,7 +614,7 @@ const hero: SchemaNode = {
     {
       type: 'Column',
       // Clear of the header, which sits over the top of the hero as the site's does.
-      props: { ...HERO_BOX, pt: '110px', pb: '56px', gap: '400', mdUpProps: { pt: '124px', pb: '70px' } },
+      props: { ...PAGE_BOX, pt: '110px', pb: '56px', gap: '400', mdUpProps: { pt: '124px', pb: '70px' } },
       children: [
         { type: 'we-text', props: { variant: 'overline', color: 'accent-text' }, children: ['Coasys'] },
         {
@@ -702,7 +711,7 @@ const statusPill = (status: Status, color = 'text-muted'): SchemaNode => ({
 const section = (id: string, props: Record<string, unknown>, children: SchemaNode[]): SchemaNode => ({
   type: 'Column',
   props: { id, width: '100%', ax: 'center', py: '70px', mdUpProps: { py: '110px' }, ...props },
-  children: [{ type: 'Column', props: SECTION_BOX, children }],
+  children: [{ type: 'Column', props: PAGE_BOX, children }],
 });
 
 /**
@@ -715,7 +724,7 @@ const partners: SchemaNode = {
   children: [
     {
       type: 'Column',
-      props: { ...HERO_BOX, ax: 'center', gap: '18px' },
+      props: { ...PAGE_BOX, ax: 'center', gap: '18px' },
       children: [
         { type: 'we-text', props: { variant: 'overline', color: '#1a1c43', opacity: 0.6 }, children: ['Partners'] },
         {

@@ -51,10 +51,10 @@ export async function check({ measureAll, measureText, evaluate, moveTo, screens
   }
   if (heights.size > 1) problems.push(`the headline's height moved while it typed: ${[...heights].join(', ')}`);
 
-  // The text starts where the site's does: centred in 1200px, inset 40px (22px on a phone). The inset
-  // and the top padding are set at different widths, and a tier that named only the top once
+  // The text starts on the page's one column: centred in 1040px, inset 40px (22px on a phone). The
+  // inset and the top padding are set at different widths, and a tier that named only the top once
   // wrote the sides as 0 there.
-  const inset = Math.max(0, (width - 1200) / 2) + (width >= 640 ? 40 : 22);
+  const inset = Math.max(0, (width - 1040) / 2) + (width >= 640 ? 40 : 22);
   if (heading && !near(heading.x, inset)) problems.push(`the headline starts at x=${heading.x}, not ${inset}`);
 
   const watch = await measureText('Watch the film', 'we-button');
@@ -172,6 +172,17 @@ export async function check({ measureAll, measureText, evaluate, moveTo, screens
     await pointAway();
   }
 
+  // One column: the header ends where the film does, so it does not seem to run on past everything
+  // under it.
+  const edges = await evaluate(() => {
+    const pill = [...document.querySelectorAll('we-link')].find((l) => l.label?.startsWith('AD4M on GitHub'));
+    const film = [...document.querySelectorAll('we-button')].find((b) => b.label?.startsWith('Play: The Coasys film'));
+    let frame = film?.parentElement;
+    while (frame && getComputedStyle(frame).aspectRatio === 'auto') frame = frame.parentElement;
+    return { pill: pill?.getBoundingClientRect().right, film: frame?.getBoundingClientRect().right };
+  });
+  if (!near(edges.pill, edges.film)) problems.push(`the header ends at ${edges.pill}, the film at ${edges.film}`);
+
   // The poster is dimmed, and brightens under the pointer.
   const posterOpacity = () =>
     evaluate(() => {
@@ -183,6 +194,18 @@ export async function check({ measureAll, measureText, evaluate, moveTo, screens
   const posterHover = await posterOpacity();
   if (!(posterRest < 1 && posterHover === 1))
     problems.push(`the poster does not brighten under the pointer: ${posterRest} → ${posterHover}`);
+  // And fades back when the pointer leaves, rather than snapping: read a moment after it goes, the
+  // picture is on its way down, not already there. The pointer goes to the line under the film,
+  // which is on screen while the poster is.
+  await evaluate(() =>
+    [...document.querySelectorAll('we-text')]
+      .find((t) => t.textContent.trim().startsWith('Captions on'))
+      .setAttribute('data-case-away', ''),
+  );
+  await moveTo('[data-case-away]');
+  const posterLeaving = await posterOpacity();
+  if (!(posterLeaving > posterRest + 0.01 && posterLeaving < 1))
+    problems.push(`the poster snaps back when the pointer leaves: ${posterLeaving} a moment after`);
   await pointAway();
 
   await screenshot('coasys-about');

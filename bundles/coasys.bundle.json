@@ -7160,7 +7160,7 @@
                   "type": "Row",
                   "props": {
                     "width": "100%",
-                    "maxWidth": "1200px",
+                    "maxWidth": "1040px",
                     "px": "22px",
                     "smUpProps": { "px": "40px" },
                     "height": "120px",
@@ -7309,7 +7309,7 @@
               "type": "Column",
               "props": {
                 "width": "100%",
-                "maxWidth": "1200px",
+                "maxWidth": "1040px",
                 "px": "22px",
                 "smUpProps": { "px": "40px" },
                 "pt": "110px",
@@ -7380,7 +7380,7 @@
                 },
                 {
                   "type": "Column",
-                  "props": { "width": "100%", "maxWidth": "920px", "gap": "200", "mt": "300" },
+                  "props": { "width": "100%", "gap": "200", "mt": "300" },
                   "children": [
                     {
                       "type": "we-text",
@@ -7458,7 +7458,8 @@
                                         "width": "100%",
                                         "height": "100%",
                                         "opacity": 0.75,
-                                        "hoverProps": { "opacity": 1 }
+                                        "hoverProps": { "opacity": 1 },
+                                        "transition": "opacity var(--we-theme-state-duration, 300ms) ease-out"
                                       }
                                     },
                                     {
@@ -7670,7 +7671,7 @@
               "type": "Column",
               "props": {
                 "width": "100%",
-                "maxWidth": "1200px",
+                "maxWidth": "1040px",
                 "px": "22px",
                 "smUpProps": { "px": "40px" },
                 "ax": "center",
@@ -8097,7 +8098,8 @@
                                             "width": "100%",
                                             "height": "100%",
                                             "opacity": 0.75,
-                                            "hoverProps": { "opacity": 1 }
+                                            "hoverProps": { "opacity": 1 },
+                                            "transition": "opacity var(--we-theme-state-duration, 300ms) ease-out"
                                           }
                                         },
                                         {
