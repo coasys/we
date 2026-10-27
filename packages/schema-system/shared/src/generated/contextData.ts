@@ -4058,6 +4058,10 @@ export const contextData: ContextData = {
           inputs: [{ name: 'node', description: 'the record the call is about — anything with an id' }],
         },
         { name: 'continueCallButton' },
+        {
+          name: 'renameCallButton',
+          subject: 'routeStore.params.call ? routeStore.params.call : modules.call.callRecordId',
+        },
         { name: 'deviceSettings' },
         { name: 'startCallButton' },
         {

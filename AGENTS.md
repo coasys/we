@@ -3866,7 +3866,7 @@ Needs: kernels records, presence, ephemeral, media, peerConnection, call; permis
   - toggleScreenShare — Start or stop sharing this agent’s screen; sharing replaces the camera until it stops.
   - toggleSolo — Hide everyone but the spotlight, or bring them back; does nothing while nobody is focused.
   - toggleVideo — Turn this agent’s camera on or off, reporting through problem when it is refused.
-- Parts: `call.anchoredCallButton` (needs node — the record the call is about — anything with an id), `call.continueCallButton`, `call.deviceSettings`, `call.startCallButton`, `call.tile` (needs tile — the participant to show — one of modules.call.tiles)
+- Parts: `call.anchoredCallButton` (needs node — the record the call is about — anything with an id), `call.continueCallButton`, `call.renameCallButton` (subject: routeStore.params.call ? routeStore.params.call : modules.call.callRecordId), `call.deviceSettings`, `call.startCallButton`, `call.tile` (needs tile — the participant to show — one of modules.call.tiles)
 - Panels (`meta.panels[].dock`): `stage` "Call" (module-owned openness)
 - Settings: `iceServers` (string; deployment, space, agent) — ICE servers
 - Presence activities: `call` { id: string, anchor: object, media: object, record: string, continued: boolean, topology: object }

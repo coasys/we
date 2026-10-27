@@ -1579,9 +1579,19 @@
                   },
                   { "type": "we-icon", "props": { "name": "phone", "color": "text-muted" } },
                   {
-                    "type": "we-text",
-                    "props": { "variant": "heading-sm", "truncate": true, "flex": "1", "minWidth": "0" },
-                    "children": [{ "$": "first(local.callRecord).title ? first(local.callRecord).title : 'Call'" }]
+                    "type": "Row",
+                    "props": { "flex": "1", "minWidth": "0", "gap": "100", "ay": "center" },
+                    "children": [
+                      {
+                        "type": "we-text",
+                        "props": { "variant": "heading-sm", "truncate": true, "minWidth": "0" },
+                        "children": [{ "$": "first(local.callRecord).title ? first(local.callRecord).title : 'Call'" }]
+                      },
+                      {
+                        "type": "$part",
+                        "props": { "id": "call.renameCallButton", "subject": { "$": "routeStore.params.id" } }
+                      }
+                    ]
                   },
                   {
                     "type": "$if",
@@ -1769,11 +1779,17 @@
                 },
                 { "type": "we-icon", "props": { "name": "hash", "color": "text-muted" } },
                 {
-                  "type": "we-text",
-                  "props": { "variant": "heading-sm", "truncate": true, "flex": "1", "minWidth": "0" },
+                  "type": "Row",
+                  "props": { "flex": "1", "minWidth": "0", "gap": "100", "ay": "center" },
                   "children": [
                     {
-                      "$": "(routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root ? 'General' : (first(local.channelRecord).title ? first(local.channelRecord).title : 'Channel')"
+                      "type": "we-text",
+                      "props": { "variant": "heading-sm", "truncate": true, "minWidth": "0" },
+                      "children": [
+                        {
+                          "$": "(routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root ? 'General' : (first(local.channelRecord).title ? first(local.channelRecord).title : 'Channel')"
+                        }
+                      ]
                     }
                   ]
                 },
@@ -2223,11 +2239,17 @@
                 },
                 { "type": "we-icon", "props": { "name": "hash", "color": "text-muted" } },
                 {
-                  "type": "we-text",
-                  "props": { "variant": "heading-sm", "truncate": true, "flex": "1", "minWidth": "0" },
+                  "type": "Row",
+                  "props": { "flex": "1", "minWidth": "0", "gap": "100", "ay": "center" },
                   "children": [
                     {
-                      "$": "(routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root ? 'General' : (first(local.channelRecord).title ? first(local.channelRecord).title : 'Channel')"
+                      "type": "we-text",
+                      "props": { "variant": "heading-sm", "truncate": true, "minWidth": "0" },
+                      "children": [
+                        {
+                          "$": "(routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root ? 'General' : (first(local.channelRecord).title ? first(local.channelRecord).title : 'Channel')"
+                        }
+                      ]
                     }
                   ]
                 },
@@ -3808,9 +3830,15 @@
                 },
                 { "type": "we-icon", "props": { "name": "flow-arrow", "color": "text-muted" } },
                 {
-                  "type": "we-text",
-                  "props": { "variant": "heading-sm", "truncate": true, "flex": "1", "minWidth": "0" },
-                  "children": [{ "$": "workflowStore.open ? workflowStore.open.label : 'Workflows'" }]
+                  "type": "Row",
+                  "props": { "flex": "1", "minWidth": "0", "gap": "100", "ay": "center" },
+                  "children": [
+                    {
+                      "type": "we-text",
+                      "props": { "variant": "heading-sm", "truncate": true, "minWidth": "0" },
+                      "children": [{ "$": "workflowStore.open ? workflowStore.open.label : 'Workflows'" }]
+                    }
+                  ]
                 }
               ]
             },
@@ -6595,9 +6623,15 @@
                 },
                 { "type": "we-icon", "props": { "name": "chats-circle", "color": "text-muted" } },
                 {
-                  "type": "we-text",
-                  "props": { "variant": "heading-sm", "truncate": true, "flex": "1", "minWidth": "0" },
-                  "children": ["Channels"]
+                  "type": "Row",
+                  "props": { "flex": "1", "minWidth": "0", "gap": "100", "ay": "center" },
+                  "children": [
+                    {
+                      "type": "we-text",
+                      "props": { "variant": "heading-sm", "truncate": true, "minWidth": "0" },
+                      "children": ["Channels"]
+                    }
+                  ]
                 }
               ]
             },
@@ -6767,9 +6801,15 @@
                 },
                 { "type": "we-icon", "props": { "name": "phone", "color": "text-muted" } },
                 {
-                  "type": "we-text",
-                  "props": { "variant": "heading-sm", "truncate": true, "flex": "1", "minWidth": "0" },
-                  "children": ["Calls"]
+                  "type": "Row",
+                  "props": { "flex": "1", "minWidth": "0", "gap": "100", "ay": "center" },
+                  "children": [
+                    {
+                      "type": "we-text",
+                      "props": { "variant": "heading-sm", "truncate": true, "minWidth": "0" },
+                      "children": ["Calls"]
+                    }
+                  ]
                 }
               ]
             },
@@ -6932,9 +6972,15 @@
                 },
                 { "type": "we-icon", "props": { "name": "users", "color": "text-muted" } },
                 {
-                  "type": "we-text",
-                  "props": { "variant": "heading-sm", "truncate": true, "flex": "1", "minWidth": "0" },
-                  "children": ["People"]
+                  "type": "Row",
+                  "props": { "flex": "1", "minWidth": "0", "gap": "100", "ay": "center" },
+                  "children": [
+                    {
+                      "type": "we-text",
+                      "props": { "variant": "heading-sm", "truncate": true, "minWidth": "0" },
+                      "children": ["People"]
+                    }
+                  ]
                 }
               ]
             },

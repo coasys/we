@@ -348,15 +348,23 @@ export const callPage: SchemaNode = {
     callRecord: { entity: 'CollectionBlock', where: { id: { $: CALL_ID } }, limit: 1, when: { $: CALL_ID } },
   },
   children: [
-    viewBar([{ $: "first(local.callRecord).title ? first(local.callRecord).title : 'Call'" }], 'phone', [
-      {
-        type: '$if',
-        props: {
-          condition: { $: `find(modules.call.liveCalls, { recordId: ${CALL_ID} })` },
-          then: { type: 'we-badge', props: { tone: 'success' }, children: [liveDot, 'Live'] },
+    viewBar(
+      [{ $: "first(local.callRecord).title ? first(local.callRecord).title : 'Call'" }],
+      'phone',
+      [
+        {
+          type: '$if',
+          props: {
+            condition: { $: `find(modules.call.liveCalls, { recordId: ${CALL_ID} })` },
+            then: { type: 'we-badge', props: { tone: 'success' }, children: [liveDot, 'Live'] },
+          },
         },
-      },
-    ]),
+      ],
+      [
+        // Renaming is the call module's, so it is the same here as anywhere a call's name is drawn.
+        { type: '$part', props: { id: 'call.renameCallButton', subject: { $: CALL_ID } } },
+      ],
+    ),
     {
       type: '$if',
       props: {

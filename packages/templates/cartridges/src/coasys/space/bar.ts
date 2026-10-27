@@ -33,18 +33,35 @@ const showTree: SchemaNode = {
   },
 };
 
-/** A view's bar: the way back to the tree, what this is, and whatever the view offers. */
-export const viewBar = (title: SchemaNode['children'], icon: string, aside: SchemaNode[] = []): SchemaNode => ({
+/**
+ * A view's bar: the way back to the tree, what this is, and whatever the view offers.
+ *
+ * `beside` sits against the title rather than at the far end — what acts on the name itself, such as
+ * the pencil that renames a call. The title still truncates first, so a long name never pushes it out.
+ */
+export const viewBar = (
+  title: SchemaNode['children'],
+  icon: string,
+  aside: SchemaNode[] = [],
+  beside: SchemaNode[] = [],
+): SchemaNode => ({
   type: 'Row',
   props: { gap: '300', ay: 'center', px: '500', py: '300', borderBottom: '1px solid border', minHeight: '56px' },
   children: [
     showTree,
     { type: 'we-icon', props: { name: icon, color: 'text-muted' } },
     {
-      type: 'we-text',
-      // No weight of its own, so a theme's heading weight reaches it — light in Glow.
-      props: { variant: 'heading-sm', truncate: true, flex: '1', minWidth: '0' },
-      children: title,
+      type: 'Row',
+      props: { flex: '1', minWidth: '0', gap: '100', ay: 'center' },
+      children: [
+        {
+          type: 'we-text',
+          // No weight of its own, so a theme's heading weight reaches it — light in Glow.
+          props: { variant: 'heading-sm', truncate: true, minWidth: '0' },
+          children: title,
+        },
+        ...beside,
+      ],
     },
     ...aside,
   ],

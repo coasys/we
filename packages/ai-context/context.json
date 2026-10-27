@@ -8788,6 +8788,10 @@
           "name": "continueCallButton"
         },
         {
+          "name": "renameCallButton",
+          "subject": "routeStore.params.call ? routeStore.params.call : modules.call.callRecordId"
+        },
+        {
           "name": "deviceSettings"
         },
         {

@@ -437,11 +437,6 @@ const callPill: SchemaNode = {
           when: CALL,
         },
       },
-      $localState: {
-        editOpen: { type: 'boolean', initial: false },
-        titleDraft: { type: 'string', initial: '' },
-        descriptionDraft: { type: 'string', initial: '' },
-      },
       children: [
         /*
           The way back into the call, before its name.
@@ -537,42 +532,9 @@ const callPill: SchemaNode = {
             },
           ],
         },
-        {
-          type: 'we-tooltip',
-          props: { content: 'Name this conversation' },
-          children: [
-            {
-              type: 'we-button',
-              props: {
-                label: 'Name this conversation',
-                variant: 'ghost',
-                square: true,
-                color: 'text-faint',
-                /*
-                  Seeded on the press, not at mount: the drafts have to hold what the record says
-                  *now*, and a local declared with an `initial` reads it once — before the query has
-                  answered, on the first frame. The Cards view's own edit button does the same.
-                */
-                onClick: [
-                  { $setLocal: 'titleDraft', value: { $: 'first(local.callRecord).title' } },
-                  { $setLocal: 'descriptionDraft', value: { $: 'first(local.callRecord).description' } },
-                  { $setLocal: 'editOpen', value: true },
-                ],
-              },
-              /*
-                No explicit size, which is the usual rule: a sized primitive sets its nested icon,
-                and a control at the default height gives it 24px.
-
-                It was pinned at 18px on the reasoning that a full-size glyph is heavy beside a
-                heading it belongs to. Tested against the real pill that is simply wrong — at 18px it
-                reads as an afterthought in a 40px box, and the box is the thing the eye aims at. The
-                box stays 40px either way: shrinking the button would take the pill down with it, and
-                the band reserved above is measured from a control at that height.
-              */
-              children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
-            },
-          ],
-        },
+        // The pencil and the dialog it opens are the call's own, so every interface that draws a
+        // call's name renames it the same way.
+        { type: '$part', props: { id: 'call.renameCallButton', subject: CALL } },
         /*
           No rule between the name and the faces.
 
@@ -591,36 +553,6 @@ const callPill: SchemaNode = {
           max: 4,
           size: 'sm',
           rowProps: { flexShrink: '0' },
-        }),
-        formModal({
-          open: { $: 'local.editOpen' },
-          close: { $setLocal: 'editOpen', value: false },
-          title: 'Name this conversation',
-          size: 'sm',
-          children: [
-            field({ name: 'titleDraft', label: 'Title', placeholder: 'What was this call about?' }),
-            field({
-              name: 'descriptionDraft',
-              label: 'Description',
-              control: 'textarea',
-              placeholder: 'Anything worth remembering about it',
-            }),
-          ],
-          /*
-            Changed, not filled in: the fields arrive holding the record, so a form nobody has
-            touched is already full and a guard testing non-emptiness would fire on every close.
-          */
-          discardWhen: {
-            $: 'local.titleDraft != first(local.callRecord).title || local.descriptionDraft != first(local.callRecord).description',
-          },
-          submit: {
-            $invoke: 'record.update',
-            args: [
-              'CollectionBlock',
-              CALL,
-              { title: { $: 'local.titleDraft' }, description: { $: 'local.descriptionDraft' } },
-            ],
-          },
         }),
       ],
     },
