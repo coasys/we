@@ -1961,8 +1961,93 @@ const profilePages = (): Scenario => {
   };
 };
 
+/**
+ * The Coasys tree's Social DNA, from the bundle itself: the space's definitions in four levels, with a
+ * few of each kind so every level has something to draw.
+ */
+const coasysTreeDna = (): Scenario => {
+  const glow = BUNDLE_LAB_THEMES.find((t) => t.label === 'coasys-glow')?.theme ?? {};
+  // The tree section, found in the bundle by the open-rows state it keeps on the device.
+  const find = (node: unknown): SchemaNode | undefined => {
+    if (!node || typeof node !== 'object') return undefined;
+    const n = node as Record<string, unknown>;
+    const open = (n.$localState as Record<string, { persist?: string }> | undefined)?.openRows;
+    if (open?.persist === 'coasys.tree.open') return n as SchemaNode;
+    for (const value of Object.values(n)) {
+      const found = Array.isArray(value) ? value.map(find).find(Boolean) : find(value);
+      if (found) return found;
+    }
+    return undefined;
+  };
+  const tree = find(coasysBundle) as SchemaNode;
+  return {
+    node: { type: 'Column', theme: glow, props: { width: '320px', height: '900px', bg: 'chrome' }, children: [tree] },
+    tables: {
+      SignalType: [
+        { id: 'sig-like', name: 'Like', icon: 'heart', mode: 'toggle', rangeMin: 0, rangeMax: 1, retired: false },
+        { id: 'sig-rate', name: 'Rating', icon: 'star', mode: 'rating', rangeMin: 0, rangeMax: 5, retired: false },
+      ],
+      RelationshipType: [{ id: 'rel-led', name: 'led to', kindInverse: 'came from', description: '' }],
+      Topic: [{ id: 'topic-bees', name: 'Bees', description: 'Hives, honey and swarms' }],
+    },
+    stores: {
+      spaceStore: {
+        root: 'root',
+        members: [],
+        taskStates: [
+          {
+            id: 'st-todo',
+            name: 'To do',
+            slug: 'todo',
+            semantic: 'open',
+            icon: 'circle',
+            approvals: 0,
+            retired: false,
+          },
+          {
+            id: 'st-review',
+            name: 'In review',
+            slug: 'review',
+            semantic: 'active',
+            icon: 'eye',
+            approvals: 2,
+            retired: false,
+          },
+        ],
+        involvementTypes: [
+          {
+            id: 'inv-doing',
+            name: 'Doing it',
+            slug: 'doing',
+            semantic: 'responsible',
+            appliesTo: ['TaskBlock'],
+            icon: 'user',
+            retired: false,
+          },
+        ],
+        policy: {
+          loaded: true,
+          sentences: ['Members can make anything.', 'People can change and delete what they made.'],
+        },
+      },
+      shapeStore: { spaceShapes: [{ id: 'shape-hive', name: 'Hive', icon: 'hexagon' }] },
+      recordStore: {
+        displays: {
+          Hive: {
+            fields: [
+              { name: 'name', label: 'Name', kind: 'text' },
+              { name: 'frames', label: 'Frames', kind: 'number' },
+            ],
+          },
+        },
+      },
+    },
+  };
+};
+
 export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'coasys:about': coasysAbout,
+  'coasys:tree-dna': coasysTreeDna,
   'profile:pages': profilePages,
   'tree:caret-end': treeCaretEnd,
   'rail:app': appRail,

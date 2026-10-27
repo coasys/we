@@ -190,27 +190,229 @@ const people = group(
   { count: 'count(spaceStore.members)' },
 );
 
-/** The kinds of record this space defines — what it is about, as data. */
-const socialDna = group(
-  'dna',
-  'Social DNA',
-  'dna',
-  [
+/*
+  Social DNA: everything the space has defined about itself, as the vocabulary settings list it, and
+  its policy. Four levels — the group, each kind of definition, each definition, and what it says —
+  so the tree is the space's own graph read as an outline, the same things the canvas draws.
+
+  Values are `dnakind|<kind>` for a kind, `dna|<kind>|<id>` for a definition (choosing it opens that
+  definition in the vocabulary settings) and `dnaprop|…` for a property, which is read here and not a
+  place to go.
+*/
+
+/** A row under a definition: one thing it says, read here. */
+const property = (value: string, label: string, condition?: string): SchemaNode => {
+  const row = treeRow({ nested: true, value: { $: value }, label: { $: label } });
+  return condition ? { type: '$if', props: { condition: { $: condition }, then: row } } : row;
+};
+
+/** A row that opens and closes by its own value, held with the tree's other open rows. */
+const openable = (value: string) => ({
+  open: { $: `(${value}) in ${OPEN}` },
+  onOpenChange: { $toggleLocalIn: 'openRows', value: { $: value } },
+});
+
+/**
+ * One kind of definition: a row with its count, and a row for each definition, which opens to what
+ * it says. `as` is the name each definition is bound as; `id` and `label` are expressions over it.
+ */
+const dnaKind = (opts: {
+  kind: string;
+  label: string;
+  icon: string;
+  items: string;
+  as: string;
+  id: string;
+  name: string;
+  itemIcon: string;
+  /** Whether a definition has anything to show under it, so a caret is not a promise of nothing. */
+  hasProperties: string;
+  properties: SchemaNode[];
+}): SchemaNode => {
+  const kindValue = `'dnakind|${opts.kind}'`;
+  const value = `'dna|${opts.kind}|' + ${opts.id}`;
+  return treeRow({
+    nested: true,
+    value: { $: kindValue },
+    label: opts.label,
+    icon: opts.icon,
+    ...openable(kindValue),
+    expandable: { $: `count(${opts.items}) > 0` },
+    badge: countPill(`count(${opts.items})`),
+    children: [
+      {
+        type: '$each',
+        props: { items: { $: opts.items }, as: opts.as },
+        children: [
+          treeRow({
+            nested: true,
+            value: { $: value },
+            label: { $: opts.name },
+            icon: { $: opts.itemIcon },
+            ...openable(value),
+            expandable: { $: opts.hasProperties },
+            children: opts.properties,
+          }),
+        ],
+      },
+    ],
+  });
+};
+
+/** The space's own definitions, in the order the vocabulary settings show them. */
+const DNA_KINDS: SchemaNode[] = [
+  dnaKind({
+    kind: 'signal',
+    label: 'Signal types',
+    icon: 'heart',
+    items: 'local.signalTypes',
+    as: 'sig',
+    id: 'sig.id',
+    name: 'sig.name',
+    itemIcon: "sig.icon ? sig.icon : 'heart'",
+    hasProperties: 'true',
+    properties: [
+      property("'dnaprop|signal|' + sig.id + '|mode'", "'Mode · ' + sig.mode"),
+      property(
+        "'dnaprop|signal|' + sig.id + '|range'",
+        "'From ' + sig.rangeMin + ' to ' + sig.rangeMax",
+        "sig.mode != 'toggle'",
+      ),
+      property("'dnaprop|signal|' + sig.id + '|retired'", "'Retired'", 'sig.retired'),
+    ],
+  }),
+  dnaKind({
+    kind: 'connection',
+    label: 'Connection types',
+    icon: 'arrows-left-right',
+    items: 'local.relationshipTypes',
+    as: 'conn',
+    id: 'conn.id',
+    name: 'conn.name',
+    itemIcon: "'arrows-left-right'",
+    hasProperties: 'conn.kindInverse || conn.description',
+    properties: [
+      property(
+        "'dnaprop|connection|' + conn.id + '|inverse'",
+        "'Reads backwards as · ' + conn.kindInverse",
+        'conn.kindInverse',
+      ),
+      property("'dnaprop|connection|' + conn.id + '|about'", 'conn.description', 'conn.description'),
+    ],
+  }),
+  dnaKind({
+    kind: 'state',
+    label: 'Task states',
+    icon: 'circle-half',
+    items: 'spaceStore.taskStates',
+    as: 'state',
+    id: 'state.id',
+    name: 'state.name',
+    itemIcon: "state.icon ? state.icon : 'circle'",
+    hasProperties: 'true',
+    properties: [
+      property("'dnaprop|state|' + state.id + '|meaning'", "'Means · ' + state.semantic"),
+      property(
+        "'dnaprop|state|' + state.id + '|approvals'",
+        "state.approvals + ' ' + plural(state.approvals, 'approval', 'approvals') + ' to move on'",
+        'state.approvals > 0',
+      ),
+      property("'dnaprop|state|' + state.id + '|retired'", "'Retired'", 'state.retired'),
+    ],
+  }),
+  dnaKind({
+    kind: 'involvement',
+    label: 'Involvement',
+    icon: 'hand-waving',
+    items: 'spaceStore.involvementTypes',
+    as: 'part',
+    id: 'part.id',
+    name: 'part.name',
+    itemIcon: "part.icon ? part.icon : 'user'",
+    hasProperties: 'true',
+    properties: [
+      property("'dnaprop|involvement|' + part.id + '|meaning'", "'Means · ' + part.semantic"),
+      property(
+        "'dnaprop|involvement|' + part.id + '|for'",
+        "'For · ' + join(part.appliesTo, ', ')",
+        'count(part.appliesTo) > 0',
+      ),
+      property("'dnaprop|involvement|' + part.id + '|retired'", "'Retired'", 'part.retired'),
+    ],
+  }),
+  dnaKind({
+    kind: 'topic',
+    label: 'Topics',
+    icon: 'hash',
+    items: 'local.topics',
+    as: 'topic',
+    id: 'topic.id',
+    name: 'topic.name',
+    itemIcon: "'hash'",
+    hasProperties: 'topic.description',
+    properties: [property("'dnaprop|topic|' + topic.id + '|about'", 'topic.description', 'topic.description')],
+  }),
+  dnaKind({
+    kind: 'model',
+    label: 'Models',
+    icon: 'shapes',
+    items: 'shapeStore.spaceShapes',
+    as: 'shape',
+    id: 'shape.id',
+    name: 'shape.name',
+    itemIcon: "shape.icon ? shape.icon : 'dna'",
+    hasProperties: 'count(recordStore.displays[shape.name].fields) > 0',
+    // A model's fields, as a form for one would show them.
+    properties: [
+      {
+        type: '$each',
+        props: { items: { $: 'recordStore.displays[shape.name].fields' }, as: 'field' },
+        children: [property("'dnaprop|model|' + shape.id + '|' + field.name", "field.label + ' · ' + field.kind")],
+      },
+    ],
+  }),
+];
+
+/** The space's policy: who may do what, one rule a row, as the people settings word them. */
+const policyKind: SchemaNode = treeRow({
+  nested: true,
+  value: { $: "'dnakind|policy'" },
+  label: 'Policy',
+  icon: 'scales',
+  ...openable("'dnakind|policy'"),
+  expandable: { $: 'count(spaceStore.policy.sentences) > 0' },
+  badge: countPill('count(spaceStore.policy.sentences)'),
+  children: [
     {
       type: '$each',
-      props: { items: { $: 'shapeStore.spaceShapes' }, as: 'shape' },
-      children: [
-        treeRow({
-          nested: true,
-          value: { $: "'dna|' + shape.id" },
-          label: { $: 'shape.name' },
-          icon: { $: "shape.icon ? shape.icon : 'dna'" },
-        }),
-      ],
+      props: { items: { $: 'spaceStore.policy.sentences' }, as: 'rule' },
+      children: [treeRow({ nested: true, value: { $: "'dnaprop|policy|' + index" }, label: { $: 'rule' } })],
     },
   ],
-  { count: 'count(shapeStore.spaceShapes)' },
-);
+});
+
+/** Every definition there is, across the kinds and the policy: the group's count. */
+const DNA_COUNT = [
+  'local.signalTypes',
+  'local.relationshipTypes',
+  'spaceStore.taskStates',
+  'spaceStore.involvementTypes',
+  'local.topics',
+  'shapeStore.spaceShapes',
+  'spaceStore.policy.sentences',
+]
+  .map((list) => `count(${list})`)
+  .join(' + ');
+
+/** Everything the space has defined about itself — see above. */
+const socialDna = group('dna', 'Social DNA', 'dna', [...DNA_KINDS, policyKind], { count: DNA_COUNT });
+
+/** The vocabulary the Social DNA group lists that lives in the space's records rather than in a store. */
+const DNA_QUERIES = {
+  signalTypes: { entity: 'SignalType', order: { name: 'asc' } },
+  relationshipTypes: { entity: 'RelationshipType', order: { name: 'asc' } },
+  topics: { entity: 'Topic', order: { name: 'asc' } },
+};
 
 /**
  * What choosing a row does, by the kind its value names.
@@ -277,10 +479,20 @@ const onSelect: SchemaProp = [
       then: { $invoke: 'routeStore.navigate', args: [{ $: personPath(ROW_ID) }] },
     },
   },
+  // A definition opens where it is edited; a kind of definition opens as a group does.
   {
     $if: {
       condition: { $: "startsWith(event.detail.value, 'dna|')" },
-      then: { $invoke: 'shellStore.openSpaceSettings', args: ['vocabulary', { $: ROW_ID }] },
+      then: {
+        $invoke: 'shellStore.openSpaceSettings',
+        args: ['vocabulary', { $: "split(event.detail.value, '|')[2]" }],
+      },
+    },
+  },
+  {
+    $if: {
+      condition: { $: "startsWith(event.detail.value, 'dnakind|') && !(event.detail.value in local.openRows)" },
+      then: { $toggleLocalIn: 'openRows', value: { $: 'event.detail.value' } },
     },
   },
 ];
@@ -523,7 +735,7 @@ export const treeSection: SchemaNode = {
     },
     newChannelOpen: { type: 'boolean', initial: false },
   },
-  $queries: { subChannels: SUB_CHANNELS, calls: { ...CALLS, limit: 12 } },
+  $queries: { subChannels: SUB_CHANNELS, calls: { ...CALLS, limit: 12 }, ...DNA_QUERIES },
   children: [
     header,
     purpose,

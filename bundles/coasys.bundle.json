@@ -669,7 +669,10 @@
                   "where": { "kind": "call" },
                   "order": { "createdAt": "desc" },
                   "limit": 12
-                }
+                },
+                "signalTypes": { "entity": "SignalType", "order": { "name": "asc" } },
+                "relationshipTypes": { "entity": "RelationshipType", "order": { "name": "asc" } },
+                "topics": { "entity": "Topic", "order": { "name": "asc" } }
               },
               "children": [
                 {
@@ -950,8 +953,16 @@
                               "condition": { "$": "startsWith(event.detail.value, 'dna|')" },
                               "then": {
                                 "$invoke": "shellStore.openSpaceSettings",
-                                "args": ["vocabulary", { "$": "split(event.detail.value, '|')[1]" }]
+                                "args": ["vocabulary", { "$": "split(event.detail.value, '|')[2]" }]
                               }
+                            }
+                          },
+                          {
+                            "$if": {
+                              "condition": {
+                                "$": "startsWith(event.detail.value, 'dnakind|') && !(event.detail.value in local.openRows)"
+                              },
+                              "then": { "$toggleLocalIn": "openRows", "value": { "$": "event.detail.value" } }
                             }
                           }
                         ],
@@ -1372,7 +1383,9 @@
                             "value": "group|dna",
                             "open": { "$": "'group|dna' in local.openRows" },
                             "onOpenChange": { "$toggleLocalIn": "openRows", "value": "group|dna" },
-                            "expandable": { "$": "count(shapeStore.spaceShapes) > 0" }
+                            "expandable": {
+                              "$": "count(local.signalTypes) + count(local.relationshipTypes) + count(spaceStore.taskStates) + count(spaceStore.involvementTypes) + count(local.topics) + count(shapeStore.spaceShapes) + count(spaceStore.policy.sentences) > 0"
+                            }
                           },
                           "children": [
                             {
@@ -1392,6 +1405,796 @@
                                     {
                                       "type": "$if",
                                       "props": {
+                                        "condition": {
+                                          "$": "count(local.signalTypes) + count(local.relationshipTypes) + count(spaceStore.taskStates) + count(spaceStore.involvementTypes) + count(local.topics) + count(shapeStore.spaceShapes) + count(spaceStore.policy.sentences)"
+                                        },
+                                        "then": {
+                                          "type": "we-badge",
+                                          "props": { "variant": "soft", "size": "xs" },
+                                          "children": [
+                                            {
+                                              "$": "count(local.signalTypes) + count(local.relationshipTypes) + count(spaceStore.taskStates) + count(spaceStore.involvementTypes) + count(local.topics) + count(shapeStore.spaceShapes) + count(spaceStore.policy.sentences)"
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "we-tree-item",
+                              "slot": "children",
+                              "props": {
+                                "value": { "$": "'dnakind|signal'" },
+                                "open": { "$": "('dnakind|signal') in local.openRows" },
+                                "onOpenChange": { "$toggleLocalIn": "openRows", "value": { "$": "'dnakind|signal'" } },
+                                "expandable": { "$": "count(local.signalTypes) > 0" }
+                              },
+                              "children": [
+                                {
+                                  "type": "Row",
+                                  "props": { "gap": "200", "ay": "center", "minWidth": "0", "width": "100%" },
+                                  "children": [
+                                    {
+                                      "type": "we-icon",
+                                      "props": { "name": "heart", "size": "sm", "color": "text-faint" }
+                                    },
+                                    {
+                                      "type": "we-text",
+                                      "props": { "truncate": true, "flex": "1", "minWidth": "0" },
+                                      "children": ["Signal types"]
+                                    },
+                                    {
+                                      "type": "$if",
+                                      "props": {
+                                        "condition": { "$": "count(local.signalTypes)" },
+                                        "then": {
+                                          "type": "we-badge",
+                                          "props": { "variant": "soft", "size": "xs" },
+                                          "children": [{ "$": "count(local.signalTypes)" }]
+                                        }
+                                      }
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "$each",
+                                  "props": { "items": { "$": "local.signalTypes" }, "as": "sig" },
+                                  "children": [
+                                    {
+                                      "type": "we-tree-item",
+                                      "slot": "children",
+                                      "props": {
+                                        "value": { "$": "'dna|signal|' + sig.id" },
+                                        "open": { "$": "('dna|signal|' + sig.id) in local.openRows" },
+                                        "onOpenChange": {
+                                          "$toggleLocalIn": "openRows",
+                                          "value": { "$": "'dna|signal|' + sig.id" }
+                                        },
+                                        "expandable": { "$": "true" }
+                                      },
+                                      "children": [
+                                        {
+                                          "type": "Row",
+                                          "props": { "gap": "200", "ay": "center", "minWidth": "0", "width": "100%" },
+                                          "children": [
+                                            {
+                                              "type": "we-icon",
+                                              "props": {
+                                                "name": { "$": "sig.icon ? sig.icon : 'heart'" },
+                                                "size": "sm",
+                                                "color": "text-faint"
+                                              }
+                                            },
+                                            {
+                                              "type": "we-text",
+                                              "props": { "truncate": true, "flex": "1", "minWidth": "0" },
+                                              "children": [{ "$": "sig.name" }]
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "we-tree-item",
+                                          "slot": "children",
+                                          "props": { "value": { "$": "'dnaprop|signal|' + sig.id + '|mode'" } },
+                                          "children": [
+                                            {
+                                              "type": "Row",
+                                              "props": {
+                                                "gap": "200",
+                                                "ay": "center",
+                                                "minWidth": "0",
+                                                "width": "100%"
+                                              },
+                                              "children": [
+                                                {
+                                                  "type": "we-text",
+                                                  "props": { "truncate": true, "flex": "1", "minWidth": "0" },
+                                                  "children": [{ "$": "'Mode · ' + sig.mode" }]
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "$if",
+                                          "props": {
+                                            "condition": { "$": "sig.mode != 'toggle'" },
+                                            "then": {
+                                              "type": "we-tree-item",
+                                              "slot": "children",
+                                              "props": { "value": { "$": "'dnaprop|signal|' + sig.id + '|range'" } },
+                                              "children": [
+                                                {
+                                                  "type": "Row",
+                                                  "props": {
+                                                    "gap": "200",
+                                                    "ay": "center",
+                                                    "minWidth": "0",
+                                                    "width": "100%"
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "type": "we-text",
+                                                      "props": { "truncate": true, "flex": "1", "minWidth": "0" },
+                                                      "children": [
+                                                        { "$": "'From ' + sig.rangeMin + ' to ' + sig.rangeMax" }
+                                                      ]
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "type": "$if",
+                                          "props": {
+                                            "condition": { "$": "sig.retired" },
+                                            "then": {
+                                              "type": "we-tree-item",
+                                              "slot": "children",
+                                              "props": { "value": { "$": "'dnaprop|signal|' + sig.id + '|retired'" } },
+                                              "children": [
+                                                {
+                                                  "type": "Row",
+                                                  "props": {
+                                                    "gap": "200",
+                                                    "ay": "center",
+                                                    "minWidth": "0",
+                                                    "width": "100%"
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "type": "we-text",
+                                                      "props": { "truncate": true, "flex": "1", "minWidth": "0" },
+                                                      "children": [{ "$": "'Retired'" }]
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "we-tree-item",
+                              "slot": "children",
+                              "props": {
+                                "value": { "$": "'dnakind|connection'" },
+                                "open": { "$": "('dnakind|connection') in local.openRows" },
+                                "onOpenChange": {
+                                  "$toggleLocalIn": "openRows",
+                                  "value": { "$": "'dnakind|connection'" }
+                                },
+                                "expandable": { "$": "count(local.relationshipTypes) > 0" }
+                              },
+                              "children": [
+                                {
+                                  "type": "Row",
+                                  "props": { "gap": "200", "ay": "center", "minWidth": "0", "width": "100%" },
+                                  "children": [
+                                    {
+                                      "type": "we-icon",
+                                      "props": { "name": "arrows-left-right", "size": "sm", "color": "text-faint" }
+                                    },
+                                    {
+                                      "type": "we-text",
+                                      "props": { "truncate": true, "flex": "1", "minWidth": "0" },
+                                      "children": ["Connection types"]
+                                    },
+                                    {
+                                      "type": "$if",
+                                      "props": {
+                                        "condition": { "$": "count(local.relationshipTypes)" },
+                                        "then": {
+                                          "type": "we-badge",
+                                          "props": { "variant": "soft", "size": "xs" },
+                                          "children": [{ "$": "count(local.relationshipTypes)" }]
+                                        }
+                                      }
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "$each",
+                                  "props": { "items": { "$": "local.relationshipTypes" }, "as": "conn" },
+                                  "children": [
+                                    {
+                                      "type": "we-tree-item",
+                                      "slot": "children",
+                                      "props": {
+                                        "value": { "$": "'dna|connection|' + conn.id" },
+                                        "open": { "$": "('dna|connection|' + conn.id) in local.openRows" },
+                                        "onOpenChange": {
+                                          "$toggleLocalIn": "openRows",
+                                          "value": { "$": "'dna|connection|' + conn.id" }
+                                        },
+                                        "expandable": { "$": "conn.kindInverse || conn.description" }
+                                      },
+                                      "children": [
+                                        {
+                                          "type": "Row",
+                                          "props": { "gap": "200", "ay": "center", "minWidth": "0", "width": "100%" },
+                                          "children": [
+                                            {
+                                              "type": "we-icon",
+                                              "props": {
+                                                "name": { "$": "'arrows-left-right'" },
+                                                "size": "sm",
+                                                "color": "text-faint"
+                                              }
+                                            },
+                                            {
+                                              "type": "we-text",
+                                              "props": { "truncate": true, "flex": "1", "minWidth": "0" },
+                                              "children": [{ "$": "conn.name" }]
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "$if",
+                                          "props": {
+                                            "condition": { "$": "conn.kindInverse" },
+                                            "then": {
+                                              "type": "we-tree-item",
+                                              "slot": "children",
+                                              "props": {
+                                                "value": { "$": "'dnaprop|connection|' + conn.id + '|inverse'" }
+                                              },
+                                              "children": [
+                                                {
+                                                  "type": "Row",
+                                                  "props": {
+                                                    "gap": "200",
+                                                    "ay": "center",
+                                                    "minWidth": "0",
+                                                    "width": "100%"
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "type": "we-text",
+                                                      "props": { "truncate": true, "flex": "1", "minWidth": "0" },
+                                                      "children": [
+                                                        { "$": "'Reads backwards as · ' + conn.kindInverse" }
+                                                      ]
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "type": "$if",
+                                          "props": {
+                                            "condition": { "$": "conn.description" },
+                                            "then": {
+                                              "type": "we-tree-item",
+                                              "slot": "children",
+                                              "props": {
+                                                "value": { "$": "'dnaprop|connection|' + conn.id + '|about'" }
+                                              },
+                                              "children": [
+                                                {
+                                                  "type": "Row",
+                                                  "props": {
+                                                    "gap": "200",
+                                                    "ay": "center",
+                                                    "minWidth": "0",
+                                                    "width": "100%"
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "type": "we-text",
+                                                      "props": { "truncate": true, "flex": "1", "minWidth": "0" },
+                                                      "children": [{ "$": "conn.description" }]
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "we-tree-item",
+                              "slot": "children",
+                              "props": {
+                                "value": { "$": "'dnakind|state'" },
+                                "open": { "$": "('dnakind|state') in local.openRows" },
+                                "onOpenChange": { "$toggleLocalIn": "openRows", "value": { "$": "'dnakind|state'" } },
+                                "expandable": { "$": "count(spaceStore.taskStates) > 0" }
+                              },
+                              "children": [
+                                {
+                                  "type": "Row",
+                                  "props": { "gap": "200", "ay": "center", "minWidth": "0", "width": "100%" },
+                                  "children": [
+                                    {
+                                      "type": "we-icon",
+                                      "props": { "name": "circle-half", "size": "sm", "color": "text-faint" }
+                                    },
+                                    {
+                                      "type": "we-text",
+                                      "props": { "truncate": true, "flex": "1", "minWidth": "0" },
+                                      "children": ["Task states"]
+                                    },
+                                    {
+                                      "type": "$if",
+                                      "props": {
+                                        "condition": { "$": "count(spaceStore.taskStates)" },
+                                        "then": {
+                                          "type": "we-badge",
+                                          "props": { "variant": "soft", "size": "xs" },
+                                          "children": [{ "$": "count(spaceStore.taskStates)" }]
+                                        }
+                                      }
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "$each",
+                                  "props": { "items": { "$": "spaceStore.taskStates" }, "as": "state" },
+                                  "children": [
+                                    {
+                                      "type": "we-tree-item",
+                                      "slot": "children",
+                                      "props": {
+                                        "value": { "$": "'dna|state|' + state.id" },
+                                        "open": { "$": "('dna|state|' + state.id) in local.openRows" },
+                                        "onOpenChange": {
+                                          "$toggleLocalIn": "openRows",
+                                          "value": { "$": "'dna|state|' + state.id" }
+                                        },
+                                        "expandable": { "$": "true" }
+                                      },
+                                      "children": [
+                                        {
+                                          "type": "Row",
+                                          "props": { "gap": "200", "ay": "center", "minWidth": "0", "width": "100%" },
+                                          "children": [
+                                            {
+                                              "type": "we-icon",
+                                              "props": {
+                                                "name": { "$": "state.icon ? state.icon : 'circle'" },
+                                                "size": "sm",
+                                                "color": "text-faint"
+                                              }
+                                            },
+                                            {
+                                              "type": "we-text",
+                                              "props": { "truncate": true, "flex": "1", "minWidth": "0" },
+                                              "children": [{ "$": "state.name" }]
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "we-tree-item",
+                                          "slot": "children",
+                                          "props": { "value": { "$": "'dnaprop|state|' + state.id + '|meaning'" } },
+                                          "children": [
+                                            {
+                                              "type": "Row",
+                                              "props": {
+                                                "gap": "200",
+                                                "ay": "center",
+                                                "minWidth": "0",
+                                                "width": "100%"
+                                              },
+                                              "children": [
+                                                {
+                                                  "type": "we-text",
+                                                  "props": { "truncate": true, "flex": "1", "minWidth": "0" },
+                                                  "children": [{ "$": "'Means · ' + state.semantic" }]
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "$if",
+                                          "props": {
+                                            "condition": { "$": "state.approvals > 0" },
+                                            "then": {
+                                              "type": "we-tree-item",
+                                              "slot": "children",
+                                              "props": {
+                                                "value": { "$": "'dnaprop|state|' + state.id + '|approvals'" }
+                                              },
+                                              "children": [
+                                                {
+                                                  "type": "Row",
+                                                  "props": {
+                                                    "gap": "200",
+                                                    "ay": "center",
+                                                    "minWidth": "0",
+                                                    "width": "100%"
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "type": "we-text",
+                                                      "props": { "truncate": true, "flex": "1", "minWidth": "0" },
+                                                      "children": [
+                                                        {
+                                                          "$": "state.approvals + ' ' + plural(state.approvals, 'approval', 'approvals') + ' to move on'"
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "type": "$if",
+                                          "props": {
+                                            "condition": { "$": "state.retired" },
+                                            "then": {
+                                              "type": "we-tree-item",
+                                              "slot": "children",
+                                              "props": { "value": { "$": "'dnaprop|state|' + state.id + '|retired'" } },
+                                              "children": [
+                                                {
+                                                  "type": "Row",
+                                                  "props": {
+                                                    "gap": "200",
+                                                    "ay": "center",
+                                                    "minWidth": "0",
+                                                    "width": "100%"
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "type": "we-text",
+                                                      "props": { "truncate": true, "flex": "1", "minWidth": "0" },
+                                                      "children": [{ "$": "'Retired'" }]
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "we-tree-item",
+                              "slot": "children",
+                              "props": {
+                                "value": { "$": "'dnakind|involvement'" },
+                                "open": { "$": "('dnakind|involvement') in local.openRows" },
+                                "onOpenChange": {
+                                  "$toggleLocalIn": "openRows",
+                                  "value": { "$": "'dnakind|involvement'" }
+                                },
+                                "expandable": { "$": "count(spaceStore.involvementTypes) > 0" }
+                              },
+                              "children": [
+                                {
+                                  "type": "Row",
+                                  "props": { "gap": "200", "ay": "center", "minWidth": "0", "width": "100%" },
+                                  "children": [
+                                    {
+                                      "type": "we-icon",
+                                      "props": { "name": "hand-waving", "size": "sm", "color": "text-faint" }
+                                    },
+                                    {
+                                      "type": "we-text",
+                                      "props": { "truncate": true, "flex": "1", "minWidth": "0" },
+                                      "children": ["Involvement"]
+                                    },
+                                    {
+                                      "type": "$if",
+                                      "props": {
+                                        "condition": { "$": "count(spaceStore.involvementTypes)" },
+                                        "then": {
+                                          "type": "we-badge",
+                                          "props": { "variant": "soft", "size": "xs" },
+                                          "children": [{ "$": "count(spaceStore.involvementTypes)" }]
+                                        }
+                                      }
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "$each",
+                                  "props": { "items": { "$": "spaceStore.involvementTypes" }, "as": "part" },
+                                  "children": [
+                                    {
+                                      "type": "we-tree-item",
+                                      "slot": "children",
+                                      "props": {
+                                        "value": { "$": "'dna|involvement|' + part.id" },
+                                        "open": { "$": "('dna|involvement|' + part.id) in local.openRows" },
+                                        "onOpenChange": {
+                                          "$toggleLocalIn": "openRows",
+                                          "value": { "$": "'dna|involvement|' + part.id" }
+                                        },
+                                        "expandable": { "$": "true" }
+                                      },
+                                      "children": [
+                                        {
+                                          "type": "Row",
+                                          "props": { "gap": "200", "ay": "center", "minWidth": "0", "width": "100%" },
+                                          "children": [
+                                            {
+                                              "type": "we-icon",
+                                              "props": {
+                                                "name": { "$": "part.icon ? part.icon : 'user'" },
+                                                "size": "sm",
+                                                "color": "text-faint"
+                                              }
+                                            },
+                                            {
+                                              "type": "we-text",
+                                              "props": { "truncate": true, "flex": "1", "minWidth": "0" },
+                                              "children": [{ "$": "part.name" }]
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "we-tree-item",
+                                          "slot": "children",
+                                          "props": {
+                                            "value": { "$": "'dnaprop|involvement|' + part.id + '|meaning'" }
+                                          },
+                                          "children": [
+                                            {
+                                              "type": "Row",
+                                              "props": {
+                                                "gap": "200",
+                                                "ay": "center",
+                                                "minWidth": "0",
+                                                "width": "100%"
+                                              },
+                                              "children": [
+                                                {
+                                                  "type": "we-text",
+                                                  "props": { "truncate": true, "flex": "1", "minWidth": "0" },
+                                                  "children": [{ "$": "'Means · ' + part.semantic" }]
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "$if",
+                                          "props": {
+                                            "condition": { "$": "count(part.appliesTo) > 0" },
+                                            "then": {
+                                              "type": "we-tree-item",
+                                              "slot": "children",
+                                              "props": {
+                                                "value": { "$": "'dnaprop|involvement|' + part.id + '|for'" }
+                                              },
+                                              "children": [
+                                                {
+                                                  "type": "Row",
+                                                  "props": {
+                                                    "gap": "200",
+                                                    "ay": "center",
+                                                    "minWidth": "0",
+                                                    "width": "100%"
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "type": "we-text",
+                                                      "props": { "truncate": true, "flex": "1", "minWidth": "0" },
+                                                      "children": [{ "$": "'For · ' + join(part.appliesTo, ', ')" }]
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "type": "$if",
+                                          "props": {
+                                            "condition": { "$": "part.retired" },
+                                            "then": {
+                                              "type": "we-tree-item",
+                                              "slot": "children",
+                                              "props": {
+                                                "value": { "$": "'dnaprop|involvement|' + part.id + '|retired'" }
+                                              },
+                                              "children": [
+                                                {
+                                                  "type": "Row",
+                                                  "props": {
+                                                    "gap": "200",
+                                                    "ay": "center",
+                                                    "minWidth": "0",
+                                                    "width": "100%"
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "type": "we-text",
+                                                      "props": { "truncate": true, "flex": "1", "minWidth": "0" },
+                                                      "children": [{ "$": "'Retired'" }]
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "we-tree-item",
+                              "slot": "children",
+                              "props": {
+                                "value": { "$": "'dnakind|topic'" },
+                                "open": { "$": "('dnakind|topic') in local.openRows" },
+                                "onOpenChange": { "$toggleLocalIn": "openRows", "value": { "$": "'dnakind|topic'" } },
+                                "expandable": { "$": "count(local.topics) > 0" }
+                              },
+                              "children": [
+                                {
+                                  "type": "Row",
+                                  "props": { "gap": "200", "ay": "center", "minWidth": "0", "width": "100%" },
+                                  "children": [
+                                    {
+                                      "type": "we-icon",
+                                      "props": { "name": "hash", "size": "sm", "color": "text-faint" }
+                                    },
+                                    {
+                                      "type": "we-text",
+                                      "props": { "truncate": true, "flex": "1", "minWidth": "0" },
+                                      "children": ["Topics"]
+                                    },
+                                    {
+                                      "type": "$if",
+                                      "props": {
+                                        "condition": { "$": "count(local.topics)" },
+                                        "then": {
+                                          "type": "we-badge",
+                                          "props": { "variant": "soft", "size": "xs" },
+                                          "children": [{ "$": "count(local.topics)" }]
+                                        }
+                                      }
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "$each",
+                                  "props": { "items": { "$": "local.topics" }, "as": "topic" },
+                                  "children": [
+                                    {
+                                      "type": "we-tree-item",
+                                      "slot": "children",
+                                      "props": {
+                                        "value": { "$": "'dna|topic|' + topic.id" },
+                                        "open": { "$": "('dna|topic|' + topic.id) in local.openRows" },
+                                        "onOpenChange": {
+                                          "$toggleLocalIn": "openRows",
+                                          "value": { "$": "'dna|topic|' + topic.id" }
+                                        },
+                                        "expandable": { "$": "topic.description" }
+                                      },
+                                      "children": [
+                                        {
+                                          "type": "Row",
+                                          "props": { "gap": "200", "ay": "center", "minWidth": "0", "width": "100%" },
+                                          "children": [
+                                            {
+                                              "type": "we-icon",
+                                              "props": {
+                                                "name": { "$": "'hash'" },
+                                                "size": "sm",
+                                                "color": "text-faint"
+                                              }
+                                            },
+                                            {
+                                              "type": "we-text",
+                                              "props": { "truncate": true, "flex": "1", "minWidth": "0" },
+                                              "children": [{ "$": "topic.name" }]
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "$if",
+                                          "props": {
+                                            "condition": { "$": "topic.description" },
+                                            "then": {
+                                              "type": "we-tree-item",
+                                              "slot": "children",
+                                              "props": { "value": { "$": "'dnaprop|topic|' + topic.id + '|about'" } },
+                                              "children": [
+                                                {
+                                                  "type": "Row",
+                                                  "props": {
+                                                    "gap": "200",
+                                                    "ay": "center",
+                                                    "minWidth": "0",
+                                                    "width": "100%"
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "type": "we-text",
+                                                      "props": { "truncate": true, "flex": "1", "minWidth": "0" },
+                                                      "children": [{ "$": "topic.description" }]
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "we-tree-item",
+                              "slot": "children",
+                              "props": {
+                                "value": { "$": "'dnakind|model'" },
+                                "open": { "$": "('dnakind|model') in local.openRows" },
+                                "onOpenChange": { "$toggleLocalIn": "openRows", "value": { "$": "'dnakind|model'" } },
+                                "expandable": { "$": "count(shapeStore.spaceShapes) > 0" }
+                              },
+                              "children": [
+                                {
+                                  "type": "Row",
+                                  "props": { "gap": "200", "ay": "center", "minWidth": "0", "width": "100%" },
+                                  "children": [
+                                    {
+                                      "type": "we-icon",
+                                      "props": { "name": "shapes", "size": "sm", "color": "text-faint" }
+                                    },
+                                    {
+                                      "type": "we-text",
+                                      "props": { "truncate": true, "flex": "1", "minWidth": "0" },
+                                      "children": ["Models"]
+                                    },
+                                    {
+                                      "type": "$if",
+                                      "props": {
                                         "condition": { "$": "count(shapeStore.spaceShapes)" },
                                         "then": {
                                           "type": "we-badge",
@@ -1401,34 +2204,138 @@
                                       }
                                     }
                                   ]
+                                },
+                                {
+                                  "type": "$each",
+                                  "props": { "items": { "$": "shapeStore.spaceShapes" }, "as": "shape" },
+                                  "children": [
+                                    {
+                                      "type": "we-tree-item",
+                                      "slot": "children",
+                                      "props": {
+                                        "value": { "$": "'dna|model|' + shape.id" },
+                                        "open": { "$": "('dna|model|' + shape.id) in local.openRows" },
+                                        "onOpenChange": {
+                                          "$toggleLocalIn": "openRows",
+                                          "value": { "$": "'dna|model|' + shape.id" }
+                                        },
+                                        "expandable": { "$": "count(recordStore.displays[shape.name].fields) > 0" }
+                                      },
+                                      "children": [
+                                        {
+                                          "type": "Row",
+                                          "props": { "gap": "200", "ay": "center", "minWidth": "0", "width": "100%" },
+                                          "children": [
+                                            {
+                                              "type": "we-icon",
+                                              "props": {
+                                                "name": { "$": "shape.icon ? shape.icon : 'dna'" },
+                                                "size": "sm",
+                                                "color": "text-faint"
+                                              }
+                                            },
+                                            {
+                                              "type": "we-text",
+                                              "props": { "truncate": true, "flex": "1", "minWidth": "0" },
+                                              "children": [{ "$": "shape.name" }]
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "$each",
+                                          "props": {
+                                            "items": { "$": "recordStore.displays[shape.name].fields" },
+                                            "as": "field"
+                                          },
+                                          "children": [
+                                            {
+                                              "type": "we-tree-item",
+                                              "slot": "children",
+                                              "props": {
+                                                "value": { "$": "'dnaprop|model|' + shape.id + '|' + field.name" }
+                                              },
+                                              "children": [
+                                                {
+                                                  "type": "Row",
+                                                  "props": {
+                                                    "gap": "200",
+                                                    "ay": "center",
+                                                    "minWidth": "0",
+                                                    "width": "100%"
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "type": "we-text",
+                                                      "props": { "truncate": true, "flex": "1", "minWidth": "0" },
+                                                      "children": [{ "$": "field.label + ' · ' + field.kind" }]
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
                                 }
                               ]
                             },
                             {
-                              "type": "$each",
-                              "props": { "items": { "$": "shapeStore.spaceShapes" }, "as": "shape" },
+                              "type": "we-tree-item",
+                              "slot": "children",
+                              "props": {
+                                "value": { "$": "'dnakind|policy'" },
+                                "open": { "$": "('dnakind|policy') in local.openRows" },
+                                "onOpenChange": { "$toggleLocalIn": "openRows", "value": { "$": "'dnakind|policy'" } },
+                                "expandable": { "$": "count(spaceStore.policy.sentences) > 0" }
+                              },
                               "children": [
                                 {
-                                  "type": "we-tree-item",
-                                  "slot": "children",
-                                  "props": { "value": { "$": "'dna|' + shape.id" } },
+                                  "type": "Row",
+                                  "props": { "gap": "200", "ay": "center", "minWidth": "0", "width": "100%" },
                                   "children": [
                                     {
-                                      "type": "Row",
-                                      "props": { "gap": "200", "ay": "center", "minWidth": "0", "width": "100%" },
+                                      "type": "we-icon",
+                                      "props": { "name": "scales", "size": "sm", "color": "text-faint" }
+                                    },
+                                    {
+                                      "type": "we-text",
+                                      "props": { "truncate": true, "flex": "1", "minWidth": "0" },
+                                      "children": ["Policy"]
+                                    },
+                                    {
+                                      "type": "$if",
+                                      "props": {
+                                        "condition": { "$": "count(spaceStore.policy.sentences)" },
+                                        "then": {
+                                          "type": "we-badge",
+                                          "props": { "variant": "soft", "size": "xs" },
+                                          "children": [{ "$": "count(spaceStore.policy.sentences)" }]
+                                        }
+                                      }
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "$each",
+                                  "props": { "items": { "$": "spaceStore.policy.sentences" }, "as": "rule" },
+                                  "children": [
+                                    {
+                                      "type": "we-tree-item",
+                                      "slot": "children",
+                                      "props": { "value": { "$": "'dnaprop|policy|' + index" } },
                                       "children": [
                                         {
-                                          "type": "we-icon",
-                                          "props": {
-                                            "name": { "$": "shape.icon ? shape.icon : 'dna'" },
-                                            "size": "sm",
-                                            "color": "text-faint"
-                                          }
-                                        },
-                                        {
-                                          "type": "we-text",
-                                          "props": { "truncate": true, "flex": "1", "minWidth": "0" },
-                                          "children": [{ "$": "shape.name" }]
+                                          "type": "Row",
+                                          "props": { "gap": "200", "ay": "center", "minWidth": "0", "width": "100%" },
+                                          "children": [
+                                            {
+                                              "type": "we-text",
+                                              "props": { "truncate": true, "flex": "1", "minWidth": "0" },
+                                              "children": [{ "$": "rule" }]
+                                            }
+                                          ]
                                         }
                                       ]
                                     }
