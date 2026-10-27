@@ -11,7 +11,13 @@ import type { SchemaNode } from '@we/schema-shared';
 import { discussionSection, foldingSectionLabel, signalDisplay } from '@we/template-kit';
 import { bundlePrompt, createSpaceModal, safeModeBanner } from '@we/template-shell';
 import { CALL_CHROME_BAND, themeLabTemplate, TREE_LOCALS, TREE_QUERIES, treeStrip } from '@we/template-showcase';
-import { THEME_PRESETS, type ThemeOverrides, themeSides, withThemeSide } from '@we/themes/presets';
+import {
+  SHOWCASE_THEME_PRESETS,
+  THEME_PRESETS,
+  type ThemeOverrides,
+  themeSides,
+  withThemeSide,
+} from '@we/themes/presets';
 
 import coasysBundle from '../../../../bundles/coasys.bundle.json';
 import fieldGuideBundle from '../../../../bundles/field-guide.bundle.json';
@@ -423,7 +429,8 @@ const withoutGraphs = (node: SchemaNode): SchemaNode => ({
 export const THEME_LAB_THEMES = ['light', 'dark', 'black', 'cyberpunk', 'retro', 'channels', 'timeline'] as const;
 const themeLab = (index = 0): Scenario => {
   const { meta: _meta, ...page } = themeLabTemplate as SchemaNode & { meta?: unknown };
-  const preset = THEME_PRESETS[THEME_LAB_THEMES[index] ?? 'light'];
+  // The showcase pair too: the theme lab is a developer's page, and a harness run is one.
+  const preset = { ...THEME_PRESETS, ...SHOWCASE_THEME_PRESETS }[THEME_LAB_THEMES[index] ?? 'light'];
   return {
     node: { type: 'Column', theme: preset.parameters, children: [withoutGraphs(page as SchemaNode)] },
     tables: {},

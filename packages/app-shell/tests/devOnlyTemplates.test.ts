@@ -26,6 +26,9 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { devFeatures, weSeed } from '../../../scripts/seed-vite.mjs';
 
 const REGISTRY = resolve(import.meta.dirname, '../src/shared/registries/bundledTemplates.generated.ts');
+const THEMES = resolve(import.meta.dirname, '../src/shared/registries/themeRegistry.ts');
+/** What the marked templates and their themes are named after, which a production build must not say. */
+const PRODUCTS = ['Discord', 'Twitter', 'Instagram', 'YouTube'];
 const DEV_ONLY = [discordTemplate, twitterTemplate, instagramTemplate, youtubeTemplate];
 const out = mkdtempSync(join(tmpdir(), 'we-dev-only-'));
 afterAll(() => rmSync(out, { recursive: true, force: true }));
@@ -43,7 +46,7 @@ async function built(devFeatures: boolean): Promise<string> {
       build: {
         outDir: dir,
         minify: true,
-        lib: { entry: REGISTRY, formats: ['es'], fileName: 'registry' },
+        lib: { entry: { templates: REGISTRY, themes: THEMES }, formats: ['es'] },
       },
     });
   } finally {
@@ -67,6 +70,18 @@ describe('templates the catalogue marks dev', () => {
     const code = await built(true);
     for (const template of DEV_ONLY) expect(code).toContain(template.meta!.description);
   }, 120_000);
+
+  /*
+    The showcase themes are named after the same products, and are gated the same way in
+    `themeRegistry`. Asked of both registries at once, and of the names themselves: a production
+    build should not say any of them, wherever the word would have come from.
+  */
+  it('leave no product name in a production build, from a template or a theme', async () => {
+    const code = await built(false);
+    for (const name of PRODUCTS) expect(code, name).not.toContain(name);
+    const withDev = await built(true);
+    for (const name of PRODUCTS) expect(withDev, name).toContain(name);
+  }, 240_000);
 });
 
 /*

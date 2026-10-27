@@ -1,9 +1,10 @@
+import { DEV_FEATURES } from '@we/module-shared';
 import type { ThemeOverrides } from '@we/schema-shared';
 import blackCss from '@we/themes/black?raw';
 import cyberpunkCss from '@we/themes/cyberpunk?raw';
 import darkCss from '@we/themes/dark?raw';
 import lightCss from '@we/themes/light?raw';
-import { THEME_PRESETS } from '@we/themes/presets';
+import { SHOWCASE_THEME_PRESETS, THEME_PRESETS } from '@we/themes/presets';
 import retroCss from '@we/themes/retro?raw';
 
 import { seedBundleThemes } from './seedBundles';
@@ -32,11 +33,27 @@ export const themeRegistry: Record<string, ThemeRegistryEntry> = {
     css: cyberpunkCss || null,
     overrides: THEME_PRESETS.cyberpunk.parameters,
   },
-  // No stylesheet: both are entirely parameters and pinned roles. That is the point of them — a
-  // theme needing hand-written CSS is a theme the parametric system could not express, and these
-  // two were built to find out how far it stretches.
-  channels: { ...THEME_PRESETS.channels, css: null, overrides: THEME_PRESETS.channels.parameters },
-  timeline: { ...THEME_PRESETS.timeline, css: null, overrides: THEME_PRESETS.timeline.parameters },
+  /*
+    The showcase templates' themes, named after the products those templates imitate, so only in a
+    build with developer features, as the templates are (`DEV_FEATURES`). In a production build the
+    spread folds to nothing and `SHOWCASE_THEME_PRESETS` goes unused.
+
+    No stylesheet: both are entirely parameters and pinned roles. That is the point of them — a
+    theme needing hand-written CSS is a theme the parametric system could not express, and these
+    two were built to find out how far it stretches.
+  */
+  ...(DEV_FEATURES && {
+    channels: {
+      ...SHOWCASE_THEME_PRESETS.channels,
+      css: null,
+      overrides: SHOWCASE_THEME_PRESETS.channels.parameters,
+    },
+    timeline: {
+      ...SHOWCASE_THEME_PRESETS.timeline,
+      css: null,
+      overrides: SHOWCASE_THEME_PRESETS.timeline.parameters,
+    },
+  }),
   // The themes the seed's bundles bring, built in beside these.
   ...Object.fromEntries(
     Object.values(seedBundleThemes).map((theme) => [

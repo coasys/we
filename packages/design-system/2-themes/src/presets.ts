@@ -301,7 +301,20 @@ export const THEME_PRESETS = {
       components: { tooltip: { radius: '0' }, menu: { border: 'accent-border' } },
     },
   },
+} as const satisfies Record<string, ThemePreset>;
 
+/**
+ * The two themes the showcase templates were built with, modelled on the products those templates
+ * imitate, and named after them. Kept apart from `THEME_PRESETS` because they are not shipped: an
+ * app adds them only to a build with developer features (`themeRegistry` in the shell), and
+ * nothing a production build reaches refers to this, so it is left out of one. A theme built to be
+ * a theme in its own right belongs in `THEME_PRESETS`; one of these that ships takes a descriptive
+ * name and moves there.
+ *
+ * Their ids stay what the templates name in `themeId`. By name they resolve through the app's
+ * registered lookup (`registerNamedThemes`), like any theme the app holds and this package does not.
+ */
+export const SHOWCASE_THEME_PRESETS = {
   /**
    * A near-neutral dark, for the channels template. Built from measurements of a real chat client
    * rather than by eye — see `apps/we-preview/scripts/measure.mjs`.
@@ -324,7 +337,7 @@ export const THEME_PRESETS = {
    * theme together. Only the lightnesses are fixed, because the lightnesses are the design.
    */
   channels: {
-    name: 'Channels',
+    name: 'Discord',
     icon: 'hash',
     parameters: {
       accentHue: 266,
@@ -393,7 +406,7 @@ export const THEME_PRESETS = {
    * something, and a timeline that shadows its rows stops reading as a single sheet.
    */
   timeline: {
-    name: 'Timeline',
+    name: 'Twitter',
     icon: 'list-dashes',
     parameters: {
       accentHue: 245,

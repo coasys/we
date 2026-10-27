@@ -8,10 +8,24 @@
  * window edge until something forces a recompute.
  */
 import { component, role, ROLE_ALIASES } from '@we/tokens';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { THEME_PRESETS } from './presets';
-import { applyThemeVars, themeParametersToStyle } from './themeStyles';
+import { SHOWCASE_THEME_PRESETS, THEME_PRESETS } from './presets';
+import { applyThemeVars, registerNamedThemes, themeParametersToStyle } from './themeStyles';
+
+/*
+  The showcase themes resolve by name the way the app makes them resolve: through the lookup it
+  registers for every theme it holds that this package does not. `channels` is the preset that pins
+  its own roles, which several tests below need.
+*/
+beforeAll(() =>
+  registerNamedThemes((name) =>
+    name in SHOWCASE_THEME_PRESETS
+      ? SHOWCASE_THEME_PRESETS[name as keyof typeof SHOWCASE_THEME_PRESETS].parameters
+      : undefined,
+  ),
+);
+afterAll(() => registerNamedThemes(undefined));
 
 /** A minimal stand-in for an element's inline style, so this needs no DOM. */
 function fakeRoot() {

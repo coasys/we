@@ -71,6 +71,10 @@ decides what that means:
   ship, drop the mark and give it a descriptive name in the picker. The Discord,
   Twitter, Instagram and YouTube clones are named after what they imitate, which
   is fine only while they ship to nobody.
+- **A theme:** the showcase templates' two themes are `SHOWCASE_THEME_PRESETS` in
+  `@we/themes`, kept apart from the shipped `THEME_PRESETS`, and the shell's
+  `themeRegistry` adds them behind `DEV_FEATURES`. They are named Discord and
+  Twitter for the same reason as their templates.
 - **Anything else:** guard it with `DEV_FEATURES` from `@we/module-shared`, as
   `pretendPeople.ts` and the call module's `devPeers.ts` do. It is a constant the
   build writes, so a production build folds the guarded code away.
