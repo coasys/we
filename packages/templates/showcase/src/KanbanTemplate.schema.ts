@@ -68,7 +68,7 @@ const boardsRoute: RouteSchema = {
               props: {
                 variant: 'bare',
                 width: '100%',
-                onClick: { $invoke: 'routeStore.navigate', args: [{ $: '`./board/${board.id}`' }] },
+                onClick: { $invoke: 'routeStore.navigate', args: ['./board', { $: '{ query: { id: board.id } }' }] },
               },
               children: [
                 {
@@ -111,7 +111,7 @@ const boardsRoute: RouteSchema = {
           title: 'New board',
           kind: KIND.board,
           placeholder: 'Roadmap',
-          navigateTo: './board/',
+          navigateTo: './board',
         }),
       ],
     },
@@ -146,7 +146,7 @@ function postCard(as: string): SchemaNode {
 }
 
 const boardRoute: RouteSchema = {
-  path: '/board/:boardId',
+  path: '/board',
   type: 'Column',
   props: { width: '100%', height: '100%' },
   $queries: signalTypesQuery,
@@ -174,7 +174,7 @@ const boardRoute: RouteSchema = {
             item: {
               $query: {
                 entity: 'CollectionBlock',
-                where: { id: { $: 'routeStore.templateSegments[1]' } },
+                where: { id: { $: 'routeStore.params.id' } },
                 limit: 1,
               },
             },
@@ -196,7 +196,7 @@ const boardRoute: RouteSchema = {
           arrangement is an ordered relation.
         */
         taskBoard({
-          boardId: { $: 'routeStore.templateSegments[1]' },
+          boardId: { $: 'routeStore.params.id' },
           entity: 'CollectionBlock',
           where: { kind: KIND.post },
           lanesOnly: true,

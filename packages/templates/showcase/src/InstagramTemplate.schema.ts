@@ -89,13 +89,13 @@ const grid = (opts: { author?: SchemaProp; empty: SchemaNode }): SchemaNode =>
     overlay: tileOverlay,
     onTileClick: (as) => ({
       $invoke: 'routeStore.navigate',
-      args: [{ $: `'./photo/' + ${as}.id` }],
+      args: ['./photo', { $: `{ query: { id: ${as}.id } }` }],
     }),
     empty: opts.empty,
   });
 
 const photoDetail: RouteSchema = {
-  path: '/photo/:postId',
+  path: '/photo',
   type: 'Column',
   props: { width: '100%', ax: 'center', p: '400' },
   $localState: { replyOpen: { type: 'boolean', initial: false } },
@@ -121,7 +121,7 @@ const photoDetail: RouteSchema = {
             item: {
               $query: {
                 entity: 'CollectionBlock',
-                where: { id: { $: 'routeStore.templateSegments[1]' } },
+                where: { id: { $: 'routeStore.params.id' } },
                 include: { signals: true },
                 limit: 1,
               },
@@ -173,7 +173,7 @@ const photoDetail: RouteSchema = {
                   saveLabel: 'Comment',
                 }),
                 commentThread({
-                  anchorId: { $: 'routeStore.templateSegments[1]' },
+                  anchorId: { $: 'routeStore.params.id' },
                   empty: noReplies(),
                   depth: 2,
                   reply: (as) => [

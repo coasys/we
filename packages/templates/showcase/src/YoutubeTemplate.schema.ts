@@ -47,7 +47,7 @@ const videoCard: SchemaNode = {
       props: {
         variant: 'bare',
         width: '100%',
-        onClick: { $invoke: 'routeStore.navigate', args: [{ $: '`./watch/${video.id}`' }] },
+        onClick: { $invoke: 'routeStore.navigate', args: ['./watch', { $: '{ query: { id: video.id } }' }] },
       },
       children: [
         {
@@ -118,7 +118,7 @@ const libraryGrid = collectionFeed({
 });
 
 const watchRoute: RouteSchema = {
-  path: '/watch/:postId',
+  path: '/watch',
   type: 'Column',
   props: { width: '100%', ax: 'center', p: '400' },
   $localState: { replyOpen: { type: 'boolean', initial: false } },
@@ -144,7 +144,7 @@ const watchRoute: RouteSchema = {
             item: {
               $query: {
                 entity: 'CollectionBlock',
-                where: { id: { $: 'routeStore.templateSegments[1]' } },
+                where: { id: { $: 'routeStore.params.id' } },
                 include: { signals: true },
                 limit: 1,
               },
@@ -185,7 +185,7 @@ const watchRoute: RouteSchema = {
               saveLabel: 'Comment',
             }),
             commentThread({
-              anchorId: { $: 'routeStore.templateSegments[1]' },
+              anchorId: { $: 'routeStore.params.id' },
               empty: noReplies(),
               reply: (as) => [
                 {
