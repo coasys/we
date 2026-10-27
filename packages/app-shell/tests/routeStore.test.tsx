@@ -91,6 +91,51 @@ describe('routeStore params', () => {
     expect(nav).toHaveBeenLastCalledWith('/cards?sort=date', undefined);
   });
 
+  /*
+    A record id is a URI. Pasted into a path it is several segments and the route never matches;
+    pasted into a query by hand, one holding `&`, `+` or `#` reads back as something else. Handed to
+    navigate as a query value, it reads back exactly, and stays readable in the address.
+  */
+  it('navigate writes query values so any id reads back exactly', () => {
+    const store = mountStore();
+    const nav = vi.fn();
+    store.setNavigateFunction(nav as never);
+
+    store.navigate('./board', { query: { id: 'ad4m://obj/xkav' } });
+    expect(nav).toHaveBeenLastCalledWith('./board?id=ad4m://obj/xkav', undefined);
+
+    const awkward = 'literal://string:a+b&c=d#e%20f';
+    store.navigate('./board', { query: { id: awkward } });
+    const [written] = nav.mock.lastCall!;
+    expect(new URL(written, 'http://x/').searchParams.get('id')).toBe(awkward);
+  });
+
+  it('navigate adds to a query already in the path, leaves out empty values and passes the rest on', () => {
+    const store = mountStore();
+    const nav = vi.fn();
+    store.setNavigateFunction(nav as never);
+
+    store.navigate('/flows?new=1', { query: { id: 'ad4m://obj/x', card: '', other: undefined }, replace: true });
+    expect(nav).toHaveBeenLastCalledWith('/flows?new=1&id=ad4m://obj/x', { replace: true });
+  });
+
+  /*
+    Two boards are one path with different ids. Presence compares pages, so a page that left the id
+    out would show everybody on any board as here.
+  */
+  it('page is the path and the record it is about, and nothing else in the query', () => {
+    window.history.replaceState(null, '', '/space/x/board?id=ad4m://obj/a&sort=new');
+    const store = mountStore();
+    store.setCurrentPath('/space/x/board', '?id=ad4m://obj/a&sort=new');
+    expect(store.page()).toBe('/space/x/board?id=ad4m://obj/a');
+
+    store.setCurrentPath('/space/x/board', '?id=ad4m://obj/b');
+    expect(store.page()).toBe('/space/x/board?id=ad4m://obj/b');
+
+    store.setCurrentPath('/space/x', '?sort=new');
+    expect(store.page()).toBe('/space/x');
+  });
+
   it('clearing the param clears the memory — returning lands bare', () => {
     const store = mountStore();
     const nav = vi.fn();

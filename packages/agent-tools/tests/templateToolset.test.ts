@@ -267,6 +267,15 @@ describe('the template documentation', () => {
     expect(await templateToolset.docs.read('template/core/expressions')).toContain('## Prop-level Dynamic Logic');
   });
 
+  /*
+    A host serves this topic as it is, and a host may offer the edit tools without the one that
+    creates. Told about a tool it does not have, an agent calls it and gets an unknown-tool error.
+  */
+  it('says the tool that creates is there only where the host offers it', async () => {
+    const start = (await templateToolset.docs.read('template'))!;
+    expect(start).toContain(`**${TEMPLATE_CREATE}** — only where your host offers it.`);
+  });
+
   it('answers a topic with its text, and a path that is not one with nothing', async () => {
     expect(await templateToolset.docs.read('template/components/we-button')).toMatch(/- we-button/);
     expect(await templateToolset.docs.read('template/stores/spaceStore')).toContain('SpaceStore:');

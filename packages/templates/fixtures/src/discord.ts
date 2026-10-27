@@ -32,8 +32,8 @@ export const discordFixture: Fixture = {
   // Ada is reading #general; Bo is in the space but on another page. Both matter: `onlineHere`
   // filters on the route, so a roster that ignores `path` would show the same faces everywhere.
   presence: [
-    { did: ADA, path: '/channel/discord-general' },
-    { did: CY, path: '/channel/discord-general' },
+    { did: ADA, path: '/channel?id=discord-general' },
+    { did: CY, path: '/channel?id=discord-general' },
     { did: BO },
   ],
 
@@ -139,5 +139,5 @@ export const discordFixture: Fixture = {
   ],
 
   // `discord-general` is the deterministic id `general` gets -- see FixtureNode.id.
-  route: '/channel/discord-general',
+  route: '/channel?id=discord-general',
 };

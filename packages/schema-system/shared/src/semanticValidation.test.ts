@@ -753,3 +753,31 @@ describe('a template’s own record views', () => {
     expect(result.errors.filter((e) => e.path.startsWith('meta.recordViews'))).toEqual([]);
   });
 });
+
+/*
+  Boards, Twitter, YouTube, Instagram and Discord each opened a record with `./board/${board.id}`.
+  A record id is a URI, so the browser split it across segments, the route never matched, and every
+  detail page opened on its fallback. Nothing said so anywhere.
+*/
+describe('a record id in the path of an address', () => {
+  const PUT_IN_PATH = 'A record id is put into the path';
+  const go = (to: unknown, ...rest: unknown[]): SchemaNode => ({
+    type: 'we-button',
+    props: { onClick: { $invoke: 'routeStore.navigate', args: [to, ...rest] } },
+  });
+  const warned = (node: SchemaNode) => messages(node, 'warning').some((m) => m.startsWith(PUT_IN_PATH));
+
+  it('is warned about, however the path is built', () => {
+    expect(warned(go({ $: '`./board/${board.id}`' }))).toBe(true);
+    expect(warned(go({ $: "'./photo/' + media.id" }))).toBe(true);
+    expect(warned(go({ $: "'./channel/' + local.channelId" }))).toBe(true);
+    expect(warned({ type: 'we-link', props: { href: { $: '`/post/${post.id}`' } } })).toBe(true);
+  });
+
+  it('is not warned about as a query value, or when what the path holds is no id', () => {
+    expect(warned(go('./board', { $: '{ query: { id: board.id } }' }))).toBe(false);
+    expect(warned(go({ $: '`./board?id=${board.id}`' }))).toBe(false);
+    expect(warned(go({ $: '`/space/${space.uuid}/${nav.segment}`' }))).toBe(false);
+    expect(warned(go('./board'))).toBe(false);
+  });
+});

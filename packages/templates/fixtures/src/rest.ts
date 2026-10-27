@@ -200,7 +200,7 @@ export const kanbanFixture: Fixture = {
   space: { name: 'Club Business', description: 'What needs doing before the exhibition.' },
   agents: CAST,
   signalTypes: [LIKE],
-  presence: [{ did: DEE, path: '/board/kanban-exhibition' }],
+  presence: [{ did: DEE, path: '/board?id=kanban-exhibition' }],
   /*
     The cards are loose in the space and the columns *arrange* them, which is the shape the Boards
     template renders: a column positions a card, it does not own it, so deleting a column cannot
@@ -259,7 +259,7 @@ export const kanbanFixture: Fixture = {
       body: ['Book the room'],
     },
   ],
-  route: '/board/kanban-exhibition',
+  route: '/board?id=kanban-exhibition',
 };
 
 export const eventsFixture: Fixture = {

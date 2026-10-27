@@ -1,6 +1,6 @@
 {
   "name": "@we/agent-tools",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "What a language model can do with WE — tools, their handlers and the edit loop — framework-free, for the editor and for any host that runs an agent",
   "license": "MIT",
   "type": "module",

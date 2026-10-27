@@ -1091,6 +1091,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
 
   routeStore: {
     currentPath: state('view-state'),
+    page: state('view-state'),
     segments: state('view-state'),
     templateSegments: state('view-state'),
     params: state('view-state'),

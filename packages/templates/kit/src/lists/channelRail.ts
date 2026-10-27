@@ -27,13 +27,13 @@
 import type { AnchorId } from '@we/schema-kit';
 import { sectionLabel } from '@we/schema-kit';
 import type { SchemaNode } from '@we/schema-shared';
-import { expr, ref } from '@we/schema-shared';
 
 export interface ChannelRailOptions {
-  /** Route to navigate to, with `:id` replaced by the channel id. E.g. `'/channel/'`. */
-  hrefPrefix: string;
-  /** Which route segment holds the active channel id, for highlighting. Defaults to `1`. */
-  activeSegment?: number;
+  /**
+   * The page a channel opens on, e.g. `'./channel'`. It is given the channel's id as the query value
+   * `id` — never as a path segment, because an id is a URI and is several of them.
+   */
+  path: string;
   /** Group channels under `kind: 'category'` collections. Defaults to false — one flat list. */
   categories?: boolean;
   /** Node rendered under the rail — a "new channel" button, usually. */
@@ -76,12 +76,12 @@ function channelRow(opts: ChannelRailOptions, as: string): SchemaNode {
   return {
     type: 'we-button',
     props: {
-      variant: { $: `routeStore.segments[${opts.activeSegment ?? 1}] == ${as}.id ? 'soft' : 'ghost'` },
+      variant: { $: `routeStore.params.id == ${as}.id ? 'soft' : 'ghost'` },
       size: 'sm',
       width: '100%',
       ax: 'between',
       onClick: [
-        { $invoke: 'routeStore.navigate', args: [expr`${opts.hrefPrefix} + ${ref(as, 'id')}`] },
+        { $invoke: 'routeStore.navigate', args: [opts.path, { $: `{ query: { id: ${as}.id } }` }] },
         // Opening a channel is what marks it read. Deliberately on the navigation rather than on
         // the feed's mount: a feed that marks on mount also marks on every re-render the router
         // does, and re-reading a channel you are already in would clear a dot you had not seen.
