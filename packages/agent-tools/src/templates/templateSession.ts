@@ -119,6 +119,29 @@ function describeCopy(copy: SchemaNode): string {
   );
 }
 
+/**
+ * The patches a call carries. A model sometimes sends the array as the JSON text of one: Claude did
+ * three times in a row on one run of the eval and used up the session saying so. The text is the
+ * same patches, so they are read rather than refused.
+ *
+ * Text that does not parse is answered with where it broke. Told only that patches must be an array,
+ * a model resent the same broken text three times, since nothing said what was wrong with it.
+ */
+function patchList(value: unknown): SchemaPatch[] | string {
+  const refused = 'Invalid input: patches must be an array';
+  if (typeof value === 'string') {
+    try {
+      value = JSON.parse(value);
+    } catch (err) {
+      return (
+        `${refused}. It arrived as text that is not valid JSON (${(err as Error).message}). ` +
+        'Send the list itself rather than a string, and check that every bracket is closed.'
+      );
+    }
+  }
+  return Array.isArray(value) ? (value as SchemaPatch[]) : refused;
+}
+
 /** The semantic issues a template has as it will render — the baseline an edit is judged against. */
 export function templateIssues(schema: SchemaNode, validationContext: ValidationContext): Set<string> {
   return new Set(validateSemantic(asRendered(schema), validationContext).errors.map(issueKey));
@@ -197,11 +220,11 @@ export function createTemplateSession(options: TemplateSessionOptions): Template
     let patches = 0;
 
     for (const call of calls) {
-      const list = (call.arguments as { patches?: SchemaPatch[] } | undefined)?.patches;
-      if (!Array.isArray(list)) {
+      const list = patchList((call.arguments as { patches?: unknown } | undefined)?.patches);
+      if (typeof list === 'string') {
         results.push({
           callId: call.id,
-          content: 'Invalid input: patches must be an array',
+          content: list,
           isError: true,
           failed: 'input',
         });

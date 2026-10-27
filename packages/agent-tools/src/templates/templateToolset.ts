@@ -45,7 +45,7 @@ import {
 } from '../core/toolset';
 import { datasetModelExtras, loadReference, updateSchemaTool } from './aiInfra';
 import { toolsPreamble } from './chatSystemPrompt';
-import { type ReferenceDoc, referenceDocs } from './contextStrategies';
+import { type ReferenceDoc, referenceDocs, selectReference } from './contextStrategies';
 import { prepareForModel } from './nodeAliases';
 import { roleOfTemplate, starterTemplate, TEMPLATE_ROLES, type TemplateRole } from './starterTemplates';
 import { boundTemplate } from './templateContext';
@@ -151,7 +151,44 @@ async function read({ record, args, models = [] }: ToolCall): Promise<string> {
     version,
     currentSchema: bounded.sent,
     ...datasetModelExtras(models, validation(models).base.entityNames),
+    reference: referenceFor(await loadReference(), about, bounded.sent),
+    /*
+      Last, because a model answers whatever it read last. On a large template this answer is tens
+      of thousands of characters, and a small model that reaches the end of it describes the
+      template it was shown rather than making the edit it was asked for — every run of the
+      workshop cases did, in the 4B eval of October 2026.
+    */
+    ...(about.trim() && {
+      next: `The edit asked for: "${about.trim()}". Make it with ${TEMPLATE_UPDATE}, passing version ${version}.`,
+    }),
   });
+}
+
+/** How much of `template_read`'s answer the reference entries may take, in characters. */
+export const READ_REFERENCE_BUDGET = 30_000;
+
+/**
+ * The reference entries a read's edit probably needs, beside the template: the components in what
+ * was sent in full and the ones the request names, and the stores either mentions.
+ *
+ * In the answer rather than left to be asked for, because a small model does not ask: given the
+ * entries it uses them, and without them it guesses a prop. The editor's own conversation puts the
+ * same selection in its prompt; an agent on a host has no prompt of ours, and its first read is the
+ * one place to put it.
+ */
+function referenceFor(reference: string, about: string, sent: unknown): string {
+  const selected = selectReference(reference, { request: about, schema: sent }, READ_REFERENCE_BUDGET);
+  if (!selected.components.length && !selected.stores.length) return '';
+  return [
+    'Reference entries for what this template uses and the request names. Anything else is a documentation topic.',
+    ...(selected.components.length ? [selected.componentsIntro, ...selected.components] : []),
+    ...(selected.stores.length ? [selected.storesIntro, ...selected.stores] : []),
+    ...(selected.omitted.length
+      ? [
+          `Also involved, left out for room — each is the topic template/components/<name> or template/stores/<name>: ${selected.omitted.join(', ')}.`,
+        ]
+      : []),
+  ].join('\n\n');
 }
 
 async function update({ record, args, models = [], author }: ToolCall) {

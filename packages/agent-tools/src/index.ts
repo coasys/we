@@ -8,6 +8,7 @@ export * from './templates/editSession';
 export * from './templates/nodeAliases';
 export * from './templates/schemaPatches';
 export * from './templates/templateContext';
+export * from './templates/templateRequest';
 export * from './templates/templateSession';
 export * from './templates/templateToolset';
 export * from './themes/themeToolset';
