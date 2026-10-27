@@ -29,6 +29,13 @@
 // of the description is left as written. A pull request from a fork gets a read-only token, so
 // there the edit fails and the check reports the leftover as before.
 //
+// The title says it too, as a suffix: `feat(x): a change (stacked on #312)`. The list shows a
+// `stacked` label but no number, and the title is the only place in the list a number can go. It is
+// the workflow's to write, never the author's (SYNC_TITLE=1): from the base, like the label, so it is
+// added when a pull request is based on another one's branch, corrected when it is rebased onto a
+// different one, and taken off when it is retargeted at a trunk. A fork's token cannot edit the
+// pull request, so a fork's title is left as it is.
+//
 // Strict and broad: a line that starts "Stacked on", in any case, heading level or quote, is an
 // attempt, and an attempt not in the exact form is an error with the block to paste. A mention
 // in a sentence is not one.
@@ -41,6 +48,7 @@
 //                          when the check fails, since the label follows the base alone
 //   cleared=#N             the block naming #N was removed from the description, which needs a
 //                          token allowed to edit pull requests
+//   titled=<title>         the title was changed to say what it is stacked on, or that it is not
 //
 // On an error it exits 1 and explains on stderr, with the block to paste.
 // ---------------------------------------------------------------------------
@@ -56,6 +64,18 @@ const HEADING = /^> ### Stacked on: #(\S+)$/;
 // Anchored at the start of a line, after any quote markers, heading hashes, list markers or bold.
 const LEAD = String.raw`^(?:>\s*)*(?:#{1,6}\s*|[-*+]\s+|\d+[.)]\s+)?(?:\*\*|__)?`;
 const ATTEMPT = new RegExp(`${LEAD}stacked on\\b`, 'i');
+
+/** The suffix the workflow keeps on a stacked pull request's title, in any case it was written. */
+const TITLE_SUFFIX = /\s*\(stacked on #[0-9]+\)\s*$/i;
+
+/**
+ * The title as it should read: without a stacking suffix when `parent` is undefined, and ending
+ * `(stacked on #parent)` when it is set. Anything else in the title is left exactly as written.
+ */
+export function stackedTitle(title, parent) {
+  const bare = title.replace(TITLE_SUFFIX, '');
+  return parent ? `${bare} (stacked on #${parent})` : bare;
+}
 
 /** The block as it should be written. */
 export function block(number = '<pull request number>') {
@@ -194,7 +214,7 @@ export function withoutBlock(body) {
 }
 
 /** The open pull request from a branch in this repository, if there is one; any failure is none. */
-async function parentOf(repo, branch, get) {
+export async function parentOf(repo, branch, get) {
   try {
     const owner = repo.split('/')[0];
     const pulls = await get(`repos/${repo}/pulls?head=${owner}:${encodeURIComponent(branch)}&state=open&per_page=1`);
@@ -222,6 +242,25 @@ async function main() {
   const pr = await github(`repos/${repo}/pulls/${number}`);
   const { stacked, error } = await checkStacking({ repo, base: pr.base.ref, body: pr.body ?? '' }, github);
   console.log(`stacked=${stacked}`);
+
+  // Whatever the block says: the title follows the base, as the label does.
+  if (process.env.SYNC_TITLE === '1') {
+    const title = stackedTitle(pr.title, stacked ? await parentOf(repo, pr.base.ref, github) : undefined);
+    if (title !== pr.title) {
+      try {
+        await github(`repos/${repo}/pulls/${number}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title }),
+        });
+        console.log(`titled=${title}`);
+      } catch (failure) {
+        // A fork's token cannot edit the pull request. The title is a convenience, not the check.
+        console.error(`Could not update the title (${failure.message}).`);
+      }
+    }
+  }
+
   if (!error) return;
 
   const cleared = error.clearable ? withoutBlock(pr.body ?? '') : undefined;

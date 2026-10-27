@@ -8,7 +8,8 @@ See docs/contributing/ad4m-and-deploys.md.
 
 <!--
 Based on another PR's branch rather than dev? Uncomment the block below and set that PR's number.
-It goes first. A check fails while it disagrees with the base branch. See docs/contributing/pull-requests.md.
+It goes first. A check fails while it disagrees with the base branch. The title's "(stacked on #N)"
+is added for you. See docs/contributing/pull-requests.md.
 -->
 <!--
 > [!IMPORTANT]

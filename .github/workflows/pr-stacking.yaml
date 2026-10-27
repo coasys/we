@@ -9,12 +9,15 @@
 # - A CHECK that the description's `Stacked on: #N` block agrees with the base — present when the
 #   PR is stacked, naming the open PR whose branch the base is, and gone once it is not. The rules
 #   and the reasons are in scripts/pr-stacking.mjs.
+# - A TITLE ending `(stacked on #N)` while it is stacked, which the list shows where the label alone
+#   says nothing of which PR. Written and removed by the script, from the base, like the label.
 #
 # `edited` covers both a change to the description and a retarget, which GitHub reports as an edit
 # of the base. Drafts run too: a stack is usually opened as drafts, and the label is most useful
 # while it is being built.
 #
-# A PR from a fork gets the check and no label: its workflow token cannot write to this repository.
+# A PR from a fork gets the check and no label or title: its workflow token cannot write to this
+# repository.
 name: PR stacking
 
 on:
@@ -57,6 +60,9 @@ jobs:
           # failed: it is the ordinary end of a stack. Done here, in the same run, because an
           # edit made with this token starts no new run. See scripts/pr-stacking.mjs.
           CLEAR_MERGED_BLOCK: '1'
+          # The title's `(stacked on #N)`, kept in step with the base. Also an edit with this token,
+          # so it starts no new run either.
+          SYNC_TITLE: '1'
         run: |
           # The script reads the PR from the API as it is now, not from the event: a re-run replays
           # its event, so the event's base and description can both be stale.
