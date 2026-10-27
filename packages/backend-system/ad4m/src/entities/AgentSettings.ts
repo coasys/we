@@ -79,9 +79,6 @@ export class AgentSettings extends Ad4mModel {
   @Property({ through: 'we://display_preferences' })
   displayPreferences: string = '';
 
-  @Property({ through: 'we://claude_api_key' })
-  claudeApiKey: string = '';
-
   @Property({ through: 'we://dataset_order' })
   datasetOrder: string = '';
 

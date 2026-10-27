@@ -1,5 +1,4 @@
 import { boardOptimism } from '@shared/boardOptimism';
-import { withExtractionDefaults } from '@shared/collectionExtraction';
 import { datasetAddressedBy } from '@shared/datasetIdentity';
 import { collectionFacts } from '@shared/destructiveFacts';
 import { involvementOptimism } from '@shared/involvementOptimism';
@@ -12,12 +11,13 @@ import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry'
 import { onSlotRegistryChanged, slotRegistry } from '@shared/registries/slotRegistry';
 import { provideChromeBag, provideTemplateBag } from '@shared/registries/templateBag';
 import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/templateSurface';
-import { completeResponse, respondsThrough } from '@shared/responses';
 import { installRenderSettleOnExit, installSafeModeShortcut } from '@shared/safeMode';
 import { hostSourceBag } from '@shared/sources';
 import { workflowStateOf } from '@shared/taskWorkflow';
 import { taskWorkflowLive } from '@shared/taskWorkflowLive';
 import { copyText } from '@shared/utils';
+import { withExtractionDefaults } from '@we/entities';
+import { completeResponse, respondsThrough } from '@we/entities';
 
 import { signalOptimism } from '../../../shared/signalOptimism';
 import { signalOrder } from '../../../shared/signalOrder';
@@ -225,7 +225,7 @@ export default function TemplateProvider() {
    * A new feed starts with its space's extraction defaults — written onto it, not inherited.
    *
    * Every collection that conversations happen in holds its own answer to "is this extracted as it
-   * grows, and for what", copied from the space when it is made; see `@shared/collectionExtraction`
+   * grows, and for what", copied from the space when it is made; see `collectionExtraction` in `@we/entities`
    * for why a copy. Done here because this is where both of the ways a new one arrives meet: a
    * template's `record.create` (a channel) and a module's write (a call). Anything the caller
    * already said wins, and a dataset with no space gets nothing, which leaves the collection unset.
@@ -248,7 +248,7 @@ export default function TemplateProvider() {
   }
 
   /**
-   * A record written as a response is linked into its thread — see `@shared/responses`. Not awaited:
+   * A record written as a response is linked into its thread — see `completeResponse` in `@we/entities`. Not awaited:
    * the response exists, and the press that wrote it should not wait on the thread link.
    */
   function threadResponse(perspective: DatasetProxy, created: { id?: string } | undefined, options: unknown): void {
