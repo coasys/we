@@ -203,6 +203,10 @@ export const glowTheme: BundleTheme = {
       textMuted: '#c7c9dc',
       textFaint: '#9497ba',
       onAccent: '#0f1230',
+      // The site's mint text is its button mint, at full strength. Derived, accent text came out a
+      // paler, greyer step of the same hue, which read as faded beside the buttons. Pinned to the
+      // fill rather than to a colour, so it still follows the accent when somebody moves it.
+      accentText: 'var(--we-role-accent)',
       ...TINTS,
     },
   },

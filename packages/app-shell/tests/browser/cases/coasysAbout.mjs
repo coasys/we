@@ -33,14 +33,29 @@ export async function check({ measure, measureAll, measureText, evaluate, screen
   if (!before) problems.push('no film frame with an aspect ratio');
   else if (!near(before.h, (before.w * 9) / 16)) problems.push(`the frame is ${before.w}×${before.h}, not 16:9`);
 
-  // The headline does not change height as it types: sample it while the phrases change.
-  const heading = await measure('h1');
+  // The headline does not change height as it types: sample it while the phrases change. The `h1` is
+  // inside the we-text's shadow root, where `measure` cannot see, so this reads the host — which
+  // once made the check pass by measuring nothing.
+  const headline = () =>
+    evaluate(() => {
+      const host = [...document.querySelectorAll('we-text')].find((t) => t.tag === 'h1');
+      const r = host?.getBoundingClientRect();
+      return r ? { x: r.x, h: r.height } : null;
+    });
+  const heading = await headline();
+  if (!heading) problems.push('no headline');
   const heights = new Set([heading?.h]);
   for (let i = 0; i < 6; i++) {
     await evaluate(() => new Promise((resolve) => setTimeout(resolve, 400)));
-    heights.add((await measure('h1'))?.h);
+    heights.add((await headline())?.h);
   }
   if (heights.size > 1) problems.push(`the headline's height moved while it typed: ${[...heights].join(', ')}`);
+
+  // The text starts where the site's does: centred in 1200px, inset 40px (22px on a phone). The inset
+  // and the top padding are set at different widths, and a tier that named only the top once
+  // wrote the sides as 0 there.
+  const inset = Math.max(0, (width - 1200) / 2) + (width >= 640 ? 40 : 22);
+  if (heading && !near(heading.x, inset)) problems.push(`the headline starts at x=${heading.x}, not ${inset}`);
 
   const watch = await measureText('Watch the film', 'we-button');
   const see = await measureText('See the app', 'we-button');
