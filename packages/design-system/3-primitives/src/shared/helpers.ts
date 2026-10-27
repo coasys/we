@@ -1277,7 +1277,9 @@ export function getStaticDSStyles(
   layers?: readonly DSLayer[],
   defaultProps?: Partial<DesignSystemProps>,
 ): string {
-  const l = new Set<DSLayer>(layers ?? ['layout', 'visual', 'flex', 'typography', 'state']);
+  // `state` always: a state is a condition every element can be under, not a kind of prop an element
+  // opts into — see `getKeysForLayers`. What it may change is still bounded by the other layers.
+  const l = new Set<DSLayer>([...(layers ?? ['layout', 'visual', 'flex', 'typography']), 'state']);
   const p = `--we-${componentName}-`;
   const cascade = COMPONENT_CASCADE[componentName];
 

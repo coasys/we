@@ -217,6 +217,14 @@ export function getKeysForLayers(layers: DSLayer[]): string[] {
     enforced where the variables are emitted rather than here.
   */
   for (const key of tierKeys) keys.add(key);
+  /*
+    The state bags too, for the same reason and with the same history. `state` was a layer, and the
+    image-like primitives (`LayoutVisualElement`: we-image, we-video, we-avatar…) did not list it, so
+    `hoverProps` on a we-image validated clean and was filtered away: a film poster meant to brighten
+    under the pointer stayed dim. A state, like a tier, is a condition under which the element's own
+    kinds of prop apply, so every element takes one, bounded by its layers where it is emitted.
+  */
+  for (const key of stateKeys) keys.add(key);
   const result = [...keys];
   keysForLayersCache.set(cacheKey, result);
   return result;
