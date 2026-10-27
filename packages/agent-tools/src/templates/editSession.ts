@@ -33,10 +33,18 @@ export interface EditSessionOptions {
   system: string;
   /** The conversation so far, the request being made last. Appended to as the session runs. */
   turns: ConversationTurn[];
-  /** Every tool the model is offered. `update_schema` is handled here; anything else goes to `resolveTool`. */
+  /** Every tool the model is offered. The patch tool is handled here; anything else goes to `resolveTool`. */
   tools: ConversationTool[];
-  /** The answer to a call other than `update_schema` — a context lookup — or undefined for a tool nobody knows. */
-  resolveTool?: (call: ConversationToolCall) => string | undefined;
+  /**
+   * The answer to a call other than the patch tool — a context lookup — or undefined for a tool
+   * nobody knows. `current` is the tree with every patch kept so far, for a lookup that reads nodes.
+   */
+  resolveTool?: (call: ConversationToolCall, current: SchemaNode) => string | undefined;
+  /**
+   * The tool whose calls carry patches: `update_schema`, or `template_update` when the request was
+   * prepared with the template tools a host offers (`prepareTemplateRequest` says which).
+   */
+  patchTool?: string;
   /** The template the first patch applies to. */
   schema: SchemaNode;
   /**
@@ -70,7 +78,7 @@ export interface EditSessionOptions {
 export interface EditSessionStats {
   /** Model calls made. */
   modelCalls: number;
-  /** Calls to `update_schema`. */
+  /** Calls to the patch tool. */
   patchCalls: number;
   /** Calls to any other tool — context lookups. */
   contextCalls: number;
@@ -196,16 +204,17 @@ export async function runEditSession(options: EditSessionOptions): Promise<EditS
       The patches go to the session as one batch — kept whole or not at all, so a turn never lands
       half-done — and every other call is a lookup, answered by `resolveTool`.
     */
-    const patchCalls = calls.filter((call) => call.name === 'update_schema');
+    const patchTool = options.patchTool ?? 'update_schema';
+    const patchCalls = calls.filter((call) => call.name === patchTool);
     const batch = patchCalls.length > 0 ? session.apply(patchCalls) : undefined;
     const pending = [...(batch?.results ?? [])];
     const results: Array<{ callId: string; content: string; isError?: boolean }> = calls.map((call) => {
-      if (call.name === 'update_schema') {
+      if (call.name === patchTool) {
         stats.patchCalls++;
         return pending.shift()!;
       }
       stats.contextCalls++;
-      const answer = options.resolveTool?.(call);
+      const answer = options.resolveTool?.(call, session.current());
       return answer === undefined
         ? { callId: call.id, content: `Unknown tool: ${call.name}`, isError: true }
         : { callId: call.id, content: answer };

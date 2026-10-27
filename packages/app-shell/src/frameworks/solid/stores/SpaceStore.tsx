@@ -2,14 +2,6 @@ import { boardOptimism } from '@shared/boardOptimism';
 import { createBoardActions, type CreateBoardOptions } from '@shared/boards';
 import { callParamToWrite } from '@shared/callOnScreen';
 import {
-  collectionExtractionDefaults,
-  LEGACY_EXTRACTION_TARGETS,
-  parseEntityList,
-  resolveCollectionAutoExtract,
-  resolveCollectionExtractionTargets,
-  resolveSpaceExtractionTargets,
-} from '@shared/collectionExtraction';
-import {
   CONTAINER_ACTIVITY_QUERY,
   type ContainerActivity,
   mentionsOf,
@@ -55,7 +47,6 @@ import {
   moduleSurface,
 } from '@shared/registries/moduleRegistry';
 import { defaultViewOrder, viewRegistry } from '@shared/registries/viewRegistry';
-import { completeResponse } from '@shared/responses';
 import { seedDefaultEnabledModules } from '@shared/seedModules';
 import { getSeed } from '@shared/seedRegistry';
 import { type SharingPickerOption, sharingPickerOptions } from '@shared/sharingOptions';
@@ -147,6 +138,15 @@ import {
 } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
 import { saveFile, type SaveOutcome } from '@we/design-utils';
+import {
+  collectionExtractionDefaults,
+  LEGACY_EXTRACTION_TARGETS,
+  parseEntityList,
+  resolveCollectionAutoExtract,
+  resolveCollectionExtractionTargets,
+  resolveSpaceExtractionTargets,
+} from '@we/entities';
+import { completeResponse } from '@we/entities';
 import {
   AGENT_DEFAULT,
   CollectionBlock,
@@ -302,7 +302,7 @@ interface ShareTask {
 
 /*
   The extraction-settings resolution — `LEGACY_EXTRACTION_TARGETS`, `parseEntityList` and the
-  per-collection resolvers below — lives in `@shared/collectionExtraction` so it can be tested
+  per-collection resolvers below — lives in `collectionExtraction` in `@we/entities` so it can be tested
   without mounting this provider. See that module for why a collection holds a copy.
 */
 
@@ -2323,7 +2323,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         anchor: { id: parentId, relation, ...(relation === 'children' && { entity: 'CollectionBlock' }) },
       }),
     });
-    // A reply is linked into its thread, and is a child of nothing — see `@shared/responses`.
+    // A reply is linked into its thread, and is a child of nothing — see `completeResponse` in `@we/entities`.
     if (root?.id && parentId && relation === 'responses') void completeResponse(p, root.id, parentId);
     return root?.id;
   }
@@ -4598,7 +4598,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     reads false: a decision nobody has made is not a decision to spend somebody's LLM budget.
 
     A default and nothing more. Each collection holds its own answer, copied from this when it was
-    made (`CollectionBlock.autoExtract`); see `@shared/collectionExtraction` for why a copy.
+    made (`CollectionBlock.autoExtract`); see `collectionExtraction` in `@we/entities` for why a copy.
   */
   const autoInterpret = createMemo<boolean>(() => currentSpace()?.autoInterpret === true);
   onCleanup(datasetStore.provideAutoInterpretGate(() => autoInterpret()));
