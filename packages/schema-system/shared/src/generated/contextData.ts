@@ -2618,6 +2618,7 @@ export const contextData: ContextData = {
         segments: { type: 'array' },
         templateSegments: { type: 'array' },
         params: { type: 'object' },
+        page: { type: 'string' },
       },
       actions: ['navigate', 'setParam', 'back'],
       ambient: ['navigate', 'setParam', 'back'],

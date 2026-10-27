@@ -6732,6 +6732,9 @@
         },
         "params": {
           "type": "object"
+        },
+        "page": {
+          "type": "string"
         }
       },
       "actions": ["navigate", "setParam", "back"],

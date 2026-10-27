@@ -3226,10 +3226,11 @@ RouteStore:
 - State:
   - currentPath: string (the current route path)
   - segments: string[] (currentPath split by "/", e.g. ["/foo/bar"] → ["foo", "bar"])
-  - templateSegments: string[] — the segments BELOW the space prefix, which is a template's own coordinate space. A template mounted at /space/<id> reading its own route params wants this: at /space/abc/photo/xyz it is ["photo", "xyz"], so a `/photo/:postId` route reads templateSegments[1] and keeps reading it wherever the host mounts the template. Reading `segments` by index pins a template to the host's prefix and breaks when it moves.
+  - templateSegments: string[] — the segments BELOW the space prefix, which is a template's own coordinate space. A template mounted at /space/<id> reading its own screens wants this: at /space/abc/canvas/notes it is ["canvas", "notes"], whatever prefix the host mounts the template under. Not for a record's id, which is a query value: routeStore.params.id. Reading `segments` by index pins a template to the host's prefix and breaks when it moves.
   - params: Record<string, string> — the URL's query parameters, reactive; read one as { $: 'routeStore.params.<name>' }. Prefer $localState with syncParam for fields a view owns; read params directly only for parameters something else writes
+  - page: string — the page on screen: currentPath, plus ?id=… when the query names the record the page is about. /board?id=a and /board?id=b are two pages where currentPath says only "a board". What presence compares to tell who is on the same page
 - Actions:
-  - navigate(to: string, options?): navigates to a route (a bare path restores that route's remembered query string)
+  - navigate(to: string, options?: { query? }): navigates to a route (a bare path restores that route's remembered query string). A record's id goes in `query`, never in the path: { $invoke: 'routeStore.navigate', args: ['./board', { $: '{ query: { id: board.id } }' }] }, read back on that page as routeStore.params.id. An id is a URI, so in the path it is several segments and the route never matches; navigate writes it so it reads back exactly
   - setParam(name: string, value: string | null, options?: { push?: boolean }): writes one query parameter (null removes); replaceState by default, push: true for changes that deserve a Back entry. Prefer $localState syncParam over calling this directly
   - back(): goes back one entry, the browser's own way. Use it on a page reached from several places — a record page is opened from a list, from a search and from a link somebody sent, and only one of those has a parent worth guessing. Does nothing at the start of the session's history
 
@@ -4191,14 +4192,14 @@ Example — Channel list → Conversation list:
           "type": "we-button",
           "props": {
             "variant": "ghost",
-            "onClick": { "$invoke": "routeStore.navigate", "args": [{ "$": "`/channels/${channel.id}`" }] }
+            "onClick": { "$invoke": "routeStore.navigate", "args": ["./channels", { "$": "{ query: { id: channel.id } }" }] }
           },
           "children": [{ "$": "channel.name" }]
         }]
       }]
     },
     {
-      "path": "/channels/:channelId",
+      "path": "/channels",
       "type": "Column",
       "props": { "gap": "300", "p": "400" },
       "children": [{
@@ -4207,7 +4208,7 @@ Example — Channel list → Conversation list:
           "items": {
             "$query": {
               "entity": "Conversation",
-              "scope": { "anchor": "Channel", "via": "conversations", "anchorId": { "$": "routeStore.segments[1]" } },
+              "scope": { "anchor": "Channel", "via": "conversations", "anchorId": { "$": "routeStore.params.id" } },
               "dataset": { "$": "currentDataset" }
             }
           },
@@ -4224,6 +4225,7 @@ Example — Channel list → Conversation list:
 Notes:
 - Use include when you need related data displayed inline (e.g. a post with its comments, a channel with its conversation count).
 - Use a scope drill-down when you're on a detail route and want only children belonging to the current record.
+- A detail route takes its record's id from the query, never the path: open it with navigate('./channels', { query: { id } }) and read routeStore.params.id. An id is a URI, so in a path it is several segments and the route never matches.
 - dataset must point to the dataset that holds the data. For external apps (e.g. Flux) opened as a WE space, use { "$": "currentDataset" }.
 - The relation name (in include, or scope.via) is the HasMany field name on the parent entity.
 
