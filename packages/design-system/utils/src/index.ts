@@ -728,6 +728,79 @@ export function mergeProps(
   return merged;
 }
 
+/**
+ * The four values of each box the builders assemble into one declaration — padding, margin and the
+ * corners — and the props each one is read from, most specific first, as the builders read them.
+ */
+const BOX_SIDES: readonly Record<string, readonly string[]>[] = [
+  { pt: ['pt', 'py', 'p'], pr: ['pr', 'px', 'p'], pb: ['pb', 'py', 'p'], pl: ['pl', 'px', 'p'] },
+  { mt: ['mt', 'my', 'm'], mr: ['mr', 'mx', 'm'], mb: ['mb', 'my', 'm'], ml: ['ml', 'mx', 'm'] },
+  {
+    rtl: ['rtl', 'rt', 'rl', 'r'],
+    rtr: ['rtr', 'rt', 'rr', 'r'],
+    rbr: ['rbr', 'rb', 'rr', 'r'],
+    rbl: ['rbl', 'rb', 'rl', 'r'],
+  },
+];
+
+const sideOf = (props: Partial<DesignSystemProps> | undefined, chain: readonly string[]): unknown => {
+  for (const key of chain) {
+    const value = (props as Record<string, unknown> | undefined)?.[key];
+    if (value) return value;
+  }
+  return undefined;
+};
+
+/**
+ * A variant bag — a state's or a tier's — with every side of a box it touches written out, the
+ * sides it does not name taken from what it sits over.
+ *
+ * A box is one declaration (`padding: t r b l`), so a variant's padding is one custom property and
+ * falls back as a whole. A bag naming some sides therefore decided all four: the ones it left out
+ * were written as `0`, not read from below. `mdUpProps: { pt: '124px' }` over `px: '40px'` took the
+ * forty pixels away at that width, and `smUpProps: { px }` zeroed the top. The base builders had the
+ * same flaw and take a `rest` for it (see `getPaddingValues`), which is the theme; a variant has a
+ * stack beneath it rather than a theme, so it is filled from that stack here, before it is built.
+ *
+ * `below` is nearest first. A box the bag does not touch, or names all of, is left as written.
+ */
+export function withBoxSidesFilled(
+  bag: Partial<DesignSystemProps>,
+  below: readonly (Partial<DesignSystemProps> | undefined)[],
+): Partial<DesignSystemProps> {
+  let out = bag;
+  for (const box of BOX_SIDES) {
+    const named = Object.entries(box).map(([side, chain]) => [side, sideOf(bag, chain)] as const);
+    if (named.every(([, value]) => value === undefined) || named.every(([, value]) => value !== undefined)) continue;
+    const filled: Record<string, unknown> = out === bag ? { ...bag } : out;
+    for (const key of new Set(Object.values(box).flat())) delete filled[key];
+    for (const [side, value] of named) {
+      let resolved = value;
+      for (const layer of below) {
+        if (resolved !== undefined) break;
+        resolved = sideOf(layer, box[side]);
+      }
+      if (resolved !== undefined) filled[side] = resolved;
+    }
+    out = filled as Partial<DesignSystemProps>;
+  }
+  return out;
+}
+
+/**
+ * One tier's bag, ready to build: what `<tier>UpProps` says, with the sides of a box it names only
+ * some of filled from the tiers beneath it and then the element's own props. Undefined when the
+ * element has nothing for that tier.
+ */
+export function tierBagOf(props: Partial<DesignSystemProps>, tier: Exclude<Tier, 'base'>) {
+  const bag = (props as Record<string, unknown>)[TIER_PROP_KEYS[tier]] as Partial<DesignSystemProps> | undefined;
+  if (!bag || typeof bag !== 'object' || Object.keys(bag).length === 0) return undefined;
+  const beneath = (TIERS.slice(1, TIERS.indexOf(tier)) as Exclude<Tier, 'base'>[])
+    .reverse()
+    .map((t) => (props as Record<string, unknown>)[TIER_PROP_KEYS[t]] as Partial<DesignSystemProps> | undefined);
+  return withBoxSidesFilled(bag, [...beneath, props]);
+}
+
 // ────────────────────────────────────────────
 // Shared static-CSS declaration builders — single source of truth for "which DS prop
 // maps to which CSS property", consumed by both the Lit adopted-stylesheet generator

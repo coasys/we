@@ -10,9 +10,11 @@ import {
   getBgImageAttrs as getBgImageAttrsNeutral,
   type LayoutStyleProps,
   TIER_PROP_KEYS,
+  tierBagOf,
   tierKeys,
   toInteractiveVars,
   warnIfUnsurfaced,
+  withBoxSidesFilled,
   withRestingShadow,
 } from '../index';
 
@@ -135,20 +137,35 @@ export function useStateProps(
     // here reproduces the same active-over-hover-over-focus precedence the old
     // JS-merge order (focus, then hover, then active) produced.
     const focusVars = hasFocus()
-      ? toInteractiveVars('focus-', buildStateFragmentStyles(withRestingShadow(props.focusProps!, props), direction))
+      ? toInteractiveVars(
+          'focus-',
+          buildStateFragmentStyles(withRestingShadow(withBoxSidesFilled(props.focusProps!, [props]), props), direction),
+        )
       : {};
     const hoverVars = hasHover()
-      ? toInteractiveVars('hover-', buildStateFragmentStyles(withRestingShadow(props.hoverProps!, props), direction))
+      ? toInteractiveVars(
+          'hover-',
+          buildStateFragmentStyles(withRestingShadow(withBoxSidesFilled(props.hoverProps!, [props]), props), direction),
+        )
       : {};
     const activeVars = hasActive()
-      ? toInteractiveVars('active-', buildStateFragmentStyles(withRestingShadow(props.activeProps!, props), direction))
+      ? toInteractiveVars(
+          'active-',
+          buildStateFragmentStyles(
+            withRestingShadow(withBoxSidesFilled(props.activeProps!, [props]), props),
+            direction,
+          ),
+        )
       : {};
     // Layout elements have no native :disabled — the stylesheet keys the disabled
     // state off aria-disabled="true", which the consumer sets alongside disabledProps.
     const disabledVars = hasDisabled()
       ? toInteractiveVars(
           'disabled-',
-          buildStateFragmentStyles(withRestingShadow(props.disabledProps!, props), direction),
+          buildStateFragmentStyles(
+            withRestingShadow(withBoxSidesFilled(props.disabledProps!, [props]), props),
+            direction,
+          ),
         )
       : {};
 
@@ -161,8 +178,8 @@ export function useStateProps(
       element declaring only `lgUpProps` emits only that.
     */
     const tierVars: CSSStyleObject = {};
-    for (const [tier, key] of Object.entries(TIER_PROP_KEYS)) {
-      const bag = bagOf(key);
+    for (const tier of Object.keys(TIER_PROP_KEYS) as (keyof typeof TIER_PROP_KEYS)[]) {
+      const bag = tierBagOf(props, tier);
       if (bag) Object.assign(tierVars, toInteractiveVars(`${tier}-`, buildStateFragmentStyles(bag, direction)));
     }
 

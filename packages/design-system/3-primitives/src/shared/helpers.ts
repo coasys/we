@@ -25,9 +25,11 @@ import {
   resolveFontWeight,
   resolveLineHeight,
   TIER_PROP_KEYS,
+  tierBagOf,
   tierQuery,
   tokenVar,
   warnIfUnsurfaced,
+  withBoxSidesFilled,
   zIndexVar,
 } from '@we/design-utils';
 import {
@@ -1039,7 +1041,7 @@ export function updateAllCustomVars(
     // State props are always treated as explicit — no DEFAULT_PROPS fill state blocks.
     if (stateProps && typeof stateProps === 'object') {
       hasState = true;
-      updateCustomVars(el, componentName, stateProps, undefined, state);
+      updateCustomVars(el, componentName, withBoxSidesFilled(stateProps, [props]), undefined, state);
     }
   });
   /*
@@ -1050,11 +1052,11 @@ export function updateAllCustomVars(
     cascading through from the tier below.
   */
   let hasTier = false;
-  for (const [tier, key] of Object.entries(TIER_PROP_KEYS)) {
-    const tierProps = (props as Record<string, unknown>)[key];
-    if (tierProps && typeof tierProps === 'object') {
+  for (const tier of Object.keys(TIER_PROP_KEYS) as (keyof typeof TIER_PROP_KEYS)[]) {
+    const tierProps = tierBagOf(props, tier);
+    if (tierProps) {
       hasTier = true;
-      updateCustomVars(el, componentName, tierProps as Partial<DesignSystemProps>, undefined, tier as never);
+      updateCustomVars(el, componentName, tierProps, undefined, tier as never);
     }
   }
   // The one failure this design cannot make unreachable: a query with no container is silently
