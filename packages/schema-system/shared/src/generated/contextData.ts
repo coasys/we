@@ -1344,7 +1344,6 @@ export const contextData: ContextData = {
         { name: 'systemLightThemeId', type: 'string', predicate: 'we://system_light_theme', required: false },
         { name: 'systemDarkThemeId', type: 'string', predicate: 'we://system_dark_theme', required: false },
         { name: 'displayPreferences', type: 'string', predicate: 'we://display_preferences', required: false },
-        { name: 'claudeApiKey', type: 'string', predicate: 'we://claude_api_key', required: false },
         { name: 'datasetOrder', type: 'string', predicate: 'we://dataset_order', required: false },
         {
           name: 'globalSpaceJoined',

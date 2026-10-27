@@ -1,4 +1,6 @@
+export * from './core/conversation';
 export * from './core/toolset';
+export * from './data/dataToolset';
 export * from './templates/aiInfra';
 export * from './templates/chatSystemPrompt';
 export * from './templates/contextStrategies';

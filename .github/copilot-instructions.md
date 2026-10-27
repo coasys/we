@@ -106,7 +106,7 @@ Glossary (these terms pervade stores, models, and `$query`/`perspective` in sche
 | `@we/entities` | packages/entities | WE's domain models: the authored neutral manifest (src/manifest, the source of truth), the neutral type contract, and the entity proxies backends register into | **Agnostic** |
 | `@we/app-shell` | packages/app-shell | App shell, stores, registries, built-in template schemas | Solid |
 | `@we/ai-context` | packages/ai-context | Generates this reference (CLAUDE.md et al.) from code + fragments | Build tool |
-| `@we/agent-tools` | packages/agent-tools | What a model can do with WE: template editing as tools and as the editor's loop, one set of rules for both, plus a single-file bundle for agent hosts | **Agnostic** |
+| `@we/agent-tools` | packages/agent-tools | What a model can do with WE: templates and themes as tools for any host, a space's records and WE's conventions for a conversation WE runs itself, and a single-file bundle for agent hosts | **Agnostic** |
 
 Apps (`apps/we-web`, `apps/we-electron`, `apps/we-tauri`) are thin hosts over `@we/app-shell`.
 Each supplies two things: a `PlatformAdapter` (where am I running) and a `BackendConnector`
@@ -2521,7 +2521,6 @@ AgentSettings extends Ad4mModel:
   - systemLightThemeId: string [we://system_light_theme]
   - systemDarkThemeId: string [we://system_dark_theme]
   - displayPreferences: string [we://display_preferences]
-  - claudeApiKey: string [we://claude_api_key]
   - datasetOrder: string [we://dataset_order]
   - globalSpaceJoined: boolean = false [we://global_space_joined]
   - globalSpaceUrl: string [we://global_space_url]

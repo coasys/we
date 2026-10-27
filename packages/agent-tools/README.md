@@ -54,6 +54,36 @@ Both run on `createTemplateSession`, which is the only place that decides what a
 patches apply to a working copy, the result is judged as the tree it will render, only problems the
 edit introduced count against it, and an edit is kept whole or not at all.
 
+**WE runs an agent over a space** (where the backend does not run one): `runAgentConversation`,
+with tools bound to where the person is rather than handed a record per call.
+
+```ts
+const result = await runAgentConversation({
+  converse, // LanguageModelPort.converse
+  system,
+  turns, // the conversation so far, the request last
+  toolsets: [createDataToolset({ dataset, models }), bindRecordToolset(toolsets.template, host)],
+  mayWrite: true, // absent: tools that write are not offered at all
+  confirm: (question) => askThePerson(question), // absent: nothing that asks runs
+});
+// result.text, result.actions (offer as "Show me" buttons), result.wrote (what changed)
+```
+
+- **`createDataToolset`** is a space's records: describe, find, read, create, update, delete, over
+  the entity proxies and so through the app's own write path, the space's policy included. Beside
+  them, WE's conventions: `write_post` writes a composition, and a reply as a response threaded under
+  its subject; `in` puts a record in a collection. `define_model` is offered when the host can define
+  one.
+- **`bindRecordToolset`** runs a record toolset in the same conversation: each tool gains an `id`,
+  and the host's `read`, `write` and `create` stand where a backend's host would.
+- **The loop's guards** hold whatever the model asks for: a tool that writes is neither offered nor
+  run without `mayWrite`; a delete, a new kind of record and anything put in a space ask the person
+  first; what a read answers reaches the model fenced as other people's writing; the model is called
+  at most `maxModelCalls` times.
+
+`tests/feedConversation.test.ts` runs the feed's requests through all of it against the in-memory
+backend, with the model's replies scripted, and reads back what landed.
+
 ## The bundle
 
 `dist/agent-tools.bundle.js` (also `@we/agent-tools/bundle`) is one ESM file with everything

@@ -64,6 +64,14 @@ or WE runs it, calling the model one turn at a time through `LanguageModelPort.c
 toolsets. Never some tools on each side within one request: the model would see two sets of names
 and two descriptions of the same graph, and nobody reading the outcome could say which rules applied.
 
+When WE runs it, the conversation has what a backend's agent would: the space's records, through
+`createDataToolset`, over the same entity proxies and write path everything else in the app uses,
+with WE's conventions beside them as tools of their own (`write_post` threads a reply under its
+subject); and the record toolsets, bound to the place the person is working in by
+`bindRecordToolset`. The loop (`runAgentConversation`) holds the guards: nothing that writes is
+offered to a request that only reads, a delete or anything put in a space asks the person first, and
+what a read answers reaches the model fenced as other people's writing.
+
 Which side is decided by what the backend provides. A backend that runs agents provides the `agents`
 port; one built before it could answers `AgentUnavailableError`, and the request falls back to WE's
 own conversation. The same choice is what lets a backend that runs no agents at all still offer them.

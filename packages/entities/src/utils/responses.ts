@@ -16,14 +16,17 @@
  * to another channel moves its discussion with it.
  *
  * See `docs/architecture/relations.md` for the three links written out, and `WE_NODE_RELATIONS` for
- * their declarations.
+ * their declarations. Here, beside those declarations, because every writer of a response needs it:
+ * the app's own writes, and an agent's.
  *
  * Best effort, deliberately: the response itself is written by the time this runs, and a failure to
  * thread it leaves an ordinary response that its subject's `responses` still holds. Logged, never
  * thrown into the press that wrote it.
  */
-import { type DatasetProxy, getEntityForDataset } from '@we/entities';
-import { CORE_MANIFEST } from '@we/entities/manifest';
+import { getEntityForDataset } from '../entityRegistry';
+import { CORE_MANIFEST } from '../manifest';
+
+type DatasetProxy = unknown;
 
 type NodeRow = { id: string; inThread?: unknown };
 

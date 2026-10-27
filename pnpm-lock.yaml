@@ -472,6 +472,9 @@ importers:
       '@we/backend-shared':
         specifier: workspace:*
         version: link:../backend-system/shared
+      '@we/block-shared':
+        specifier: workspace:*
+        version: link:../block-system/shared
       '@we/entities':
         specifier: workspace:*
         version: link:../entities
@@ -485,6 +488,9 @@ importers:
       '@types/node':
         specifier: ^26.6.5
         version: 26.6.5
+      '@we/backend-inmemory':
+        specifier: workspace:*
+        version: link:../backend-system/inmemory
       '@we/cli':
         specifier: workspace:*
         version: link:../cli
