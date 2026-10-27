@@ -369,7 +369,7 @@ const postDetail: RouteSchema = {
 
 export const twitterTemplate: TemplateSchema = {
   meta: {
-    name: 'Timeline',
+    name: 'Twitter',
     description: 'A reverse-chronological feed of the space’s posts, with replies and community signals.',
     icon: 'newspaper',
     // Shared with Photos and Videos deliberately: those three exist to show one space rendered three

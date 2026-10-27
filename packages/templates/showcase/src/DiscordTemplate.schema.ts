@@ -244,7 +244,7 @@ const channelRoute: RouteSchema = {
 
 export const discordTemplate: TemplateSchema = {
   meta: {
-    name: 'Channels',
+    name: 'Discord',
     description: 'Categories, channels and messages — a Discord-shaped community space.',
     icon: 'hash',
     // A theme built from measurements of a real chat client rather than the stock dark preset —
