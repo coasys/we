@@ -183,15 +183,17 @@ export const profileEditor: SchemaNode = {
 export interface ProfilePageOptions {
   /** The name the profile is bound as — what `$agent`'s `as` says. */
   as: string;
-  /** Whether this is the viewer's own profile, as an expression: the pictures and the form are theirs. */
-  editable: string;
+  /**
+   * Whether this is the viewer's own profile, as an expression: the pictures and the form are theirs.
+   * `false` draws the page to read only, with nothing that writes in it at all — what a space template
+   * needs, since changing somebody's profile is the agent's to do and a space may not reach it.
+   */
+  editable: string | false;
 }
 
 /** A picture on the page: one you can change on your own profile, a plain picture on anyone else's. */
-const picture = (editable: string, image: SchemaNode, editableImage: SchemaNode): SchemaNode => ({
-  type: '$if',
-  props: { condition: { $: editable }, then: editableImage, else: image },
-});
+const picture = (editable: string | false, image: SchemaNode, editableImage: SchemaNode): SchemaNode =>
+  editable === false ? image : { type: '$if', props: { condition: { $: editable }, then: editableImage, else: image } };
 
 /** A person's profile as a page — see the module comment. */
 export function profilePage({ as, editable }: ProfilePageOptions): SchemaNode {
@@ -210,8 +212,12 @@ export function profilePage({ as, editable }: ProfilePageOptions): SchemaNode {
               type: 'we-image',
               props: { src: { $: p('coverImage') }, alt: '', fit: 'cover', width: '100%', height: '200px' },
             },
-            // Nobody's cover yet: the band still stands, so the picture overlapping it sits the same.
-            else: { type: 'Column', props: { width: '100%', height: '200px', bg: 'surface-sunken' } },
+            /*
+              Nobody's cover yet: the band still stands, so the picture overlapping it sits the same.
+              `surface` rather than sunken, which on the page's `chrome` is invisible in a light theme
+              and inverts in a dark one.
+            */
+            else: { type: 'Column', props: { width: '100%', height: '200px', bg: 'surface' } },
           },
         },
         {
@@ -331,7 +337,7 @@ export function profilePage({ as, editable }: ProfilePageOptions): SchemaNode {
             ],
           },
 
-          { type: '$if', props: { condition: { $: editable }, then: profileEditor } },
+          ...(editable === false ? [] : [{ type: '$if', props: { condition: { $: editable }, then: profileEditor } }]),
         ],
       },
     ],
