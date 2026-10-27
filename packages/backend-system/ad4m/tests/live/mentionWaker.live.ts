@@ -17,7 +17,9 @@
  *   relation): woken, naming the line;
  * - the bot's own post naming itself: not woken.
  *
- * The bot has no profile here, so no name in the text is one the executor could know it by.
+ * The name in the text is made up for the run, so it is in no profile the executor could know the
+ * bot by. The bot's own profile is never written: an executor already running (`AD4M_LIVE_URL`) is
+ * somebody's agent, and the last case checks its profile is left as it was found.
  *
  * The person is a second agent. The mention query skips links the bot wrote itself (a bot naming
  * itself in a reply is not a mention of it), so the post has to arrive authored by someone else —
@@ -26,14 +28,13 @@
  * as synced links arrive: `addLinkExpression` stores a link under the author it claims, and the
  * mention query reads only links whose signature verifies.
  */
-import { createHash, generateKeyPairSync, sign as signBytes } from 'node:crypto';
+import { createHash, generateKeyPairSync, randomUUID, sign as signBytes } from 'node:crypto';
 
 import {
   Ad4mClient,
   LinkExpression,
   LinkQuery,
   type MentionMessage,
-  type PerspectiveInput,
   QuerySubscriptionProxy,
   WakerSubscriptionManager,
 } from '@coasys/ad4m';
@@ -164,14 +165,28 @@ function person() {
 
 // ── The fixture ──────────────────────────────────────────────────────────────
 
-let backend: Promise<{ client: Ad4mClient; ports: BackendPorts; bot: string }> | undefined;
+let backend: Promise<{ client: Ad4mClient; ports: BackendPorts; bot: string; profile: string }> | undefined;
+
+/** The agent's public profile, as text to compare. */
+async function profileOf(client: Ad4mClient): Promise<string> {
+  const links = (await client.agent.me()).perspective?.links ?? [];
+  return JSON.stringify(links.map((l) => [l.data.source, l.data.predicate ?? null, l.data.target]).sort());
+}
 
 function connect() {
   backend ??= (async () => {
-    const { url, token } = inject('ad4mExecutor');
+    const { url, token, disposable } = inject('ad4mExecutor');
     const client = new Ad4mClient(url, token);
     const bot = (await client.agent.me()).did;
-    return { client, ports: createAd4mBackendPorts(client, { selfId: () => bot }), bot };
+    // Only an agent this run created is written to: it gets a profile, so that the profile check
+    // below compares something. One already running is somebody's, and its profile is only read.
+    if (disposable)
+      await client.agent.mutatePublicPerspective({
+        additions: [{ source: bot, predicate: 'sioc://has_name', target: 'literal:string:Data' }],
+        removals: [],
+      });
+    const profile = await profileOf(client);
+    return { client, ports: createAd4mBackendPorts(client, { selfId: () => bot }), bot, profile };
   })();
   return backend;
 }
@@ -203,12 +218,15 @@ const key = (l: {
 /** WE's mention picker's label for a member without a profile (`TemplateProvider`'s `mentions`). */
 const shortDid = (did: string) => (did.length > 20 ? `${did.slice(0, 12)}…${did.slice(-4)}` : did);
 
+/** A name made up for this run, so no profile holds it. */
+const UNKNOWN_NAME = `Nobody${randomUUID().slice(0, 8)}`;
+
 /**
  * What the text says where the bot is mentioned: whatever WE's picker showed for it. Neither is a
- * name the executor knows the bot by, since the bot has no profile.
+ * name the executor knows the bot by: the first is in no profile, the second is not the DID.
  */
 const LABELS: { label: string; name: (bot: string) => string }[] = [
-  { label: 'a name in no profile', name: () => 'Data' },
+  { label: 'a name in no profile', name: () => UNKNOWN_NAME },
   { label: 'a shortened DID', name: shortDid },
 ];
 
@@ -239,9 +257,6 @@ async function botWithWaker() {
   const { mcpUrl, token } = inject('ad4mExecutor');
   if (!mcpUrl) throw new Error('This test needs the executor’s MCP endpoint (AD4M_LIVE_MCP_URL).');
   const callTool = await mcpSession(mcpUrl, token);
-
-  // No public profile: no name in a mention's text is one the bot is known by.
-  await client.agent.updatePublicPerspective({ links: [] } as PerspectiveInput);
 
   // The neighbourhood the bot watches, and the one the person composes in.
   const watched = await weSpace(ports, 'waker-watched');
@@ -372,14 +387,19 @@ describe('a bot @mentioned in a WE channel', () => {
       kind: 'channel',
       title: 'own',
     })) as { id: string };
-    const ownRoot = await postMentioning(fixture.watched.handle, ownChannel.id, 'Data', fixture.bot);
+    const ownRoot = await postMentioning(fixture.watched.handle, ownChannel.id, UNKNOWN_NAME, fixture.bot);
     await new Promise((r) => setTimeout(r, 3_000));
 
     // Then a person mentions it, so the waker is shown to be listening.
-    const theirRoot = await postMentioning(fixture.composing.handle, fixture.channel.id, 'Data', fixture.bot);
+    const theirRoot = await postMentioning(fixture.composing.handle, fixture.channel.id, UNKNOWN_NAME, fixture.bot);
     const { woken, why } = await fixture.deliver();
     const addresses = woken.map((m) => m.address);
     expect(addresses, why).toContain(theirRoot);
     expect(addresses, why).not.toContain(ownRoot);
+  });
+
+  it('leaves the agent’s public profile as it found it', async () => {
+    const { client, profile } = await connect();
+    expect(await profileOf(client)).toBe(profile);
   });
 });
