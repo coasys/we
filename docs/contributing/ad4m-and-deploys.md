@@ -204,7 +204,7 @@ branch. So `pnpm bump:ad4m staging` takes the newest version, by publish time, w
 ### What `pnpm verify:ad4m` checks
 
 It runs WE's live tests (`pnpm --filter @we/backend-ad4m test:live`) against a real executor. There
-are two files in `packages/backend-system/ad4m/tests/live/`, and either one failing means do not
+are three files in `packages/backend-system/ad4m/tests/live/`, and any one failing means do not
 merge the bump.
 
 **`capabilities.live.ts`.** WE declares what the ad4m executor can do natively (`ad4mCapabilities`
@@ -226,11 +226,19 @@ relations and live queries through the backend's ports. The cases ad4m is known 
 in that file with what is wrong, and run inverted — they pass while the gap is open, and fail when
 an ad4m change closes it, which is the cue to delete the entry.
 
-Both start one executor in a temporary directory, on free ports and with no network, and remove it
+**`mentionWaker.live.ts`.** A bot is woken when a person @mentions it in a WE channel: the bot
+configures its waker as the AD4M plugin does (`get_mention_waker_config` over the executor's MCP
+endpoint, opened by `@coasys/ad4m`'s `WakerSubscriptionManager`), and what a person writes arrives
+signed by a second agent, as sync delivers it. A mention is the `we://mention` link to the bot's
+DID, never the name in the text: a post through WE's own `createBlocks` (the link from its root) and
+a feed line written as a module writes one (the link from the line) each wake the bot, labelled by a
+name in no profile or by a shortened DID. The bot's own post mentioning itself does not.
+
+They share one executor in a temporary directory, on free ports, with MCP on and no network, removed
 afterwards. Which binary is chosen as for the app (see
 [The executor you run locally](#the-executor-you-run-locally)): the pinned one by default, which
 `pnpm ad4m:executor` downloads. `AD4M_LIVE_URL` with `AD4M_LIVE_TOKEN` uses one already running
-instead, its agent unlocked.
+instead, its agent unlocked, with `AD4M_LIVE_MCP_URL` naming its MCP endpoint for the waker test.
 
 It also runs in CI, as the `AD4M live` workflow (`.github/workflows/ad4m-live.yaml`): on a PR that
 touches the backend packages, the entities or the pin, on `dev` after such a merge, and on the bump
