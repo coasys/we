@@ -65,6 +65,7 @@
  * pass that builds a knowledge map from this text, and it would rather re-segment raw utterances than
  * unpick someone else's structure. It now has somewhere to hang that summary when it arrives.
  */
+import { threadLinesFunction } from '@we/messages';
 import { defineModule, type ModuleHost, type ModuleStoreDeps } from '@we/module-shared';
 
 import { CALL_CONTROLS_ANCHOR, callControl } from './CallControl.schema';
@@ -83,7 +84,6 @@ import {
   transcriptLines,
 } from './Panel.schema';
 import { createTranscribeStore, TRANSCRIBE_ACTIVITY } from './store';
-import { threadLinesFunction } from './thread';
 import { tiedDecisionModals } from './TiedDecision.schema';
 
 export { CALL_CONTROLS_ANCHOR, callControl } from './CallControl.schema';

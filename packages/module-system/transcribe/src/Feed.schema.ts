@@ -10,10 +10,10 @@
  * it scrolls, pages and re-anchors exactly as the transcript does, and follows the same per-viewer
  * orientation.
  */
+import { messageLine } from '@we/messages';
 import { lineComposer, panelShell, timeline, timelineMoreAt, timelineOrder } from '@we/schema-kit';
 import type { SchemaNode } from '@we/schema-shared';
 
-import { messageLine } from './messageLine';
 import { TIMELINE_ORIENTATION, timelineOrderButton } from './Panel.schema';
 
 const FROM_START = 'modules.transcribe.feedFromStart';
@@ -73,7 +73,13 @@ const origin: SchemaNode = {
 };
 
 /** One message, drawn exactly as the transcript draws one — see `messageLine`. */
-const line: SchemaNode = messageLine({ as: 'row', surface: 'feed', relative: false, extra: origin });
+const line: SchemaNode = messageLine({
+  as: 'row',
+  actions: 'modules.transcribe',
+  surface: 'feed',
+  relative: false,
+  extra: origin,
+});
 
 /**
  * What extraction found, or somebody made, grouped — "3 tasks and 1 event, from Monday sync" — with

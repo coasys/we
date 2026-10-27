@@ -1,4 +1,5 @@
 import { activitiesOfType } from '@we/backend-shared';
+import { CORRECTED, SPOKEN, TYPED } from '@we/messages';
 import type { DatasetTarget, ModuleStoreDeps, RecordsKernel } from '@we/module-shared';
 import { namespace } from '@we/schema-shared';
 
@@ -128,9 +129,7 @@ const TRANSCRIPT_PAGE = 200;
  * transcriber writes one, the panel draws by them, and an edit moves between them. See the field's
  * own note for why a transcript that cannot tell speech from typing is making a claim.
  */
-export const SPOKEN = 'spoken';
-export const TYPED = 'typed';
-export const CORRECTED = 'corrected';
+export { CORRECTED, SPOKEN, TYPED };
 
 /**
  * The activity this module publishes so peers can converge on one record per call.

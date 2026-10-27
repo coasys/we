@@ -25,6 +25,7 @@
     "dist"
   ],
   "dependencies": {
+    "@we/messages": "workspace:*",
     "@we/schema-kit": "workspace:*"
   },
   "peerDependencies": {
