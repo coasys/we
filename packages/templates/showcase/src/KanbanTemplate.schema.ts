@@ -242,11 +242,20 @@ export const kanbanTemplate: TemplateSchema = {
   routes: [
     boardsRoute,
     boardRoute,
+    // An address this template has no page for, an old board link among them. It needs its own way
+    // back: nothing else on the page leads anywhere.
     {
       path: '*',
       type: 'Column',
-      props: { p: '600', ax: 'center' },
-      children: [{ type: 'we-text', props: { color: 'text-faint' }, children: ['No such board.'] }],
+      props: { p: '600', ax: 'center', gap: '300' },
+      children: [
+        { type: 'we-text', props: { color: 'text-faint' }, children: ['No such board.'] },
+        {
+          type: 'we-button',
+          props: { variant: 'soft', size: 'sm', onClick: { $invoke: 'routeStore.navigate', args: ['.'] } },
+          children: ['All boards'],
+        },
+      ],
     },
   ],
 };
