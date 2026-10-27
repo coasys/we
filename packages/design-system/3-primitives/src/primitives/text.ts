@@ -104,19 +104,24 @@ const styles = css`
     Zero rather than a reset to something: spacing in this design system belongs to the layout that
     owns it — the gap on the Column or Row around this — and a margin here would add to that gap
     rather than replace it, which is the arithmetic DS props exist to avoid.
+
+    Its own variable, not --we-text-margin. That one is the margin props' (mt, mb and the rest), which
+    every primitive writes as --we-NAME-margin and puts on its host; this box read it too, so every
+    margin a we-text was given applied twice. And this box is 100% of the host's height, so wherever
+    the host's height was definite (a flex column with one) the second margin pushed it out of the
+    host: a status pill with an 8px top margin in a card drew 28px tall with its words in the top 20.
   */
   [part='base'] {
-    margin: var(--we-text-margin, 0);
+    margin: var(--we-text-flow-margin, 0);
   }
 
   /*
     Prose keeps the space under it, for the reader that wants stacked paragraphs rather than a
-    gapped column. Inert today: nothing in the app sets tag=p, so this rule has never applied and
-    does not change anything now — it becomes live the first time somebody writes one, which is
-    worth knowing in a layout that also carries a gap.
+    gapped column — a margin on the paragraph itself, apart from any the margin props give the host,
+    and so on top of them.
   */
   :host([tag='p']) {
-    --we-text-margin: 0 0 1em 0;
+    --we-text-flow-margin: 0 0 1em 0;
   }
 
   /*
