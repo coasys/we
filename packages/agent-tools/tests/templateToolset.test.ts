@@ -15,7 +15,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { RecordInput } from '../src/core/toolset';
 import { prepareForModel } from '../src/templates/nodeAliases';
-import { TEMPLATE_READ, TEMPLATE_UPDATE, templateToolset } from '../src/templates/templateToolset';
+import { TEMPLATE_CREATE, TEMPLATE_READ, TEMPLATE_UPDATE, templateToolset } from '../src/templates/templateToolset';
 import { toolsets } from '../src/toolsets';
 
 const schema = ensureNodeIds({
@@ -80,9 +80,10 @@ const listSightings = insert({
 describe('the template tools', () => {
   it('are found by the entity they work on, and say which of them writes', () => {
     expect(Object.values(toolsets).find((t) => t.appliesTo.includes('Template'))).toBe(templateToolset);
-    expect(templateToolset.tools.map(({ name, writes }) => ({ name, writes }))).toEqual([
-      { name: TEMPLATE_READ, writes: false },
-      { name: TEMPLATE_UPDATE, writes: true },
+    expect(templateToolset.tools.map(({ name, writes, creates }) => ({ name, writes, creates }))).toEqual([
+      { name: TEMPLATE_READ, writes: false, creates: undefined },
+      { name: TEMPLATE_UPDATE, writes: true, creates: undefined },
+      { name: TEMPLATE_CREATE, writes: true, creates: { entity: 'Template', places: ['library', 'space'] } },
     ]);
   });
 

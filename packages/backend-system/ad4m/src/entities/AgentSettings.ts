@@ -174,8 +174,14 @@ export class AgentSettings extends Ad4mModel {
   @Property({ through: 'we://module_settings' })
   moduleSettings: string = '';
 
-  @HasMany(() => Template, { through: 'we://installed_template' })
-  installedTemplates: Template[] = [];
+  /**
+   * The library templates this agent took out of their lists — not deleted, only hidden. Every
+   * other template in the library is listed, so one written from anywhere (another device, an
+   * agent, a bundle) shows without anything else to write. A list of what is shown would leave
+   * those out until somebody also added them to it.
+   */
+  @HasMany(() => Template, { through: 'we://hidden_template' })
+  hiddenTemplates: Template[] = [];
 
   @HasMany(() => Theme, { through: 'we://installed_theme' })
   installedThemes: Theme[] = [];
@@ -185,5 +191,5 @@ export class AgentSettings extends Ad4mModel {
 }
 
 export interface AgentSettings extends HasManyMethods<
-  'installedTemplates' | 'installedThemes' | 'spaceTemplatePreferences'
+  'hiddenTemplates' | 'installedThemes' | 'spaceTemplatePreferences'
 > {}

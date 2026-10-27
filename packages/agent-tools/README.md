@@ -4,7 +4,8 @@ What a language model can do with WE: the tools, their handlers, and the rules t
 Framework-free, so the editor's AI panel and any host that runs an agent use the same code.
 
 - **`@we/ai-context`** is what the model _knows_ about WE: the reference and the catalogue.
-- **`@we/agent-tools`** (this package) is what it can _do_: edit a template, today.
+- **`@we/agent-tools`** (this package) is what it can _do_: create and edit templates, and edit
+  themes.
 - **`@we/schema-shared`** holds the rules both use: validation, the catalogue, tree utilities.
 
 ## Two ways in
@@ -16,9 +17,10 @@ is stored now, and answers from that alone.
 
 ```ts
 const toolset = toolsets.template; // appliesTo: ['Template']
-toolset.tools; // template_read (writes: false), template_update (writes: true)
-const { text, properties } = await toolset.call(name, { record, args, models, author: agentDid });
+toolset.tools; // template_read (writes: false), template_update, template_create (writes: true)
+const { text, properties, create } = await toolset.call(name, { record, args, models, author: agentDid });
 // text → the model; failures start with "Error: ". properties → write them, all in one transaction
+// create → present when properties are a NEW record's: make one of create.entity in create.place
 const topics = await toolset.docs.list(); // `template` first, then template/core/*, components, stores…
 const start = await toolset.docs.read('template');
 ```
@@ -29,6 +31,13 @@ parameters, and passes the record it names. `author` is the DID the write goes o
 applies its own agent's changes on every device and offers anybody else's. What `properties` holds
 is exactly what the app's own save writes (`schema` and `version`), so an open screen picks it up
 like a save from another device.
+
+**A tool that creates** says so on the tool (`creates: { entity, places }`), takes no record — or
+one to start from, such as a template to fork — and answers with `create: { entity, place }` beside
+the new record's properties. The place is `library`, the person's own, or `space`, the space the
+agent works in, and which dataset each one is stays the host's to know. A host refuses an answer
+naming a place the tool does not list. `template_create` puts a template in the library unless the
+call asks for the space, and an app template only ever in the library.
 
 Two rules an agent is told and a host should know:
 
