@@ -69,6 +69,8 @@ export type { AgentBylineOptions } from './we/agentByline.ts';
 export { installedList } from './we/installedList.ts';
 export type { InstalledListOptions } from './we/installedList.ts';
 export { RECORD_ROUTE_PATH, recordLink } from './we/recordLink.ts';
+export { profileEditor, profilePage } from './we/profile.ts';
+export type { ProfilePageOptions } from './we/profile.ts';
 export { marketplaceList } from './we/marketplaceList.ts';
 export type { MarketplaceListOptions } from './we/marketplaceList.ts';
 export { peopleFilter } from './we/peopleFilter.ts';

@@ -25,6 +25,9 @@ export const channelPath = (idExpr: string): string => `spaceStore.spacePath + '
 export const callPath = (idExpr: string): string =>
   `spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (${idExpr})`;
 
+/** A person's address: their profile, drawn as the view. */
+export const personPath = (didExpr: string): string => `spaceStore.spacePath + '/person?did=' + (${didExpr})`;
+
 /** Which part of the page the address is on — '' for a channel's chat. */
 export const PAGE_EXPR = "routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''";
 
@@ -46,6 +49,7 @@ export const groupPath = (page: GroupPage): string => `spaceStore.spacePath + '/
  */
 export const SELECTED_EXPR = [
   `(${PAGE_EXPR}) == 'record' ? 'call|' + routeStore.params.id`,
+  `: (${PAGE_EXPR}) == 'person' ? 'person|' + routeStore.params.did`,
   `: (${PAGE_EXPR}) == 'workflows' ? (workflowStore.open ? 'workflow|' + workflowStore.open.name : 'group|workflows')`,
   `: (${PAGE_EXPR}) in [${GROUP_PAGES.filter((p) => p !== 'workflows')
     .map((p) => `'${p}'`)

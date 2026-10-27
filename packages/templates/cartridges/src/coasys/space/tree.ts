@@ -2,7 +2,7 @@ import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 import { field, formModal, TREE_LEAD, treeRow } from '@we/template-kit';
 
 import { countPill, liveDot } from './marks.ts';
-import { callPath, channelPath, GROUP_PAGES, ROW_ID, SELECTED_EXPR } from './paths.ts';
+import { callPath, channelPath, GROUP_PAGES, personPath, ROW_ID, SELECTED_EXPR } from './paths.ts';
 
 /**
  * The space as a tree: its channels, its calls, its workflows, its people and its Social DNA, under the
@@ -269,6 +269,12 @@ const onSelect: SchemaProp = [
         { $invoke: 'workflowStore.openWorkflow', args: [{ $: ROW_ID }] },
         { $invoke: 'routeStore.navigate', args: [{ $: "spaceStore.spacePath + '/workflows'" }] },
       ],
+    },
+  },
+  {
+    $if: {
+      condition: { $: "startsWith(event.detail.value, 'person|')" },
+      then: { $invoke: 'routeStore.navigate', args: [{ $: personPath(ROW_ID) }] },
     },
   },
   {

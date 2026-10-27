@@ -6,6 +6,7 @@ import { viewBar } from './bar.ts';
 import { groupRoutes } from './groups.ts';
 import { liveDot } from './marks.ts';
 import { CHANNEL, CHANNEL_EXPR, channelPath, IN_ROOT_EXPR, PAGE_EXPR } from './paths.ts';
+import { personRoute } from './person.ts';
 import { newChannelDialog } from './tree.ts';
 
 /**
@@ -325,6 +326,7 @@ export const spaceRoutes: RouteSchema[] = [
   canvasRoute,
   workflowsRoute,
   ...groupRoutes,
+  personRoute,
   { path: '*', redirect: './' },
 ];
 

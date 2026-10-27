@@ -3,7 +3,7 @@ import { emptyNote } from '@we/template-kit';
 
 import { viewBar } from './bar.ts';
 import { liveDot } from './marks.ts';
-import { callPath, channelPath } from './paths.ts';
+import { callPath, channelPath, personPath } from './paths.ts';
 import { CALLS, LIVE, SUB_CHANNELS } from './tree.ts';
 
 /**
@@ -16,8 +16,8 @@ import { CALLS, LIVE, SUB_CHANNELS } from './tree.ts';
 
 /**
  * One thing, as a card: what leads it (a glyph or a face), its name, a line under it, and what
- * pressing it does. Without `onClick` it is a card and not a button — a person has no page to open
- * yet. Lit under the pointer as the first-steps cards are.
+ * pressing it does. Without `onClick` it is a card and not a button, for something with nowhere to
+ * open. Lit under the pointer as the first-steps cards are.
  */
 /** What a node's children hold: text, a node, or an expression. */
 type Child = NonNullable<SchemaNode['children']>[number];
@@ -172,7 +172,7 @@ const callsPage = groupPage({
   ],
 });
 
-/** People: everyone in the space, by face and name. Not pressable yet — there is no one else's page to open. */
+/** People: everyone in the space, by face and name; each opens their profile. */
 const peoplePage = groupPage({
   path: '/people',
   title: 'People',
@@ -195,6 +195,7 @@ const peoplePage = groupPage({
           },
           title: { $: 'person.name' },
           detail: detail({ $: "person.handle ? '@' + person.handle : ''" }),
+          onClick: { $invoke: 'routeStore.navigate', args: [{ $: personPath('person.did') }] },
         }),
       ],
     },

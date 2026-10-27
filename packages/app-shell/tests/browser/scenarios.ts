@@ -18,7 +18,14 @@ import {
   timelineOrder,
 } from '@we/schema-kit';
 import type { SchemaNode } from '@we/schema-shared';
-import { discussionSection, foldingSectionLabel, signalDisplay, TREE_LEAD, treeRow } from '@we/template-kit';
+import {
+  discussionSection,
+  foldingSectionLabel,
+  profilePage,
+  signalDisplay,
+  TREE_LEAD,
+  treeRow,
+} from '@we/template-kit';
 import { bundlePrompt, safeModeBanner } from '@we/template-shell';
 import { CALL_CHROME_BAND, themeLabTemplate, TREE_LOCALS, TREE_QUERIES, treeStrip } from '@we/template-showcase';
 import { THEME_PRESETS, type ThemeOverrides, themeSides, withThemeSide } from '@we/themes/presets';
@@ -1919,8 +1926,44 @@ const coasysAbout = (): Scenario => {
   };
 };
 
+/**
+ * One person's profile beside your own: the same page, read-only for them and editable for you.
+ * Each in its own half, bound by `$agent` as a space's person view binds it.
+ */
+const profilePages = (): Scenario => {
+  const side = (did: string): SchemaNode => ({
+    type: 'Column',
+    props: { flex: '1', minWidth: '0', 'data-profile': did },
+    children: [
+      {
+        type: '$agent',
+        props: { did, as: 'person' },
+        children: [profilePage({ as: 'person', editable: 'person.did == me.did' })],
+      },
+    ],
+  });
+  return {
+    node: {
+      type: 'Row',
+      props: { width: '100%', gap: '400', ay: 'start' },
+      children: [side('did:them'), side('did:me')],
+    },
+    tables: {},
+    stores: {
+      profileStore: {
+        profiles: [
+          { did: 'did:them', name: 'Theodora Fairweather', handle: 'theo', bio: 'Keeps the bees.', avatar: '' },
+          { did: 'did:me', name: 'Alexandra Whitfield', handle: 'alex', bio: '', avatar: '' },
+        ],
+        ownProfile: { did: 'did:me', name: 'Alexandra Whitfield', handle: 'alex', bio: '', avatar: '' },
+      },
+    },
+  };
+};
+
 export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'coasys:about': coasysAbout,
+  'profile:pages': profilePages,
   'tree:caret-end': treeCaretEnd,
   'rail:app': appRail,
   'coasys:tree-top': coasysTreeTop,
