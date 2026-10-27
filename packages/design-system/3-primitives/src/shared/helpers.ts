@@ -641,10 +641,13 @@ function syncBorderVars(el: HTMLElement, prefix: string, props: Partial<DesignSy
     const side = parts
       ? `var(${prefix}border-width) ${parts.style} var(${prefix}border-color)`
       : parseBorder(props.border);
-    if (!props.borderTop) setProperty(el, `${prefix}border-top`, side);
-    if (!props.borderRight) setProperty(el, `${prefix}border-right`, side);
-    if (!props.borderBottom) setProperty(el, `${prefix}border-bottom`, side);
-    if (!props.borderLeft) setProperty(el, `${prefix}border-left`, side);
+    // A side written on its own is that side, beside the shorthand as well as without it. It used to
+    // be skipped here and written only when there was no shorthand, so `border` with `borderTop`
+    // drew no top at all: a layer card lost its 4px coloured edge, and gained 1px on hover.
+    setProperty(el, `${prefix}border-top`, props.borderTop ? parseBorder(props.borderTop) : side);
+    setProperty(el, `${prefix}border-right`, props.borderRight ? parseBorder(props.borderRight) : side);
+    setProperty(el, `${prefix}border-bottom`, props.borderBottom ? parseBorder(props.borderBottom) : side);
+    setProperty(el, `${prefix}border-left`, props.borderLeft ? parseBorder(props.borderLeft) : side);
   } else {
     setProperty(el, `${prefix}border-color`, props.borderColor ? tokenVar('color', props.borderColor, '') : undefined);
     setProperty(el, `${prefix}border-top`, props.borderTop ? parseBorder(props.borderTop) : undefined);

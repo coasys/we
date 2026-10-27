@@ -902,13 +902,20 @@ export const BASE_VISUAL_SPECS: PropSpec[] = [
   ['background-color', 'bg'],
   ['color', 'color'],
   ['opacity', 'opacity'],
+  /*
+    The whole border, then its colour and width for every side, then each side — most general first,
+    so a side wins. The width came last once, and `border` with `borderTop: '4px solid …'` drew the
+    top at the shorthand's 1px. A primitive's sides are written through its own width and colour
+    variables where they come from the shorthand (see `syncBorderVars` in @we/primitives), so a
+    theme's or a state's colour and width still reach them from here.
+  */
   ['border', 'border'],
   ['border-color', 'border-color'],
+  ['border-width', 'border-width'],
   ['border-top', 'border-top'],
   ['border-right', 'border-right'],
   ['border-bottom', 'border-bottom'],
   ['border-left', 'border-left'],
-  ['border-width', 'border-width'],
   ['box-shadow', 'box-shadow'],
   ['transform', 'transform'],
   ['cursor', 'cursor'],
