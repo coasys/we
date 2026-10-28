@@ -154,6 +154,18 @@ describe('a home lane folding', () => {
     expect(lane.style.transition).toMatch(/visibility 0s linear 0s/);
   });
 
+  it('can still be resized after it has been folded and unfolded', () => {
+    const { store, lane } = mountLane();
+    store.setLaneCollapsed('side', true);
+    store.setLaneCollapsed('side', false);
+
+    const handle = lane.querySelector('we-resize-handle')!;
+    handle.dispatchEvent(new CustomEvent('resizestart', { detail: { delta: 0 } }));
+    handle.dispatchEvent(new CustomEvent('resize', { detail: { delta: 200 } }));
+    handle.dispatchEvent(new CustomEvent('resizeend', { detail: { delta: 200 } }));
+    expect(store.laneWidth('side')).toBeDefined();
+  });
+
   // An inspector's lane, folded while nothing is selected — by the template, without writing the reader's fold.
   it("folds when its template says so, and unfolds to the reader's own state", () => {
     const [folded, setFolded] = createSignal(true);

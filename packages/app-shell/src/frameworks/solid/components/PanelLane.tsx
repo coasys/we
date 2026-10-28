@@ -248,11 +248,17 @@ export function PanelLane(props: {
           <For each={away()}>{(panel) => <Placeholder panel={panel} />}</For>
         </div>
       </div>
-      <Show when={props.resize && !narrow() && !collapsed()}>
+      {/*
+        Hidden while folded rather than left out: its listeners are attached once, on mount, so a
+        handle made again when the lane unfolds had none, and a lane folded once could not be resized
+        again — nor one that started folded, such as an inspector's, ever.
+      */}
+      <Show when={props.resize && !narrow()}>
         <we-resize-handle
           ref={handle}
           orientation="vertical"
           style={{
+            display: collapsed() ? 'none' : undefined,
             position: 'absolute',
             top: '0',
             bottom: '0',
