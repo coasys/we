@@ -1,5 +1,18 @@
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
-import { field, formModal, SOCIAL_DNA_LABELS, TREE_LEAD, treeRow } from '@we/template-kit';
+import {
+  type Choice,
+  chooseTemplate,
+  chooseTheme,
+  field,
+  formModal,
+  SOCIAL_DNA_LABELS,
+  SPACE_TEMPLATE_CHOICES,
+  SPACE_THEME_CHOICES,
+  templateChoice,
+  themeChoice,
+  TREE_LEAD,
+  treeRow,
+} from '@we/template-kit';
 
 import { countPill, liveDot } from './marks.ts';
 import {
@@ -342,6 +355,76 @@ const DNA_COUNT = [
 /** Everything the space has defined about itself — see above. */
 const socialDna = group('dna', 'Social DNA', 'dna', [...DNA_KINDS, policyKind], { count: DNA_COUNT });
 
+/*
+  How the space looks: the templates and the themes somebody would switch between here, each with the
+  star on the space's default and the things the rail's pickers offer — reset the layout (on the one
+  in use, once it has been moved), edit, fork. What a row *is* is the template kit's
+  (\`templateChoice\`, \`themeChoice\`), shared with those pickers; this only draws it as a tree row. The
+  one in use is ticked, since the tree's own selection follows the address.
+*/
+
+/** A template or theme as a row of the tree, by what the kit says the row is. */
+const choiceRow = (kind: 'template' | 'theme', choice: Choice): SchemaNode =>
+  treeRow({
+    nested: true,
+    value: { $: `'${kind}|' + ${kind}.id` },
+    label: choice.label,
+    icon: choice.icon,
+    isDefault: choice.isDefault,
+    actions: choice.actions,
+    badge: {
+      type: '$if',
+      props: { condition: choice.selected, then: { type: 'we-icon', props: { name: 'check', color: 'accent-text' } } },
+    },
+  });
+
+/** The + beside a group's count: make another. */
+const newButton = (tooltip: string, onClick: SchemaProp): SchemaNode => ({
+  type: 'we-tooltip',
+  props: { content: tooltip, placement: 'top' },
+  children: [
+    {
+      type: 'we-button',
+      props: { size: 'xs', variant: 'ghost', square: true, label: tooltip, onClick },
+      children: [{ type: 'we-icon', props: { name: 'plus' } }],
+    },
+  ],
+});
+
+const templatesGroup = group(
+  'templates',
+  'Templates',
+  'layout',
+  [
+    {
+      type: '$each',
+      props: { items: { $: SPACE_TEMPLATE_CHOICES }, as: 'template' },
+      children: [choiceRow('template', templateChoice())],
+    },
+  ],
+  {
+    count: `count(${SPACE_TEMPLATE_CHOICES})`,
+    action: newButton('New template', { $invoke: 'editorStore.startFresh' }),
+  },
+);
+
+const themesGroup = group(
+  'themes',
+  'Themes',
+  'palette',
+  [
+    {
+      type: '$each',
+      props: { items: { $: SPACE_THEME_CHOICES }, as: 'theme' },
+      children: [choiceRow('theme', themeChoice())],
+    },
+  ],
+  {
+    count: `count(${SPACE_THEME_CHOICES})`,
+    action: newButton('New theme', { $invoke: 'themeStore.startThemeFork' }),
+  },
+);
+
 /** The vocabulary the Social DNA group lists that lives in the space's records rather than in a store. */
 const DNA_QUERIES = {
   signalTypes: { entity: 'SignalType', order: { name: 'asc' } },
@@ -464,6 +547,19 @@ const onSelect: SchemaProp = [
           },
         },
       ],
+    },
+  },
+  // A template or a theme is worn by choosing it, as in the rail's pickers.
+  {
+    $if: {
+      condition: { $: "startsWith(event.detail.value, 'template|')" },
+      then: chooseTemplate(ROW_ID),
+    },
+  },
+  {
+    $if: {
+      condition: { $: "startsWith(event.detail.value, 'theme|')" },
+      then: chooseTheme(ROW_ID),
     },
   },
   // One rule of the policy, lit on the map by its words.
@@ -733,7 +829,7 @@ export const treeSection: SchemaNode = {
             is the one thing that folds. Guides drop from each row's glyph, so a lead's width is given.
           */
           props: { label: 'This space', selected: { $: SELECTED_EXPR }, onSelect, caret: 'end', lead: TREE_LEAD },
-          children: [feedRow, calls, workflows, people, socialDna],
+          children: [feedRow, calls, workflows, people, socialDna, templatesGroup, themesGroup],
         },
       ],
     },

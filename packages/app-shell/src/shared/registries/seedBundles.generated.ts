@@ -1043,6 +1043,24 @@ export const seedBundles: Bundle[] = [
                             },
                             {
                               $if: {
+                                condition: { $: "startsWith(event.detail.value, 'template|')" },
+                                then: {
+                                  $invoke: 'templateStore.switchTemplate',
+                                  args: [{ $: "split(event.detail.value, '|')[1]" }],
+                                },
+                              },
+                            },
+                            {
+                              $if: {
+                                condition: { $: "startsWith(event.detail.value, 'theme|')" },
+                                then: {
+                                  $invoke: 'spaceStore.applyTheme',
+                                  args: [{ $: "split(event.detail.value, '|')[1]" }],
+                                },
+                              },
+                            },
+                            {
+                              $if: {
                                 condition: {
                                   $: "(routeStore.params.view == 'canvas') && startsWith(event.detail.value, 'dnaprop|policy|')",
                                 },
@@ -1866,6 +1884,439 @@ export const seedBundles: Bundle[] = [
                                                 type: 'we-text',
                                                 props: { truncate: true, flex: '1', minWidth: '0' },
                                                 children: [{ $: 'rule' }],
+                                              },
+                                            ],
+                                          },
+                                        ],
+                                      },
+                                    ],
+                                  },
+                                ],
+                              },
+                            ],
+                          },
+                          {
+                            type: 'we-tree-item',
+                            props: {
+                              value: 'group|templates',
+                              open: { $: "'group|templates' in local.openRows" },
+                              onOpenChange: { $toggleLocalIn: 'openRows', value: 'group|templates' },
+                              expandable: {
+                                $: "count(distinct(find(templateStore.switcherGroups, { label: 'Built-in' }).items.filter(t, t.id == spaceStore.spaceDefaultTemplateId || t.id == templateStore.currentSwitcherId), find(templateStore.switcherGroups, { label: 'Space templates' }).items, find(templateStore.switcherGroups, { label: 'My templates' }).items)) > 0",
+                              },
+                            },
+                            children: [
+                              {
+                                type: 'Row',
+                                props: { gap: '200', ay: 'center', minWidth: '0', width: '100%' },
+                                children: [
+                                  { type: 'we-icon', props: { name: 'layout', size: 'sm', color: 'text-faint' } },
+                                  {
+                                    type: 'we-text',
+                                    props: { truncate: true, flex: '1', minWidth: '0' },
+                                    children: ['Templates'],
+                                  },
+                                  {
+                                    type: 'Row',
+                                    props: { gap: '100', ay: 'center' },
+                                    children: [
+                                      {
+                                        type: '$if',
+                                        props: {
+                                          condition: {
+                                            $: "count(distinct(find(templateStore.switcherGroups, { label: 'Built-in' }).items.filter(t, t.id == spaceStore.spaceDefaultTemplateId || t.id == templateStore.currentSwitcherId), find(templateStore.switcherGroups, { label: 'Space templates' }).items, find(templateStore.switcherGroups, { label: 'My templates' }).items))",
+                                          },
+                                          then: {
+                                            type: 'we-badge',
+                                            props: { variant: 'soft', size: 'xs' },
+                                            children: [
+                                              {
+                                                $: "count(distinct(find(templateStore.switcherGroups, { label: 'Built-in' }).items.filter(t, t.id == spaceStore.spaceDefaultTemplateId || t.id == templateStore.currentSwitcherId), find(templateStore.switcherGroups, { label: 'Space templates' }).items, find(templateStore.switcherGroups, { label: 'My templates' }).items))",
+                                              },
+                                            ],
+                                          },
+                                        },
+                                      },
+                                      {
+                                        type: 'we-tooltip',
+                                        props: { content: 'New template', placement: 'top' },
+                                        children: [
+                                          {
+                                            type: 'we-button',
+                                            props: {
+                                              size: 'xs',
+                                              variant: 'ghost',
+                                              square: true,
+                                              label: 'New template',
+                                              onClick: { $invoke: 'editorStore.startFresh' },
+                                            },
+                                            children: [{ type: 'we-icon', props: { name: 'plus' } }],
+                                          },
+                                        ],
+                                      },
+                                    ],
+                                  },
+                                ],
+                              },
+                              {
+                                type: '$each',
+                                props: {
+                                  items: {
+                                    $: "distinct(find(templateStore.switcherGroups, { label: 'Built-in' }).items.filter(t, t.id == spaceStore.spaceDefaultTemplateId || t.id == templateStore.currentSwitcherId), find(templateStore.switcherGroups, { label: 'Space templates' }).items, find(templateStore.switcherGroups, { label: 'My templates' }).items)",
+                                  },
+                                  as: 'template',
+                                },
+                                children: [
+                                  {
+                                    type: 'we-tree-item',
+                                    slot: 'children',
+                                    props: { value: { $: "'template|' + template.id" } },
+                                    children: [
+                                      {
+                                        type: 'Row',
+                                        props: { gap: '200', ay: 'center', minWidth: '0', width: '100%' },
+                                        children: [
+                                          {
+                                            type: 'we-icon',
+                                            props: { name: { $: 'template.icon' }, size: 'sm', color: 'text-faint' },
+                                          },
+                                          {
+                                            type: 'we-text',
+                                            props: { truncate: true, flex: '1', minWidth: '0' },
+                                            children: [{ $: 'template.name' }],
+                                          },
+                                          {
+                                            type: '$if',
+                                            props: {
+                                              condition: { $: 'template.id == templateStore.currentSwitcherId' },
+                                              then: { type: 'we-icon', props: { name: 'check', color: 'accent-text' } },
+                                            },
+                                          },
+                                          {
+                                            type: '$if',
+                                            props: {
+                                              condition: { $: 'template.id == spaceStore.spaceDefaultTemplateId' },
+                                              then: {
+                                                type: 'we-tooltip',
+                                                props: { content: "This space's default", placement: 'top' },
+                                                children: [
+                                                  {
+                                                    type: 'we-icon',
+                                                    props: { name: 'star', weight: 'fill', color: 'warning-text' },
+                                                  },
+                                                ],
+                                              },
+                                            },
+                                          },
+                                          {
+                                            type: '$if',
+                                            props: {
+                                              condition: {
+                                                $: 'template.id == templateStore.currentSwitcherId && shellStore.layoutDirty',
+                                              },
+                                              then: {
+                                                type: 'we-tooltip',
+                                                props: {
+                                                  content: "Reset panels to this template's layout",
+                                                  placement: 'top',
+                                                },
+                                                children: [
+                                                  {
+                                                    type: 'we-button',
+                                                    props: {
+                                                      variant: 'ghost',
+                                                      square: true,
+                                                      size: 'sm',
+                                                      color: 'text-faint',
+                                                      hoverProps: { color: 'text' },
+                                                      onClick: { $invoke: 'shellStore.resetTemplateLayout' },
+                                                    },
+                                                    children: [
+                                                      {
+                                                        type: 'we-icon',
+                                                        props: { name: 'arrow-counter-clockwise', weight: 'regular' },
+                                                      },
+                                                    ],
+                                                  },
+                                                ],
+                                              },
+                                            },
+                                          },
+                                          {
+                                            type: '$if',
+                                            props: {
+                                              condition: { $: 'template.editable' },
+                                              then: {
+                                                type: 'we-tooltip',
+                                                props: { content: 'Edit this template', placement: 'top' },
+                                                children: [
+                                                  {
+                                                    type: 'we-button',
+                                                    props: {
+                                                      variant: 'ghost',
+                                                      square: true,
+                                                      size: 'sm',
+                                                      color: 'text-faint',
+                                                      hoverProps: { color: 'text' },
+                                                      onClick: [
+                                                        {
+                                                          $invoke: 'templateStore.switchTemplate',
+                                                          args: [{ $: 'template.id' }],
+                                                        },
+                                                        { $invoke: 'editorStore.enterTemplateEditing', args: ['edit'] },
+                                                      ],
+                                                    },
+                                                    children: [
+                                                      {
+                                                        type: 'we-icon',
+                                                        props: { name: 'pencil-simple', weight: 'regular' },
+                                                      },
+                                                    ],
+                                                  },
+                                                ],
+                                              },
+                                            },
+                                          },
+                                          {
+                                            type: 'we-tooltip',
+                                            props: { content: 'Fork this template', placement: 'top' },
+                                            children: [
+                                              {
+                                                type: 'we-button',
+                                                props: {
+                                                  variant: 'ghost',
+                                                  square: true,
+                                                  size: 'sm',
+                                                  color: 'text-faint',
+                                                  hoverProps: { color: 'text' },
+                                                  onClick: [
+                                                    {
+                                                      $invoke: 'templateStore.switchTemplate',
+                                                      args: [{ $: 'template.id' }],
+                                                    },
+                                                    { $invoke: 'editorStore.startFork' },
+                                                  ],
+                                                },
+                                                children: [
+                                                  { type: 'we-icon', props: { name: 'git-fork', weight: 'regular' } },
+                                                ],
+                                              },
+                                            ],
+                                          },
+                                        ],
+                                      },
+                                    ],
+                                  },
+                                ],
+                              },
+                            ],
+                          },
+                          {
+                            type: 'we-tree-item',
+                            props: {
+                              value: 'group|themes',
+                              open: { $: "'group|themes' in local.openRows" },
+                              onOpenChange: { $toggleLocalIn: 'openRows', value: 'group|themes' },
+                              expandable: {
+                                $: 'count(distinct(themeStore.builtInThemes.filter(t, t.id == spaceStore.spaceDefaultThemeId || t.id == themeStore.currentThemeId), themeStore.spaceThemes, themeStore.installedThemes)) > 0',
+                              },
+                            },
+                            children: [
+                              {
+                                type: 'Row',
+                                props: { gap: '200', ay: 'center', minWidth: '0', width: '100%' },
+                                children: [
+                                  { type: 'we-icon', props: { name: 'palette', size: 'sm', color: 'text-faint' } },
+                                  {
+                                    type: 'we-text',
+                                    props: { truncate: true, flex: '1', minWidth: '0' },
+                                    children: ['Themes'],
+                                  },
+                                  {
+                                    type: 'Row',
+                                    props: { gap: '100', ay: 'center' },
+                                    children: [
+                                      {
+                                        type: '$if',
+                                        props: {
+                                          condition: {
+                                            $: 'count(distinct(themeStore.builtInThemes.filter(t, t.id == spaceStore.spaceDefaultThemeId || t.id == themeStore.currentThemeId), themeStore.spaceThemes, themeStore.installedThemes))',
+                                          },
+                                          then: {
+                                            type: 'we-badge',
+                                            props: { variant: 'soft', size: 'xs' },
+                                            children: [
+                                              {
+                                                $: 'count(distinct(themeStore.builtInThemes.filter(t, t.id == spaceStore.spaceDefaultThemeId || t.id == themeStore.currentThemeId), themeStore.spaceThemes, themeStore.installedThemes))',
+                                              },
+                                            ],
+                                          },
+                                        },
+                                      },
+                                      {
+                                        type: 'we-tooltip',
+                                        props: { content: 'New theme', placement: 'top' },
+                                        children: [
+                                          {
+                                            type: 'we-button',
+                                            props: {
+                                              size: 'xs',
+                                              variant: 'ghost',
+                                              square: true,
+                                              label: 'New theme',
+                                              onClick: { $invoke: 'themeStore.startThemeFork' },
+                                            },
+                                            children: [{ type: 'we-icon', props: { name: 'plus' } }],
+                                          },
+                                        ],
+                                      },
+                                    ],
+                                  },
+                                ],
+                              },
+                              {
+                                type: '$each',
+                                props: {
+                                  items: {
+                                    $: 'distinct(themeStore.builtInThemes.filter(t, t.id == spaceStore.spaceDefaultThemeId || t.id == themeStore.currentThemeId), themeStore.spaceThemes, themeStore.installedThemes)',
+                                  },
+                                  as: 'theme',
+                                },
+                                children: [
+                                  {
+                                    type: 'we-tree-item',
+                                    slot: 'children',
+                                    props: { value: { $: "'theme|' + theme.id" } },
+                                    children: [
+                                      {
+                                        type: 'Row',
+                                        props: { gap: '200', ay: 'center', minWidth: '0', width: '100%' },
+                                        children: [
+                                          {
+                                            type: 'we-icon',
+                                            props: {
+                                              name: { $: "theme.icon ? theme.icon : 'paint-bucket'" },
+                                              size: 'sm',
+                                              color: 'text-faint',
+                                            },
+                                          },
+                                          {
+                                            type: 'we-text',
+                                            props: { truncate: true, flex: '1', minWidth: '0' },
+                                            children: [{ $: 'theme.name' }],
+                                          },
+                                          {
+                                            type: '$if',
+                                            props: {
+                                              condition: { $: 'theme.id == themeStore.currentThemeId' },
+                                              then: { type: 'we-icon', props: { name: 'check', color: 'accent-text' } },
+                                            },
+                                          },
+                                          {
+                                            type: '$if',
+                                            props: {
+                                              condition: { $: 'theme.id == spaceStore.spaceDefaultThemeId' },
+                                              then: {
+                                                type: 'we-tooltip',
+                                                props: { content: "This space's default", placement: 'top' },
+                                                children: [
+                                                  {
+                                                    type: 'we-icon',
+                                                    props: { name: 'star', weight: 'fill', color: 'warning-text' },
+                                                  },
+                                                ],
+                                              },
+                                            },
+                                          },
+                                          {
+                                            type: '$if',
+                                            props: {
+                                              condition: {
+                                                $: 'spaceStore.spaceThemePinned && theme.id == themeStore.currentThemeId',
+                                              },
+                                              then: {
+                                                type: 'we-tooltip',
+                                                props: {
+                                                  content: "Pinned to this space — unpin to follow the space's theme",
+                                                  placement: 'top',
+                                                },
+                                                children: [
+                                                  {
+                                                    type: 'we-button',
+                                                    props: {
+                                                      variant: 'ghost',
+                                                      square: true,
+                                                      size: 'sm',
+                                                      color: 'text-faint',
+                                                      hoverProps: { color: 'text' },
+                                                      onClick: { $invoke: 'spaceStore.clearSpaceThemePin' },
+                                                    },
+                                                    children: [
+                                                      { type: 'we-icon', props: { name: 'push-pin', weight: 'fill' } },
+                                                    ],
+                                                  },
+                                                ],
+                                              },
+                                            },
+                                          },
+                                          {
+                                            type: '$if',
+                                            props: {
+                                              condition: { $: "theme.origin != 'built-in'" },
+                                              then: {
+                                                type: 'we-tooltip',
+                                                props: { content: 'Edit this theme', placement: 'top' },
+                                                children: [
+                                                  {
+                                                    type: 'we-button',
+                                                    props: {
+                                                      variant: 'ghost',
+                                                      square: true,
+                                                      size: 'sm',
+                                                      color: 'text-faint',
+                                                      hoverProps: { color: 'text' },
+                                                      onClick: [
+                                                        {
+                                                          $invoke: 'themeStore.setCurrentTheme',
+                                                          args: [{ $: 'theme.id' }],
+                                                        },
+                                                        {
+                                                          $invoke: 'themeStore.startEditing',
+                                                          args: [{ $: 'theme.id' }],
+                                                        },
+                                                        { $invoke: 'editorStore.enterThemeEditing' },
+                                                      ],
+                                                    },
+                                                    children: [
+                                                      {
+                                                        type: 'we-icon',
+                                                        props: { name: 'pencil-simple', weight: 'regular' },
+                                                      },
+                                                    ],
+                                                  },
+                                                ],
+                                              },
+                                            },
+                                          },
+                                          {
+                                            type: 'we-tooltip',
+                                            props: { content: 'Fork this theme', placement: 'top' },
+                                            children: [
+                                              {
+                                                type: 'we-button',
+                                                props: {
+                                                  variant: 'ghost',
+                                                  square: true,
+                                                  size: 'sm',
+                                                  color: 'text-faint',
+                                                  hoverProps: { color: 'text' },
+                                                  onClick: [
+                                                    { $invoke: 'themeStore.startThemeFork', args: [{ $: 'theme.id' }] },
+                                                  ],
+                                                },
+                                                children: [
+                                                  { type: 'we-icon', props: { name: 'git-fork', weight: 'regular' } },
+                                                ],
                                               },
                                             ],
                                           },

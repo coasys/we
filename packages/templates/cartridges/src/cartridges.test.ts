@@ -21,11 +21,19 @@ import {
   validateSemantic,
   withEntities,
 } from '@we/schema-shared';
-import { FOCUS_DIM } from '@we/template-kit';
+import {
+  chooseTemplate,
+  chooseTheme,
+  FOCUS_DIM,
+  SPACE_TEMPLATE_CHOICES,
+  templateChoice,
+  themeChoice,
+} from '@we/template-kit';
 import { describe, expect, it } from 'vitest';
 
 import { canvasPane } from './coasys/space/canvas.ts';
 import { callPath, groupPath, personPath, SELECTED_EXPR } from './coasys/space/paths.ts';
+import { treeSection } from './coasys/space/tree.ts';
 import { bundleFileName, type Cartridge, cartridgeBundles, coasys, fieldGuide, toolLibrary } from './index.ts';
 
 const contextData = JSON.parse(readFileSync(resolve(import.meta.dirname, '../../../ai-context/context.json'), 'utf-8'));
@@ -132,6 +140,50 @@ describe('the Coasys cartridge', () => {
     and dimmed to whatever is chosen. Evaluated by the expression engine the renderer uses, against
     the address each choice leaves.
   */
+  /*
+    Templates and themes in the tree: what a row is comes from the template kit, as the rail's pickers
+    have it, so the two lists offer the same things; the tree's list is the ones somebody would switch
+    between in this space, not every built-in the deployment carries.
+  */
+  describe('templates and themes in the tree', () => {
+    const evaluate = (source: string, roots: Record<string, unknown>) =>
+      evaluateExpression(parseExpression(source), {
+        root: (name) => ({ bound: name in roots, value: roots[name] }),
+        call: (name, args) =>
+          listFunctions()
+            .find((f) => f.name === name)
+            ?.impl(args, { context: {}, stores: {} }),
+      });
+
+    it("offers the space's built-in, its own templates and the agent's, and not every built-in", () => {
+      const row = (id: string) => ({ id, name: id });
+      const roots = {
+        templateStore: {
+          currentSwitcherId: 'coasys-space',
+          switcherGroups: [
+            { label: 'Space templates', items: [row('space::ours')] },
+            { label: 'My templates', items: [row('mine')] },
+            { label: 'Built-in', items: [row('coasys-space'), row('workshop'), row('default')] },
+          ],
+        },
+        spaceStore: { spaceDefaultTemplateId: 'coasys-space' },
+      };
+      const ids = (evaluate(SPACE_TEMPLATE_CHOICES, roots) as { id: string }[]).map((t) => t.id);
+      expect(ids).toEqual(['coasys-space', 'space::ours', 'mine']);
+    });
+
+    it("draws each row with the rail picker's own actions, and wears what is chosen", () => {
+      const tree = JSON.stringify(treeSection);
+      for (const action of [...templateChoice().actions, ...themeChoice().actions]) {
+        expect(tree).toContain(JSON.stringify(action.onClick));
+      }
+      expect(tree).toContain(JSON.stringify(chooseTemplate("split(event.detail.value, '|')[1]")));
+      expect(tree).toContain(JSON.stringify(chooseTheme("split(event.detail.value, '|')[1]")));
+      // Reset layout is the template row's own, offered once the layout has been moved.
+      expect(tree).toContain('shellStore.resetTemplateLayout');
+    });
+  });
+
   describe('in Canvas mode', () => {
     const at = (path: string[], params: Record<string, string>, extra: Record<string, unknown> = {}) => {
       const roots: Record<string, unknown> = {
