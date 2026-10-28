@@ -198,6 +198,7 @@ const hereOnly = (group: CapabilityGroup, arity: number): MemberSpec => ({ group
 export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = {
   sessionStore: {
     bootState: state('session'),
+    signInStep: state('session'),
     bootError: state('session'),
     passwordError: state('session'),
     loginError: state('session'),

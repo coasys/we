@@ -2035,7 +2035,7 @@ const coasysLockup = (): Scenario => {
     walk(node);
     return node;
   };
-  const box = (which: string, child: SchemaNode, localState?: Record<string, unknown>): SchemaNode => ({
+  const box = (which: string, child: SchemaNode, localState?: SchemaNode['$localState']): SchemaNode => ({
     type: 'Column',
     ...(localState ? { $localState: localState } : {}),
     props: { id: `${which}-box`, width: '320px', height: '120px', bg: 'chrome', position: 'relative' },

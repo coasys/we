@@ -22,12 +22,14 @@ import {
   trace,
 } from '@we/backend-shared';
 import { DEV_FEATURES, devToolsEnabled, setDevToolsMuted } from '@we/module-shared';
-import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
+import { Accessor, createContext, createEffect, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
 import type { BackendAccountInfo, BackendHostInfo } from '../../../shared/backend/types';
+import { type SignInStep, signInStep as stepOf } from '../../../shared/signInStep';
 import { credential } from '../credential';
 import { useBackend, usePlatform } from '../providers/PlatformProvider';
 import { startAppBridge } from '../services/appBridge';
+import { useAccountStore } from './AccountStore';
 
 /**
  * Where boot has got to.
@@ -50,6 +52,11 @@ export type SessionIdentity = AgentIdentity & { did?: string; perspective?: unkn
 export interface SessionStore {
   // State
   bootState: Accessor<BootState>;
+  /**
+   * Which step of signing in the screen is on — see `shared/signInStep.ts`. What a sign-in screen
+   * asks rather than working it out from the boot state and the accounts itself.
+   */
+  signInStep: Accessor<SignInStep>;
   /** Why the boot failed, when it did. Empty otherwise. */
   bootError: Accessor<string>;
   passwordError: Accessor<boolean>;
@@ -213,6 +220,15 @@ export function SessionStoreProvider(props: ParentProps) {
   const [loginLoading, setLoginLoading] = createSignal(false);
   const [createAgentError, setCreateAgentError] = createSignal('');
   const [createAgentLoading, setCreateAgentLoading] = createSignal(false);
+  const accounts = useAccountStore();
+  const signInStep = createMemo(() =>
+    stepOf({
+      bootState: bootState(),
+      createAgentLoading: createAgentLoading(),
+      switching: !!accounts.switchingTo(),
+      creatingAccount: accounts.creating(),
+    }),
+  );
 
   // Set for the duration of a first run, so markReady() lands on 'finishing' instead of 'ready'.
   let settingUp = false;
@@ -540,6 +556,7 @@ export function SessionStoreProvider(props: ParentProps) {
 
   const store: SessionStore = {
     bootState,
+    signInStep,
     bootError,
     passwordError,
     loginError,

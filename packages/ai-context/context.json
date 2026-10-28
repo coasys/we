@@ -7090,6 +7090,9 @@
         "bootState": {
           "type": "string"
         },
+        "signInStep": {
+          "type": "string"
+        },
         "bootError": {
           "type": "string"
         },

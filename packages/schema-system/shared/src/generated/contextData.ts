@@ -2824,6 +2824,7 @@ export const contextData: ContextData = {
       name: 'sessionStore',
       state: {
         bootState: { type: 'string' },
+        signInStep: { type: 'string' },
         bootError: { type: 'string' },
         passwordError: { type: 'boolean' },
         loginError: { type: 'string' },
