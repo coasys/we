@@ -211,6 +211,7 @@ pub use secret_service_store::SecretServiceStore;
 #[cfg(target_os = "linux")]
 mod secret_service_store {
     use std::collections::HashMap;
+    use std::sync::mpsc;
 
     use secret_service::blocking::SecretService;
     use secret_service::EncryptionType;
@@ -219,23 +220,72 @@ mod secret_service_store {
 
     const ATTRIBUTE: &str = "coasys-identity";
 
+    type Job = Box<dyn FnOnce(&SecretService<'static>) + Send>;
+
     /// The default collection of the session's Secret Service (GNOME Keyring, KWallet), attribute
-    /// `coasys-identity = <name>`. Blocking calls: the custody service runs on its own thread.
+    /// `coasys-identity = <name>`.
+    ///
+    /// The client is blocking, and runs on a thread of its own that holds it from connect to drop.
+    /// Its blocking calls start an async runtime of their own, which panics on a thread that already
+    /// runs one: the custody service's thread does, so the client is never called, or dropped,
+    /// there. `tests/secret_service.rs` checks this against a real Secret Service.
     pub struct SecretServiceStore {
-        service: SecretService<'static>,
+        jobs: mpsc::Sender<Job>,
     }
 
     fn unavailable(e: secret_service::Error) -> VaultError {
         VaultError::Unavailable(format!("Secret Service: {e}"))
     }
 
+    fn ended() -> VaultError {
+        VaultError::Unavailable("Secret Service: its thread ended".into())
+    }
+
+    fn open() -> Result<SecretService<'static>, VaultError> {
+        let service = SecretService::connect(EncryptionType::Dh).map_err(unavailable)?;
+        // A session bus with no Secret Service answers the connect and fails here.
+        service.get_default_collection().map_err(unavailable)?;
+        Ok(service)
+    }
+
     impl SecretServiceStore {
         /// Connects, or answers why not — the caller falls back to [`FileStore`].
         pub fn connect() -> Result<Self, VaultError> {
-            let service = SecretService::connect(EncryptionType::Dh).map_err(unavailable)?;
-            // A session bus with no Secret Service answers the connect and fails here.
-            service.get_default_collection().map_err(unavailable)?;
-            Ok(SecretServiceStore { service })
+            let (jobs, inbox) = mpsc::channel::<Job>();
+            let (opened, connected) = mpsc::channel();
+            std::thread::Builder::new()
+                .name("custody-secret-service".into())
+                .spawn(move || {
+                    let service = match open() {
+                        Ok(service) => service,
+                        Err(e) => {
+                            let _ = opened.send(Err(e));
+                            return;
+                        }
+                    };
+                    let _ = opened.send(Ok(()));
+                    // Ends when the store is dropped, and drops the client on this thread.
+                    for job in inbox {
+                        job(&service);
+                    }
+                })
+                .map_err(|e| VaultError::Unavailable(format!("Secret Service thread: {e}")))?;
+            connected.recv().map_err(|_| ended())??;
+            Ok(SecretServiceStore { jobs })
+        }
+
+        /// Runs `job` on the client's thread and waits for its answer.
+        fn run<T: Send + 'static>(
+            &self,
+            job: impl FnOnce(&SecretService<'static>) -> Result<T, VaultError> + Send + 'static,
+        ) -> Result<T, VaultError> {
+            let (answer, answered) = mpsc::channel();
+            self.jobs
+                .send(Box::new(move |service| {
+                    let _ = answer.send(job(service));
+                }))
+                .map_err(|_| ended())?;
+            answered.recv().map_err(|_| ended())?
         }
     }
 
@@ -249,60 +299,70 @@ mod secret_service_store {
         }
 
         fn put(&self, name: &str, bytes: &[u8]) -> Result<(), VaultError> {
-            let collection = self.service.get_default_collection().map_err(unavailable)?;
-            if collection.is_locked().map_err(unavailable)? {
-                collection.unlock().map_err(unavailable)?;
-            }
-            collection
-                .create_item(
-                    name,
-                    HashMap::from([(ATTRIBUTE, name)]),
-                    bytes,
-                    true,
-                    "application/octet-stream",
-                )
-                .map_err(unavailable)?;
-            Ok(())
+            // The copy that crosses to the client's thread is wiped when the job ends.
+            let (name, bytes) = (name.to_string(), zeroize::Zeroizing::new(bytes.to_vec()));
+            self.run(move |service| {
+                let collection = service.get_default_collection().map_err(unavailable)?;
+                if collection.is_locked().map_err(unavailable)? {
+                    collection.unlock().map_err(unavailable)?;
+                }
+                collection
+                    .create_item(
+                        &name,
+                        HashMap::from([(ATTRIBUTE, name.as_str())]),
+                        &bytes,
+                        true,
+                        "application/octet-stream",
+                    )
+                    .map_err(unavailable)?;
+                Ok(())
+            })
         }
 
         fn get(&self, name: &str) -> Result<Option<Vec<u8>>, VaultError> {
-            let found = self
-                .service
-                .search_items(HashMap::from([(ATTRIBUTE, name)]))
-                .map_err(unavailable)?;
-            let item = match (
-                found.unlocked.into_iter().next(),
-                found.locked.into_iter().next(),
-            ) {
-                (Some(item), _) => item,
-                (None, Some(item)) => {
-                    item.unlock().map_err(unavailable)?;
-                    item
-                }
-                (None, None) => return Ok(None),
-            };
-            Ok(Some(item.get_secret().map_err(unavailable)?))
+            let name = name.to_string();
+            self.run(move |service| {
+                let found = service
+                    .search_items(HashMap::from([(ATTRIBUTE, name.as_str())]))
+                    .map_err(unavailable)?;
+                let item = match (
+                    found.unlocked.into_iter().next(),
+                    found.locked.into_iter().next(),
+                ) {
+                    (Some(item), _) => item,
+                    (None, Some(item)) => {
+                        item.unlock().map_err(unavailable)?;
+                        item
+                    }
+                    (None, None) => return Ok(None),
+                };
+                Ok(Some(item.get_secret().map_err(unavailable)?))
+            })
         }
 
         fn contains(&self, name: &str) -> Result<bool, VaultError> {
             // `SearchItems` answers for locked items too, listing them apart: nothing is unlocked
             // and no secret is fetched.
-            let found = self
-                .service
-                .search_items(HashMap::from([(ATTRIBUTE, name)]))
-                .map_err(unavailable)?;
-            Ok(!found.unlocked.is_empty() || !found.locked.is_empty())
+            let name = name.to_string();
+            self.run(move |service| {
+                let found = service
+                    .search_items(HashMap::from([(ATTRIBUTE, name.as_str())]))
+                    .map_err(unavailable)?;
+                Ok(!found.unlocked.is_empty() || !found.locked.is_empty())
+            })
         }
 
         fn delete(&self, name: &str) -> Result<(), VaultError> {
-            let found = self
-                .service
-                .search_items(HashMap::from([(ATTRIBUTE, name)]))
-                .map_err(unavailable)?;
-            for item in found.unlocked.into_iter().chain(found.locked) {
-                item.delete().map_err(unavailable)?;
-            }
-            Ok(())
+            let name = name.to_string();
+            self.run(move |service| {
+                let found = service
+                    .search_items(HashMap::from([(ATTRIBUTE, name.as_str())]))
+                    .map_err(unavailable)?;
+                for item in found.unlocked.into_iter().chain(found.locked) {
+                    item.delete().map_err(unavailable)?;
+                }
+                Ok(())
+            })
         }
     }
 }
