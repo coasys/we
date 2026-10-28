@@ -869,9 +869,7 @@ export const seedBundles: Bundle[] = [
                           onSelect: [
                             {
                               $if: {
-                                condition: {
-                                  $: "startsWith(event.detail.value, 'group|') && !(event.detail.value in local.openRows)",
-                                },
+                                condition: { $: "startsWith(event.detail.value, 'group|')" },
                                 then: { $toggleLocalIn: 'openRows', value: { $: 'event.detail.value' } },
                               },
                             },
@@ -967,9 +965,7 @@ export const seedBundles: Bundle[] = [
                             },
                             {
                               $if: {
-                                condition: {
-                                  $: "startsWith(event.detail.value, 'dnakind|') && !(event.detail.value in local.openRows)",
-                                },
+                                condition: { $: "startsWith(event.detail.value, 'dnakind|')" },
                                 then: { $toggleLocalIn: 'openRows', value: { $: 'event.detail.value' } },
                               },
                             },

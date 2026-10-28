@@ -33,8 +33,8 @@ const toggle = (value: SchemaProp): SchemaProp => ({ $toggleLocalIn: 'openRows',
 
 /**
  * A group: one of the space's kinds of thing, with its glyph, opened or closed by a press anywhere on
- * its row — a group is not a place to go, so choosing it is opening it (see `onSelect`). Workflows is the
- * exception: its row opens the Workflows page as well as the group.
+ * its row as by its caret. Most groups' rows open a page of what the group lists as well (see
+ * `onSelect`).
  *
  * `count` is how many rows it holds, as an expression. Every group says it at the end of its row, and
  * only a group with something in it has a caret and opens: an empty one has nothing to show, and a
@@ -401,14 +401,14 @@ const DNA_QUERIES = {
  * What choosing a row does, by the kind its value names.
  *
  * Every row is a place. A group's row opens its page — Channels, Calls, Workflows and People are full
- * views of what the group lists — and opens the group too, so the tree shows where you are. It never
- * closes it: only the caret folds a group, so a press can never take rows away from under the
- * pointer. Social DNA's page is the space's vocabulary settings until it has one of its own.
+ * views of what the group lists — and opens or closes the group, as its caret does. Opening on a press
+ * but closing only on the caret read as two rules for one row, so a press folds as well. Social DNA's
+ * page is the space's vocabulary settings until it has one of its own.
  */
 const onSelect: SchemaProp = [
   {
     $if: {
-      condition: { $: "startsWith(event.detail.value, 'group|') && !(event.detail.value in local.openRows)" },
+      condition: { $: "startsWith(event.detail.value, 'group|')" },
       then: { $toggleLocalIn: 'openRows', value: { $: 'event.detail.value' } },
     },
   },
@@ -474,7 +474,7 @@ const onSelect: SchemaProp = [
   },
   {
     $if: {
-      condition: { $: "startsWith(event.detail.value, 'dnakind|') && !(event.detail.value in local.openRows)" },
+      condition: { $: "startsWith(event.detail.value, 'dnakind|')" },
       then: { $toggleLocalIn: 'openRows', value: { $: 'event.detail.value' } },
     },
   },
