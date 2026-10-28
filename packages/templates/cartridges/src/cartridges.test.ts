@@ -231,7 +231,7 @@ describe('the Coasys cartridge', () => {
       expect(at([], { view: 'canvas', dna: 'signal|like' })(focus)).toBe('like');
       expect(at([], { view: 'canvas', dna: 'signal' })(focus)).toBe('we-graph://cluster/vocabulary/signals');
       expect(at([], { view: 'canvas', dna: 'policy|Members can make anything.' })(focus)).toBe(
-        'we-graph://cluster/vocabulary/policy',
+        'policy:Members can make anything.',
       );
       expect(at([], { view: 'canvas', dna: 'all' })(focus)).toBe('');
 

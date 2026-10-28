@@ -20586,7 +20586,7 @@ export const seedBundles: Bundle[] = [
                                         },
                                       },
                                       focus: {
-                                        $: "routeStore.params.dna == 'all' ? '' : split(routeStore.params.dna, '|')[1] && split(routeStore.params.dna, '|')[0] != 'policy' ? (split(routeStore.params.dna, '|')[0] == 'model' ? shapeStore.spaceShapes.find(s, s.id == (split(routeStore.params.dna, '|')[1])).name : split(routeStore.params.dna, '|')[1]) : 'we-graph://cluster/vocabulary/' + { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split(routeStore.params.dna, '|')[0]]",
+                                        $: "routeStore.params.dna == 'all' ? '' : !(split(routeStore.params.dna, '|')[1]) ? 'we-graph://cluster/vocabulary/' + { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split(routeStore.params.dna, '|')[0]] : split(routeStore.params.dna, '|')[0] == 'policy' ? 'policy:' + split(routeStore.params.dna, '|')[1] : split(routeStore.params.dna, '|')[0] == 'model' ? shapeStore.spaceShapes.find(s, s.id == (split(routeStore.params.dna, '|')[1])).name : split(routeStore.params.dna, '|')[1]",
                                       },
                                       focusCentre: true,
                                       onNodeClick: {

@@ -105,10 +105,10 @@ const SIBLINGS = `(${DNA_KIND} == 'model' ? ${SIBLING('data.entity', MODEL_NAME)
 const OPEN_DEFINITION = `${DNA_ID} && ${DNA_KIND} != 'policy' ? [${DNA_KIND} == 'model' ? ${MODEL_NAME} : ${DNA_ID}] : []`;
 
 /**
- * What the map centres on: a definition (a model by its name), or — for a kind, or a rule of the
- * policy, whose node's address a template cannot build — its kind's bucket. All of it, nothing.
+ * What the map centres on: a definition (a model by its name), a rule of the policy by its key on the
+ * map (`policy:<rule>`), or a kind's bucket. All of it, nothing.
  */
-const FOCUS = `${DNA_FOCUS} == 'all' ? '' : ${DNA_ID} && ${DNA_KIND} != 'policy' ? (${DNA_KIND} == 'model' ? ${MODEL_NAME} : ${DNA_ID}) : ${BUCKET_NODE}`;
+const FOCUS = `${DNA_FOCUS} == 'all' ? '' : !(${DNA_ID}) ? ${BUCKET_NODE} : ${DNA_KIND} == 'policy' ? 'policy:' + ${DNA_ID} : ${DNA_KIND} == 'model' ? ${MODEL_NAME} : ${DNA_ID}`;
 
 /** A node pressed, opened in the inspector — when it stands for a record the inspector reads. */
 const OPEN_IN_INSPECTOR: SchemaProp = {
