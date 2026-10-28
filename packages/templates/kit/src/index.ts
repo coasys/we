@@ -84,6 +84,19 @@ export {
 export type { CanvasEditingOptions, CanvasSeedOptions } from './we/canvas.ts';
 export { fieldEditor, inspectorPanel, kindIcon, kindLabel, openRecord, vocabularyEditLink } from './we/inspector.ts';
 export type { InspectorPanelOptions } from './we/inspector.ts';
+export {
+  chooseTemplate,
+  chooseTheme,
+  nameDialog,
+  SPACE_TEMPLATE_CHOICES,
+  SPACE_THEME_CHOICES,
+  startThemeFork,
+  THEME_FORK_LOCALS,
+  templateChoice,
+  themeChoice,
+  themeForkDialog,
+} from './we/designChoices.ts';
+export type { Choice } from './we/designChoices.ts';
 export { SOCIAL_DNA_LABELS, VOCABULARY_BUCKETS, vocabularyMap } from './we/vocabularyMap.ts';
 export type { VocabularyMapOptions } from './we/vocabularyMap.ts';
 export { askWhatGoesHere, BACK_TO_CHOOSER, CARD_LOCALS, newNoteModal, newThingChooser } from './we/canvasCards.ts';

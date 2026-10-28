@@ -20,29 +20,75 @@ export interface PickerRowOptions {
    * replace acted on whatever was *currently* selected, so editing something you were not already
    * using meant selecting it first and then finding the control again.
    */
-  actions?: {
-    icon: string;
-    /**
-     * The icon's weight. Defaults to regular, which is right for a verb — "edit this", "fork this".
-     *
-     * `fill` is for the other kind of action: one whose presence reports a state that is currently
-     * true and whose click turns it off. Filled is already how this row says "true" — the star on
-     * the space's default is filled — so a solid glyph beside a hollow one reads as a state rather
-     * than as an offer, which is the difference between "unpin this" and "pin this".
-     */
-    weight?: 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone';
-    tooltip: string;
-    onClick: SchemaProp;
-    /**
-     * Show this action only when the expression is truthy.
-     *
-     * Not decoration: "edit" is not offered for every row. A built-in theme has nothing editable,
-     * and a template can only be edited where the session says it is not read-only — gates the old
-     * menus applied before showing the item, and dropping them would offer an edit that silently
-     * does nothing.
-     */
-    when?: SchemaProp;
-  }[];
+  actions?: RowAction[];
+}
+
+/** One of the things a row offers to do to what it stands for — see `PickerRowOptions.actions`. */
+export interface RowAction {
+  icon: string;
+  /**
+   * The icon's weight. Defaults to regular, which is right for a verb — "edit this", "fork this".
+   *
+   * `fill` is for the other kind of action: one whose presence reports a state that is currently
+   * true and whose click turns it off. Filled is already how this row says "true" — the star on
+   * the space's default is filled — so a solid glyph beside a hollow one reads as a state rather
+   * than as an offer, which is the difference between "unpin this" and "pin this".
+   */
+  weight?: 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone';
+  tooltip: string;
+  onClick: SchemaProp;
+  /**
+   * Show this action only when the expression is truthy.
+   *
+   * Not decoration: "edit" is not offered for every row. A built-in theme has nothing editable,
+   * and a template can only be edited where the session says it is not read-only — gates the old
+   * menus applied before showing the item, and dropping them would offer an edit that silently
+   * does nothing.
+   */
+  when?: SchemaProp;
+}
+
+/**
+ * The star on a row that is the space's default — the one way every list of templates and themes
+ * says so, whether it is a picker's or a tree's.
+ */
+export function defaultMark(isDefault: SchemaProp): SchemaNode {
+  return {
+    type: '$if',
+    props: {
+      condition: isDefault,
+      then: {
+        type: 'we-tooltip',
+        props: { content: "This space's default", placement: 'top' },
+        children: [{ type: 'we-icon', props: { name: 'star', weight: 'fill', color: 'warning-text' } }],
+      },
+    },
+  };
+}
+
+/** A row's actions as small buttons after its label — a picker's row and a tree's draw them alike. */
+export function rowActions(actions: readonly RowAction[]): SchemaNode[] {
+  return actions.map((action) => {
+    const button: SchemaNode = {
+      type: 'we-tooltip',
+      props: { content: action.tooltip, placement: 'top' },
+      children: [
+        {
+          type: 'we-button',
+          props: {
+            variant: 'ghost',
+            square: true,
+            size: 'sm',
+            color: 'text-faint',
+            hoverProps: { color: 'text' },
+            onClick: action.onClick,
+          },
+          children: [{ type: 'we-icon', props: { name: action.icon, weight: action.weight ?? 'regular' } }],
+        },
+      ],
+    };
+    return action.when === undefined ? button : { type: '$if', props: { condition: action.when, then: button } };
+  });
 }
 
 /**
@@ -93,48 +139,12 @@ export function pickerRow(opts: PickerRowOptions): SchemaNode {
               { type: 'we-text', props: { color: 'text', truncate: true, flex: '1' }, children: [opts.label] },
               // Only where a row can be a space's default: an app is the agent's, never a space's, and
               // a condition that can only be false is not a condition the validator accepts.
-              ...(opts.isDefault === undefined
-                ? []
-                : [
-                    {
-                      type: '$if',
-                      props: {
-                        condition: opts.isDefault,
-                        then: {
-                          type: 'we-tooltip',
-                          props: { content: "This space's default", placement: 'top' },
-                          children: [
-                            { type: 'we-icon', props: { name: 'star', weight: 'fill', color: 'warning-text' } },
-                          ],
-                        },
-                      },
-                    },
-                  ]),
+              ...(opts.isDefault === undefined ? [] : [defaultMark(opts.isDefault)]),
             ],
           },
         ],
       },
-      ...(opts.actions ?? []).map((action) => {
-        const button: SchemaNode = {
-          type: 'we-tooltip',
-          props: { content: action.tooltip, placement: 'top' },
-          children: [
-            {
-              type: 'we-button',
-              props: {
-                variant: 'ghost',
-                square: true,
-                size: 'sm',
-                color: 'text-faint',
-                hoverProps: { color: 'text' },
-                onClick: action.onClick,
-              },
-              children: [{ type: 'we-icon', props: { name: action.icon, weight: action.weight ?? 'regular' } }],
-            },
-          ],
-        };
-        return action.when === undefined ? button : { type: '$if', props: { condition: action.when, then: button } };
-      }),
+      ...rowActions(opts.actions ?? []),
     ],
   };
 }

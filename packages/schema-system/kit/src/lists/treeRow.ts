@@ -1,6 +1,7 @@
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
 import type { Content } from '../types.ts';
+import { defaultMark, type RowAction, rowActions } from './pickerRow.ts';
 
 export interface TreeRowOptions {
   /** What the row stands for, as the tree reports it when chosen. */
@@ -27,6 +28,10 @@ export interface TreeRowOptions {
   onOpenChange?: SchemaProp;
   /** A caret before any rows under it have loaded — for rows whose children are read on opening. */
   expandable?: SchemaProp;
+  /** Truthy when this is the space's default — the star a picker's row shows. */
+  isDefault?: SchemaProp;
+  /** Things to do to what the row stands for, after its label — as a picker's row offers them. */
+  actions?: RowAction[];
 }
 
 /**
@@ -83,6 +88,8 @@ export function treeRow(opts: TreeRowOptions): SchemaNode {
             children: [opts.label],
           },
           ...(opts.badge ? [opts.badge] : []),
+          ...(opts.isDefault === undefined ? [] : [defaultMark(opts.isDefault)]),
+          ...rowActions(opts.actions ?? []),
         ],
       },
       ...nested,

@@ -72,8 +72,8 @@ export type { CardListOptions, CardShellOptions } from './lists/cards.ts';
 
 export { loadMore } from './lists/loadMore.ts';
 export type { LoadMoreOptions } from './lists/loadMore.ts';
-export { pickerRow } from './lists/pickerRow.ts';
-export type { PickerRowOptions } from './lists/pickerRow.ts';
+export { defaultMark, pickerRow, rowActions } from './lists/pickerRow.ts';
+export type { PickerRowOptions, RowAction } from './lists/pickerRow.ts';
 
 // Layout — the boxes a page is made of.
 export { attributeRow } from './layout/attributeRow.ts';
