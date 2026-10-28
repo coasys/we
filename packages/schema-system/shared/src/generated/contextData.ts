@@ -1293,6 +1293,7 @@ export const contextData: ContextData = {
           optional: true,
         },
         { name: 'focus', type: 'string', optional: true },
+        { name: 'focusCentre', type: 'boolean', optional: true },
         { name: 'folded', type: 'string[]', optional: true },
         {
           name: 'onNodeFold',
@@ -3079,6 +3080,8 @@ export const contextData: ContextData = {
         'moveTab',
         'endTabDrag',
         'endDockMove',
+        'closeTemplatePanel',
+        'openTemplatePanel',
         'toggleLane',
         'setLaneCollapsed',
         'toggleCustomiseLayout',

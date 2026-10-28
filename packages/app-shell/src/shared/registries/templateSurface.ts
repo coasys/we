@@ -1242,6 +1242,10 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     insertDock: action('host-layout'),
     beginDockMove: action('host-layout'),
     raiseDock: ambient('host-layout'),
+    // What a lane draws and which tab of a seat is in front — read by the lane, never by a template.
+    laneSections: WIRING,
+    panelDeclaration: WIRING,
+    seatFront: WIRING,
     // A move's own calls are ambient, for the reason a resize's are — see `resizeDock`.
     moveDock: ambient('host-layout'),
     beginTabDrag: action('host-layout'),
@@ -1294,11 +1298,16 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     saveLayout: action('host-layout'),
     applyLayout: action('host-layout'),
     deleteLayout: action('host-layout'),
-    // Dismissing and restoring a panel the interface itself supplied. What the titlebar's close
-    // button calls, and reachable by the template that declared the panel — which is the only way
-    // back to one that has been closed.
-    closeTemplatePanel: action('host-layout'),
-    openTemplatePanel: action('host-layout'),
+    /*
+      Dismissing and restoring a panel the interface itself supplied. What the titlebar's close
+      button calls, and reachable by the template that declared the panel — which is the only way
+      back to one that has been closed. View state, and ambient: it opens and closes this agent's view
+      of a panel the interface declared, and nothing else — the ids are the interface's own panels,
+      so a template cannot reach a module's or the host's through it. In the space tier for that
+      reason: an inspector a space template declares has to open when something is chosen.
+    */
+    closeTemplatePanel: ambient('view-state'),
+    openTemplatePanel: ambient('view-state'),
   },
 
   presenceStore: {

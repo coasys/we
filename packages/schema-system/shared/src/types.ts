@@ -29,7 +29,10 @@ export type TemplatePanel = {
    * exactly that failure.
    */
   id: string;
-  /** The module whose panel this places. Mutually exclusive with `node`. */
+  /**
+   * The module whose panel this places. Mutually exclusive with `node`. The host's own panels are
+   * named the same way — `shell` is the space's settings — so a template can place those too.
+   */
   module?: string;
   /**
    * Which of that module's panels, where it contributes more than one — its declared `name`.
@@ -149,6 +152,9 @@ export type TemplatePanel = {
   route?: string | string[];
   /**
    * Whether to open the panel as well as place it. Absent means yes.
+   *
+   * For a panel the template supplies (`node`), `false` starts it closed: it opens when the template
+   * calls `shellStore.openTemplatePanel(id)` — an inspector, opened when something is chosen.
    *
    * Opening a module's panel means invoking the action its launcher declares, and that action is not
    * always "open a panel": the call module's is `goToCall`, which **joins a call** when there is not

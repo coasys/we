@@ -1,0 +1,107 @@
+/**
+ * A home lane holding any panel — a template's own, and one registered by the host or a module —
+ * folding while nothing in it is open, and two panels sharing one place as tabs. Driven through the
+ * real shell store and dock registry.
+ */
+import { cleanup, fireEvent, render } from '@solidjs/testing-library';
+import { createSignal } from 'solid-js';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+
+import PanelLane from '../src/frameworks/solid/components/PanelLane';
+import type { ShellStore } from '../src/frameworks/solid/stores/ShellStore';
+import { ShellStoreProvider, useShellStore } from '../src/frameworks/solid/stores/ShellStore';
+import { dockRegistry, registerHostDockStore, unregisterHostDockStore } from '../src/shared/registries/dockRegistry';
+import { provideChromeBag, provideTemplateBag } from '../src/shared/registries/templateBag';
+import { setTemplatePanels } from '../src/shared/registries/templatePanels';
+
+/** A host panel — settings, say — whose open state is its own, with a close the lane's header calls. */
+const [hostOpen, setHostOpen] = createSignal(false);
+const HOST = 'host-thing';
+
+const text = (words: string) => ({ type: 'span', children: [words] });
+
+let release: (() => void)[] = [];
+
+beforeEach(() => {
+  localStorage.clear();
+  window.history.replaceState({}, '', '/space/test');
+  setHostOpen(false);
+  registerHostDockStore(HOST, { edge: () => (hostOpen() ? 'right' : null), close: () => setHostOpen(false) });
+  dockRegistry.register({ id: `${HOST}:panel`, moduleId: HOST, edge: 'edge', close: 'close', node: text('Settings') });
+  release = [provideChromeBag({} as never), provideTemplateBag({} as never)];
+});
+
+afterEach(() => {
+  cleanup();
+  setTemplatePanels(undefined);
+  dockRegistry.remove(`${HOST}:panel`);
+  unregisterHostDockStore(HOST);
+  release.forEach((done) => done());
+});
+
+function mountLane() {
+  let store!: ShellStore;
+  const Grab = () => {
+    store = useShellStore();
+    return null;
+  };
+  const { container } = render(() => (
+    <ShellStoreProvider>
+      <Grab />
+      <PanelLane lane="side" width="320px" resize="start" foldEmpty />
+    </ShellStoreProvider>
+  ));
+  return { store, lane: container.firstElementChild as HTMLElement };
+}
+
+describe('a lane holding any panel', () => {
+  it("draws the host's panel at home in it, with its name and a close, and folds once it closes", async () => {
+    setTemplatePanels([{ id: 'settings', module: HOST, home: 'side', title: 'Settings' }], 'coasys-space');
+    const { lane } = mountLane();
+    expect(lane.style.width).toBe('0px');
+
+    setHostOpen(true);
+    expect(lane.style.width).toBe('320px');
+    expect(lane.textContent).toContain('Settings');
+
+    fireEvent.click(lane.querySelector('we-button[label="Close"]')!);
+    expect(hostOpen()).toBe(false);
+    expect(lane.style.width).toBe('0px');
+  });
+
+  it('starts a template panel declared `open: false` closed, and opens it on asking', () => {
+    setTemplatePanels([{ id: 'inspector', node: text('Inspector'), home: 'side', open: false }], 'coasys-space');
+    const { store, lane } = mountLane();
+    expect(lane.style.width).toBe('0px');
+
+    store.openTemplatePanel('inspector');
+    expect(lane.style.width).toBe('320px');
+    expect(lane.textContent).toContain('Inspector');
+
+    store.closeTemplatePanel('inspector');
+    expect(lane.style.width).toBe('0px');
+  });
+
+  it('shares one place between two panels with the same order, as tabs, the last opened in front', () => {
+    setTemplatePanels(
+      [
+        { id: 'inspector', node: text('Inspector'), title: 'Inspector', home: 'side', order: 0 },
+        { id: 'settings', module: HOST, home: 'side', order: 0, title: 'Settings' },
+      ],
+      'coasys-space',
+    );
+    const { lane } = mountLane();
+    // What is drawn, as against the tabs naming it.
+    const shown = () => [...lane.querySelectorAll('span')].map((span) => span.textContent);
+    expect(shown()).toEqual(['Inspector']);
+
+    setHostOpen(true);
+    const tabs = [...lane.querySelectorAll('we-button')].filter((button) => !button.getAttribute('label'));
+    expect(tabs.map((button) => button.textContent?.trim())).toEqual(['Inspector', 'Settings']);
+    // Opened on purpose, so in front.
+    expect(shown()).toEqual(['Settings']);
+
+    fireEvent.click(tabs[0]);
+    expect(shown()).toEqual(['Inspector']);
+  });
+});

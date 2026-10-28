@@ -107,6 +107,7 @@ import {
   createSignal,
   onCleanup,
   ParentProps,
+  untrack,
   useContext,
 } from 'solid-js';
 
@@ -164,6 +165,18 @@ function warnAmbiguousSupply(moduleId: string, count: number): void {
       'A panel entry names a module, so there is no way to tell which one is meant — none is supplied, ' +
       "and each keeps the module's own contents.",
   );
+}
+
+/** A panel at home in a lane — see `ShellStore.laneSections`. */
+export interface LaneSection {
+  id: string;
+  open: boolean;
+  /** Its place along the lane. Two sections with the same explicit `order` share a seat, as tabs. */
+  order?: number;
+  /** Its place in that seat's strip. */
+  tab?: number;
+  /** Declared at home here, and somewhere else for now — the lane shows a placeholder with the way back. */
+  away?: boolean;
 }
 
 export interface ShellStore {
@@ -372,6 +385,16 @@ export interface ShellStore {
    * because a snapped panel and one dropped in the same spot resolve identically.
    */
   dockPlacement: Accessor<Record<string, FloatPlacement & { canDisplace: boolean }>>;
+  /**
+   * What each home lane holds, by lane: every panel placed there, whoever registered it — a
+   * template's own, a module's, the host's — in order, with whether it is open. A lane draws the open
+   * ones; see `PanelLane`.
+   */
+  laneSections: Accessor<Record<string, LaneSection[]>>;
+  /** The declaration an interface made about a dock, by dock id — its title, `fixed`, `grow`. */
+  panelDeclaration: (dockId: string) => TemplatePanel | undefined;
+  /** Which of several docks sharing a seat is in front: the one most recently raised or opened. */
+  seatFront: (ids: readonly string[]) => string | undefined;
   /**
    * Begin a move: remembers where the panel started, and where the pointer was when it began.
    *
@@ -1707,6 +1730,12 @@ export function ShellStoreProvider(props: ParentProps) {
     return docks.length === 1 ? docks[0].id : null;
   };
 
+  /**
+   * A section's dock: a dock id as given — a module's or the host's panel at home in a lane — or a
+   * template panel's id, which is how a template's own sections have always been named.
+   */
+  const sectionDockId = (id: string): string => (dockRegistry.get(id) ? id : templatePanelDockId(id));
+
   /** A declaration by the dock id it resolves to, for the placement chain to consult. */
   const declarationFor = createMemo(() => {
     /*
@@ -1792,6 +1821,53 @@ export function ShellStoreProvider(props: ParentProps) {
           };
         })
     );
+  });
+
+  /*
+    A panel that comes open comes to the front of its seat — the settings opened from a gear, a panel
+    a template opens, a module's panel opening itself. What `openTemplatePanel` already did for a
+    template's own panel, for every panel: opened on purpose is wanted in sight, not behind a tab.
+  */
+  // Undefined until the first run, which only records: what was open on arrival was not *opened*,
+  // and raising all of it would reshuffle the stacking somebody left on every reload.
+  let wasOpen: Set<string> | undefined;
+  createEffect(() => {
+    const open = new Set(
+      dockRequests()
+        .filter((request) => request.edge)
+        .map((request) => request.id),
+    );
+    const before = wasOpen;
+    if (before) untrack(() => open.forEach((id) => before.has(id) || raise(id)));
+    wasOpen = open;
+  });
+
+  const laneSections = createMemo(() => {
+    const byLane: Record<string, LaneSection[]> = {};
+    const declared = declarationFor();
+    for (const request of dockRequests()) {
+      const placement = request.placement;
+      if (placement?.snap === 'home' && placement.home) {
+        (byLane[placement.home] ??= []).push({
+          id: request.id,
+          open: request.edge !== null,
+          ...(placement.order !== undefined ? { order: placement.order } : {}),
+          ...(placement.tab !== undefined ? { tab: placement.tab } : {}),
+        });
+        continue;
+      }
+      // Declared at home here and somewhere else for now: the lane keeps a place for it, with the way back.
+      const home = declared[request.id]?.home;
+      if (home && request.edge !== null) (byLane[home] ??= []).push({ id: request.id, open: true, away: true });
+    }
+    const along = (section: LaneSection) => section.order ?? Number.POSITIVE_INFINITY;
+    // Ties — tabs that name no `tab` — in the order the interface declared them, not the registry's.
+    const declaredAt = new Map(declaredPanels().map((panel, index) => [dockIdFor(panel), index]));
+    const listed = (section: LaneSection) => declaredAt.get(section.id) ?? Number.POSITIVE_INFINITY;
+    for (const sections of Object.values(byLane)) {
+      sections.sort((a, b) => along(a) - along(b) || (a.tab ?? 0) - (b.tab ?? 0) || listed(a) - listed(b));
+    }
+    return byLane;
   });
 
   /**
@@ -2717,7 +2793,12 @@ export function ShellStoreProvider(props: ParentProps) {
         reset for the whole arrangement has to be able to find these.
       */
       const closedKey = placementKey(dockId);
-      keys[`edge:${panel.id}`] = () => (closedPanels()[closedKey] ? null : (edgeOfSnap(panel.snap ?? null) ?? 'right'));
+      /*
+        Closed when somebody closed it, or — for one declared `open: false` — until somebody opens it.
+        The map holds `true` for closed and `false` for opened, so absent is the declaration's answer.
+      */
+      keys[`edge:${panel.id}`] = () =>
+        (closedPanels()[closedKey] ?? panel.open === false) ? null : (edgeOfSnap(panel.snap ?? null) ?? 'right');
       keys[`size:${panel.id}`] = () => panel.size ?? 'md';
       keys[`float:${panel.id}`] = () => !panel.displace;
       keys[`min:${panel.id}`] = () => panel.min;
@@ -4057,6 +4138,16 @@ export function ShellStoreProvider(props: ParentProps) {
     },
 
     raiseDock: raise,
+    laneSections,
+    panelDeclaration: (dockId) => declarationFor()[dockId],
+    seatFront: (ids) => {
+      const order = activation();
+      const at = (id: string) => order[placementKey(id)] ?? -1;
+      return ids.reduce<string | undefined>(
+        (best, id) => (best === undefined || at(id) > at(best) ? id : best),
+        undefined,
+      );
+    },
 
     panelsHidden: panelsHiddenByUser,
     togglePanelsHidden: () => {
@@ -4095,11 +4186,8 @@ export function ShellStoreProvider(props: ParentProps) {
     openTemplatePanel: (id) => {
       const dockId = templatePanelDockId(id);
       const key = placementKey(dockId);
-      setClosedPanels((prev) => {
-        const next = { ...prev };
-        delete next[key];
-        return next;
-      });
+      // `false` rather than deleted, so a panel declared closed (`open: false`) stays open once opened.
+      setClosedPanels((prev) => ({ ...prev, [key]: false }));
       // Opened on purpose, so in sight: a panel reopening into a stack comes back as the tab in front
       // rather than behind whichever was touched last. See `revealDock`.
       store.revealDock(dockId);
@@ -4288,7 +4376,7 @@ export function ShellStoreProvider(props: ParentProps) {
     },
 
     breakOut: (panelId, x, y) => {
-      const id = templatePanelDockId(panelId);
+      const id = sectionDockId(panelId);
       const request = dockRequests().find((entry) => entry.id === id);
       const declared = declarationFor()[id];
       if (!request?.edge || declared?.fixed) return;
@@ -4310,7 +4398,7 @@ export function ShellStoreProvider(props: ParentProps) {
     },
 
     returnHome: (panelId) => {
-      const id = templatePanelDockId(panelId);
+      const id = sectionDockId(panelId);
       const request = dockRequests().find((entry) => entry.id === id);
       if (!request?.edge) return;
       const placement = placementOf(request);

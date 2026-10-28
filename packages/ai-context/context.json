@@ -3655,6 +3655,11 @@
           "optional": true
         },
         {
+          "name": "focusCentre",
+          "type": "boolean",
+          "optional": true
+        },
+        {
           "name": "folded",
           "type": "string[]",
           "optional": true
@@ -7501,6 +7506,8 @@
         "moveTab",
         "endTabDrag",
         "endDockMove",
+        "closeTemplatePanel",
+        "openTemplatePanel",
         "toggleLane",
         "setLaneCollapsed",
         "toggleCustomiseLayout",

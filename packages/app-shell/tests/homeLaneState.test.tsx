@@ -3,7 +3,6 @@
  * shell store: kept per template, kept across a reload, part of a saved layout, and undone by a reset.
  */
 import { cleanup, render } from '@solidjs/testing-library';
-import { createSignal } from 'solid-js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import PanelLane from '../src/frameworks/solid/components/PanelLane';
@@ -164,29 +163,5 @@ describe('a home lane folding', () => {
     handle.dispatchEvent(new CustomEvent('resize', { detail: { delta: 200 } }));
     handle.dispatchEvent(new CustomEvent('resizeend', { detail: { delta: 200 } }));
     expect(store.laneWidth('side')).toBeDefined();
-  });
-
-  // An inspector's lane, folded while nothing is selected — by the template, without writing the reader's fold.
-  it("folds when its template says so, and unfolds to the reader's own state", () => {
-    const [folded, setFolded] = createSignal(true);
-    let store!: ShellStore;
-    const Grab = () => {
-      store = useShellStore();
-      return null;
-    };
-    const { container } = render(() => (
-      <ShellStoreProvider>
-        <Grab />
-        <PanelLane lane="inspector" width="320px" resize="start" collapsed={folded()} />
-      </ShellStoreProvider>
-    ));
-    const lane = container.firstElementChild as HTMLElement;
-    expect(lane.style.width).toBe('0px');
-    expect(lane.inert).toBe(true);
-    expect(store.collapsedLanes()).toEqual([]);
-
-    setFolded(false);
-    expect(lane.style.width).toBe('320px');
-    expect(lane.inert).toBe(false);
   });
 });

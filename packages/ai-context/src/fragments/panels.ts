@@ -174,6 +174,21 @@ ordinary panel: it can be docked, folded, stacked, saved in a layout — and its
 - **\`$panels\` is a layout node.** It takes \`lane\` (required), \`direction\` (\`column\` by default, or
   \`row\`), \`accepts\` (section ids it will take, comma-separated; empty means any), and the ordinary
   layout props — \`width\`, \`flex\`, \`minWidth\` — which is how a template holds room for an empty lane.
+  \`resize: 'start'\` or \`'end'\` puts a drag handle on that edge, and \`foldEmpty: true\` folds the lane
+  away while nothing in it is open — a lane that is only there while something is chosen.
+- **Any panel can live in a lane, not only one the template draws.** A \`module\` entry with \`home\`
+  puts that module's panel there, and the host's own panels are named the same way —
+  \`{ "id": "settings", "module": "shell", "home": "right" }\` places the space's settings, which the
+  gear then opens beside the page rather than as a window on the edge. In a lane a panel is flush: no
+  titlebar, no frame. One that does not draw its own heading gets a slim header with its name and its
+  close; a template's own section draws its own.
+- **Two sections with the same explicit \`order\` share one place, as tabs** — as panels in an edge's
+  seat do. One shows, the one most recently opened or chosen, with a strip naming them all; \`tab\`
+  orders the strip, else the order they are declared in. An inspector and the space's settings taking
+  turns in one column is the case.
+- **A section the template draws can start closed.** \`open: false\` on a \`node\` entry leaves it closed
+  until \`shellStore.openTemplatePanel(id)\` opens it — an inspector, opened when something is chosen
+  and closed again with \`closeTemplatePanel\`. With \`foldEmpty\`, its lane folds while it is closed.
 - **Reordering within a lane is arrangement, not editing.** Dragging one section above another
   rewrites \`order\` on the reader's placement; nothing touches the tree, and "Reset layout" restores
   the author's order. Dragging a section to another lane changes \`home\`; to an edge, \`snap\`.

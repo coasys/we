@@ -53,13 +53,18 @@
  * section shows its own; `shellStore.customisingLayout` shows them all.
  */
 import { NARROW_VIEWPORT_PX } from '@shared/dockGeometry';
+import { type DockEntry, dockRegistry, dockTitle, hostDockStores } from '@shared/registries/dockRegistry';
 import { HOME_SECTION_ATTR, registerHomeLane } from '@shared/registries/homeLanes';
-import { onTemplatePanelsChanged, templatePanelDockId, templatePanels } from '@shared/registries/templatePanels';
+import { moduleStores } from '@shared/registries/moduleRegistry';
+import { chromeBag } from '@shared/registries/templateBag';
+import { TEMPLATE_DOCK_STORE_ID } from '@shared/registries/templatePanels';
+import { componentRegistry as registry } from '@solid/registries/componentRegistry';
 import { Row } from '@we/components/solid';
 import type { TemplatePanel } from '@we/schema-shared';
+import { RenderSchema } from '@we/schema-solid';
 import { type Accessor, createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 
-import { useShellStore } from '../stores/ShellStore';
+import { type LaneSection, useShellStore } from '../stores/ShellStore';
 import TemplatePanelBody from './TemplatePanelBody';
 
 /** How far the pointer must travel before a press on the grip is a drag rather than a click. */
@@ -96,17 +101,22 @@ export function PanelLane(props: {
   /** Which edge the reader can drag to resize it: `end` for a column on the left, `start` for one on the right. */
   resize?: 'start' | 'end';
   /**
-   * Folded by the template, whatever the reader last did — for a lane that has nothing to show
-   * until something is chosen, such as an inspector. It folds as the reader's fold does, and unfolds
-   * to the reader's own state.
+   * Folded while nothing in it is open — a lane that has nothing to show until something is chosen,
+   * such as an inspector's, or settings opened from a gear. It folds as the reader's fold does, and
+   * unfolds to the reader's own state; without it an empty lane keeps its width, which is how a
+   * template holds room for one.
    */
-  collapsed?: boolean;
+  foldEmpty?: boolean;
 }) {
   const shellStore = useShellStore();
   const lane = () => props.lane ?? '';
   const direction = () => props.direction ?? 'column';
   const narrow = createNarrow();
-  const collapsed = () => !!props.collapsed || shellStore.collapsedLanes().includes(lane());
+  const sections = () => shellStore.laneSections()[lane()] ?? [];
+  const here = createMemo(() => sections().filter((section) => section.open && !section.away));
+  const away = createMemo(() => sections().filter((section) => section.away));
+  const collapsed = () =>
+    shellStore.collapsedLanes().includes(lane()) || (!!props.foldEmpty && !here().length && !away().length);
 
   /*
     The width while a drag is under way, held here and written once at the end: a write per pointer
@@ -124,40 +134,18 @@ export function PanelLane(props: {
     return held !== undefined ? `${clamp(held)}px` : (props.width ?? '100%');
   };
 
-  const [version, setVersion] = createSignal(0);
-  onCleanup(onTemplatePanelsChanged(() => setVersion((v) => v + 1)));
-  const declared = createMemo<readonly TemplatePanel[]>(() => {
-    version();
-    return templatePanels();
-  });
-
-  /**
-   * The sections here now, in order — whatever `dockPlacement` says is home in this lane, whether
-   * it was declared here or dropped in. Read from the placements rather than the declaration, so a
-   * section dragged in from another lane shows up and one dragged out goes.
-   */
-  const here = createMemo(() => {
-    const placements = shellStore.dockPlacement();
-    return declared()
-      .filter((panel) => {
-        const placement = placements[templatePanelDockId(panel.id)];
-        return placement?.snap === 'home' && placement.home === lane();
-      })
-      .sort((a, b) => {
-        const order = (panel: TemplatePanel) =>
-          placements[templatePanelDockId(panel.id)]?.order ?? Number.POSITIVE_INFINITY;
-        return order(a) === order(b) ? 0 : order(a) < order(b) ? -1 : 1;
-      });
-  });
-
-  /** Sections declared home here that are away — a placeholder each, with the way back. */
-  const away = createMemo(() => {
-    const placements = shellStore.dockPlacement();
-    return declared().filter((panel) => {
-      if (panel.home !== lane()) return false;
-      const placement = placements[templatePanelDockId(panel.id)];
-      return placement !== undefined && placement.snap !== 'home';
-    });
+  /*
+    Sections sharing a seat, as tabs: consecutive ones with the same explicit `order` — the rule an
+    edge's seats follow. Anything that said no `order` is a seat of its own.
+  */
+  const seats = createMemo(() => {
+    const out: LaneSection[][] = [];
+    for (const section of here()) {
+      const last = out[out.length - 1];
+      if (last && section.order !== undefined && last[0].order === section.order) last.push(section);
+      else out.push([section]);
+    }
+    return out;
   });
 
   let el: HTMLDivElement | undefined;
@@ -244,8 +232,8 @@ export function PanelLane(props: {
             'box-sizing': 'border-box',
           }}
         >
-          <For each={here()}>{(panel) => <Section panel={panel} direction={direction()} />}</For>
-          <For each={away()}>{(panel) => <Placeholder panel={panel} />}</For>
+          <For each={seats()}>{(seat) => <Seat members={seat} direction={direction()} />}</For>
+          <For each={away()}>{(section) => <Placeholder dockId={section.id} />}</For>
         </div>
       </div>
       {/*
@@ -273,6 +261,118 @@ export function PanelLane(props: {
 }
 
 /**
+ * One seat of a lane: a section on its own, or several sharing the place as tabs — one showing, the
+ * one most recently raised or opened, and a strip naming them all. The rule an edge's seats follow,
+ * in a lane: an inspector and the space's settings can take turns in one column rather than
+ * stacking, and opening either brings it forward.
+ */
+function Seat(props: { members: LaneSection[]; direction: 'row' | 'column' }) {
+  const shellStore = useShellStore();
+  const front = () => shellStore.seatFront(props.members.map((member) => member.id)) ?? props.members[0].id;
+  return (
+    <Show
+      when={props.members.length > 1}
+      fallback={<Section dockId={props.members[0].id} direction={props.direction} />}
+    >
+      <div style={{ display: 'flex', 'flex-direction': 'column', flex: '1 1 0', 'min-height': '0', width: '100%' }}>
+        <Row ay="center" gap="100" px="200" pt="200">
+          <For each={props.members}>
+            {(member) => (
+              <we-button
+                size="sm"
+                variant={member.id === front() ? 'soft' : 'ghost'}
+                onClick={() => shellStore.raiseDock(member.id)}
+              >
+                {sectionTitle(member.id, shellStore.panelDeclaration(member.id))}
+              </we-button>
+            )}
+          </For>
+        </Row>
+        {/* Keyed by the front, so the section showing is the one drawn — its own state is its own. */}
+        <Show when={front()} keyed>
+          {(id) => <Section dockId={id} direction={props.direction} tabbed />}
+        </Show>
+      </div>
+    </Show>
+  );
+}
+
+/** What a section is called: its declared title, else its dock's name. */
+function sectionTitle(dockId: string, declared: TemplatePanel | undefined): string {
+  if (declared?.title) return declared.title;
+  const entry = dockRegistry.get(dockId);
+  return entry ? dockTitle(entry) : dockId;
+}
+
+/**
+ * Close a module's or the host's panel by its own action — the method its `close` key names, on the
+ * store its keys are read from, the same resolution the shell reads its `edge` through.
+ */
+function closeDock(entry: DockEntry): void {
+  if (!entry.close) return;
+  const store = (entry.store ?? moduleStores[entry.moduleId] ?? hostDockStores[entry.moduleId]) as
+    Record<string, unknown> | undefined;
+  const action = store?.[entry.close];
+  if (typeof action === 'function') (action as () => void)();
+}
+
+/** A section's id as the outlet's seams know it: a template's panel by its own id, anything else by its dock's. */
+const sectionKey = (dockId: string) => dockId.replace(/^template:/, '');
+
+/**
+ * What a section draws: a template's own panel through the template's bag, anything else — a
+ * module's panel, the host's settings — through the chrome bag, as its frame on an edge would.
+ */
+function SectionBody(props: { dockId: string }) {
+  const entry = () => dockRegistry.get(props.dockId);
+  const body = createMemo(() => {
+    const dock = entry();
+    if (!dock || dock.moduleId === TEMPLATE_DOCK_STORE_ID) return null;
+    const bag = chromeBag();
+    return bag ? RenderSchema({ node: dock.node, stores: bag, registry }) : null;
+  });
+  return (
+    <Show
+      when={entry()?.moduleId !== TEMPLATE_DOCK_STORE_ID}
+      fallback={<TemplatePanelBody panelId={sectionKey(props.dockId)} />}
+    >
+      {body()}
+    </Show>
+  );
+}
+
+/**
+ * A slim header for a section that does not draw its own — a module's panel or the host's, whose
+ * name and close button live on the titlebar of the frame it has on an edge, and which has no frame
+ * here. A template's own sections draw their own heading, as the tree and an inspector do, so they
+ * get none.
+ */
+function SectionHeader(props: { dockId: string; tabbed?: boolean }) {
+  const shellStore = useShellStore();
+  const entry = () => dockRegistry.get(props.dockId);
+  const close = () => {
+    const dock = entry();
+    if (dock) closeDock(dock);
+  };
+  return (
+    <Show when={entry() && entry()!.moduleId !== TEMPLATE_DOCK_STORE_ID}>
+      <Row ay="center" ax="between" gap="200" px="300" pt="200" pb="100">
+        <Show when={!props.tabbed} fallback={<div />}>
+          <we-text variant="label">{sectionTitle(props.dockId, shellStore.panelDeclaration(props.dockId))}</we-text>
+        </Show>
+        <Show when={entry()!.close}>
+          <we-tooltip content="Close" placement="left">
+            <we-button size="sm" variant="ghost" square label="Close" onClick={close}>
+              <we-icon name="x" />
+            </we-button>
+          </we-tooltip>
+        </Show>
+      </Row>
+    </Show>
+  );
+}
+
+/**
  * One section at home: its body, and the grip that takes it away.
  *
  * As long as its content, unless its panel declares `grow`: then it takes that share of whatever
@@ -280,9 +380,9 @@ export function PanelLane(props: {
  * fills a sidebar (a tree, a list) reaches the bottom of the lane and scrolls inside itself rather
  * than growing past it. A column, so what the section draws can say `height: 100%` and mean it.
  */
-function Section(props: { panel: TemplatePanel; direction: 'row' | 'column' }) {
+function Section(props: { dockId: string; direction: 'row' | 'column'; tabbed?: boolean }) {
   const shellStore = useShellStore();
-  const dockId = () => templatePanelDockId(props.panel.id);
+  const declared = () => shellStore.panelDeclaration(props.dockId);
   const [hover, setHover] = createSignal(false);
   const [focus, setFocus] = createSignal(false);
   let moved = false;
@@ -301,31 +401,34 @@ function Section(props: { panel: TemplatePanel; direction: 'row' | 'column' }) {
       moved = false;
       // Break out under the pointer and begin the panel drag in one motion — the wrapper this grip
       // sits on stays mounted, so the capture survives the section's remount.
-      shellStore.breakOut(props.panel.id, x, y);
-      shellStore.beginDockMove(dockId(), x, y);
+      shellStore.breakOut(props.dockId, x, y);
+      shellStore.beginDockMove(props.dockId, x, y);
     });
     grip.addEventListener('move', (event) => {
       const { dx, dy } = (event as CustomEvent<{ dx: number; dy: number }>).detail;
       if (Math.abs(dx) + Math.abs(dy) >= BREAK_OUT_DRAG_PX) moved = true;
-      shellStore.moveDock(dockId(), dx, dy);
+      shellStore.moveDock(props.dockId, dx, dy);
     });
     grip.addEventListener('moveend', () => {
-      shellStore.endDockMove(dockId());
+      shellStore.endDockMove(props.dockId);
       // A click, not a drag: the section goes to the snap its declaration named rather than
       // staying wherever the pointer happened to be.
-      if (!moved) shellStore.breakOut(props.panel.id);
+      if (!moved) shellStore.breakOut(props.dockId);
     });
   });
 
+  // A tab fills its seat, which is the room the seat was given.
+  const grow = () => (props.tabbed ? 1 : declared()?.grow);
+
   return (
     <div
-      {...{ [HOME_SECTION_ATTR]: props.panel.id }}
+      {...{ [HOME_SECTION_ATTR]: sectionKey(props.dockId) }}
       style={{
         position: 'relative',
         width: '100%',
-        ...(props.panel.grow
+        ...(grow()
           ? {
-              flex: `${props.panel.grow} 1 0`,
+              flex: `${grow()} 1 0`,
               [props.direction === 'row' ? 'min-width' : 'min-height']: '0',
               display: 'flex',
               'flex-direction': 'column',
@@ -337,8 +440,9 @@ function Section(props: { panel: TemplatePanel; direction: 'row' | 'column' }) {
       onFocusIn={() => setFocus(true)}
       onFocusOut={() => setFocus(false)}
     >
-      <TemplatePanelBody panelId={props.panel.id} />
-      <Show when={!props.panel.fixed}>
+      <SectionHeader dockId={props.dockId} tabbed={props.tabbed} />
+      <SectionBody dockId={props.dockId} />
+      <Show when={!declared()?.fixed}>
         {/*
           Revealed on hover and on keyboard focus, never only hover: a hover-only affordance does
           not exist on a touchscreen, and a grip somebody cannot tab to is a control some people
@@ -346,7 +450,7 @@ function Section(props: { panel: TemplatePanel; direction: 'row' | 'column' }) {
         */}
         <we-tooltip content="Break out into a panel" placement="left">
           <we-move-handle
-            label={`Break ${props.panel.title ?? props.panel.id} out into a panel`}
+            label={`Break ${sectionTitle(props.dockId, declared())} out into a panel`}
             style={{
               position: 'absolute',
               top: '4px',
@@ -370,11 +474,12 @@ function Section(props: { panel: TemplatePanel; direction: 'row' | 'column' }) {
 }
 
 /** Where a section was, while it is away: says so, and offers the way back. */
-function Placeholder(props: { panel: TemplatePanel }) {
+function Placeholder(props: { dockId: string }) {
   const shellStore = useShellStore();
+  const title = () => sectionTitle(props.dockId, shellStore.panelDeclaration(props.dockId));
   return (
     <Row
-      {...{ [HOME_SECTION_ATTR]: props.panel.id }}
+      {...{ [HOME_SECTION_ATTR]: sectionKey(props.dockId) }}
       ay="center"
       ax="between"
       gap="300"
@@ -386,9 +491,9 @@ function Placeholder(props: { panel: TemplatePanel }) {
     >
       <Row ay="center" gap="200">
         <we-icon name="arrow-square-out" size="sm" />
-        <we-text variant="footnote">{props.panel.title ?? props.panel.id} is floating</we-text>
+        <we-text variant="footnote">{title()} is floating</we-text>
       </Row>
-      <we-button size="xs" variant="ghost" onClick={() => shellStore.returnHome(props.panel.id)}>
+      <we-button size="xs" variant="ghost" onClick={() => shellStore.returnHome(props.dockId)}>
         Bring back
       </we-button>
     </Row>
