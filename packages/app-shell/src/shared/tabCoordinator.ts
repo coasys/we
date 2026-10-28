@@ -353,9 +353,11 @@ export function createTabCoordinator(deps: TabCoordinatorDeps = {}): TabCoordina
           waiting.clear();
           passedOn.forEach((id) => waiting.add(id));
           becomeLeader();
-        } else if (pinned && !passedOn.includes(tabId)) {
-          // A pinned tab the list does not name: its claim reached the old leader after it stepped
-          // down, so nobody remembers it. Ask the new leader again.
+        } else if (pinned) {
+          // Every other pinned tab asks the new leader again, named on the list or not. A claim that
+          // reached the old leader after it stepped down is on no list; and if the new leader is
+          // gone (closed with no word), the claim times out after CLAIM_TIMEOUT and a pinned tab
+          // takes over, rather than every tab waiting out the crash timeout.
           claimPinned();
         }
         break;

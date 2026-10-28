@@ -384,15 +384,50 @@ describe('createTabCoordinator', () => {
       expect(leaders(a, b), 'the pinned tab still open takes over at once').toEqual(['b']);
     });
 
-    it('recovers when the tab it hands to has crashed', () => {
+    it('does not hand on to a pinned tab that closed after the first handover', () => {
+      const { a, b, c } = threePinned();
+      a.coordinator.setPinned(false);
+      settle();
+      expect(leaders(a, b, c)).toEqual(['c']);
+
+      b.coordinator.dispose(); // in a call, closes while 'c' leads
+      settle();
+      c.coordinator.setPinned(false);
+      settle();
+
+      expect(leaders(a, c), 'nobody is left in a call, so the leader stays').toEqual(['c']);
+    });
+
+    it('hands on through four pinned tabs, newest first', () => {
+      const a = tab('a');
+      const b = tab('b');
+      const c = tab('c');
+      const d = tab('d');
+      vi.advanceTimersByTime(LEADER_TIMEOUT);
+      for (const t of [a, b, c, d]) {
+        t.coordinator.setPinned(true);
+        settle();
+      }
+      a.coordinator.setPinned(false); // hands to 'd', passing on ['b', 'c']
+      settle();
+      d.coordinator.setPinned(false);
+      settle();
+      expect(leaders(a, b, c, d), 'the newest of the passed-on tabs takes over').toEqual(['c']);
+    });
+
+    it('recovers within the claim timeout when the tab it hands to has crashed', () => {
       const { a, b } = threePinned();
       bus.current.kill('c'); // closed without a word: it never resigns and never answers
 
       a.coordinator.setPinned(false);
       settle();
 
-      expect(leaders(a, b), 'nobody leads until the crash timeout').toEqual([]);
-      vi.advanceTimersByTime(LEADER_TIMEOUT + 1);
+      // 'b' asks 'c' for leadership on the handover; nobody answers, so 'b' takes over after
+      // CLAIM_TIMEOUT (300 ms) instead of waiting out the crash timeout.
+      expect(leaders(a, b), 'nobody leads at the handover').toEqual([]);
+      vi.advanceTimersByTime(CLAIM_TIMEOUT + 1);
+      settle();
+      expect(leaders(a, b), 'the pinned tab takes over within the claim timeout').toEqual(['b']);
       settle();
       expect(leaders(a, b), 'the pinned tab wins the takeover').toEqual(['b']);
       vi.advanceTimersByTime(LEADER_TIMEOUT * 2);
