@@ -2178,7 +2178,7 @@ const coasysTreeDna = (): Scenario => {
         { id: 'sig-like', name: 'Like', icon: 'heart', mode: 'toggle', rangeMin: 0, rangeMax: 1, retired: false },
         { id: 'sig-rate', name: 'Rating', icon: 'star', mode: 'rating', rangeMin: 0, rangeMax: 5, retired: false },
       ],
-      RelationshipType: [{ id: 'rel-led', name: 'led to', kindInverse: 'came from', description: '' }],
+      RelationshipType: [{ id: 'rel-led', name: 'led to', inverseName: 'came from', description: '' }],
       Topic: [{ id: 'topic-bees', name: 'Bees', description: 'Hives, honey and swarms' }],
     },
     stores: {

@@ -864,7 +864,7 @@ export const seedBundles: Bundle[] = [
                         props: {
                           label: 'This space',
                           selected: {
-                            $: "(routeStore.params.view == 'canvas') && routeStore.params.dna ? (routeStore.params.dna == 'all' ? 'group|dna' : contains(routeStore.params.dna, '|') ? (startsWith(routeStore.params.dna, 'policy|') ? 'dnaprop|' : 'dna|') + routeStore.params.dna : 'dnakind|' + routeStore.params.dna) : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' ? 'call|' + routeStore.params.id : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? 'person|' + routeStore.params.did : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' ? (workflowStore.open ? 'workflow|' + workflowStore.open.name : 'group|workflows') : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') in ['channels', 'calls', 'people'] ? 'group|' + (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') : 'channel|' + (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)",
+                            $: "(routeStore.params.view == 'canvas') && routeStore.params.dna ? (routeStore.params.dna == 'all' ? 'group|dna' : contains(routeStore.params.dna, '|') ? (startsWith(routeStore.params.dna, 'policy|') || count(split(routeStore.params.dna, '|')) > 2 ? 'dnaprop|' : 'dna|') + routeStore.params.dna : 'dnakind|' + routeStore.params.dna) : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' ? 'call|' + routeStore.params.id : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? 'person|' + routeStore.params.did : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' ? (workflowStore.open ? 'workflow|' + workflowStore.open.name : 'group|workflows') : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') in ['channels', 'calls', 'people'] ? 'group|' + (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') : 'channel|' + (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)",
                           },
                           onSelect: [
                             {
@@ -977,24 +977,27 @@ export const seedBundles: Bundle[] = [
                             {
                               $if: {
                                 condition: { $: "startsWith(event.detail.value, 'dna|')" },
-                                then: {
-                                  $if: {
-                                    condition: { $: "routeStore.params.view == 'canvas'" },
-                                    then: {
-                                      $invoke: 'routeStore.setParam',
-                                      args: [
-                                        'dna',
-                                        {
-                                          $: "split(event.detail.value, '|')[1] + '|' + split(event.detail.value, '|')[2]",
-                                        },
-                                      ],
-                                    },
-                                    else: {
-                                      $invoke: 'shellStore.openSpaceSettings',
-                                      args: ['vocabulary', { $: "split(event.detail.value, '|')[2]" }],
+                                then: [
+                                  { $toggleLocalIn: 'openRows', value: { $: 'event.detail.value' } },
+                                  {
+                                    $if: {
+                                      condition: { $: "routeStore.params.view == 'canvas'" },
+                                      then: {
+                                        $invoke: 'routeStore.setParam',
+                                        args: [
+                                          'dna',
+                                          {
+                                            $: "split(event.detail.value, '|')[1] + '|' + split(event.detail.value, '|')[2]",
+                                          },
+                                        ],
+                                      },
+                                      else: {
+                                        $invoke: 'shellStore.openSpaceSettings',
+                                        args: ['vocabulary', { $: "split(event.detail.value, '|')[2]" }],
+                                      },
                                     },
                                   },
-                                },
+                                ],
                               },
                             },
                             {
@@ -1017,11 +1020,27 @@ export const seedBundles: Bundle[] = [
                             {
                               $if: {
                                 condition: {
-                                  $: "(routeStore.params.view == 'canvas') && startsWith(event.detail.value, 'dnaprop|policy|')",
+                                  $: "(routeStore.params.view == 'canvas') && startsWith(event.detail.value, 'dnaprop|')",
                                 },
                                 then: {
                                   $invoke: 'routeStore.setParam',
-                                  args: ['dna', { $: "'policy|' + split(event.detail.value, '|')[2]" }],
+                                  args: [
+                                    'dna',
+                                    {
+                                      $: "(split(event.detail.value, '|')[1] ? '' + split(event.detail.value, '|')[1] : '') + (split(event.detail.value, '|')[2] ? '|' + split(event.detail.value, '|')[2] : '') + (split(event.detail.value, '|')[3] ? '|' + split(event.detail.value, '|')[3] : '')",
+                                    },
+                                  ],
+                                },
+                              },
+                            },
+                            {
+                              $if: {
+                                condition: {
+                                  $: "!(routeStore.params.view == 'canvas') && startsWith(event.detail.value, 'dnaprop|') && !startsWith(event.detail.value, 'dnaprop|policy|')",
+                                },
+                                then: {
+                                  $invoke: 'shellStore.openSpaceSettings',
+                                  args: ['vocabulary', { $: "split(event.detail.value, '|')[2]" }],
                                 },
                               },
                             },
@@ -1476,7 +1495,7 @@ export const seedBundles: Bundle[] = [
                                               then: {
                                                 type: 'we-tree-item',
                                                 slot: 'children',
-                                                props: { value: { $: "'dnaprop|signal|' + sig.id + '|range'" } },
+                                                props: { value: { $: "'dnaprop|signal|' + sig.id + '|rangeMin'" } },
                                                 children: [
                                                   {
                                                     type: 'Row',
@@ -1575,7 +1594,7 @@ export const seedBundles: Bundle[] = [
                                             $toggleLocalIn: 'openRows',
                                             value: { $: "'dna|connection|' + conn.id" },
                                           },
-                                          expandable: { $: 'conn.kindInverse || conn.description' },
+                                          expandable: { $: 'conn.inverseName || conn.description' },
                                         },
                                         children: [
                                           {
@@ -1600,11 +1619,13 @@ export const seedBundles: Bundle[] = [
                                           {
                                             type: '$if',
                                             props: {
-                                              condition: { $: 'conn.kindInverse' },
+                                              condition: { $: 'conn.inverseName' },
                                               then: {
                                                 type: 'we-tree-item',
                                                 slot: 'children',
-                                                props: { value: { $: "'dnaprop|connection|' + conn.id + '|inverse'" } },
+                                                props: {
+                                                  value: { $: "'dnaprop|connection|' + conn.id + '|inverseName'" },
+                                                },
                                                 children: [
                                                   {
                                                     type: 'Row',
@@ -1613,7 +1634,7 @@ export const seedBundles: Bundle[] = [
                                                       {
                                                         type: 'we-text',
                                                         props: { truncate: true, flex: '1', minWidth: '0' },
-                                                        children: [{ $: "'Reads backwards as · ' + conn.kindInverse" }],
+                                                        children: [{ $: "'Reads backwards as · ' + conn.inverseName" }],
                                                       },
                                                     ],
                                                   },
@@ -1628,7 +1649,9 @@ export const seedBundles: Bundle[] = [
                                               then: {
                                                 type: 'we-tree-item',
                                                 slot: 'children',
-                                                props: { value: { $: "'dnaprop|connection|' + conn.id + '|about'" } },
+                                                props: {
+                                                  value: { $: "'dnaprop|connection|' + conn.id + '|description'" },
+                                                },
                                                 children: [
                                                   {
                                                     type: 'Row',
@@ -1726,7 +1749,7 @@ export const seedBundles: Bundle[] = [
                                           {
                                             type: 'we-tree-item',
                                             slot: 'children',
-                                            props: { value: { $: "'dnaprop|state|' + state.id + '|meaning'" } },
+                                            props: { value: { $: "'dnaprop|state|' + state.id + '|semantic'" } },
                                             children: [
                                               {
                                                 type: 'Row',
@@ -1874,7 +1897,7 @@ export const seedBundles: Bundle[] = [
                                           {
                                             type: 'we-tree-item',
                                             slot: 'children',
-                                            props: { value: { $: "'dnaprop|involvement|' + part.id + '|meaning'" } },
+                                            props: { value: { $: "'dnaprop|involvement|' + part.id + '|semantic'" } },
                                             children: [
                                               {
                                                 type: 'Row',
@@ -1896,7 +1919,9 @@ export const seedBundles: Bundle[] = [
                                               then: {
                                                 type: 'we-tree-item',
                                                 slot: 'children',
-                                                props: { value: { $: "'dnaprop|involvement|' + part.id + '|for'" } },
+                                                props: {
+                                                  value: { $: "'dnaprop|involvement|' + part.id + '|appliesTo'" },
+                                                },
                                                 children: [
                                                   {
                                                     type: 'Row',
@@ -2017,7 +2042,7 @@ export const seedBundles: Bundle[] = [
                                               then: {
                                                 type: 'we-tree-item',
                                                 slot: 'children',
-                                                props: { value: { $: "'dnaprop|topic|' + topic.id + '|about'" } },
+                                                props: { value: { $: "'dnaprop|topic|' + topic.id + '|description'" } },
                                                 children: [
                                                   {
                                                     type: 'Row',
@@ -2913,7 +2938,7 @@ export const seedBundles: Bundle[] = [
                                         source: 'vocabulary',
                                         options: {
                                           buckets: {
-                                            $: "[\n  { key: 'signals', label: 'Signal types', entity: 'SignalType' },\n  { key: 'connections', label: 'Relationship types', entity: 'RelationshipType' },\n  { key: 'states', label: 'Task states', entity: 'TaskState', opens: { entity: 'TaskBlock', field: 'status', key: 'slug' } },\n  { key: 'kinds', label: 'Involvement types', entity: 'InvolvementType' },\n  { key: 'topics', label: 'Topics', entity: 'Topic' },\n  { key: 'models', label: 'Models', models: recordStore.creatableEntities.map(k, { name: k.value, label: k.label }) },\n  { key: 'other', label: 'From other apps', models: datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value))).map(e, { name: e.name }) },\n  { key: 'workflows', label: 'Workflows', workflows: workflowStore.workflows.map(f, { name: f.name, label: f.label, steps: f.steps, moves: f.moves }) },\n  { key: 'policy', label: 'Policy', items: spaceStore.policy.sentences.map(s, { id: s, label: s }) }\n].filter(b, b.key != 'other' || count(b.models))",
+                                            $: "[\n  { key: 'signals', label: 'Signal types', entity: 'SignalType' },\n  { key: 'connections', label: 'Connection types', entity: 'RelationshipType' },\n  { key: 'states', label: 'Task states', entity: 'TaskState', opens: { entity: 'TaskBlock', field: 'status', key: 'slug' } },\n  { key: 'kinds', label: 'Involvement', entity: 'InvolvementType' },\n  { key: 'topics', label: 'Topics', entity: 'Topic' },\n  { key: 'models', label: 'Models', models: recordStore.creatableEntities.map(k, { name: k.value, label: k.label }) },\n  { key: 'other', label: 'From other apps', models: datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value))).map(e, { name: e.name }) },\n  { key: 'workflows', label: 'Workflows', workflows: workflowStore.workflows.map(f, { name: f.name, label: f.label, steps: f.steps, moves: f.moves }) },\n  { key: 'policy', label: 'Policy', items: spaceStore.policy.sentences.map(s, { id: s, label: s }) }\n].filter(b, b.key != 'other' || count(b.models))",
                                           },
                                         },
                                       },
@@ -2988,7 +3013,7 @@ export const seedBundles: Bundle[] = [
                                         },
                                       },
                                       focus: {
-                                        $: "split(routeStore.params.dna, '|')[1] && !(split(routeStore.params.dna, '|')[0] in ['model', 'policy']) ? split(routeStore.params.dna, '|')[1] : ''",
+                                        $: "split(routeStore.params.dna, '|')[2] ? (split(routeStore.params.dna, '|')[0] == 'model' ? shapeStore.spaceShapes.find(s, s.id == (split(routeStore.params.dna, '|')[1])).name : split(routeStore.params.dna, '|')[1]) + '#' + split(routeStore.params.dna, '|')[2] : split(routeStore.params.dna, '|')[1] && !(split(routeStore.params.dna, '|')[0] in ['model', 'policy']) ? split(routeStore.params.dna, '|')[1] : ''",
                                       },
                                       showStatus: true,
                                     },

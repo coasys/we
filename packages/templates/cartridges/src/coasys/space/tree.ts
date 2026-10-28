@@ -1,5 +1,5 @@
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
-import { field, formModal, TREE_LEAD, treeRow } from '@we/template-kit';
+import { field, formModal, SOCIAL_DNA_LABELS, TREE_LEAD, treeRow } from '@we/template-kit';
 
 import { countPill, liveDot } from './marks.ts';
 import {
@@ -189,8 +189,9 @@ const people = group(
   so the tree is the space's own graph read as an outline, the same things the canvas draws.
 
   Values are `dnakind|<kind>` for a kind, `dna|<kind>|<id>` for a definition (choosing it opens that
-  definition in the vocabulary settings) and `dnaprop|…` for a property, which is read here and not a
-  place to go.
+  definition in the vocabulary settings) and `dnaprop|<kind>|<id>|<field>` for what it says, by the
+  field's own name — the name the vocabulary map's node for that field has, so choosing one in Canvas
+  mode selects it there.
 */
 
 /** A row under a definition: one thing it says, read here. */
@@ -256,7 +257,7 @@ const dnaKind = (opts: {
 const DNA_KINDS: SchemaNode[] = [
   dnaKind({
     kind: 'signal',
-    label: 'Signal types',
+    label: SOCIAL_DNA_LABELS.signals,
     icon: 'heart',
     items: 'local.signalTypes',
     as: 'sig',
@@ -267,7 +268,7 @@ const DNA_KINDS: SchemaNode[] = [
     properties: [
       property("'dnaprop|signal|' + sig.id + '|mode'", "'Mode · ' + sig.mode"),
       property(
-        "'dnaprop|signal|' + sig.id + '|range'",
+        "'dnaprop|signal|' + sig.id + '|rangeMin'",
         "'From ' + sig.rangeMin + ' to ' + sig.rangeMax",
         "sig.mode != 'toggle'",
       ),
@@ -276,26 +277,26 @@ const DNA_KINDS: SchemaNode[] = [
   }),
   dnaKind({
     kind: 'connection',
-    label: 'Connection types',
+    label: SOCIAL_DNA_LABELS.connections,
     icon: 'arrows-left-right',
     items: 'local.relationshipTypes',
     as: 'conn',
     id: 'conn.id',
     name: 'conn.name',
     itemIcon: "'arrows-left-right'",
-    hasProperties: 'conn.kindInverse || conn.description',
+    hasProperties: 'conn.inverseName || conn.description',
     properties: [
       property(
-        "'dnaprop|connection|' + conn.id + '|inverse'",
-        "'Reads backwards as · ' + conn.kindInverse",
-        'conn.kindInverse',
+        "'dnaprop|connection|' + conn.id + '|inverseName'",
+        "'Reads backwards as · ' + conn.inverseName",
+        'conn.inverseName',
       ),
-      property("'dnaprop|connection|' + conn.id + '|about'", 'conn.description', 'conn.description'),
+      property("'dnaprop|connection|' + conn.id + '|description'", 'conn.description', 'conn.description'),
     ],
   }),
   dnaKind({
     kind: 'state',
-    label: 'Task states',
+    label: SOCIAL_DNA_LABELS.states,
     icon: 'circle-half',
     items: 'spaceStore.taskStates',
     as: 'state',
@@ -304,7 +305,7 @@ const DNA_KINDS: SchemaNode[] = [
     itemIcon: "state.icon ? state.icon : 'circle'",
     hasProperties: 'true',
     properties: [
-      property("'dnaprop|state|' + state.id + '|meaning'", "'Means · ' + state.semantic"),
+      property("'dnaprop|state|' + state.id + '|semantic'", "'Means · ' + state.semantic"),
       property(
         "'dnaprop|state|' + state.id + '|approvals'",
         "state.approvals + ' ' + plural(state.approvals, 'approval', 'approvals') + ' to move on'",
@@ -315,7 +316,7 @@ const DNA_KINDS: SchemaNode[] = [
   }),
   dnaKind({
     kind: 'involvement',
-    label: 'Involvement',
+    label: SOCIAL_DNA_LABELS.kinds,
     icon: 'hand-waving',
     items: 'spaceStore.involvementTypes',
     as: 'part',
@@ -324,9 +325,9 @@ const DNA_KINDS: SchemaNode[] = [
     itemIcon: "part.icon ? part.icon : 'user'",
     hasProperties: 'true',
     properties: [
-      property("'dnaprop|involvement|' + part.id + '|meaning'", "'Means · ' + part.semantic"),
+      property("'dnaprop|involvement|' + part.id + '|semantic'", "'Means · ' + part.semantic"),
       property(
-        "'dnaprop|involvement|' + part.id + '|for'",
+        "'dnaprop|involvement|' + part.id + '|appliesTo'",
         "'For · ' + join(part.appliesTo, ', ')",
         'count(part.appliesTo) > 0',
       ),
@@ -335,7 +336,7 @@ const DNA_KINDS: SchemaNode[] = [
   }),
   dnaKind({
     kind: 'topic',
-    label: 'Topics',
+    label: SOCIAL_DNA_LABELS.topics,
     icon: 'hash',
     items: 'local.topics',
     as: 'topic',
@@ -343,11 +344,11 @@ const DNA_KINDS: SchemaNode[] = [
     name: 'topic.name',
     itemIcon: "'hash'",
     hasProperties: 'topic.description',
-    properties: [property("'dnaprop|topic|' + topic.id + '|about'", 'topic.description', 'topic.description')],
+    properties: [property("'dnaprop|topic|' + topic.id + '|description'", 'topic.description', 'topic.description')],
   }),
   dnaKind({
     kind: 'model',
-    label: 'Models',
+    label: SOCIAL_DNA_LABELS.models,
     icon: 'shapes',
     items: 'shapeStore.spaceShapes',
     as: 'shape',
@@ -370,7 +371,7 @@ const DNA_KINDS: SchemaNode[] = [
 const policyKind: SchemaNode = treeRow({
   nested: true,
   value: { $: "'dnakind|policy'" },
-  label: 'Policy',
+  label: SOCIAL_DNA_LABELS.policy,
   icon: 'scales',
   ...openable("'dnakind|policy'"),
   expandable: { $: 'count(spaceStore.policy.sentences) > 0' },
@@ -407,6 +408,13 @@ const DNA_QUERIES = {
   relationshipTypes: { entity: 'RelationshipType', order: { name: 'asc' } },
   topics: { entity: 'Topic', order: { name: 'asc' } },
 };
+
+/** A `dnaprop|…` row's value as the address's Social DNA focus: `<kind>|<id>|<field>`, or `policy|<rule>`. */
+const DNAPROP_FOCUS = [1, 2, 3]
+  .map(
+    (i) => `(split(event.detail.value, '|')[${i}] ? '${i > 1 ? '|' : ''}' + split(event.detail.value, '|')[${i}] : '')`,
+  )
+  .join(' + ');
 
 /**
  * What choosing a row does, by the kind its value names.
@@ -483,23 +491,27 @@ const onSelect: SchemaProp = [
       then: { $invoke: 'routeStore.navigate', args: [{ $: personPath(ROW_ID) }] },
     },
   },
-  // A definition opens where it is edited — or, in Canvas mode, is lit on the vocabulary map.
+  // A definition opens and closes as a group does, and opens where it is edited — or, in Canvas mode,
+  // is lit on the vocabulary map.
   {
     $if: {
       condition: { $: "startsWith(event.detail.value, 'dna|')" },
-      then: {
-        $if: {
-          condition: { $: IN_CANVAS },
-          then: {
-            $invoke: 'routeStore.setParam',
-            args: [DNA_PARAM, { $: "split(event.detail.value, '|')[1] + '|' + split(event.detail.value, '|')[2]" }],
-          },
-          else: {
-            $invoke: 'shellStore.openSpaceSettings',
-            args: ['vocabulary', { $: "split(event.detail.value, '|')[2]" }],
+      then: [
+        { $toggleLocalIn: 'openRows', value: { $: 'event.detail.value' } },
+        {
+          $if: {
+            condition: { $: IN_CANVAS },
+            then: {
+              $invoke: 'routeStore.setParam',
+              args: [DNA_PARAM, { $: "split(event.detail.value, '|')[1] + '|' + split(event.detail.value, '|')[2]" }],
+            },
+            else: {
+              $invoke: 'shellStore.openSpaceSettings',
+              args: ['vocabulary', { $: "split(event.detail.value, '|')[2]" }],
+            },
           },
         },
-      },
+      ],
     },
   },
   // A kind of definition opens as a group does — and, in Canvas mode, is lit with all it holds.
@@ -517,13 +529,27 @@ const onSelect: SchemaProp = [
       ],
     },
   },
-  // One rule of the policy, lit on the map by its words.
+  /*
+    What a definition says, or one rule of the policy: in Canvas mode, selected on the map — a field by
+    its name, a rule by its words. On a page, a field opens its definition where it is edited.
+  */
   {
     $if: {
-      condition: { $: `(${IN_CANVAS}) && startsWith(event.detail.value, 'dnaprop|policy|')` },
+      condition: { $: `(${IN_CANVAS}) && startsWith(event.detail.value, 'dnaprop|')` },
       then: {
         $invoke: 'routeStore.setParam',
-        args: [DNA_PARAM, { $: "'policy|' + split(event.detail.value, '|')[2]" }],
+        args: [DNA_PARAM, { $: DNAPROP_FOCUS }],
+      },
+    },
+  },
+  {
+    $if: {
+      condition: {
+        $: `!(${IN_CANVAS}) && startsWith(event.detail.value, 'dnaprop|') && !startsWith(event.detail.value, 'dnaprop|policy|')`,
+      },
+      then: {
+        $invoke: 'shellStore.openSpaceSettings',
+        args: ['vocabulary', { $: "split(event.detail.value, '|')[2]" }],
       },
     },
   },

@@ -25,7 +25,7 @@ import { FOCUS_DIM } from '@we/template-kit';
 import { describe, expect, it } from 'vitest';
 
 import { canvasPane } from './coasys/space/canvas.ts';
-import { callPath, groupPath, personPath } from './coasys/space/paths.ts';
+import { callPath, groupPath, personPath, SELECTED_EXPR } from './coasys/space/paths.ts';
 import { bundleFileName, type Cartridge, cartridgeBundles, coasys, fieldGuide, toolLibrary } from './index.ts';
 
 const contextData = JSON.parse(readFileSync(resolve(import.meta.dirname, '../../../ai-context/context.json'), 'utf-8'));
@@ -230,6 +230,26 @@ describe('the Coasys cartridge', () => {
         'we-graph://cluster/vocabulary/signals',
         'like',
       ]);
+    });
+
+    // A field chosen in the tree is selected on the map by the graph's `<id>#<field>`, its definition open.
+    it('selects a field of a definition, and lights its row in the tree', () => {
+      const map = findNode(canvasPane, (n) => n.type === '$if' && JSON.stringify(n).includes('source":"vocabulary'));
+      const vocab = findNode(map, (n) => n.type === 'GraphView')!;
+      const props = vocab.props as { focus: unknown; open: unknown };
+      const field = at([], { view: 'canvas', dna: 'signal|like|mode' });
+      expect(field(props.focus)).toBe('like#mode');
+      expect(field(props.open)).toEqual(['we-graph://cluster/vocabulary/signals', 'like']);
+      expect(field({ $: SELECTED_EXPR })).toBe('dnaprop|signal|like|mode');
+      // A model's field, by the model's name, which is what the map knows a model by.
+      const shapes = { shapeStore: { spaceShapes: [{ id: 'shape-1', name: 'Recipe' }] } };
+      expect(at([], { view: 'canvas', dna: 'model|shape-1|title' }, shapes)(props.focus)).toBe('Recipe#title');
+      // A definition alone selects the definition; a rule of the policy is a field of nothing.
+      expect(at([], { view: 'canvas', dna: 'signal|like' })(props.focus)).toBe('like');
+      expect(at([], { view: 'canvas', dna: 'signal|like' })({ $: SELECTED_EXPR })).toBe('dna|signal|like');
+      expect(at([], { view: 'canvas', dna: 'policy|Members can make anything.' })({ $: SELECTED_EXPR })).toBe(
+        'dnaprop|policy|Members can make anything.',
+      );
     });
   });
 });

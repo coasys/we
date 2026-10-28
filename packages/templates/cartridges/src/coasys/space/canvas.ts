@@ -11,6 +11,7 @@ import {
   newThingChooser,
   PLACED_CARD_STYLE,
   recordFormModal,
+  SOCIAL_DNA_LABELS,
   SUGGESTION_STYLES,
   vocabularyMap,
 } from '@we/template-kit';
@@ -57,21 +58,26 @@ const CANVAS = { $: CANVAS_EXPR };
 /** A record's own page, which is where a suggested change is read old against new. */
 const RECORD_PAGE = "spaceStore.spacePath + '/record/' + event.recordType + '?id=' + event.recordId";
 
-/** Social DNA in focus: the map, and which kind, and which definition of it. */
+/** Social DNA in focus: the map, and which kind, which definition of it, and which of its fields. */
 const ON_DNA = `(${IN_CANVAS}) && ${DNA_FOCUS}`;
 const DNA_KIND = `split(${DNA_FOCUS}, '|')[0]`;
 const DNA_ID = `split(${DNA_FOCUS}, '|')[1]`;
+const DNA_FIELD = `split(${DNA_FOCUS}, '|')[2]`;
 
 /** A kind of Social DNA in the tree, as the vocabulary map's bucket for it, and as the bar names it. */
-const DNA_KINDS: Record<string, { bucket: string; label: string }> = {
-  signal: { bucket: 'signals', label: 'Signal types' },
-  connection: { bucket: 'connections', label: 'Connection types' },
-  state: { bucket: 'states', label: 'Task states' },
-  involvement: { bucket: 'kinds', label: 'Involvement' },
-  topic: { bucket: 'topics', label: 'Topics' },
-  model: { bucket: 'models', label: 'Models' },
-  policy: { bucket: 'policy', label: 'Policy' },
-};
+const DNA_KINDS: Record<string, { bucket: string; label: string }> = Object.fromEntries(
+  (
+    [
+      ['signal', 'signals'],
+      ['connection', 'connections'],
+      ['state', 'states'],
+      ['involvement', 'kinds'],
+      ['topic', 'topics'],
+      ['model', 'models'],
+      ['policy', 'policy'],
+    ] as const
+  ).map(([kind, bucket]) => [kind, { bucket, label: SOCIAL_DNA_LABELS[bucket] }]),
+);
 const lookup = (field: 'bucket' | 'label') =>
   `{ ${Object.entries(DNA_KINDS)
     .map(([kind, entry]) => `${kind}: '${entry[field]}'`)
@@ -97,6 +103,9 @@ const SIBLINGS = `(${DNA_KIND} == 'model' ? ${SIBLING('data.entity', MODEL_NAME)
 
 /** The definition chosen, opened: a record or a model by what the graph's `open` takes; a rule has nothing inside. */
 const OPEN_DEFINITION = `${DNA_ID} && ${DNA_KIND} != 'policy' ? [${DNA_KIND} == 'model' ? ${MODEL_NAME} : ${DNA_ID}] : []`;
+
+/** What the map selects: a field of the definition, a model's by the model's name, or a record definition. */
+const FOCUS = `${DNA_FIELD} ? (${DNA_KIND} == 'model' ? ${MODEL_NAME} : ${DNA_ID}) + '#' + ${DNA_FIELD} : ${DNA_ID} && !(${DNA_KIND} in ['model', 'policy']) ? ${DNA_ID} : ''`;
 
 /** The bar's words for what is in focus. */
 const TITLE = [
@@ -193,8 +202,8 @@ export const canvasPane: SchemaNode = {
                   $: 'event.open ? distinct(local.vocabOpen, [event.id]) : local.vocabOpen.filter(k, k != event.id)',
                 },
               },
-              // A definition that is a record is selected and brought into view.
-              focus: { $: `${DNA_ID} && !(${DNA_KIND} in ['model', 'policy']) ? ${DNA_ID} : ''` },
+              // A field chosen is selected, by the graph's `<id>#<field>`; else a definition that is a record.
+              focus: { $: FOCUS },
               focusRules: [focusDimWhere(`${DNA_FOCUS} != 'all'`, OTHER_KINDS), focusDimWhere(DNA_ID, SIBLINGS)],
             }),
           },

@@ -70,7 +70,7 @@ export const groupPath = (page: GroupPage): string => withView(`spaceStore.space
  */
 export const SELECTED_EXPR = [
   // Social DNA in focus on the canvas, which is the address's rather than a page's.
-  `(${IN_CANVAS}) && ${DNA_FOCUS} ? (${DNA_FOCUS} == 'all' ? 'group|dna' : contains(${DNA_FOCUS}, '|') ? (startsWith(${DNA_FOCUS}, 'policy|') ? 'dnaprop|' : 'dna|') + ${DNA_FOCUS} : 'dnakind|' + ${DNA_FOCUS})`,
+  `(${IN_CANVAS}) && ${DNA_FOCUS} ? (${DNA_FOCUS} == 'all' ? 'group|dna' : contains(${DNA_FOCUS}, '|') ? (startsWith(${DNA_FOCUS}, 'policy|') || count(split(${DNA_FOCUS}, '|')) > 2 ? 'dnaprop|' : 'dna|') + ${DNA_FOCUS} : 'dnakind|' + ${DNA_FOCUS})`,
   `:`,
   `(${PAGE_EXPR}) == 'record' ? 'call|' + routeStore.params.id`,
   `: (${PAGE_EXPR}) == 'person' ? 'person|' + routeStore.params.did`,
