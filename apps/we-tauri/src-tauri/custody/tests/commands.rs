@@ -189,3 +189,59 @@ fn no_capability_file_names_a_window_twice() {
         }
     }
 }
+
+/// `tauri-build` reads every capability under `capabilities/`, in subfolders too, as JSON, JSON5 or
+/// TOML. The tests here read the JSON files at the top only, so no other file may be there: a
+/// `main.toml` or `extra/main.json` would grant the main window more and pass every test above.
+#[test]
+fn the_capabilities_folder_holds_only_the_json_files_these_tests_read() {
+    for entry in std::fs::read_dir(app_dir().join("capabilities")).unwrap() {
+        let entry = entry.unwrap();
+        let name = entry.file_name().into_string().unwrap();
+        assert!(
+            entry.file_type().unwrap().is_file(),
+            "capabilities/{name} is not a file"
+        );
+        assert!(name.ends_with(".json"), "capabilities/{name} is not JSON");
+    }
+}
+
+/// A capability holds for the app's own pages in the windows it names, and nowhere else. `remote`
+/// would give its commands to the addresses it lists, and the main window can show a page from
+/// one of them (`main_may_navigate` lets it go where `frame-src` lets a frame go); `local: false`
+/// would take the app's own pages away; `webviews` would grant by webview label.
+#[test]
+fn no_capability_reaches_past_the_apps_own_pages_in_its_windows() {
+    let known = BTreeSet::from([
+        "$schema",
+        "identifier",
+        "description",
+        "windows",
+        "permissions",
+    ]);
+    for entry in std::fs::read_dir(app_dir().join("capabilities")).unwrap() {
+        let path = entry.unwrap().path();
+        let json: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        for key in json.as_object().unwrap().keys() {
+            assert!(
+                known.contains(key.as_str()),
+                "{}: `{key}`",
+                path.file_name().unwrap().to_string_lossy()
+            );
+        }
+    }
+}
+
+/// Tauri also takes capabilities from its config (`app.security.capabilities`), and then enables
+/// only those. The config has none, so the files above are all the capabilities there are.
+#[test]
+fn the_config_declares_no_capability() {
+    let conf: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(app_dir().join("tauri.conf.json")).unwrap())
+            .unwrap();
+    assert!(
+        conf["app"]["security"].get("capabilities").is_none(),
+        "tauri.conf.json: app.security.capabilities"
+    );
+}
