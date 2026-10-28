@@ -10,6 +10,19 @@
  *
  * Framework-free: the store does the watching and the applying.
  */
+import type { TemplateSchema } from '@we/schema-shared';
+
+/**
+ * Whether two copies of a template are the same design, setting aside what saving stamps on — the
+ * version, the author, and where it was read from. A save that changed nothing else is not news.
+ */
+export function sameTemplateContent(a: TemplateSchema, b: TemplateSchema): boolean {
+  const bare = (t: TemplateSchema) => {
+    const { templateVersion: _v, author: _a, _fromSpace: _s, ...rest } = t as TemplateSchema & { author?: string };
+    return JSON.stringify(rest);
+  };
+  return bare(a) === bare(b);
+}
 
 /**
  * The fields a watch reads: enough to say a record changed, and never its content — a template is

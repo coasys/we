@@ -1049,6 +1049,10 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     replaceTemplate: WIRING,
     persistCurrentTemplate: WIRING,
     persistTemplate: WIRING,
+    // Where a template's record is, and running a write to it from outside — the editor handing an
+    // edit to an agent on the backend. A template that could reach them could edit any template.
+    storedAt: WIRING,
+    writtenElsewhere: WIRING,
     openDraft: WIRING,
     updateDraft: WIRING,
     closeDraft: WIRING,
