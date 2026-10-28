@@ -373,6 +373,47 @@ describe('createTabCoordinator', () => {
       expect(leaders(a, b, c)).toEqual([other.id]);
     });
 
+    /*
+      Closed, not crashed: a pinned tab that is disposed is still on the list a handover carries. If
+      it leaves without a word, the next handover goes to a tab that is gone and nobody publishes
+      until the crash timeout, where before the list was carried the leader just kept leading.
+    */
+    it('does not hand on to a pinned tab that closed', () => {
+      const { a, b, c } = threePinned();
+      a.coordinator.setPinned(false);
+      settle();
+      expect(leaders(a, b, c)).toEqual(['c']);
+
+      b.coordinator.dispose();
+      settle();
+      c.coordinator.setPinned(false);
+      settle();
+
+      expect(leaders(a, c), 'nobody else holds a call').toEqual(['c']);
+      vi.advanceTimersByTime(LEADER_TIMEOUT * 2);
+      expect(leaders(a, c)).toEqual(['c']);
+    });
+
+    it('hands on past a pinned tab that closed to one still in a call', () => {
+      const { a, b, c } = threePinned();
+      const d = tab('d');
+      settle();
+      d.coordinator.setPinned(true);
+      settle();
+      a.coordinator.setPinned(false);
+      settle();
+      expect(leaders(a, b, c, d)).toEqual(['d']);
+
+      c.coordinator.dispose();
+      settle();
+      d.coordinator.setPinned(false);
+      settle();
+
+      expect(leaders(a, b, d), 'b takes over at once, not after a fuse').toEqual(['b']);
+      vi.advanceTimersByTime(LEADER_TIMEOUT * 2);
+      expect(leaders(a, b, d)).toEqual(['b']);
+    });
+
     it('recovers when the tab it hands to has crashed', () => {
       const { a, b } = threePinned();
       bus.current.kill('c'); // closed without a word: it never resigns and never answers
