@@ -91,6 +91,28 @@ describe('vocabulary', () => {
     expect(result.edges[0]).toMatchObject({ source: clusterAddress('vocabulary', 'signals'), type: 'contains' });
   });
 
+  /*
+    A space's policy is a list of rules, neither records of one type nor models. And whatever a bucket
+    holds says which bucket, so a style rule can light one kind of word and what is in it.
+  */
+  it('opens a bucket of items into one node each, and marks what every bucket holds with its key', async () => {
+    const { seed, expander } = vocabularyPlugins();
+    const ctx = context([{ id: 'like', name: 'Like', slug: 'like' }]);
+    const policy = { key: 'policy', label: 'Policy', items: [{ id: 'r1', label: 'Members can make anything.' }] };
+    const seeded = await seed.seed({ buckets: [...BUCKETS.buckets, policy] }, ctx);
+    expect(seeded.nodes.find((n) => n.label === 'Policy')?.data?.count).toBe(1);
+
+    const items = await expander.expand({ id: clusterAddress('vocabulary', 'policy'), direction: 'out' }, ctx);
+    expect(items.nodes).toMatchObject([
+      { kind: 'cluster', type: 'vocabulary-item', label: 'Members can make anything.', leaf: true },
+    ]);
+    expect(items.nodes[0].data).toMatchObject({ bucket: 'policy', item: 'r1' });
+
+    const signals = await expander.expand({ id: clusterAddress('vocabulary', 'signals'), direction: 'out' }, ctx);
+    // And a record's own id, which a style rule can match where its node's address is out of reach.
+    expect(signals.nodes[0].data).toMatchObject({ bucket: 'signals', recordId: 'like' });
+  });
+
   it('opens models into type nodes and workflows into their steps, with a line for each move', async () => {
     const { seed, expander } = vocabularyPlugins();
     const ctx = context();

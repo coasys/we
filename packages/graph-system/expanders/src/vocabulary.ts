@@ -21,6 +21,11 @@
  * - **Models** — `models: [{ name }]`, opened into type nodes, which `schema-properties` opens in turn.
  * - **Workflows** — `workflows: [{ name, steps, moves }]`, opened into one node per workflow, and each workflow into its
  *   steps, with a line for each move between them.
+ * - **Items** — `items: [{ id, label }]`, for what a space has defined that is neither records of one
+ *   type nor models — its policy's rules — opened into one node each, with nothing further inside.
+ *
+ * Everything a bucket opens into carries the bucket's key as `data.bucket`, as the bucket does, so a
+ * style rule can light one kind of word and what is in it.
  */
 import type { Expander, GraphEdge, GraphNode, SeedSource } from '@we/graph-protocol';
 import { clusterAddress, entityAddress, parseAddress } from '@we/graph-protocol';
@@ -31,6 +36,9 @@ import { SCHEMA_TYPE } from './schema';
 /** The node type of a bucket, a workflow and one of its steps. */
 export const VOCABULARY_TYPE = 'vocabulary';
 export const WORKFLOW_TYPE = 'workflow';
+
+/** The type of an item bucket's members — see `items`. */
+export const ITEM_TYPE = 'vocabulary-item';
 export const WORKFLOW_STATE_TYPE = 'workflow-step';
 
 export interface VocabularyWorkflow {
@@ -57,6 +65,8 @@ export interface VocabularyBucket {
   models?: { name: string; label?: string }[];
   /** Or these workflows. */
   workflows?: VocabularyWorkflow[];
+  /** Or these items, which are nothing to open. */
+  items?: { id: string; label: string }[];
 }
 
 export interface VocabularySeedOptions {
@@ -94,6 +104,7 @@ export function vocabularyPlugins(): { seed: SeedSource; expander: Expander; rec
         buckets.map(async (bucket) => {
           if (bucket.models) return bucket.models.length;
           if (bucket.workflows) return bucket.workflows.length;
+          if (bucket.items) return bucket.items.length;
           if (!bucket.entity) return 0;
           const rows = await context.query({ entity: bucket.entity, dataset, limit }).catch(() => null);
           // Unreadable is not empty: it keeps its caret, and says why when opened.
@@ -232,10 +243,27 @@ export function vocabularyPlugins(): { seed: SeedSource; expander: Expander; rec
 
       const bucket = options?.buckets.find((b) => b.key === address.id);
       if (!bucket) return { nodes, edges };
+      // What a bucket holds says which bucket, as the bucket does.
+      const hold = (node: GraphNode) => contain({ ...node, data: { ...node.data, bucket: bucket.key } });
+
+      if (bucket.items) {
+        for (const item of bucket.items) {
+          hold({
+            id: clusterAddress(ITEM_TYPE, `${bucket.key}:${item.id}`),
+            kind: 'cluster',
+            type: ITEM_TYPE,
+            label: item.label,
+            data: { item: item.id },
+            leaf: true,
+            source: 'vocabulary',
+          });
+        }
+        return { nodes, edges, total: bucket.items.length };
+      }
 
       if (bucket.workflows) {
         for (const workflow of bucket.workflows) {
-          contain({
+          hold({
             id: clusterAddress(WORKFLOW_TYPE, workflow.name),
             kind: 'cluster',
             type: WORKFLOW_TYPE,
@@ -249,7 +277,7 @@ export function vocabularyPlugins(): { seed: SeedSource; expander: Expander; rec
 
       if (bucket.models) {
         for (const model of bucket.models) {
-          contain({
+          hold({
             id: entityAddress(dataset, SCHEMA_TYPE, model.name),
             kind: 'entity',
             type: SCHEMA_TYPE,
@@ -267,7 +295,7 @@ export function vocabularyPlugins(): { seed: SeedSource; expander: Expander; rec
         const rows = await context.query({ entity: bucket.entity, dataset, limit, signal: request.signal });
         for (const row of rows) {
           const node = rowToNode(row, bucket.entity, dataset, shape, 'vocabulary');
-          if (node) contain(node);
+          if (node) hold(node);
         }
         // A full page says there may be more, and says so rather than looking complete.
         if (rows.length === limit) context.warn(`showing the first ${limit} of ${bucket.label}`);

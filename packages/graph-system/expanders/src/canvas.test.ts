@@ -1337,12 +1337,18 @@ describe('a canvas over another record’s members', () => {
         asked.push({ entities, anchor: request.scope?.anchorId, via: request.scope?.via, include: request.include });
         if (entities.includes('Placement') && request.scope?.anchorId === 'canvas-1') {
           // The card comes with its placement, carrying where it came from as the relation's id.
-          const card = { id: 't1', title: 'Placed', extractedFrom: 'call-2', [NODE_TYPE_KEY]: 'TaskBlock' };
+          const card = {
+            id: 't1',
+            title: 'Placed',
+            extractedFrom: 'call-2',
+            author: 'did:ada',
+            [NODE_TYPE_KEY]: 'TaskBlock',
+          };
           return tagged('Placement', [{ id: 'p1', node: card, nodeType: 'TaskBlock', x: 5, y: 6 }]);
         }
         if (entities.includes('TaskBlock') && request.scope?.anchorId === 'root' && request.scope.via === 'children') {
           return tagged('TaskBlock', [
-            { id: 't1', title: 'Placed', extractedFrom: 'call-2' },
+            { id: 't1', title: 'Placed', extractedFrom: 'call-2', author: 'did:ada' },
             { id: 't2', title: 'Loose', extractedFrom: { id: 'call-1' } },
           ]);
         }
@@ -1373,6 +1379,16 @@ describe('a canvas over another record’s members', () => {
     expect(asked.filter((a) => a.entities.includes('Placement')).map((a) => a.anchor)).toEqual(['canvas-1']);
     // Where each came from rides in the read the canvas makes anyway.
     expect(asked.find((a) => a.anchor === 'root')?.include).toMatchObject({ extractedFrom: true });
+  });
+
+  // What a focus dims by: who made a card, and which record it is, whatever its type declares.
+  it('carries each card’s author and record id, for a style rule to match', async () => {
+    const { ctx } = spaceContext();
+    const { nodes } = await canvasSeed().seed(options, ctx);
+    expect(nodes.map((n) => [n.label, n.data?.recordId, n.data?.author])).toEqual([
+      ['Placed', 't1', 'did:ada'],
+      ['Loose', 't2', undefined],
+    ]);
   });
 
   it('says which cards are waiting to be placed, and where each came from', async () => {
