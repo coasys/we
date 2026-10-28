@@ -8,8 +8,8 @@
  *
  * A scenario does not rerun after a failure.
  */
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { join, sep } from 'node:path';
 
 import { DesktopApp } from './drivers/desktop.ts';
 import { Display } from './drivers/display.ts';
@@ -105,7 +105,11 @@ async function runOne(scenario: Scenario, options: RunOptions): Promise<Scenario
           await run();
           step.passed = true;
         } catch (error) {
-          step.error = error instanceof Error ? error.message : String(error);
+          const message = error instanceof Error ? error.message : String(error);
+          // A failure's later lines are what the window showed: not kept for a step that shows a secret.
+          step.error = stepOptions.shows
+            ? `${message.split('\n')[0]} (the rest is not kept: the screen showed ${stepOptions.shows})`
+            : message;
           throw new StepFailure(name, checks, step.error);
         } finally {
           step.ms = Date.now() - begun;
@@ -130,11 +134,15 @@ async function runOne(scenario: Scenario, options: RunOptions): Promise<Scenario
     }
   }
   await display?.stop();
+  if (world) notes.push(`the world's folder: ${world.dir} (removed when the scenario passes)`);
   writeFileSync(join(dir, 'notes.txt'), notes.join('\n'));
 
   // Everything the scenario touched: the world's logs and data folders, and the report artefacts.
   const scan = await secrets.scan([...(world ? world.scanPaths() : []), dir], allowances);
-  writeFileSync(join(dir, 'scan.json'), JSON.stringify({ secrets: secrets.labels(), ...scan }, null, 2));
+  // A report artefact that holds a secret is not kept: the scan says where it was, not what.
+  const withheld = [...new Set(scan.findings.map((f) => f.where).filter((where) => where.startsWith(dir + sep)))];
+  for (const file of withheld) rmSync(file, { force: true });
+  writeFileSync(join(dir, 'scan.json'), JSON.stringify({ secrets: secrets.labels(), withheld, ...scan }, null, 2));
   if (scan.findings.length && !failure) {
     const first = scan.findings[0];
     failure = `the secret "${first.label}" (${first.kind}) was found in ${first.where} at byte ${first.offset}${
@@ -142,6 +150,12 @@ async function runOne(scenario: Scenario, options: RunOptions): Promise<Scenario
     }`;
   }
   if (!failure && scan.files === 0) failure = 'the scan read no file, so it proves nothing';
+  if (world && !failure) rmSync(world.dir, { recursive: true, force: true });
+
+  // What leaves the runner (the report, the console, an issue) is published, not scanned: every
+  // recorded secret is redacted from it.
+  failure = failure && secrets.redact(failure);
+  for (const step of steps) if (step.error) step.error = secrets.redact(step.error);
 
   return {
     id: scenario.meta.id,

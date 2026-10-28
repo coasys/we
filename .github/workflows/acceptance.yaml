@@ -4,7 +4,7 @@
 # runs and how to run it on a computer.
 #
 # A failed run opens an issue (or comments on the open one) with the failing scenario and its step,
-# and keeps the report, the screenshots and the logs as an artifact. That is a notice only: this is
+# and keeps the report and the screenshots as an artifact. The world's logs stay on the runner. That is a notice only: this is
 # not a required check, and it stops no merge. A scenario that is pending is reported and does not
 # fail the run.
 #

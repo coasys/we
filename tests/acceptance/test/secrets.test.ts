@@ -108,4 +108,16 @@ describe('the secret ledger and its scanner', () => {
     const scan = await ledger.scan([dir, dir, join(dir, 'gone')]);
     expect(scan.files).toBe(1);
   });
+
+  it('redacts each form of a secret, and the 12 words only as whole words', () => {
+    const ledger = new SecretLedger();
+    ledger.add('passphrase', 'the passphrase', 'a long "quoted" passphrase');
+    ledger.addWords('the 12 words', WORDS);
+    const json = JSON.stringify({ p: 'a long "quoted" passphrase' });
+    const b64 = Buffer.from('a long "quoted" passphrase').toString('base64');
+    expect(ledger.redact(`${json} ${b64}`)).toBe('{"p":"[the passphrase]"} [the passphrase]');
+    expect(ledger.redact('1\nmember\n2\nTenant')).toBe('1\n[the 12 words]\n2\n[the 12 words]');
+    // Part of a longer word is not one of the words.
+    expect(ledger.redact('remember the pearl, no closer')).toBe('remember the pearl, no closer');
+  });
 });
