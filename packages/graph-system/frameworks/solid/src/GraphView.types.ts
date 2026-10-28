@@ -510,6 +510,15 @@ export interface GraphViewProps {
    */
   focus?: string;
   /**
+   * Centre what `focus` names, rather than only bringing it into view — and keep it centred while
+   * the graph settles around it, since choosing something on a map often opens it and moves it.
+   * The camera lets go once the graph has been still for a moment, or as soon as somebody pans or
+   * zooms. For a map chosen from beside it (a tree); not for a canvas whose clicks write `focus`,
+   * where every click would move the camera. `focus` may also name a node by its own id here, such
+   * as a group on a map that is not a record.
+   */
+  focusCentre?: boolean;
+  /**
    * Records whose cards are **folded**: everything hanging off each of them is hidden, and the card
    * says how much.
    *

@@ -84,6 +84,7 @@ import {
 import { createStore, reconcile, type SetStoreFunction } from 'solid-js/store';
 import { Dynamic } from 'solid-js/web';
 
+import { createFocusFollow } from './focusFollow';
 import type { GraphBackdrop, GraphViewProps, NodeBadge, NodeContent } from './GraphView.types';
 import { isSettled, patched } from './pending';
 import { isRecordAddress } from './recordAddress';
@@ -773,6 +774,12 @@ export function GraphView(props: GraphViewProps) {
     },
   });
 
+  /** A focus held in the middle while the graph settles around it — see `focusCentre`. */
+  const follow = createFocusFollow({
+    position: (id) => engine.getPositions().get(id),
+    centre: (at) => revealPoint({ x: at.x, y: at.y }, true),
+  });
+
   engine.subscribe((reason) => {
     batch(() => {
       if (reason === 'viewport') {
@@ -792,6 +799,7 @@ export function GraphView(props: GraphViewProps) {
       else if (reason === 'marquee') setMarqueeVersion((n) => n + 1);
       else setVersion((n) => n + 1);
     });
+    if (reason === 'positions' || reason === 'graph') follow.moved();
   });
 
   /**
@@ -1042,7 +1050,8 @@ export function GraphView(props: GraphViewProps) {
     const positions = engine.getPositions();
     for (const node of engine.store.nodes()) {
       const address = parseAddress(node.id);
-      if (address?.kind !== 'entity' || address.id !== recordId) continue;
+      // A record by its id — or any node by its own id, such as a group on a map that is not a record.
+      if (node.id !== recordId && (address?.kind !== 'entity' || address.id !== recordId)) continue;
       /*
         Asked before the position, not after it — which is the difference between this working and
         working except when it matters. A card is *held by a fold* from the moment the fold is made,
@@ -1092,7 +1101,7 @@ export function GraphView(props: GraphViewProps) {
    * point is outside it, and centring against a zero-sized box would throw the camera somewhere
    * arbitrary for the fit that follows to correct.
    */
-  function revealPoint(world: Point): void {
+  function revealPoint(world: Point, centre = false): void {
     const clear = engine.viewport.visibleRect();
     if (!clear.width || !clear.height) return;
     const screen = engine.viewport.toScreen(world);
@@ -1101,8 +1110,11 @@ export function GraphView(props: GraphViewProps) {
       screen.x <= clear.x + clear.width - REVEAL_MARGIN &&
       screen.y >= clear.y + REVEAL_MARGIN &&
       screen.y <= clear.y + clear.height - REVEAL_MARGIN;
-    if (inside) return;
-    engine.behaviourContext().pan(clear.x + clear.width / 2 - screen.x, clear.y + clear.height / 2 - screen.y);
+    if (inside && !centre) return;
+    const dx = clear.x + clear.width / 2 - screen.x;
+    const dy = clear.y + clear.height / 2 - screen.y;
+    if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
+    engine.behaviourContext().pan(dx, dy);
   }
 
   /**
@@ -1252,7 +1264,10 @@ export function GraphView(props: GraphViewProps) {
     } finally {
       applyingFocus = false;
     }
-    untrack(() => revealPoint(target.at));
+    untrack(() => {
+      if (props.focusCentre && target.kind === 'node') follow.start(target.id);
+      else revealPoint(target.at, !!props.focusCentre);
+    });
   });
 
   /**
@@ -3435,6 +3450,8 @@ export function GraphView(props: GraphViewProps) {
             would otherwise jump the page.
           */
           setPointerFocused(true);
+          // Somebody is moving the canvas themselves: a focus being followed lets go.
+          follow.stop();
           (event.currentTarget as HTMLElement).focus?.({ preventScroll: true });
           armCarry(event);
           dispatch('onPointerDown', event);
@@ -3471,6 +3488,7 @@ export function GraphView(props: GraphViewProps) {
         }}
         onWheel={(event) => {
           event.preventDefault();
+          follow.stop();
           dispatch('onWheel', event);
         }}
       />

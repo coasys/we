@@ -123,6 +123,25 @@ describe('GraphView focus', () => {
     expect(selectedLabels(host)).toEqual(['t2']);
   });
 
+  // A group on a map is not a record, so it has no id but its address — which is what a map's interface holds.
+  it('selects a node named by its own id, such as a group that is not a record', async () => {
+    const group = {
+      id: 'we-graph://cluster/vocabulary/signals',
+      kind: 'cluster' as const,
+      type: 'vocabulary',
+      label: 'Signal types',
+      data: { x: 0, y: 200 },
+    };
+    const host = mount({
+      seeds: { ...literal, nodes: [...literal.nodes, group] },
+      layout: { type: 'manual' },
+      focus: group.id,
+      focusCentre: true,
+    });
+    await until(() => selectedLabels(host).length > 0);
+    expect(selectedLabels(host)).toEqual(['Signal types']);
+  });
+
   it('does not report the selection it made back to the interface', async () => {
     /*
       The interface asked for this selection, so hearing it back is an echo — and the harmful kind:
