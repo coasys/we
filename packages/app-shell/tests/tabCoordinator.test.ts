@@ -210,6 +210,56 @@ describe('createTabCoordinator', () => {
       b.coordinator.setPinned(true);
       expect(a.coordinator.isLeader()).toBe(false);
     });
+
+    /*
+      Two tabs in one call: the second joined it from the same device, which takes the call over, and
+      the first ends its call and unpins. If it went on leading, it published the agent without the
+      call while the tab still in it stayed a follower — the call left every peer's roster.
+    */
+    it('hands publishing to a pinned tab it turned away, the moment it unpins', () => {
+      const a = tab('a');
+      const b = tab('b');
+      const c = tab('c');
+      vi.advanceTimersByTime(LEADER_TIMEOUT);
+      expect(a.coordinator.isLeader()).toBe(true);
+      a.coordinator.setPinned(true);
+      b.coordinator.setPinned(true);
+      expect(a.coordinator.isLeader(), 'a pinned leader keeps it').toBe(true);
+
+      a.coordinator.setPinned(false);
+
+      expect(b.coordinator.isLeader(), 'the tab still in the call publishes').toBe(true);
+      expect(a.coordinator.isLeader()).toBe(false);
+      expect(c.coordinator.isLeader(), 'only the named tab is promoted').toBe(false);
+      vi.advanceTimersByTime(LEADER_TIMEOUT * 2);
+      expect([a, b, c].filter((t) => t.coordinator.isLeader())).toEqual([b]);
+    });
+
+    it('keeps leading when the tab it turned away is no longer pinned', () => {
+      const a = tab('a');
+      const b = tab('b');
+      vi.advanceTimersByTime(LEADER_TIMEOUT);
+      a.coordinator.setPinned(true);
+      b.coordinator.setPinned(true);
+      b.coordinator.setPinned(false);
+
+      a.coordinator.setPinned(false);
+
+      expect(a.coordinator.isLeader()).toBe(true);
+      expect(b.coordinator.isLeader()).toBe(false);
+    });
+
+    it('keeps leading when it unpins with no pinned tab waiting', () => {
+      const a = tab('a');
+      const b = tab('b');
+      vi.advanceTimersByTime(LEADER_TIMEOUT);
+      a.coordinator.setPinned(true);
+
+      a.coordinator.setPinned(false);
+
+      expect(a.coordinator.isLeader()).toBe(true);
+      expect(b.coordinator.isLeader()).toBe(false);
+    });
   });
 
   describe('conflict resolution', () => {
