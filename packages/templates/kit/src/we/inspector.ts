@@ -1305,6 +1305,8 @@ export interface InspectorPanelOptions {
   call?: { $: string };
   /** What it says while nothing is selected. */
   empty?: string;
+  /** A close button in its header, doing this — for an inspector placed in a page rather than a panel. */
+  close?: SchemaProp;
 }
 
 /**
@@ -1320,6 +1322,7 @@ export function inspectorPanel(opts: InspectorPanelOptions = {}): SchemaNode {
     title = 'Inspector',
     call = { $: "''" },
     empty = 'Click a card on the canvas to look inside it, or double-click the canvas to add one.',
+    close,
   } = opts;
   return {
     type: 'Column',
@@ -1601,6 +1604,22 @@ export function inspectorPanel(opts: InspectorPanelOptions = {}): SchemaNode {
                 },
               },
             },
+            // Put away, where the inspector is a lane of the page rather than a panel with its own close.
+            ...(close
+              ? [
+                  {
+                    type: 'we-tooltip',
+                    props: { content: 'Close' },
+                    children: [
+                      {
+                        type: 'we-button',
+                        props: { size: 'sm', square: true, variant: 'ghost', label: 'Close', onClick: close },
+                        children: [{ type: 'we-icon', props: { name: 'x' } }],
+                      },
+                    ],
+                  },
+                ]
+              : []),
           ],
         },
       }),

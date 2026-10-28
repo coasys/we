@@ -33,13 +33,21 @@ export const SOCIAL_DNA_LABELS = {
 
 const L = SOCIAL_DNA_LABELS;
 
-/** The buckets, as an expression the vocabulary seed takes. */
+/** How many uses a definition opens into — the latest few, not everything it was ever used for. */
+const USES = 12;
+
+/**
+ * The buckets, as an expression the vocabulary seed takes. Each definition opens into its uses — see
+ * `VocabularyUses` in the graph's expanders: a signal type into what was reacted to with it, a kind of
+ * connection into its connections, a state into its tasks, a kind of involvement into what somebody is
+ * involved in that way, a topic into what was tagged with it. What a definition *is* is on its card.
+ */
 export const VOCABULARY_BUCKETS = `[
-  { key: 'signals', label: '${L.signals}', entity: 'SignalType' },
-  { key: 'connections', label: '${L.connections}', entity: 'RelationshipType' },
-  { key: 'states', label: '${L.states}', entity: 'TaskState', opens: { entity: 'TaskBlock', field: 'status', key: 'slug' } },
-  { key: 'kinds', label: '${L.kinds}', entity: 'InvolvementType' },
-  { key: 'topics', label: '${L.topics}', entity: 'Topic' },
+  { key: 'signals', label: '${L.signals}', entity: 'SignalType', opens: { entity: recordStore.creatableEntities.map(k, k.value), through: 'signals', field: 'signalTypeId', key: 'id', label: 'reacted to', limit: ${USES} } },
+  { key: 'connections', label: '${L.connections}', entity: 'RelationshipType', opens: { entity: 'Relationship', field: 'relationshipTypeId', key: 'id', pair: ['source', 'target'], label: 'connects', limit: ${USES} } },
+  { key: 'states', label: '${L.states}', entity: 'TaskState', opens: { entity: 'TaskBlock', field: 'status', key: 'slug', label: 'in it', limit: ${USES} } },
+  { key: 'kinds', label: '${L.kinds}', entity: 'InvolvementType', opens: { entity: 'Involvement', field: 'kind', key: 'slug', follow: 'node', label: 'involved in', limit: ${USES} } },
+  { key: 'topics', label: '${L.topics}', entity: 'Topic', opens: { entity: 'Relationship', through: 'target', field: 'id', key: 'id', follow: 'source', label: 'about it', limit: ${USES} } },
   { key: 'models', label: '${L.models}', models: recordStore.creatableEntities.map(k, { name: k.value, label: k.label }) },
   { key: 'other', label: 'From other apps', models: datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value))).map(e, { name: e.name }) },
   { key: 'workflows', label: '${L.workflows}', workflows: workflowStore.workflows.map(f, { name: f.name, label: f.label, steps: f.steps, moves: f.moves }) },
@@ -73,15 +81,14 @@ export function vocabularyMap(opts: VocabularyMapOptions = {}): SchemaNode {
         props: {
           seeds: { source: 'vocabulary', options: { buckets: { $: VOCABULARY_BUCKETS } } },
           /*
-    What opens into what: a bucket into its members, a model into its fields and a Records node, the
-    Records node into the model's records, a task state into the tasks in it (the bucket's `opens`),
-    any record into its fields — each field one node saying its name and value, as a card's do on the
-    canvas, rather than a field node with its value hanging off it as another.
-  */
+            What opens into what: a bucket into its definitions, a definition into its uses (the
+            bucket's `opens`), a model into its records. Never into fields: a field is part of what a
+            thing is, not something inside it, so it is on the card and in an inspector instead.
+          */
           expansion: {
             defaultDepth: 0,
             direction: 'out',
-            expanders: ['vocabulary', 'vocabulary-records', 'schema-properties', 'schema-instances', 'property'],
+            expanders: ['vocabulary', 'vocabulary-records', 'schema'],
           },
           // Each bucket is a tree of its own, its members under it; containment edges make the parents.
           /*
@@ -99,7 +106,7 @@ export function vocabularyMap(opts: VocabularyMapOptions = {}): SchemaNode {
             // Sideways, tighter than the default share of the card's width, so a map of many small trees
             // stays close together.
             options: {
-              card: { width: 180, height: 64 },
+              card: { width: 200, height: 96 },
               levelGap: 110,
               siblingGap: 36,
               treeGap: 90,
@@ -113,10 +120,14 @@ export function vocabularyMap(opts: VocabularyMapOptions = {}): SchemaNode {
         what is in them a tint of it, and a card's properties the quietest.
       */
           nodeStyle: [
-            { style: { shape: 'card', width: 180, height: 64, color: 'accent-soft' } },
+            { style: { shape: 'card', width: 200, height: 64, color: 'accent-soft' } },
             { when: { kind: 'cluster', type: 'vocabulary' }, style: { color: 'accent', height: 56 } },
             { when: { 'data.final': true }, style: { borderColor: 'accent-text', borderWidth: 2 } },
-            { when: { kind: 'property' }, style: { color: 'control-surface', height: 44, content: 'property' } },
+            // A definition, and each use of one, as a record: its fields on the card, as on a canvas.
+            {
+              when: { kind: 'entity', type: { not: '$schema' } },
+              style: { height: 96, content: 'record', contentMinZoom: 0.4 },
+            },
             { when: { kind: 'literal' }, style: { shape: 'circle', size: 12 } },
             // Last, so a word in focus and what it holds stand out whatever drew them.
             ...(opts.focusRules ?? []),
