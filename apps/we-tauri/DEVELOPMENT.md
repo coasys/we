@@ -66,24 +66,31 @@ new-window handler.
   `style-src` (`dangerousDisableAssetCspModification`): a nonce there turns off `'unsafe-inline'`,
   and the design system needs inline styles.
 - **Navigation.** The window stays on the app's pages and on `blob:` addresses of its own origin
-  (the app saves a file through one). A frame can load what the policy's `frame-src` permits. The
-  window opens no new window: a request for one (`window.open`, a link
-  with `target="_blank"`) opens an `https` address in the OS browser. The app refuses all other
-  addresses. The rules are `main_may_navigate` and `opens_in_browser` in `custody/src/window.rs`,
+  (the app saves a file through one). A frame can load what the policy's `frame-src` permits. On
+  Linux and macOS the webview asks the navigation handler for frames too, so the handler lets those
+  addresses through. On Windows it asks for the top-level page only, so the app gives the handler
+  no `frame-src` address and the window itself can never go to one. The window opens no new
+  window: a request for one (`window.open`, a link with `target="_blank"`) opens an `https`
+  address in the OS browser. The app refuses all other addresses. The rules are `main_may_navigate` and `opens_in_browser` in `custody/src/window.rs`,
   with their tests.
 - **Devtools.** A debug build has the web inspector. A release build has it only with the cargo
   feature `devtools`. `pnpm tauri:dev` turns that feature on; `pnpm tauri:build` does not.
 - **Close and the tray icon.** Closing the main window hides it. The app and its executor continue
   to run. The tray icon's menu has "Open" and "Quit". On macOS the app leaves the Dock while the
-  window is hidden. On Linux the icon is a StatusNotifierItem, which needs
-  `libayatana-appindicator3` at run time. On GNOME without an AppIndicator extension there is no
-  icon: start the app again to show the window.
-- **One copy.** `tauri-plugin-single-instance` stops a second copy. A second start shows the
-  window of the copy that runs, then exits with code 0. It does nothing before that: the plugin
-  decides while `Builder::build` initialises the plugins, and every side effect of a start (the log
-  rotation, the webview folder move, the port, the custody service, the executor) is in `start`,
-  the app's `setup`, which Tauri runs later. Keep it there; `startup_order` in `src/lib.rs` tests
-  the order Tauri runs the two in.
+  window is hidden, unless another of its windows (the identity window) is visible; it leaves the
+  Dock when that window closes. On Linux the icon is a StatusNotifierItem, which needs
+  `libayatana-appindicator3` (or `libappindicator3`) at run time. Without that library the app
+  makes no tray icon and logs a warning. The window hides on close only while a tray host owns
+  `org.kde.StatusNotifierWatcher` on the session bus. With no library, no tray host (GNOME without
+  an AppIndicator extension) or no session bus, closing the window quits the app, as "Quit" does.
+- **One copy.** `tauri-plugin-single-instance` stops a second copy of the same product. A second
+  start shows the window of the copy that runs, then exits with code 0. It does nothing before
+  that: the plugin decides while `Builder::build` initialises the plugins, and every side effect of
+  a start (the log rotation, the webview folder move, the port, the custody service, the executor)
+  is in `start`, the app's `setup`, which Tauri runs later. Keep it there; `startup_order` in
+  `src/lib.rs` tests the order Tauri runs the two in. The plugin is keyed by the identifier; the
+  custody folder and the keychain names are not. So a WE app and a Coasys app can run at the same
+  time on the same custody folder.
 
 ### Product name and identifier
 

@@ -126,9 +126,11 @@ pub fn run() {
     // ready. So every side effect of a start lives in `start`; `startup_order` in the tests pins
     // that Tauri still runs a plugin's setup before the app's.
     let app = tauri::Builder::default()
-        // First: a second start of the app shows this one's window and goes, so two copies never
-        // run on one data folder. The main window hides on close (`main_window.rs`), and starting
-        // the app again is how a desktop with no tray icon shows it.
+        // First: a second start of the app shows this one's window and goes, so two copies of one
+        // product never run on one data folder. The plugin is keyed by the identifier; the custody
+        // folder and the keychain names are not, so a WE app and a Coasys app can run together on
+        // the same custody folder. The main window hides on close (`main_window.rs`), and starting
+        // the app again shows it.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             main_window::show(app)
         }))

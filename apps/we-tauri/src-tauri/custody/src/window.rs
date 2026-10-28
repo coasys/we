@@ -85,12 +85,14 @@ pub fn csp_sources(policy: &str, directive: &str) -> Vec<String> {
 /// Whether the main window may navigate to `url`.
 ///
 /// The main window stays on the app's own pages (not the identity bundle, which is the identity
-/// window's). The webview also asks this for each frame, and cannot say which frame asks, so an
-/// address that the policy's `frame-src` (`frame_sources`) lets a frame load is permitted too, as is
-/// the empty page a frame starts on. A `blob:` address of the app's own origin is permitted: the app
-/// saves a file by a click on a link to one (`saveFile.ts` in `@we/design-utils`), and only the
-/// app's own code can make one. All other addresses are refused: a link to another site opens in the
-/// browser only when it asks for a new window (see [`opens_in_browser`]).
+/// window's). On Linux and macOS the webview also asks this for each frame, and cannot say which
+/// frame asks, so an address that the policy's `frame-src` (`frame_sources`) lets a frame load is
+/// permitted too, as is the empty page a frame starts on. On Windows the webview asks for the
+/// top-level page only, and the app passes no `frame_sources`. A `blob:` address of the app's own
+/// origin is permitted: the app saves a file by a click on a link to one (`saveFile.ts` in
+/// `@we/design-utils`), and only the app's own code can make one. All other addresses are refused:
+/// a link to another site opens in the browser only when it asks for a new window (see
+/// [`opens_in_browser`]).
 pub fn main_may_navigate(url: &str, frame_sources: &[String], dev_served: bool) -> bool {
     if url == "about:blank" || url == "about:srcdoc" {
         return true;

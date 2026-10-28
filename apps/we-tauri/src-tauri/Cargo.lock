@@ -21823,6 +21823,7 @@ dependencies = [
  "ad4m-client",
  "ad4m-executor",
  "dirs 5.0.1",
+ "libloading 0.8.9",
  "log",
  "serde",
  "serde_json",
