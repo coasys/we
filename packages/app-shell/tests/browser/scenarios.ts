@@ -41,6 +41,7 @@ import {
 import coasysBundle from '../../../../bundles/coasys.bundle.json';
 import fieldGuideBundle from '../../../../bundles/field-guide.bundle.json';
 import toolLibraryBundle from '../../../../bundles/tool-library.bundle.json';
+import { viewBar } from '../../../templates/cartridges/src/coasys/space/bar.ts';
 import { sharingPickerOptions } from '../../src/shared/sharingOptions';
 
 export interface Scenario {
@@ -2067,6 +2068,24 @@ const coasysSignIn = (): Scenario => {
   );
 };
 
+/** A Coasys view's bar, with the Page / Canvas switch at its end, in Glow — on the Canvas side. */
+const coasysBar = (): Scenario => {
+  const glow = BUNDLE_LAB_THEMES.find((t) => t.label === 'coasys-glow')?.theme ?? {};
+  return {
+    node: {
+      type: 'Column',
+      theme: glow,
+      props: { width: '900px', bg: 'page' },
+      children: [viewBar(['Feed'], 'chats-circle')],
+    },
+    tables: {},
+    stores: {
+      routeStore: { params: { view: 'canvas' }, templateSegments: [], setParam: () => {} },
+      shellStore: { collapsedLanes: [] },
+    },
+  };
+};
+
 /**
  * The Coasys mark and name as the sign-in screen draws them and as the open rail does, each from the
  * bundle itself, in boxes of the same size: signing in fades the one away over the other, so their
@@ -2279,6 +2298,7 @@ const feedViewPage = (): Scenario => {
 export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'coasys:about': coasysAbout,
   'feed:view': feedViewPage,
+  'coasys:bar': coasysBar,
   'coasys:lockup': coasysLockup,
   'signIn:coasys': coasysSignIn,
   'signIn:we': signInScreen,

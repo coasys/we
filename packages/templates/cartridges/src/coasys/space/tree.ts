@@ -2,7 +2,17 @@ import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 import { field, formModal, TREE_LEAD, treeRow } from '@we/template-kit';
 
 import { countPill, liveDot } from './marks.ts';
-import { callPath, channelPath, GROUP_PAGES, personPath, ROW_ID, SELECTED_EXPR } from './paths.ts';
+import {
+  callPath,
+  channelPath,
+  DNA_PARAM,
+  GROUP_PAGES,
+  IN_CANVAS,
+  personPath,
+  ROW_ID,
+  SELECTED_EXPR,
+  withView,
+} from './paths.ts';
 
 /**
  * The space as a tree: its Feed, its calls, its workflows, its people and its Social DNA, under the
@@ -369,7 +379,8 @@ const policyKind: SchemaNode = treeRow({
     {
       type: '$each',
       props: { items: { $: 'spaceStore.policy.sentences' }, as: 'rule' },
-      children: [treeRow({ nested: true, value: { $: "'dnaprop|policy|' + index" }, label: { $: 'rule' } })],
+      // By its words, which are also what the vocabulary map knows it by.
+      children: [treeRow({ nested: true, value: { $: "'dnaprop|policy|' + rule" }, label: { $: 'rule' } })],
     },
   ],
 });
@@ -419,20 +430,30 @@ const onSelect: SchemaProp = [
           .map((p) => `'group|${p}'`)
           .join(', ')}]`,
       },
-      then: { $invoke: 'routeStore.navigate', args: [{ $: `spaceStore.spacePath + '/' + ${ROW_ID}` }] },
+      then: { $invoke: 'routeStore.navigate', args: [{ $: withView(`spaceStore.spacePath + '/' + ${ROW_ID}`) }] },
     },
   },
   // Workflows' page shows every workflow until one is chosen, so choosing the group closes the one open.
   {
     $if: {
       condition: { $: "event.detail.value == 'group|workflows'" },
-      then: [{ $invoke: 'workflowStore.closeWorkflow' }, { $invoke: 'routeStore.navigate', args: [{ $: FLOWS_PAGE }] }],
+      then: [
+        { $invoke: 'workflowStore.closeWorkflow' },
+        { $invoke: 'routeStore.navigate', args: [{ $: withView(FLOWS_PAGE) }] },
+      ],
     },
   },
+  // Social DNA in Canvas mode is the vocabulary map, in focus; on a page, it is where it is edited.
   {
     $if: {
       condition: { $: "event.detail.value == 'group|dna'" },
-      then: { $invoke: 'shellStore.openSpaceSettings', args: ['vocabulary'] },
+      then: {
+        $if: {
+          condition: { $: IN_CANVAS },
+          then: { $invoke: 'routeStore.setParam', args: [DNA_PARAM, 'all'] },
+          else: { $invoke: 'shellStore.openSpaceSettings', args: ['vocabulary'] },
+        },
+      },
     },
   },
   {
@@ -452,7 +473,7 @@ const onSelect: SchemaProp = [
       condition: { $: "startsWith(event.detail.value, 'workflow|')" },
       then: [
         { $invoke: 'workflowStore.openWorkflow', args: [{ $: ROW_ID }] },
-        { $invoke: 'routeStore.navigate', args: [{ $: "spaceStore.spacePath + '/workflows'" }] },
+        { $invoke: 'routeStore.navigate', args: [{ $: withView(FLOWS_PAGE) }] },
       ],
     },
   },
@@ -462,20 +483,48 @@ const onSelect: SchemaProp = [
       then: { $invoke: 'routeStore.navigate', args: [{ $: personPath(ROW_ID) }] },
     },
   },
-  // A definition opens where it is edited; a kind of definition opens as a group does.
+  // A definition opens where it is edited — or, in Canvas mode, is lit on the vocabulary map.
   {
     $if: {
       condition: { $: "startsWith(event.detail.value, 'dna|')" },
       then: {
-        $invoke: 'shellStore.openSpaceSettings',
-        args: ['vocabulary', { $: "split(event.detail.value, '|')[2]" }],
+        $if: {
+          condition: { $: IN_CANVAS },
+          then: {
+            $invoke: 'routeStore.setParam',
+            args: [DNA_PARAM, { $: "split(event.detail.value, '|')[1] + '|' + split(event.detail.value, '|')[2]" }],
+          },
+          else: {
+            $invoke: 'shellStore.openSpaceSettings',
+            args: ['vocabulary', { $: "split(event.detail.value, '|')[2]" }],
+          },
+        },
       },
     },
   },
+  // A kind of definition opens as a group does — and, in Canvas mode, is lit with all it holds.
   {
     $if: {
       condition: { $: "startsWith(event.detail.value, 'dnakind|')" },
-      then: { $toggleLocalIn: 'openRows', value: { $: 'event.detail.value' } },
+      then: [
+        { $toggleLocalIn: 'openRows', value: { $: 'event.detail.value' } },
+        {
+          $if: {
+            condition: { $: IN_CANVAS },
+            then: { $invoke: 'routeStore.setParam', args: [DNA_PARAM, { $: ROW_ID }] },
+          },
+        },
+      ],
+    },
+  },
+  // One rule of the policy, lit on the map by its words.
+  {
+    $if: {
+      condition: { $: `(${IN_CANVAS}) && startsWith(event.detail.value, 'dnaprop|policy|')` },
+      then: {
+        $invoke: 'routeStore.setParam',
+        args: [DNA_PARAM, { $: "'policy|' + split(event.detail.value, '|')[2]" }],
+      },
     },
   },
 ];

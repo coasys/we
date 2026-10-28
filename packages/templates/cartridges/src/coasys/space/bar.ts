@@ -1,5 +1,7 @@
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
+import { DNA_PARAM, IN_CANVAS, VIEW_PARAM } from './paths.ts';
+
 /**
  * The bar across the top of every view beside the tree: the way back to a folded sidebar, what the
  * view is, and whatever it offers. Shared by the channel views and the pages a tree group opens.
@@ -34,6 +36,33 @@ const showTree: SchemaNode = {
 };
 
 /**
+ * Page or Canvas, at the end of every bar, in the same place whatever is chosen — see `canvas.ts`. Into
+ * the address, which every navigation then carries; leaving the canvas lets go of a Social DNA focus,
+ * which only the canvas has.
+ */
+const modeSwitch: SchemaNode = {
+  type: 'Row',
+  props: { gap: '100', p: '100', r: 'control', bg: 'surface-sunken', flexShrink: 0 },
+  children: [
+    { icon: 'file-text', label: 'Page', canvas: false },
+    { icon: 'squares-four', label: 'Canvas', canvas: true },
+  ].map(({ icon, label, canvas }) => ({
+    type: 'we-button',
+    props: {
+      size: 'sm',
+      variant: { $: `${canvas ? '' : '!'}(${IN_CANVAS}) ? 'soft' : 'ghost'` },
+      onClick: canvas
+        ? { $invoke: 'routeStore.setParam', args: [VIEW_PARAM, 'canvas'] }
+        : [
+            { $invoke: 'routeStore.setParam', args: [VIEW_PARAM, null] },
+            { $invoke: 'routeStore.setParam', args: [DNA_PARAM, null] },
+          ],
+    },
+    children: [{ type: 'we-icon', props: { name: icon } }, label],
+  })),
+};
+
+/**
  * A view's bar: the way back to the tree, what this is, and whatever the view offers.
  *
  * `beside` sits against the title rather than at the far end — what acts on the name itself, such as
@@ -65,5 +94,6 @@ export const viewBar = (
       ],
     },
     ...aside,
+    modeSwitch,
   ],
 });

@@ -1,5 +1,7 @@
 import type { TemplateSchema } from '@we/schema-shared';
 
+import { canvasPane } from './canvas.ts';
+import { IN_CANVAS } from './paths.ts';
 import { treeSection } from './tree.ts';
 import { callPage, spaceRoutes } from './views.ts';
 
@@ -9,8 +11,9 @@ import { callPage, spaceRoutes } from './views.ts';
  * The tree is a section in a home lane down the left — resizable from its inner edge and folded away
  * from its own header. It is `fixed`, not breakable out into a panel: it is the space's only section,
  * so a tree floating free has nowhere to go but back, and leaves its lane empty meanwhile. Beside it
- * the view takes the rest: a channel's chat or canvas, the workflows, or a record's own page. A call's record has a page of
- * its own here; every other record gets the host's.
+ * the view takes the rest: in Page mode, the page of whatever the tree has chosen — the Feed, the
+ * workflows, a person, a record's own page (a call's is this template's; every other record gets the
+ * host's); in Canvas mode, the space's canvas with that chosen thing in focus.
  *
  * On a narrow screen the lane takes the whole width, so the tree is what a phone opens on; folding it
  * shows the view.
@@ -45,7 +48,10 @@ export const coasysSpace: TemplateSchema & { id: string } = {
     {
       type: 'Column',
       props: { flex: '1', minWidth: '0', height: '100%' },
-      children: [{ type: '$routes' }],
+      // Page or Canvas — see `canvas.ts`. The canvas is drawn here rather than as a route, so it stays
+      // mounted while the tree's choice changes; the address still changes as the tree is used, and
+      // the pages come back as they were when the mode does.
+      children: [{ type: '$if', props: { condition: { $: IN_CANVAS }, then: canvasPane, else: { type: '$routes' } } }],
     },
   ],
   routes: spaceRoutes,

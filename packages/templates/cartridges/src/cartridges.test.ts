@@ -9,9 +9,22 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { buildValidationContext, bundleThemes, readBundle, validateSemantic, withEntities } from '@we/schema-shared';
+import {
+  buildValidationContext,
+  bundleThemes,
+  evaluateExpression,
+  listFunctions,
+  parseExpression,
+  readBundle,
+  type SchemaNode,
+  validateSemantic,
+  withEntities,
+} from '@we/schema-shared';
+import { FOCUS_DIM } from '@we/template-kit';
 import { describe, expect, it } from 'vitest';
 
+import { canvasPane } from './coasys/space/canvas.ts';
+import { callPath, groupPath, personPath } from './coasys/space/paths.ts';
 import { bundleFileName, type Cartridge, cartridgeBundles, coasys, fieldGuide, toolLibrary } from './index.ts';
 
 const contextData = JSON.parse(readFileSync(resolve(import.meta.dirname, '../../../ai-context/context.json'), 'utf-8'));
@@ -109,8 +122,91 @@ describe('the Coasys cartridge', () => {
     expect(JSON.stringify(props)).not.toContain('createOnCanvas');
     // Reviewing a suggested change opens the record's own page: there is no inspector beside it.
     expect(JSON.stringify(props.onNodeAction)).toContain("'/record/'");
-    const canvasRoute = findNode(coasys.shell, (n) => (n as { path?: string }).path === '/canvas')!;
-    expect(JSON.stringify(canvasRoute)).toContain('Add to the canvas');
+    expect(JSON.stringify(canvasPane)).toContain('Add to the canvas');
+  });
+
+  /*
+    Page or Canvas. The tree chooses what is in focus and the mode says where to see it, so the canvas
+    is drawn beside the pages rather than as one of them — mounted while the tree's choice changes —
+    and dimmed to whatever is chosen. Evaluated by the expression engine the renderer uses, against
+    the address each choice leaves.
+  */
+  describe('in Canvas mode', () => {
+    const at = (path: string[], params: Record<string, string>, extra: Record<string, unknown> = {}) => {
+      const roots: Record<string, unknown> = {
+        routeStore: { templateSegments: path, params },
+        spaceStore: { spacePath: '/space/s1', landmarks: { canvas: 'c1' }, policy: { sentences: [] } },
+        workflowStore: { open: null },
+        shapeStore: { spaceShapes: [] },
+        ...extra,
+      };
+      return (prop: unknown) =>
+        evaluateExpression(parseExpression((prop as { $: string }).$), {
+          root: (name) => ({ bound: name in roots, value: roots[name] }),
+          call: (name, args) =>
+            listFunctions()
+              .find((f) => f.name === name)
+              ?.impl(args, { context: {}, stores: {} }),
+        });
+    };
+    const graph = findNode(canvasPane, (n) => n.type === 'GraphView')!;
+    const focusRules = ((graph.props as { nodeStyle: unknown[] }).nodeStyle as unknown[]).slice(-3);
+    const dims = (evaluate: (p: unknown) => unknown) => focusRules.flatMap((rule) => evaluate(rule) as unknown[]);
+
+    it('is drawn beside the pages, by the mode in the address', () => {
+      const view = (coasys.shell.children as SchemaNode[])[1];
+      expect(JSON.stringify(view)).toContain("routeStore.params.view == 'canvas'");
+      expect(JSON.stringify(view)).toContain('"type":"$routes"');
+    });
+
+    it('dims to what was extracted from the call chosen, what a person made, or what is in a workflow', () => {
+      expect(dims(at(['record'], { kind: 'call', id: 'call-1', view: 'canvas' }))).toEqual([
+        { when: { 'data.origin': { not: 'call-1' } }, style: { opacity: FOCUS_DIM } },
+      ]);
+      expect(dims(at(['person'], { did: 'did:ada', view: 'canvas' }))).toEqual([
+        { when: { 'data.author': { not: 'did:ada' } }, style: { opacity: FOCUS_DIM } },
+      ]);
+      const open = { name: 'review', label: 'Review', records: [{ record: 't1' }, { record: 't2' }] };
+      expect(dims(at(['workflows'], { view: 'canvas' }, { workflowStore: { open } }))).toEqual([
+        { when: { 'data.recordId': { not: ['t1', 't2'] } }, style: { opacity: FOCUS_DIM } },
+      ]);
+      // The Feed, and a record that is not a call, dim nothing.
+      expect(dims(at([], { view: 'canvas' }))).toEqual([]);
+      expect(dims(at(['record'], { kind: 'task', id: 't1', view: 'canvas' }))).toEqual([]);
+    });
+
+    it('is carried by every navigation the tree makes, so choosing another thing stays on the canvas', () => {
+      const evaluate = at([], { view: 'canvas' });
+      expect(evaluate({ $: callPath("'c9'") })).toBe('/space/s1/record/CollectionBlock?kind=call&id=c9&view=canvas');
+      expect(evaluate({ $: personPath("'did:ada'") })).toBe('/space/s1/person?did=did:ada&view=canvas');
+      expect(evaluate({ $: groupPath('calls') })).toBe('/space/s1/calls?view=canvas');
+      expect(at([], {})({ $: groupPath('calls') })).toBe('/space/s1/calls');
+    });
+
+    it('shows Social DNA on the vocabulary map, its kind lit, or one definition and the bucket it is in', () => {
+      const map = findNode(canvasPane, (n) => n.type === '$if' && JSON.stringify(n).includes('source":"vocabulary'));
+      expect(map).toBeTruthy();
+      const vocab = findNode(map, (n) => n.type === 'GraphView')!;
+      const rules = (vocab.props as { nodeStyle: unknown[] }).nodeStyle;
+      const focus = rules[rules.length - 1];
+      expect(at([], { view: 'canvas', dna: 'signal' })(focus)).toEqual([
+        { style: { opacity: FOCUS_DIM } },
+        [{ when: { 'data.bucket': 'signals' }, style: { opacity: 1 } }],
+      ]);
+      expect(at([], { view: 'canvas', dna: 'state|s1' })(focus)).toEqual([
+        { style: { opacity: FOCUS_DIM } },
+        [
+          { when: { kind: 'cluster', type: 'vocabulary', 'data.bucket': 'states' }, style: { opacity: 1 } },
+          { when: { 'data.recordId': 's1' }, style: { opacity: 1 } },
+        ],
+      ]);
+      // The policy is Social DNA too: one rule, by its words.
+      expect(
+        (at([], { view: 'canvas', dna: 'policy|Members can make anything.' })(focus) as unknown[])[1],
+      ).toContainEqual({ when: { 'data.item': 'Members can make anything.' }, style: { opacity: 1 } });
+      // All of it, nothing dimmed.
+      expect(at([], { view: 'canvas', dna: 'all' })(focus)).toEqual([]);
+    });
   });
 });
 

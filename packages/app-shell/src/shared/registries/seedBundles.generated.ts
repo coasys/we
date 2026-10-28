@@ -839,7 +839,7 @@ export const seedBundles: Bundle[] = [
                                       $invoke: 'routeStore.navigate',
                                       args: [
                                         {
-                                          $: "spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (modules.call.callRecordId)",
+                                          $: "(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (modules.call.callRecordId)) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (modules.call.callRecordId), '?') ? '&' : '?') + 'view=canvas' : '')",
                                         },
                                       ],
                                     },
@@ -864,7 +864,7 @@ export const seedBundles: Bundle[] = [
                         props: {
                           label: 'This space',
                           selected: {
-                            $: "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' ? 'call|' + routeStore.params.id : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? 'person|' + routeStore.params.did : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' ? (workflowStore.open ? 'workflow|' + workflowStore.open.name : 'group|workflows') : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') in ['channels', 'calls', 'people'] ? 'group|' + (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') : 'channel|' + (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)",
+                            $: "(routeStore.params.view == 'canvas') && routeStore.params.dna ? (routeStore.params.dna == 'all' ? 'group|dna' : contains(routeStore.params.dna, '|') ? (startsWith(routeStore.params.dna, 'policy|') ? 'dnaprop|' : 'dna|') + routeStore.params.dna : 'dnakind|' + routeStore.params.dna) : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' ? 'call|' + routeStore.params.id : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? 'person|' + routeStore.params.did : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' ? (workflowStore.open ? 'workflow|' + workflowStore.open.name : 'group|workflows') : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') in ['channels', 'calls', 'people'] ? 'group|' + (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') : 'channel|' + (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)",
                           },
                           onSelect: [
                             {
@@ -880,7 +880,11 @@ export const seedBundles: Bundle[] = [
                                 },
                                 then: {
                                   $invoke: 'routeStore.navigate',
-                                  args: [{ $: "spaceStore.spacePath + '/' + split(event.detail.value, '|')[1]" }],
+                                  args: [
+                                    {
+                                      $: "(spaceStore.spacePath + '/' + split(event.detail.value, '|')[1]) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/' + split(event.detail.value, '|')[1], '?') ? '&' : '?') + 'view=canvas' : '')",
+                                    },
+                                  ],
                                 },
                               },
                             },
@@ -891,7 +895,11 @@ export const seedBundles: Bundle[] = [
                                   { $invoke: 'workflowStore.closeWorkflow' },
                                   {
                                     $invoke: 'routeStore.navigate',
-                                    args: [{ $: "spaceStore.spacePath + '/workflows'" }],
+                                    args: [
+                                      {
+                                        $: "(spaceStore.spacePath + '/workflows') + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/workflows', '?') ? '&' : '?') + 'view=canvas' : '')",
+                                      },
+                                    ],
                                   },
                                 ],
                               },
@@ -899,7 +907,13 @@ export const seedBundles: Bundle[] = [
                             {
                               $if: {
                                 condition: { $: "event.detail.value == 'group|dna'" },
-                                then: { $invoke: 'shellStore.openSpaceSettings', args: ['vocabulary'] },
+                                then: {
+                                  $if: {
+                                    condition: { $: "routeStore.params.view == 'canvas'" },
+                                    then: { $invoke: 'routeStore.setParam', args: ['dna', 'all'] },
+                                    else: { $invoke: 'shellStore.openSpaceSettings', args: ['vocabulary'] },
+                                  },
+                                },
                               },
                             },
                             {
@@ -908,7 +922,9 @@ export const seedBundles: Bundle[] = [
                                 then: {
                                   $invoke: 'routeStore.navigate',
                                   args: [
-                                    { $: "spaceStore.spacePath + '?channel=' + (split(event.detail.value, '|')[1])" },
+                                    {
+                                      $: "(spaceStore.spacePath + '?channel=' + (split(event.detail.value, '|')[1])) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '?channel=' + (split(event.detail.value, '|')[1]), '?') ? '&' : '?') + 'view=canvas' : '')",
+                                    },
                                   ],
                                 },
                               },
@@ -920,7 +936,7 @@ export const seedBundles: Bundle[] = [
                                   $invoke: 'routeStore.navigate',
                                   args: [
                                     {
-                                      $: "spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (split(event.detail.value, '|')[1])",
+                                      $: "(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (split(event.detail.value, '|')[1])) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (split(event.detail.value, '|')[1]), '?') ? '&' : '?') + 'view=canvas' : '')",
                                     },
                                   ],
                                 },
@@ -936,7 +952,11 @@ export const seedBundles: Bundle[] = [
                                   },
                                   {
                                     $invoke: 'routeStore.navigate',
-                                    args: [{ $: "spaceStore.spacePath + '/workflows'" }],
+                                    args: [
+                                      {
+                                        $: "(spaceStore.spacePath + '/workflows') + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/workflows', '?') ? '&' : '?') + 'view=canvas' : '')",
+                                      },
+                                    ],
                                   },
                                 ],
                               },
@@ -948,7 +968,7 @@ export const seedBundles: Bundle[] = [
                                   $invoke: 'routeStore.navigate',
                                   args: [
                                     {
-                                      $: "spaceStore.spacePath + '/person?did=' + (split(event.detail.value, '|')[1])",
+                                      $: "(spaceStore.spacePath + '/person?did=' + (split(event.detail.value, '|')[1])) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/person?did=' + (split(event.detail.value, '|')[1]), '?') ? '&' : '?') + 'view=canvas' : '')",
                                     },
                                   ],
                                 },
@@ -958,15 +978,51 @@ export const seedBundles: Bundle[] = [
                               $if: {
                                 condition: { $: "startsWith(event.detail.value, 'dna|')" },
                                 then: {
-                                  $invoke: 'shellStore.openSpaceSettings',
-                                  args: ['vocabulary', { $: "split(event.detail.value, '|')[2]" }],
+                                  $if: {
+                                    condition: { $: "routeStore.params.view == 'canvas'" },
+                                    then: {
+                                      $invoke: 'routeStore.setParam',
+                                      args: [
+                                        'dna',
+                                        {
+                                          $: "split(event.detail.value, '|')[1] + '|' + split(event.detail.value, '|')[2]",
+                                        },
+                                      ],
+                                    },
+                                    else: {
+                                      $invoke: 'shellStore.openSpaceSettings',
+                                      args: ['vocabulary', { $: "split(event.detail.value, '|')[2]" }],
+                                    },
+                                  },
                                 },
                               },
                             },
                             {
                               $if: {
                                 condition: { $: "startsWith(event.detail.value, 'dnakind|')" },
-                                then: { $toggleLocalIn: 'openRows', value: { $: 'event.detail.value' } },
+                                then: [
+                                  { $toggleLocalIn: 'openRows', value: { $: 'event.detail.value' } },
+                                  {
+                                    $if: {
+                                      condition: { $: "routeStore.params.view == 'canvas'" },
+                                      then: {
+                                        $invoke: 'routeStore.setParam',
+                                        args: ['dna', { $: "split(event.detail.value, '|')[1]" }],
+                                      },
+                                    },
+                                  },
+                                ],
+                              },
+                            },
+                            {
+                              $if: {
+                                condition: {
+                                  $: "(routeStore.params.view == 'canvas') && startsWith(event.detail.value, 'dnaprop|policy|')",
+                                },
+                                then: {
+                                  $invoke: 'routeStore.setParam',
+                                  args: ['dna', { $: "'policy|' + split(event.detail.value, '|')[2]" }],
+                                },
                               },
                             },
                           ],
@@ -2128,7 +2184,7 @@ export const seedBundles: Bundle[] = [
                                       {
                                         type: 'we-tree-item',
                                         slot: 'children',
-                                        props: { value: { $: "'dnaprop|policy|' + index" } },
+                                        props: { value: { $: "'dnaprop|policy|' + rule" } },
                                         children: [
                                           {
                                             type: 'Row',
@@ -2268,6 +2324,33 @@ export const seedBundles: Bundle[] = [
                         },
                       },
                     },
+                    {
+                      type: 'Row',
+                      props: { gap: '100', p: '100', r: 'control', bg: 'surface-sunken', flexShrink: 0 },
+                      children: [
+                        {
+                          type: 'we-button',
+                          props: {
+                            size: 'sm',
+                            variant: { $: "!(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
+                            onClick: [
+                              { $invoke: 'routeStore.setParam', args: ['view', null] },
+                              { $invoke: 'routeStore.setParam', args: ['dna', null] },
+                            ],
+                          },
+                          children: [{ type: 'we-icon', props: { name: 'file-text' } }, 'Page'],
+                        },
+                        {
+                          type: 'we-button',
+                          props: {
+                            size: 'sm',
+                            variant: { $: "(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
+                            onClick: { $invoke: 'routeStore.setParam', args: ['view', 'canvas'] },
+                          },
+                          children: [{ type: 'we-icon', props: { name: 'squares-four' } }, 'Canvas'],
+                        },
+                      ],
+                    },
                   ],
                 },
                 {
@@ -2350,7 +2433,2789 @@ export const seedBundles: Bundle[] = [
             type: '$panels',
             props: { lane: 'tree', width: '280px', minWidth: '220px', maxWidth: '440px', resize: 'end' },
           },
-          { type: 'Column', props: { flex: '1', minWidth: '0', height: '100%' }, children: [{ type: '$routes' }] },
+          {
+            type: 'Column',
+            props: { flex: '1', minWidth: '0', height: '100%' },
+            children: [
+              {
+                type: '$if',
+                props: {
+                  condition: { $: "routeStore.params.view == 'canvas'" },
+                  then: {
+                    type: 'Column',
+                    props: { width: '100%', height: '100%' },
+                    $localState: {
+                      newAt: { type: 'object', initial: null },
+                      chooserOpen: { type: 'boolean', initial: false },
+                      newNoteOpen: { type: 'boolean', initial: false },
+                      noteOpen: { type: 'boolean', initial: false },
+                      vocabOpen: { type: 'array', initial: [] },
+                    },
+                    $queries: {
+                      focusCall: {
+                        entity: 'CollectionBlock',
+                        where: {
+                          id: {
+                            $: "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : ''",
+                          },
+                        },
+                        select: ['title'],
+                        limit: 1,
+                        when: {
+                          $: "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : ''",
+                        },
+                      },
+                    },
+                    children: [
+                      {
+                        type: 'Row',
+                        props: {
+                          gap: '300',
+                          ay: 'center',
+                          px: '500',
+                          py: '300',
+                          borderBottom: '1px solid border',
+                          minHeight: '56px',
+                        },
+                        children: [
+                          {
+                            type: '$if',
+                            props: {
+                              condition: { $: "'tree' in shellStore.collapsedLanes" },
+                              then: {
+                                type: 'we-tooltip',
+                                props: { content: 'Show the sidebar', placement: 'bottom' },
+                                children: [
+                                  {
+                                    type: 'we-button',
+                                    props: {
+                                      variant: 'ghost',
+                                      size: 'md',
+                                      square: true,
+                                      label: 'Show the sidebar',
+                                      onClick: { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', false] },
+                                    },
+                                    children: [{ type: 'we-icon', props: { name: 'sidebar-simple' } }],
+                                  },
+                                ],
+                              },
+                            },
+                          },
+                          {
+                            type: 'we-icon',
+                            props: {
+                              name: {
+                                $: "((routeStore.params.view == 'canvas') && routeStore.params.dna) ? 'dna' : 'squares-four'",
+                              },
+                              color: 'text-muted',
+                            },
+                          },
+                          {
+                            type: 'Row',
+                            props: { flex: '1', minWidth: '0', gap: '100', ay: 'center' },
+                            children: [
+                              {
+                                type: 'we-text',
+                                props: { variant: 'heading-sm', truncate: true, minWidth: '0' },
+                                children: [
+                                  {
+                                    $: "((routeStore.params.view == 'canvas') && routeStore.params.dna) ? (routeStore.params.dna == 'all' ? 'Social DNA' : { signal: 'Signal types', connection: 'Connection types', state: 'Task states', involvement: 'Involvement', topic: 'Topics', model: 'Models', policy: 'Policy' }[split(routeStore.params.dna, '|')[0]]) : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? (first(local.focusCall).title ? first(local.focusCall).title : 'A call') : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? (profileStore.profiles.find(p, p.did == ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '')).name ?? 'A person') : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open ? workflowStore.open.label : 'Canvas'",
+                                  },
+                                ],
+                              },
+                            ],
+                          },
+                          {
+                            type: 'Row',
+                            props: { gap: '100', p: '100', r: 'control', bg: 'surface-sunken', flexShrink: 0 },
+                            children: [
+                              {
+                                type: 'we-button',
+                                props: {
+                                  size: 'sm',
+                                  variant: { $: "!(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
+                                  onClick: [
+                                    { $invoke: 'routeStore.setParam', args: ['view', null] },
+                                    { $invoke: 'routeStore.setParam', args: ['dna', null] },
+                                  ],
+                                },
+                                children: [{ type: 'we-icon', props: { name: 'file-text' } }, 'Page'],
+                              },
+                              {
+                                type: 'we-button',
+                                props: {
+                                  size: 'sm',
+                                  variant: { $: "(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
+                                  onClick: { $invoke: 'routeStore.setParam', args: ['view', 'canvas'] },
+                                },
+                                children: [{ type: 'we-icon', props: { name: 'squares-four' } }, 'Canvas'],
+                              },
+                            ],
+                          },
+                        ],
+                      },
+                      {
+                        type: 'Column',
+                        props: { flex: '1', minHeight: '0', position: 'relative' },
+                        children: [
+                          {
+                            type: 'GraphView',
+                            props: {
+                              width: '100%',
+                              height: '100%',
+                              seeds: {
+                                source: 'canvas',
+                                options: {
+                                  canvas: { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                  members: { id: { $: 'spaceStore.root' }, via: 'children' },
+                                  contains: { $: 'shapeStore.extractionCandidates' },
+                                  origin: 'extractedFrom',
+                                  connections: 'Relationship',
+                                  routes: 'EdgeRoute',
+                                  pending: { $: 'modules.transcribe.unconfirmedIds' },
+                                  changed: { $: 'modules.transcribe.changedIds' },
+                                  counts: ['signals', 'responses'],
+                                },
+                              },
+                              layout: { type: 'manual', options: { size: { width: 200, height: 140 } } },
+                              backdrop: { pattern: 'dots', gap: 24 },
+                              nodeStyle: [
+                                {
+                                  style: {
+                                    shape: 'card',
+                                    width: 200,
+                                    height: 140,
+                                    content: 'record',
+                                    contentMinZoom: 0.4,
+                                  },
+                                },
+                                {
+                                  style: {
+                                    width: { from: 'data.canvasWidth' },
+                                    height: { from: 'data.canvasHeight' },
+                                    color: { from: 'data.canvasColor' },
+                                    cardShape: { from: 'data.canvasCardShape' },
+                                    contentScale: { from: 'data.canvasContentScale' },
+                                  },
+                                },
+                                {
+                                  when: { 'data.pending': true },
+                                  style: {
+                                    opacity: 0.5,
+                                    borderStyle: 'dashed',
+                                    borderColor: 'border-strong',
+                                    borderWidth: 2,
+                                  },
+                                },
+                                {
+                                  when: { 'data.changed': true },
+                                  style: { borderColor: 'warning-text', borderWidth: 2 },
+                                },
+                                {
+                                  $: "((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? [{ when: { 'data.origin': { not: ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') } }, style: { opacity: 0.1 } }] : []",
+                                },
+                                {
+                                  $: "((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? [{ when: { 'data.author': { not: ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') } }, style: { opacity: 0.1 } }] : []",
+                                },
+                                {
+                                  $: "((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open) ? [{ when: { 'data.recordId': { not: (workflowStore.open.records.map(r, r.record)) } }, style: { opacity: 0.1 } }] : []",
+                                },
+                              ],
+                              behaviours: [
+                                { type: 'connect-nodes', options: { button: 'secondary' } },
+                                'node-double-click',
+                                'canvas-double-click',
+                                'marquee-select',
+                                'select',
+                                { type: 'drag-node', options: { pin: true } },
+                                'pan-zoom',
+                              ],
+                              resizable: true,
+                              empty: {
+                                $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '' ? 'Nothing here yet. Double-click to make something, or drop something in from Pocket.' : 'This space has no canvas.'",
+                              },
+                              emptyIcon: 'squares-four',
+                              onEdgeCreate: {
+                                $invoke: 'recordStore.connectNodesNow',
+                                args: [{ $: 'event' }],
+                                onSuccess: [],
+                              },
+                              onNodeDragEnd: {
+                                $invoke: 'recordStore.dragOnCanvas',
+                                args: [
+                                  { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                  { $: 'event' },
+                                ],
+                              },
+                              onNodeResize: {
+                                $invoke: 'recordStore.resizeOnCanvas',
+                                args: [
+                                  { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                  { $: 'event' },
+                                ],
+                              },
+                              onEdgeAnchor: {
+                                $invoke: 'recordStore.anchorOnCanvas',
+                                args: [
+                                  { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                  { $: 'event' },
+                                ],
+                              },
+                              onEdgeReroute: {
+                                $invoke: 'recordStore.rerouteOnCanvas',
+                                args: [
+                                  { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                  { $: 'event' },
+                                ],
+                              },
+                              onEdgeRetarget: {
+                                $invoke: 'recordStore.retargetOnCanvas',
+                                args: [
+                                  { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                  { $: 'event' },
+                                ],
+                              },
+                              onDrop: {
+                                $invoke: 'recordStore.dropOnCanvas',
+                                args: [
+                                  { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                  { $: 'event' },
+                                ],
+                              },
+                              onDeleteSelection: [
+                                {
+                                  $if: {
+                                    condition: { $: 'count(event.records)' },
+                                    then: { $invoke: 'recordStore.deleteRecords', args: [{ $: 'event.records' }] },
+                                  },
+                                },
+                                {
+                                  $if: {
+                                    condition: { $: "event.kind == 'edge' && event.recordId" },
+                                    then: {
+                                      $invoke: 'recordStore.deleteRecords',
+                                      args: [{ $: '[{ recordId: event.recordId, recordType: event.recordType }]' }],
+                                    },
+                                  },
+                                },
+                              ],
+                              onUndo: {
+                                $invoke: 'recordStore.undoCanvas',
+                                args: [{ $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" }],
+                              },
+                              onRedo: {
+                                $invoke: 'recordStore.redoCanvas',
+                                args: [{ $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" }],
+                              },
+                              carry: true,
+                              selectionActions: [
+                                { id: 'color', control: 'color', title: 'Colour', value: { from: 'data.canvasColor' } },
+                                { id: 'delete', icon: 'trash', title: 'Delete', tone: 'danger' },
+                              ],
+                              onSelectionAction: [
+                                {
+                                  $if: {
+                                    condition: { $: "event.action == 'delete'" },
+                                    then: { $invoke: 'recordStore.deleteRecords', args: [{ $: 'event.records' }] },
+                                  },
+                                },
+                                {
+                                  $if: {
+                                    condition: { $: "event.action == 'color' && event.preview" },
+                                    then: {
+                                      $invoke: 'recordStore.previewCardStyle',
+                                      args: [{ $: 'event.records.map(r, r.recordId)' }, 'color', { $: 'event.value' }],
+                                    },
+                                  },
+                                },
+                                {
+                                  $if: {
+                                    condition: { $: "event.action == 'color' && !event.preview" },
+                                    then: {
+                                      $invoke: 'recordStore.setCardStyle',
+                                      args: [
+                                        { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                        { $: 'event.records.map(r, r.recordId)' },
+                                        'color',
+                                        { $: 'event.value' },
+                                      ],
+                                    },
+                                  },
+                                },
+                              ],
+                              nodeActions: [
+                                {
+                                  id: 'accept',
+                                  icon: 'check',
+                                  title: 'Accept',
+                                  when: { 'data.pending': true },
+                                  tone: 'positive',
+                                },
+                                {
+                                  id: 'reject',
+                                  icon: 'x',
+                                  title: 'Reject',
+                                  when: { 'data.pending': true },
+                                  tone: 'danger',
+                                },
+                                {
+                                  id: 'review',
+                                  icon: 'pencil-simple-line',
+                                  title: 'Review pending change',
+                                  when: { 'data.changed': true },
+                                },
+                                {
+                                  id: 'color',
+                                  control: 'color',
+                                  title: 'Colour',
+                                  value: { from: 'data.canvasColor' },
+                                  when: { 'data.pending': { exists: false } },
+                                },
+                                {
+                                  id: 'cardShape',
+                                  control: 'shape',
+                                  title: 'Shape',
+                                  value: { from: 'data.canvasCardShape' },
+                                  when: { 'data.pending': { exists: false } },
+                                },
+                                {
+                                  id: 'contentScale',
+                                  control: 'scale',
+                                  title: 'Content size',
+                                  value: { from: 'data.canvasContentScale' },
+                                  when: { 'data.pending': { exists: false } },
+                                },
+                                {
+                                  id: 'delete',
+                                  icon: 'trash',
+                                  title: 'Delete',
+                                  when: { 'data.pending': { exists: false } },
+                                  tone: 'danger',
+                                },
+                              ],
+                              onNodeAction: [
+                                {
+                                  $if: {
+                                    condition: { $: "event.action == 'review'" },
+                                    then: {
+                                      $invoke: 'routeStore.navigate',
+                                      args: [
+                                        {
+                                          $: "spaceStore.spacePath + '/record/' + event.recordType + '?id=' + event.recordId",
+                                        },
+                                      ],
+                                    },
+                                  },
+                                },
+                                {
+                                  $if: {
+                                    condition: { $: "event.action == 'accept'" },
+                                    then: [
+                                      { $invoke: 'modules.transcribe.acceptProposal', args: [{ $: 'event.recordId' }] },
+                                      {
+                                        $invoke: 'recordStore.placeOnCanvas',
+                                        args: [
+                                          { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                          { $: 'event.recordId' },
+                                          { $: 'event.recordType' },
+                                          { $: 'event.x' },
+                                          { $: 'event.y' },
+                                        ],
+                                      },
+                                    ],
+                                  },
+                                },
+                                {
+                                  $if: {
+                                    condition: { $: "event.action == 'reject'" },
+                                    then: {
+                                      $invoke: 'modules.transcribe.rejectProposal',
+                                      args: [{ $: 'event.recordId' }],
+                                    },
+                                  },
+                                },
+                                {
+                                  $if: {
+                                    condition: { $: "event.action == 'delete'" },
+                                    then: {
+                                      $invoke: 'record.delete',
+                                      args: [{ $: 'event.recordType' }, { $: 'event.recordId' }],
+                                    },
+                                  },
+                                },
+                                {
+                                  $if: {
+                                    condition: {
+                                      $: "event.action in ['color', 'cardShape', 'contentScale'] && event.preview",
+                                    },
+                                    then: {
+                                      $invoke: 'recordStore.previewCardStyle',
+                                      args: [{ $: 'event.recordId' }, { $: 'event.action' }, { $: 'event.value' }],
+                                    },
+                                  },
+                                },
+                                {
+                                  $if: {
+                                    condition: {
+                                      $: "event.action in ['color', 'cardShape', 'contentScale'] && !event.preview",
+                                    },
+                                    then: {
+                                      $invoke: 'recordStore.setCardStyle',
+                                      args: [
+                                        { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                        { $: 'event.recordId' },
+                                        { $: 'event.action' },
+                                        { $: 'event.value' },
+                                      ],
+                                    },
+                                  },
+                                },
+                              ],
+                              onCanvasDoubleClick: {
+                                $if: {
+                                  condition: { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                  then: [
+                                    { $setLocal: 'newAt', value: { $: 'event' } },
+                                    { $setLocal: 'chooserOpen', value: true },
+                                  ],
+                                },
+                              },
+                              onNodeDoubleClick: {
+                                $invoke: 'routeStore.navigate',
+                                args: [
+                                  {
+                                    $: "spaceStore.spacePath + '/record/' + event.recordType + '?id=' + event.recordId",
+                                  },
+                                ],
+                              },
+                            },
+                          },
+                          {
+                            type: '$if',
+                            props: {
+                              condition: { $: "(routeStore.params.view == 'canvas') && routeStore.params.dna" },
+                              then: {
+                                type: 'Column',
+                                props: {
+                                  position: 'absolute',
+                                  top: '0',
+                                  left: '0',
+                                  width: '100%',
+                                  height: '100%',
+                                  bg: 'page',
+                                  zIndex: 1,
+                                },
+                                children: [
+                                  {
+                                    type: 'GraphView',
+                                    props: {
+                                      seeds: {
+                                        source: 'vocabulary',
+                                        options: {
+                                          buckets: {
+                                            $: "[\n  { key: 'signals', label: 'Signal types', entity: 'SignalType' },\n  { key: 'connections', label: 'Relationship types', entity: 'RelationshipType' },\n  { key: 'states', label: 'Task states', entity: 'TaskState', opens: { entity: 'TaskBlock', field: 'status', key: 'slug' } },\n  { key: 'kinds', label: 'Involvement types', entity: 'InvolvementType' },\n  { key: 'topics', label: 'Topics', entity: 'Topic' },\n  { key: 'models', label: 'Models', models: recordStore.creatableEntities.map(k, { name: k.value, label: k.label }) },\n  { key: 'other', label: 'From other apps', models: datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value))).map(e, { name: e.name }) },\n  { key: 'workflows', label: 'Workflows', workflows: workflowStore.workflows.map(f, { name: f.name, label: f.label, steps: f.steps, moves: f.moves }) },\n  { key: 'policy', label: 'Policy', items: spaceStore.policy.sentences.map(s, { id: s, label: s }) }\n].filter(b, b.key != 'other' || count(b.models))",
+                                          },
+                                        },
+                                      },
+                                      expansion: {
+                                        defaultDepth: 0,
+                                        direction: 'out',
+                                        expanders: [
+                                          'vocabulary',
+                                          'vocabulary-records',
+                                          'schema-properties',
+                                          'schema-instances',
+                                          'property',
+                                        ],
+                                      },
+                                      layout: {
+                                        type: 'forest',
+                                        options: {
+                                          card: { width: 180, height: 64 },
+                                          levelGap: 110,
+                                          siblingGap: 36,
+                                          treeGap: 90,
+                                          unattached: 'trees',
+                                          sortBy: 'order',
+                                        },
+                                      },
+                                      nodeStyle: [
+                                        { style: { shape: 'card', width: 180, height: 64, color: 'accent-soft' } },
+                                        {
+                                          when: { kind: 'cluster', type: 'vocabulary' },
+                                          style: { color: 'accent', height: 56 },
+                                        },
+                                        {
+                                          when: { 'data.final': true },
+                                          style: { borderColor: 'accent-text', borderWidth: 2 },
+                                        },
+                                        {
+                                          when: { kind: 'property' },
+                                          style: { color: 'control-surface', height: 44, content: 'property' },
+                                        },
+                                        { when: { kind: 'literal' }, style: { shape: 'circle', size: 12 } },
+                                        {
+                                          $: "(routeStore.params.dna != 'all') ? [{ style: { opacity: 0.1 } }, (split(routeStore.params.dna, '|')[1] ? [{ kind: 'cluster', type: 'vocabulary', 'data.bucket': { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split(routeStore.params.dna, '|')[0]] }, (split(routeStore.params.dna, '|')[0] == 'model' ? { 'data.entity': shapeStore.spaceShapes.find(s, s.id == (split(routeStore.params.dna, '|')[1])).name } : split(routeStore.params.dna, '|')[0] == 'policy' ? { 'data.item': split(routeStore.params.dna, '|')[1] } : { 'data.recordId': split(routeStore.params.dna, '|')[1] })] : [{ 'data.bucket': { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split(routeStore.params.dna, '|')[0]] }]).map(c, { when: c, style: { opacity: 1 } })] : []",
+                                        },
+                                      ],
+                                      edgeStyle: [
+                                        {
+                                          when: { type: 'contains' },
+                                          style: { sourceAnchor: 's', targetAnchor: 'n', ignoreRoute: true },
+                                        },
+                                        {
+                                          when: { type: 'instance' },
+                                          style: { sourceAnchor: 's', targetAnchor: 'n', ignoreRoute: true },
+                                        },
+                                        {
+                                          when: { type: 'property' },
+                                          style: { sourceAnchor: 's', targetAnchor: 'n', ignoreRoute: true },
+                                        },
+                                        { when: { type: 'instance' }, style: { showLabel: true } },
+                                        { when: { type: 'property' }, style: { showLabel: true } },
+                                        { when: { type: 'move' }, style: { dashed: true, color: 'accent-text' } },
+                                      ],
+                                      open: {
+                                        $: "distinct(local.vocabOpen, routeStore.params.dna != 'all' ? ['we-graph://cluster/vocabulary/' + { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split(routeStore.params.dna, '|')[0]]] : [])",
+                                      },
+                                      onNodeOpen: {
+                                        $setLocal: 'vocabOpen',
+                                        value: {
+                                          $: 'event.open ? distinct(local.vocabOpen, [event.id]) : local.vocabOpen.filter(k, k != event.id)',
+                                        },
+                                      },
+                                      focus: {
+                                        $: "split(routeStore.params.dna, '|')[1] && !(split(routeStore.params.dna, '|')[0] in ['model', 'policy']) ? split(routeStore.params.dna, '|')[1] : ''",
+                                      },
+                                      showStatus: true,
+                                    },
+                                  },
+                                ],
+                              },
+                            },
+                          },
+                        ],
+                      },
+                      {
+                        type: '$if',
+                        props: {
+                          condition: { $: 'recordStore.recordDraft' },
+                          then: {
+                            type: 'we-modal',
+                            props: {
+                              size: 'md',
+                              close: {
+                                $if: {
+                                  condition: { $: 'recordStore.recordDraftDirty' },
+                                  then: { $setLocal: 'confirmDiscardOpen', value: true },
+                                  else: { $invoke: 'recordStore.cancelRecordForm' },
+                                },
+                              },
+                            },
+                            $queries: { relationshipKinds: { entity: 'RelationshipType', order: { name: 'asc' } } },
+                            $localState: {
+                              confirmDiscardOpen: { type: 'boolean', initial: false },
+                              discardGoesBack: { type: 'boolean', initial: false },
+                            },
+                            children: [
+                              {
+                                type: '$if',
+                                props: {
+                                  condition: { $: '!recordStore.pendingLink' },
+                                  then: {
+                                    type: 'we-tooltip',
+                                    props: { content: 'Back' },
+                                    children: [
+                                      {
+                                        type: 'we-button',
+                                        props: {
+                                          variant: 'ghost',
+                                          size: 'sm',
+                                          square: true,
+                                          label: 'Back',
+                                          onClick: {
+                                            $if: {
+                                              condition: { $: 'recordStore.recordDraftDirty' },
+                                              then: [
+                                                { $setLocal: 'discardGoesBack', value: true },
+                                                { $setLocal: 'confirmDiscardOpen', value: true },
+                                              ],
+                                              else: [
+                                                { $invoke: 'recordStore.cancelRecordForm' },
+                                                { $setLocal: 'chooserOpen', value: true },
+                                              ],
+                                            },
+                                          },
+                                        },
+                                        children: [{ type: 'we-icon', props: { name: 'arrow-left' } }],
+                                      },
+                                    ],
+                                    slot: 'start-button',
+                                  },
+                                },
+                              },
+                              {
+                                type: 'Row',
+                                props: { gap: '300', ay: 'center', width: '100%' },
+                                slot: 'header',
+                                children: [
+                                  {
+                                    type: 'Column',
+                                    props: {
+                                      width: '56px',
+                                      height: '56px',
+                                      flexShrink: '0',
+                                      r: 'full',
+                                      ax: 'center',
+                                      ay: 'center',
+                                      bg: 'surface-sunken',
+                                    },
+                                    children: [
+                                      {
+                                        type: 'we-icon',
+                                        props: { name: { $: 'recordStore.recordDraft.icon' }, color: 'text' },
+                                      },
+                                    ],
+                                  },
+                                  {
+                                    type: 'we-text',
+                                    props: { variant: 'heading-md' },
+                                    children: [{ $: '`New ${recordStore.recordDraft.label}`' }],
+                                  },
+                                ],
+                              },
+                              {
+                                type: '$if',
+                                props: {
+                                  condition: { $: 'recordStore.pendingLink' },
+                                  then: {
+                                    type: 'Row',
+                                    props: {
+                                      gap: '200',
+                                      ay: 'center',
+                                      wrap: true,
+                                      width: '100%',
+                                      bg: 'surface-sunken',
+                                      r: '300',
+                                      px: '300',
+                                      py: '200',
+                                    },
+                                    children: [
+                                      {
+                                        type: 'we-text',
+                                        props: { variant: 'label', truncate: true },
+                                        children: [{ $: 'recordStore.pendingLink.sourceLabel' }],
+                                      },
+                                      {
+                                        type: 'we-icon',
+                                        props: { name: 'arrow-right', size: 'xs', color: 'text-faint' },
+                                      },
+                                      {
+                                        type: 'we-text',
+                                        props: { variant: 'label', truncate: true },
+                                        children: [{ $: 'recordStore.pendingLink.targetLabel' }],
+                                      },
+                                    ],
+                                  },
+                                },
+                              },
+                              {
+                                type: '$if',
+                                props: {
+                                  condition: { $: 'recordStore.pendingLink && count(local.relationshipKinds)' },
+                                  then: {
+                                    type: 'we-form-field',
+                                    props: { label: 'Kind', width: '100%' },
+                                    children: [
+                                      {
+                                        type: 'Row',
+                                        props: { gap: '200', ay: 'center', width: '100%' },
+                                        children: [
+                                          {
+                                            type: 'we-select',
+                                            props: {
+                                              flex: '1',
+                                              minWidth: '0',
+                                              placeholder: 'Unnamed kind',
+                                              options: {
+                                                $: 'local.relationshipKinds.map(item, { label: item.name, value: item.id, icon: item.icon })',
+                                              },
+                                              value: { $: 'recordStore.relationshipKind' },
+                                              onChange: {
+                                                $invoke: 'recordStore.setRelationshipKind',
+                                                args: [{ $: 'event.detail' }],
+                                              },
+                                            },
+                                          },
+                                          {
+                                            type: '$if',
+                                            props: {
+                                              condition: { $: 'recordStore.relationshipKind' },
+                                              then: {
+                                                type: 'we-tooltip',
+                                                props: { content: 'Leave the kind unnamed' },
+                                                children: [
+                                                  {
+                                                    type: 'we-button',
+                                                    props: {
+                                                      variant: 'ghost',
+                                                      square: true,
+                                                      label: 'Leave the kind unnamed',
+                                                      flexShrink: '0',
+                                                      onClick: {
+                                                        $invoke: 'recordStore.setRelationshipKind',
+                                                        args: [''],
+                                                      },
+                                                    },
+                                                    children: [{ type: 'we-icon', props: { name: 'x' } }],
+                                                  },
+                                                ],
+                                              },
+                                            },
+                                          },
+                                        ],
+                                      },
+                                    ],
+                                  },
+                                },
+                              },
+                              {
+                                type: '$if',
+                                props: {
+                                  condition: {
+                                    $: "recordStore.recordDraft.fields.exists(f, f.name == 'latitude') && recordStore.recordDraft.fields.exists(f, f.name == 'longitude')",
+                                  },
+                                  then: {
+                                    type: 'we-form-field',
+                                    props: { label: 'Location', width: '100%' },
+                                    children: [
+                                      {
+                                        type: 'we-location-picker',
+                                        props: {
+                                          width: '100%',
+                                          latitude: {
+                                            $: "find(recordStore.recordDraft.fields, { name: 'latitude' }).value == '' ? null : find(recordStore.recordDraft.fields, { name: 'latitude' }).value",
+                                          },
+                                          longitude: {
+                                            $: "find(recordStore.recordDraft.fields, { name: 'longitude' }).value == '' ? null : find(recordStore.recordDraft.fields, { name: 'longitude' }).value",
+                                          },
+                                          placeholder: 'Pin it on the map…',
+                                          onChange: {
+                                            $invoke: 'recordStore.setRecordPlace',
+                                            args: [{ $: 'arg.detail' }],
+                                          },
+                                        },
+                                      },
+                                    ],
+                                  },
+                                },
+                              },
+                              {
+                                type: '$each',
+                                props: {
+                                  items: {
+                                    $: "recordStore.recordDraft.fields.filter(f, !(recordStore.recordDraft.fields.exists(f, f.name == 'latitude') && recordStore.recordDraft.fields.exists(f, f.name == 'longitude')) || !(f.name in ['latitude', 'longitude']))",
+                                  },
+                                  as: 'field',
+                                },
+                                children: [
+                                  {
+                                    type: 'Column',
+                                    props: { width: '100%' },
+                                    children: [
+                                      {
+                                        type: '$if',
+                                        props: {
+                                          condition: { $: "field.control == 'text'" },
+                                          then: {
+                                            type: 'we-form-field',
+                                            props: {
+                                              label: { $: 'field.label' },
+                                              required: { $: 'field.required' },
+                                              width: '100%',
+                                            },
+                                            children: [
+                                              {
+                                                type: 'we-input',
+                                                props: {
+                                                  value: { $: 'field.value' },
+                                                  width: '100%',
+                                                  onInput: {
+                                                    $invoke: 'recordStore.setRecordField',
+                                                    args: [{ $: 'field.name' }, { $: 'event.detail' }],
+                                                  },
+                                                  placeholder: { $: 'field.placeholder' },
+                                                },
+                                              },
+                                            ],
+                                          },
+                                        },
+                                      },
+                                      {
+                                        type: '$if',
+                                        props: {
+                                          condition: { $: "field.control == 'url'" },
+                                          then: {
+                                            type: 'we-form-field',
+                                            props: {
+                                              label: { $: 'field.label' },
+                                              required: { $: 'field.required' },
+                                              width: '100%',
+                                            },
+                                            children: [
+                                              {
+                                                type: 'we-input',
+                                                props: {
+                                                  value: { $: 'field.value' },
+                                                  width: '100%',
+                                                  onInput: {
+                                                    $invoke: 'recordStore.setRecordField',
+                                                    args: [{ $: 'field.name' }, { $: 'event.detail' }],
+                                                  },
+                                                  type: 'url',
+                                                  placeholder: { $: 'field.placeholder' },
+                                                },
+                                              },
+                                            ],
+                                          },
+                                        },
+                                      },
+                                      {
+                                        type: '$if',
+                                        props: {
+                                          condition: { $: "field.control == 'textarea'" },
+                                          then: {
+                                            type: 'we-form-field',
+                                            props: {
+                                              label: { $: 'field.label' },
+                                              required: { $: 'field.required' },
+                                              width: '100%',
+                                            },
+                                            children: [
+                                              {
+                                                type: 'we-textarea',
+                                                props: {
+                                                  value: { $: 'field.value' },
+                                                  width: '100%',
+                                                  onInput: {
+                                                    $invoke: 'recordStore.setRecordField',
+                                                    args: [{ $: 'field.name' }, { $: 'event.detail' }],
+                                                  },
+                                                  rows: 3,
+                                                  placeholder: { $: 'field.placeholder' },
+                                                },
+                                              },
+                                            ],
+                                          },
+                                        },
+                                      },
+                                      {
+                                        type: '$if',
+                                        props: {
+                                          condition: { $: "field.control == 'number'" },
+                                          then: {
+                                            type: 'we-form-field',
+                                            props: {
+                                              label: { $: 'field.label' },
+                                              required: { $: 'field.required' },
+                                              width: '100%',
+                                            },
+                                            children: [
+                                              {
+                                                type: 'we-number-input',
+                                                props: {
+                                                  value: { $: 'field.value' },
+                                                  width: '12rem',
+                                                  maxWidth: '100%',
+                                                  alignSelf: 'start',
+                                                  onChange: {
+                                                    $invoke: 'recordStore.setRecordField',
+                                                    args: [{ $: 'field.name' }, { $: 'event.detail' }],
+                                                  },
+                                                  placeholder: { $: 'field.placeholder' },
+                                                },
+                                              },
+                                            ],
+                                          },
+                                        },
+                                      },
+                                      {
+                                        type: '$if',
+                                        props: {
+                                          condition: { $: "field.control == 'switch'" },
+                                          then: {
+                                            type: 'we-form-field',
+                                            props: {
+                                              label: { $: 'field.label' },
+                                              required: { $: 'field.required' },
+                                              width: '100%',
+                                            },
+                                            children: [
+                                              {
+                                                type: 'we-switch',
+                                                props: {
+                                                  checked: { $: 'field.value' },
+                                                  width: '100%',
+                                                  onChange: {
+                                                    $invoke: 'recordStore.setRecordField',
+                                                    args: [{ $: 'field.name' }, { $: 'event.detail' }],
+                                                  },
+                                                },
+                                              },
+                                            ],
+                                          },
+                                        },
+                                      },
+                                      {
+                                        type: '$if',
+                                        props: {
+                                          condition: { $: "field.control == 'select'" },
+                                          then: {
+                                            type: 'we-form-field',
+                                            props: {
+                                              label: { $: 'field.label' },
+                                              required: { $: 'field.required' },
+                                              width: '100%',
+                                            },
+                                            children: [
+                                              {
+                                                type: 'we-select',
+                                                props: {
+                                                  value: { $: 'field.value' },
+                                                  width: '12rem',
+                                                  maxWidth: '100%',
+                                                  alignSelf: 'start',
+                                                  onChange: {
+                                                    $invoke: 'recordStore.setRecordField',
+                                                    args: [{ $: 'field.name' }, { $: 'event.detail' }],
+                                                  },
+                                                  options: { $: 'field.options' },
+                                                },
+                                              },
+                                            ],
+                                          },
+                                        },
+                                      },
+                                      {
+                                        type: '$if',
+                                        props: {
+                                          condition: { $: "field.control == 'date'" },
+                                          then: {
+                                            type: 'we-form-field',
+                                            props: {
+                                              label: { $: 'field.label' },
+                                              required: { $: 'field.required' },
+                                              width: '100%',
+                                            },
+                                            children: [
+                                              {
+                                                type: 'we-date-picker',
+                                                props: {
+                                                  value: { $: 'field.value' },
+                                                  width: '100%',
+                                                  onChange: {
+                                                    $invoke: 'recordStore.setRecordField',
+                                                    args: [{ $: 'field.name' }, { $: 'event.detail' }],
+                                                  },
+                                                  placeholder: { $: 'field.placeholder' },
+                                                },
+                                              },
+                                            ],
+                                          },
+                                        },
+                                      },
+                                      {
+                                        type: '$if',
+                                        props: {
+                                          condition: { $: "field.control == 'datetime'" },
+                                          then: {
+                                            type: 'we-form-field',
+                                            props: {
+                                              label: { $: 'field.label' },
+                                              required: { $: 'field.required' },
+                                              width: '100%',
+                                            },
+                                            children: [
+                                              {
+                                                type: 'we-date-picker',
+                                                props: {
+                                                  value: { $: 'field.value' },
+                                                  width: '100%',
+                                                  onChange: {
+                                                    $invoke: 'recordStore.setRecordField',
+                                                    args: [{ $: 'field.name' }, { $: 'event.detail' }],
+                                                  },
+                                                  showTime: true,
+                                                  placeholder: { $: 'field.placeholder' },
+                                                },
+                                              },
+                                            ],
+                                          },
+                                        },
+                                      },
+                                      {
+                                        type: '$if',
+                                        props: {
+                                          condition: { $: "field.control == 'color'" },
+                                          then: {
+                                            type: 'we-form-field',
+                                            props: {
+                                              label: { $: 'field.label' },
+                                              required: { $: 'field.required' },
+                                              width: '100%',
+                                            },
+                                            children: [
+                                              {
+                                                type: 'we-color-picker',
+                                                props: {
+                                                  value: { $: 'field.value' },
+                                                  width: '100%',
+                                                  onChange: {
+                                                    $invoke: 'recordStore.setRecordField',
+                                                    args: [{ $: 'field.name' }, { $: 'event.detail' }],
+                                                  },
+                                                },
+                                              },
+                                            ],
+                                          },
+                                        },
+                                      },
+                                      {
+                                        type: '$if',
+                                        props: {
+                                          condition: { $: "field.control == 'icon'" },
+                                          then: {
+                                            type: 'we-form-field',
+                                            props: {
+                                              label: { $: 'field.label' },
+                                              required: { $: 'field.required' },
+                                              width: '100%',
+                                            },
+                                            children: [
+                                              {
+                                                type: 'we-icon-picker',
+                                                props: {
+                                                  value: { $: 'field.value' },
+                                                  width: '100%',
+                                                  onChange: {
+                                                    $invoke: 'recordStore.setRecordField',
+                                                    args: [{ $: 'field.name' }, { $: 'event.detail' }],
+                                                  },
+                                                },
+                                              },
+                                            ],
+                                          },
+                                        },
+                                      },
+                                      {
+                                        type: '$if',
+                                        props: {
+                                          condition: { $: "field.control == 'file'" },
+                                          then: {
+                                            type: 'we-form-field',
+                                            props: {
+                                              label: { $: 'field.label' },
+                                              required: { $: 'field.required' },
+                                              width: '100%',
+                                            },
+                                            children: [
+                                              {
+                                                type: 'we-file-upload',
+                                                props: {
+                                                  width: '100%',
+                                                  onChange: {
+                                                    $invoke: 'recordStore.setRecordField',
+                                                    args: [{ $: 'field.name' }, { $: 'event.detail' }],
+                                                  },
+                                                  accept: { $: 'field.accept' },
+                                                },
+                                              },
+                                            ],
+                                          },
+                                        },
+                                      },
+                                      {
+                                        type: '$if',
+                                        props: {
+                                          condition: { $: "field.control == 'relation'" },
+                                          then: {
+                                            type: 'we-form-field',
+                                            props: { label: { $: 'field.label' }, width: '100%' },
+                                            children: [
+                                              {
+                                                type: '$if',
+                                                props: {
+                                                  condition: { $: "field.inline == 'location'" },
+                                                  then: {
+                                                    type: 'Column',
+                                                    props: { gap: '200', width: '100%' },
+                                                    children: [
+                                                      {
+                                                        type: 'we-location-picker',
+                                                        props: {
+                                                          width: '100%',
+                                                          latitude: {
+                                                            $: 'field.many ? null : first(field.entries).fields.latitude',
+                                                          },
+                                                          longitude: {
+                                                            $: 'field.many ? null : first(field.entries).fields.longitude',
+                                                          },
+                                                          placeholder: { $: '`Pin ${lower(field.label)} on the map…`' },
+                                                          onChange: {
+                                                            $invoke: 'recordStore.setRelationLocation',
+                                                            args: [{ $: 'field.name' }, { $: 'arg.detail' }],
+                                                          },
+                                                        },
+                                                      },
+                                                      {
+                                                        type: '$if',
+                                                        props: {
+                                                          condition: { $: '!field.many && count(field.entries)' },
+                                                          then: {
+                                                            type: 'Row',
+                                                            props: { gap: '300', wrap: true, width: '100%' },
+                                                            children: [
+                                                              {
+                                                                type: 'we-form-field',
+                                                                props: {
+                                                                  label: 'Name',
+                                                                  flex: '1 1 12rem',
+                                                                  minWidth: '0',
+                                                                },
+                                                                children: [
+                                                                  {
+                                                                    type: 'we-input',
+                                                                    props: {
+                                                                      size: 'sm',
+                                                                      value: {
+                                                                        $: "first(field.entries).fields.name ?? ''",
+                                                                      },
+                                                                      onInput: {
+                                                                        $invoke: 'recordStore.setRelationEntryField',
+                                                                        args: [
+                                                                          { $: 'field.name' },
+                                                                          { $: 'first(field.entries).key' },
+                                                                          'name',
+                                                                          { $: 'event.detail' },
+                                                                        ],
+                                                                      },
+                                                                    },
+                                                                  },
+                                                                ],
+                                                              },
+                                                              {
+                                                                type: 'we-form-field',
+                                                                props: {
+                                                                  label: 'Address',
+                                                                  flex: '1 1 12rem',
+                                                                  minWidth: '0',
+                                                                },
+                                                                children: [
+                                                                  {
+                                                                    type: 'we-input',
+                                                                    props: {
+                                                                      size: 'sm',
+                                                                      value: {
+                                                                        $: "first(field.entries).fields.address ?? ''",
+                                                                      },
+                                                                      onInput: {
+                                                                        $invoke: 'recordStore.setRelationEntryField',
+                                                                        args: [
+                                                                          { $: 'field.name' },
+                                                                          { $: 'first(field.entries).key' },
+                                                                          'address',
+                                                                          { $: 'event.detail' },
+                                                                        ],
+                                                                      },
+                                                                    },
+                                                                  },
+                                                                ],
+                                                              },
+                                                            ],
+                                                          },
+                                                        },
+                                                      },
+                                                    ],
+                                                  },
+                                                  else: {
+                                                    type: '$if',
+                                                    props: {
+                                                      condition: { $: "field.inline == 'image'" },
+                                                      then: {
+                                                        type: '$if',
+                                                        props: {
+                                                          condition: { $: 'field.many' },
+                                                          then: {
+                                                            type: 'Row',
+                                                            props: { gap: '200', wrap: true, width: '100%' },
+                                                            children: [
+                                                              {
+                                                                type: '$each',
+                                                                props: { items: { $: 'field.entries' }, as: 'entry' },
+                                                                children: [
+                                                                  {
+                                                                    type: 'Column',
+                                                                    props: {
+                                                                      position: 'relative',
+                                                                      width: '96px',
+                                                                      height: '96px',
+                                                                      r: 'surface',
+                                                                      overflow: 'hidden',
+                                                                    },
+                                                                    children: [
+                                                                      {
+                                                                        type: 'we-image',
+                                                                        props: {
+                                                                          src: { $: 'entry.preview' },
+                                                                          alt: { $: 'entry.label' },
+                                                                          fit: 'cover',
+                                                                          width: '96px',
+                                                                          height: '96px',
+                                                                        },
+                                                                      },
+                                                                      {
+                                                                        type: 'Row',
+                                                                        props: {
+                                                                          position: 'absolute',
+                                                                          top: '100',
+                                                                          right: '100',
+                                                                        },
+                                                                        children: [
+                                                                          {
+                                                                            type: 'we-button',
+                                                                            props: {
+                                                                              variant: 'soft',
+                                                                              size: 'xs',
+                                                                              square: true,
+                                                                              label: { $: '`Remove ${entry.label}`' },
+                                                                              onClick: {
+                                                                                $invoke:
+                                                                                  'recordStore.removeRelationEntry',
+                                                                                args: [
+                                                                                  { $: 'field.name' },
+                                                                                  { $: 'entry.key' },
+                                                                                ],
+                                                                              },
+                                                                            },
+                                                                            children: [
+                                                                              { type: 'we-icon', props: { name: 'x' } },
+                                                                            ],
+                                                                          },
+                                                                        ],
+                                                                      },
+                                                                    ],
+                                                                  },
+                                                                ],
+                                                              },
+                                                              {
+                                                                type: 'EditableImage',
+                                                                props: {
+                                                                  fit: 'cover',
+                                                                  width: '96px',
+                                                                  height: '96px',
+                                                                  r: 'surface',
+                                                                  placeholderIcon: 'image',
+                                                                  uploadLabel: {
+                                                                    $: '`Add ${lower(field.targetLabel)}`',
+                                                                  },
+                                                                  onImageChange: {
+                                                                    $invoke: 'recordStore.addRelationImage',
+                                                                    args: [{ $: 'field.name' }, { $: 'event' }],
+                                                                  },
+                                                                },
+                                                              },
+                                                            ],
+                                                          },
+                                                          else: {
+                                                            type: 'EditableImage',
+                                                            props: {
+                                                              src: { $: 'first(field.entries).preview' },
+                                                              alt: { $: 'field.label' },
+                                                              fit: 'cover',
+                                                              width: '100%',
+                                                              height: '200px',
+                                                              r: 'surface',
+                                                              placeholderIcon: 'image',
+                                                              uploadLabel: { $: '`Add ${lower(field.targetLabel)}`' },
+                                                              editLabel: { $: '`Change ${lower(field.targetLabel)}`' },
+                                                              onImageChange: {
+                                                                $invoke: 'recordStore.addRelationImage',
+                                                                args: [{ $: 'field.name' }, { $: 'event' }],
+                                                              },
+                                                              onImageRemove: {
+                                                                $invoke: 'recordStore.removeRelationEntry',
+                                                                args: [
+                                                                  { $: 'field.name' },
+                                                                  { $: 'first(field.entries).key' },
+                                                                ],
+                                                              },
+                                                            },
+                                                          },
+                                                        },
+                                                      },
+                                                      else: {
+                                                        type: 'Column',
+                                                        props: { gap: '200', width: '100%' },
+                                                        children: [
+                                                          {
+                                                            type: '$if',
+                                                            props: {
+                                                              condition: { $: 'count(field.entries)' },
+                                                              then: {
+                                                                type: 'Row',
+                                                                props: { gap: '200', wrap: true, width: '100%' },
+                                                                children: [
+                                                                  {
+                                                                    type: '$each',
+                                                                    props: {
+                                                                      items: { $: 'field.entries' },
+                                                                      as: 'entry',
+                                                                    },
+                                                                    children: [
+                                                                      {
+                                                                        type: 'Row',
+                                                                        props: {
+                                                                          gap: '100',
+                                                                          ay: 'center',
+                                                                          bg: 'surface-sunken',
+                                                                          r: 'control',
+                                                                          pl: '300',
+                                                                          pr: '100',
+                                                                          py: '100',
+                                                                          maxWidth: '100%',
+                                                                        },
+                                                                        children: [
+                                                                          {
+                                                                            type: 'we-icon',
+                                                                            props: {
+                                                                              name: {
+                                                                                $: "recordStore.displays[entry.entity].icon ?? 'cube'",
+                                                                              },
+                                                                              size: 'xs',
+                                                                              color: 'text-muted',
+                                                                            },
+                                                                          },
+                                                                          {
+                                                                            type: 'we-text',
+                                                                            props: {
+                                                                              variant: 'label',
+                                                                              truncate: true,
+                                                                              minWidth: '0',
+                                                                            },
+                                                                            children: [{ $: 'entry.label' }],
+                                                                          },
+                                                                          {
+                                                                            type: 'we-button',
+                                                                            props: {
+                                                                              variant: 'ghost',
+                                                                              size: 'xs',
+                                                                              square: true,
+                                                                              label: { $: '`Remove ${entry.label}`' },
+                                                                              onClick: {
+                                                                                $invoke:
+                                                                                  'recordStore.removeRelationEntry',
+                                                                                args: [
+                                                                                  { $: 'field.name' },
+                                                                                  { $: 'entry.key' },
+                                                                                ],
+                                                                              },
+                                                                            },
+                                                                            children: [
+                                                                              { type: 'we-icon', props: { name: 'x' } },
+                                                                            ],
+                                                                          },
+                                                                        ],
+                                                                      },
+                                                                    ],
+                                                                  },
+                                                                ],
+                                                              },
+                                                            },
+                                                          },
+                                                          {
+                                                            type: '$if',
+                                                            props: {
+                                                              condition: { $: 'field.many || !count(field.entries)' },
+                                                              then: {
+                                                                type: 'Row',
+                                                                props: {
+                                                                  gap: '200',
+                                                                  ay: 'center',
+                                                                  width: '100%',
+                                                                  wrap: true,
+                                                                },
+                                                                children: [
+                                                                  {
+                                                                    type: '$if',
+                                                                    props: {
+                                                                      condition: { $: 'field.canPick' },
+                                                                      then: {
+                                                                        type: 'Row',
+                                                                        props: { flex: '1 1 12rem', minWidth: '0' },
+                                                                        $queries: {
+                                                                          candidates: {
+                                                                            entity: { $: 'field.target' },
+                                                                            limit: 200,
+                                                                          },
+                                                                        },
+                                                                        children: [
+                                                                          {
+                                                                            type: 'we-select',
+                                                                            props: {
+                                                                              width: '100%',
+                                                                              searchable: true,
+                                                                              placeholder: {
+                                                                                $: '`Choose ${lower(field.targetLabel)}…`',
+                                                                              },
+                                                                              options: {
+                                                                                $: 'local.candidates.map(row, { label: row[recordStore.displays[field.target].title] ?? row.id, value: row.id })',
+                                                                              },
+                                                                              value: '',
+                                                                              onChange: {
+                                                                                $invoke: 'recordStore.pickRelation',
+                                                                                args: [
+                                                                                  { $: 'field.name' },
+                                                                                  { $: 'event.detail' },
+                                                                                ],
+                                                                              },
+                                                                            },
+                                                                          },
+                                                                        ],
+                                                                      },
+                                                                    },
+                                                                  },
+                                                                  {
+                                                                    type: '$if',
+                                                                    props: {
+                                                                      condition: { $: 'field.canCreate' },
+                                                                      then: {
+                                                                        type: 'we-button',
+                                                                        props: {
+                                                                          variant: 'soft',
+                                                                          size: 'sm',
+                                                                          onClick: {
+                                                                            $invoke: 'recordStore.openRelationForm',
+                                                                            args: [{ $: 'field.name' }],
+                                                                          },
+                                                                        },
+                                                                        children: [
+                                                                          { type: 'we-icon', props: { name: 'plus' } },
+                                                                          { $: '`Add ${lower(field.targetLabel)}`' },
+                                                                        ],
+                                                                      },
+                                                                    },
+                                                                  },
+                                                                ],
+                                                              },
+                                                            },
+                                                          },
+                                                        ],
+                                                      },
+                                                    },
+                                                  },
+                                                },
+                                              },
+                                            ],
+                                          },
+                                        },
+                                      },
+                                    ],
+                                  },
+                                ],
+                              },
+                              {
+                                type: '$if',
+                                props: {
+                                  condition: { $: 'count(recordStore.recordErrors)' },
+                                  then: {
+                                    type: 'Column',
+                                    props: { gap: '100', width: '100%' },
+                                    children: [
+                                      {
+                                        type: '$each',
+                                        props: { items: { $: 'recordStore.recordErrors' }, as: 'problem' },
+                                        children: [
+                                          {
+                                            type: 'we-text',
+                                            props: { variant: 'footnote', color: 'danger-text' },
+                                            children: [{ $: 'problem' }],
+                                          },
+                                        ],
+                                      },
+                                    ],
+                                  },
+                                },
+                              },
+                              {
+                                type: 'Row',
+                                props: { gap: '300', ax: 'end', width: '100%' },
+                                slot: 'footer',
+                                children: [
+                                  {
+                                    type: 'we-button',
+                                    props: {
+                                      variant: 'soft',
+                                      onClick: {
+                                        $if: {
+                                          condition: { $: 'recordStore.recordDraftDirty' },
+                                          then: { $setLocal: 'confirmDiscardOpen', value: true },
+                                          else: { $invoke: 'recordStore.cancelRecordForm' },
+                                        },
+                                      },
+                                    },
+                                    children: ['Cancel'],
+                                  },
+                                  {
+                                    type: 'we-button',
+                                    props: {
+                                      variant: 'solid',
+                                      loading: { $: 'recordStore.savingRecord' },
+                                      disabled: { $: 'recordStore.savingRecord' },
+                                      onClick: { $invoke: 'recordStore.saveRecord' },
+                                    },
+                                    children: ['Create'],
+                                  },
+                                ],
+                              },
+                              {
+                                type: '$if',
+                                props: {
+                                  condition: { $: 'recordStore.relationDraft' },
+                                  then: {
+                                    type: 'we-modal',
+                                    props: { size: 'sm', close: { $invoke: 'recordStore.cancelRelationForm' } },
+                                    children: [
+                                      {
+                                        type: 'Row',
+                                        props: { gap: '300', ay: 'center', width: '100%' },
+                                        slot: 'header',
+                                        children: [
+                                          { type: 'we-icon', props: { name: { $: 'recordStore.relationDraft.icon' } } },
+                                          {
+                                            type: 'we-text',
+                                            props: { variant: 'heading-md' },
+                                            children: [{ $: '`New ${lower(recordStore.relationDraft.label)}`' }],
+                                          },
+                                        ],
+                                      },
+                                      {
+                                        type: '$each',
+                                        props: { items: { $: 'recordStore.relationDraft.fields' }, as: 'field' },
+                                        children: [
+                                          {
+                                            type: 'Column',
+                                            props: { width: '100%' },
+                                            children: [
+                                              {
+                                                type: '$if',
+                                                props: {
+                                                  condition: { $: "field.control == 'text'" },
+                                                  then: {
+                                                    type: 'we-form-field',
+                                                    props: {
+                                                      label: { $: 'field.label' },
+                                                      required: { $: 'field.required' },
+                                                      width: '100%',
+                                                    },
+                                                    children: [
+                                                      {
+                                                        type: 'we-input',
+                                                        props: {
+                                                          value: { $: 'field.value' },
+                                                          width: '100%',
+                                                          onInput: {
+                                                            $invoke: 'recordStore.setRelationField',
+                                                            args: [{ $: 'field.name' }, { $: 'event.detail' }],
+                                                          },
+                                                          placeholder: { $: 'field.placeholder' },
+                                                        },
+                                                      },
+                                                    ],
+                                                  },
+                                                },
+                                              },
+                                              {
+                                                type: '$if',
+                                                props: {
+                                                  condition: { $: "field.control == 'url'" },
+                                                  then: {
+                                                    type: 'we-form-field',
+                                                    props: {
+                                                      label: { $: 'field.label' },
+                                                      required: { $: 'field.required' },
+                                                      width: '100%',
+                                                    },
+                                                    children: [
+                                                      {
+                                                        type: 'we-input',
+                                                        props: {
+                                                          value: { $: 'field.value' },
+                                                          width: '100%',
+                                                          onInput: {
+                                                            $invoke: 'recordStore.setRelationField',
+                                                            args: [{ $: 'field.name' }, { $: 'event.detail' }],
+                                                          },
+                                                          type: 'url',
+                                                          placeholder: { $: 'field.placeholder' },
+                                                        },
+                                                      },
+                                                    ],
+                                                  },
+                                                },
+                                              },
+                                              {
+                                                type: '$if',
+                                                props: {
+                                                  condition: { $: "field.control == 'textarea'" },
+                                                  then: {
+                                                    type: 'we-form-field',
+                                                    props: {
+                                                      label: { $: 'field.label' },
+                                                      required: { $: 'field.required' },
+                                                      width: '100%',
+                                                    },
+                                                    children: [
+                                                      {
+                                                        type: 'we-textarea',
+                                                        props: {
+                                                          value: { $: 'field.value' },
+                                                          width: '100%',
+                                                          onInput: {
+                                                            $invoke: 'recordStore.setRelationField',
+                                                            args: [{ $: 'field.name' }, { $: 'event.detail' }],
+                                                          },
+                                                          rows: 3,
+                                                          placeholder: { $: 'field.placeholder' },
+                                                        },
+                                                      },
+                                                    ],
+                                                  },
+                                                },
+                                              },
+                                              {
+                                                type: '$if',
+                                                props: {
+                                                  condition: { $: "field.control == 'number'" },
+                                                  then: {
+                                                    type: 'we-form-field',
+                                                    props: {
+                                                      label: { $: 'field.label' },
+                                                      required: { $: 'field.required' },
+                                                      width: '100%',
+                                                    },
+                                                    children: [
+                                                      {
+                                                        type: 'we-number-input',
+                                                        props: {
+                                                          value: { $: 'field.value' },
+                                                          width: '12rem',
+                                                          maxWidth: '100%',
+                                                          alignSelf: 'start',
+                                                          onChange: {
+                                                            $invoke: 'recordStore.setRelationField',
+                                                            args: [{ $: 'field.name' }, { $: 'event.detail' }],
+                                                          },
+                                                          placeholder: { $: 'field.placeholder' },
+                                                        },
+                                                      },
+                                                    ],
+                                                  },
+                                                },
+                                              },
+                                              {
+                                                type: '$if',
+                                                props: {
+                                                  condition: { $: "field.control == 'switch'" },
+                                                  then: {
+                                                    type: 'we-form-field',
+                                                    props: {
+                                                      label: { $: 'field.label' },
+                                                      required: { $: 'field.required' },
+                                                      width: '100%',
+                                                    },
+                                                    children: [
+                                                      {
+                                                        type: 'we-switch',
+                                                        props: {
+                                                          checked: { $: 'field.value' },
+                                                          width: '100%',
+                                                          onChange: {
+                                                            $invoke: 'recordStore.setRelationField',
+                                                            args: [{ $: 'field.name' }, { $: 'event.detail' }],
+                                                          },
+                                                        },
+                                                      },
+                                                    ],
+                                                  },
+                                                },
+                                              },
+                                              {
+                                                type: '$if',
+                                                props: {
+                                                  condition: { $: "field.control == 'select'" },
+                                                  then: {
+                                                    type: 'we-form-field',
+                                                    props: {
+                                                      label: { $: 'field.label' },
+                                                      required: { $: 'field.required' },
+                                                      width: '100%',
+                                                    },
+                                                    children: [
+                                                      {
+                                                        type: 'we-select',
+                                                        props: {
+                                                          value: { $: 'field.value' },
+                                                          width: '12rem',
+                                                          maxWidth: '100%',
+                                                          alignSelf: 'start',
+                                                          onChange: {
+                                                            $invoke: 'recordStore.setRelationField',
+                                                            args: [{ $: 'field.name' }, { $: 'event.detail' }],
+                                                          },
+                                                          options: { $: 'field.options' },
+                                                        },
+                                                      },
+                                                    ],
+                                                  },
+                                                },
+                                              },
+                                              {
+                                                type: '$if',
+                                                props: {
+                                                  condition: { $: "field.control == 'date'" },
+                                                  then: {
+                                                    type: 'we-form-field',
+                                                    props: {
+                                                      label: { $: 'field.label' },
+                                                      required: { $: 'field.required' },
+                                                      width: '100%',
+                                                    },
+                                                    children: [
+                                                      {
+                                                        type: 'we-date-picker',
+                                                        props: {
+                                                          value: { $: 'field.value' },
+                                                          width: '100%',
+                                                          onChange: {
+                                                            $invoke: 'recordStore.setRelationField',
+                                                            args: [{ $: 'field.name' }, { $: 'event.detail' }],
+                                                          },
+                                                          placeholder: { $: 'field.placeholder' },
+                                                        },
+                                                      },
+                                                    ],
+                                                  },
+                                                },
+                                              },
+                                              {
+                                                type: '$if',
+                                                props: {
+                                                  condition: { $: "field.control == 'datetime'" },
+                                                  then: {
+                                                    type: 'we-form-field',
+                                                    props: {
+                                                      label: { $: 'field.label' },
+                                                      required: { $: 'field.required' },
+                                                      width: '100%',
+                                                    },
+                                                    children: [
+                                                      {
+                                                        type: 'we-date-picker',
+                                                        props: {
+                                                          value: { $: 'field.value' },
+                                                          width: '100%',
+                                                          onChange: {
+                                                            $invoke: 'recordStore.setRelationField',
+                                                            args: [{ $: 'field.name' }, { $: 'event.detail' }],
+                                                          },
+                                                          showTime: true,
+                                                          placeholder: { $: 'field.placeholder' },
+                                                        },
+                                                      },
+                                                    ],
+                                                  },
+                                                },
+                                              },
+                                              {
+                                                type: '$if',
+                                                props: {
+                                                  condition: { $: "field.control == 'color'" },
+                                                  then: {
+                                                    type: 'we-form-field',
+                                                    props: {
+                                                      label: { $: 'field.label' },
+                                                      required: { $: 'field.required' },
+                                                      width: '100%',
+                                                    },
+                                                    children: [
+                                                      {
+                                                        type: 'we-color-picker',
+                                                        props: {
+                                                          value: { $: 'field.value' },
+                                                          width: '100%',
+                                                          onChange: {
+                                                            $invoke: 'recordStore.setRelationField',
+                                                            args: [{ $: 'field.name' }, { $: 'event.detail' }],
+                                                          },
+                                                        },
+                                                      },
+                                                    ],
+                                                  },
+                                                },
+                                              },
+                                              {
+                                                type: '$if',
+                                                props: {
+                                                  condition: { $: "field.control == 'icon'" },
+                                                  then: {
+                                                    type: 'we-form-field',
+                                                    props: {
+                                                      label: { $: 'field.label' },
+                                                      required: { $: 'field.required' },
+                                                      width: '100%',
+                                                    },
+                                                    children: [
+                                                      {
+                                                        type: 'we-icon-picker',
+                                                        props: {
+                                                          value: { $: 'field.value' },
+                                                          width: '100%',
+                                                          onChange: {
+                                                            $invoke: 'recordStore.setRelationField',
+                                                            args: [{ $: 'field.name' }, { $: 'event.detail' }],
+                                                          },
+                                                        },
+                                                      },
+                                                    ],
+                                                  },
+                                                },
+                                              },
+                                              {
+                                                type: '$if',
+                                                props: {
+                                                  condition: { $: "field.control == 'file'" },
+                                                  then: {
+                                                    type: 'we-form-field',
+                                                    props: {
+                                                      label: { $: 'field.label' },
+                                                      required: { $: 'field.required' },
+                                                      width: '100%',
+                                                    },
+                                                    children: [
+                                                      {
+                                                        type: 'we-file-upload',
+                                                        props: {
+                                                          width: '100%',
+                                                          onChange: {
+                                                            $invoke: 'recordStore.setRelationField',
+                                                            args: [{ $: 'field.name' }, { $: 'event.detail' }],
+                                                          },
+                                                          accept: { $: 'field.accept' },
+                                                        },
+                                                      },
+                                                    ],
+                                                  },
+                                                },
+                                              },
+                                            ],
+                                          },
+                                        ],
+                                      },
+                                      {
+                                        type: '$each',
+                                        props: { items: { $: 'recordStore.relationErrors' }, as: 'problem' },
+                                        children: [
+                                          {
+                                            type: 'we-text',
+                                            props: { variant: 'footnote', color: 'danger-text' },
+                                            children: [{ $: 'problem' }],
+                                          },
+                                        ],
+                                      },
+                                      {
+                                        type: 'Row',
+                                        props: { gap: '300', ax: 'end', width: '100%' },
+                                        slot: 'footer',
+                                        children: [
+                                          {
+                                            type: 'we-button',
+                                            props: {
+                                              variant: 'soft',
+                                              onClick: { $invoke: 'recordStore.cancelRelationForm' },
+                                            },
+                                            children: ['Cancel'],
+                                          },
+                                          {
+                                            type: 'we-button',
+                                            props: {
+                                              variant: 'solid',
+                                              onClick: { $invoke: 'recordStore.saveRelationForm' },
+                                            },
+                                            children: ['Add'],
+                                          },
+                                        ],
+                                      },
+                                    ],
+                                  },
+                                },
+                              },
+                              {
+                                type: '$if',
+                                props: {
+                                  condition: { $: 'local.confirmDiscardOpen' },
+                                  then: {
+                                    type: 'we-modal',
+                                    props: {
+                                      size: 'sm',
+                                      close: [
+                                        { $setLocal: 'confirmDiscardOpen', value: false },
+                                        { $setLocal: 'discardGoesBack', value: false },
+                                      ],
+                                    },
+                                    children: [
+                                      {
+                                        type: 'Row',
+                                        slot: 'header',
+                                        props: { gap: '300', ay: 'center' },
+                                        children: [
+                                          { type: 'we-icon', props: { name: 'warning', color: 'danger-text' } },
+                                          {
+                                            type: 'we-text',
+                                            props: { variant: 'heading-sm' },
+                                            children: ['Discard this entry?'],
+                                          },
+                                        ],
+                                      },
+                                      {
+                                        type: 'Column',
+                                        props: { gap: '300' },
+                                        children: [
+                                          {
+                                            type: 'we-text',
+                                            children: [
+                                              'What you have filled in will be lost. Nothing has been saved to the space yet.',
+                                            ],
+                                          },
+                                        ],
+                                      },
+                                      {
+                                        type: 'Row',
+                                        slot: 'footer',
+                                        props: { ax: 'end', gap: '300' },
+                                        children: [
+                                          {
+                                            type: 'we-button',
+                                            props: {
+                                              variant: 'soft',
+                                              onClick: [
+                                                { $setLocal: 'confirmDiscardOpen', value: false },
+                                                { $setLocal: 'discardGoesBack', value: false },
+                                              ],
+                                            },
+                                            children: ['Keep editing'],
+                                          },
+                                          {
+                                            type: 'we-button',
+                                            props: {
+                                              variant: 'solid',
+                                              tone: 'danger',
+                                              onClick: [
+                                                {
+                                                  $if: {
+                                                    condition: { $: 'local.discardGoesBack' },
+                                                    then: [
+                                                      { $invoke: 'recordStore.cancelRecordForm' },
+                                                      { $setLocal: 'chooserOpen', value: true },
+                                                    ],
+                                                    else: { $invoke: 'recordStore.cancelRecordForm' },
+                                                  },
+                                                },
+                                                { $setLocal: 'confirmDiscardOpen', value: false },
+                                                { $setLocal: 'discardGoesBack', value: false },
+                                              ],
+                                            },
+                                            children: ['Discard'],
+                                          },
+                                        ],
+                                      },
+                                    ],
+                                  },
+                                },
+                              },
+                            ],
+                          },
+                        },
+                      },
+                      {
+                        type: '$if',
+                        props: {
+                          condition: { $: 'local.chooserOpen' },
+                          then: {
+                            type: 'we-modal',
+                            props: { size: 'lg', close: { $setLocal: 'chooserOpen', value: false } },
+                            children: [
+                              {
+                                type: 'we-text',
+                                slot: 'header',
+                                props: { variant: 'heading-md' },
+                                children: ['Add to the canvas'],
+                              },
+                              {
+                                type: 'Column',
+                                props: { gap: '400', width: '100%' },
+                                $localState: { typeSearch: { type: 'string', initial: '' } },
+                                children: [
+                                  {
+                                    type: 'we-input',
+                                    props: {
+                                      value: { $: 'local.typeSearch' },
+                                      placeholder: 'Search types…',
+                                      autofocus: true,
+                                      width: '100%',
+                                      onInput: { $setLocal: 'typeSearch', value: { $: 'event.detail' } },
+                                      onKeyDown: {
+                                        $if: {
+                                          condition: {
+                                            $: "arg.detail.key == 'Enter' && count(distinct(recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via == 'composer'), recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via != 'composer' && k.group == 'This space'), distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).map(k, k.value)).filter(n, recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).exists(k, k.value == n && k.via != 'composer' && k.group != 'This space')).map(n, find(recordStore.creatableEntities, { value: n }))))",
+                                          },
+                                          then: [
+                                            { $setLocal: 'chooserOpen', value: false },
+                                            {
+                                              $if: {
+                                                condition: {
+                                                  $: "first(distinct(recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via == 'composer'), recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via != 'composer' && k.group == 'This space'), distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).map(k, k.value)).filter(n, recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).exists(k, k.value == n && k.via != 'composer' && k.group != 'This space')).map(n, find(recordStore.creatableEntities, { value: n })))).via == 'composer'",
+                                                },
+                                                then: { $setLocal: 'newNoteOpen', value: true },
+                                                else: [
+                                                  {
+                                                    $invoke: 'recordStore.createOnCanvas',
+                                                    args: [
+                                                      {
+                                                        $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''",
+                                                      },
+                                                      { $: 'local.newAt.x' },
+                                                      { $: 'local.newAt.y' },
+                                                    ],
+                                                  },
+                                                  {
+                                                    $invoke: 'recordStore.setRecordEntity',
+                                                    args: [
+                                                      {
+                                                        $: "first(distinct(recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via == 'composer'), recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via != 'composer' && k.group == 'This space'), distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).map(k, k.value)).filter(n, recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).exists(k, k.value == n && k.via != 'composer' && k.group != 'This space')).map(n, find(recordStore.creatableEntities, { value: n })))).value",
+                                                      },
+                                                    ],
+                                                  },
+                                                ],
+                                              },
+                                            },
+                                          ],
+                                        },
+                                      },
+                                    },
+                                    children: [
+                                      {
+                                        type: 'we-icon',
+                                        slot: 'start',
+                                        props: { name: 'magnifying-glass', color: 'text-muted', mr: '200' },
+                                      },
+                                    ],
+                                  },
+                                  {
+                                    type: '$if',
+                                    props: {
+                                      condition: {
+                                        $: "count(recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via == 'composer'))",
+                                      },
+                                      then: {
+                                        type: 'Column',
+                                        props: { gap: '200', width: '100%' },
+                                        children: [
+                                          {
+                                            type: 'Row',
+                                            props: { width: '100%', ay: 'center', gap: '200', flex: '0 0 auto' },
+                                            children: [
+                                              {
+                                                type: 'we-text',
+                                                props: {
+                                                  variant: 'footnote',
+                                                  color: 'text-faint',
+                                                  textTransform: 'uppercase',
+                                                  letterSpacing: 'wide',
+                                                  flex: '1',
+                                                },
+                                                children: ['Documents'],
+                                              },
+                                            ],
+                                          },
+                                          {
+                                            type: 'Grid',
+                                            props: { minChildWidth: '220px', gap: '200', width: '100%' },
+                                            children: [
+                                              {
+                                                type: '$each',
+                                                props: {
+                                                  items: {
+                                                    $: "recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via == 'composer')",
+                                                  },
+                                                  as: 'kind',
+                                                },
+                                                children: [
+                                                  {
+                                                    type: 'we-button',
+                                                    props: {
+                                                      variant: 'bare',
+                                                      width: '100%',
+                                                      height: '100%',
+                                                      ax: 'start',
+                                                      ay: 'start',
+                                                      p: '300',
+                                                      r: '300',
+                                                      bg: 'surface-sunken',
+                                                      border:
+                                                        '1px solid color-mix(in srgb, var(--we-role-border) 65%, var(--we-role-border-strong))',
+                                                      hoverProps: { bg: 'surface-hover' },
+                                                      label: { $: "(kind.via == 'composer' ? 'Note' : kind.label)" },
+                                                      onClick: [
+                                                        { $setLocal: 'chooserOpen', value: false },
+                                                        {
+                                                          $if: {
+                                                            condition: { $: "kind.via == 'composer'" },
+                                                            then: { $setLocal: 'newNoteOpen', value: true },
+                                                            else: [
+                                                              {
+                                                                $invoke: 'recordStore.createOnCanvas',
+                                                                args: [
+                                                                  {
+                                                                    $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''",
+                                                                  },
+                                                                  { $: 'local.newAt.x' },
+                                                                  { $: 'local.newAt.y' },
+                                                                ],
+                                                              },
+                                                              {
+                                                                $invoke: 'recordStore.setRecordEntity',
+                                                                args: [{ $: 'kind.value' }],
+                                                              },
+                                                            ],
+                                                          },
+                                                        },
+                                                      ],
+                                                    },
+                                                    children: [
+                                                      {
+                                                        type: 'Row',
+                                                        props: { gap: '300', ay: 'start', width: '100%' },
+                                                        children: [
+                                                          {
+                                                            type: 'Column',
+                                                            props: {
+                                                              width: '48px',
+                                                              height: '48px',
+                                                              flexShrink: '0',
+                                                              r: 'full',
+                                                              ax: 'center',
+                                                              ay: 'center',
+                                                              bg: 'surface-raised',
+                                                            },
+                                                            children: [
+                                                              {
+                                                                type: 'we-icon',
+                                                                props: {
+                                                                  name: {
+                                                                    $: "kind.via == 'composer' ? 'note' : kind.icon ? kind.icon : 'cube'",
+                                                                  },
+                                                                  color: 'text',
+                                                                },
+                                                              },
+                                                            ],
+                                                          },
+                                                          {
+                                                            type: 'Column',
+                                                            props: { gap: '100', flex: '1', minWidth: '0' },
+                                                            children: [
+                                                              {
+                                                                type: 'we-text',
+                                                                props: { variant: 'label' },
+                                                                children: [
+                                                                  {
+                                                                    $: "(kind.via == 'composer' ? 'Note' : kind.label)",
+                                                                  },
+                                                                ],
+                                                              },
+                                                              {
+                                                                type: '$if',
+                                                                props: {
+                                                                  condition: { $: 'kind.description' },
+                                                                  then: {
+                                                                    type: 'we-text',
+                                                                    props: { variant: 'footnote', color: 'text-muted' },
+                                                                    children: [{ $: 'kind.description' }],
+                                                                  },
+                                                                },
+                                                              },
+                                                            ],
+                                                          },
+                                                        ],
+                                                      },
+                                                    ],
+                                                  },
+                                                ],
+                                              },
+                                            ],
+                                          },
+                                        ],
+                                      },
+                                    },
+                                  },
+                                  {
+                                    type: '$if',
+                                    props: {
+                                      condition: {
+                                        $: "count(recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via != 'composer' && k.group == 'This space'))",
+                                      },
+                                      then: {
+                                        type: 'Column',
+                                        props: { gap: '200', width: '100%' },
+                                        children: [
+                                          {
+                                            type: 'Row',
+                                            props: { width: '100%', ay: 'center', gap: '200', flex: '0 0 auto' },
+                                            children: [
+                                              {
+                                                type: 'we-text',
+                                                props: {
+                                                  variant: 'footnote',
+                                                  color: 'text-faint',
+                                                  textTransform: 'uppercase',
+                                                  letterSpacing: 'wide',
+                                                  flex: '1',
+                                                },
+                                                children: ['This space'],
+                                              },
+                                            ],
+                                          },
+                                          {
+                                            type: 'Grid',
+                                            props: { minChildWidth: '220px', gap: '200', width: '100%' },
+                                            children: [
+                                              {
+                                                type: '$each',
+                                                props: {
+                                                  items: {
+                                                    $: "recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via != 'composer' && k.group == 'This space')",
+                                                  },
+                                                  as: 'kind',
+                                                },
+                                                children: [
+                                                  {
+                                                    type: 'we-button',
+                                                    props: {
+                                                      variant: 'bare',
+                                                      width: '100%',
+                                                      height: '100%',
+                                                      ax: 'start',
+                                                      ay: 'start',
+                                                      p: '300',
+                                                      r: '300',
+                                                      bg: 'surface-sunken',
+                                                      border:
+                                                        '1px solid color-mix(in srgb, var(--we-role-border) 65%, var(--we-role-border-strong))',
+                                                      hoverProps: { bg: 'surface-hover' },
+                                                      label: { $: "(kind.via == 'composer' ? 'Note' : kind.label)" },
+                                                      onClick: [
+                                                        { $setLocal: 'chooserOpen', value: false },
+                                                        {
+                                                          $if: {
+                                                            condition: { $: "kind.via == 'composer'" },
+                                                            then: { $setLocal: 'newNoteOpen', value: true },
+                                                            else: [
+                                                              {
+                                                                $invoke: 'recordStore.createOnCanvas',
+                                                                args: [
+                                                                  {
+                                                                    $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''",
+                                                                  },
+                                                                  { $: 'local.newAt.x' },
+                                                                  { $: 'local.newAt.y' },
+                                                                ],
+                                                              },
+                                                              {
+                                                                $invoke: 'recordStore.setRecordEntity',
+                                                                args: [{ $: 'kind.value' }],
+                                                              },
+                                                            ],
+                                                          },
+                                                        },
+                                                      ],
+                                                    },
+                                                    children: [
+                                                      {
+                                                        type: 'Row',
+                                                        props: { gap: '300', ay: 'start', width: '100%' },
+                                                        children: [
+                                                          {
+                                                            type: 'Column',
+                                                            props: {
+                                                              width: '48px',
+                                                              height: '48px',
+                                                              flexShrink: '0',
+                                                              r: 'full',
+                                                              ax: 'center',
+                                                              ay: 'center',
+                                                              bg: 'surface-raised',
+                                                            },
+                                                            children: [
+                                                              {
+                                                                type: 'we-icon',
+                                                                props: {
+                                                                  name: {
+                                                                    $: "kind.via == 'composer' ? 'note' : kind.icon ? kind.icon : 'cube'",
+                                                                  },
+                                                                  color: 'text',
+                                                                },
+                                                              },
+                                                            ],
+                                                          },
+                                                          {
+                                                            type: 'Column',
+                                                            props: { gap: '100', flex: '1', minWidth: '0' },
+                                                            children: [
+                                                              {
+                                                                type: 'we-text',
+                                                                props: { variant: 'label' },
+                                                                children: [
+                                                                  {
+                                                                    $: "(kind.via == 'composer' ? 'Note' : kind.label)",
+                                                                  },
+                                                                ],
+                                                              },
+                                                              {
+                                                                type: '$if',
+                                                                props: {
+                                                                  condition: { $: 'kind.description' },
+                                                                  then: {
+                                                                    type: 'we-text',
+                                                                    props: { variant: 'footnote', color: 'text-muted' },
+                                                                    children: [{ $: 'kind.description' }],
+                                                                  },
+                                                                },
+                                                              },
+                                                            ],
+                                                          },
+                                                        ],
+                                                      },
+                                                    ],
+                                                  },
+                                                ],
+                                              },
+                                            ],
+                                          },
+                                        ],
+                                      },
+                                    },
+                                  },
+                                  {
+                                    type: '$if',
+                                    props: {
+                                      condition: {
+                                        $: "count(distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).map(k, k.value)).filter(n, recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).exists(k, k.value == n && k.via != 'composer' && k.group != 'This space')).map(n, find(recordStore.creatableEntities, { value: n })))",
+                                      },
+                                      then: {
+                                        type: 'Column',
+                                        props: { gap: '200', width: '100%' },
+                                        children: [
+                                          {
+                                            type: 'Row',
+                                            props: { width: '100%', ay: 'center', gap: '200', flex: '0 0 auto' },
+                                            children: [
+                                              {
+                                                type: 'we-text',
+                                                props: {
+                                                  variant: 'footnote',
+                                                  color: 'text-faint',
+                                                  textTransform: 'uppercase',
+                                                  letterSpacing: 'wide',
+                                                  flex: '1',
+                                                },
+                                                children: ['Blocks'],
+                                              },
+                                            ],
+                                          },
+                                          {
+                                            type: 'Grid',
+                                            props: { minChildWidth: '220px', gap: '200', width: '100%' },
+                                            children: [
+                                              {
+                                                type: '$each',
+                                                props: {
+                                                  items: {
+                                                    $: "distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).map(k, k.value)).filter(n, recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).exists(k, k.value == n && k.via != 'composer' && k.group != 'This space')).map(n, find(recordStore.creatableEntities, { value: n }))",
+                                                  },
+                                                  as: 'kind',
+                                                },
+                                                children: [
+                                                  {
+                                                    type: 'we-button',
+                                                    props: {
+                                                      variant: 'bare',
+                                                      width: '100%',
+                                                      height: '100%',
+                                                      ax: 'start',
+                                                      ay: 'start',
+                                                      p: '300',
+                                                      r: '300',
+                                                      bg: 'surface-sunken',
+                                                      border:
+                                                        '1px solid color-mix(in srgb, var(--we-role-border) 65%, var(--we-role-border-strong))',
+                                                      hoverProps: { bg: 'surface-hover' },
+                                                      label: { $: "(kind.via == 'composer' ? 'Note' : kind.label)" },
+                                                      onClick: [
+                                                        { $setLocal: 'chooserOpen', value: false },
+                                                        {
+                                                          $if: {
+                                                            condition: { $: "kind.via == 'composer'" },
+                                                            then: { $setLocal: 'newNoteOpen', value: true },
+                                                            else: [
+                                                              {
+                                                                $invoke: 'recordStore.createOnCanvas',
+                                                                args: [
+                                                                  {
+                                                                    $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''",
+                                                                  },
+                                                                  { $: 'local.newAt.x' },
+                                                                  { $: 'local.newAt.y' },
+                                                                ],
+                                                              },
+                                                              {
+                                                                $invoke: 'recordStore.setRecordEntity',
+                                                                args: [{ $: 'kind.value' }],
+                                                              },
+                                                            ],
+                                                          },
+                                                        },
+                                                      ],
+                                                    },
+                                                    children: [
+                                                      {
+                                                        type: 'Row',
+                                                        props: { gap: '300', ay: 'start', width: '100%' },
+                                                        children: [
+                                                          {
+                                                            type: 'Column',
+                                                            props: {
+                                                              width: '48px',
+                                                              height: '48px',
+                                                              flexShrink: '0',
+                                                              r: 'full',
+                                                              ax: 'center',
+                                                              ay: 'center',
+                                                              bg: 'surface-raised',
+                                                            },
+                                                            children: [
+                                                              {
+                                                                type: 'we-icon',
+                                                                props: {
+                                                                  name: {
+                                                                    $: "kind.via == 'composer' ? 'note' : kind.icon ? kind.icon : 'cube'",
+                                                                  },
+                                                                  color: 'text',
+                                                                },
+                                                              },
+                                                            ],
+                                                          },
+                                                          {
+                                                            type: 'Column',
+                                                            props: { gap: '100', flex: '1', minWidth: '0' },
+                                                            children: [
+                                                              {
+                                                                type: 'we-text',
+                                                                props: { variant: 'label' },
+                                                                children: [
+                                                                  {
+                                                                    $: "(kind.via == 'composer' ? 'Note' : kind.label)",
+                                                                  },
+                                                                ],
+                                                              },
+                                                              {
+                                                                type: '$if',
+                                                                props: {
+                                                                  condition: { $: 'kind.description' },
+                                                                  then: {
+                                                                    type: 'we-text',
+                                                                    props: { variant: 'footnote', color: 'text-muted' },
+                                                                    children: [{ $: 'kind.description' }],
+                                                                  },
+                                                                },
+                                                              },
+                                                            ],
+                                                          },
+                                                        ],
+                                                      },
+                                                    ],
+                                                  },
+                                                ],
+                                              },
+                                            ],
+                                          },
+                                        ],
+                                      },
+                                    },
+                                  },
+                                  {
+                                    type: '$if',
+                                    props: {
+                                      condition: {
+                                        $: "!count(recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)))",
+                                      },
+                                      then: {
+                                        type: 'we-text',
+                                        props: { variant: 'footnote', color: 'text-muted' },
+                                        children: [{ $: "'Nothing matches \"' + local.typeSearch + '\"'" }],
+                                      },
+                                    },
+                                  },
+                                ],
+                              },
+                            ],
+                          },
+                        },
+                      },
+                      {
+                        type: '$if',
+                        props: {
+                          condition: { $: 'local.newNoteOpen' },
+                          then: {
+                            type: 'we-modal',
+                            props: {
+                              size: 'lg',
+                              close: {
+                                $if: {
+                                  condition: { $: 'local.draftDirty' },
+                                  then: { $setLocal: 'confirmDiscardOpen', value: true },
+                                  else: { $setLocal: 'newNoteOpen', value: false },
+                                },
+                              },
+                            },
+                            $localState: {
+                              savePost: { type: 'function', initial: null },
+                              submitting: { type: 'boolean', initial: false },
+                              draftDirty: { type: 'boolean', initial: false },
+                              confirmDiscardOpen: { type: 'boolean', initial: false },
+                              discardGoesBack: { type: 'boolean', initial: false },
+                            },
+                            children: [
+                              {
+                                type: 'we-tooltip',
+                                props: { content: 'Back' },
+                                children: [
+                                  {
+                                    type: 'we-button',
+                                    props: {
+                                      variant: 'ghost',
+                                      size: 'sm',
+                                      square: true,
+                                      label: 'Back',
+                                      onClick: {
+                                        $if: {
+                                          condition: { $: 'local.draftDirty' },
+                                          then: [
+                                            { $setLocal: 'discardGoesBack', value: true },
+                                            { $setLocal: 'confirmDiscardOpen', value: true },
+                                          ],
+                                          else: [
+                                            { $setLocal: 'newNoteOpen', value: false },
+                                            { $setLocal: 'chooserOpen', value: true },
+                                          ],
+                                        },
+                                      },
+                                    },
+                                    children: [{ type: 'we-icon', props: { name: 'arrow-left' } }],
+                                  },
+                                ],
+                                slot: 'start-button',
+                              },
+                              {
+                                type: 'Row',
+                                props: { gap: '300', ay: 'center', width: '100%' },
+                                children: [
+                                  {
+                                    type: 'Column',
+                                    props: {
+                                      width: '56px',
+                                      height: '56px',
+                                      flexShrink: '0',
+                                      r: 'full',
+                                      ax: 'center',
+                                      ay: 'center',
+                                      bg: 'surface-sunken',
+                                    },
+                                    children: [{ type: 'we-icon', props: { name: 'note', color: 'text' } }],
+                                  },
+                                  { type: 'we-text', props: { variant: 'heading-md' }, children: ['New note'] },
+                                ],
+                              },
+                              {
+                                type: 'Column',
+                                props: {
+                                  width: '100%',
+                                  bg: 'surface-raised',
+                                  p: '600',
+                                  pl: '900',
+                                  r: '400',
+                                  overflow: 'auto',
+                                },
+                                children: [
+                                  {
+                                    type: 'BlockComposer',
+                                    props: {
+                                      onDirtyChange: { $setLocal: 'draftDirty', value: { $: 'event' } },
+                                      onReady: { $setLocal: 'savePost', value: { $: 'event.save' } },
+                                      onSave: [
+                                        { $setLocal: 'submitting', value: true },
+                                        {
+                                          $invoke: 'recordStore.createCardOnCanvas',
+                                          args: [
+                                            { $: 'arg' },
+                                            {
+                                              canvas: {
+                                                $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''",
+                                              },
+                                              at: { $: 'local.newAt' },
+                                            },
+                                          ],
+                                          onSuccess: [
+                                            { $setLocal: 'newNoteOpen', value: false },
+                                            { $setLocal: 'newAt', value: null },
+                                          ],
+                                          onFinally: [{ $setLocal: 'submitting', value: false }],
+                                        },
+                                      ],
+                                    },
+                                  },
+                                ],
+                              },
+                              {
+                                type: 'Row',
+                                props: { gap: '300', ax: 'end', mt: '200', width: '100%' },
+                                children: [
+                                  {
+                                    type: 'we-button',
+                                    props: {
+                                      variant: 'soft',
+                                      onClick: {
+                                        $if: {
+                                          condition: { $: 'local.draftDirty' },
+                                          then: { $setLocal: 'confirmDiscardOpen', value: true },
+                                          else: { $setLocal: 'newNoteOpen', value: false },
+                                        },
+                                      },
+                                    },
+                                    children: ['Cancel'],
+                                  },
+                                  {
+                                    type: 'we-button',
+                                    props: {
+                                      variant: 'solid',
+                                      loading: { $: 'local.submitting' },
+                                      disabled: { $: 'local.submitting' },
+                                      onClick: { $callLocal: 'savePost' },
+                                    },
+                                    children: ['Add'],
+                                  },
+                                ],
+                              },
+                              {
+                                type: '$if',
+                                props: {
+                                  condition: { $: 'local.confirmDiscardOpen' },
+                                  then: {
+                                    type: 'we-modal',
+                                    props: {
+                                      size: 'sm',
+                                      close: [
+                                        { $setLocal: 'confirmDiscardOpen', value: false },
+                                        { $setLocal: 'discardGoesBack', value: false },
+                                      ],
+                                    },
+                                    children: [
+                                      {
+                                        type: 'Row',
+                                        slot: 'header',
+                                        props: { gap: '300', ay: 'center' },
+                                        children: [
+                                          { type: 'we-icon', props: { name: 'warning', color: 'danger-text' } },
+                                          {
+                                            type: 'we-text',
+                                            props: { variant: 'heading-sm' },
+                                            children: ['Discard your changes?'],
+                                          },
+                                        ],
+                                      },
+                                      {
+                                        type: 'Column',
+                                        props: { gap: '300' },
+                                        children: [
+                                          {
+                                            type: 'we-text',
+                                            children: ['What you have typed will be lost. Nothing has been saved yet.'],
+                                          },
+                                        ],
+                                      },
+                                      {
+                                        type: 'Row',
+                                        slot: 'footer',
+                                        props: { ax: 'end', gap: '300' },
+                                        children: [
+                                          {
+                                            type: 'we-button',
+                                            props: {
+                                              variant: 'soft',
+                                              onClick: [
+                                                { $setLocal: 'confirmDiscardOpen', value: false },
+                                                { $setLocal: 'discardGoesBack', value: false },
+                                              ],
+                                            },
+                                            children: ['Keep editing'],
+                                          },
+                                          {
+                                            type: 'we-button',
+                                            props: {
+                                              variant: 'solid',
+                                              tone: 'danger',
+                                              onClick: [
+                                                {
+                                                  $if: {
+                                                    condition: { $: 'local.discardGoesBack' },
+                                                    then: [
+                                                      { $setLocal: 'newNoteOpen', value: false },
+                                                      { $setLocal: 'chooserOpen', value: true },
+                                                    ],
+                                                    else: { $setLocal: 'newNoteOpen', value: false },
+                                                  },
+                                                },
+                                                { $setLocal: 'confirmDiscardOpen', value: false },
+                                                { $setLocal: 'discardGoesBack', value: false },
+                                              ],
+                                            },
+                                            children: ['Discard'],
+                                          },
+                                        ],
+                                      },
+                                    ],
+                                  },
+                                },
+                              },
+                            ],
+                          },
+                        },
+                      },
+                    ],
+                  },
+                  else: { type: '$routes' },
+                },
+              },
+            ],
+          },
         ],
         routes: [
           {
@@ -2433,46 +5298,26 @@ export const seedBundles: Bundle[] = [
                   },
                   {
                     type: 'Row',
-                    props: { gap: '100', p: '100', r: 'control', bg: 'surface-sunken' },
+                    props: { gap: '100', p: '100', r: 'control', bg: 'surface-sunken', flexShrink: 0 },
                     children: [
                       {
                         type: 'we-button',
                         props: {
                           size: 'sm',
-                          variant: {
-                            $: "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == '' ? 'soft' : 'ghost'",
-                          },
-                          onClick: {
-                            $invoke: 'routeStore.navigate',
-                            args: [
-                              {
-                                $: "spaceStore.spacePath + '?channel=' + (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)",
-                              },
-                            ],
-                          },
+                          variant: { $: "!(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
+                          onClick: [
+                            { $invoke: 'routeStore.setParam', args: ['view', null] },
+                            { $invoke: 'routeStore.setParam', args: ['dna', null] },
+                          ],
                         },
-                        children: [
-                          { type: 'we-icon', props: { name: 'chat-circle' } },
-                          {
-                            $: "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? 'Feed' : 'Chat'",
-                          },
-                        ],
+                        children: [{ type: 'we-icon', props: { name: 'file-text' } }, 'Page'],
                       },
                       {
                         type: 'we-button',
                         props: {
                           size: 'sm',
-                          variant: {
-                            $: "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'canvas' ? 'soft' : 'ghost'",
-                          },
-                          onClick: {
-                            $invoke: 'routeStore.navigate',
-                            args: [
-                              {
-                                $: "spaceStore.spacePath + '/canvas?channel=' + (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)",
-                              },
-                            ],
-                          },
+                          variant: { $: "(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
+                          onClick: { $invoke: 'routeStore.setParam', args: ['view', 'canvas'] },
                         },
                         children: [{ type: 'we-icon', props: { name: 'squares-four' } }, 'Canvas'],
                       },
@@ -2757,2613 +5602,6 @@ export const seedBundles: Bundle[] = [
             ],
           },
           {
-            path: '/canvas',
-            type: 'Column',
-            props: { width: '100%', height: '100%' },
-            $queries: {
-              channelRecord: {
-                entity: 'CollectionBlock',
-                where: { id: { $: 'routeStore.params.channel ? routeStore.params.channel : spaceStore.root' } },
-                limit: 1,
-                when: {
-                  $: '!((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root)',
-                },
-              },
-            },
-            $localState: {
-              newAt: { type: 'object', initial: null },
-              chooserOpen: { type: 'boolean', initial: false },
-              newNoteOpen: { type: 'boolean', initial: false },
-              noteOpen: { type: 'boolean', initial: false },
-            },
-            children: [
-              {
-                type: 'Row',
-                props: {
-                  gap: '300',
-                  ay: 'center',
-                  px: '500',
-                  py: '300',
-                  borderBottom: '1px solid border',
-                  minHeight: '56px',
-                },
-                children: [
-                  {
-                    type: '$if',
-                    props: {
-                      condition: { $: "'tree' in shellStore.collapsedLanes" },
-                      then: {
-                        type: 'we-tooltip',
-                        props: { content: 'Show the sidebar', placement: 'bottom' },
-                        children: [
-                          {
-                            type: 'we-button',
-                            props: {
-                              variant: 'ghost',
-                              size: 'md',
-                              square: true,
-                              label: 'Show the sidebar',
-                              onClick: { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', false] },
-                            },
-                            children: [{ type: 'we-icon', props: { name: 'sidebar-simple' } }],
-                          },
-                        ],
-                      },
-                    },
-                  },
-                  {
-                    type: 'we-icon',
-                    props: {
-                      name: {
-                        $: "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? 'chats-circle' : 'hash'",
-                      },
-                      color: 'text-muted',
-                    },
-                  },
-                  {
-                    type: 'Row',
-                    props: { flex: '1', minWidth: '0', gap: '100', ay: 'center' },
-                    children: [
-                      {
-                        type: 'we-text',
-                        props: { variant: 'heading-sm', truncate: true, minWidth: '0' },
-                        children: [
-                          {
-                            $: "(routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root ? 'Feed' : (first(local.channelRecord).title ? first(local.channelRecord).title : 'Channel')",
-                          },
-                        ],
-                      },
-                    ],
-                  },
-                  {
-                    type: 'Row',
-                    props: { gap: '100', p: '100', r: 'control', bg: 'surface-sunken' },
-                    children: [
-                      {
-                        type: 'we-button',
-                        props: {
-                          size: 'sm',
-                          variant: {
-                            $: "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == '' ? 'soft' : 'ghost'",
-                          },
-                          onClick: {
-                            $invoke: 'routeStore.navigate',
-                            args: [
-                              {
-                                $: "spaceStore.spacePath + '?channel=' + (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)",
-                              },
-                            ],
-                          },
-                        },
-                        children: [
-                          { type: 'we-icon', props: { name: 'chat-circle' } },
-                          {
-                            $: "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? 'Feed' : 'Chat'",
-                          },
-                        ],
-                      },
-                      {
-                        type: 'we-button',
-                        props: {
-                          size: 'sm',
-                          variant: {
-                            $: "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'canvas' ? 'soft' : 'ghost'",
-                          },
-                          onClick: {
-                            $invoke: 'routeStore.navigate',
-                            args: [
-                              {
-                                $: "spaceStore.spacePath + '/canvas?channel=' + (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)",
-                              },
-                            ],
-                          },
-                        },
-                        children: [{ type: 'we-icon', props: { name: 'squares-four' } }, 'Canvas'],
-                      },
-                    ],
-                  },
-                ],
-              },
-              {
-                type: 'Column',
-                props: { flex: '1', minHeight: '0' },
-                children: [
-                  {
-                    type: 'GraphView',
-                    props: {
-                      width: '100%',
-                      height: '100%',
-                      seeds: {
-                        source: 'canvas',
-                        options: {
-                          canvas: {
-                            $: "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)",
-                          },
-                          members: {
-                            id: { $: 'routeStore.params.channel ? routeStore.params.channel : spaceStore.root' },
-                            via: 'children',
-                          },
-                          contains: { $: 'shapeStore.extractionCandidates' },
-                          origin: 'extractedFrom',
-                          connections: 'Relationship',
-                          routes: 'EdgeRoute',
-                          pending: { $: 'modules.transcribe.unconfirmedIds' },
-                          changed: { $: 'modules.transcribe.changedIds' },
-                          counts: ['signals', 'responses'],
-                        },
-                      },
-                      layout: { type: 'manual', options: { size: { width: 200, height: 140 } } },
-                      backdrop: { pattern: 'dots', gap: 24 },
-                      nodeStyle: [
-                        { style: { shape: 'card', width: 200, height: 140, content: 'record', contentMinZoom: 0.4 } },
-                        {
-                          style: {
-                            width: { from: 'data.canvasWidth' },
-                            height: { from: 'data.canvasHeight' },
-                            color: { from: 'data.canvasColor' },
-                            cardShape: { from: 'data.canvasCardShape' },
-                            contentScale: { from: 'data.canvasContentScale' },
-                          },
-                        },
-                        {
-                          when: { 'data.pending': true },
-                          style: { opacity: 0.5, borderStyle: 'dashed', borderColor: 'border-strong', borderWidth: 2 },
-                        },
-                        { when: { 'data.changed': true }, style: { borderColor: 'warning-text', borderWidth: 2 } },
-                      ],
-                      behaviours: [
-                        { type: 'connect-nodes', options: { button: 'secondary' } },
-                        'node-double-click',
-                        'canvas-double-click',
-                        'marquee-select',
-                        'select',
-                        { type: 'drag-node', options: { pin: true } },
-                        'pan-zoom',
-                      ],
-                      resizable: true,
-                      empty: {
-                        $: "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (routeStore.params.channel ? routeStore.params.channel : spaceStore.root) ? 'Nothing here yet. Double-click to make something, or drop something in from Pocket.' : 'This space has no canvas.'",
-                      },
-                      emptyIcon: 'squares-four',
-                      onEdgeCreate: { $invoke: 'recordStore.connectNodesNow', args: [{ $: 'event' }], onSuccess: [] },
-                      onNodeDragEnd: {
-                        $invoke: 'recordStore.dragOnCanvas',
-                        args: [
-                          {
-                            $: "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)",
-                          },
-                          { $: 'event' },
-                        ],
-                      },
-                      onNodeResize: {
-                        $invoke: 'recordStore.resizeOnCanvas',
-                        args: [
-                          {
-                            $: "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)",
-                          },
-                          { $: 'event' },
-                        ],
-                      },
-                      onEdgeAnchor: {
-                        $invoke: 'recordStore.anchorOnCanvas',
-                        args: [
-                          {
-                            $: "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)",
-                          },
-                          { $: 'event' },
-                        ],
-                      },
-                      onEdgeReroute: {
-                        $invoke: 'recordStore.rerouteOnCanvas',
-                        args: [
-                          {
-                            $: "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)",
-                          },
-                          { $: 'event' },
-                        ],
-                      },
-                      onEdgeRetarget: {
-                        $invoke: 'recordStore.retargetOnCanvas',
-                        args: [
-                          {
-                            $: "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)",
-                          },
-                          { $: 'event' },
-                        ],
-                      },
-                      onDrop: {
-                        $invoke: 'recordStore.dropOnCanvas',
-                        args: [
-                          {
-                            $: "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)",
-                          },
-                          { $: 'event' },
-                        ],
-                      },
-                      onDeleteSelection: [
-                        {
-                          $if: {
-                            condition: { $: 'count(event.records)' },
-                            then: { $invoke: 'recordStore.deleteRecords', args: [{ $: 'event.records' }] },
-                          },
-                        },
-                        {
-                          $if: {
-                            condition: { $: "event.kind == 'edge' && event.recordId" },
-                            then: {
-                              $invoke: 'recordStore.deleteRecords',
-                              args: [{ $: '[{ recordId: event.recordId, recordType: event.recordType }]' }],
-                            },
-                          },
-                        },
-                      ],
-                      onUndo: {
-                        $invoke: 'recordStore.undoCanvas',
-                        args: [
-                          {
-                            $: "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)",
-                          },
-                        ],
-                      },
-                      onRedo: {
-                        $invoke: 'recordStore.redoCanvas',
-                        args: [
-                          {
-                            $: "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)",
-                          },
-                        ],
-                      },
-                      carry: true,
-                      selectionActions: [
-                        { id: 'color', control: 'color', title: 'Colour', value: { from: 'data.canvasColor' } },
-                        { id: 'delete', icon: 'trash', title: 'Delete', tone: 'danger' },
-                      ],
-                      onSelectionAction: [
-                        {
-                          $if: {
-                            condition: { $: "event.action == 'delete'" },
-                            then: { $invoke: 'recordStore.deleteRecords', args: [{ $: 'event.records' }] },
-                          },
-                        },
-                        {
-                          $if: {
-                            condition: { $: "event.action == 'color' && event.preview" },
-                            then: {
-                              $invoke: 'recordStore.previewCardStyle',
-                              args: [{ $: 'event.records.map(r, r.recordId)' }, 'color', { $: 'event.value' }],
-                            },
-                          },
-                        },
-                        {
-                          $if: {
-                            condition: { $: "event.action == 'color' && !event.preview" },
-                            then: {
-                              $invoke: 'recordStore.setCardStyle',
-                              args: [
-                                {
-                                  $: "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)",
-                                },
-                                { $: 'event.records.map(r, r.recordId)' },
-                                'color',
-                                { $: 'event.value' },
-                              ],
-                            },
-                          },
-                        },
-                      ],
-                      nodeActions: [
-                        {
-                          id: 'accept',
-                          icon: 'check',
-                          title: 'Accept',
-                          when: { 'data.pending': true },
-                          tone: 'positive',
-                        },
-                        { id: 'reject', icon: 'x', title: 'Reject', when: { 'data.pending': true }, tone: 'danger' },
-                        {
-                          id: 'review',
-                          icon: 'pencil-simple-line',
-                          title: 'Review pending change',
-                          when: { 'data.changed': true },
-                        },
-                        {
-                          id: 'color',
-                          control: 'color',
-                          title: 'Colour',
-                          value: { from: 'data.canvasColor' },
-                          when: { 'data.pending': { exists: false } },
-                        },
-                        {
-                          id: 'cardShape',
-                          control: 'shape',
-                          title: 'Shape',
-                          value: { from: 'data.canvasCardShape' },
-                          when: { 'data.pending': { exists: false } },
-                        },
-                        {
-                          id: 'contentScale',
-                          control: 'scale',
-                          title: 'Content size',
-                          value: { from: 'data.canvasContentScale' },
-                          when: { 'data.pending': { exists: false } },
-                        },
-                        {
-                          id: 'delete',
-                          icon: 'trash',
-                          title: 'Delete',
-                          when: { 'data.pending': { exists: false } },
-                          tone: 'danger',
-                        },
-                      ],
-                      onNodeAction: [
-                        {
-                          $if: {
-                            condition: { $: "event.action == 'review'" },
-                            then: {
-                              $invoke: 'routeStore.navigate',
-                              args: [
-                                { $: "spaceStore.spacePath + '/record/' + event.recordType + '?id=' + event.recordId" },
-                              ],
-                            },
-                          },
-                        },
-                        {
-                          $if: {
-                            condition: { $: "event.action == 'accept'" },
-                            then: [
-                              { $invoke: 'modules.transcribe.acceptProposal', args: [{ $: 'event.recordId' }] },
-                              {
-                                $invoke: 'recordStore.placeOnCanvas',
-                                args: [
-                                  {
-                                    $: "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)",
-                                  },
-                                  { $: 'event.recordId' },
-                                  { $: 'event.recordType' },
-                                  { $: 'event.x' },
-                                  { $: 'event.y' },
-                                ],
-                              },
-                            ],
-                          },
-                        },
-                        {
-                          $if: {
-                            condition: { $: "event.action == 'reject'" },
-                            then: { $invoke: 'modules.transcribe.rejectProposal', args: [{ $: 'event.recordId' }] },
-                          },
-                        },
-                        {
-                          $if: {
-                            condition: { $: "event.action == 'delete'" },
-                            then: {
-                              $invoke: 'record.delete',
-                              args: [{ $: 'event.recordType' }, { $: 'event.recordId' }],
-                            },
-                          },
-                        },
-                        {
-                          $if: {
-                            condition: { $: "event.action in ['color', 'cardShape', 'contentScale'] && event.preview" },
-                            then: {
-                              $invoke: 'recordStore.previewCardStyle',
-                              args: [{ $: 'event.recordId' }, { $: 'event.action' }, { $: 'event.value' }],
-                            },
-                          },
-                        },
-                        {
-                          $if: {
-                            condition: {
-                              $: "event.action in ['color', 'cardShape', 'contentScale'] && !event.preview",
-                            },
-                            then: {
-                              $invoke: 'recordStore.setCardStyle',
-                              args: [
-                                {
-                                  $: "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)",
-                                },
-                                { $: 'event.recordId' },
-                                { $: 'event.action' },
-                                { $: 'event.value' },
-                              ],
-                            },
-                          },
-                        },
-                      ],
-                      onCanvasDoubleClick: {
-                        $if: {
-                          condition: {
-                            $: "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)",
-                          },
-                          then: [
-                            { $setLocal: 'newAt', value: { $: 'event' } },
-                            { $setLocal: 'chooserOpen', value: true },
-                          ],
-                        },
-                      },
-                      onNodeDoubleClick: {
-                        $invoke: 'routeStore.navigate',
-                        args: [{ $: "spaceStore.spacePath + '/record/' + event.recordType + '?id=' + event.recordId" }],
-                      },
-                    },
-                  },
-                ],
-              },
-              {
-                type: '$if',
-                props: {
-                  condition: { $: 'recordStore.recordDraft' },
-                  then: {
-                    type: 'we-modal',
-                    props: {
-                      size: 'md',
-                      close: {
-                        $if: {
-                          condition: { $: 'recordStore.recordDraftDirty' },
-                          then: { $setLocal: 'confirmDiscardOpen', value: true },
-                          else: { $invoke: 'recordStore.cancelRecordForm' },
-                        },
-                      },
-                    },
-                    $queries: { relationshipKinds: { entity: 'RelationshipType', order: { name: 'asc' } } },
-                    $localState: {
-                      confirmDiscardOpen: { type: 'boolean', initial: false },
-                      discardGoesBack: { type: 'boolean', initial: false },
-                    },
-                    children: [
-                      {
-                        type: '$if',
-                        props: {
-                          condition: { $: '!recordStore.pendingLink' },
-                          then: {
-                            type: 'we-tooltip',
-                            props: { content: 'Back' },
-                            children: [
-                              {
-                                type: 'we-button',
-                                props: {
-                                  variant: 'ghost',
-                                  size: 'sm',
-                                  square: true,
-                                  label: 'Back',
-                                  onClick: {
-                                    $if: {
-                                      condition: { $: 'recordStore.recordDraftDirty' },
-                                      then: [
-                                        { $setLocal: 'discardGoesBack', value: true },
-                                        { $setLocal: 'confirmDiscardOpen', value: true },
-                                      ],
-                                      else: [
-                                        { $invoke: 'recordStore.cancelRecordForm' },
-                                        { $setLocal: 'chooserOpen', value: true },
-                                      ],
-                                    },
-                                  },
-                                },
-                                children: [{ type: 'we-icon', props: { name: 'arrow-left' } }],
-                              },
-                            ],
-                            slot: 'start-button',
-                          },
-                        },
-                      },
-                      {
-                        type: 'Row',
-                        props: { gap: '300', ay: 'center', width: '100%' },
-                        slot: 'header',
-                        children: [
-                          {
-                            type: 'Column',
-                            props: {
-                              width: '56px',
-                              height: '56px',
-                              flexShrink: '0',
-                              r: 'full',
-                              ax: 'center',
-                              ay: 'center',
-                              bg: 'surface-sunken',
-                            },
-                            children: [
-                              {
-                                type: 'we-icon',
-                                props: { name: { $: 'recordStore.recordDraft.icon' }, color: 'text' },
-                              },
-                            ],
-                          },
-                          {
-                            type: 'we-text',
-                            props: { variant: 'heading-md' },
-                            children: [{ $: '`New ${recordStore.recordDraft.label}`' }],
-                          },
-                        ],
-                      },
-                      {
-                        type: '$if',
-                        props: {
-                          condition: { $: 'recordStore.pendingLink' },
-                          then: {
-                            type: 'Row',
-                            props: {
-                              gap: '200',
-                              ay: 'center',
-                              wrap: true,
-                              width: '100%',
-                              bg: 'surface-sunken',
-                              r: '300',
-                              px: '300',
-                              py: '200',
-                            },
-                            children: [
-                              {
-                                type: 'we-text',
-                                props: { variant: 'label', truncate: true },
-                                children: [{ $: 'recordStore.pendingLink.sourceLabel' }],
-                              },
-                              { type: 'we-icon', props: { name: 'arrow-right', size: 'xs', color: 'text-faint' } },
-                              {
-                                type: 'we-text',
-                                props: { variant: 'label', truncate: true },
-                                children: [{ $: 'recordStore.pendingLink.targetLabel' }],
-                              },
-                            ],
-                          },
-                        },
-                      },
-                      {
-                        type: '$if',
-                        props: {
-                          condition: { $: 'recordStore.pendingLink && count(local.relationshipKinds)' },
-                          then: {
-                            type: 'we-form-field',
-                            props: { label: 'Kind', width: '100%' },
-                            children: [
-                              {
-                                type: 'Row',
-                                props: { gap: '200', ay: 'center', width: '100%' },
-                                children: [
-                                  {
-                                    type: 'we-select',
-                                    props: {
-                                      flex: '1',
-                                      minWidth: '0',
-                                      placeholder: 'Unnamed kind',
-                                      options: {
-                                        $: 'local.relationshipKinds.map(item, { label: item.name, value: item.id, icon: item.icon })',
-                                      },
-                                      value: { $: 'recordStore.relationshipKind' },
-                                      onChange: {
-                                        $invoke: 'recordStore.setRelationshipKind',
-                                        args: [{ $: 'event.detail' }],
-                                      },
-                                    },
-                                  },
-                                  {
-                                    type: '$if',
-                                    props: {
-                                      condition: { $: 'recordStore.relationshipKind' },
-                                      then: {
-                                        type: 'we-tooltip',
-                                        props: { content: 'Leave the kind unnamed' },
-                                        children: [
-                                          {
-                                            type: 'we-button',
-                                            props: {
-                                              variant: 'ghost',
-                                              square: true,
-                                              label: 'Leave the kind unnamed',
-                                              flexShrink: '0',
-                                              onClick: { $invoke: 'recordStore.setRelationshipKind', args: [''] },
-                                            },
-                                            children: [{ type: 'we-icon', props: { name: 'x' } }],
-                                          },
-                                        ],
-                                      },
-                                    },
-                                  },
-                                ],
-                              },
-                            ],
-                          },
-                        },
-                      },
-                      {
-                        type: '$if',
-                        props: {
-                          condition: {
-                            $: "recordStore.recordDraft.fields.exists(f, f.name == 'latitude') && recordStore.recordDraft.fields.exists(f, f.name == 'longitude')",
-                          },
-                          then: {
-                            type: 'we-form-field',
-                            props: { label: 'Location', width: '100%' },
-                            children: [
-                              {
-                                type: 'we-location-picker',
-                                props: {
-                                  width: '100%',
-                                  latitude: {
-                                    $: "find(recordStore.recordDraft.fields, { name: 'latitude' }).value == '' ? null : find(recordStore.recordDraft.fields, { name: 'latitude' }).value",
-                                  },
-                                  longitude: {
-                                    $: "find(recordStore.recordDraft.fields, { name: 'longitude' }).value == '' ? null : find(recordStore.recordDraft.fields, { name: 'longitude' }).value",
-                                  },
-                                  placeholder: 'Pin it on the map…',
-                                  onChange: { $invoke: 'recordStore.setRecordPlace', args: [{ $: 'arg.detail' }] },
-                                },
-                              },
-                            ],
-                          },
-                        },
-                      },
-                      {
-                        type: '$each',
-                        props: {
-                          items: {
-                            $: "recordStore.recordDraft.fields.filter(f, !(recordStore.recordDraft.fields.exists(f, f.name == 'latitude') && recordStore.recordDraft.fields.exists(f, f.name == 'longitude')) || !(f.name in ['latitude', 'longitude']))",
-                          },
-                          as: 'field',
-                        },
-                        children: [
-                          {
-                            type: 'Column',
-                            props: { width: '100%' },
-                            children: [
-                              {
-                                type: '$if',
-                                props: {
-                                  condition: { $: "field.control == 'text'" },
-                                  then: {
-                                    type: 'we-form-field',
-                                    props: {
-                                      label: { $: 'field.label' },
-                                      required: { $: 'field.required' },
-                                      width: '100%',
-                                    },
-                                    children: [
-                                      {
-                                        type: 'we-input',
-                                        props: {
-                                          value: { $: 'field.value' },
-                                          width: '100%',
-                                          onInput: {
-                                            $invoke: 'recordStore.setRecordField',
-                                            args: [{ $: 'field.name' }, { $: 'event.detail' }],
-                                          },
-                                          placeholder: { $: 'field.placeholder' },
-                                        },
-                                      },
-                                    ],
-                                  },
-                                },
-                              },
-                              {
-                                type: '$if',
-                                props: {
-                                  condition: { $: "field.control == 'url'" },
-                                  then: {
-                                    type: 'we-form-field',
-                                    props: {
-                                      label: { $: 'field.label' },
-                                      required: { $: 'field.required' },
-                                      width: '100%',
-                                    },
-                                    children: [
-                                      {
-                                        type: 'we-input',
-                                        props: {
-                                          value: { $: 'field.value' },
-                                          width: '100%',
-                                          onInput: {
-                                            $invoke: 'recordStore.setRecordField',
-                                            args: [{ $: 'field.name' }, { $: 'event.detail' }],
-                                          },
-                                          type: 'url',
-                                          placeholder: { $: 'field.placeholder' },
-                                        },
-                                      },
-                                    ],
-                                  },
-                                },
-                              },
-                              {
-                                type: '$if',
-                                props: {
-                                  condition: { $: "field.control == 'textarea'" },
-                                  then: {
-                                    type: 'we-form-field',
-                                    props: {
-                                      label: { $: 'field.label' },
-                                      required: { $: 'field.required' },
-                                      width: '100%',
-                                    },
-                                    children: [
-                                      {
-                                        type: 'we-textarea',
-                                        props: {
-                                          value: { $: 'field.value' },
-                                          width: '100%',
-                                          onInput: {
-                                            $invoke: 'recordStore.setRecordField',
-                                            args: [{ $: 'field.name' }, { $: 'event.detail' }],
-                                          },
-                                          rows: 3,
-                                          placeholder: { $: 'field.placeholder' },
-                                        },
-                                      },
-                                    ],
-                                  },
-                                },
-                              },
-                              {
-                                type: '$if',
-                                props: {
-                                  condition: { $: "field.control == 'number'" },
-                                  then: {
-                                    type: 'we-form-field',
-                                    props: {
-                                      label: { $: 'field.label' },
-                                      required: { $: 'field.required' },
-                                      width: '100%',
-                                    },
-                                    children: [
-                                      {
-                                        type: 'we-number-input',
-                                        props: {
-                                          value: { $: 'field.value' },
-                                          width: '12rem',
-                                          maxWidth: '100%',
-                                          alignSelf: 'start',
-                                          onChange: {
-                                            $invoke: 'recordStore.setRecordField',
-                                            args: [{ $: 'field.name' }, { $: 'event.detail' }],
-                                          },
-                                          placeholder: { $: 'field.placeholder' },
-                                        },
-                                      },
-                                    ],
-                                  },
-                                },
-                              },
-                              {
-                                type: '$if',
-                                props: {
-                                  condition: { $: "field.control == 'switch'" },
-                                  then: {
-                                    type: 'we-form-field',
-                                    props: {
-                                      label: { $: 'field.label' },
-                                      required: { $: 'field.required' },
-                                      width: '100%',
-                                    },
-                                    children: [
-                                      {
-                                        type: 'we-switch',
-                                        props: {
-                                          checked: { $: 'field.value' },
-                                          width: '100%',
-                                          onChange: {
-                                            $invoke: 'recordStore.setRecordField',
-                                            args: [{ $: 'field.name' }, { $: 'event.detail' }],
-                                          },
-                                        },
-                                      },
-                                    ],
-                                  },
-                                },
-                              },
-                              {
-                                type: '$if',
-                                props: {
-                                  condition: { $: "field.control == 'select'" },
-                                  then: {
-                                    type: 'we-form-field',
-                                    props: {
-                                      label: { $: 'field.label' },
-                                      required: { $: 'field.required' },
-                                      width: '100%',
-                                    },
-                                    children: [
-                                      {
-                                        type: 'we-select',
-                                        props: {
-                                          value: { $: 'field.value' },
-                                          width: '12rem',
-                                          maxWidth: '100%',
-                                          alignSelf: 'start',
-                                          onChange: {
-                                            $invoke: 'recordStore.setRecordField',
-                                            args: [{ $: 'field.name' }, { $: 'event.detail' }],
-                                          },
-                                          options: { $: 'field.options' },
-                                        },
-                                      },
-                                    ],
-                                  },
-                                },
-                              },
-                              {
-                                type: '$if',
-                                props: {
-                                  condition: { $: "field.control == 'date'" },
-                                  then: {
-                                    type: 'we-form-field',
-                                    props: {
-                                      label: { $: 'field.label' },
-                                      required: { $: 'field.required' },
-                                      width: '100%',
-                                    },
-                                    children: [
-                                      {
-                                        type: 'we-date-picker',
-                                        props: {
-                                          value: { $: 'field.value' },
-                                          width: '100%',
-                                          onChange: {
-                                            $invoke: 'recordStore.setRecordField',
-                                            args: [{ $: 'field.name' }, { $: 'event.detail' }],
-                                          },
-                                          placeholder: { $: 'field.placeholder' },
-                                        },
-                                      },
-                                    ],
-                                  },
-                                },
-                              },
-                              {
-                                type: '$if',
-                                props: {
-                                  condition: { $: "field.control == 'datetime'" },
-                                  then: {
-                                    type: 'we-form-field',
-                                    props: {
-                                      label: { $: 'field.label' },
-                                      required: { $: 'field.required' },
-                                      width: '100%',
-                                    },
-                                    children: [
-                                      {
-                                        type: 'we-date-picker',
-                                        props: {
-                                          value: { $: 'field.value' },
-                                          width: '100%',
-                                          onChange: {
-                                            $invoke: 'recordStore.setRecordField',
-                                            args: [{ $: 'field.name' }, { $: 'event.detail' }],
-                                          },
-                                          showTime: true,
-                                          placeholder: { $: 'field.placeholder' },
-                                        },
-                                      },
-                                    ],
-                                  },
-                                },
-                              },
-                              {
-                                type: '$if',
-                                props: {
-                                  condition: { $: "field.control == 'color'" },
-                                  then: {
-                                    type: 'we-form-field',
-                                    props: {
-                                      label: { $: 'field.label' },
-                                      required: { $: 'field.required' },
-                                      width: '100%',
-                                    },
-                                    children: [
-                                      {
-                                        type: 'we-color-picker',
-                                        props: {
-                                          value: { $: 'field.value' },
-                                          width: '100%',
-                                          onChange: {
-                                            $invoke: 'recordStore.setRecordField',
-                                            args: [{ $: 'field.name' }, { $: 'event.detail' }],
-                                          },
-                                        },
-                                      },
-                                    ],
-                                  },
-                                },
-                              },
-                              {
-                                type: '$if',
-                                props: {
-                                  condition: { $: "field.control == 'icon'" },
-                                  then: {
-                                    type: 'we-form-field',
-                                    props: {
-                                      label: { $: 'field.label' },
-                                      required: { $: 'field.required' },
-                                      width: '100%',
-                                    },
-                                    children: [
-                                      {
-                                        type: 'we-icon-picker',
-                                        props: {
-                                          value: { $: 'field.value' },
-                                          width: '100%',
-                                          onChange: {
-                                            $invoke: 'recordStore.setRecordField',
-                                            args: [{ $: 'field.name' }, { $: 'event.detail' }],
-                                          },
-                                        },
-                                      },
-                                    ],
-                                  },
-                                },
-                              },
-                              {
-                                type: '$if',
-                                props: {
-                                  condition: { $: "field.control == 'file'" },
-                                  then: {
-                                    type: 'we-form-field',
-                                    props: {
-                                      label: { $: 'field.label' },
-                                      required: { $: 'field.required' },
-                                      width: '100%',
-                                    },
-                                    children: [
-                                      {
-                                        type: 'we-file-upload',
-                                        props: {
-                                          width: '100%',
-                                          onChange: {
-                                            $invoke: 'recordStore.setRecordField',
-                                            args: [{ $: 'field.name' }, { $: 'event.detail' }],
-                                          },
-                                          accept: { $: 'field.accept' },
-                                        },
-                                      },
-                                    ],
-                                  },
-                                },
-                              },
-                              {
-                                type: '$if',
-                                props: {
-                                  condition: { $: "field.control == 'relation'" },
-                                  then: {
-                                    type: 'we-form-field',
-                                    props: { label: { $: 'field.label' }, width: '100%' },
-                                    children: [
-                                      {
-                                        type: '$if',
-                                        props: {
-                                          condition: { $: "field.inline == 'location'" },
-                                          then: {
-                                            type: 'Column',
-                                            props: { gap: '200', width: '100%' },
-                                            children: [
-                                              {
-                                                type: 'we-location-picker',
-                                                props: {
-                                                  width: '100%',
-                                                  latitude: {
-                                                    $: 'field.many ? null : first(field.entries).fields.latitude',
-                                                  },
-                                                  longitude: {
-                                                    $: 'field.many ? null : first(field.entries).fields.longitude',
-                                                  },
-                                                  placeholder: { $: '`Pin ${lower(field.label)} on the map…`' },
-                                                  onChange: {
-                                                    $invoke: 'recordStore.setRelationLocation',
-                                                    args: [{ $: 'field.name' }, { $: 'arg.detail' }],
-                                                  },
-                                                },
-                                              },
-                                              {
-                                                type: '$if',
-                                                props: {
-                                                  condition: { $: '!field.many && count(field.entries)' },
-                                                  then: {
-                                                    type: 'Row',
-                                                    props: { gap: '300', wrap: true, width: '100%' },
-                                                    children: [
-                                                      {
-                                                        type: 'we-form-field',
-                                                        props: { label: 'Name', flex: '1 1 12rem', minWidth: '0' },
-                                                        children: [
-                                                          {
-                                                            type: 'we-input',
-                                                            props: {
-                                                              size: 'sm',
-                                                              value: { $: "first(field.entries).fields.name ?? ''" },
-                                                              onInput: {
-                                                                $invoke: 'recordStore.setRelationEntryField',
-                                                                args: [
-                                                                  { $: 'field.name' },
-                                                                  { $: 'first(field.entries).key' },
-                                                                  'name',
-                                                                  { $: 'event.detail' },
-                                                                ],
-                                                              },
-                                                            },
-                                                          },
-                                                        ],
-                                                      },
-                                                      {
-                                                        type: 'we-form-field',
-                                                        props: { label: 'Address', flex: '1 1 12rem', minWidth: '0' },
-                                                        children: [
-                                                          {
-                                                            type: 'we-input',
-                                                            props: {
-                                                              size: 'sm',
-                                                              value: { $: "first(field.entries).fields.address ?? ''" },
-                                                              onInput: {
-                                                                $invoke: 'recordStore.setRelationEntryField',
-                                                                args: [
-                                                                  { $: 'field.name' },
-                                                                  { $: 'first(field.entries).key' },
-                                                                  'address',
-                                                                  { $: 'event.detail' },
-                                                                ],
-                                                              },
-                                                            },
-                                                          },
-                                                        ],
-                                                      },
-                                                    ],
-                                                  },
-                                                },
-                                              },
-                                            ],
-                                          },
-                                          else: {
-                                            type: '$if',
-                                            props: {
-                                              condition: { $: "field.inline == 'image'" },
-                                              then: {
-                                                type: '$if',
-                                                props: {
-                                                  condition: { $: 'field.many' },
-                                                  then: {
-                                                    type: 'Row',
-                                                    props: { gap: '200', wrap: true, width: '100%' },
-                                                    children: [
-                                                      {
-                                                        type: '$each',
-                                                        props: { items: { $: 'field.entries' }, as: 'entry' },
-                                                        children: [
-                                                          {
-                                                            type: 'Column',
-                                                            props: {
-                                                              position: 'relative',
-                                                              width: '96px',
-                                                              height: '96px',
-                                                              r: 'surface',
-                                                              overflow: 'hidden',
-                                                            },
-                                                            children: [
-                                                              {
-                                                                type: 'we-image',
-                                                                props: {
-                                                                  src: { $: 'entry.preview' },
-                                                                  alt: { $: 'entry.label' },
-                                                                  fit: 'cover',
-                                                                  width: '96px',
-                                                                  height: '96px',
-                                                                },
-                                                              },
-                                                              {
-                                                                type: 'Row',
-                                                                props: {
-                                                                  position: 'absolute',
-                                                                  top: '100',
-                                                                  right: '100',
-                                                                },
-                                                                children: [
-                                                                  {
-                                                                    type: 'we-button',
-                                                                    props: {
-                                                                      variant: 'soft',
-                                                                      size: 'xs',
-                                                                      square: true,
-                                                                      label: { $: '`Remove ${entry.label}`' },
-                                                                      onClick: {
-                                                                        $invoke: 'recordStore.removeRelationEntry',
-                                                                        args: [{ $: 'field.name' }, { $: 'entry.key' }],
-                                                                      },
-                                                                    },
-                                                                    children: [
-                                                                      { type: 'we-icon', props: { name: 'x' } },
-                                                                    ],
-                                                                  },
-                                                                ],
-                                                              },
-                                                            ],
-                                                          },
-                                                        ],
-                                                      },
-                                                      {
-                                                        type: 'EditableImage',
-                                                        props: {
-                                                          fit: 'cover',
-                                                          width: '96px',
-                                                          height: '96px',
-                                                          r: 'surface',
-                                                          placeholderIcon: 'image',
-                                                          uploadLabel: { $: '`Add ${lower(field.targetLabel)}`' },
-                                                          onImageChange: {
-                                                            $invoke: 'recordStore.addRelationImage',
-                                                            args: [{ $: 'field.name' }, { $: 'event' }],
-                                                          },
-                                                        },
-                                                      },
-                                                    ],
-                                                  },
-                                                  else: {
-                                                    type: 'EditableImage',
-                                                    props: {
-                                                      src: { $: 'first(field.entries).preview' },
-                                                      alt: { $: 'field.label' },
-                                                      fit: 'cover',
-                                                      width: '100%',
-                                                      height: '200px',
-                                                      r: 'surface',
-                                                      placeholderIcon: 'image',
-                                                      uploadLabel: { $: '`Add ${lower(field.targetLabel)}`' },
-                                                      editLabel: { $: '`Change ${lower(field.targetLabel)}`' },
-                                                      onImageChange: {
-                                                        $invoke: 'recordStore.addRelationImage',
-                                                        args: [{ $: 'field.name' }, { $: 'event' }],
-                                                      },
-                                                      onImageRemove: {
-                                                        $invoke: 'recordStore.removeRelationEntry',
-                                                        args: [{ $: 'field.name' }, { $: 'first(field.entries).key' }],
-                                                      },
-                                                    },
-                                                  },
-                                                },
-                                              },
-                                              else: {
-                                                type: 'Column',
-                                                props: { gap: '200', width: '100%' },
-                                                children: [
-                                                  {
-                                                    type: '$if',
-                                                    props: {
-                                                      condition: { $: 'count(field.entries)' },
-                                                      then: {
-                                                        type: 'Row',
-                                                        props: { gap: '200', wrap: true, width: '100%' },
-                                                        children: [
-                                                          {
-                                                            type: '$each',
-                                                            props: { items: { $: 'field.entries' }, as: 'entry' },
-                                                            children: [
-                                                              {
-                                                                type: 'Row',
-                                                                props: {
-                                                                  gap: '100',
-                                                                  ay: 'center',
-                                                                  bg: 'surface-sunken',
-                                                                  r: 'control',
-                                                                  pl: '300',
-                                                                  pr: '100',
-                                                                  py: '100',
-                                                                  maxWidth: '100%',
-                                                                },
-                                                                children: [
-                                                                  {
-                                                                    type: 'we-icon',
-                                                                    props: {
-                                                                      name: {
-                                                                        $: "recordStore.displays[entry.entity].icon ?? 'cube'",
-                                                                      },
-                                                                      size: 'xs',
-                                                                      color: 'text-muted',
-                                                                    },
-                                                                  },
-                                                                  {
-                                                                    type: 'we-text',
-                                                                    props: {
-                                                                      variant: 'label',
-                                                                      truncate: true,
-                                                                      minWidth: '0',
-                                                                    },
-                                                                    children: [{ $: 'entry.label' }],
-                                                                  },
-                                                                  {
-                                                                    type: 'we-button',
-                                                                    props: {
-                                                                      variant: 'ghost',
-                                                                      size: 'xs',
-                                                                      square: true,
-                                                                      label: { $: '`Remove ${entry.label}`' },
-                                                                      onClick: {
-                                                                        $invoke: 'recordStore.removeRelationEntry',
-                                                                        args: [{ $: 'field.name' }, { $: 'entry.key' }],
-                                                                      },
-                                                                    },
-                                                                    children: [
-                                                                      { type: 'we-icon', props: { name: 'x' } },
-                                                                    ],
-                                                                  },
-                                                                ],
-                                                              },
-                                                            ],
-                                                          },
-                                                        ],
-                                                      },
-                                                    },
-                                                  },
-                                                  {
-                                                    type: '$if',
-                                                    props: {
-                                                      condition: { $: 'field.many || !count(field.entries)' },
-                                                      then: {
-                                                        type: 'Row',
-                                                        props: { gap: '200', ay: 'center', width: '100%', wrap: true },
-                                                        children: [
-                                                          {
-                                                            type: '$if',
-                                                            props: {
-                                                              condition: { $: 'field.canPick' },
-                                                              then: {
-                                                                type: 'Row',
-                                                                props: { flex: '1 1 12rem', minWidth: '0' },
-                                                                $queries: {
-                                                                  candidates: {
-                                                                    entity: { $: 'field.target' },
-                                                                    limit: 200,
-                                                                  },
-                                                                },
-                                                                children: [
-                                                                  {
-                                                                    type: 'we-select',
-                                                                    props: {
-                                                                      width: '100%',
-                                                                      searchable: true,
-                                                                      placeholder: {
-                                                                        $: '`Choose ${lower(field.targetLabel)}…`',
-                                                                      },
-                                                                      options: {
-                                                                        $: 'local.candidates.map(row, { label: row[recordStore.displays[field.target].title] ?? row.id, value: row.id })',
-                                                                      },
-                                                                      value: '',
-                                                                      onChange: {
-                                                                        $invoke: 'recordStore.pickRelation',
-                                                                        args: [
-                                                                          { $: 'field.name' },
-                                                                          { $: 'event.detail' },
-                                                                        ],
-                                                                      },
-                                                                    },
-                                                                  },
-                                                                ],
-                                                              },
-                                                            },
-                                                          },
-                                                          {
-                                                            type: '$if',
-                                                            props: {
-                                                              condition: { $: 'field.canCreate' },
-                                                              then: {
-                                                                type: 'we-button',
-                                                                props: {
-                                                                  variant: 'soft',
-                                                                  size: 'sm',
-                                                                  onClick: {
-                                                                    $invoke: 'recordStore.openRelationForm',
-                                                                    args: [{ $: 'field.name' }],
-                                                                  },
-                                                                },
-                                                                children: [
-                                                                  { type: 'we-icon', props: { name: 'plus' } },
-                                                                  { $: '`Add ${lower(field.targetLabel)}`' },
-                                                                ],
-                                                              },
-                                                            },
-                                                          },
-                                                        ],
-                                                      },
-                                                    },
-                                                  },
-                                                ],
-                                              },
-                                            },
-                                          },
-                                        },
-                                      },
-                                    ],
-                                  },
-                                },
-                              },
-                            ],
-                          },
-                        ],
-                      },
-                      {
-                        type: '$if',
-                        props: {
-                          condition: { $: 'count(recordStore.recordErrors)' },
-                          then: {
-                            type: 'Column',
-                            props: { gap: '100', width: '100%' },
-                            children: [
-                              {
-                                type: '$each',
-                                props: { items: { $: 'recordStore.recordErrors' }, as: 'problem' },
-                                children: [
-                                  {
-                                    type: 'we-text',
-                                    props: { variant: 'footnote', color: 'danger-text' },
-                                    children: [{ $: 'problem' }],
-                                  },
-                                ],
-                              },
-                            ],
-                          },
-                        },
-                      },
-                      {
-                        type: 'Row',
-                        props: { gap: '300', ax: 'end', width: '100%' },
-                        slot: 'footer',
-                        children: [
-                          {
-                            type: 'we-button',
-                            props: {
-                              variant: 'soft',
-                              onClick: {
-                                $if: {
-                                  condition: { $: 'recordStore.recordDraftDirty' },
-                                  then: { $setLocal: 'confirmDiscardOpen', value: true },
-                                  else: { $invoke: 'recordStore.cancelRecordForm' },
-                                },
-                              },
-                            },
-                            children: ['Cancel'],
-                          },
-                          {
-                            type: 'we-button',
-                            props: {
-                              variant: 'solid',
-                              loading: { $: 'recordStore.savingRecord' },
-                              disabled: { $: 'recordStore.savingRecord' },
-                              onClick: { $invoke: 'recordStore.saveRecord' },
-                            },
-                            children: ['Create'],
-                          },
-                        ],
-                      },
-                      {
-                        type: '$if',
-                        props: {
-                          condition: { $: 'recordStore.relationDraft' },
-                          then: {
-                            type: 'we-modal',
-                            props: { size: 'sm', close: { $invoke: 'recordStore.cancelRelationForm' } },
-                            children: [
-                              {
-                                type: 'Row',
-                                props: { gap: '300', ay: 'center', width: '100%' },
-                                slot: 'header',
-                                children: [
-                                  { type: 'we-icon', props: { name: { $: 'recordStore.relationDraft.icon' } } },
-                                  {
-                                    type: 'we-text',
-                                    props: { variant: 'heading-md' },
-                                    children: [{ $: '`New ${lower(recordStore.relationDraft.label)}`' }],
-                                  },
-                                ],
-                              },
-                              {
-                                type: '$each',
-                                props: { items: { $: 'recordStore.relationDraft.fields' }, as: 'field' },
-                                children: [
-                                  {
-                                    type: 'Column',
-                                    props: { width: '100%' },
-                                    children: [
-                                      {
-                                        type: '$if',
-                                        props: {
-                                          condition: { $: "field.control == 'text'" },
-                                          then: {
-                                            type: 'we-form-field',
-                                            props: {
-                                              label: { $: 'field.label' },
-                                              required: { $: 'field.required' },
-                                              width: '100%',
-                                            },
-                                            children: [
-                                              {
-                                                type: 'we-input',
-                                                props: {
-                                                  value: { $: 'field.value' },
-                                                  width: '100%',
-                                                  onInput: {
-                                                    $invoke: 'recordStore.setRelationField',
-                                                    args: [{ $: 'field.name' }, { $: 'event.detail' }],
-                                                  },
-                                                  placeholder: { $: 'field.placeholder' },
-                                                },
-                                              },
-                                            ],
-                                          },
-                                        },
-                                      },
-                                      {
-                                        type: '$if',
-                                        props: {
-                                          condition: { $: "field.control == 'url'" },
-                                          then: {
-                                            type: 'we-form-field',
-                                            props: {
-                                              label: { $: 'field.label' },
-                                              required: { $: 'field.required' },
-                                              width: '100%',
-                                            },
-                                            children: [
-                                              {
-                                                type: 'we-input',
-                                                props: {
-                                                  value: { $: 'field.value' },
-                                                  width: '100%',
-                                                  onInput: {
-                                                    $invoke: 'recordStore.setRelationField',
-                                                    args: [{ $: 'field.name' }, { $: 'event.detail' }],
-                                                  },
-                                                  type: 'url',
-                                                  placeholder: { $: 'field.placeholder' },
-                                                },
-                                              },
-                                            ],
-                                          },
-                                        },
-                                      },
-                                      {
-                                        type: '$if',
-                                        props: {
-                                          condition: { $: "field.control == 'textarea'" },
-                                          then: {
-                                            type: 'we-form-field',
-                                            props: {
-                                              label: { $: 'field.label' },
-                                              required: { $: 'field.required' },
-                                              width: '100%',
-                                            },
-                                            children: [
-                                              {
-                                                type: 'we-textarea',
-                                                props: {
-                                                  value: { $: 'field.value' },
-                                                  width: '100%',
-                                                  onInput: {
-                                                    $invoke: 'recordStore.setRelationField',
-                                                    args: [{ $: 'field.name' }, { $: 'event.detail' }],
-                                                  },
-                                                  rows: 3,
-                                                  placeholder: { $: 'field.placeholder' },
-                                                },
-                                              },
-                                            ],
-                                          },
-                                        },
-                                      },
-                                      {
-                                        type: '$if',
-                                        props: {
-                                          condition: { $: "field.control == 'number'" },
-                                          then: {
-                                            type: 'we-form-field',
-                                            props: {
-                                              label: { $: 'field.label' },
-                                              required: { $: 'field.required' },
-                                              width: '100%',
-                                            },
-                                            children: [
-                                              {
-                                                type: 'we-number-input',
-                                                props: {
-                                                  value: { $: 'field.value' },
-                                                  width: '12rem',
-                                                  maxWidth: '100%',
-                                                  alignSelf: 'start',
-                                                  onChange: {
-                                                    $invoke: 'recordStore.setRelationField',
-                                                    args: [{ $: 'field.name' }, { $: 'event.detail' }],
-                                                  },
-                                                  placeholder: { $: 'field.placeholder' },
-                                                },
-                                              },
-                                            ],
-                                          },
-                                        },
-                                      },
-                                      {
-                                        type: '$if',
-                                        props: {
-                                          condition: { $: "field.control == 'switch'" },
-                                          then: {
-                                            type: 'we-form-field',
-                                            props: {
-                                              label: { $: 'field.label' },
-                                              required: { $: 'field.required' },
-                                              width: '100%',
-                                            },
-                                            children: [
-                                              {
-                                                type: 'we-switch',
-                                                props: {
-                                                  checked: { $: 'field.value' },
-                                                  width: '100%',
-                                                  onChange: {
-                                                    $invoke: 'recordStore.setRelationField',
-                                                    args: [{ $: 'field.name' }, { $: 'event.detail' }],
-                                                  },
-                                                },
-                                              },
-                                            ],
-                                          },
-                                        },
-                                      },
-                                      {
-                                        type: '$if',
-                                        props: {
-                                          condition: { $: "field.control == 'select'" },
-                                          then: {
-                                            type: 'we-form-field',
-                                            props: {
-                                              label: { $: 'field.label' },
-                                              required: { $: 'field.required' },
-                                              width: '100%',
-                                            },
-                                            children: [
-                                              {
-                                                type: 'we-select',
-                                                props: {
-                                                  value: { $: 'field.value' },
-                                                  width: '12rem',
-                                                  maxWidth: '100%',
-                                                  alignSelf: 'start',
-                                                  onChange: {
-                                                    $invoke: 'recordStore.setRelationField',
-                                                    args: [{ $: 'field.name' }, { $: 'event.detail' }],
-                                                  },
-                                                  options: { $: 'field.options' },
-                                                },
-                                              },
-                                            ],
-                                          },
-                                        },
-                                      },
-                                      {
-                                        type: '$if',
-                                        props: {
-                                          condition: { $: "field.control == 'date'" },
-                                          then: {
-                                            type: 'we-form-field',
-                                            props: {
-                                              label: { $: 'field.label' },
-                                              required: { $: 'field.required' },
-                                              width: '100%',
-                                            },
-                                            children: [
-                                              {
-                                                type: 'we-date-picker',
-                                                props: {
-                                                  value: { $: 'field.value' },
-                                                  width: '100%',
-                                                  onChange: {
-                                                    $invoke: 'recordStore.setRelationField',
-                                                    args: [{ $: 'field.name' }, { $: 'event.detail' }],
-                                                  },
-                                                  placeholder: { $: 'field.placeholder' },
-                                                },
-                                              },
-                                            ],
-                                          },
-                                        },
-                                      },
-                                      {
-                                        type: '$if',
-                                        props: {
-                                          condition: { $: "field.control == 'datetime'" },
-                                          then: {
-                                            type: 'we-form-field',
-                                            props: {
-                                              label: { $: 'field.label' },
-                                              required: { $: 'field.required' },
-                                              width: '100%',
-                                            },
-                                            children: [
-                                              {
-                                                type: 'we-date-picker',
-                                                props: {
-                                                  value: { $: 'field.value' },
-                                                  width: '100%',
-                                                  onChange: {
-                                                    $invoke: 'recordStore.setRelationField',
-                                                    args: [{ $: 'field.name' }, { $: 'event.detail' }],
-                                                  },
-                                                  showTime: true,
-                                                  placeholder: { $: 'field.placeholder' },
-                                                },
-                                              },
-                                            ],
-                                          },
-                                        },
-                                      },
-                                      {
-                                        type: '$if',
-                                        props: {
-                                          condition: { $: "field.control == 'color'" },
-                                          then: {
-                                            type: 'we-form-field',
-                                            props: {
-                                              label: { $: 'field.label' },
-                                              required: { $: 'field.required' },
-                                              width: '100%',
-                                            },
-                                            children: [
-                                              {
-                                                type: 'we-color-picker',
-                                                props: {
-                                                  value: { $: 'field.value' },
-                                                  width: '100%',
-                                                  onChange: {
-                                                    $invoke: 'recordStore.setRelationField',
-                                                    args: [{ $: 'field.name' }, { $: 'event.detail' }],
-                                                  },
-                                                },
-                                              },
-                                            ],
-                                          },
-                                        },
-                                      },
-                                      {
-                                        type: '$if',
-                                        props: {
-                                          condition: { $: "field.control == 'icon'" },
-                                          then: {
-                                            type: 'we-form-field',
-                                            props: {
-                                              label: { $: 'field.label' },
-                                              required: { $: 'field.required' },
-                                              width: '100%',
-                                            },
-                                            children: [
-                                              {
-                                                type: 'we-icon-picker',
-                                                props: {
-                                                  value: { $: 'field.value' },
-                                                  width: '100%',
-                                                  onChange: {
-                                                    $invoke: 'recordStore.setRelationField',
-                                                    args: [{ $: 'field.name' }, { $: 'event.detail' }],
-                                                  },
-                                                },
-                                              },
-                                            ],
-                                          },
-                                        },
-                                      },
-                                      {
-                                        type: '$if',
-                                        props: {
-                                          condition: { $: "field.control == 'file'" },
-                                          then: {
-                                            type: 'we-form-field',
-                                            props: {
-                                              label: { $: 'field.label' },
-                                              required: { $: 'field.required' },
-                                              width: '100%',
-                                            },
-                                            children: [
-                                              {
-                                                type: 'we-file-upload',
-                                                props: {
-                                                  width: '100%',
-                                                  onChange: {
-                                                    $invoke: 'recordStore.setRelationField',
-                                                    args: [{ $: 'field.name' }, { $: 'event.detail' }],
-                                                  },
-                                                  accept: { $: 'field.accept' },
-                                                },
-                                              },
-                                            ],
-                                          },
-                                        },
-                                      },
-                                    ],
-                                  },
-                                ],
-                              },
-                              {
-                                type: '$each',
-                                props: { items: { $: 'recordStore.relationErrors' }, as: 'problem' },
-                                children: [
-                                  {
-                                    type: 'we-text',
-                                    props: { variant: 'footnote', color: 'danger-text' },
-                                    children: [{ $: 'problem' }],
-                                  },
-                                ],
-                              },
-                              {
-                                type: 'Row',
-                                props: { gap: '300', ax: 'end', width: '100%' },
-                                slot: 'footer',
-                                children: [
-                                  {
-                                    type: 'we-button',
-                                    props: { variant: 'soft', onClick: { $invoke: 'recordStore.cancelRelationForm' } },
-                                    children: ['Cancel'],
-                                  },
-                                  {
-                                    type: 'we-button',
-                                    props: { variant: 'solid', onClick: { $invoke: 'recordStore.saveRelationForm' } },
-                                    children: ['Add'],
-                                  },
-                                ],
-                              },
-                            ],
-                          },
-                        },
-                      },
-                      {
-                        type: '$if',
-                        props: {
-                          condition: { $: 'local.confirmDiscardOpen' },
-                          then: {
-                            type: 'we-modal',
-                            props: {
-                              size: 'sm',
-                              close: [
-                                { $setLocal: 'confirmDiscardOpen', value: false },
-                                { $setLocal: 'discardGoesBack', value: false },
-                              ],
-                            },
-                            children: [
-                              {
-                                type: 'Row',
-                                slot: 'header',
-                                props: { gap: '300', ay: 'center' },
-                                children: [
-                                  { type: 'we-icon', props: { name: 'warning', color: 'danger-text' } },
-                                  {
-                                    type: 'we-text',
-                                    props: { variant: 'heading-sm' },
-                                    children: ['Discard this entry?'],
-                                  },
-                                ],
-                              },
-                              {
-                                type: 'Column',
-                                props: { gap: '300' },
-                                children: [
-                                  {
-                                    type: 'we-text',
-                                    children: [
-                                      'What you have filled in will be lost. Nothing has been saved to the space yet.',
-                                    ],
-                                  },
-                                ],
-                              },
-                              {
-                                type: 'Row',
-                                slot: 'footer',
-                                props: { ax: 'end', gap: '300' },
-                                children: [
-                                  {
-                                    type: 'we-button',
-                                    props: {
-                                      variant: 'soft',
-                                      onClick: [
-                                        { $setLocal: 'confirmDiscardOpen', value: false },
-                                        { $setLocal: 'discardGoesBack', value: false },
-                                      ],
-                                    },
-                                    children: ['Keep editing'],
-                                  },
-                                  {
-                                    type: 'we-button',
-                                    props: {
-                                      variant: 'solid',
-                                      tone: 'danger',
-                                      onClick: [
-                                        {
-                                          $if: {
-                                            condition: { $: 'local.discardGoesBack' },
-                                            then: [
-                                              { $invoke: 'recordStore.cancelRecordForm' },
-                                              { $setLocal: 'chooserOpen', value: true },
-                                            ],
-                                            else: { $invoke: 'recordStore.cancelRecordForm' },
-                                          },
-                                        },
-                                        { $setLocal: 'confirmDiscardOpen', value: false },
-                                        { $setLocal: 'discardGoesBack', value: false },
-                                      ],
-                                    },
-                                    children: ['Discard'],
-                                  },
-                                ],
-                              },
-                            ],
-                          },
-                        },
-                      },
-                    ],
-                  },
-                },
-              },
-              {
-                type: '$if',
-                props: {
-                  condition: { $: 'local.chooserOpen' },
-                  then: {
-                    type: 'we-modal',
-                    props: { size: 'lg', close: { $setLocal: 'chooserOpen', value: false } },
-                    children: [
-                      {
-                        type: 'we-text',
-                        slot: 'header',
-                        props: { variant: 'heading-md' },
-                        children: ['Add to the canvas'],
-                      },
-                      {
-                        type: 'Column',
-                        props: { gap: '400', width: '100%' },
-                        $localState: { typeSearch: { type: 'string', initial: '' } },
-                        children: [
-                          {
-                            type: 'we-input',
-                            props: {
-                              value: { $: 'local.typeSearch' },
-                              placeholder: 'Search types…',
-                              autofocus: true,
-                              width: '100%',
-                              onInput: { $setLocal: 'typeSearch', value: { $: 'event.detail' } },
-                              onKeyDown: {
-                                $if: {
-                                  condition: {
-                                    $: "arg.detail.key == 'Enter' && count(distinct(recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via == 'composer'), recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via != 'composer' && k.group == 'This space'), distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).map(k, k.value)).filter(n, recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).exists(k, k.value == n && k.via != 'composer' && k.group != 'This space')).map(n, find(recordStore.creatableEntities, { value: n }))))",
-                                  },
-                                  then: [
-                                    { $setLocal: 'chooserOpen', value: false },
-                                    {
-                                      $if: {
-                                        condition: {
-                                          $: "first(distinct(recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via == 'composer'), recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via != 'composer' && k.group == 'This space'), distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).map(k, k.value)).filter(n, recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).exists(k, k.value == n && k.via != 'composer' && k.group != 'This space')).map(n, find(recordStore.creatableEntities, { value: n })))).via == 'composer'",
-                                        },
-                                        then: { $setLocal: 'newNoteOpen', value: true },
-                                        else: [
-                                          {
-                                            $invoke: 'recordStore.createOnCanvas',
-                                            args: [
-                                              {
-                                                $: "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)",
-                                              },
-                                              { $: 'local.newAt.x' },
-                                              { $: 'local.newAt.y' },
-                                            ],
-                                          },
-                                          {
-                                            $invoke: 'recordStore.setRecordEntity',
-                                            args: [
-                                              {
-                                                $: "first(distinct(recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via == 'composer'), recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via != 'composer' && k.group == 'This space'), distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).map(k, k.value)).filter(n, recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).exists(k, k.value == n && k.via != 'composer' && k.group != 'This space')).map(n, find(recordStore.creatableEntities, { value: n })))).value",
-                                              },
-                                            ],
-                                          },
-                                        ],
-                                      },
-                                    },
-                                  ],
-                                },
-                              },
-                            },
-                            children: [
-                              {
-                                type: 'we-icon',
-                                slot: 'start',
-                                props: { name: 'magnifying-glass', color: 'text-muted', mr: '200' },
-                              },
-                            ],
-                          },
-                          {
-                            type: '$if',
-                            props: {
-                              condition: {
-                                $: "count(recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via == 'composer'))",
-                              },
-                              then: {
-                                type: 'Column',
-                                props: { gap: '200', width: '100%' },
-                                children: [
-                                  {
-                                    type: 'Row',
-                                    props: { width: '100%', ay: 'center', gap: '200', flex: '0 0 auto' },
-                                    children: [
-                                      {
-                                        type: 'we-text',
-                                        props: {
-                                          variant: 'footnote',
-                                          color: 'text-faint',
-                                          textTransform: 'uppercase',
-                                          letterSpacing: 'wide',
-                                          flex: '1',
-                                        },
-                                        children: ['Documents'],
-                                      },
-                                    ],
-                                  },
-                                  {
-                                    type: 'Grid',
-                                    props: { minChildWidth: '220px', gap: '200', width: '100%' },
-                                    children: [
-                                      {
-                                        type: '$each',
-                                        props: {
-                                          items: {
-                                            $: "recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via == 'composer')",
-                                          },
-                                          as: 'kind',
-                                        },
-                                        children: [
-                                          {
-                                            type: 'we-button',
-                                            props: {
-                                              variant: 'bare',
-                                              width: '100%',
-                                              height: '100%',
-                                              ax: 'start',
-                                              ay: 'start',
-                                              p: '300',
-                                              r: '300',
-                                              bg: 'surface-sunken',
-                                              border:
-                                                '1px solid color-mix(in srgb, var(--we-role-border) 65%, var(--we-role-border-strong))',
-                                              hoverProps: { bg: 'surface-hover' },
-                                              label: { $: "(kind.via == 'composer' ? 'Note' : kind.label)" },
-                                              onClick: [
-                                                { $setLocal: 'chooserOpen', value: false },
-                                                {
-                                                  $if: {
-                                                    condition: { $: "kind.via == 'composer'" },
-                                                    then: { $setLocal: 'newNoteOpen', value: true },
-                                                    else: [
-                                                      {
-                                                        $invoke: 'recordStore.createOnCanvas',
-                                                        args: [
-                                                          {
-                                                            $: "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)",
-                                                          },
-                                                          { $: 'local.newAt.x' },
-                                                          { $: 'local.newAt.y' },
-                                                        ],
-                                                      },
-                                                      {
-                                                        $invoke: 'recordStore.setRecordEntity',
-                                                        args: [{ $: 'kind.value' }],
-                                                      },
-                                                    ],
-                                                  },
-                                                },
-                                              ],
-                                            },
-                                            children: [
-                                              {
-                                                type: 'Row',
-                                                props: { gap: '300', ay: 'start', width: '100%' },
-                                                children: [
-                                                  {
-                                                    type: 'Column',
-                                                    props: {
-                                                      width: '48px',
-                                                      height: '48px',
-                                                      flexShrink: '0',
-                                                      r: 'full',
-                                                      ax: 'center',
-                                                      ay: 'center',
-                                                      bg: 'surface-raised',
-                                                    },
-                                                    children: [
-                                                      {
-                                                        type: 'we-icon',
-                                                        props: {
-                                                          name: {
-                                                            $: "kind.via == 'composer' ? 'note' : kind.icon ? kind.icon : 'cube'",
-                                                          },
-                                                          color: 'text',
-                                                        },
-                                                      },
-                                                    ],
-                                                  },
-                                                  {
-                                                    type: 'Column',
-                                                    props: { gap: '100', flex: '1', minWidth: '0' },
-                                                    children: [
-                                                      {
-                                                        type: 'we-text',
-                                                        props: { variant: 'label' },
-                                                        children: [
-                                                          { $: "(kind.via == 'composer' ? 'Note' : kind.label)" },
-                                                        ],
-                                                      },
-                                                      {
-                                                        type: '$if',
-                                                        props: {
-                                                          condition: { $: 'kind.description' },
-                                                          then: {
-                                                            type: 'we-text',
-                                                            props: { variant: 'footnote', color: 'text-muted' },
-                                                            children: [{ $: 'kind.description' }],
-                                                          },
-                                                        },
-                                                      },
-                                                    ],
-                                                  },
-                                                ],
-                                              },
-                                            ],
-                                          },
-                                        ],
-                                      },
-                                    ],
-                                  },
-                                ],
-                              },
-                            },
-                          },
-                          {
-                            type: '$if',
-                            props: {
-                              condition: {
-                                $: "count(recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via != 'composer' && k.group == 'This space'))",
-                              },
-                              then: {
-                                type: 'Column',
-                                props: { gap: '200', width: '100%' },
-                                children: [
-                                  {
-                                    type: 'Row',
-                                    props: { width: '100%', ay: 'center', gap: '200', flex: '0 0 auto' },
-                                    children: [
-                                      {
-                                        type: 'we-text',
-                                        props: {
-                                          variant: 'footnote',
-                                          color: 'text-faint',
-                                          textTransform: 'uppercase',
-                                          letterSpacing: 'wide',
-                                          flex: '1',
-                                        },
-                                        children: ['This space'],
-                                      },
-                                    ],
-                                  },
-                                  {
-                                    type: 'Grid',
-                                    props: { minChildWidth: '220px', gap: '200', width: '100%' },
-                                    children: [
-                                      {
-                                        type: '$each',
-                                        props: {
-                                          items: {
-                                            $: "recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via != 'composer' && k.group == 'This space')",
-                                          },
-                                          as: 'kind',
-                                        },
-                                        children: [
-                                          {
-                                            type: 'we-button',
-                                            props: {
-                                              variant: 'bare',
-                                              width: '100%',
-                                              height: '100%',
-                                              ax: 'start',
-                                              ay: 'start',
-                                              p: '300',
-                                              r: '300',
-                                              bg: 'surface-sunken',
-                                              border:
-                                                '1px solid color-mix(in srgb, var(--we-role-border) 65%, var(--we-role-border-strong))',
-                                              hoverProps: { bg: 'surface-hover' },
-                                              label: { $: "(kind.via == 'composer' ? 'Note' : kind.label)" },
-                                              onClick: [
-                                                { $setLocal: 'chooserOpen', value: false },
-                                                {
-                                                  $if: {
-                                                    condition: { $: "kind.via == 'composer'" },
-                                                    then: { $setLocal: 'newNoteOpen', value: true },
-                                                    else: [
-                                                      {
-                                                        $invoke: 'recordStore.createOnCanvas',
-                                                        args: [
-                                                          {
-                                                            $: "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)",
-                                                          },
-                                                          { $: 'local.newAt.x' },
-                                                          { $: 'local.newAt.y' },
-                                                        ],
-                                                      },
-                                                      {
-                                                        $invoke: 'recordStore.setRecordEntity',
-                                                        args: [{ $: 'kind.value' }],
-                                                      },
-                                                    ],
-                                                  },
-                                                },
-                                              ],
-                                            },
-                                            children: [
-                                              {
-                                                type: 'Row',
-                                                props: { gap: '300', ay: 'start', width: '100%' },
-                                                children: [
-                                                  {
-                                                    type: 'Column',
-                                                    props: {
-                                                      width: '48px',
-                                                      height: '48px',
-                                                      flexShrink: '0',
-                                                      r: 'full',
-                                                      ax: 'center',
-                                                      ay: 'center',
-                                                      bg: 'surface-raised',
-                                                    },
-                                                    children: [
-                                                      {
-                                                        type: 'we-icon',
-                                                        props: {
-                                                          name: {
-                                                            $: "kind.via == 'composer' ? 'note' : kind.icon ? kind.icon : 'cube'",
-                                                          },
-                                                          color: 'text',
-                                                        },
-                                                      },
-                                                    ],
-                                                  },
-                                                  {
-                                                    type: 'Column',
-                                                    props: { gap: '100', flex: '1', minWidth: '0' },
-                                                    children: [
-                                                      {
-                                                        type: 'we-text',
-                                                        props: { variant: 'label' },
-                                                        children: [
-                                                          { $: "(kind.via == 'composer' ? 'Note' : kind.label)" },
-                                                        ],
-                                                      },
-                                                      {
-                                                        type: '$if',
-                                                        props: {
-                                                          condition: { $: 'kind.description' },
-                                                          then: {
-                                                            type: 'we-text',
-                                                            props: { variant: 'footnote', color: 'text-muted' },
-                                                            children: [{ $: 'kind.description' }],
-                                                          },
-                                                        },
-                                                      },
-                                                    ],
-                                                  },
-                                                ],
-                                              },
-                                            ],
-                                          },
-                                        ],
-                                      },
-                                    ],
-                                  },
-                                ],
-                              },
-                            },
-                          },
-                          {
-                            type: '$if',
-                            props: {
-                              condition: {
-                                $: "count(distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).map(k, k.value)).filter(n, recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).exists(k, k.value == n && k.via != 'composer' && k.group != 'This space')).map(n, find(recordStore.creatableEntities, { value: n })))",
-                              },
-                              then: {
-                                type: 'Column',
-                                props: { gap: '200', width: '100%' },
-                                children: [
-                                  {
-                                    type: 'Row',
-                                    props: { width: '100%', ay: 'center', gap: '200', flex: '0 0 auto' },
-                                    children: [
-                                      {
-                                        type: 'we-text',
-                                        props: {
-                                          variant: 'footnote',
-                                          color: 'text-faint',
-                                          textTransform: 'uppercase',
-                                          letterSpacing: 'wide',
-                                          flex: '1',
-                                        },
-                                        children: ['Blocks'],
-                                      },
-                                    ],
-                                  },
-                                  {
-                                    type: 'Grid',
-                                    props: { minChildWidth: '220px', gap: '200', width: '100%' },
-                                    children: [
-                                      {
-                                        type: '$each',
-                                        props: {
-                                          items: {
-                                            $: "distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).map(k, k.value)).filter(n, recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).exists(k, k.value == n && k.via != 'composer' && k.group != 'This space')).map(n, find(recordStore.creatableEntities, { value: n }))",
-                                          },
-                                          as: 'kind',
-                                        },
-                                        children: [
-                                          {
-                                            type: 'we-button',
-                                            props: {
-                                              variant: 'bare',
-                                              width: '100%',
-                                              height: '100%',
-                                              ax: 'start',
-                                              ay: 'start',
-                                              p: '300',
-                                              r: '300',
-                                              bg: 'surface-sunken',
-                                              border:
-                                                '1px solid color-mix(in srgb, var(--we-role-border) 65%, var(--we-role-border-strong))',
-                                              hoverProps: { bg: 'surface-hover' },
-                                              label: { $: "(kind.via == 'composer' ? 'Note' : kind.label)" },
-                                              onClick: [
-                                                { $setLocal: 'chooserOpen', value: false },
-                                                {
-                                                  $if: {
-                                                    condition: { $: "kind.via == 'composer'" },
-                                                    then: { $setLocal: 'newNoteOpen', value: true },
-                                                    else: [
-                                                      {
-                                                        $invoke: 'recordStore.createOnCanvas',
-                                                        args: [
-                                                          {
-                                                            $: "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)",
-                                                          },
-                                                          { $: 'local.newAt.x' },
-                                                          { $: 'local.newAt.y' },
-                                                        ],
-                                                      },
-                                                      {
-                                                        $invoke: 'recordStore.setRecordEntity',
-                                                        args: [{ $: 'kind.value' }],
-                                                      },
-                                                    ],
-                                                  },
-                                                },
-                                              ],
-                                            },
-                                            children: [
-                                              {
-                                                type: 'Row',
-                                                props: { gap: '300', ay: 'start', width: '100%' },
-                                                children: [
-                                                  {
-                                                    type: 'Column',
-                                                    props: {
-                                                      width: '48px',
-                                                      height: '48px',
-                                                      flexShrink: '0',
-                                                      r: 'full',
-                                                      ax: 'center',
-                                                      ay: 'center',
-                                                      bg: 'surface-raised',
-                                                    },
-                                                    children: [
-                                                      {
-                                                        type: 'we-icon',
-                                                        props: {
-                                                          name: {
-                                                            $: "kind.via == 'composer' ? 'note' : kind.icon ? kind.icon : 'cube'",
-                                                          },
-                                                          color: 'text',
-                                                        },
-                                                      },
-                                                    ],
-                                                  },
-                                                  {
-                                                    type: 'Column',
-                                                    props: { gap: '100', flex: '1', minWidth: '0' },
-                                                    children: [
-                                                      {
-                                                        type: 'we-text',
-                                                        props: { variant: 'label' },
-                                                        children: [
-                                                          { $: "(kind.via == 'composer' ? 'Note' : kind.label)" },
-                                                        ],
-                                                      },
-                                                      {
-                                                        type: '$if',
-                                                        props: {
-                                                          condition: { $: 'kind.description' },
-                                                          then: {
-                                                            type: 'we-text',
-                                                            props: { variant: 'footnote', color: 'text-muted' },
-                                                            children: [{ $: 'kind.description' }],
-                                                          },
-                                                        },
-                                                      },
-                                                    ],
-                                                  },
-                                                ],
-                                              },
-                                            ],
-                                          },
-                                        ],
-                                      },
-                                    ],
-                                  },
-                                ],
-                              },
-                            },
-                          },
-                          {
-                            type: '$if',
-                            props: {
-                              condition: {
-                                $: "!count(recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)))",
-                              },
-                              then: {
-                                type: 'we-text',
-                                props: { variant: 'footnote', color: 'text-muted' },
-                                children: [{ $: "'Nothing matches \"' + local.typeSearch + '\"'" }],
-                              },
-                            },
-                          },
-                        ],
-                      },
-                    ],
-                  },
-                },
-              },
-              {
-                type: '$if',
-                props: {
-                  condition: { $: 'local.newNoteOpen' },
-                  then: {
-                    type: 'we-modal',
-                    props: {
-                      size: 'lg',
-                      close: {
-                        $if: {
-                          condition: { $: 'local.draftDirty' },
-                          then: { $setLocal: 'confirmDiscardOpen', value: true },
-                          else: { $setLocal: 'newNoteOpen', value: false },
-                        },
-                      },
-                    },
-                    $localState: {
-                      savePost: { type: 'function', initial: null },
-                      submitting: { type: 'boolean', initial: false },
-                      draftDirty: { type: 'boolean', initial: false },
-                      confirmDiscardOpen: { type: 'boolean', initial: false },
-                      discardGoesBack: { type: 'boolean', initial: false },
-                    },
-                    children: [
-                      {
-                        type: 'we-tooltip',
-                        props: { content: 'Back' },
-                        children: [
-                          {
-                            type: 'we-button',
-                            props: {
-                              variant: 'ghost',
-                              size: 'sm',
-                              square: true,
-                              label: 'Back',
-                              onClick: {
-                                $if: {
-                                  condition: { $: 'local.draftDirty' },
-                                  then: [
-                                    { $setLocal: 'discardGoesBack', value: true },
-                                    { $setLocal: 'confirmDiscardOpen', value: true },
-                                  ],
-                                  else: [
-                                    { $setLocal: 'newNoteOpen', value: false },
-                                    { $setLocal: 'chooserOpen', value: true },
-                                  ],
-                                },
-                              },
-                            },
-                            children: [{ type: 'we-icon', props: { name: 'arrow-left' } }],
-                          },
-                        ],
-                        slot: 'start-button',
-                      },
-                      {
-                        type: 'Row',
-                        props: { gap: '300', ay: 'center', width: '100%' },
-                        children: [
-                          {
-                            type: 'Column',
-                            props: {
-                              width: '56px',
-                              height: '56px',
-                              flexShrink: '0',
-                              r: 'full',
-                              ax: 'center',
-                              ay: 'center',
-                              bg: 'surface-sunken',
-                            },
-                            children: [{ type: 'we-icon', props: { name: 'note', color: 'text' } }],
-                          },
-                          { type: 'we-text', props: { variant: 'heading-md' }, children: ['New note'] },
-                        ],
-                      },
-                      {
-                        type: 'Column',
-                        props: { width: '100%', bg: 'surface-raised', p: '600', pl: '900', r: '400', overflow: 'auto' },
-                        children: [
-                          {
-                            type: 'BlockComposer',
-                            props: {
-                              onDirtyChange: { $setLocal: 'draftDirty', value: { $: 'event' } },
-                              onReady: { $setLocal: 'savePost', value: { $: 'event.save' } },
-                              onSave: [
-                                { $setLocal: 'submitting', value: true },
-                                {
-                                  $invoke: 'recordStore.createCardOnCanvas',
-                                  args: [
-                                    { $: 'arg' },
-                                    {
-                                      canvas: {
-                                        $: "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)",
-                                      },
-                                      at: { $: 'local.newAt' },
-                                    },
-                                  ],
-                                  onSuccess: [
-                                    { $setLocal: 'newNoteOpen', value: false },
-                                    { $setLocal: 'newAt', value: null },
-                                  ],
-                                  onFinally: [{ $setLocal: 'submitting', value: false }],
-                                },
-                              ],
-                            },
-                          },
-                        ],
-                      },
-                      {
-                        type: 'Row',
-                        props: { gap: '300', ax: 'end', mt: '200', width: '100%' },
-                        children: [
-                          {
-                            type: 'we-button',
-                            props: {
-                              variant: 'soft',
-                              onClick: {
-                                $if: {
-                                  condition: { $: 'local.draftDirty' },
-                                  then: { $setLocal: 'confirmDiscardOpen', value: true },
-                                  else: { $setLocal: 'newNoteOpen', value: false },
-                                },
-                              },
-                            },
-                            children: ['Cancel'],
-                          },
-                          {
-                            type: 'we-button',
-                            props: {
-                              variant: 'solid',
-                              loading: { $: 'local.submitting' },
-                              disabled: { $: 'local.submitting' },
-                              onClick: { $callLocal: 'savePost' },
-                            },
-                            children: ['Add'],
-                          },
-                        ],
-                      },
-                      {
-                        type: '$if',
-                        props: {
-                          condition: { $: 'local.confirmDiscardOpen' },
-                          then: {
-                            type: 'we-modal',
-                            props: {
-                              size: 'sm',
-                              close: [
-                                { $setLocal: 'confirmDiscardOpen', value: false },
-                                { $setLocal: 'discardGoesBack', value: false },
-                              ],
-                            },
-                            children: [
-                              {
-                                type: 'Row',
-                                slot: 'header',
-                                props: { gap: '300', ay: 'center' },
-                                children: [
-                                  { type: 'we-icon', props: { name: 'warning', color: 'danger-text' } },
-                                  {
-                                    type: 'we-text',
-                                    props: { variant: 'heading-sm' },
-                                    children: ['Discard your changes?'],
-                                  },
-                                ],
-                              },
-                              {
-                                type: 'Column',
-                                props: { gap: '300' },
-                                children: [
-                                  {
-                                    type: 'we-text',
-                                    children: ['What you have typed will be lost. Nothing has been saved yet.'],
-                                  },
-                                ],
-                              },
-                              {
-                                type: 'Row',
-                                slot: 'footer',
-                                props: { ax: 'end', gap: '300' },
-                                children: [
-                                  {
-                                    type: 'we-button',
-                                    props: {
-                                      variant: 'soft',
-                                      onClick: [
-                                        { $setLocal: 'confirmDiscardOpen', value: false },
-                                        { $setLocal: 'discardGoesBack', value: false },
-                                      ],
-                                    },
-                                    children: ['Keep editing'],
-                                  },
-                                  {
-                                    type: 'we-button',
-                                    props: {
-                                      variant: 'solid',
-                                      tone: 'danger',
-                                      onClick: [
-                                        {
-                                          $if: {
-                                            condition: { $: 'local.discardGoesBack' },
-                                            then: [
-                                              { $setLocal: 'newNoteOpen', value: false },
-                                              { $setLocal: 'chooserOpen', value: true },
-                                            ],
-                                            else: { $setLocal: 'newNoteOpen', value: false },
-                                          },
-                                        },
-                                        { $setLocal: 'confirmDiscardOpen', value: false },
-                                        { $setLocal: 'discardGoesBack', value: false },
-                                      ],
-                                    },
-                                    children: ['Discard'],
-                                  },
-                                ],
-                              },
-                            ],
-                          },
-                        },
-                      },
-                    ],
-                  },
-                },
-              },
-            ],
-          },
-          {
             path: '/workflows',
             type: 'Column',
             props: { width: '100%', height: '100%' },
@@ -5424,6 +5662,33 @@ export const seedBundles: Bundle[] = [
                         type: 'we-text',
                         props: { variant: 'heading-sm', truncate: true, minWidth: '0' },
                         children: [{ $: "workflowStore.open ? workflowStore.open.label : 'Workflows'" }],
+                      },
+                    ],
+                  },
+                  {
+                    type: 'Row',
+                    props: { gap: '100', p: '100', r: 'control', bg: 'surface-sunken', flexShrink: 0 },
+                    children: [
+                      {
+                        type: 'we-button',
+                        props: {
+                          size: 'sm',
+                          variant: { $: "!(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
+                          onClick: [
+                            { $invoke: 'routeStore.setParam', args: ['view', null] },
+                            { $invoke: 'routeStore.setParam', args: ['dna', null] },
+                          ],
+                        },
+                        children: [{ type: 'we-icon', props: { name: 'file-text' } }, 'Page'],
+                      },
+                      {
+                        type: 'we-button',
+                        props: {
+                          size: 'sm',
+                          variant: { $: "(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
+                          onClick: { $invoke: 'routeStore.setParam', args: ['view', 'canvas'] },
+                        },
+                        children: [{ type: 'we-icon', props: { name: 'squares-four' } }, 'Canvas'],
                       },
                     ],
                   },
@@ -8149,6 +8414,33 @@ export const seedBundles: Bundle[] = [
                       },
                     ],
                   },
+                  {
+                    type: 'Row',
+                    props: { gap: '100', p: '100', r: 'control', bg: 'surface-sunken', flexShrink: 0 },
+                    children: [
+                      {
+                        type: 'we-button',
+                        props: {
+                          size: 'sm',
+                          variant: { $: "!(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
+                          onClick: [
+                            { $invoke: 'routeStore.setParam', args: ['view', null] },
+                            { $invoke: 'routeStore.setParam', args: ['dna', null] },
+                          ],
+                        },
+                        children: [{ type: 'we-icon', props: { name: 'file-text' } }, 'Page'],
+                      },
+                      {
+                        type: 'we-button',
+                        props: {
+                          size: 'sm',
+                          variant: { $: "(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
+                          onClick: { $invoke: 'routeStore.setParam', args: ['view', 'canvas'] },
+                        },
+                        children: [{ type: 'we-icon', props: { name: 'squares-four' } }, 'Canvas'],
+                      },
+                    ],
+                  },
                 ],
               },
               {
@@ -8166,7 +8458,11 @@ export const seedBundles: Bundle[] = [
                           width: '100%',
                           onClick: {
                             $invoke: 'routeStore.navigate',
-                            args: [{ $: "spaceStore.spacePath + '?channel=' + (spaceStore.root)" }],
+                            args: [
+                              {
+                                $: "(spaceStore.spacePath + '?channel=' + (spaceStore.root)) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '?channel=' + (spaceStore.root), '?') ? '&' : '?') + 'view=canvas' : '')",
+                              },
+                            ],
                           },
                         },
                         children: [
@@ -8215,7 +8511,11 @@ export const seedBundles: Bundle[] = [
                               width: '100%',
                               onClick: {
                                 $invoke: 'routeStore.navigate',
-                                args: [{ $: "spaceStore.spacePath + '?channel=' + (channel.id)" }],
+                                args: [
+                                  {
+                                    $: "(spaceStore.spacePath + '?channel=' + (channel.id)) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '?channel=' + (channel.id), '?') ? '&' : '?') + 'view=canvas' : '')",
+                                  },
+                                ],
                               },
                             },
                             children: [
@@ -8319,6 +8619,33 @@ export const seedBundles: Bundle[] = [
                       },
                     ],
                   },
+                  {
+                    type: 'Row',
+                    props: { gap: '100', p: '100', r: 'control', bg: 'surface-sunken', flexShrink: 0 },
+                    children: [
+                      {
+                        type: 'we-button',
+                        props: {
+                          size: 'sm',
+                          variant: { $: "!(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
+                          onClick: [
+                            { $invoke: 'routeStore.setParam', args: ['view', null] },
+                            { $invoke: 'routeStore.setParam', args: ['dna', null] },
+                          ],
+                        },
+                        children: [{ type: 'we-icon', props: { name: 'file-text' } }, 'Page'],
+                      },
+                      {
+                        type: 'we-button',
+                        props: {
+                          size: 'sm',
+                          variant: { $: "(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
+                          onClick: { $invoke: 'routeStore.setParam', args: ['view', 'canvas'] },
+                        },
+                        children: [{ type: 'we-icon', props: { name: 'squares-four' } }, 'Canvas'],
+                      },
+                    ],
+                  },
                 ],
               },
               {
@@ -8351,7 +8678,7 @@ export const seedBundles: Bundle[] = [
                                     $invoke: 'routeStore.navigate',
                                     args: [
                                       {
-                                        $: "spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (call.id)",
+                                        $: "(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (call.id)) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (call.id), '?') ? '&' : '?') + 'view=canvas' : '')",
                                       },
                                     ],
                                   },
@@ -8490,6 +8817,33 @@ export const seedBundles: Bundle[] = [
                       },
                     ],
                   },
+                  {
+                    type: 'Row',
+                    props: { gap: '100', p: '100', r: 'control', bg: 'surface-sunken', flexShrink: 0 },
+                    children: [
+                      {
+                        type: 'we-button',
+                        props: {
+                          size: 'sm',
+                          variant: { $: "!(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
+                          onClick: [
+                            { $invoke: 'routeStore.setParam', args: ['view', null] },
+                            { $invoke: 'routeStore.setParam', args: ['dna', null] },
+                          ],
+                        },
+                        children: [{ type: 'we-icon', props: { name: 'file-text' } }, 'Page'],
+                      },
+                      {
+                        type: 'we-button',
+                        props: {
+                          size: 'sm',
+                          variant: { $: "(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
+                          onClick: { $invoke: 'routeStore.setParam', args: ['view', 'canvas'] },
+                        },
+                        children: [{ type: 'we-icon', props: { name: 'squares-four' } }, 'Canvas'],
+                      },
+                    ],
+                  },
                 ],
               },
               {
@@ -8520,7 +8874,11 @@ export const seedBundles: Bundle[] = [
                                   width: '100%',
                                   onClick: {
                                     $invoke: 'routeStore.navigate',
-                                    args: [{ $: "spaceStore.spacePath + '/person?did=' + (person.did)" }],
+                                    args: [
+                                      {
+                                        $: "(spaceStore.spacePath + '/person?did=' + (person.did)) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/person?did=' + (person.did), '?') ? '&' : '?') + 'view=canvas' : '')",
+                                      },
+                                    ],
                                   },
                                 },
                                 children: [
@@ -8645,6 +9003,33 @@ export const seedBundles: Bundle[] = [
                             children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }, 'Edit profile'],
                           },
                         },
+                      },
+                      {
+                        type: 'Row',
+                        props: { gap: '100', p: '100', r: 'control', bg: 'surface-sunken', flexShrink: 0 },
+                        children: [
+                          {
+                            type: 'we-button',
+                            props: {
+                              size: 'sm',
+                              variant: { $: "!(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
+                              onClick: [
+                                { $invoke: 'routeStore.setParam', args: ['view', null] },
+                                { $invoke: 'routeStore.setParam', args: ['dna', null] },
+                              ],
+                            },
+                            children: [{ type: 'we-icon', props: { name: 'file-text' } }, 'Page'],
+                          },
+                          {
+                            type: 'we-button',
+                            props: {
+                              size: 'sm',
+                              variant: { $: "(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
+                              onClick: { $invoke: 'routeStore.setParam', args: ['view', 'canvas'] },
+                            },
+                            children: [{ type: 'we-icon', props: { name: 'squares-four' } }, 'Canvas'],
+                          },
+                        ],
                       },
                     ],
                   },

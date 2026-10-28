@@ -1,61 +1,19 @@
 import type { RouteSchema, SchemaNode, SchemaProp } from '@we/schema-shared';
-import {
-  askWhatGoesHere,
-  BACK_TO_CHOOSER,
-  canvasEditing,
-  canvasSeedOptions,
-  CARD_LOCALS,
-  FLOWS_LOCALS,
-  lineComposer,
-  newNoteModal,
-  newThingChooser,
-  PLACED_CARD_STYLE,
-  recordFormModal,
-  SUGGESTION_STYLES,
-  workflowsPage,
-} from '@we/template-kit';
+import { FLOWS_LOCALS, lineComposer, workflowsPage } from '@we/template-kit';
 
 import { viewBar } from './bar.ts';
 import { groupRoutes } from './groups.ts';
 import { liveDot } from './marks.ts';
-import { CHANNEL, CHANNEL_EXPR, channelPath, IN_ROOT_EXPR, PAGE_EXPR } from './paths.ts';
+import { CHANNEL, IN_ROOT_EXPR } from './paths.ts';
 import { personRoute } from './person.ts';
 
 /**
- * What the view beside the tree draws: a channel as chat or as a canvas, the space's workflows, and — as
- * its own page — a call.
+ * The pages beside the tree: the Feed, the space's workflows, and — as its own page — a call. Each is
+ * what a row of the tree shows in Page mode; Canvas mode is `canvas.ts`.
  */
 
 /** The channel record, for its title. The root channel is the space's own collection: the Feed. */
 const CHANNEL_TITLE = `${IN_ROOT_EXPR} ? 'Feed' : (first(local.channelRecord).title ? first(local.channelRecord).title : 'Channel')`;
-
-/** Chat or canvas, for the channel on screen — the address keeps which channel. The root's chat is its Feed. */
-const channelModes: SchemaNode = {
-  type: 'Row',
-  props: { gap: '100', p: '100', r: 'control', bg: 'surface-sunken' },
-  children: [
-    ['', 'chat-circle', 'Chat'],
-    ['canvas', 'squares-four', 'Canvas'],
-  ].map(([page, icon, label]) => ({
-    type: 'we-button',
-    props: {
-      size: 'sm',
-      variant: { $: `(${PAGE_EXPR}) == '${page}' ? 'soft' : 'ghost'` },
-      onClick: {
-        $invoke: 'routeStore.navigate',
-        args: [
-          {
-            $: page ? `spaceStore.spacePath + '/${page}?channel=' + (${CHANNEL_EXPR})` : channelPath(CHANNEL_EXPR),
-          },
-        ],
-      },
-    },
-    children: [
-      { type: 'we-icon', props: { name: icon } },
-      page ? label : { $: `(${IN_ROOT_EXPR}) ? 'Feed' : '${label}'` },
-    ],
-  })),
-};
 
 const channelQueries = {
   channelRecord: {
@@ -270,7 +228,7 @@ const chatRoute: RouteSchema = {
     focusLine: { type: 'function', initial: null },
   },
   children: [
-    viewBar([{ $: CHANNEL_TITLE }], { $: `(${IN_ROOT_EXPR}) ? 'chats-circle' : 'hash'` }, [channelModes]),
+    viewBar([{ $: CHANNEL_TITLE }], { $: `(${IN_ROOT_EXPR}) ? 'chats-circle' : 'hash'` }),
     {
       type: '$if',
       props: {
@@ -279,85 +237,6 @@ const chatRoute: RouteSchema = {
         else: subChannelChat,
       },
     },
-  ],
-};
-
-/**
- * The canvas on screen. The Feed's is the space's own canvas — its `canvas` landmark, whose placements
- * are its children — over everything filed into the space, so whatever a call or anybody else puts
- * there can be placed without being moved. A sub-channel is still its own canvas, as it was. With no
- * landmark (a space not made from Coasys's starter) there is nothing to place things on, and the
- * canvas says so rather than writing placements onto the Feed.
- */
-const CANVAS_EXPR = `(${IN_ROOT_EXPR}) ? (spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') : (${CHANNEL_EXPR})`;
-const CANVAS = { $: CANVAS_EXPR };
-
-/** A record's own page, which is where a suggested change is read old against new. */
-const RECORD_PAGE = "spaceStore.spacePath + '/record/' + event.recordType + '?id=' + event.recordId";
-
-/**
- * A channel as a canvas: the workshop's canvas, from the same kit pieces — suggestions from calls to
- * accept or reject, a toolbar on each card, lines drawn between cards, and the type picker on a
- * double-click of empty space. What is Coasys's own: a card opens as its record's page, there being
- * no inspector beside the canvas, and so does reviewing a suggested change.
- */
-const canvasRoute: RouteSchema = {
-  path: '/canvas',
-  type: 'Column',
-  props: { width: '100%', height: '100%' },
-  $queries: channelQueries,
-  $localState: { ...CARD_LOCALS },
-  children: [
-    viewBar([{ $: CHANNEL_TITLE }], { $: `(${IN_ROOT_EXPR}) ? 'chats-circle' : 'hash'` }, [channelModes]),
-    {
-      type: 'Column',
-      props: { flex: '1', minHeight: '0' },
-      children: [
-        {
-          type: 'GraphView',
-          props: {
-            width: '100%',
-            height: '100%',
-            seeds: {
-              source: 'canvas',
-              options: canvasSeedOptions({ canvas: CANVAS, members: { id: CHANNEL, via: 'children' } }),
-            },
-            layout: { type: 'manual', options: { size: { width: 200, height: 140 } } },
-            // A dot grid, as d12's canvas has: it moves with the canvas, so a pan reads as a pan.
-            backdrop: { pattern: 'dots', gap: 24 },
-            nodeStyle: [
-              { style: { shape: 'card', width: 200, height: 140, content: 'record', contentMinZoom: 0.4 } },
-              { style: PLACED_CARD_STYLE },
-              ...SUGGESTION_STYLES,
-            ],
-            behaviours: [
-              // A right-drag from a card draws a line from it, beside the handles on a selected card.
-              { type: 'connect-nodes', options: { button: 'secondary' } },
-              'node-double-click',
-              'canvas-double-click',
-              'marquee-select',
-              'select',
-              { type: 'drag-node', options: { pin: true } },
-              'pan-zoom',
-            ],
-            resizable: true,
-            empty: {
-              $: `${CANVAS_EXPR} ? 'Nothing here yet. Double-click to make something, or drop something in from Pocket.' : 'This space has no canvas.'`,
-            },
-            emptyIcon: 'squares-four',
-            ...canvasEditing({
-              canvas: CANVAS,
-              onReview: { $invoke: 'routeStore.navigate', args: [{ $: RECORD_PAGE }] },
-            }),
-            onCanvasDoubleClick: askWhatGoesHere(CANVAS),
-            onNodeDoubleClick: { $invoke: 'routeStore.navigate', args: [{ $: RECORD_PAGE }] },
-          },
-        },
-      ],
-    },
-    recordFormModal({ back: BACK_TO_CHOOSER, entityPicker: false }),
-    newThingChooser(CANVAS),
-    newNoteModal(CANVAS),
   ],
 };
 
@@ -383,7 +262,6 @@ const workflowsRoute: RouteSchema = {
 
 export const spaceRoutes: RouteSchema[] = [
   chatRoute,
-  canvasRoute,
   workflowsRoute,
   ...groupRoutes,
   personRoute,

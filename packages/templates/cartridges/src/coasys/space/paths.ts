@@ -5,6 +5,27 @@
  * same few expressions, so they are written here rather than twice.
  */
 
+/**
+ * Page or Canvas: how whatever the tree has chosen is seen.
+ *
+ * In the address (`?view=canvas`), so a link to somebody's work on the canvas opens on the canvas. Every
+ * navigation the space makes carries it (`withView`), which is what makes it sticky: in Canvas, choosing
+ * one thing after another in the tree shows each on the canvas rather than leaving it.
+ */
+export const VIEW_PARAM = 'view';
+export const IN_CANVAS = `routeStore.params.${VIEW_PARAM} == 'canvas'`;
+
+/** A path with the mode carried on it, whichever way its query begins. */
+export const withView = (pathExpr: string): string =>
+  `(${pathExpr}) + ((${IN_CANVAS}) ? (contains(${pathExpr}, '?') ? '&' : '?') + '${VIEW_PARAM}=canvas' : '')`;
+
+/**
+ * The Social DNA in focus on the canvas — `all`, a kind (`signal`), or a definition (`signal|<id>`).
+ * In Canvas only: on a page, a definition opens where it is edited, in the space's settings.
+ */
+export const DNA_PARAM = 'dna';
+export const DNA_FOCUS = `routeStore.params.${DNA_PARAM}`;
+
 /** The channel on screen: the one the address names, or the space's own collection, its root channel. */
 export const CHANNEL_EXPR = 'routeStore.params.channel ? routeStore.params.channel : spaceStore.root';
 export const CHANNEL = { $: CHANNEL_EXPR };
@@ -19,14 +40,14 @@ export const IN_ROOT_EXPR = `(${CHANNEL_EXPR}) == spaceStore.root`;
  * back the query string last used there, so "the space with no channel named" came back as the last
  * channel opened and General could not be reached once another had been.
  */
-export const channelPath = (idExpr: string): string => `spaceStore.spacePath + '?channel=' + (${idExpr})`;
+export const channelPath = (idExpr: string): string => withView(`spaceStore.spacePath + '?channel=' + (${idExpr})`);
 
 /** A call's address: its record's own page, drawn by the call view. */
 export const callPath = (idExpr: string): string =>
-  `spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (${idExpr})`;
+  withView(`spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (${idExpr})`);
 
 /** A person's address: their profile, drawn as the view. */
-export const personPath = (didExpr: string): string => `spaceStore.spacePath + '/person?did=' + (${didExpr})`;
+export const personPath = (didExpr: string): string => withView(`spaceStore.spacePath + '/person?did=' + (${didExpr})`);
 
 /** Which part of the page the address is on — '' for a channel's chat. */
 export const PAGE_EXPR = "routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''";
@@ -40,7 +61,7 @@ export const GROUP_PAGES = ['channels', 'calls', 'workflows', 'people'] as const
 export type GroupPage = (typeof GROUP_PAGES)[number];
 
 /** A group's page. */
-export const groupPath = (page: GroupPage): string => `spaceStore.spacePath + '/${page}'`;
+export const groupPath = (page: GroupPage): string => withView(`spaceStore.spacePath + '/${page}'`);
 
 /**
  * The tree row that matches the address, as `we-tree`'s `selected` takes it: `<kind>|<id>`. Each row
@@ -48,6 +69,9 @@ export const groupPath = (page: GroupPage): string => `spaceStore.spacePath + '/
  * A group's page lights the group's row — every group with a page, not only Workflows.
  */
 export const SELECTED_EXPR = [
+  // Social DNA in focus on the canvas, which is the address's rather than a page's.
+  `(${IN_CANVAS}) && ${DNA_FOCUS} ? (${DNA_FOCUS} == 'all' ? 'group|dna' : contains(${DNA_FOCUS}, '|') ? (startsWith(${DNA_FOCUS}, 'policy|') ? 'dnaprop|' : 'dna|') + ${DNA_FOCUS} : 'dnakind|' + ${DNA_FOCUS})`,
+  `:`,
   `(${PAGE_EXPR}) == 'record' ? 'call|' + routeStore.params.id`,
   `: (${PAGE_EXPR}) == 'person' ? 'person|' + routeStore.params.did`,
   `: (${PAGE_EXPR}) == 'workflows' ? (workflowStore.open ? 'workflow|' + workflowStore.open.name : 'group|workflows')`,
