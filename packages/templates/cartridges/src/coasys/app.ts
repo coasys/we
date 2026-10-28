@@ -1,6 +1,8 @@
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { confirmModal, railGroup, railItem, railShell } from '@we/template-kit';
 
+import { COLLAPSED, lockup } from './lockup.ts';
+
 /**
  * The Coasys app: the chrome around every space.
  *
@@ -14,8 +16,6 @@ import { confirmModal, railGroup, railItem, railShell } from '@we/template-kit';
  * space draws in its own tree and views, so a second way to reach them would be two ways to the same
  * place. The frame says so, which is what moves docked panels over.
  */
-
-const COLLAPSED = '72px';
 
 /** Lit while one of the host's own pages is open. */
 const viewing = (view: string) => ({ $: `shellStore.activeShellView == '${view}'` });
@@ -117,24 +117,16 @@ const rail: SchemaNode = railShell({
   bg: 'chrome',
   border: '1px solid border',
   localState: { confirmGuestLogout: { type: 'boolean', initial: false } },
-  header: {
-    type: 'Row',
+  // The mark where the sign-in screen draws it, and the name beside it while the rail is open.
+  header: lockup({
+    alt: 'Coasys',
+    name: { while: { $: 'local.expanded' } },
     props: {
-      width: COLLAPSED,
-      height: '72px',
-      flex: '0 0 auto',
-      ax: 'center',
-      ay: 'center',
+      width: '100%',
       cursor: 'pointer',
       onClick: { $invoke: 'shellStore.openShellView', args: ['landing-page'] },
     },
-    children: [
-      {
-        type: 'we-image',
-        props: { src: { $: 'templateStore.brand.mark' }, alt: 'Coasys', width: '28px', height: '28px' },
-      },
-    ],
-  },
+  }),
   footer: {
     type: 'Column',
     props: { width: '100%', gap: '200' },

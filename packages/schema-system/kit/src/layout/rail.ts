@@ -52,10 +52,15 @@ const DURATION_MS = 250;
 /** The fade is shorter than the movement so the label is legible before the rail stops. */
 const FADE_MS = 150;
 
-const revealInline = [
+/**
+ * How a rail's labels arrive as it opens: sideways from nothing, in step with the rail. Exported so
+ * anything else a rail shows only while open (an app's name beside its mark) arrives with them.
+ */
+export const RAIL_REVEAL = [
   { type: 'reveal' as const, axis: 'inline' as const, duration: DURATION_MS },
   { type: 'fade' as const, duration: FADE_MS },
 ];
+const revealInline = RAIL_REVEAL;
 
 /**
  * A group's own open/close (its caret, not the rail's hover-expand) has no width transition to

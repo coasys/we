@@ -1,6 +1,8 @@
 import type { SchemaNode } from '@we/schema-shared';
 import { field } from '@we/template-kit';
 
+import { lockup } from './lockup.ts';
+
 /**
  * The Coasys sign-in screen, as Josh's identity ceremonies lay it out: the mark and the name in a bar
  * along the top, and one narrow column under it holding a heading, a sentence and the one thing to do.
@@ -14,21 +16,8 @@ import { field } from '@we/template-kit';
  * identity backend, and arrives here as more states of the same column.
  */
 
-const brandBar: SchemaNode = {
-  type: 'Row',
-  props: { px: '800', py: '600', gap: '200', ay: 'center', width: '100%' },
-  children: [
-    {
-      type: 'we-image',
-      props: { src: { $: 'templateStore.brand.mark' }, alt: '', width: '22px', height: '22px' },
-    },
-    {
-      type: 'we-text',
-      props: { variant: 'body', fontWeight: 'semibold', letterSpacing: 'tight' },
-      children: [{ $: 'templateStore.brand.name' }],
-    },
-  ],
-};
+// The mark and the name exactly where the rail draws them, so signing in leaves the mark in place.
+const brandBar: SchemaNode = lockup({ alt: '', name: 'always', props: { width: '100%' } });
 
 /** A heading and the sentence under it, as every step of the ceremony opens. */
 const head = (heading: SchemaNode['children'], intro: NonNullable<SchemaNode['children']>[number]): SchemaNode => ({

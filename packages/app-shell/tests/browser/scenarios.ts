@@ -1999,6 +1999,72 @@ const profilePages = (): Scenario => {
 };
 
 /**
+ * The Coasys mark and name as the sign-in screen draws them and as the open rail does, each from the
+ * bundle itself, in boxes of the same size: signing in fades the one away over the other, so their
+ * marks and names must sit on the same pixels.
+ */
+const coasysLockup = (): Scenario => {
+  const glow = BUNDLE_LAB_THEMES.find((t) => t.label === 'coasys-glow')?.theme ?? {};
+  const bundle = coasysBundle as unknown as { app: SchemaNode; bootScreen: SchemaNode };
+  const isMark = (n: unknown) =>
+    !!n &&
+    typeof n === 'object' &&
+    (n as SchemaNode).type === 'we-image' &&
+    JSON.stringify((n as SchemaNode).props?.src) === JSON.stringify({ $: 'templateStore.brand.mark' });
+  // The band holding the mark: the node with the mark among its own children.
+  const band = (node: unknown): SchemaNode | undefined => {
+    if (!node || typeof node !== 'object') return undefined;
+    const n = node as Record<string, unknown>;
+    if (Array.isArray(n.children) && n.children.some(isMark)) return structuredClone(n) as SchemaNode;
+    for (const v of Object.values(n)) {
+      const found = Array.isArray(v) ? v.map(band).find(Boolean) : band(v);
+      if (found) return found;
+    }
+    return undefined;
+  };
+  // Tags the mark and the name, wherever each sits in the band, so the case can measure both.
+  const tag = (node: SchemaNode, which: string): SchemaNode => {
+    const walk = (n: unknown) => {
+      if (!n || typeof n !== 'object') return;
+      const m = n as SchemaNode;
+      if (isMark(m)) m.props = { ...m.props, id: `${which}-mark` };
+      if (m.type === 'we-text' && JSON.stringify(m.children) === JSON.stringify([{ $: 'templateStore.brand.name' }]))
+        m.props = { ...m.props, id: `${which}-name` };
+      for (const v of Object.values(m)) (Array.isArray(v) ? v : [v]).forEach(walk);
+    };
+    walk(node);
+    return node;
+  };
+  const box = (which: string, child: SchemaNode, localState?: Record<string, unknown>): SchemaNode => ({
+    type: 'Column',
+    ...(localState ? { $localState: localState } : {}),
+    props: { id: `${which}-box`, width: '320px', height: '120px', bg: 'chrome', position: 'relative' },
+    children: [child],
+  });
+  return {
+    node: {
+      type: 'Row',
+      theme: glow,
+      props: { gap: '400', p: '400', ay: 'start' },
+      children: [
+        box('boot', tag(band(bundle.bootScreen)!, 'boot')),
+        // The rail open, as it is under the pointer: the name beside the mark.
+        box('rail', tag(band(bundle.app)!, 'rail'), { expanded: { type: 'boolean', initial: true } }),
+      ],
+    },
+    tables: {},
+    stores: {
+      templateStore: {
+        brand: {
+          name: 'Coasys',
+          mark: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"%3E%3Crect width="1" height="1"/%3E%3C/svg%3E',
+        },
+      },
+    },
+  };
+};
+
+/**
  * The Coasys tree's Social DNA, from the bundle itself: the space's definitions in four levels, with a
  * few of each kind so every level has something to draw.
  */
@@ -2144,6 +2210,7 @@ const feedViewPage = (): Scenario => {
 export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'coasys:about': coasysAbout,
   'feed:view': feedViewPage,
+  'coasys:lockup': coasysLockup,
   'coasys:tree-dna': coasysTreeDna,
   'profile:pages': profilePages,
   'tree:caret-end': treeCaretEnd,

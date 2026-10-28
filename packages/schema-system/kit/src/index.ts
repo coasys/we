@@ -103,7 +103,7 @@ export { timeline, timelineMoreAt, timelineOrder } from './layout/timeline.ts';
 export type { TimelineOptions, TimelineOrientation } from './layout/timeline.ts';
 export { recordCard } from './layout/recordCard.ts';
 export type { RecordCardOptions } from './layout/recordCard.ts';
-export { railButton, railGroup, railItem, railShell } from './layout/rail.ts';
+export { RAIL_REVEAL, railButton, railGroup, railItem, railShell } from './layout/rail.ts';
 export type { RailButtonOptions, RailGroupOptions, RailItemOptions, RailShellOptions } from './layout/rail.ts';
 export { iconDisc } from './layout/iconDisc.ts';
 export type { IconDiscOptions } from './layout/iconDisc.ts';

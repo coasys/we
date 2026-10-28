@@ -64,11 +64,13 @@ export const seedBundles: Bundle[] = [
                     {
                       type: 'Row',
                       props: {
-                        width: '72px',
                         height: '72px',
                         flex: '0 0 auto',
-                        ax: 'center',
                         ay: 'center',
+                        gap: '300',
+                        pl: 'calc((72px - 28px) / 2)',
+                        minWidth: '0',
+                        width: '100%',
                         cursor: 'pointer',
                         onClick: { $invoke: 'shellStore.openShellView', args: ['landing-page'] },
                       },
@@ -80,6 +82,31 @@ export const seedBundles: Bundle[] = [
                             alt: 'Coasys',
                             width: '28px',
                             height: '28px',
+                            flexShrink: 0,
+                          },
+                        },
+                        {
+                          type: '$if',
+                          props: {
+                            condition: { $: 'local.expanded' },
+                            enterTransition: [
+                              { type: 'reveal', axis: 'inline', duration: 250 },
+                              { type: 'fade', duration: 150 },
+                            ],
+                            exitTransition: [
+                              { type: 'reveal', axis: 'inline', duration: 250 },
+                              { type: 'fade', duration: 150 },
+                            ],
+                            then: {
+                              type: 'we-text',
+                              props: {
+                                variant: 'body',
+                                fontWeight: 'semibold',
+                                letterSpacing: 'tight',
+                                truncate: true,
+                              },
+                              children: [{ $: 'templateStore.brand.name' }],
+                            },
                           },
                         },
                       ],
@@ -10686,15 +10713,29 @@ export const seedBundles: Bundle[] = [
           children: [
             {
               type: 'Row',
-              props: { px: '800', py: '600', gap: '200', ay: 'center', width: '100%' },
+              props: {
+                height: '72px',
+                flex: '0 0 auto',
+                ay: 'center',
+                gap: '300',
+                pl: 'calc((72px - 28px) / 2)',
+                minWidth: '0',
+                width: '100%',
+              },
               children: [
                 {
                   type: 'we-image',
-                  props: { src: { $: 'templateStore.brand.mark' }, alt: '', width: '22px', height: '22px' },
+                  props: {
+                    src: { $: 'templateStore.brand.mark' },
+                    alt: '',
+                    width: '28px',
+                    height: '28px',
+                    flexShrink: 0,
+                  },
                 },
                 {
                   type: 'we-text',
-                  props: { variant: 'body', fontWeight: 'semibold', letterSpacing: 'tight' },
+                  props: { variant: 'body', fontWeight: 'semibold', letterSpacing: 'tight', truncate: true },
                   children: [{ $: 'templateStore.brand.name' }],
                 },
               ],
