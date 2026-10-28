@@ -4,9 +4,10 @@
  * The parts of live template sync that decide something. The watching and applying are in
  * TemplateStore; what a push looks like from each backend is pinned in templateWatch.test.ts.
  */
+import type { TemplateSchema } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
-import { remoteUpdateFor, templateChanges } from '../src/shared/templateSync';
+import { remoteUpdateFor, sameTemplateContent, templateChanges } from '../src/shared/templateSync';
 
 const row = (id: string, version: number, updatedAt = version * 10) => ({ id, version, updatedAt });
 
@@ -62,5 +63,20 @@ describe('a change to the template on screen', () => {
 
   it('treats a save with no recorded author as somebody else’s', () => {
     expect(remoteUpdateFor({ author: undefined, me, editing: false, followOthers: false })).toBe('offer');
+  });
+});
+
+describe('whether a save changed the design', () => {
+  const template = { type: 'Column', meta: { name: 'Timeline' }, children: ['Hello'] } as unknown as TemplateSchema;
+  const stamped = (t: TemplateSchema, more: object) => ({ ...t, ...more }) as TemplateSchema;
+
+  it('sets aside what saving stamps on', () => {
+    const saved = stamped(template, { templateVersion: 4, author: 'did:key:me', _fromSpace: true });
+    expect(sameTemplateContent(saved, template)).toBe(true);
+  });
+
+  it('notices a change to the design itself', () => {
+    const edited = stamped(template, { children: ['Hello, world'], templateVersion: 4 });
+    expect(sameTemplateContent(edited, template)).toBe(false);
   });
 });
