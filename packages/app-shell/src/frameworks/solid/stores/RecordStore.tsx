@@ -135,8 +135,11 @@ const RELATIONSHIP = 'Relationship';
  * `Relationship` is drawn between two things rather than filled in from a picker, and it is read
  * constantly all the same: a line on a canvas is one, and clicking it is exactly the moment somebody
  * wants to read it.
+ *
+ * The space's vocabulary is made in its settings, never from a picker, and is read in an inspector
+ * and on a map of what the space has defined — each as the fields its settings form asks for.
  */
-const DISPLAY_ONLY = [RELATIONSHIP] as const;
+const DISPLAY_ONLY = [RELATIONSHIP, 'SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'] as const;
 
 /**
  * Write one placement, node reference included, inside whatever write group the caller is in.

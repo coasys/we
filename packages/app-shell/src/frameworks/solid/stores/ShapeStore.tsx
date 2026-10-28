@@ -106,6 +106,13 @@ export const BLOCK_ICONS: Record<string, string> = {
   TaskBlock: 'check-square',
   TextBlock: 'text-t',
   VideoBlock: 'youtube-logo',
+  // A space's own vocabulary — shown in an inspector and on a map of what it has defined, so drawn
+  // with the glyphs the Social DNA lists use.
+  InvolvementType: 'hand-waving',
+  RelationshipType: 'arrows-left-right',
+  SignalType: 'heart',
+  TaskState: 'circle-half',
+  Topic: 'hash',
 };
 
 export interface SpaceShapeView {
