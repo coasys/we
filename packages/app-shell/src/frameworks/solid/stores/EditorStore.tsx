@@ -8,9 +8,11 @@
  * request loop live in `@we/agent-tools` — this store orchestrates them against its own
  * signals, and never learns which model or provider answered.
  */
+import { agentTurns } from '@shared/agentTurns';
 import { isEditorChord } from '@shared/editorChord';
 import { registerHostDockStore, unregisterHostDockStore } from '@shared/registries/dockRegistry';
 import { EDITOR_STORE_ID } from '@shared/registries/editorDocks';
+import { sameTemplateContent } from '@shared/templateSync';
 import { deepClone } from '@shared/utils';
 import {
   type EditingTheme,
@@ -21,7 +23,7 @@ import {
   useThemeStore,
 } from '@solid/stores';
 import { countedPatches, prepareTemplateRequest, runEditSession } from '@we/agent-tools';
-import type { AgentTurn, ConversationTurn, LanguageModelStatus, NewRecord } from '@we/backend-shared';
+import type { ConversationTurn, LanguageModelStatus, NewRecord } from '@we/backend-shared';
 import { AgentUnavailableError } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import { ChatMessage as ChatMessageRecord, ChatSession as ChatSessionRecord } from '@we/entities';
@@ -207,19 +209,6 @@ function devLog(...args: unknown[]): void {
 const EditorContext = createContext<EditorStore>();
 
 let msgIdCounter = 0;
-
-/** A template's design, without what saving it stamps on — to tell whether a save changed it. */
-function contentOf(template: TemplateSchema): string {
-  const {
-    templateVersion: _v,
-    author: _a,
-    _fromSpace: _s,
-    ...rest
-  } = template as TemplateSchema & {
-    author?: string;
-  };
-  return JSON.stringify(rest);
-}
 
 function createMessage(role: ChatMessage['role'], content: string, status?: ChatMessage['status']): ChatMessage {
   return {
@@ -1079,14 +1068,14 @@ export function EditorStoreProvider(props: ParentProps) {
       const { result, stored: after } = await templateStore.writtenElsewhere(template, () =>
         agents.run({
           dataset: stored.dataset,
-          turns: agentTurns(text),
+          turns: agentTurns(messages(), text),
           about: { entity: 'Template', id: stored.recordId },
           mayEdit: true,
         }),
       );
 
       // The agent saved the record; the editor shows what it saved, and one undo puts it back.
-      const changed = !!after && contentOf(after) !== contentOf(before);
+      const changed = !!after && !sameTemplateContent(after, before);
       if (after && changed) {
         pushSnapshot();
         edit.update(after);
@@ -1106,21 +1095,6 @@ export function EditorStoreProvider(props: ParentProps) {
       setMessages((prev) => prev.filter((m) => m.id !== streamMsg.id));
       return false;
     }
-  }
-
-  /**
-   * The conversation as the agent reads it: what was said, in order, the request last. Status
-   * lines the panel drew around a reply are the panel's, not what anybody said, so they go.
-   */
-  function agentTurns(latest: string): AgentTurn[] {
-    const turns: AgentTurn[] = [];
-    for (const msg of messages()) {
-      if (msg.role === 'system' || msg.status === 'sending' || msg.status === 'streaming') continue;
-      const text = msg.content.replace(/<[^>]+>/g, '').trim();
-      if (text) turns.push({ role: msg.role === 'user' ? 'user' : 'assistant', text });
-    }
-    turns.push({ role: 'user', text: latest });
-    return turns;
   }
 
   // ----------------------------------------------------------------

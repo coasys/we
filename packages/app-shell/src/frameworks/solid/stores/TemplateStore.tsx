@@ -64,7 +64,12 @@ import {
   describeCapabilities,
   describeRefusal,
 } from '../../../shared/templateAcceptance';
-import { remoteUpdateFor, TEMPLATE_WATCH_FIELDS, templateChanges } from '../../../shared/templateSync';
+import {
+  remoteUpdateFor,
+  sameTemplateContent,
+  TEMPLATE_WATCH_FIELDS,
+  templateChanges,
+} from '../../../shared/templateSync';
 import { type AppDataset, canonicalSpaceId, useDatasetStore } from './DatasetStore';
 import { useRouteStore } from './RouteStore';
 import { useSessionStore } from './SessionStore';
@@ -1670,21 +1675,6 @@ export function TemplateStoreProvider(props: ParentProps) {
     return go;
   }
 
-  const sameContent = (a: TemplateSchema, b: TemplateSchema) => {
-    const bare = (t: TemplateSchema) => {
-      const {
-        templateVersion: _v,
-        author: _a,
-        _fromSpace: _s,
-        ...rest
-      } = deepClone(t) as TemplateSchema & {
-        author?: string;
-      };
-      return JSON.stringify(rest);
-    };
-    return bare(a) === bare(b);
-  };
-
   /** The notice offering a change somebody else made, while it is up. One at a time. */
   let offered: string | null = null;
 
@@ -1702,7 +1692,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     if (!record || !records.has(record.id)) return;
     if (writingElsewhere.has(record.id)) return;
     const fresh = allTemplates().find((t) => t.id === current.id && !!t._fromSpace === fromSpace);
-    if (!fresh || sameContent(fresh, current)) return;
+    if (!fresh || sameTemplateContent(fresh, current)) return;
 
     const decision = remoteUpdateFor({
       author: (fresh as { author?: string }).author,
