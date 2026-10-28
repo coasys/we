@@ -15,6 +15,7 @@
  *   sealed under the passphrase the person types in the identity window either way: no OS prompt is
  *   shown, so there is nothing for the harness to answer.
  */
+import { spawnSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -233,12 +234,31 @@ async function startKeyring(world: LocalWorld, env: NodeJS.ProcessEnv): Promise<
       env: { ...env, KEYRING_PASSWORD: 'acceptance-keyring' },
     },
   );
-  await keyring
-    .waitFor(
-      (l) => l.includes('GNOME_KEYRING_CONTROL') || l.includes('SSH_AUTH_SOCK') || l.includes('discover_other_daemon'),
-      15_000,
-      'the keyring',
-    )
-    .catch(() => undefined);
+  // Ready when the Secret Service owns its name on the bus: the daemon prints no line for that.
+  const deadline = Date.now() + 15_000;
+  while (!secretServiceOnBus(env)) {
+    if (keyring.exit) throw new Error(`the keyring exited before it served secrets; last lines:\n${keyring.tail(30)}`);
+    if (Date.now() > deadline) {
+      await keyring.stop();
+      throw new Error(`the keyring did not serve secrets within 15 s; last lines:\n${keyring.tail(30)}`);
+    }
+    await new Promise((r) => setTimeout(r, 300));
+  }
   return keyring;
+}
+
+function secretServiceOnBus(env: NodeJS.ProcessEnv): boolean {
+  const reply = spawnSync(
+    'dbus-send',
+    [
+      '--session',
+      '--print-reply',
+      '--dest=org.freedesktop.DBus',
+      '/org/freedesktop/DBus',
+      'org.freedesktop.DBus.NameHasOwner',
+      'string:org.freedesktop.secrets',
+    ],
+    { env, encoding: 'utf8' },
+  );
+  return reply.status === 0 && reply.stdout.includes('boolean true');
 }

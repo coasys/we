@@ -8,7 +8,8 @@
  *
  * The local world serves only the services its scenarios need. Each started service is entered here
  * with the address it listens on, and every endpoint a scenario reads comes from here. A world
- * refuses any endpoint that names a production service: no run touches production.
+ * refuses any endpoint that names a production service, so no endpoint a scenario reads points at
+ * production. This checks names only: it does not stop a started process from calling out itself.
  */
 
 export type Service = 'webApp' | 'authDomain' | 'platformApi' | 'store' | 'linkServer' | 'coasysCloud' | 'unyt';
