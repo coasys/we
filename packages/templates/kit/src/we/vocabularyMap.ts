@@ -37,8 +37,8 @@ export interface VocabularyMapOptions {
   focus?: SchemaProp;
   /** What pressing a node does. */
   onNodeClick?: SchemaProp;
-  /** Rules dimming what is not in focus — see `focusLight` in `canvas.ts`. Last, so they win. */
-  focusRules?: SchemaProp;
+  /** Rules dimming what is not in focus — see `focusDimWhere` in `canvas.ts`. Last, so they win. */
+  focusRules?: SchemaProp[];
 }
 
 /**
@@ -101,7 +101,7 @@ export function vocabularyMap(opts: VocabularyMapOptions = {}): SchemaNode {
             { when: { kind: 'property' }, style: { color: 'control-surface', height: 44, content: 'property' } },
             { when: { kind: 'literal' }, style: { shape: 'circle', size: 12 } },
             // Last, so a word in focus and what it holds stand out whatever drew them.
-            ...(opts.focusRules ? [opts.focusRules] : []),
+            ...(opts.focusRules ?? []),
           ],
           /*
         A parent's lines leave its bottom edge and meet each child at its top, as the canvas's tree

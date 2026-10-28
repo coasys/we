@@ -77,7 +77,7 @@ export {
   EXTRACTABLE,
   FOCUS_DIM,
   focusDim,
-  focusLight,
+  focusDimWhere,
   PLACED_CARD_STYLE,
   SUGGESTION_STYLES,
 } from './we/canvas.ts';

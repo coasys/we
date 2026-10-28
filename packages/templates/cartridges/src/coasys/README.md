@@ -60,7 +60,7 @@ is what the space holds, arranged by people; the vocabulary is what it has defin
 The mode is `?view=canvas`, which every navigation the space makes carries (`withView` in
 `space/paths.ts`), so it stays on while somebody moves around the tree. The canvas is drawn beside the
 pages rather than as a route, so a change of focus restyles it rather than drawing it again. The focus
-rules and the vocabulary map are the kit's (`focusDim`, `focusLight`, `vocabularyMap`), shared with the
+rules and the vocabulary map are the kit's (`focusDim`, `focusDimWhere`, `vocabularyMap`), shared with the
 workshop.
 
 ## What is drawn and what waits

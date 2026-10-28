@@ -19,6 +19,7 @@
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
+    "@we/graph-core": "workspace:*",
     "vitest": "^5.0.5"
   }
 }

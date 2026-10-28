@@ -3106,7 +3106,10 @@
                                       },
                                       { "when": { "kind": "literal" }, "style": { "shape": "circle", "size": 12 } },
                                       {
-                                        "$": "(routeStore.params.dna != 'all') ? [{ style: { opacity: 0.1 } }, (split(routeStore.params.dna, '|')[1] ? [{ kind: 'cluster', type: 'vocabulary', 'data.bucket': { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split(routeStore.params.dna, '|')[0]] }, (split(routeStore.params.dna, '|')[0] == 'model' ? { 'data.entity': shapeStore.spaceShapes.find(s, s.id == (split(routeStore.params.dna, '|')[1])).name } : split(routeStore.params.dna, '|')[0] == 'policy' ? { 'data.item': split(routeStore.params.dna, '|')[1] } : { 'data.recordId': split(routeStore.params.dna, '|')[1] })] : [{ 'data.bucket': { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split(routeStore.params.dna, '|')[0]] }]).map(c, { when: c, style: { opacity: 1 } })] : []"
+                                        "$": "(routeStore.params.dna != 'all') ? [{ when: { 'data.bucket': { exists: true, not: { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split(routeStore.params.dna, '|')[0]] } }, style: { opacity: 0.1 } }] : []"
+                                      },
+                                      {
+                                        "$": "(split(routeStore.params.dna, '|')[1]) ? [{ when: (split(routeStore.params.dna, '|')[0] == 'model' ? { 'data.bucket': { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split(routeStore.params.dna, '|')[0]], type: { not: 'vocabulary' }, 'data.entity': { not: shapeStore.spaceShapes.find(s, s.id == (split(routeStore.params.dna, '|')[1])).name } } : split(routeStore.params.dna, '|')[0] == 'policy' ? { 'data.bucket': { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split(routeStore.params.dna, '|')[0]], type: { not: 'vocabulary' }, 'data.item': { not: split(routeStore.params.dna, '|')[1] } } : { 'data.bucket': { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split(routeStore.params.dna, '|')[0]], type: { not: 'vocabulary' }, 'data.recordId': { not: split(routeStore.params.dna, '|')[1] } }), style: { opacity: 0.1 } }] : []"
                                       }
                                     ],
                                     "edgeStyle": [
@@ -3130,7 +3133,7 @@
                                       }
                                     ],
                                     "open": {
-                                      "$": "distinct(local.vocabOpen, routeStore.params.dna != 'all' ? ['we-graph://cluster/vocabulary/' + { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split(routeStore.params.dna, '|')[0]]] : [])"
+                                      "$": "distinct(local.vocabOpen, routeStore.params.dna != 'all' ? ['we-graph://cluster/vocabulary/' + { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split(routeStore.params.dna, '|')[0]]] : [], split(routeStore.params.dna, '|')[1] && split(routeStore.params.dna, '|')[0] != 'policy' ? [split(routeStore.params.dna, '|')[0] == 'model' ? shapeStore.spaceShapes.find(s, s.id == (split(routeStore.params.dna, '|')[1])).name : split(routeStore.params.dna, '|')[1]] : [])"
                                     },
                                     "onNodeOpen": {
                                       "$setLocal": "vocabOpen",

@@ -6,7 +6,7 @@ import {
   canvasSeedOptions,
   CARD_LOCALS,
   focusDim,
-  focusLight,
+  focusDimWhere,
   newNoteModal,
   newThingChooser,
   PLACED_CARD_STYLE,
@@ -30,7 +30,7 @@ import { DNA_FOCUS, IN_CANVAS, PAGE_EXPR } from './paths.ts';
  * | A call | what was extracted from it |
  * | A person | what they made |
  * | A workflow | the records going through it |
- * | Social DNA, a kind of it, one definition, the policy | the vocabulary map, with that lit |
+ * | Social DNA, a kind of it, one definition, the policy | the vocabulary map: its kind open, the definition open into what it is, the rest dimmed |
  *
  * Two maps, never one: the content canvas is what the space holds, arranged by people; the vocabulary
  * is what it has defined, generated and laid out by itself. Social DNA is never a card on the content
@@ -81,15 +81,22 @@ const BUCKET = lookup('bucket');
 /** A bucket's node on the map, by the address the vocabulary seed gives it. */
 const BUCKET_NODE = `'we-graph://cluster/vocabulary/' + ${BUCKET}`;
 
-/**
- * What a definition is on the map: a record by its id; a model by its name, the tree knowing it by the
- * Shape record's id; a rule of the policy by its words.
- */
+/** A model's name, the tree knowing a model by the Shape record's id. */
 const MODEL_NAME = `shapeStore.spaceShapes.find(s, s.id == (${DNA_ID})).name`;
-const DEFINITION = `(${DNA_KIND} == 'model' ? { 'data.entity': ${MODEL_NAME} } : ${DNA_KIND} == 'policy' ? { 'data.item': ${DNA_ID} } : { 'data.recordId': ${DNA_ID} })`;
 
-/** What is lit: a kind's bucket and everything in it, or a definition and the bucket it is in. */
-const DNA_KEEP = `${DNA_ID} ? [{ kind: 'cluster', type: 'vocabulary', 'data.bucket': ${BUCKET} }, ${DEFINITION}] : [{ 'data.bucket': ${BUCKET} }]`;
+/**
+ * Social DNA in focus, as two dimmings: everything in the other kinds, and — with one definition
+ * chosen — the others of its kind. Naming what to dim rather than what to keep, so what a chosen
+ * definition opens into (its fields, its records) stays whole. A definition is a record by its id, a
+ * model by its name, a rule of the policy by its words.
+ */
+const OTHER_KINDS = `{ 'data.bucket': { exists: true, not: ${BUCKET} } }`;
+const SIBLING = (key: string, value: string) =>
+  `{ 'data.bucket': ${BUCKET}, type: { not: 'vocabulary' }, '${key}': { not: ${value} } }`;
+const SIBLINGS = `(${DNA_KIND} == 'model' ? ${SIBLING('data.entity', MODEL_NAME)} : ${DNA_KIND} == 'policy' ? ${SIBLING('data.item', DNA_ID)} : ${SIBLING('data.recordId', DNA_ID)})`;
+
+/** The definition chosen, opened: a record or a model by what the graph's `open` takes; a rule has nothing inside. */
+const OPEN_DEFINITION = `${DNA_ID} && ${DNA_KIND} != 'policy' ? [${DNA_KIND} == 'model' ? ${MODEL_NAME} : ${DNA_ID}] : []`;
 
 /** The bar's words for what is in focus. */
 const TITLE = [
@@ -176,7 +183,10 @@ export const canvasPane: SchemaNode = {
           props: {
             condition: { $: ON_DNA },
             then: vocabularyMap({
-              open: { $: `distinct(local.vocabOpen, ${DNA_FOCUS} != 'all' ? [${BUCKET_NODE}] : [])` },
+              // Its kind opened, and the definition chosen opened into what it is.
+              open: {
+                $: `distinct(local.vocabOpen, ${DNA_FOCUS} != 'all' ? [${BUCKET_NODE}] : [], ${OPEN_DEFINITION})`,
+              },
               onNodeOpen: {
                 $setLocal: 'vocabOpen',
                 value: {
@@ -185,7 +195,7 @@ export const canvasPane: SchemaNode = {
               },
               // A definition that is a record is selected and brought into view.
               focus: { $: `${DNA_ID} && !(${DNA_KIND} in ['model', 'policy']) ? ${DNA_ID} : ''` },
-              focusRules: focusLight(`${DNA_FOCUS} != 'all'`, DNA_KEEP),
+              focusRules: [focusDimWhere(`${DNA_FOCUS} != 'all'`, OTHER_KINDS), focusDimWhere(DNA_ID, SIBLINGS)],
             }),
           },
         },

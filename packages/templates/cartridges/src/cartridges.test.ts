@@ -9,6 +9,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+import { resolveStyle } from '@we/graph-core';
 import {
   buildValidationContext,
   bundleThemes,
@@ -183,29 +184,52 @@ describe('the Coasys cartridge', () => {
       expect(at([], {})({ $: groupPath('calls') })).toBe('/space/s1/calls');
     });
 
-    it('shows Social DNA on the vocabulary map, its kind lit, or one definition and the bucket it is in', () => {
+    /*
+      Resolved by the graph's own style resolver, over a few nodes of the map, rather than only
+      evaluated: rules of a shape the graph could not read once passed a check of their shape, and the
+      space's template failed the moment a definition was chosen.
+    */
+    it('shows Social DNA on the vocabulary map: its kind and the chosen definition open, the rest dimmed', () => {
       const map = findNode(canvasPane, (n) => n.type === '$if' && JSON.stringify(n).includes('source":"vocabulary'));
-      expect(map).toBeTruthy();
       const vocab = findNode(map, (n) => n.type === 'GraphView')!;
-      const rules = (vocab.props as { nodeStyle: unknown[] }).nodeStyle;
-      const focus = rules[rules.length - 1];
-      expect(at([], { view: 'canvas', dna: 'signal' })(focus)).toEqual([
-        { style: { opacity: FOCUS_DIM } },
-        [{ when: { 'data.bucket': 'signals' }, style: { opacity: 1 } }],
-      ]);
-      expect(at([], { view: 'canvas', dna: 'state|s1' })(focus)).toEqual([
-        { style: { opacity: FOCUS_DIM } },
-        [
-          { when: { kind: 'cluster', type: 'vocabulary', 'data.bucket': 'states' }, style: { opacity: 1 } },
-          { when: { 'data.recordId': 's1' }, style: { opacity: 1 } },
-        ],
-      ]);
+      const props = vocab.props as { nodeStyle: unknown[]; open: unknown };
+      const node = (id: string, data: Record<string, string>, kind = 'entity', type = 'SignalType') => ({
+        id,
+        kind,
+        type,
+        data,
+      });
+      const nodes = [
+        node('signals', { bucket: 'signals' }, 'cluster', 'vocabulary'),
+        node('like', { bucket: 'signals', recordId: 'like' }),
+        node('rating', { bucket: 'signals', recordId: 'rating' }),
+        node('like-mode', {}, 'property', 'mode'),
+        node('states', { bucket: 'states' }, 'cluster', 'vocabulary'),
+        node('rule', { bucket: 'policy', item: 'Members can make anything.' }, 'cluster', 'vocabulary-item'),
+      ];
+      const dimmed = (params: Record<string, string>) => {
+        const evaluate = at([], { view: 'canvas', ...params });
+        const rules = props.nodeStyle.map((rule) =>
+          rule && typeof rule === 'object' && '$' in rule ? evaluate(rule) : rule,
+        );
+        return nodes
+          .filter((n) => (resolveStyle(n as never, rules as never) as { opacity?: number }).opacity === FOCUS_DIM)
+          .map((n) => n.id);
+      };
+      // A kind: the others dimmed, and nothing of its own.
+      expect(dimmed({ dna: 'signal' })).toEqual(['states', 'rule']);
+      // A definition: its siblings as well, while what it opened into stays whole.
+      expect(dimmed({ dna: 'signal|like' })).toEqual(['rating', 'states', 'rule']);
       // The policy is Social DNA too: one rule, by its words.
-      expect(
-        (at([], { view: 'canvas', dna: 'policy|Members can make anything.' })(focus) as unknown[])[1],
-      ).toContainEqual({ when: { 'data.item': 'Members can make anything.' }, style: { opacity: 1 } });
+      expect(dimmed({ dna: 'policy|Members can make anything.' })).toEqual(['signals', 'like', 'rating', 'states']);
       // All of it, nothing dimmed.
-      expect(at([], { view: 'canvas', dna: 'all' })(focus)).toEqual([]);
+      expect(dimmed({ dna: 'all' })).toEqual([]);
+
+      // The chosen definition is opened into what it is, beside its kind.
+      expect(at([], { view: 'canvas', dna: 'signal|like' })(props.open)).toEqual([
+        'we-graph://cluster/vocabulary/signals',
+        'like',
+      ]);
     });
   });
 });
