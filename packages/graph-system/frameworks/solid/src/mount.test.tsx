@@ -475,6 +475,20 @@ describe('GraphView folding', () => {
     expect(folds).toEqual([true]);
   });
 
+  // A definition chosen in a tree is a record id; the address has the dataset in it, encoded.
+  it('opens a record named by its id, as by its address', async () => {
+    const host = mount({
+      seeds: literal,
+      layout: { type: 'manual' },
+      focus: 'parent',
+      open: ['parent'],
+      onNodeOpen: () => undefined,
+      onNodeFold: () => undefined,
+    });
+    await until(() => propOf(host, '.we-graph__actions we-button', 'label') === 'Close');
+    expect(propOf(host, '.we-graph__actions we-button', 'label')).toBe('Close');
+  });
+
   it('says what a fold will leave behind, rather than half working in silence', async () => {
     /*
       `shared` is held by `outside` as well, so folding `parent` may take `own` and may not take

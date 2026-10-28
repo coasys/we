@@ -568,6 +568,10 @@ export interface GraphViewProps {
    * comes back once the first is open again. One taken out of the list is closed.
    *
    * View state, like `folded`: WE's canvas keeps it in the address.
+   *
+   * An entry may be a record's id instead of a node's address, as `focus` takes one — for an interface
+   * that knows which record it means (a definition chosen in a tree) but cannot build the address,
+   * which has the dataset in it.
    */
   open?: string[];
   /**

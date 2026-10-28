@@ -2303,9 +2303,24 @@ export function GraphView(props: GraphViewProps) {
     expansion is the reader's, not the address's.
   */
   const openedFromProp = new Set<string>();
+  /*
+    An entry may also be a record's id, as `focus` takes one: an interface that knows the record —
+    a definition chosen in a tree — cannot build its node's address, which has the dataset in it,
+    encoded. Read as the address of the record's node, once that node is on the graph.
+  */
+  const nodeFor = (entry: string): string => {
+    if (engine.store.node(entry)) return entry;
+    for (const node of engine.store.nodes()) {
+      const address = parseAddress(node.id);
+      if (address?.kind === 'entity' && address.id === entry) return node.id;
+    }
+    return entry;
+  };
   createEffect(() => {
     version();
-    const wanted = new Set(props.open ?? []);
+    // The list followed; the graph read as it stands — `version` above re-runs this as nodes arrive.
+    const entries = props.open ?? [];
+    const wanted = new Set(untrack(() => entries.map(nodeFor)));
     untrack(() => {
       for (const id of wanted) {
         if (openedFromProp.has(id) || !engine.store.node(id) || engine.expansion.isExpanded(id)) continue;
