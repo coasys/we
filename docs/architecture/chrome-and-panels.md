@@ -34,8 +34,18 @@ in — is forked from the bar the inspector shows while it is the target. An app
 deleted in Settings → Apps & templates, which puts you back in WE's if it was the one you were in. An app
 can also arrive in a bundle — built in by the seed, or installed from a file — with templates, a
 theme and record types of its own; see `apps-as-data.md`. Safe
-mode always draws WE's. Everything else here — the editor's panels and bar, the boot screen and its
-modals, module chrome, the safety prompts — the host draws whatever the app says.
+mode always draws WE's. The sign-in screen is the app's to take whole, recompose from WE's parts
+(`host.signIn.form`, `host.signIn.accounts`) or redraw, as its chrome is; see `apps-as-data.md`.
+Everything else here — the editor's panels and bar, the modals, module chrome, the safety prompts —
+the host draws whatever the app says.
+
+**The pattern for any host surface an app may change.** Three depths, as a module's panel has: take it
+whole and re-theme it; place its parts in an arrangement of your own, changing their words through
+inputs; or redraw it. Two rules make the middle one cheap and safe: what the surface _does_ lives in a
+store or inside its parts, never in the arrangement around them (the sign-in step is
+`sessionStore.signInStep`), and WE's own version is built from the same parts, so a fix to one
+reaches every app that placed it. A surface that is the host asking somebody a question (the safety
+prompts) is never offered this — see `protected-pieces.md`.
 
 The geometry does not assume a sidebar. The app declares how much of each edge its chrome holds,
 `meta.frame: { left, right, top, bottom }`, and that is the frame (`AppFrame` in `dockGeometry.ts`,

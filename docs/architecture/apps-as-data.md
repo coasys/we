@@ -13,21 +13,21 @@ data the host already understands.
 
 `readBundle` in `@we/schema-shared` (`src/bundle.ts`) is the reader and the definition:
 
-| Field                                   | What it is                                                                                            |
-| --------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `format`, `formatVersion`               | `we-bundle`, `1`. Checked before anything else.                                                       |
-| `id`, `version`                         | The app's own. Lowercase with single dashes; an install is recognised by the id.                      |
-| `name`, `description`, `icon`, `author` | `author` is a claim — a file attests nothing.                                                         |
-| `app`                                   | A template with `meta.role: 'app'`: the chrome around every space (see `chrome-and-panels.md`).       |
-| `templates`                             | Space templates (no role) and sections (`meta.role: 'view'`).                                         |
-| `pages`                                 | Pages of the app's own (`meta.role: 'page'`) — an About page, a guide. See "Pages".                   |
-| `theme`                                 | `{ id, name, icon?, overrides, css? }`, the parameter object a theme is.                              |
-| `themes`                                | The same, for an app offering several looks, its default first. A bundle uses one or the other.       |
-| `brand`                                 | `{ name, mark?, wordmark?, about?, aboutPage? }`: what the app calls itself. See "Whitelabelling".    |
-| `bootScreen`                            | A node: the app's own sign-in screen, placing the host's `CredentialField`. See below.                |
-| `recordTypes`                           | `{ name, icon?, description?, manifest }`, one entity each, as the model wizard writes it.            |
-| `display`                               | `{ spaces: 'ours' \| 'theirs', template? }` — see "How an app shows spaces".                          |
-| `starters`                              | Space starters, as a seed's `spaceStarters` are: what a space made in the app begins with. See below. |
+| Field                                   | What it is                                                                                                  |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `format`, `formatVersion`               | `we-bundle`, `1`. Checked before anything else.                                                             |
+| `id`, `version`                         | The app's own. Lowercase with single dashes; an install is recognised by the id.                            |
+| `name`, `description`, `icon`, `author` | `author` is a claim — a file attests nothing.                                                               |
+| `app`                                   | A template with `meta.role: 'app'`: the chrome around every space (see `chrome-and-panels.md`).             |
+| `templates`                             | Space templates (no role) and sections (`meta.role: 'view'`).                                               |
+| `pages`                                 | Pages of the app's own (`meta.role: 'page'`) — an About page, a guide. See "Pages".                         |
+| `theme`                                 | `{ id, name, icon?, overrides, css? }`, the parameter object a theme is.                                    |
+| `themes`                                | The same, for an app offering several looks, its default first. A bundle uses one or the other.             |
+| `brand`                                 | `{ name, mark?, wordmark?, about?, aboutPage? }`: what the app calls itself. See "Whitelabelling".          |
+| `bootScreen`                            | A node: the app's own sign-in screen, placing WE's sign-in form or the host's `CredentialField`. See below. |
+| `recordTypes`                           | `{ name, icon?, description?, manifest }`, one entity each, as the model wizard writes it.                  |
+| `display`                               | `{ spaces: 'ours' \| 'theirs', template? }` — see "How an app shows spaces".                                |
+| `starters`                              | Space starters, as a seed's `spaceStarters` are: what a space made in the app begins with. See below.       |
 
 **What a bundle needs and what it can do are not in it.** `judgeBundle`
 (`app-shell/src/shared/bundles/judgeBundle.ts`) works both out from its templates — the app at the
@@ -143,9 +143,18 @@ template (a toast, the failure screen) reads `currentProductName()` from `shared
 - **Marks are SVG source, drawn as images.** Nothing in an image can run or load, and `readBundle`
   still refuses an SVG with script, event handlers, foreign HTML or a reference outside itself.
 - **A sign-in screen of the app's own** (`bootScreen`) replaces `core:bootScreen`, in any layout,
-  provided it places the host's `CredentialField` — the one piece the app does not own (see
-  `protected-pieces.md`). `judgeBundle` judges it at the chrome tier, as the app is, and refuses one
-  without the field.
+  provided it has a way to type the password: the host's `CredentialField`, or WE's sign-in form,
+  which holds it (see `protected-pieces.md`). `judgeBundle` judges it at the chrome tier, as the app
+  is, and refuses one with neither. Like the app's chrome, it can be taken at three depths:
+  - **WE's, whole** — bring no `bootScreen`, and the app's theme and brand dress WE's screen.
+  - **WE's parts in a frame of the app's own** — place `host.signIn.form` (whoever is signing in and
+    the step they are on) and `host.signIn.accounts` (the other accounts on this device), with the
+    app's own surface, corner and decoration around them. The form's words change through its inputs
+    (`unlockLabel`, `passwordLabel`), each defaulting to WE's. Every step of signing in, and every
+    fix to one, arrives in the app's screen as it does in WE's. Coasys's is this (`coasys/boot.ts`).
+  - **The app's own entirely** — its own steps, read from `sessionStore.signInStep` (one answer for
+    which step is showing), around the host's `CredentialField`. It then keeps up with every new step
+    itself, and a step it lacks draws nothing.
 - **Before anybody has signed in**, the library is out of reach, so the device keeps the brand, the
   sign-in screen and the themes of the app it last ran (`shared/bundles/deviceApp.ts`), the way it
   keeps the default theme. A fresh install has nothing kept and uses the deployment's own app (the
