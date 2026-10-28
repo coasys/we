@@ -1,5 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { field, formModal, sectionCard } from '@we/template-kit';
+import { field, formModal, sectionCard, SOCIAL_DNA_LABELS } from '@we/template-kit';
 
 import { focusRow } from './focusRow';
 
@@ -209,7 +209,7 @@ const kindRow: SchemaNode = {
 };
 
 export const relationshipTypesSection: SchemaNode = sectionCard({
-  title: 'Connection Types',
+  title: SOCIAL_DNA_LABELS.connections,
   description:
     'The kinds of connection members can draw between things here — "contradicts", "came out of". Naming a kind lets the graph colour it, and lets you find every connection of that kind.',
   aside: {

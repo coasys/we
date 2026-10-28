@@ -82,7 +82,7 @@ export {
   SUGGESTION_STYLES,
 } from './we/canvas.ts';
 export type { CanvasEditingOptions, CanvasSeedOptions } from './we/canvas.ts';
-export { VOCABULARY_BUCKETS, vocabularyMap } from './we/vocabularyMap.ts';
+export { SOCIAL_DNA_LABELS, VOCABULARY_BUCKETS, vocabularyMap } from './we/vocabularyMap.ts';
 export type { VocabularyMapOptions } from './we/vocabularyMap.ts';
 export { askWhatGoesHere, BACK_TO_CHOOSER, CARD_LOCALS, newNoteModal, newThingChooser } from './we/canvasCards.ts';
 export type { CanvasCardOptions } from './we/canvasCards.ts';

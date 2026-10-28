@@ -1,5 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { field, formModal, sectionCard } from '@we/template-kit';
+import { field, formModal, sectionCard, SOCIAL_DNA_LABELS } from '@we/template-kit';
 
 import { focusRow } from './focusRow';
 
@@ -161,7 +161,7 @@ const topicRow: SchemaNode = {
 };
 
 export const topicsSection: SchemaNode = sectionCard({
-  title: 'Topics',
+  title: SOCIAL_DNA_LABELS.topics,
   description:
     'The subjects this community works on. Naming one lets content point at it, so a map can group by subject and you can find everything about one.',
   aside: {

@@ -15,17 +15,35 @@ import type { SchemaNode, SchemaProp } from '@we/schema-shared';
  * the policy beside the vocabulary. "From other apps" appears only where there is something in it.
  */
 
+/**
+ * What each kind of Social DNA is called, wherever one is named: the settings' sections, the map's
+ * buckets, a space's tree. One list, because three lists had drifted — the same kind was "Connection
+ * types" in the tree and "Relationship types" on the map beside it.
+ */
+export const SOCIAL_DNA_LABELS = {
+  signals: 'Signal types',
+  connections: 'Connection types',
+  states: 'Task states',
+  kinds: 'Involvement',
+  topics: 'Topics',
+  models: 'Models',
+  workflows: 'Workflows',
+  policy: 'Policy',
+} as const;
+
+const L = SOCIAL_DNA_LABELS;
+
 /** The buckets, as an expression the vocabulary seed takes. */
 export const VOCABULARY_BUCKETS = `[
-  { key: 'signals', label: 'Signal types', entity: 'SignalType' },
-  { key: 'connections', label: 'Relationship types', entity: 'RelationshipType' },
-  { key: 'states', label: 'Task states', entity: 'TaskState', opens: { entity: 'TaskBlock', field: 'status', key: 'slug' } },
-  { key: 'kinds', label: 'Involvement types', entity: 'InvolvementType' },
-  { key: 'topics', label: 'Topics', entity: 'Topic' },
-  { key: 'models', label: 'Models', models: recordStore.creatableEntities.map(k, { name: k.value, label: k.label }) },
+  { key: 'signals', label: '${L.signals}', entity: 'SignalType' },
+  { key: 'connections', label: '${L.connections}', entity: 'RelationshipType' },
+  { key: 'states', label: '${L.states}', entity: 'TaskState', opens: { entity: 'TaskBlock', field: 'status', key: 'slug' } },
+  { key: 'kinds', label: '${L.kinds}', entity: 'InvolvementType' },
+  { key: 'topics', label: '${L.topics}', entity: 'Topic' },
+  { key: 'models', label: '${L.models}', models: recordStore.creatableEntities.map(k, { name: k.value, label: k.label }) },
   { key: 'other', label: 'From other apps', models: datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value))).map(e, { name: e.name }) },
-  { key: 'workflows', label: 'Workflows', workflows: workflowStore.workflows.map(f, { name: f.name, label: f.label, steps: f.steps, moves: f.moves }) },
-  { key: 'policy', label: 'Policy', items: spaceStore.policy.sentences.map(s, { id: s, label: s }) }
+  { key: 'workflows', label: '${L.workflows}', workflows: workflowStore.workflows.map(f, { name: f.name, label: f.label, steps: f.steps, moves: f.moves }) },
+  { key: 'policy', label: '${L.policy}', items: spaceStore.policy.sentences.map(s, { id: s, label: s }) }
 ].filter(b, b.key != 'other' || count(b.models))`;
 
 export interface VocabularyMapOptions {
