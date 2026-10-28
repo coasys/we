@@ -60,8 +60,9 @@ export function weSeed() {
       if (!productName) return html;
       return html.replace(/<title>[^<]*<\/title>/, `<title>${escapeHtml(productName)}</title>`);
     },
-    configureServer(server) {
-      if (seed.bundles?.length) rebuildBundlesOnChange(server);
+    // Awaited, so the start-up rebuild is done before the first page is served — see below.
+    async configureServer(server) {
+      if (seed.bundles?.length) await rebuildBundlesOnChange(server);
     },
   };
 }
@@ -133,13 +134,17 @@ function rebuildBundlesOnChange(server) {
     edited, committed or pulled while it was down left the last run's registry in place — a restart
     drew the old app and looked like the edit had not happened. The bundles are written first and the
     registry after, so both are current before anybody has a reason to reload.
+
+    And before anything is served: Vite waits for this before it listens. A registry rewritten while
+    the app was booting hot-swapped the stores that import it mid-start, and the new TemplateStore
+    looked for a ThemeStore context the old provider never made — the app failed to start.
   */
-  queue = queue
+  const startUp = (queue = queue
     .then(writeBundles)
     .then(regenerate)
     .catch((error) => {
       log.error(`[we-seed] start-up rebuild failed:\n${error.stderr || error.message}`, { timestamp: true });
-    });
+    }));
 
   server.watcher.add([...CARTRIDGE_SOURCES, BUNDLES_DIR]);
   const onFile = (file) => {
@@ -147,6 +152,7 @@ function rebuildBundlesOnChange(server) {
     else if (isSource(file)) schedule('bundle', writeBundles);
   };
   for (const event of ['change', 'add', 'unlink']) server.watcher.on(event, onFile);
+  return startUp;
 }
 
 /**
