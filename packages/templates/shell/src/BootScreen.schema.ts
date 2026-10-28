@@ -867,17 +867,38 @@ export const bootScreen: SchemaNode = {
         ax: 'center',
         ay: 'center',
         gap: '400',
-        // Colour beneath, fields above: `bg` emits the `background` shorthand but is assigned
-        // before `background-image`, so the two compose. Swap `blobBackground` for
-        // `hueSweepBackground` for the concentric version.
+        // The surface the theme paints, its own image included; WE's fields are a layer above it.
         bg: 'surface-sunken',
-        bgImage: blobBackground,
-        // Not `opacity`, which would take the heading and the form down with the background.
-        bgImageOpacity: 0.3,
         position: 'absolute',
         zIndex: 9999,
       },
       children: [
+        /*
+          WE's fields, as decoration of this screen's own rather than its background.
+
+          They were the frame's `bgImage`, which takes the place of whatever the theme lays on the
+          surface — so a theme with an image of its own lost it on this one screen. A layer of their
+          own leaves the surface the theme's, as on every other screen, and an app's sign-in, whose
+          frame is its own, simply has none. Under everything (`zIndex: -1` inside the frame's
+          stacking context), so nothing above it is washed or blocked. Swap `blobBackground` for
+          `hueSweepBackground` for the concentric version.
+        */
+        {
+          type: 'Column',
+          props: {
+            position: 'absolute',
+            top: '0',
+            left: '0',
+            width: '100%',
+            height: '100%',
+            zIndex: -1,
+            bgImage: blobBackground,
+            // Not `opacity`, which a layer could take — but faded the way it always was: the image
+            // washed toward the surface under it, so it draws exactly as it did.
+            bgImageOpacity: 0.3,
+            bgImageTint: 'surface-sunken',
+          },
+        },
         // Cornered rather than centred, so the middle of the screen is whoever is signing in.
         logoCorner,
         // WE's own sign-in is built from the parts an app's places, so the two cannot drift.
