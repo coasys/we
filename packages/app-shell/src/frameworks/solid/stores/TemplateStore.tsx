@@ -2,6 +2,7 @@ import { forgetBootSnapshot, readBootSnapshot } from '@shared/bundles/bootSnapsh
 import {
   type AppFace,
   deviceAppOf,
+  resolveAppTheme,
   resolveFace,
   setCurrentProductName,
   svgDataUrl,
@@ -643,18 +644,26 @@ export function TemplateStoreProvider(props: ParentProps) {
     );
   };
 
-  // The app's first theme stands in for the agent's default until they choose one.
+  // The app's first theme stands in for the agent's default until they choose one — see `resolveAppTheme`.
   themeStore.provideAppTheme(() =>
-    safe.on
-      ? undefined
-      : templateThemeIds(appTemplate().meta).find((id) => themeStore.allThemes().some((t) => t.id === id)),
+    resolveAppTheme({
+      safe: safe.on,
+      settled: settled(),
+      appThemeIds: templateThemeIds(appTemplate().meta),
+      known: (id) => themeStore.allThemes().some((t) => t.id === id),
+      device: rememberedApp,
+    }),
   );
 
   // Kept for the next boot's sign-in screen, once the app in use is known rather than guessed.
   createEffect(() => {
     if (!settled() || safe.on) return;
-    const offered = new Set(templateThemeIds(appTemplate().meta));
-    writeDeviceApp(deviceAppOf(face(), offered.size ? themeStore.allThemes().filter((t) => offered.has(t.id)) : []));
+    // In the app's order, its default first: that is what the next sign-in screen wears.
+    const themes = templateThemeIds(appTemplate().meta).flatMap((id) => {
+      const theme = themeStore.allThemes().find((t) => t.id === id);
+      return theme ? [theme] : [];
+    });
+    writeDeviceApp(deviceAppOf(face(), themes));
   });
 
   // The window's name and icon, and the name code that is not a template reads.
