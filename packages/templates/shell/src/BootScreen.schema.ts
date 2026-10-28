@@ -450,6 +450,9 @@ const unlockForm: SchemaNode = {
     {
       type: 'we-form-field',
       props: {
+        // `passwordLabel` and `unlockLabel` are the part's inputs (`host.signIn.form`): WE's words
+        // unless the screen placing it gives its own. An empty label draws none.
+        label: { $: 'passwordLabel' },
         error: { $: "sessionStore.passwordError ? 'Incorrect password' : sessionStore.loginError" },
       },
       children: [
@@ -491,7 +494,7 @@ const unlockForm: SchemaNode = {
                 loading: { $: 'sessionStore.loginLoading' },
                 onClick: { $invoke: 'sessionStore.unlock' },
               },
-              children: ['Login'],
+              children: [{ $: 'unlockLabel' }],
             },
           ],
         },
