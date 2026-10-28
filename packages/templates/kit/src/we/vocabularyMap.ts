@@ -59,8 +59,10 @@ export interface VocabularyMapOptions {
   open?: SchemaProp;
   /** What opening or closing a node does — the graph reports it; the interface records it. */
   onNodeOpen?: SchemaProp;
-  /** A record to select and bring into view. */
+  /** A record — or a node by its id, such as a bucket — to select and bring into view. */
   focus?: SchemaProp;
+  /** Centre `focus` and keep it centred while the map opens around it — see GraphView's `focusCentre`. */
+  focusCentre?: boolean;
   /** What pressing a node does. */
   onNodeClick?: SchemaProp;
   /** Rules dimming what is not in focus — see `focusDimWhere` in `canvas.ts`. Last, so they win. */
@@ -154,6 +156,7 @@ export function vocabularyMap(opts: VocabularyMapOptions = {}): SchemaNode {
           ...(opts.open !== undefined ? { open: opts.open } : {}),
           ...(opts.onNodeOpen !== undefined ? { onNodeOpen: opts.onNodeOpen } : {}),
           ...(opts.focus !== undefined ? { focus: opts.focus } : {}),
+          ...(opts.focusCentre ? { focusCentre: true } : {}),
           ...(opts.onNodeClick !== undefined ? { onNodeClick: opts.onNodeClick } : {}),
           showStatus: true,
         },

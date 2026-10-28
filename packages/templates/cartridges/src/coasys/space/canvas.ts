@@ -104,6 +104,12 @@ const SIBLINGS = `(${DNA_KIND} == 'model' ? ${SIBLING('data.entity', MODEL_NAME)
 /** The definition chosen, opened: a record or a model by what the graph's `open` takes; a rule has nothing inside. */
 const OPEN_DEFINITION = `${DNA_ID} && ${DNA_KIND} != 'policy' ? [${DNA_KIND} == 'model' ? ${MODEL_NAME} : ${DNA_ID}] : []`;
 
+/**
+ * What the map centres on: a definition (a model by its name), or — for a kind, or a rule of the
+ * policy, whose node's address a template cannot build — its kind's bucket. All of it, nothing.
+ */
+const FOCUS = `${DNA_FOCUS} == 'all' ? '' : ${DNA_ID} && ${DNA_KIND} != 'policy' ? (${DNA_KIND} == 'model' ? ${MODEL_NAME} : ${DNA_ID}) : ${BUCKET_NODE}`;
+
 /** A node pressed, opened in the inspector — when it stands for a record the inspector reads. */
 const OPEN_IN_INSPECTOR: SchemaProp = {
   $if: {
@@ -211,8 +217,9 @@ export const canvasPane: SchemaNode = {
                   $: 'event.open ? distinct(local.vocabOpen, [event.id]) : local.vocabOpen.filter(k, k != event.id)',
                 },
               },
-              // A definition that is a record is selected and brought into view.
-              focus: { $: `${DNA_ID} && !(${DNA_KIND} in ['model', 'policy']) ? ${DNA_ID} : ''` },
+              // What the tree chose, centred and held there while the map opens around it.
+              focus: { $: FOCUS },
+              focusCentre: true,
               // A definition, or one of its uses, opens in the inspector; a model is not a record it reads.
               onNodeClick: OPEN_IN_INSPECTOR,
               focusRules: [focusDimWhere(`${DNA_FOCUS} != 'all'`, OTHER_KINDS), focusDimWhere(DNA_ID, SIBLINGS)],

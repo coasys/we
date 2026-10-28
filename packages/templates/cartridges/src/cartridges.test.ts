@@ -225,6 +225,16 @@ describe('the Coasys cartridge', () => {
       // All of it, nothing dimmed.
       expect(dimmed({ dna: 'all' })).toEqual([]);
 
+      // What the tree chose is centred: a definition, or a kind's bucket; all of it, nothing.
+      const focus = (vocab.props as { focus: unknown; focusCentre: boolean }).focus;
+      expect((vocab.props as { focusCentre: boolean }).focusCentre).toBe(true);
+      expect(at([], { view: 'canvas', dna: 'signal|like' })(focus)).toBe('like');
+      expect(at([], { view: 'canvas', dna: 'signal' })(focus)).toBe('we-graph://cluster/vocabulary/signals');
+      expect(at([], { view: 'canvas', dna: 'policy|Members can make anything.' })(focus)).toBe(
+        'we-graph://cluster/vocabulary/policy',
+      );
+      expect(at([], { view: 'canvas', dna: 'all' })(focus)).toBe('');
+
       // The chosen definition is opened into what it is, beside its kind.
       expect(at([], { view: 'canvas', dna: 'signal|like' })(props.open)).toEqual([
         'we-graph://cluster/vocabulary/signals',
