@@ -9,8 +9,8 @@ import { lockup } from './lockup.ts';
  * `host.signIn.accounts`), so every step of signing in — and every new one, such as the passkeys and
  * device links the Coasys identity work will bring — arrives here as it arrives in WE's, with no copy
  * of the steps to keep up. What is Coasys's own is around them: the page Glow paints rather than WE's
- * coloured fields, the mark and name in the corner exactly where the rail draws them, and the words on
- * the form ("Unlock", and a label over the password), given as the form's inputs.
+ * coloured fields, the mark and name in the corner exactly where the rail draws them, and the word on
+ * the form's button ("Unlock"), given as one of its inputs.
  *
  * The password is typed into the host's field inside the form and nowhere else — see
  * `docs/architecture/protected-pieces.md`.
@@ -51,7 +51,7 @@ export const coasysBootScreen: SchemaNode = {
         },
         {
           type: '$part',
-          props: { id: 'host.signIn.form', inputs: { unlockLabel: 'Unlock', passwordLabel: 'Password' } },
+          props: { id: 'host.signIn.form', inputs: { unlockLabel: 'Unlock' } },
         },
         // Anchored outside the part, as WE's is — see `signInAccounts` in the shell templates.
         {

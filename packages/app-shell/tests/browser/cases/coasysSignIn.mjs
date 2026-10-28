@@ -1,6 +1,6 @@
 /**
  * The Coasys sign-in screen: WE's, placed as parts, in Glow — with Coasys's mark and name in the
- * corner where the rail draws them, and its own words on the form, given as the form's inputs.
+ * corner where the rail draws them, and its own word on the form's button, given as an input.
  */
 export const name = 'the Coasys sign-in screen';
 export const scenario = 'signIn:coasys';
@@ -27,11 +27,11 @@ export async function check({ evaluate, screenshot }) {
       })),
     };
   });
-  // The form's inputs: its words, not WE's, with nothing of the form opened or copied.
+  // The form's input: its word, not WE's, with nothing of the form opened or copied.
   if (!seen.buttons.includes('Unlock')) problems.push(`no Unlock button — the buttons say ${seen.buttons.join(', ')}`);
   if (seen.buttons.includes('Login')) problems.push('the form still says Login');
-  if (!seen.labels.includes('Password'))
-    problems.push(`the password field is not labelled — labels ${JSON.stringify(seen.labels)}`);
+  // No label over the password: the placeholder says it, as on WE's.
+  if (seen.labels.some(Boolean)) problems.push(`the password field is labelled ${JSON.stringify(seen.labels)}`);
   // The corner the rail draws (see the lockup case for the rail's side).
   if (!seen.mark || seen.mark.x !== 22 || seen.mark.y !== 22 || seen.mark.w !== 28)
     problems.push(`the mark is ${JSON.stringify(seen.mark)}, not 28px at 22,22`);

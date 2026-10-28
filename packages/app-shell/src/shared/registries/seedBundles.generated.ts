@@ -10761,10 +10761,7 @@ export const seedBundles: Bundle[] = [
                 },
               },
             },
-            {
-              type: '$part',
-              props: { id: 'host.signIn.form', inputs: { unlockLabel: 'Unlock', passwordLabel: 'Password' } },
-            },
+            { type: '$part', props: { id: 'host.signIn.form', inputs: { unlockLabel: 'Unlock' } } },
             {
               type: 'Column',
               props: { position: 'absolute', bottom: '300', left: '300', zIndex: 1 },
