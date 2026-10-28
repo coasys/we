@@ -776,8 +776,16 @@ export function GraphView(props: GraphViewProps) {
 
   /** A focus held in the middle while the graph settles around it — see `focusCentre`. */
   const follow = createFocusFollow({
-    position: (id) => engine.getPositions().get(id),
-    centre: (at) => revealPoint({ x: at.x, y: at.y }, true),
+    offset: (id) => {
+      const at = engine.getPositions().get(id);
+      const clear = engine.viewport.visibleRect();
+      if (!at || !clear.width || !clear.height) return undefined;
+      const screen = engine.viewport.toScreen({ x: at.x, y: at.y });
+      return { dx: clear.x + clear.width / 2 - screen.x, dy: clear.y + clear.height / 2 - screen.y };
+    },
+    pan: (dx, dy) => engine.behaviourContext().pan(dx, dy),
+    // The fold's and the layout's question: somebody who asked for less movement gets the jump.
+    reduced: () => foldTravel() === 0,
   });
 
   engine.subscribe((reason) => {
@@ -1048,10 +1056,22 @@ export function GraphView(props: GraphViewProps) {
     recordId: string,
   ): { kind: 'node' | 'edge'; id: string; at: Point } | { kind: 'folded'; id: string; owner: string } | null {
     const positions = engine.getPositions();
-    for (const node of engine.store.nodes()) {
-      const address = parseAddress(node.id);
-      // A record by its id — or any node by its own id, such as a group on a map that is not a record.
-      if (node.id !== recordId && (address?.kind !== 'entity' || address.id !== recordId)) continue;
+    /*
+      A record by its id, or any node by its own id. Failing both, a group by its key — a rule on a
+      map of a policy, whose address has its words in it, encoded, which a template cannot build.
+      Tried last, so a record whose id happens to equal some group's key is still the record.
+    */
+    const named = (id: string) => {
+      const address = parseAddress(id);
+      return id === recordId || (address?.kind === 'entity' && address.id === recordId);
+    };
+    const keyed = (id: string) => {
+      const address = parseAddress(id);
+      return address?.kind === 'cluster' && address.id === recordId;
+    };
+    const nodes = [...engine.store.nodes()];
+    const matched = nodes.filter((node) => named(node.id));
+    for (const node of matched.length ? matched : nodes.filter((node) => keyed(node.id))) {
       /*
         Asked before the position, not after it — which is the difference between this working and
         working except when it matters. A card is *held by a fold* from the moment the fold is made,

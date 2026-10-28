@@ -514,8 +514,9 @@ export interface GraphViewProps {
    * the graph settles around it, since choosing something on a map often opens it and moves it.
    * The camera lets go once the graph has been still for a moment, or as soon as somebody pans or
    * zooms. For a map chosen from beside it (a tree); not for a canvas whose clicks write `focus`,
-   * where every click would move the camera. `focus` may also name a node by its own id here, such
-   * as a group on a map that is not a record.
+   * where every click would move the camera. `focus` may also name a node by its own id, such as a
+   * group on a map that is not a record, or a group by its key alone (`policy:<rule>` on a vocabulary
+   * map), where its address has encoded words in it that a template cannot build.
    */
   focusCentre?: boolean;
   /**

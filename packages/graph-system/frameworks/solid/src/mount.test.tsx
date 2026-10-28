@@ -142,6 +142,23 @@ describe('GraphView focus', () => {
     expect(selectedLabels(host)).toEqual(['Signal types']);
   });
 
+  it('selects a group by its key alone, where its address would have to be encoded', async () => {
+    const rule = {
+      id: 'we-graph://cluster/vocabulary-item/policy%3AMembers%20can%20post.',
+      kind: 'cluster' as const,
+      type: 'vocabulary-item',
+      label: 'Members can post.',
+      data: { x: 0, y: 200 },
+    };
+    const host = mount({
+      seeds: { ...literal, nodes: [...literal.nodes, rule] },
+      layout: { type: 'manual' },
+      focus: 'policy:Members can post.',
+    });
+    await until(() => selectedLabels(host).length > 0);
+    expect(selectedLabels(host)).toEqual(['Members can post.']);
+  });
+
   it('does not report the selection it made back to the interface', async () => {
     /*
       The interface asked for this selection, so hearing it back is an echo — and the harmful kind:
