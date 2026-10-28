@@ -373,6 +373,17 @@ describe('createTabCoordinator', () => {
       expect(leaders(a, b, c)).toEqual([other.id]);
     });
 
+    it('does not hand on to a pinned tab that was closed', () => {
+      const { a, b, c } = threePinned();
+      c.coordinator.dispose(); // the tab closes while still in a call
+      settle();
+
+      a.coordinator.setPinned(false);
+      settle();
+
+      expect(leaders(a, b), 'the pinned tab still open takes over at once').toEqual(['b']);
+    });
+
     it('recovers when the tab it hands to has crashed', () => {
       const { a, b } = threePinned();
       bus.current.kill('c'); // closed without a word: it never resigns and never answers

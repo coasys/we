@@ -434,7 +434,10 @@ export function createTabCoordinator(deps: TabCoordinatorDeps = {}): TabCoordina
     },
 
     dispose() {
+      // A pinned follower is in a leader's `waiting`: say it is no longer waiting, as on unpinning,
+      // so a handover never goes to a closed tab.
       if (leader) post('resign');
+      else if (pinned && !disposed) post('probe');
       stepDown();
       stopWatchingLeader();
       disposed = true;
