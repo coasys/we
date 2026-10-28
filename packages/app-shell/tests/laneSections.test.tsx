@@ -127,4 +127,23 @@ describe('a lane holding any panel', () => {
     expect(lane.textContent).toContain('Hang up');
     slotRegistry.remove('test:hang-up');
   });
+
+  /*
+    The freeze: a call's stage stacked onto an inspector's section was stored as at home in that lane.
+    Nothing declared it there, so the placement was not even scoped to the template — it followed its
+    owner into every space, and a lane, which grows to fit what is in it, held a stage that sizes
+    itself to its box. A lane holds only what an interface declared for one.
+  */
+  it('does not honour a lane placement for a panel nothing declared for a lane', () => {
+    localStorage.setItem(
+      'we-local:shell.dockPlacements',
+      JSON.stringify({ [`${HOST}:panel`]: { snap: 'home', home: 'side', x: 0, y: 0, w: 320, h: 180 } }),
+    );
+    setTemplatePanels([{ id: 'inspector', node: text('Inspector'), home: 'side', open: false }], 'coasys-space');
+    const { store, lane } = mountLane();
+
+    setHostOpen(true);
+    expect(lane.style.width).toBe('0px');
+    expect(store.dockPlacement()[`${HOST}:panel`].snap).not.toBe('home');
+  });
 });

@@ -1403,11 +1403,19 @@ export function ShellStoreProvider(props: ParentProps) {
   const stackTargets = (moving: string | null) => {
     const requests = dockRequests();
     const seating = laneSeating();
-    return requests
-      .map((request, index) => ({ request, index }))
-      .filter(({ request }) => request.edge && request.size !== 'full' && request.id !== moving)
-      .filter(({ request }) => !seating.hidden[request.id] && !placementOf(request).maximised)
-      .filter(({ request }) => edgeOfSnap((request.placement ?? placementOf(request)).snap) === null);
+    return (
+      requests
+        .map((request, index) => ({ request, index }))
+        .filter(({ request }) => request.edge && request.size !== 'full' && request.id !== moving)
+        .filter(({ request }) => !seating.hidden[request.id] && !placementOf(request).maximised)
+        .filter(({ request }) => edgeOfSnap((request.placement ?? placementOf(request)).snap) === null)
+        /*
+        Not a section at home in a lane: stacking onto one put the dragged panel in that lane without
+        the lane's own rule (see \`insertHome\`) being asked, which is how a call's stage ended up in
+        an inspector's lane. A lane is reached through its own drop slots.
+      */
+        .filter(({ request }) => (request.placement ?? placementOf(request)).snap !== 'home')
+    );
   };
 
   /**
@@ -1617,7 +1625,16 @@ export function ShellStoreProvider(props: ParentProps) {
    */
   const placementOf = (request: DockRequest): FloatPlacement => {
     const stored = placements()[placementKey(request.id)];
-    if (stored) return stored;
+    /*
+      A lane holds only what the interface declared for one — the rule a drop into a lane has always
+      kept (\`insertHome\`). A placement in a lane for any other panel is not honoured: it came from
+      stacking onto a section, which skipped that rule, and it outlives every template, since an
+      undeclared panel's placement is not scoped to one — so the call's stage, stacked into an
+      inspector's lane, followed its owner into every space and froze each on its next call (a lane
+      grows to fit what is in it, and the stage sizes itself to the box it is in). Read as no
+      placement, it goes back to its own bid.
+    */
+    if (stored && !(stored.snap === 'home' && !declarationFor()[request.id]?.home)) return stored;
     const declared = declarationFor()[request.id];
     if (declared) return placementFromDeclaration(declared, viewport());
     return seedPlacement(request, viewport());
