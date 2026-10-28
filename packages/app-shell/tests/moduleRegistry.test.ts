@@ -75,6 +75,7 @@ describe('slotRegistry — faithful generalisation of shellRegistry', () => {
       'core:createSpace',
       'core:joinSpace',
       'core:templateNameDialog',
+      'core:themeNameDialog',
       'core:screenSource',
       'core:namePrompt',
       'core:bundlePrompt',

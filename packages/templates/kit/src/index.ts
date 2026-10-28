@@ -87,14 +87,10 @@ export type { InspectorPanelOptions } from './we/inspector.ts';
 export {
   chooseTemplate,
   chooseTheme,
-  nameDialog,
   SPACE_TEMPLATE_CHOICES,
   SPACE_THEME_CHOICES,
-  startThemeFork,
-  THEME_FORK_LOCALS,
   templateChoice,
   themeChoice,
-  themeForkDialog,
 } from './we/designChoices.ts';
 export type { Choice } from './we/designChoices.ts';
 export { SOCIAL_DNA_LABELS, VOCABULARY_BUCKETS, vocabularyMap } from './we/vocabularyMap.ts';

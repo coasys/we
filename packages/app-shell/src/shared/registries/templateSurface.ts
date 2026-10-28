@@ -950,7 +950,13 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     */
     restorePersonalTheme: WIRING,
     clearSpaceTheme: WIRING,
-    startEditing: action('editor'),
+    // Editing a theme, and forking one, from any list of themes — a space's own included. Opening the
+    // editor writes nothing; its saves are the host's own controls. And a fork only opens the host's
+    // naming dialog: the theme is made by a press there, never by the template asking.
+    startEditing: action('appearance'),
+    themeFork: state('appearance'),
+    startThemeFork: ambient('appearance'),
+    cancelThemeFork: ambient('appearance'),
     // The editor tier, with `startEditing` — this is the second half of the same gesture: open the
     // theme editor, and say which role you came for. Nothing a template has any business setting.
     focusedRole: state('editor'),
@@ -1280,10 +1286,11 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     resetDockToLayout: action('host-layout'),
     // The same question and the same answer about the whole arrangement, for chrome that is not a
     // panel's own titlebar — a panel somebody closed has no titlebar left to ask from.
-    layoutDirty: state('host-layout'),
+    // This agent's own arrangement of the template on screen, as a lane's fold is: view state.
+    layoutDirty: state('view-state'),
     // Read by a module's own dock frame, to know whether the interface is supplying its contents.
     panelSupplied: state('host-layout'),
-    resetTemplateLayout: action('host-layout'),
+    resetTemplateLayout: ambient('view-state'),
     // A space template folding its own sidebar away is its own view, so the space tier has it; the
     // width is written by the lane's own handle, never by a template.
     collapsedLanes: state('view-state'),
@@ -1490,11 +1497,17 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     setContentMode: ambient('editor'),
     undo: action('editor'),
     redo: action('editor'),
-    startFork: ambient('editor'),
-    startFresh: ambient('editor'),
+    /*
+      Opening the host's naming dialog for a fork or a new template, and an editing session over one
+      the agent can edit — from the rail's picker or a space's own list of templates. Neither writes:
+      the template is made by a press in the host's dialog, and an edit is saved by the editor's own
+      controls. `appearance` rather than `editor`, so a space template can offer them.
+    */
+    startFork: ambient('appearance'),
+    startFresh: ambient('appearance'),
     confirmPicker: action('editor'),
     cancelPicker: ambient('editor'),
-    enterTemplateEditing: action('editor'),
+    enterTemplateEditing: action('appearance'),
     editApp: action('editor'),
     forkApp: action('editor'),
     exitTemplateEditing: action('editor'),
@@ -1508,7 +1521,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     openThemePanel: ambient('editor'),
     closeThemePanel: ambient('editor'),
     toggleVisualPanel: ambient('editor'),
-    enterThemeEditing: action('editor'),
+    enterThemeEditing: action('appearance'),
     exitThemeEditing: action('editor'),
     toggleThemeEditing: action('editor'),
     sendMessage: action('editor'),

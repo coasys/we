@@ -1027,6 +1027,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       allThemes:
         'array of ThemeData objects — union of builtInThemes + visible installedThemes + spaceThemes (hidden themes filtered out)',
       currentThemeId: 'string — id of the currently active theme',
+      themeFork:
+        '{ source, name, icon } | null — the theme-naming dialog while it is open (see startThemeFork): the theme being forked, empty for a new one',
       currentTheme: 'ThemeData — the currently active theme object (id, name, icon, origin)',
       defaultThemeId:
         "string — id of the user's preferred default theme (used for bootscreen, shell, and future space-override). Persisted to AgentSettings.defaultThemeId",
@@ -1086,6 +1088,9 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '(): ends the editing session and discards the draft, restoring what was applied before. Note the theme *panel* autosaves on unmount, so closing the panel keeps the draft — this is the explicit throw-away, and the only path that does',
       createAndStartEditing:
         "(name: string, icon: string, sourceId?: string, destination?: 'personal' | 'space'): creates a new theme — copied from sourceId when given — and opens an editing session on it. Resolves true on success",
+      startThemeFork:
+        "(sourceId?: string): opens the host's dialog for naming a fork of that theme, or a new theme without one. Writes nothing — the theme is made by a press in that dialog — so any list of themes may offer it",
+      cancelThemeFork: '(): closes that dialog without making anything',
       saveEditingTheme:
         '(): writes the draft over the theme being edited and keeps editing. Resolves to the saved theme, or null when nothing was being edited',
       saveEditingThemeAs:

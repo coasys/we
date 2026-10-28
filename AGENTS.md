@@ -3715,6 +3715,7 @@ ThemeStore:
   - templateThemePending: boolean — the template's suggested theme cannot be resolved yet and might still arrive. Hold what is on screen rather than painting a fallback while it is true
   - useTemplateTheme: boolean — whether a template may bring the theme it was designed for (meta.themeId). Defaults on; one condition in the resolver rather than a setting to unwind, so turning it off restores whatever would otherwise apply immediately
   - activeTemplateTheme: ThemeData | null — the theme the scoped template wrapper renders: the theme being edited if there is one, else the space's. Null in global mode, where the template inherits the document's theme
+  - themeFork: { source, name, icon } | null — the theme-naming dialog while it is open (see startThemeFork): the theme being forked, empty for a new one
 - Actions:
   - setCurrentTheme(themeId: string): sets and persists the active theme
   - setDefaultTheme(themeId: string): sets the preferred default theme (persists to AgentSettings.defaultThemeId)
@@ -3733,6 +3734,8 @@ ThemeStore:
   - updateEditingMeta(fields: { name?, icon? }): while editing, renames or re-icons the draft
   - cancelEditing(): ends the editing session and discards the draft, restoring what was applied before. Note the theme *panel* autosaves on unmount, so closing the panel keeps the draft — this is the explicit throw-away, and the only path that does
   - createAndStartEditing(name: string, icon: string, sourceId?: string, destination?: 'personal' | 'space'): creates a new theme — copied from sourceId when given — and opens an editing session on it. Resolves true on success
+  - startThemeFork(sourceId?: string): opens the host's dialog for naming a fork of that theme, or a new theme without one. Writes nothing — the theme is made by a press in that dialog — so any list of themes may offer it
+  - cancelThemeFork(): closes that dialog without making anything
   - saveEditingTheme(): writes the draft over the theme being edited and keeps editing. Resolves to the saved theme, or null when nothing was being edited
   - saveEditingThemeAs(name: string, icon: string): writes the draft as a new theme under that name, leaving the original untouched
   - deleteTheme(themeId: string): permanently deletes a custom theme

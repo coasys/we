@@ -3082,6 +3082,7 @@ export const contextData: ContextData = {
         'endDockMove',
         'closeTemplatePanel',
         'openTemplatePanel',
+        'resetTemplateLayout',
         'toggleLane',
         'setLaneCollapsed',
         'toggleCustomiseLayout',
@@ -3504,6 +3505,7 @@ export const contextData: ContextData = {
         templateThemePending: { type: 'boolean' },
         useTemplateTheme: { type: 'boolean' },
         activeTemplateTheme: { type: 'object' },
+        themeFork: { type: 'object' },
       },
       actions: [
         'setCurrentTheme',
@@ -3523,6 +3525,8 @@ export const contextData: ContextData = {
         'updateEditingMeta',
         'cancelEditing',
         'createAndStartEditing',
+        'startThemeFork',
+        'cancelThemeFork',
         'saveEditingTheme',
         'saveEditingThemeAs',
         'deleteTheme',
@@ -3534,7 +3538,7 @@ export const contextData: ContextData = {
         'publishToSpace',
         'refreshSpaceThemes',
       ],
-      ambient: ['focusRole', 'previewThemeScope', 'refreshSpaceThemes'],
+      ambient: ['focusRole', 'previewThemeScope', 'startThemeFork', 'cancelThemeFork', 'refreshSpaceThemes'],
       destructive: ['deleteTheme', 'uninstallTheme', 'deleteMarketplaceTheme'],
       needsArgs: [
         'setCurrentTheme',

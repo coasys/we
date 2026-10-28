@@ -44,6 +44,7 @@ import {
   sidebar,
   templateEditor,
   templateNameDialog,
+  themeNameDialog,
 } from '@we/template-shell';
 
 import { byOrderThenId, createRegistry } from './createRegistry';
@@ -387,6 +388,9 @@ export function registerCoreSlots(): void {
   // from the inspector while the app itself is edited — so it is drawn here, outside the app, where
   // editing the app cannot make it inert and an app without the rail cannot leave it out.
   slotRegistry.register({ id: 'core:templateNameDialog', anchor: 'overlay', node: templateNameDialog, order: 5 });
+  // Its theme twin, for the same reasons — and so a space's own list of themes can offer a fork that
+  // only this dialog, not the template asking, can turn into a theme.
+  slotRegistry.register({ id: 'core:themeNameDialog', anchor: 'overlay', node: themeNameDialog, order: 5 });
   // Last of the overlays, and deliberately: it is the only one raised by the app rather than by
   // something the user just did, so anything they *did* ask for belongs in front of it. Its own gate
   // (`profileStore.needsName`) is false until the app is ready and the profile fetch has answered,

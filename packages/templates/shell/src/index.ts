@@ -17,7 +17,7 @@ export { landingPageTemplate } from './about';
 export { marketplaceTemplate } from './marketplace';
 export { CHROME_RAIL_WIDTH, chromeRail } from './ChromeRail.schema';
 export { weApp } from './WeApp.schema';
-export { templateNameDialog, templatePicker, themePicker } from './DesignControls';
+export { templateNameDialog, templatePicker, themeNameDialog, themePicker } from './DesignControls';
 export { profileTemplate } from './Profile.schema';
 export { aiSection } from './AiSettings.schema';
 export { languagesLocalState, languagesSection } from './LanguageSettings.schema';

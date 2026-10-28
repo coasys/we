@@ -39,17 +39,7 @@
  */
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
-import {
-  field,
-  nameDialog,
-  pickerPopover,
-  pickerRow,
-  startThemeFork,
-  templateChoice,
-  THEME_FORK_LOCALS,
-  themeChoice,
-  themeForkDialog,
-} from '@we/template-kit';
+import { field, pickerPopover, pickerRow, templateChoice, themeChoice } from '@we/template-kit';
 
 /** Rows whose name contains what is typed in the picker's search box. */
 const matching = (items: SchemaProp) => expr`filter(${items}, { name: { contains: local.pickerSearch } })`;
@@ -99,6 +89,120 @@ function section(label: SchemaProp, rows: SchemaProp, body: SchemaNode): SchemaN
             children: [label],
           },
           body,
+        ],
+      },
+    },
+  };
+}
+
+// ── Naming ──────────────────────────────────────────────────────────────────────────────────────
+
+// ── Naming ──────────────────────────────────────────────────────────────────────────────────────
+
+/** "My …" or "This space" — where a new template or theme is saved. */
+function destinationToggle(): SchemaNode {
+  const option = (value: string, label: string): SchemaNode => ({
+    type: 'we-button',
+    props: {
+      size: 'sm',
+      variant: expr`local.destination == ${value} ? 'soft' : 'ghost'`,
+      onClick: { $setLocal: 'destination', value },
+    },
+    children: [label],
+  });
+
+  return {
+    type: 'Column',
+    props: { gap: '100' },
+    children: [
+      { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: ['Save to'] },
+      {
+        type: 'Row',
+        props: { gap: '200' },
+        children: [option('personal', 'Mine'), option('space', 'This space')],
+      },
+    ],
+  };
+}
+
+/**
+ * The name-and-icon dialog both "New" and "Fork" open, for a template or a theme.
+ *
+ * `$localState` sits on the modal rather than above it so the fields are seeded *each time it
+ * opens* — `initial` is read at mount, and the modal only exists while open. Declared above, they
+ * would hold whatever the last fork left behind.
+ */
+function nameDialog(opts: {
+  open: SchemaProp;
+  close: SchemaProp;
+  title: SchemaProp;
+  initialName: SchemaProp;
+  initialIcon: SchemaProp;
+  showDestination: SchemaProp;
+  confirmLabel: SchemaProp;
+  confirm: (args: { name: SchemaProp; icon: SchemaProp; destination: SchemaProp }) => Record<string, unknown>;
+}): SchemaNode {
+  return {
+    type: '$if',
+    props: {
+      condition: opts.open,
+      then: {
+        type: 'we-modal',
+        props: { size: 'sm', close: opts.close },
+        $localState: {
+          name: { type: 'string', initial: opts.initialName },
+          icon: { type: 'string', initial: opts.initialIcon },
+          destination: { type: 'string', initial: 'personal' },
+          saving: { type: 'boolean', initial: false },
+        },
+        children: [
+          { type: 'we-text', props: { variant: 'heading-sm' }, children: [opts.title] },
+          field({ name: 'name', label: 'Name', placeholder: 'A short, memorable name' }),
+          {
+            type: 'we-form-field',
+            props: { label: 'Icon' },
+            children: [
+              {
+                type: 'we-icon-picker',
+                props: {
+                  value: { $: 'local.icon' },
+                  size: 'sm',
+                  onChange: { $setLocal: 'icon', value: { $: 'event.detail' } },
+                },
+              },
+            ],
+          },
+          { type: '$if', props: { condition: opts.showDestination, then: destinationToggle() } },
+          {
+            type: 'Row',
+            props: { ax: 'end', gap: '200' },
+            children: [
+              {
+                type: 'we-button',
+                props: { size: 'sm', variant: 'ghost', disabled: { $: 'local.saving' }, onClick: opts.close },
+                children: ['Cancel'],
+              },
+              {
+                type: 'we-button',
+                props: {
+                  size: 'sm',
+                  // Gated on the value itself rather than a `required` rule: nothing about a name is
+                  // locally judgeable beyond "is there one".
+                  disabled: { $: '!local.name' },
+                  loading: { $: 'local.saving' },
+                  onClick: [
+                    { $setLocal: 'saving', value: true },
+                    opts.confirm({
+                      name: { $: 'local.name' },
+                      icon: { $: 'local.icon' },
+                      destination: { $: 'local.destination' },
+                    }),
+                  ],
+                },
+                children: [opts.confirmLabel],
+              },
+            ],
+          },
         ],
       },
     },
@@ -416,7 +520,6 @@ function themeSection(label: string, storePath: string): SchemaNode {
 export function themePicker(): SchemaNode {
   return {
     type: 'Column',
-    $localState: THEME_FORK_LOCALS,
     children: [
       pickerPopover({
         openLocal: THEME_PICKER_OPEN,
@@ -499,7 +602,7 @@ export function themePicker(): SchemaNode {
                 width: '100%',
                 ax: 'start',
                 gap: '200',
-                onClick: [...startThemeFork('new'), closeThemePicker],
+                onClick: [{ $invoke: 'themeStore.startThemeFork' }, closeThemePicker],
               },
               children: [
                 { type: 'we-icon', props: { name: 'plus' } },
@@ -537,8 +640,43 @@ export function themePicker(): SchemaNode {
           ],
         },
       }),
-
-      themeForkDialog(),
     ],
   };
 }
+
+/**
+ * Naming a new theme or a fork of one: the dialog `themeStore.startThemeFork` opens, from the rail's
+ * picker or from a space's own list of themes. The host's, as {@link templateNameDialog} is — so a
+ * template can offer a fork without being able to make a theme: it is made by a press here.
+ */
+export const themeNameDialog: SchemaNode = nameDialog({
+  open: { $: 'themeStore.themeFork' },
+  close: { $invoke: 'themeStore.cancelThemeFork' },
+  title: { $: "themeStore.themeFork.source ? 'Fork theme' : 'New theme'" },
+  initialName: { $: 'themeStore.themeFork.name' },
+  initialIcon: { $: 'themeStore.themeFork.icon' },
+  showDestination: true,
+  confirmLabel: { $: "themeStore.themeFork.source ? 'Fork' : 'Create'" },
+  confirm: ({ name, icon, destination }) => ({
+    $invoke: 'themeStore.createAndStartEditing',
+    args: [name, icon, { $: 'themeStore.themeFork.source' }, destination],
+    // Resolves `false` when the create failed rather than rejecting, so the close and the mode
+    // switch are guarded on the result — otherwise a failed create closes over its own error.
+    onSuccess: [
+      /*
+        In a space, the new theme becomes this agent's choice there, as picking it would make it.
+        The fork already wears it, but wearing writes nothing: the space kept the theme chosen
+        before, so the screen and the stored choice disagreed.
+      */
+      {
+        $if: {
+          condition: { $: 'result && datasetStore.currentDataset' },
+          then: { $invoke: 'spaceStore.applyTheme', args: [{ $: 'themeStore.currentThemeId' }] },
+        },
+      },
+      { $if: { condition: { $: 'result' }, then: { $invoke: 'editorStore.enterThemeEditing' } } },
+      { $if: { condition: { $: 'result' }, then: { $invoke: 'themeStore.cancelThemeFork' } } },
+    ],
+    onFinally: [{ $setLocal: 'saving', value: false }],
+  }),
+});
