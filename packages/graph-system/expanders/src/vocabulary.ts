@@ -28,7 +28,7 @@
  * style rule can light one kind of word and what is in it.
  */
 import type { Expander, GraphEdge, GraphNode, SeedSource } from '@we/graph-protocol';
-import { clusterAddress, entityAddress, parseAddress } from '@we/graph-protocol';
+import { clusterAddress, entityAddress, nodeTypeOf, parseAddress } from '@we/graph-protocol';
 
 import { edgeId, rowToNode } from './nodes';
 import { SCHEMA_TYPE } from './schema';
@@ -54,19 +54,42 @@ export interface VocabularyBucket {
   label: string;
   /** Records of this entity are what is in the bucket. */
   entity?: string;
-  /**
-   * What one of those records opens into, beside its own fields: the records of `entity` whose
-   * `field` holds the record's `key`. A task state opens into the tasks in it —
-   * `{ entity: 'TaskBlock', field: 'status', key: 'slug' }` — which is what somebody opening "To do"
-   * on a map of the space's words is asking to see.
-   */
-  opens?: { entity: string; field: string; key: string };
+  /** What one of those records opens into: its uses — see `VocabularyUses`. */
+  opens?: VocabularyUses;
   /** Or these models. */
   models?: { name: string; label?: string }[];
   /** Or these workflows. */
   workflows?: VocabularyWorkflow[];
   /** Or these items, which are nothing to open. */
   items?: { id: string; label: string }[];
+}
+
+/**
+ * What a definition opens into on the map: the records made with it, newest first.
+ *
+ * The records of `entity` whose `field` holds the definition's `key`. A task state opens into the tasks
+ * in it — `{ entity: 'TaskBlock', field: 'status', key: 'slug' }` — which is what somebody opening "To
+ * do" on a map of the space's words is asking to see. Three more words for the kinds whose use is a
+ * step removed:
+ *
+ * - `through` — the field is on a record linked by this relation, so a signal type opens into the
+ *   records reacted to with it: `{ entity: [...], through: 'signals', field: 'signalTypeId', key: 'id' }`.
+ * - `follow` — draw the record this relation of each row names rather than the row: an involvement
+ *   kind opens into the records somebody is involved in that way, not into the involvements.
+ * - `pair` — caption each row by the records at the ends of these two relations, "A → B": a kind of
+ *   connection opens into its connections, which have no name of their own.
+ */
+export interface VocabularyUses {
+  entity: string | string[];
+  field: string;
+  key: string;
+  through?: string;
+  follow?: string;
+  pair?: [string, string];
+  /** The line's word. Default `field`. */
+  label?: string;
+  /** How many to draw. Default the seed's `limit`. */
+  limit?: number;
 }
 
 export interface VocabularySeedOptions {
@@ -131,7 +154,7 @@ export function vocabularyPlugins(): { seed: SeedSource; expander: Expander; rec
     },
   };
 
-  /** A record a bucket's `opens` names, opened into the records that name it. */
+  /** A definition a bucket's `opens` names, opened into the records made with it — see `VocabularyUses`. */
   async function openRecord(
     request: Parameters<Expander['expand']>[0],
     context: Parameters<Expander['expand']>[1],
@@ -152,29 +175,51 @@ export function vocabularyPlugins(): { seed: SeedSource; expander: Expander; rec
     });
     const value = record?.[opens.key];
     if (value === undefined || value === null || value === '') return { nodes, edges };
-    const limit = options?.limit ?? 200;
-    const shape = context.models(dataset).find((s) => s.name === opens.entity);
+    const limit = opens.limit ?? options?.limit ?? 200;
+    const entities = Array.isArray(opens.entity) ? opens.entity : [opens.entity];
+    const include = {
+      ...(opens.follow ? { [opens.follow]: true } : {}),
+      ...(opens.pair ? { [opens.pair[0]]: true, [opens.pair[1]]: true } : {}),
+    };
     const rows = await context.query({
       entity: opens.entity,
       dataset,
-      where: { [opens.field]: value },
+      where: opens.through ? { [opens.through]: { some: { [opens.field]: value } } } : { [opens.field]: value },
+      order: { createdAt: 'desc' },
       limit,
+      ...(Object.keys(include).length ? { include } : {}),
       signal: request.signal,
     });
+    const shapeOf = (entity: string | undefined) => context.models(dataset).find((s) => s.name === entity);
+    // A row's own entity: the one asked for, or — over several — the one it was read as.
+    const typeOf = (row: Record<string, unknown>, fallback?: string) => nodeTypeOf(row) ?? fallback ?? entities[0];
+    const nameOf = (row: unknown) => {
+      if (!row || typeof row !== 'object') return '';
+      const type = typeOf(row as Record<string, unknown>);
+      return rowToNode(row as Record<string, unknown>, type, dataset, shapeOf(type), 'vocabulary')?.label ?? '';
+    };
+    const seen = new Set<string>();
     for (const row of rows) {
-      const node = rowToNode(row, opens.entity, dataset, shape, 'vocabulary');
-      if (!node) continue;
-      nodes.push(node);
+      const subject = opens.follow ? row[opens.follow] : row;
+      if (!subject || typeof subject !== 'object') continue;
+      const type = typeOf(subject as Record<string, unknown>, opens.follow ? undefined : entities[0]);
+      const node = rowToNode(subject as Record<string, unknown>, type, dataset, shapeOf(type), 'vocabulary');
+      // Two involvements of one kind in the same record are one use of it.
+      if (!node || seen.has(node.id)) continue;
+      seen.add(node.id);
+      if (opens.pair) node.label = `${nameOf(row[opens.pair[0]]) || '?'} → ${nameOf(row[opens.pair[1]]) || '?'}`;
+      // A use is the end of a word's branch: on a map of words there is nothing further to open.
+      nodes.push({ ...node, leaf: true });
       edges.push({
         id: edgeId(request.id, 'instance', node.id),
         source: request.id,
         target: node.id,
         type: 'instance',
-        // The condition that put it there — "status" for a state's tasks — which is what the line means.
-        label: opens.field,
+        // What put it there — "status" for a state's tasks — which is what the line means.
+        label: opens.label ?? opens.field,
       });
     }
-    if (rows.length === limit) context.warn(`showing the first ${limit} ${opens.entity} records here`);
+    if (rows.length === limit) context.warn(`showing the latest ${limit} here`);
     return { nodes, edges, total: nodes.length };
   }
 
@@ -187,7 +232,8 @@ export function vocabularyPlugins(): { seed: SeedSource; expander: Expander; rec
   const records: Expander = {
     id: 'vocabulary-records',
     kinds: ['entity'],
-    description: 'Opens a word on a vocabulary map into the records that use it — a task state into its tasks.',
+    description:
+      'Opens a word on a vocabulary map into the records made with it — a task state into its tasks, a signal type into what was reacted to.',
     async expand(request, context) {
       const address = parseAddress(request.id);
       if (!address || !address.id || request.direction === 'in') return { nodes: [], edges: [] };

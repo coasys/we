@@ -193,6 +193,67 @@ describe('schemaPropertiesExpander', () => {
     expect(result.edges[0]).toMatchObject({ type: 'instance', target: entityAddress('ds', 'TaskBlock', 't1') });
   });
 
+  /** One bucket whose definition opens as `opens` says, seeded, and the definition opened. */
+  async function openUses(opens: Record<string, unknown>, rows: Record<string, unknown>[]) {
+    const { seed, records: expander } = vocabularyPlugins();
+    const ctx = context();
+    await seed.seed({ buckets: [{ key: 'k', label: 'K', entity: 'SignalType', opens }] }, ctx);
+    ctx.query.mockImplementation(async (q: { entity: unknown }) =>
+      q.entity === 'SignalType' ? [{ id: 'like', slug: 'like' }] : rows,
+    );
+    const result = await expander.expand(
+      { id: entityAddress('ds', 'SignalType', 'like'), direction: 'out' } as never,
+      ctx,
+    );
+    return { ctx, result };
+  }
+
+  it('opens a word into the records reached through a relation — a signal type into what was reacted to', async () => {
+    const { ctx, result } = await openUses(
+      {
+        entity: ['TaskBlock', 'CollectionBlock'],
+        through: 'signals',
+        field: 'signalTypeId',
+        key: 'id',
+        label: 'reacted to',
+      },
+      [{ id: 't1', title: 'Write it', __subjectClass: 'TaskBlock' }],
+    );
+    expect(ctx.query).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        entity: ['TaskBlock', 'CollectionBlock'],
+        where: { signals: { some: { signalTypeId: 'like' } } },
+        order: { createdAt: 'desc' },
+      }),
+    );
+    expect(result.nodes.map((n) => [n.id, n.label])).toEqual([[entityAddress('ds', 'TaskBlock', 't1'), 'Write it']]);
+    expect(result.edges[0]).toMatchObject({ label: 'reacted to' });
+  });
+
+  it('draws the record a row names when told to follow it, once however many rows name it', async () => {
+    const task = { id: 't1', title: 'Write it', __subjectClass: 'TaskBlock' };
+    const { ctx, result } = await openUses({ entity: 'Involvement', field: 'kind', key: 'slug', follow: 'node' }, [
+      { id: 'i1', node: task },
+      { id: 'i2', node: task },
+    ]);
+    expect(ctx.query).toHaveBeenLastCalledWith(expect.objectContaining({ include: { node: true } }));
+    expect(result.nodes.map((n) => n.id)).toEqual([entityAddress('ds', 'TaskBlock', 't1')]);
+  });
+
+  it('captions a row by the records at its two ends — a connection, which has no name of its own', async () => {
+    const { result } = await openUses(
+      { entity: 'Relationship', field: 'relationshipTypeId', key: 'id', pair: ['source', 'target'] },
+      [
+        {
+          id: 'r1',
+          source: { id: 't1', title: 'Write it', __subjectClass: 'TaskBlock' },
+          target: { id: 't2', title: 'Ship it', __subjectClass: 'TaskBlock' },
+        },
+      ],
+    );
+    expect(result.nodes.map((n) => n.label)).toEqual(['Write it → Ship it']);
+  });
+
   it('opens nothing for a record whose bucket says nothing about what it opens into', async () => {
     const { seed, records: expander } = vocabularyPlugins();
     const ctx = context();
