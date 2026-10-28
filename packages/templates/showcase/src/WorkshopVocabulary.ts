@@ -96,33 +96,3 @@ export const vocabularyToggle: SchemaNode = {
     },
   ],
 };
-
-/** The record types the Vocabulary settings edit. */
-const VOCABULARY_ENTITIES = "['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic']";
-
-/**
- * Where a vocabulary record is edited, from its inspector. The map shows it; the settings change it —
- * they already have the right controls (a state's approvals, a kind's reflexivity), and a second copy
- * of them here would be two places to keep honest.
- */
-export function vocabularyEditLink(cardType: string): SchemaNode {
-  return {
-    type: '$if',
-    props: {
-      condition: { $: `${cardType} in ${VOCABULARY_ENTITIES}` },
-      then: {
-        type: 'we-button',
-        props: {
-          size: 'sm',
-          variant: 'soft',
-          // About this record, so the settings land on its row — see `spaceSettingsFocus`.
-          onClick: { $invoke: 'shellStore.openSpaceSettings', args: ['vocabulary', { $: 'row.id' }] },
-        },
-        children: [
-          { type: 'we-icon', props: { name: 'book-open-text' } },
-          { type: 'we-text', props: { variant: 'label' }, children: ['Edit in Vocabulary'] },
-        ],
-      },
-    },
-  };
-}

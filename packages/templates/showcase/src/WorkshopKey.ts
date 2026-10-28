@@ -47,6 +47,8 @@
 import type { ExpressionToken, SchemaNode, SchemaProp } from '@we/schema-shared';
 import {
   anchorScope,
+  kindIcon,
+  kindLabel,
   panelHeader,
   panelScroll,
   sectionLabel,
@@ -255,22 +257,6 @@ export const KIND_DEFAULTS: Record<string, string> = {
   // the card's ink follows the fill's lightness rather than the theme's, so it stays readable.
   CollectionBlock: '#ffea9f',
 };
-
-/**
- * What a kind is called and drawn with, here and in the inspector — one answer, so the two panels
- * on the same edge cannot call one card two different things.
- *
- * `CollectionBlock` is overridden because its display says "Collection", which is the class read
- * back rather than the word anybody uses: on this canvas one of them is a note. The fallback past
- * it is the model's own name, for a kind nothing has a display for at all.
- */
-export function kindLabel(kind: string): string {
-  return `(${kind} == 'CollectionBlock' ? 'Note' : recordStore.displays[${kind}].label ? recordStore.displays[${kind}].label : ${kind})`;
-}
-
-export function kindIcon(kind: string): string {
-  return `(${kind} == 'CollectionBlock' ? 'note' : recordStore.displays[${kind}].icon)`;
-}
 
 /**
  * The colour every card starts from — and the whole of a card's colour when no lens is on.
