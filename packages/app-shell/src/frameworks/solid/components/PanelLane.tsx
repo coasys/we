@@ -42,6 +42,9 @@
  * than being squeezed — and the view beside it takes the room as it goes. Folded, the lane is inert
  * and hidden once the slide ends, so nothing in it can be tabbed to.
  *
+ * A template can fold one itself (`collapsed`) — an inspector's lane while nothing is selected —
+ * which overrides the reader's fold without writing it.
+ *
  * Below `NARROW_VIEWPORT_PX` a kept width means nothing — a phone has no room for a 280px column
  * beside anything — so the lane takes the width its parent gives it and the handle goes. How the page
  * stacks there is the template's, through its own layout (`mdUpProps`).
@@ -92,12 +95,18 @@ export function PanelLane(props: {
   flex?: string;
   /** Which edge the reader can drag to resize it: `end` for a column on the left, `start` for one on the right. */
   resize?: 'start' | 'end';
+  /**
+   * Folded by the template, whatever the reader last did — for a lane that has nothing to show
+   * until something is chosen, such as an inspector. It folds as the reader's fold does, and unfolds
+   * to the reader's own state.
+   */
+  collapsed?: boolean;
 }) {
   const shellStore = useShellStore();
   const lane = () => props.lane ?? '';
   const direction = () => props.direction ?? 'column';
   const narrow = createNarrow();
-  const collapsed = () => shellStore.collapsedLanes().includes(lane());
+  const collapsed = () => !!props.collapsed || shellStore.collapsedLanes().includes(lane());
 
   /*
     The width while a drag is under way, held here and written once at the end: a write per pointer
