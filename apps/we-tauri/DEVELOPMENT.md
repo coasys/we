@@ -134,8 +134,30 @@ the header of `custody/tests/live.rs` for what it needs:
 CUSTODY_LIVE=1 AD4M_REPO=<ad4m> cargo test --features cheap-kdf --test live -- --nocapture
 ```
 
+The Secret Service store against a real Secret Service runs only in a D-Bus session of its own,
+because it writes to the session's keyring (the header of `custody/tests/secret_service.rs`):
+
+```sh
+XDG_RUNTIME_DIR=$(mktemp -d) dbus-run-session -- sh -c 'K=$(mktemp -d);
+  printf secret | HOME=$K XDG_DATA_HOME=$K gnome-keyring-daemon --unlock --components=secrets >/dev/null &&
+  CUSTODY_SECRET_SERVICE=1 cargo test --test secret_service'
+```
+
 In the app build the generated `Cargo.toml` patches the custody crate's ad4m crates to the seed's
-checkout (`Cargo.toml.template`), so there is one ad4m in the binary.
+checkout (`Cargo.toml.template`), so there is one ad4m in the binary. `AD4M_REPO=<ad4m>` names
+another checkout than the seed's `ad4m.repoPath` when `scripts/generate-seed-config.cjs` writes it.
+
+### The harness build
+
+The cargo feature `harness` (Linux only) makes the build the acceptance world drives
+(`tests/acceptance/README.md`): at start it dials the harness link that `COASYS_HARNESS_URL` names,
+on the loopback interface only, with the token `COASYS_HARNESS_TOKEN` gives, and answers its
+commands (`src/harness.rs`). It adds no command and no capability. A build without the feature has
+none of this code.
+
+```sh
+cargo build --release --features harness,tauri/custom-protocol
+```
 
 ## Optional: Embedding External Apps
 

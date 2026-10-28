@@ -16,6 +16,8 @@ packages:
   - packages/module-system/*
   # The globe module is a family: module + protocol + layers + widget
   - packages/module-system/globe/*
+  # The acceptance world: tests/acceptance/README.md
+  - tests/acceptance
 
 onlyBuiltDependencies:
   - electron
