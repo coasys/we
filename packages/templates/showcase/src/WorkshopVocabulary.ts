@@ -16,6 +16,7 @@
  * them. Clicking a record inspects it like any card; editing stays where it is, in the settings.
  */
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
+import { vocabularyMap } from '@we/template-kit';
 
 /** Which cards are open, by node address, comma-separated — like the fold, in the address. */
 export const OPEN_PARAM = 'open';
@@ -58,112 +59,19 @@ export const FIELD_NODE_RULE = {
 };
 
 /**
- * The buckets, in the Vocabulary settings' order and words — the two places a space's words are shown
- * must not name them differently. "From other apps" appears only where there is something in it.
+ * The map of the space's vocabulary — the kit's (`vocabularyMap`), which the Coasys space draws too.
+ * What is the workshop's: which cards are open (in the address, beside the fold), and a press on a
+ * record inspecting it like any card, where a bucket, a workflow or a field has none and clears it.
  */
-const BUCKETS = `[
-  { key: 'signals', label: 'Signal types', entity: 'SignalType' },
-  { key: 'connections', label: 'Relationship types', entity: 'RelationshipType' },
-  { key: 'states', label: 'Task states', entity: 'TaskState', opens: { entity: 'TaskBlock', field: 'status', key: 'slug' } },
-  { key: 'kinds', label: 'Involvement types', entity: 'InvolvementType' },
-  { key: 'topics', label: 'Topics', entity: 'Topic' },
-  { key: 'models', label: 'Models', models: recordStore.creatableEntities.map(k, { name: k.value, label: k.label }) },
-  { key: 'other', label: 'From other apps', models: datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value))).map(e, { name: e.name }) },
-  { key: 'workflows', label: 'Workflows', workflows: workflowStore.workflows.map(f, { name: f.name, label: f.label, steps: f.steps, moves: f.moves }) }
-].filter(b, b.key != 'other' || count(b.models))`;
-
-/** The map of the space's vocabulary — see the module docblock. */
-export const vocabularyCanvas: SchemaNode = {
-  /*
-    Laid over the canvas, which stays mounted beneath — see where the workshop places it. Opaque, and
-    above the canvas's own layers, so nothing of the canvas shows or takes a press through it.
-  */
-  type: 'Column',
-  props: { position: 'absolute', top: '0', left: '0', width: '100%', height: '100%', bg: 'page', zIndex: 1 },
-  children: [
-    {
-      type: 'GraphView',
-      props: {
-        seeds: { source: 'vocabulary', options: { buckets: { $: BUCKETS } } },
-        /*
-      What opens into what: a bucket into its members, a model into its fields and a Records node, the
-      Records node into the model's records, a task state into the tasks in it (the bucket's `opens`),
-      any record into its fields — each field one node saying its name and value, as a card's do on the
-      canvas, rather than a field node with its value hanging off it as another.
-    */
-        expansion: {
-          defaultDepth: 0,
-          direction: 'out',
-          expanders: ['vocabulary', 'vocabulary-records', 'schema-properties', 'schema-instances', 'property'],
-        },
-        // Each bucket is a tree of its own, its members under it; containment edges make the parents.
-        /*
-          One tree per kind of word, closed until opened, in the settings' order. A kind with nothing
-          in it is still a root (`unattached: 'trees'`), rather than a card in a zone of its own.
-        */
-        layout: {
-          type: 'forest',
-          /*
-            The gap between ranks set rather than derived: a share of a 64-high card is about 40, and a
-            line from a parent's bottom to a child's top needs more room than that to turn — in less it
-            dived below the child and hooked back up into it. A little more than the canvas's tree has,
-            since these lines run between shorter cards that sit wider apart.
-          */
-          // Sideways, tighter than the default share of the card's width, so a map of many small trees
-          // stays close together.
-          options: {
-            card: { width: 180, height: 64 },
-            levelGap: 110,
-            siblingGap: 36,
-            treeGap: 90,
-            unattached: 'trees',
-            sortBy: 'order',
-          },
-        },
-        /*
-          Lighter than the page, and in the theme's accent: the surface roles a card usually takes sit a
-          step from the page and read as dark on dark here. The kinds of word are the strongest fill,
-          what is in them a tint of it, and a card's properties the quietest.
-        */
-        nodeStyle: [
-          { style: { shape: 'card', width: 180, height: 64, color: 'accent-soft' } },
-          { when: { kind: 'cluster', type: 'vocabulary' }, style: { color: 'accent', height: 56 } },
-          { when: { 'data.final': true }, style: { borderColor: 'accent-text', borderWidth: 2 } },
-          { when: { kind: 'property' }, style: { color: 'control-surface', height: 44, content: 'property' } },
-          { when: { kind: 'literal' }, style: { shape: 'circle', size: 12 } },
-        ],
-        /*
-          A parent's lines leave its bottom edge and meet each child at its top, as the canvas's tree
-          draws them — where the geometry decides, the outer children of a wide rank are met at their
-          sides, and the same relationship reads three different ways. Not a workflow's moves, which run
-          between steps side by side.
-        */
-        edgeStyle: [
-          ...['contains', 'instance', 'property'].map((type) => ({
-            when: { type },
-            style: { sourceAnchor: 's', targetAnchor: 'n', ignoreRoute: true },
-          })),
-          // What a line is, where two kinds of thing hang off one card: its fields ("field",
-          // "relation") and its records ("records", "status"). A bucket's members need no word.
-          ...['instance', 'property'].map((type) => ({
-            when: { type },
-            style: { showLabel: true },
-          })),
-          { when: { type: 'move' }, style: { dashed: true, color: 'accent-text' } },
-        ],
-        open: { $: OPEN_NODES },
-        onNodeOpen: OPEN_FROM_GRAPH,
-        // A record on the map is inspected like any card; a bucket, a workflow or a field has none, and clears it.
-        focus: { $: 'routeStore.params.card' },
-        onNodeClick: [
-          { $setLocal: 'inspecting', value: { $: "event.recordId ?? ''" } },
-          { $setLocal: 'inspectingType', value: { $: "event.recordType ?? ''" } },
-        ],
-        showStatus: true,
-      },
-    },
+export const vocabularyCanvas: SchemaNode = vocabularyMap({
+  open: { $: OPEN_NODES },
+  onNodeOpen: OPEN_FROM_GRAPH,
+  focus: { $: 'routeStore.params.card' },
+  onNodeClick: [
+    { $setLocal: 'inspecting', value: { $: "event.recordId ?? ''" } },
+    { $setLocal: 'inspectingType', value: { $: "event.recordType ?? ''" } },
   ],
-};
+});
 
 /** The control that swaps the canvas for the vocabulary map and back, beside the tree's. */
 export const vocabularyToggle: SchemaNode = {

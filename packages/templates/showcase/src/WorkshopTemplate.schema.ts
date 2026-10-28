@@ -72,6 +72,7 @@ import {
   emptyState,
   field,
   FLOWS_LOCALS,
+  focusDim,
   foldingBody,
   foldingSectionLabel,
   formModal,
@@ -3487,7 +3488,7 @@ const canvas: SchemaNode = {
         moment, and with the fade switched off at the press they flashed back to full strength in
         between. Dimmer than a suggestion (0.5), so the two read as different things.
       */
-      { $: `(${FROM_ON}) ? [{ when: { 'data.origin': { not: (${SCOPE_RECORD}) } }, style: { opacity: 0.1 } }] : []` },
+      focusDim(FROM_ON, 'data.origin', SCOPE_RECORD),
     ],
     /*
       No ARMED `connect-nodes`. Connecting is a handle on the card, not a mode.

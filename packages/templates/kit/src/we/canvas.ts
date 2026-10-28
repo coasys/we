@@ -103,6 +103,32 @@ export const SUGGESTION_STYLES = [
   { when: { 'data.changed': true }, style: { borderColor: 'warning-text', borderWidth: 2 } },
 ];
 
+/** How faint what is out of focus is drawn: there to keep one's bearings by, and clearly not the point. */
+export const FOCUS_DIM = 0.1;
+
+/**
+ * A focus on a canvas: while `on` holds, every card whose `key` is not `value` is dimmed — a call's
+ * cards (`data.origin`), one person's (`data.author`), the records in a workflow (`data.recordId`
+ * against a list). An expression for a `nodeStyle` list, placed after `SUGGESTION_STYLES` so a dimmed
+ * suggestion is dimmed rather than half-faded, and one in focus keeps its own fade.
+ *
+ * Dimmed rather than hidden, so the canvas keeps its shape and somebody keeps their bearings.
+ */
+export function focusDim(on: string, key: string, value: string): SchemaProp {
+  return { $: `(${on}) ? [{ when: { '${key}': { not: (${value}) } }, style: { opacity: ${FOCUS_DIM} } }] : []` };
+}
+
+/**
+ * A focus that lights several things at once: while `on` holds, everything is dimmed and whatever
+ * matches any of `keep` — an expression for a list of match clauses — is drawn whole again. For a map
+ * with no suggestions to keep faded, where one focus is a bucket and everything in it.
+ */
+export function focusLight(on: string, keep: string): SchemaProp {
+  return {
+    $: `(${on}) ? [{ style: { opacity: ${FOCUS_DIM} } }, (${keep}).map(c, { when: c, style: { opacity: 1 } })] : []`,
+  };
+}
+
 export interface CanvasEditingOptions {
   /** The canvas record every gesture writes against. */
   canvas: SchemaProp;
