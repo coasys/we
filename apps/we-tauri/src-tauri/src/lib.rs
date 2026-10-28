@@ -2,8 +2,10 @@ mod accounts;
 mod app_server;
 mod app_state;
 mod commands;
+mod data_folder;
 mod executor_log;
 mod generated;
+mod main_window;
 
 // Declared by path rather than through `generated/mod.rs`: that module is only emitted on the
 // generator's embedded-apps path, while this file is emitted on both and is always read here.
@@ -117,6 +119,11 @@ fn enable_media(app: &tauri::App) {
 }
 
 pub fn run() {
+    let context = tauri::generate_context!();
+    // Before anything makes a window: the webview makes its data folder when it starts.
+    #[cfg(target_os = "linux")]
+    move_former_webview_data(&context.config().identifier);
+
     // Find a free port for the GraphQL server
     let graphql_port = find_port(12000, 13000).expect("Failed to find free port");
 
@@ -211,10 +218,8 @@ pub fn run() {
     // the admin credential only). The sealed file is the fallback for Linux without a Secret Service,
     // and for a macOS build without the keychain entitlement.
     // The same folder keeps the incept of an identity made here until its publish is confirmed.
-    let custody_dir = dirs::data_dir()
-        .unwrap_or_else(|| home.join(".local/share"))
-        .join("coasys")
-        .join("custody");
+    let custody_dir =
+        data_folder::custody_dir(&dirs::data_dir().unwrap_or_else(|| home.join(".local/share")));
     let custody = we_custody::spawn(
         we_custody::DesktopVault::new(
             we_custody::store::system_store(custody_dir.clone()),
@@ -235,8 +240,15 @@ pub fn run() {
         default_data_path,
     };
 
-    tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
+    let app = tauri::Builder::default()
+        // First: a second start of the app shows this one's window and goes, so two copies never
+        // run on one data folder. The main window hides on close (`main_window.rs`), and starting
+        // the app again is how a desktop with no tray icon shows it.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            main_window::show(app)
+        }))
+        // No opener plugin: no page calls it. `main_window.rs` opens a link in the browser from
+        // here, for an `https` address only.
         .plugin(tauri_plugin_dialog::init())
         .manage(state)
         .manage(commands::identity::IdentityState::new(custody))
@@ -261,6 +273,9 @@ pub fn run() {
             commands::identity::identity_flow_finish
         ])
         .setup(move |app| {
+            main_window::create(app)?;
+            main_window::create_tray(app)?;
+
             // Start embedded app HTTP servers (in production only)
             // Uses configuration generated from we-seed.json
             #[cfg(not(debug_assertions))]
@@ -311,8 +326,43 @@ pub fn run() {
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(context)
+        .expect("error while building tauri application");
+
+    app.run(|_app, _event| {
+        // macOS: a click on the Dock icon while the window is hidden shows it.
+        #[cfg(target_os = "macos")]
+        if let tauri::RunEvent::Reopen { .. } = _event {
+            main_window::show(_app);
+        }
+    });
+}
+
+/// Moves the webview's data folder from the identifier this app had before, once. See
+/// `data_folder.rs`; Tauri keeps that folder in the local data folder (`$XDG_DATA_HOME`).
+#[cfg(target_os = "linux")]
+fn move_former_webview_data(identifier: &str) {
+    let Some(base) = dirs::data_local_dir() else {
+        return;
+    };
+    match data_folder::move_webview_data(&base, seed_runtime::FORMER_IDENTIFIER, identifier) {
+        data_folder::Move::Nothing => {}
+        data_folder::Move::Done { from, to } => {
+            eprintln!(
+                "we: moved the webview's data from {} to {}",
+                from.display(),
+                to.display()
+            )
+        }
+        data_folder::Move::BothExist { former } => eprintln!(
+            "we: kept {} as it is: this app has a webview data folder of its own already",
+            former.display()
+        ),
+        data_folder::Move::Failed { from, error } => eprintln!(
+            "we: could not move the webview's data from {}: {error}; it starts with none",
+            from.display()
+        ),
+    }
 }
 
 #[cfg(test)]

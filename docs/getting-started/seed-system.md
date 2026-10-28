@@ -346,6 +346,10 @@ inside but not the binary somebody installed.
   runtime: `io.coasys.app` builds `io.coasys.app.electron` and
   `io.coasys.app.tauri`, so the two hosts install side by side. Defaults to
   `io.weco.we`.
+- `tauriId` — the identifier of the Tauri app, when it is not `<appId>.tauri`.
+  `seeds/coasys.seed.json` sets `org.coasys.app`: the Coasys desktop app. At its
+  first start, an app with a `tauriId` moves the webview's data folder from
+  `<appId>.tauri` to the new identifier (Linux), so local settings stay.
 - `icon` — an SVG, relative to the repository root, drawn as it is with a margin
   (`@we/brand` makes every size). Defaults to WE's mark on its themed tile.
 

@@ -14,12 +14,24 @@ edition = "2021"
 name = "app_lib"
 crate-type = ["staticlib", "rlib"]
 
+[features]
+default = []
+# The web inspector in a release build, which `pnpm tauri:dev` turns on (it builds `--release`). A
+# debug build has it without this feature; a packaged build (`pnpm tauri:build`) never has it.
+devtools = ["tauri/devtools"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["devtools"] }
+# `tray-icon`: the icon and menu that keep the app reachable while its window is hidden.
+tauri = { version = "2", features = ["tray-icon"] }
+# Called from Rust only (`src/main_window.rs`), to open an `https` link in the OS browser. Not
+# registered as a plugin, so no page can call it.
 tauri-plugin-opener = "2"
+# One running copy: a second start shows the first copy's window and exits.
+tauri-plugin-single-instance = "2"
+log = "0.4"
 # The file dialog behind export/import. Used from Rust rather than the JS bridge: the path is for
 # the executor, which runs in this process, so nothing about it belongs in the renderer.
 tauri-plugin-dialog = "2"

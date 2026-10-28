@@ -47,6 +47,53 @@ holds everything logged through the `log` crate (the executor, Holochain, JS `co
 and lines marked `HOST` from `src/lib.rs`. A bare `println!` reaches the terminal only. See
 `src/executor_log.rs`.
 
+## The main window
+
+The app makes the main window in code (`src-tauri/src/main_window.rs`). In `tauri.conf.json` the
+window is `create: false`. Only a window made in code can have a navigation handler and a
+new-window handler.
+
+- **Commands.** `build.rs` declares every command in an app manifest. The capability
+  `capabilities/main.json` gives the main window its own commands and two event calls
+  (`core:event:allow-listen`, `core:event:allow-unlisten`). It gives no other part of the core API
+  and no plugin. `capabilities/identity.json` gives the identity window its flow commands only.
+  `custody/tests/commands.rs` fails when a window gets a command or a permission that is not on its
+  list.
+- **Content security policy.** Tauri sends a policy with each page it serves. The policy comes from
+  `@we/csp`, the same builder that writes the page's `<meta>` tag. `scripts/generate-seed-config.cjs`
+  writes it for the seed into `src-tauri/tauri.seed.conf.json`. `tauri.conf.json` holds the policy
+  for WE's own seed; `scripts/tauriConfig.test.ts` keeps the two equal. Tauri does not change
+  `style-src` (`dangerousDisableAssetCspModification`): a nonce there turns off `'unsafe-inline'`,
+  and the design system needs inline styles.
+- **Navigation.** The window stays on the app's pages and on `blob:` addresses of its own origin
+  (the app saves a file through one). A frame can load what the policy's `frame-src` permits. The
+  window opens no new window: a request for one (`window.open`, a link
+  with `target="_blank"`) opens an `https` address in the OS browser. The app refuses all other
+  addresses. The rules are `main_may_navigate` and `opens_in_browser` in `custody/src/window.rs`,
+  with their tests.
+- **Devtools.** A debug build has the web inspector. A release build has it only with the cargo
+  feature `devtools`. `pnpm tauri:dev` turns that feature on; `pnpm tauri:build` does not.
+- **Close and the tray icon.** Closing the main window hides it. The app and its executor continue
+  to run. The tray icon's menu has "Open" and "Quit". On macOS the app leaves the Dock while the
+  window is hidden. On Linux the icon is a StatusNotifierItem, which needs
+  `libayatana-appindicator3` at run time. On GNOME without an AppIndicator extension there is no
+  icon: start the app again to show the window.
+- **One copy.** `tauri-plugin-single-instance` stops a second copy. A second start shows the
+  window of the copy that runs, then exits.
+
+### Product name and identifier
+
+The seed sets them (`desktop` in the seed, `tauriOf` in `scripts/seed.cjs`). The identifier is
+`<appId>.tauri`, or `desktop.tauriId` when the seed sets it. WE's own seed builds "WE",
+`io.weco.we.tauri`. `seeds/coasys.seed.json` builds the Coasys app: "Coasys", `org.coasys.app`.
+
+On Linux the webview keeps its data (local storage, IndexedDB, cookies) in
+`$XDG_DATA_HOME/<identifier>`. An app with a `tauriId` moves that folder once from
+`<appId>.tauri`, before it makes a window (`src-tauri/src/data_folder.rs`). The move is a rename. If
+the new folder exists already, the app changes neither folder. Nothing else moves, because the
+identifier names nothing else: the executor's data is at `ad4m.dataPath`, and the custody service
+keeps the master key in `<data dir>/coasys/custody` and in keychain items with constant names.
+
 ## The identity: custody and the identity window
 
 The person's master key never rests in the executor or in a web view. The shell keeps it in
