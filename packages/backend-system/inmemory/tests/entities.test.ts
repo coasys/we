@@ -138,18 +138,18 @@ describe('relations', () => {
 
   it('reads a relation back without a query, and removes from it', async () => {
     const settings = await AgentSettings.create(dataset, {});
-    const template = await Template.create(dataset, { name: 'Installed' });
+    const template = await Template.create(dataset, { name: 'Hidden' });
     const rel = settings as unknown as {
-      addInstalledTemplates(t: unknown): Promise<void>;
-      getInstalledTemplates(): Promise<{ name: string }[]>;
-      removeInstalledTemplates(t: unknown): Promise<void>;
+      addHiddenTemplates(t: unknown): Promise<void>;
+      getHiddenTemplates(): Promise<{ name: string }[]>;
+      removeHiddenTemplates(t: unknown): Promise<void>;
     };
 
-    await rel.addInstalledTemplates(template);
-    expect((await rel.getInstalledTemplates()).map((t) => t.name)).toEqual(['Installed']);
+    await rel.addHiddenTemplates(template);
+    expect((await rel.getHiddenTemplates()).map((t) => t.name)).toEqual(['Hidden']);
 
-    await rel.removeInstalledTemplates(template);
-    expect(await rel.getInstalledTemplates()).toHaveLength(0);
+    await rel.removeHiddenTemplates(template);
+    expect(await rel.getHiddenTemplates()).toHaveLength(0);
   });
 
   it('counts a relation as a projection, the way a feed counts signals', async () => {

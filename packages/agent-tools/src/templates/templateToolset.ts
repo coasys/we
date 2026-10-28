@@ -18,28 +18,42 @@
  *   every read of the same stored template — which is what lets a read and the update after it agree
  *   — and different after anything changes it. `template_update` therefore takes the `version` it
  *   was written against and refuses a template that has moved on, whoever moved it.
+ * - **A new template is made by the host.** `template_create` answers with the new record's
+ *   properties and the place it goes — the person's library unless the call asks for the space — and
+ *   the host makes the record there. It is judged as an edit is, so a template an agent made opens.
  */
 import type { EntityManifestEntry } from '@we/backend-shared';
 import { decodeTemplateFile, encodeTemplateFile } from '@we/entities';
 import {
   buildValidationContext,
   contextData,
+  ensureNodeIds,
   type SchemaNode,
   type TemplateSchema,
   type ValidationContext,
   withEntities,
 } from '@we/schema-shared';
 
-import { type AgentTool, readArguments, type RecordInput, type RecordToolset, type ToolCall } from '../core/toolset';
+import {
+  type AgentTool,
+  type Place,
+  readArguments,
+  type RecordInput,
+  type RecordToolset,
+  type ToolAnswer,
+  type ToolCall,
+} from '../core/toolset';
 import { datasetModelExtras, loadReference, updateSchemaTool } from './aiInfra';
 import { toolsPreamble } from './chatSystemPrompt';
-import { type ReferenceDoc, referenceDocs } from './contextStrategies';
+import { type ReferenceDoc, referenceDocs, selectReference } from './contextStrategies';
 import { prepareForModel } from './nodeAliases';
+import { roleOfTemplate, starterTemplate, TEMPLATE_ROLES, type TemplateRole } from './starterTemplates';
 import { boundTemplate } from './templateContext';
-import { createTemplateSession } from './templateSession';
+import { createTemplateSession, judgeTemplate, templateIssues } from './templateSession';
 
 export const TEMPLATE_READ = 'template_read';
 export const TEMPLATE_UPDATE = 'template_update';
+export const TEMPLATE_CREATE = 'template_create';
 
 let catalogue: ValidationContext | undefined;
 
@@ -60,7 +74,8 @@ function validation(models: EntityManifestEntry[]) {
 }
 
 /** The template a record holds, and the version a save moves on. Throws for a record it cannot read: the host's mistake. */
-function readRecord(record: RecordInput): { template: SchemaNode; version: number } {
+function readRecord(record: RecordInput | undefined): { template: SchemaNode; version: number } {
+  if (!record) throw new Error('The template tools work on a Template record, and none was given.');
   if (!templateToolset.appliesTo.includes(record.className))
     throw new Error(`The template tools work on Template records, not ${record.className}.`);
   const stored = decodeTemplateFile<TemplateSchema>(record.properties.schema);
@@ -136,7 +151,44 @@ async function read({ record, args, models = [] }: ToolCall): Promise<string> {
     version,
     currentSchema: bounded.sent,
     ...datasetModelExtras(models, validation(models).base.entityNames),
+    reference: referenceFor(await loadReference(), about, bounded.sent),
+    /*
+      Last, because a model answers whatever it read last. On a large template this answer is tens
+      of thousands of characters, and a small model that reaches the end of it describes the
+      template it was shown rather than making the edit it was asked for — every run of the
+      workshop cases did, in the 4B eval of October 2026.
+    */
+    ...(about.trim() && {
+      next: `The edit asked for: "${about.trim()}". Make it with ${TEMPLATE_UPDATE}, passing version ${version}.`,
+    }),
   });
+}
+
+/** How much of `template_read`'s answer the reference entries may take, in characters. */
+export const READ_REFERENCE_BUDGET = 30_000;
+
+/**
+ * The reference entries a read's edit probably needs, beside the template: the components in what
+ * was sent in full and the ones the request names, and the stores either mentions.
+ *
+ * In the answer rather than left to be asked for, because a small model does not ask: given the
+ * entries it uses them, and without them it guesses a prop. The editor's own conversation puts the
+ * same selection in its prompt; an agent on a host has no prompt of ours, and its first read is the
+ * one place to put it.
+ */
+function referenceFor(reference: string, about: string, sent: unknown): string {
+  const selected = selectReference(reference, { request: about, schema: sent }, READ_REFERENCE_BUDGET);
+  if (!selected.components.length && !selected.stores.length) return '';
+  return [
+    'Reference entries for what this template uses and the request names. Anything else is a documentation topic.',
+    ...(selected.components.length ? [selected.componentsIntro, ...selected.components] : []),
+    ...(selected.stores.length ? [selected.storesIntro, ...selected.stores] : []),
+    ...(selected.omitted.length
+      ? [
+          `Also involved, left out for room — each is the topic template/components/<name> or template/stores/<name>: ${selected.omitted.join(', ')}.`,
+        ]
+      : []),
+  ].join('\n\n');
 }
 
 async function update({ record, args, models = [], author }: ToolCall) {
@@ -195,21 +247,150 @@ async function update({ record, args, models = [], author }: ToolCall) {
   };
 }
 
+const PLACES: Place[] = ['library', 'space'];
+
+const createTool: AgentTool = {
+  name: TEMPLATE_CREATE,
+  description:
+    'Make a new template and SAVE it. A shell is a space’s whole interface, a view is one section of ' +
+    'a space, an app is the chrome around every space. `place` is `library` — the person’s own, the ' +
+    'default — or `space`, only when they asked for it to be in this space; an app is always the ' +
+    'person’s. It starts from a working template of its role, from the template the call names (a ' +
+    `fork), or from \`schema\`, a whole template you write. Then read the new record with ${TEMPLATE_READ} ` +
+    `and change it with ${TEMPLATE_UPDATE}. \`dry_run\` checks it and saves nothing.`,
+  parameters: {
+    type: 'object',
+    properties: {
+      name: { type: 'string', description: 'What the template is called, as the person will see it.' },
+      role: { type: 'string', enum: TEMPLATE_ROLES, description: 'shell (the default), view or app.' },
+      place: { type: 'string', enum: PLACES, description: 'library (the default) or space.' },
+      description: { type: 'string', description: 'One line on what it is for.' },
+      icon: { type: 'string', description: 'A Phosphor icon name, e.g. "kanban".' },
+      schema: { type: 'object', description: 'A whole template to start from, instead of the starting one.' },
+      dry_run: { type: 'boolean', description: 'Check the template and save nothing.' },
+    },
+    required: ['name'],
+  },
+  writes: true,
+  creates: { entity: 'Template', places: PLACES },
+};
+
+/** The name as a path segment: `Lending Desk` → `lending-desk`. */
+const segmentOf = (name: string): string =>
+  name
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40) || 'template';
+
+/**
+ * The new template's id, which is also its slug: the name, with a suffix so it cannot take the id
+ * of a template already in the library — where a second template with the same id would replace the
+ * first in every list.
+ */
+function newSlug(name: string): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(4));
+  return `${segmentOf(name)}-${[...bytes].map((b) => b.toString(36).padStart(2, '0')).join('')}`;
+}
+
+const text = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.trim() ? value.trim() : undefined;
+
+function create({ record, args, models = [], author }: ToolCall): ToolAnswer {
+  const parsed = readArguments(args ?? {});
+  if (!parsed) return { text: `Error: The arguments to ${TEMPLATE_CREATE} must be a JSON object.` };
+
+  const name = text(parsed.name);
+  if (!name) return { text: 'Error: Give the template a `name`.' };
+  if (parsed.role !== undefined && !TEMPLATE_ROLES.includes(parsed.role as TemplateRole))
+    return { text: `Error: \`role\` is one of ${TEMPLATE_ROLES.join(', ')}.` };
+  const place = (parsed.place ?? 'library') as Place;
+  if (!PLACES.includes(place)) return { text: `Error: \`place\` is one of ${PLACES.join(', ')}.` };
+  if (
+    parsed.schema !== undefined &&
+    (!parsed.schema || typeof parsed.schema !== 'object' || Array.isArray(parsed.schema))
+  )
+    return { text: 'Error: `schema` must be a whole template: an object with a `type` and a `meta`.' };
+
+  // Where it starts: a whole template the agent wrote, the one it forks, or the starter for its role.
+  const fork = !parsed.schema && record ? readRecord(record).template : undefined;
+  const asked = parsed.role as TemplateRole | undefined;
+  const given = (parsed.schema as SchemaNode | undefined) ?? fork;
+  const role = given ? roleOfTemplate(given as TemplateSchema) : (asked ?? 'shell');
+  if (given && asked && asked !== role)
+    return {
+      text:
+        `Error: The template to start from is a ${role}, and \`role\` asks for a ${asked}. Leave \`role\` out to ` +
+        `keep it a ${role}, or start from a ${asked}.`,
+    };
+  if (role === 'app' && place !== 'library')
+    return {
+      text: 'Error: An app is the chrome around every space the person opens, so it is theirs: make it in the library.',
+    };
+
+  const slug = newSlug(name);
+  const base = (given ? structuredClone(given) : starterTemplate(role, name, segmentOf(name))) as TemplateSchema;
+  const { author: _previous, ...design } = base as TemplateSchema & { author?: string };
+  // Description and icon are required of every template; a schema written without them gets them blank.
+  const meta = {
+    description: '',
+    icon: '',
+    ...(design.meta as Partial<TemplateSchema['meta']>),
+    name,
+    ...(text(parsed.description) !== undefined ? { description: text(parsed.description) } : {}),
+    ...(text(parsed.icon) !== undefined ? { icon: text(parsed.icon) } : {}),
+  };
+  const template = {
+    ...(ensureNodeIds(design as SchemaNode) as TemplateSchema),
+    id: slug,
+    meta,
+    ...(author ? { author } : {}),
+  } as TemplateSchema;
+
+  // A fork answers only for what it changed: issues its source already had are not held against it.
+  const { context } = validation(models);
+  const baseline = fork ? templateIssues(fork, context) : undefined;
+  const verdict = judgeTemplate(template as SchemaNode, context, baseline);
+  if (verdict) return { text: `Error: ${verdict.message}` };
+
+  const where = place === 'library' ? 'the person’s library' : 'this space';
+  if (parsed.dry_run === true)
+    return { text: `Valid: a ${role} called "${name}" would be made in ${where}. Nothing was saved.` };
+
+  return {
+    text: `Made the ${role} "${name}" in ${where}. Read the new record with ${TEMPLATE_READ} before changing it.`,
+    // The fields the app's own save writes for a new template, so it lists and opens like one.
+    properties: {
+      name,
+      description: meta.description ?? '',
+      icon: meta.icon ?? '',
+      origin: place === 'library' ? 'custom' : 'shared',
+      slug,
+      version: 1,
+      schema: encodeTemplateFile(template, { savedAt: Date.now() }),
+      role: role === 'view' ? 'view' : '',
+    },
+    create: { entity: 'Template', place },
+  };
+}
+
 let docs: Promise<ReferenceDoc[]> | undefined;
 
 /** The reference as topics, built once: the reference is the one this package was built with, and does not change. */
 const loadDocs = () =>
   (docs ??= loadReference().then((reference) =>
-    referenceDocs(toolsPreamble({ read: TEMPLATE_READ, update: TEMPLATE_UPDATE }), reference),
+    referenceDocs(toolsPreamble({ read: TEMPLATE_READ, update: TEMPLATE_UPDATE, create: TEMPLATE_CREATE }), reference),
   ));
 
 export const templateToolset: RecordToolset = {
   appliesTo: ['Template'],
-  tools: [readTool, updateTool],
+  tools: [readTool, updateTool, createTool],
 
   async call(name, input) {
     if (name === TEMPLATE_READ) return { text: await read(input) };
     if (name === TEMPLATE_UPDATE) return update(input);
+    if (name === TEMPLATE_CREATE) return create(input);
     return { text: `Error: Unknown tool: ${name}` };
   },
 

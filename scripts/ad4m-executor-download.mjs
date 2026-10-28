@@ -162,22 +162,30 @@ export async function fetchExecutor(commit) {
   return { binary: unpack(file, compressed, manifest), manifest };
 }
 
+/** Throws NotPublished on a platform ad4m publishes no executor for. */
+export function checkPlatform(platform = process.platform, arch = process.arch) {
+  if (platform !== 'linux' || arch !== 'x64') {
+    throw new NotPublished(`ad4m publishes a linux-x64 executor only, and this is ${platform}-${arch}.`);
+  }
+}
+
+/** Writes the executor to `destination`, executable. */
+export function writeExecutor(destination, binary) {
+  mkdirSync(dirname(destination), { recursive: true });
+  // Written beside the destination and renamed, so a failure part-way never leaves a file that a
+  // later step, or the cache, would take for the executor.
+  writeFileSync(`${destination}.part`, binary);
+  chmodSync(`${destination}.part`, 0o755);
+  renameSync(`${destination}.part`, destination);
+}
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const [commit, destination] = process.argv.slice(2);
   try {
     if (!destination) throw new NotPublished('Usage: ad4m-executor-download.mjs <commit> <destination>');
-    if (process.platform !== 'linux' || process.arch !== 'x64') {
-      throw new NotPublished(
-        `ad4m publishes a linux-x64 executor only, and this is ${process.platform}-${process.arch}.`,
-      );
-    }
+    checkPlatform();
     const { binary, manifest } = await fetchExecutor(commit);
-    mkdirSync(dirname(destination), { recursive: true });
-    // Written beside the destination and renamed, so a failure part-way never leaves a file that a
-    // later step, or the cache, would take for the executor.
-    writeFileSync(`${destination}.part`, binary);
-    chmodSync(`${destination}.part`, 0o755);
-    renameSync(`${destination}.part`, destination);
+    writeExecutor(destination, binary);
     console.error(
       `Downloaded the executor for ${AD4M_REPO}@${commit.slice(0, 9)} from ${EXECUTOR_ORIGIN}/${commit}/${manifest.file} ` +
         `(sha256 ${manifest.sha256.slice(0, 12)}…, needs glibc ${manifest.glibc}).`,

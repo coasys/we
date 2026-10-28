@@ -11,7 +11,7 @@ export const scenario = 'theme:lab';
 export const widths = [1100];
 /** Indexes into THEME_LAB_THEMES in scenarios.ts. */
 export const scales = [0, 1, 2, 3, 4, 5, 6];
-const THEMES = ['light', 'dark', 'black', 'cyberpunk', 'retro', 'channels', 'timeline'];
+const THEMES = ['light', 'dark', 'black', 'cyberpunk', 'retro', 'discord', 'twitter'];
 
 let run = 0;
 

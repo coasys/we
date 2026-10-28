@@ -1,5 +1,4 @@
 import { boardOptimism } from '@shared/boardOptimism';
-import { withExtractionDefaults } from '@shared/collectionExtraction';
 import { datasetAddressedBy } from '@shared/datasetIdentity';
 import { collectionFacts } from '@shared/destructiveFacts';
 import { involvementOptimism } from '@shared/involvementOptimism';
@@ -12,12 +11,14 @@ import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry'
 import { onSlotRegistryChanged, slotRegistry } from '@shared/registries/slotRegistry';
 import { provideChromeBag, provideTemplateBag } from '@shared/registries/templateBag';
 import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/templateSurface';
-import { completeResponse, respondsThrough } from '@shared/responses';
 import { installRenderSettleOnExit, installSafeModeShortcut } from '@shared/safeMode';
 import { hostSourceBag } from '@shared/sources';
 import { workflowStateOf } from '@shared/taskWorkflow';
 import { taskWorkflowLive } from '@shared/taskWorkflowLive';
+import { landsOnRoot } from '@shared/templateLanding';
 import { copyText } from '@shared/utils';
+import { withExtractionDefaults } from '@we/entities';
+import { completeResponse, respondsThrough } from '@we/entities';
 
 import { signalOptimism } from '../../../shared/signalOptimism';
 import { signalOrder } from '../../../shared/signalOrder';
@@ -221,7 +222,7 @@ export default function TemplateProvider() {
    * A new feed starts with its space's extraction defaults — written onto it, not inherited.
    *
    * Every collection that conversations happen in holds its own answer to "is this extracted as it
-   * grows, and for what", copied from the space when it is made; see `@shared/collectionExtraction`
+   * grows, and for what", copied from the space when it is made; see `collectionExtraction` in `@we/entities`
    * for why a copy. Done here because this is where both of the ways a new one arrives meet: a
    * template's `record.create` (a channel) and a module's write (a call). Anything the caller
    * already said wins, and a dataset with no space gets nothing, which leaves the collection unset.
@@ -244,7 +245,7 @@ export default function TemplateProvider() {
   }
 
   /**
-   * A record written as a response is linked into its thread — see `@shared/responses`. Not awaited:
+   * A record written as a response is linked into its thread — see `completeResponse` in `@we/entities`. Not awaited:
    * the response exists, and the press that wrote it should not wait on the thread link.
    */
   function threadResponse(perspective: DatasetProxy, created: { id?: string } | undefined, options: unknown): void {
@@ -1451,6 +1452,39 @@ export default function TemplateProvider() {
     const dataset = datasetStore.currentDataset();
     if (!dataset) return;
     routeStore.navigate(`/space/${dataset.sharedId ?? dataset.id}`, { replace: true });
+  });
+
+  /*
+    A template that changes under an address that is not one of its pages lands on its root.
+
+    The address belonged to the template before: a fork made from one of its pages, a new template
+    started from one, a link with `?template=`, a space's default changing. Kept, it lands on the
+    new template's catch-all, a page about a mistake nobody made ("No such board." after forking
+    Boards). Kept when it *is* one of the new template's pages, so moving between two templates
+    with the same screens does not lose your place.
+
+    Only on a change, never on arrival: an address somebody followed into a template that does not
+    have it is a broken link, and the template's own catch-all is the right answer to that. A
+    template hosting the space's sections is kept on one by the effect above; `switchTemplate`'s
+    own navigation lands on the root before this looks.
+  */
+  let landedTemplate: string | undefined;
+  createEffect(() => {
+    if (routeKey() === LOADING_SPACE_DATA) return;
+    const id = templateSchema.id || 'empty';
+    const previous = landedTemplate;
+    landedTemplate = id;
+    const routes = templateSchema.routes ?? [];
+    untrack(() => {
+      const lands = landsOnRoot({
+        previous,
+        current: id,
+        routes,
+        segments: routeStore.segments(),
+        templateSegments: routeStore.templateSegments(),
+      });
+      if (lands) routeStore.navigate('~/', { replace: true });
+    });
   });
 
   // Any theme the template names by `theme: { themeName }` needs its stylesheet present before the

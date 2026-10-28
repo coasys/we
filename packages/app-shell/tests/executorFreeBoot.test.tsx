@@ -104,6 +104,9 @@ vi.mock('../src/frameworks/solid/stores/ThemeStore', () => ({
 }));
 
 // ── Harness ───────────────────────────────────────────────────────────────────
+import { completeResponse } from '@we/entities';
+import { withExtractionDefaults } from '@we/entities';
+
 import { BootController } from '../src/frameworks/solid/providers/BootController';
 import { AccountStoreProvider } from '../src/frameworks/solid/stores/AccountStore';
 import { AppStoreProvider } from '../src/frameworks/solid/stores/AppStore';
@@ -114,9 +117,7 @@ import { type SessionStore, SessionStoreProvider, useSessionStore } from '../src
 import { type ShapeStore, ShapeStoreProvider, useShapeStore } from '../src/frameworks/solid/stores/ShapeStore';
 import { ShellStoreProvider } from '../src/frameworks/solid/stores/ShellStore';
 import { type SpaceStore, SpaceStoreProvider, useSpaceStore } from '../src/frameworks/solid/stores/SpaceStore';
-import { withExtractionDefaults } from '../src/shared/collectionExtraction';
 import { createModuleStoreDeps } from '../src/shared/registries/moduleHostServices';
-import { completeResponse } from '../src/shared/responses';
 import { provideSeed } from '../src/shared/seedRegistry';
 import { writeSpaceLandmark } from '../src/shared/spaceLandmarks';
 
@@ -1156,6 +1157,48 @@ describe('creating a shared space in stages', () => {
 
     expect(row(stores, 'Workbench')).toMatchObject({ sharing: '', shareError: '', kind: 'shared' });
     expect(row(stores, 'Workbench').shareLink).not.toBe('');
+  }, 10000);
+
+  it('publishes through the server chosen, and asks for it again on a retry', async () => {
+    const asked: ({ sharing?: string; server?: string } | undefined)[] = [];
+    const publish = holdPublish();
+    const hold = onPorts!;
+    onPorts = (ports) => {
+      hold(ports);
+      const held = ports.lifecycle.publish;
+      ports.lifecycle.publish = (id: string, options?: { sharing?: string; server?: string }) => {
+        asked.push(options);
+        return held(id, options);
+      };
+    };
+    const stores = mountShell();
+    await ready(stores);
+
+    const server = 'https://link-staging.ad4m.dev';
+    await stores.spaces.createSpace('Orchard', 'x', 'shared', 'hidden', undefined, undefined, null, '', server);
+    publish[0].reject(new Error('the network said no'));
+    await vi.waitFor(() => expect(row(stores, 'Orchard').sharing).toBe('failed'));
+
+    const retry = stores.spaces.shareSpace(row(stores, 'Orchard').uuid);
+    await vi.waitFor(() => expect(publish).toHaveLength(2));
+    publish[1].resolve();
+    await retry;
+
+    expect(asked.map((options) => options?.server)).toEqual([server, server]);
+  }, 10000);
+
+  it('refuses a server that is not an http(s) address before creating anything', async () => {
+    const publish = holdPublish();
+    const stores = mountShell();
+    await ready(stores);
+    const before = (await lifecycle.list()).length;
+
+    await expect(
+      stores.spaces.createSpace('Nowhere', 'x', 'shared', 'hidden', undefined, undefined, null, '', 'link.example.org'),
+    ).rejects.toThrow(/not an http\(s\) address/);
+
+    expect(await lifecycle.list()).toHaveLength(before);
+    expect(publish).toHaveLength(0);
   }, 10000);
 
   it('a retry after a step that follows the publish does not publish again', async () => {

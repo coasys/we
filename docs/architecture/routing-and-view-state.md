@@ -103,19 +103,32 @@ in it. `SPACE_ROUTE_PATH` is the single literal.
 
 `$views` therefore means one thing only: **the community picks the sections
 here.** It is not a statement about where the template lives. A template that
-declares its own screens (`/canvas`, `/channel/:id`) is still a space template
+declares its own screens (`/canvas`, `/channel`) is still a space template
 and still lives under the prefix; it simply names its children itself.
 
 Two consequences worth stating, because both were learned the hard way:
 
-- **A template navigates relatively.** `'./canvas'`, not `'/canvas'` — an absolute
-  target leaves the space, and inside a parameterised parent an absolute
-  `redirect` is joined to the _pattern_, producing a literal `/space/:spaceId/…`
-  that matches nothing.
+- **A template navigates relatively, and `~/` is its root.** `'~/canvas'`, not
+  `'/canvas'`: an absolute target leaves the space, and inside a parameterised
+  parent an absolute `redirect` is joined to the _pattern_, producing a literal
+  `/space/:spaceId/…` that matches nothing. See "Where a relative path leads"
+  below.
 - **A template reads positions from `routeStore.templateSegments`, not
   `segments`.** The latter is the whole URL, so an index into it is pinned to
   wherever the host mounts things; the former is relative to the template's own
-  root, so `/photo/:postId` reads `[1]` regardless of the prefix.
+  root, so a template's first screen is `[0]` regardless of the prefix.
+- **A record's id goes in the query, never the path.** A record id is a URI
+  (`ad4m://obj/x`), so as a path segment it is several: the browser folds its
+  `//`, splits the rest, and `/board/:boardId` never matches. The page opens on
+  its fallback and nothing says why. The record page shipped it twice, and five
+  showcase templates after it. So a detail page is opened with
+  `navigate('./board', { query: { id: board.id } })` and reads
+  `routeStore.params.id`; `navigate` writes the value, so an id holding `&`, `#`,
+  `+` or `%` still reads back exactly, with its `:` and `/` left readable. `id` is
+  the one query value that names the page's subject rather than a view of it.
+  The validator warns about an id put into a path. Where the id appears is
+  decided in `navigate` alone, so a prettier address later would change no
+  template.
 
 **One space, one address.** Both the local id and the shared id resolve, so a
 shared space could be reached at two URLs depending on which code path built the
@@ -167,11 +180,50 @@ Suggestions are matched by id against the recipient's own lists, which
 resolve as templates/themes stream in — a space template that arrives after
 boot still gets honored.
 
+## Where a relative path leads
+
+One rule, `resolvePath` in `@we/schema-shared`, for every path a template writes:
+a `routeStore.navigate` target and a link's `href` alike, in the main router and
+in the shell overlay's.
+
+- **Relative to the route the node is rendered in**, as in most routers. `.` is
+  that route itself, `..` the route above it, `./board` a page below it. This is
+  what makes a section portable: its links are to its own pages, wherever a
+  space mounts it.
+- **`~/board` is from the template's root, from anywhere in it.** Write it for
+  home (`~/`) and for links between a template's screens: it means the same in a
+  header as inside a page, so a fragment can move between the two without its
+  links changing meaning. In the shell overlay, `~/` is the overlay's own root.
+- **`?sort=new`** is the page on screen with that query.
+- **An absolute path or a URL** is left as written. It leaves the template.
+- **Template chrome**, rendered outside every route, counts as the template's
+  root. **`..` never climbs above the root**: it stops there.
+
+Two mistakes the validator warns about: `.` inside a route, which is a button
+that goes to the page it is on (five showcase templates wrote it meaning
+"home"), and more `..` than the route is deep.
+
+How it is wired, in case it needs changing: the renderer knows which route a
+node is in (`$nav`, from `buildRoutes`) and hands that depth to `navigate` at the
+moment of the press, so a path that arrives with the event resolves too. The
+router resolves it against its own address, never the browser's. A relative
+`href` goes through `routeStore.resolve`, the same resolution without the
+navigation.
+
+**After a template changes**, the address goes to its root when it is not one of
+the new template's pages (forking a template from one of the old one's pages,
+for instance). One that is stays, so moving between two templates with the
+same screens keeps your place. An address somebody arrived at is never moved:
+a broken link is what the template's own catch-all is for.
+
 ## Store surface
 
 `routeStore.params` (reactive `Record<string, string>`, readable from schemas
-as `{ $: 'routeStore.params.<name>' }`) and
-`routeStore.setParam(name, value | null, { push? })`. `setParam` writes
+as `{ $: 'routeStore.params.<name>' }`),
+`routeStore.setParam(name, value | null, { push? })`, and
+`routeStore.navigate(to, { query? })`, which resolves a relative `to` (above)
+and writes `query` the way `setParam` writes a value, and `routeStore.resolve(to)`,
+the address `navigate` would go to. `setParam` writes
 history directly — the path doesn't change, so the route tree must not
 re-resolve.
 

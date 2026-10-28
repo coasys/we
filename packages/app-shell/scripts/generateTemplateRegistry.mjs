@@ -29,7 +29,17 @@ const outPath = seedFile.generatedPath(
 );
 
 /**
- * Every template this monorepo can bundle: id → { module, export }.
+ * Every template this monorepo can bundle: id → { module, export, dev? }.
+ *
+ * `dev: true` marks a template that is not ready to ship: it is compiled in only where the build has
+ * developer features (`DEV_FEATURES` in `@we/module-shared` — a dev server, Netlify's `dev` and its
+ * previews), whatever a seed asks for. Marked here, where the template is registered, rather than in
+ * a seed, which would have to repeat it in every seed, or in its `meta`, which travels with a shared
+ * template to somebody for whom it means nothing. Every showcase template is marked: they are
+ * studies of what the template and theme systems can express, not yet things to ship, and only
+ * `default` and `workshop` are in a production build. Shipping one is one edit: drop the mark, and
+ * give a template named after a product it imitates a descriptive name in the picker, since that
+ * name is fine only while it ships to nobody.
  *
  * The catalogue lives here rather than being discovered from the filesystem, because a template's
  * *id* is a stable public name — it appears in `we-seed.json`, in `AgentSettings.defaultTemplateId`,
@@ -39,14 +49,14 @@ const outPath = seedFile.generatedPath(
  */
 const CATALOGUE = {
   default: { module: '@we/template-default', export: 'defaultTemplate' },
-  discord: { module: '@we/template-showcase', export: 'discordTemplate' },
-  twitter: { module: '@we/template-showcase', export: 'twitterTemplate' },
-  instagram: { module: '@we/template-showcase', export: 'instagramTemplate' },
-  youtube: { module: '@we/template-showcase', export: 'youtubeTemplate' },
-  kanban: { module: '@we/template-showcase', export: 'kanbanTemplate' },
-  events: { module: '@we/template-showcase', export: 'eventsTemplate' },
-  scrapbook: { module: '@we/template-showcase', export: 'scrapbookTemplate' },
-  'theme-lab': { module: '@we/template-showcase', export: 'themeLabTemplate' },
+  discord: { module: '@we/template-showcase', export: 'discordTemplate', dev: true },
+  twitter: { module: '@we/template-showcase', export: 'twitterTemplate', dev: true },
+  instagram: { module: '@we/template-showcase', export: 'instagramTemplate', dev: true },
+  youtube: { module: '@we/template-showcase', export: 'youtubeTemplate', dev: true },
+  trello: { module: '@we/template-showcase', export: 'trelloTemplate', dev: true },
+  events: { module: '@we/template-showcase', export: 'eventsTemplate', dev: true },
+  scrapbook: { module: '@we/template-showcase', export: 'scrapbookTemplate', dev: true },
+  'theme-lab': { module: '@we/template-showcase', export: 'themeLabTemplate', dev: true },
   workshop: { module: '@we/template-showcase', export: 'workshopTemplate' },
 };
 
@@ -83,7 +93,20 @@ const imports = [...byModule.entries()]
   })
   .join('\n');
 
-const members = ids.map((id) => `  ${JSON.stringify(id)}: ${CATALOGUE[id].export},`).join('\n');
+const member = (id) => `${JSON.stringify(id)}: ${CATALOGUE[id].export},`;
+const shipped = ids.filter((id) => !CATALOGUE[id].dev);
+const devOnly = ids.filter((id) => CATALOGUE[id].dev);
+/*
+  The developer templates as a spread behind the build's constant. In a production build
+  `DEV_FEATURES` is `false`, the spread is of nothing and their exports go unused, so the bundler
+  leaves their modules out, names and all. The showcase package also declares `sideEffects: false`,
+  which is true of it (templates are data) and keeps that so for a bundler less sure than today's.
+  `devOnlyTemplates.test.ts` builds this file for production to prove it.
+*/
+const members = [
+  ...shipped.map((id) => `  ${member(id)}`),
+  ...(devOnly.length ? [`  ...(DEV_FEATURES && {`, ...devOnly.map((id) => `    ${member(id)}`), `  }),`] : []),
+].join('\n');
 
 const output = `/**
  * The templates compiled into this build.
@@ -94,14 +117,28 @@ const output = `/**
  *
  * Generated rather than filtered at runtime so an unselected template leaves the import graph
  * entirely — a deployment that wants none of the showcase templates ships none of their bytes.
+ * A template the catalogue marks \`dev\` is in only where the build has developer features.
  */
-import type { TemplateSchema } from '@we/schema-shared';
+${devOnly.length ? "import { DEV_FEATURES } from '@we/module-shared';\n" : ''}import type { TemplateSchema } from '@we/schema-shared';
 ${imports}
 
 export const bundledTemplates: Record<string, TemplateSchema> = {
 ${members}
 };
-`;
+${
+  devOnly.length
+    ? `
+/**
+ * The bundled templates that are developer features: offered in a picker only while developer tools
+ * are showing (sessionStore.devTools). Empty in a production build, which has none of them.
+ */
+export const devOnlyTemplateIds: ReadonlySet<string> = new Set(DEV_FEATURES ? ${JSON.stringify(devOnly)} : []);
+`
+    : `
+/** The bundled templates that are developer features. This build's seed bundles none. */
+export const devOnlyTemplateIds: ReadonlySet<string> = new Set();
+`
+}`;
 
 /*
   Formatted before writing, following `@we/ai-context`'s generator.
@@ -114,4 +151,7 @@ ${members}
 */
 const prettierConfig = await resolveConfig(outPath);
 await writeFile(outPath, await format(output, { ...prettierConfig, filepath: outPath }), 'utf8');
-console.log(`bundledTemplates.generated.ts — ${ids.length} template(s): ${ids.join(', ')}`);
+console.log(
+  `bundledTemplates.generated.ts — ${ids.length} template(s): ${shipped.join(', ')}` +
+    (devOnly.length ? `; with developer features: ${devOnly.join(', ')}` : ''),
+);

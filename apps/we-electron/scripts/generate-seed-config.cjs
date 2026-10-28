@@ -14,7 +14,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execFileSync, execSync } = require('child_process');
 
 // Paths
 const WORKSPACE_ROOT = path.resolve(__dirname, '../../..');
@@ -106,18 +106,16 @@ function main() {
     });
   }
 
-  // Add AD4M executor if specified in seed
-  if (seed.ad4m?.executorPath) {
-    // Convert path from workspace-relative to we-electron-relative
-    const executorPath = path.isAbsolute(seed.ad4m.executorPath)
-      ? seed.ad4m.executorPath
-      : path.relative(path.join(__dirname, '..'), path.join(WORKSPACE_ROOT, seed.ad4m.executorPath));
-
-    staticResources.push({
-      from: executorPath,
-      to: 'ad4m-executor',
-    });
-  }
+  // The AD4M executor, chosen where every caller chooses it: AD4M_EXECUTOR, the seed's own
+  // `ad4m.executorPath`, or the pinned commit's cached download. See scripts/ad4m-executor.mjs.
+  const executorPath = execFileSync(
+    process.execPath,
+    [path.join(WORKSPACE_ROOT, 'scripts/ad4m-executor.mjs'), '--path'],
+    {
+      encoding: 'utf8',
+    },
+  ).trim();
+  staticResources.push({ from: executorPath, to: 'ad4m-executor' });
 
   // Merge static and generated resources
   const allExtraResources = [...staticResources, ...extraResources];
@@ -157,13 +155,7 @@ function main() {
     // seed pointing `executorPath` at a different checkout was silently ignored and the app went on
     // running whichever executor happened to be built next door. Absolute, because the main process
     // resolves it relative to nothing it can rely on.
-    ...(seed.ad4m?.executorPath
-      ? {
-          ad4mExecutorPath: path.isAbsolute(seed.ad4m.executorPath)
-            ? seed.ad4m.executorPath
-            : path.join(WORKSPACE_ROOT, seed.ad4m.executorPath),
-        }
-      : {}),
+    ad4mExecutorPath: executorPath,
     // Development only, like the executor path: the main process hands the renderer the local
     // server link language build from this checkout, so it can be tried before the node's seed
     // ships one. See `get-dev-link-language-bundle` in main.js.

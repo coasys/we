@@ -69,7 +69,8 @@ describe('propResolvers (combined)', () => {
     expect(read('userStore', stores)).toBeUndefined();
   });
 
-  it('resolveInvokeProp handles ../ relative route navigation', () => {
+  // The evaluator hands the route over; the router resolves (`resolvePath`, `navigationPaths.test.ts`).
+  it('resolveInvokeProp hands a ../ path to navigate with the route it was written in', () => {
     const navigate = vi.fn();
     const stores = { routeStore: { navigate } };
     const context = { $nav: { baseDepth: 2 } };
@@ -81,8 +82,7 @@ describe('propResolvers (combined)', () => {
     expect(typeof fn).toBe('function');
     fn();
     expect(navigate).toHaveBeenCalled();
-    const callArgs = navigate.mock.calls[0];
-    expect(callArgs[0]).toBe('/a/foo');
+    expect(navigate).toHaveBeenCalledWith('../foo', { base: { depth: 2 } });
   });
 
   it('resolveProp with a memo returns a reactive accessor for a store read', () => {
@@ -218,14 +218,14 @@ describe('propResolvers (combined)', () => {
     expect(onEnter).toHaveBeenCalled();
   });
 
-  it('routeStore.navigate with absolute path does not normalize', () => {
+  it('routeStore.navigate passes an absolute path through as written', () => {
     const navigate = vi.fn();
     const stores = { routeStore: { navigate } };
     const ctx = { $nav: { baseDepth: 2 } };
     const action = { $invoke: 'routeStore.navigate', args: ['/home'] };
     const fn = resolveProp(action, stores, ctx) as () => void;
     fn();
-    expect(navigate).toHaveBeenCalledWith('/home');
+    expect(navigate).toHaveBeenCalledWith('/home', { base: { depth: 2 } });
   });
 
   it('routeStore.navigate handles "." and "./" relative paths (basic assertions)', () => {

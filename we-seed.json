@@ -26,7 +26,7 @@
     "twitter",
     "instagram",
     "youtube",
-    "kanban",
+    "trello",
     "events",
     "scrapbook",
     "theme-lab"
@@ -223,7 +223,6 @@
   },
   "ad4m": {
     "dataPath": "~/.ad4m",
-    "executorPath": "../ad4m/target/release/ad4m-executor",
     "repoPath": "../ad4m"
   },
   "electron": {

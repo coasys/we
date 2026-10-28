@@ -7,16 +7,18 @@
  *
  * Generated rather than filtered at runtime so an unselected template leaves the import graph
  * entirely — a deployment that wants none of the showcase templates ships none of their bytes.
+ * A template the catalogue marks `dev` is in only where the build has developer features.
  */
+import { DEV_FEATURES } from '@we/module-shared';
 import type { TemplateSchema } from '@we/schema-shared';
 import { defaultTemplate } from '@we/template-default';
 import {
   discordTemplate,
   eventsTemplate,
   instagramTemplate,
-  kanbanTemplate,
   scrapbookTemplate,
   themeLabTemplate,
+  trelloTemplate,
   twitterTemplate,
   workshopTemplate,
   youtubeTemplate,
@@ -25,12 +27,22 @@ import {
 export const bundledTemplates: Record<string, TemplateSchema> = {
   default: defaultTemplate,
   workshop: workshopTemplate,
-  discord: discordTemplate,
-  twitter: twitterTemplate,
-  instagram: instagramTemplate,
-  youtube: youtubeTemplate,
-  kanban: kanbanTemplate,
-  events: eventsTemplate,
-  scrapbook: scrapbookTemplate,
-  'theme-lab': themeLabTemplate,
+  ...(DEV_FEATURES && {
+    discord: discordTemplate,
+    twitter: twitterTemplate,
+    instagram: instagramTemplate,
+    youtube: youtubeTemplate,
+    trello: trelloTemplate,
+    events: eventsTemplate,
+    scrapbook: scrapbookTemplate,
+    'theme-lab': themeLabTemplate,
+  }),
 };
+
+/**
+ * The bundled templates that are developer features: offered in a picker only while developer tools
+ * are showing (sessionStore.devTools). Empty in a production build, which has none of them.
+ */
+export const devOnlyTemplateIds: ReadonlySet<string> = new Set(
+  DEV_FEATURES ? ['discord', 'twitter', 'instagram', 'youtube', 'trello', 'events', 'scrapbook', 'theme-lab'] : [],
+);

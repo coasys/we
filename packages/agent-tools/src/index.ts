@@ -1,4 +1,6 @@
+export * from './core/conversation';
 export * from './core/toolset';
+export * from './data/dataToolset';
 export * from './templates/aiInfra';
 export * from './templates/chatSystemPrompt';
 export * from './templates/contextStrategies';
@@ -6,6 +8,7 @@ export * from './templates/editSession';
 export * from './templates/nodeAliases';
 export * from './templates/schemaPatches';
 export * from './templates/templateContext';
+export * from './templates/templateRequest';
 export * from './templates/templateSession';
 export * from './templates/templateToolset';
 export * from './themes/themeToolset';

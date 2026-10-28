@@ -313,6 +313,11 @@ async function main() {
           await page.click(sel, { timeout: 3000 });
           await page.waitForTimeout(120);
         },
+        // Replace what a field holds, as typing would: a form's state follows its input events.
+        type: async (sel, text) => {
+          await page.locator(sel).first().fill(text, { timeout: 3000 });
+          await page.waitForTimeout(120);
+        },
         /*
           Drag across something, left to right, as a fraction of its own width.
 

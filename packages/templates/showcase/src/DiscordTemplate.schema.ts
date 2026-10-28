@@ -55,7 +55,7 @@ const rail: SchemaNode = {
     },
 
     channelRail({
-      hrefPrefix: './channel/',
+      path: '~/channel',
       categories: true,
       empty: emptyState({ icon: 'hash', label: 'channels', delay: 0 }),
       footer: {
@@ -81,7 +81,7 @@ const rail: SchemaNode = {
       title: 'New channel',
       kind: KIND.channel,
       placeholder: 'general',
-      navigateTo: './channel/',
+      navigateTo: '~/channel',
     }),
     newContainerModal({
       openLocal: 'newCategoryOpen',
@@ -148,7 +148,7 @@ const messageRow: SchemaNode = {
 };
 
 const channelRoute: RouteSchema = {
-  path: '/channel/:channelId',
+  path: '/channel',
   type: 'Column',
   props: { flex: '1', height: '100%', minWidth: '0' },
   $localState: { composeOpen: { type: 'boolean', initial: false } },
@@ -162,7 +162,7 @@ const channelRoute: RouteSchema = {
         item: {
           $query: {
             entity: 'CollectionBlock',
-            where: { id: { $: 'routeStore.templateSegments[1]' } },
+            where: { id: { $: 'routeStore.params.id' } },
             limit: 1,
           },
         },
@@ -202,7 +202,7 @@ const channelRoute: RouteSchema = {
       children: [
         collectionFeed({
           kind: KIND.message,
-          anchorId: { $: 'routeStore.templateSegments[1]' },
+          anchorId: { $: 'routeStore.params.id' },
           as: 'message',
           // Oldest first: a channel reads as a transcript, where a timeline reads newest-first.
           order: 'asc',
@@ -236,7 +236,7 @@ const channelRoute: RouteSchema = {
       openLocal: 'composeOpen',
       title: 'New message',
       kind: KIND.message,
-      parentId: { $: 'routeStore.templateSegments[1]' },
+      parentId: { $: 'routeStore.params.id' },
       saveLabel: 'Send',
     }),
   ],
@@ -244,12 +244,12 @@ const channelRoute: RouteSchema = {
 
 export const discordTemplate: TemplateSchema = {
   meta: {
-    name: 'Channels',
+    name: 'Discord',
     description: 'Categories, channels and messages — a Discord-shaped community space.',
     icon: 'hash',
     // A theme built from measurements of a real chat client rather than the stock dark preset —
     // near-neutral surfaces, and rails that sit *below* the page rather than above it.
-    themeId: 'channels',
+    themeId: 'discord',
   },
   type: 'Row',
   props: { bg: 'page', width: '100%', minHeight: '100%', ay: 'stretch' },

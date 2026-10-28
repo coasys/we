@@ -38,7 +38,7 @@
  * peers in a call should see when you wander off. It **subscribes** to each of those spaces, and the
  * results are unioned; the accessors that mean "here" (`online`, `onlineHere`, `calls`) filter by
  * dataset themselves, so the union stays invisible to them. Our own dot needs no transport at all —
- * it is `routeStore.currentPath`, read locally.
+ * it is `routeStore.page`, read locally.
  *
  * ## What it never does
  *
@@ -187,7 +187,7 @@ export function PresenceStoreProvider(props: ParentProps) {
   const datasetUri = createMemo(() => datasetStore.currentDatasetUri());
 
   const myFocus = createMemo<Focus | undefined>(() =>
-    applyFocusDepth({ datasetUri: datasetUri(), path: routeStore.currentPath?.() }, focusDepth()),
+    applyFocusDepth({ datasetUri: datasetUri(), path: routeStore.page?.() }, focusDepth()),
   );
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────
@@ -427,7 +427,7 @@ export function PresenceStoreProvider(props: ParentProps) {
   });
 
   const onlineHere = createMemo<PresentAgent[]>(() => {
-    const path = routeStore.currentPath?.();
+    const path = routeStore.page?.();
     if (!path) return [];
     return online().filter((p) => p.focus?.path === path);
   });

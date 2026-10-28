@@ -20,13 +20,7 @@ import {
   useTemplateStore,
   useThemeStore,
 } from '@solid/stores';
-import {
-  countedPatches,
-  datasetModelExtras,
-  prepareTemplateRequest,
-  requestMessage,
-  runEditSession,
-} from '@we/agent-tools';
+import { countedPatches, prepareTemplateRequest, runEditSession } from '@we/agent-tools';
 import type { AgentTurn, ConversationTurn, LanguageModelStatus, NewRecord } from '@we/backend-shared';
 import { AgentUnavailableError } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
@@ -1153,6 +1147,7 @@ export function EditorStoreProvider(props: ParentProps) {
     const prepared = await prepareTemplateRequest({
       template: deepClone(pendingTemplate() ?? edit.template()) as SchemaNode,
       request: text,
+      models: datasetStore.currentDatasetEntities(),
     });
     const modelTree = prepared.tree;
     devLog('[editSession] template', prepared.bounded.whole ? 'whole' : 'bounded', prepared.bounded);
@@ -1160,9 +1155,10 @@ export function EditorStoreProvider(props: ParentProps) {
     const result = await runEditSession({
       converse,
       system: prepared.system,
-      turns: buildTurns(text, prepared.sent),
+      turns: [...historyTurns(), ...prepared.opening],
       tools: prepared.tools,
       resolveTool: prepared.resolveTool,
+      patchTool: prepared.patchTool,
       schema: modelTree.schema,
       mint: modelTree.mint,
       uses: modelTree.uses,
@@ -1191,7 +1187,7 @@ export function EditorStoreProvider(props: ParentProps) {
         } as TemplateSchema);
         await edit.persist();
         setPendingTemplate(null);
-        return 'Template updated successfully.';
+        return prepared.accepted;
       },
       acceptedLine: (patches) =>
         isReadOnly() && pendingTemplate() !== null
@@ -1226,52 +1222,18 @@ export function EditorStoreProvider(props: ParentProps) {
   }
 
   /**
-   * The conversation so far, as turns.
-   * The currentSchema is included in the latest user message so the AI
-   * always sees the current template state.
+   * The conversation before this request, as turns. The request itself, and the template it is
+   * about, are the turns `prepareTemplateRequest` opens with, which go after these.
    */
-  function buildTurns(latestText: string, template: unknown): ConversationTurn[] {
+  function historyTurns(): ConversationTurn[] {
     const history: ConversationTurn[] = [];
-
-    // Include prior conversation (skip system messages)
     for (const msg of messages()) {
       if (msg.role === 'system') continue;
-      // The request being sent is already in the list, marked `sending`, and goes last below with
-      // the schema attached. Reading it here too sent every request to the model twice.
+      // The request being sent is already in the list, marked `sending`, and goes last with the
+      // template attached. Reading it here too sent every request to the model twice.
       if (msg.status === 'sending') continue;
-      if (msg.role === 'user') {
-        history.push({
-          role: 'user',
-          text: requestMessage(msg.content, {}),
-        });
-      } else {
-        history.push({ role: 'assistant', text: msg.content });
-      }
+      history.push({ role: msg.role === 'user' ? 'user' : 'assistant', text: msg.content });
     }
-
-    /*
-      `template` is what `boundTemplate` decided to send — the tree itself when it fits the
-      budget, an outline plus the parts the request implicates when it does not. Either way it
-      comes from the one tree compacted and numbered in `sendMessage`, which is the same object
-      the session resolves the model's ids against. It carries buffered changes where there are
-      any, which matters on a read-only template: patched into `pendingTemplate` while the store
-      is deliberately untouched, so showing `currentTemplate` would show the model a tree without
-      its own last answer in it.
-
-      Compaction is why it is worth the care. A template repeats itself because a fragment stamps
-      its whole tree at every call site, and the editor is where that is most expensive — the
-      schema crosses the wire every turn and comes back. It takes CardsView down 50% and the
-      workshop template 32%, the difference between a request that fits a context window and one
-      that does not. It also gives the model two scopes rather than one: a patch inside a
-      definition changes every use of that shape, a patch on a `$ref` changes that one use, and
-      the tool result says which happened.
-    */
-    const extras = datasetModelExtras(datasetStore.currentDatasetEntities(), baseValidationCtx.entityNames);
-    history.push({
-      role: 'user',
-      text: requestMessage(latestText, template, extras),
-    });
-
     return history;
   }
 

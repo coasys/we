@@ -88,13 +88,19 @@ Each user message is a JSON object:
  * reads it with `read`, and each `update` is saved as it is made. Ids are renumbered by a save,
  * which is the one thing an agent used to the editor would get wrong, so it is said twice.
  */
-export function toolsPreamble(tools: { read: string; update: string }): string {
-  const { read, update } = tools;
+export function toolsPreamble(tools: { read: string; update: string; create: string }): string {
+  const { read, update, create } = tools;
   return `# Editing a WE template
 
 A template is the JSON tree a WE space renders as its interface. You edit one with two tools, each
-given the id of the Template record to work on.
+given the id of the Template record to work on. Where the host also offers a third, you can make a
+new one.
 
+- **${create}** — only where your host offers it. Makes a new template and SAVES it: a shell (a space's whole interface), a view
+  (one section of a space) or an app (the chrome around every space). Name it, and say where it
+  goes: \`library\`, the person's own, unless they asked for it to be in this space. It starts from
+  a working template of its kind, from a template it is given to fork, or from a whole \`schema\`
+  you write. Then read the new record with ${read} and edit it like any other.
 - **${read}** — the template. Call it first with no arguments: it answers with the template's
   \`version\` and the template as currentSchema — the whole tree, or an outline of every node plus
   the parts the request seems to be about when it is too large to send whole — and the space's own

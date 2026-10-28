@@ -49,6 +49,40 @@ them, ignored by git, and the apps' Vite plugin (`scripts/seed-vite.mjs`) and
 the shell's tsup build read them from there. Building a second deployment never
 changes a tracked file, and nothing from it can be committed as WE's.
 
+## Developer features are the build's, not the seed's
+
+A seed says which deployment this is. Whether a build has **developer features**
+is a separate question, and it is the build's: the showcase templates that are
+not ready to ship, the pretend people on a canvas, the synthetic participants in
+a call, and Settings → Developer. They are in a build Vite serves, and in a build
+made with `WE_DEV_FEATURES=true`, which Netlify sets for the `dev` branch and pull
+request previews. A production build does not contain them at all.
+
+So a seed can list a template marked `dev` and a production build of that seed
+still leaves it out. Separate dev and production seeds were considered and
+rejected: every deployment needs both kinds of build, so they would double every
+seed.
+
+A thing declares that it is not ready where it is registered, and the build
+decides what that means:
+
+- **A template:** `dev: true` in the catalogue in
+  `packages/app-shell/scripts/generateTemplateRegistry.mjs`. Every showcase
+  template is marked, so a production build has only `default` and `workshop`.
+  When one is ready to ship, drop the mark, and if it is named after a product it
+  imitates (Discord, Twitter, Instagram, YouTube, Trello), give it a descriptive
+  name in the picker: that name is fine only while it ships to nobody.
+- **A theme:** the showcase templates' two themes are `SHOWCASE_THEME_PRESETS` in
+  `@we/themes`, kept apart from the shipped `THEME_PRESETS`, and the shell's
+  `themeRegistry` adds them behind `DEV_FEATURES`. They are named Discord and
+  Twitter for the same reason as their templates.
+- **Anything else:** guard it with `DEV_FEATURES` from `@we/module-shared`, as
+  `pretendPeople.ts` and the call module's `devPeers.ts` do. It is a constant the
+  build writes, so a production build folds the guarded code away.
+
+Whether developer features are _showing_ is a separate switch, Settings →
+Developer, for looking at what a user sees without building for production.
+
 ## The sections
 
 ### `project` (required)
@@ -283,8 +317,11 @@ How the bundled executor is set up:
 - `dataPath` — where the executor keeps the agent's keys and data. Defaults to
   `~/.ad4m` (shared with Flux and the ADAM launcher). **Changing it is a data
   migration, not a preference** — an existing agent does not follow the path.
-- `executorPath` — the bundled `ad4m-executor` binary (required;
-  `setup-workspace` and `validate-seed` fail without it).
+- `executorPath` — an `ad4m-executor` build of your own, to run and bundle instead
+  of the one the ad4m pin stands for. Leave it out, as the checked-in seeds do,
+  and the pinned commit's executor is downloaded and used (`pnpm ad4m:executor`;
+  see "The executor you run locally" in
+  [ad4m-and-deploys.md](../contributing/ad4m-and-deploys.md#the-executor-you-run-locally)).
 - `repoPath` — an ad4m source checkout, needed by the Tauri build only.
 - `ai`, `perspectives`, `languages`, `executor` — optional executor-side setup.
 
