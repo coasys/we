@@ -79,7 +79,11 @@ new-window handler.
   `libayatana-appindicator3` at run time. On GNOME without an AppIndicator extension there is no
   icon: start the app again to show the window.
 - **One copy.** `tauri-plugin-single-instance` stops a second copy. A second start shows the
-  window of the copy that runs, then exits.
+  window of the copy that runs, then exits with code 0. It does nothing before that: the plugin
+  decides while `Builder::build` initialises the plugins, and every side effect of a start (the log
+  rotation, the webview folder move, the port, the custody service, the executor) is in `start`,
+  the app's `setup`, which Tauri runs later. Keep it there; `startup_order` in `src/lib.rs` tests
+  the order Tauri runs the two in.
 
 ### Product name and identifier
 

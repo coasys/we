@@ -64,6 +64,11 @@ dirs = "5"
 [target.'cfg(target_os = "linux")'.dependencies]
 webkit2gtk = { version = "=2.0.2", features = ["v2_40"] }
 
+# `test`: Tauri's mock runtime, for `startup_order` in src/lib.rs — that a plugin's setup (where the
+# single-instance plugin sends a second start away) runs before the app's own. Adds no crate.
+[dev-dependencies]
+tauri = { version = "2", features = ["tray-icon", "test"] }
+
 # Must mirror ad4m's workspace-root `[patch.crates-io]`, and mirror whatever is there NOW.
 #
 # `[patch]` applies only from the workspace root being built, and cargo does not propagate it
