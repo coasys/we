@@ -434,7 +434,10 @@ export function createTabCoordinator(deps: TabCoordinatorDeps = {}): TabCoordina
     },
 
     dispose() {
+      // A pinned follower is on the list a handover carries, and a handover to a closed tab leaves
+      // nobody publishing until the crash timeout. Same message as unpinning: no longer waiting.
       if (leader) post('resign');
+      else if (pinned && !disposed) post('probe');
       stepDown();
       stopWatchingLeader();
       disposed = true;
