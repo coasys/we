@@ -11,6 +11,7 @@ import PanelLane from '../src/frameworks/solid/components/PanelLane';
 import type { ShellStore } from '../src/frameworks/solid/stores/ShellStore';
 import { ShellStoreProvider, useShellStore } from '../src/frameworks/solid/stores/ShellStore';
 import { dockRegistry, registerHostDockStore, unregisterHostDockStore } from '../src/shared/registries/dockRegistry';
+import { slotRegistry } from '../src/shared/registries/slotRegistry';
 import { provideChromeBag, provideTemplateBag } from '../src/shared/registries/templateBag';
 import { setTemplatePanels } from '../src/shared/registries/templatePanels';
 
@@ -103,5 +104,27 @@ describe('a lane holding any panel', () => {
 
     fireEvent.click(tabs[0]);
     expect(shown()).toEqual(['Inspector']);
+  });
+
+  /*
+    The crash: a call's window dropped into a lane, then a call started. Its panel holds a \`$slot\` that
+    other modules fill — the transcript's button in the call's bar — and the lane drew it raw, a node
+    type nothing renders, where the edge's frame composes it first.
+  */
+  it("composes a module's panel as its frame on an edge would, filling the slots other modules contribute to", () => {
+    slotRegistry.register({ id: 'test:hang-up', anchor: 'test-controls', node: text('Hang up') });
+    dockRegistry.register({
+      id: `${HOST}:panel`,
+      moduleId: HOST,
+      edge: 'edge',
+      close: 'close',
+      node: { type: 'Column', children: [text('Call'), { type: '$slot', props: { anchor: 'test-controls' } }] },
+    });
+    setTemplatePanels([{ id: 'call', module: HOST, home: 'side', title: 'Call' }], 'coasys-space');
+    const { lane } = mountLane();
+
+    setHostOpen(true);
+    expect(lane.textContent).toContain('Hang up');
+    slotRegistry.remove('test:hang-up');
   });
 });

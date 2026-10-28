@@ -319,6 +319,14 @@ export const slotRegistry = {
   },
 
   /**
+   * A node with its `$slot` markers filled in — what any module's chrome needs before it is drawn,
+   * wherever it is drawn: a panel at home in a lane is composed exactly as its frame on an edge is.
+   */
+  resolve(node: SchemaNode): SchemaNode | SchemaNode[] {
+    return resolveAnchors(node);
+  },
+
+  /**
    * One piece of chrome, with its `$slot` markers filled in — what a host part draws where an app
    * template places it. Never a safety prompt: those are the host's own layer and nothing places them.
    */
