@@ -170,8 +170,14 @@ const LAYERS: {
   },
 ];
 
-/** Who the site thanks, in its order; each logo at four fifths of its drawn height, as the site sets them. */
-const PARTNERS: { name: string; alt?: string; href: string; h: number }[] = [
+/**
+ * Who the site thanks, in its order; each logo at four fifths of its drawn height, as the site sets them.
+ *
+ * `markEnds` is for a logo whose mark is in colours the band's filter would spoil: where across the
+ * file, as a percentage, its mark ends and its name begins. The mark is drawn as it is and the name
+ * white — see `partnerLogo`. Tied to how the file is laid out, so it goes when the logo is replaced.
+ */
+const PARTNERS: { name: string; alt?: string; href: string; h: number; markEnds?: number }[] = [
   { name: 'holochain', href: 'https://www.holochain.org', h: 30 },
   { name: 'holo', href: 'https://www.holo.host', h: 21 },
   { name: 'holoventures', alt: 'Holo Ventures', href: 'https://holoventures.io', h: 36 },
@@ -181,9 +187,62 @@ const PARTNERS: { name: string; alt?: string; href: string; h: number }[] = [
   { name: 'cacoon', href: 'https://www.michkaelbaker.com', h: 22 },
   { name: 'asraya', href: 'https://asraya.io', h: 50 },
   { name: 'nillion', href: 'https://nillion.com/', h: 27 },
-  { name: 'weco', href: 'https://weco.io/', h: 50 },
+  // A pale cube the filter turned deep teal. A new logo is coming; until then, mark and name apart.
+  { name: 'weco', href: 'https://weco.io/', h: 50, markEnds: 31 },
   { name: 'holons', href: 'https://www.holons.io/', h: 40 },
 ];
+
+/**
+ * Light on the dark band, in its own colours. Inverting turns the logos' black words white, and the
+ * half-turn of hue after it puts each colour back where it was — Holo's teal, Asraya's blue,
+ * Holochain's violet — with its lightness flipped. Making them all white lost the colours; a light
+ * card under them brought back the pale box this band replaced. A filter, so the site's files are
+ * used as they are.
+ */
+const LIGHT_LOGO = 'invert(1) hue-rotate(180deg)';
+
+/** A logo's own words in plain white, whatever colour they are drawn in. */
+const WHITE_LOGO = 'brightness(0) invert(1)';
+
+/** One partner's file, sized as the site sets it, with the CSS the band asks of it. */
+const logoImage = (partner: (typeof PARTNERS)[number], styles: Record<string, string>, alt: string): SchemaNode => ({
+  type: 'we-image',
+  styles,
+  props: {
+    // Square: an image takes the theme's media corners, which cut into a logo's edges.
+    r: '0',
+    src: `${SITE}/partners/${partner.name}.svg`,
+    alt,
+    height: `${Math.round(partner.h * 0.8)}px`,
+    width: 'auto',
+    maxWidth: '130px',
+    fit: 'contain',
+    smUpProps: { maxWidth: '180px' },
+  },
+});
+
+/**
+ * A partner's logo, light on the band. One whose mark the filter would spoil (`markEnds`) is the same
+ * file drawn twice, one over the other: the mark as it is, clipped to where it ends, and the name in
+ * white, clipped to where it begins. The copy over the top is silent, so the logo is announced once.
+ */
+function partnerLogo(partner: (typeof PARTNERS)[number]): SchemaNode {
+  const alt = partner.alt ?? partner.name;
+  const at = partner.markEnds;
+  if (at === undefined) return logoImage(partner, { filter: LIGHT_LOGO }, alt);
+  return {
+    type: 'Column',
+    props: { position: 'relative' },
+    children: [
+      logoImage(partner, { 'clip-path': `inset(0 ${100 - at}% 0 0)` }, alt),
+      {
+        type: 'Column',
+        props: { position: 'absolute', top: '0', left: '0' },
+        children: [logoImage(partner, { filter: WHITE_LOGO, 'clip-path': `inset(0 0 0 ${at}%)` }, '')],
+      },
+    ],
+  };
+}
 
 /** The violet the app section's wash starts from, and the partners band arrives at. */
 const APP_VIOLET = 'rgba(92,74,168,.14)';
@@ -744,31 +803,7 @@ const partners: SchemaNode = {
             type: 'we-link',
             // A little quieter than the words around them until the pointer is on one.
             props: { href: partner.href, target: '_blank', display: 'flex', opacity: 0.85, hoverProps: { opacity: 1 } },
-            children: [
-              {
-                type: 'we-image',
-                /*
-                  Light on the dark band, in its own colours. Inverting turns the logos' black words
-                  white, and the half-turn of hue after it puts each colour back where it was — Holo's
-                  teal, Asraya's blue, Holochain's violet — with its lightness flipped, which is the
-                  one thing that changes (we{co}'s pale cube comes out a deeper teal). Making them all
-                  white lost the colours; a light card under them brought back the pale box this band
-                  replaced. A filter, so the site's files are used as they are.
-                */
-                styles: { filter: 'invert(1) hue-rotate(180deg)' },
-                props: {
-                  // Square: an image takes the theme's media corners, which cut into a logo's edges.
-                  r: '0',
-                  src: `${SITE}/partners/${partner.name}.svg`,
-                  alt: partner.alt ?? partner.name,
-                  height: `${Math.round(partner.h * 0.8)}px`,
-                  width: 'auto',
-                  maxWidth: '130px',
-                  fit: 'contain',
-                  smUpProps: { maxWidth: '180px' },
-                },
-              },
-            ],
+            children: [partnerLogo(partner)],
           })),
         },
       ],

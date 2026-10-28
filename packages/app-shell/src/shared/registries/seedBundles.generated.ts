@@ -9683,18 +9683,44 @@ export const seedBundles: Bundle[] = [
                         },
                         children: [
                           {
-                            type: 'we-image',
-                            styles: { filter: 'invert(1) hue-rotate(180deg)' },
-                            props: {
-                              r: '0',
-                              src: 'https://coasys.org/partners/weco.svg',
-                              alt: 'weco',
-                              height: '40px',
-                              width: 'auto',
-                              maxWidth: '130px',
-                              fit: 'contain',
-                              smUpProps: { maxWidth: '180px' },
-                            },
+                            type: 'Column',
+                            props: { position: 'relative' },
+                            children: [
+                              {
+                                type: 'we-image',
+                                styles: { 'clip-path': 'inset(0 69% 0 0)' },
+                                props: {
+                                  r: '0',
+                                  src: 'https://coasys.org/partners/weco.svg',
+                                  alt: 'weco',
+                                  height: '40px',
+                                  width: 'auto',
+                                  maxWidth: '130px',
+                                  fit: 'contain',
+                                  smUpProps: { maxWidth: '180px' },
+                                },
+                              },
+                              {
+                                type: 'Column',
+                                props: { position: 'absolute', top: '0', left: '0' },
+                                children: [
+                                  {
+                                    type: 'we-image',
+                                    styles: { filter: 'brightness(0) invert(1)', 'clip-path': 'inset(0 0 0 31%)' },
+                                    props: {
+                                      r: '0',
+                                      src: 'https://coasys.org/partners/weco.svg',
+                                      alt: '',
+                                      height: '40px',
+                                      width: 'auto',
+                                      maxWidth: '130px',
+                                      fit: 'contain',
+                                      smUpProps: { maxWidth: '180px' },
+                                    },
+                                  },
+                                ],
+                              },
+                            ],
                           },
                         ],
                       },
