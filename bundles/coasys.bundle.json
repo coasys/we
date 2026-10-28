@@ -1018,7 +1018,8 @@
                                 {
                                   "$invoke": "routeStore.setParam",
                                   "args": ["card", { "$": "split(event.detail.value, '|')[2]" }]
-                                }
+                                },
+                                { "$invoke": "shellStore.openTemplatePanel", "args": ["inspector"] }
                               ]
                             }
                           },
@@ -2127,7 +2128,8 @@
                                 "label": "Close",
                                 "onClick": [
                                   { "$invoke": "routeStore.setParam", "args": ["card", ""] },
-                                  { "$invoke": "routeStore.setParam", "args": ["cardType", ""] }
+                                  { "$invoke": "routeStore.setParam", "args": ["cardType", ""] },
+                                  { "$invoke": "shellStore.closeTemplatePanel", "args": ["inspector"] }
                                 ]
                               },
                               "children": [{ "type": "we-icon", "props": { "name": "x" } }]
@@ -17438,7 +17440,19 @@
             "snap": "right",
             "size": "sm",
             "grow": 1,
-            "fixed": true
+            "fixed": true,
+            "order": 0,
+            "open": false
+          },
+          {
+            "id": "settings",
+            "module": "shell",
+            "title": "Space settings",
+            "home": "inspector",
+            "snap": "right",
+            "order": 0,
+            "fixed": true,
+            "open": false
           }
         ],
         "recordViews": {
@@ -18030,7 +18044,8 @@
                                       "$invoke": "routeStore.setParam",
                                       "args": ["cardType", { "$": "event.recordType" }]
                                     },
-                                    { "$invoke": "routeStore.setParam", "args": ["card", { "$": "event.recordId" }] }
+                                    { "$invoke": "routeStore.setParam", "args": ["card", { "$": "event.recordId" }] },
+                                    { "$invoke": "shellStore.openTemplatePanel", "args": ["inspector"] }
                                   ]
                                 }
                               },
@@ -18128,7 +18143,8 @@
                                     "$invoke": "routeStore.setParam",
                                     "args": ["cardType", { "$": "event.recordType" }]
                                   },
-                                  { "$invoke": "routeStore.setParam", "args": ["card", { "$": "event.recordId" }] }
+                                  { "$invoke": "routeStore.setParam", "args": ["card", { "$": "event.recordId" }] },
+                                  { "$invoke": "shellStore.openTemplatePanel", "args": ["inspector"] }
                                 ]
                               }
                             },
@@ -18248,7 +18264,8 @@
                                           {
                                             "$invoke": "routeStore.setParam",
                                             "args": ["card", { "$": "event.recordId" }]
-                                          }
+                                          },
+                                          { "$invoke": "shellStore.openTemplatePanel", "args": ["inspector"] }
                                         ]
                                       }
                                     },
@@ -20529,7 +20546,7 @@
             "minWidth": "280px",
             "maxWidth": "560px",
             "resize": "start",
-            "collapsed": { "$": "!routeStore.params.card" }
+            "foldEmpty": true
           }
         }
       ],

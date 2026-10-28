@@ -9,7 +9,6 @@ import {
   focusDimWhere,
   newNoteModal,
   newThingChooser,
-  openRecord,
   PLACED_CARD_STYLE,
   recordFormModal,
   SOCIAL_DNA_LABELS,
@@ -18,7 +17,7 @@ import {
 } from '@we/template-kit';
 
 import { viewBar } from './bar.ts';
-import { DNA_FOCUS, IN_CANVAS, PAGE_EXPR } from './paths.ts';
+import { DNA_FOCUS, IN_CANVAS, inspect, PAGE_EXPR } from './paths.ts';
 
 /**
  * The space in Canvas mode: whatever the tree has chosen, seen on the map it lives on.
@@ -114,7 +113,7 @@ const FOCUS = `${DNA_FOCUS} == 'all' ? '' : !(${DNA_ID}) ? ${BUCKET_NODE} : ${DN
 const OPEN_IN_INSPECTOR: SchemaProp = {
   $if: {
     condition: { $: "event.recordId && event.recordType && event.recordType != '$schema'" },
-    then: openRecord('event.recordId', { $: 'event.recordType' }),
+    then: inspect('event.recordId', { $: 'event.recordType' }),
   },
 };
 
@@ -192,7 +191,7 @@ export const canvasPane: SchemaNode = {
             ...canvasEditing({
               canvas: CANVAS,
               // Read old against new in the inspector beside the canvas, as the workshop does.
-              onReview: openRecord('event.recordId', { $: 'event.recordType' }),
+              onReview: inspect('event.recordId', { $: 'event.recordType' }),
             }),
             onCanvasDoubleClick: askWhatGoesHere(CANVAS),
             onNodeDoubleClick: { $invoke: 'routeStore.navigate', args: [{ $: RECORD_PAGE }] },

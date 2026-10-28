@@ -1,3 +1,6 @@
+import type { SchemaProp } from '@we/schema-shared';
+import { openRecord } from '@we/template-kit';
+
 /**
  * Where a Coasys space's things live, named once.
  *
@@ -40,6 +43,18 @@ export const dnaEntityOf = (kind: string): string => `${table(Object.entries(DNA
 /** The kind of definition a record type is, or nothing. */
 export const dnaKindOf = (entity: string): string =>
   `${table(Object.entries(DNA_ENTITIES).map(([k, v]) => [v, k]))}[${entity}]`;
+
+/** The inspector's panel id, as the space declares it — see `shell.ts`. */
+export const INSPECTOR_PANEL = 'inspector';
+
+/**
+ * Open a record in the inspector beside the view: name it in the address, which is what the inspector
+ * reads, and open the inspector's panel, which starts closed.
+ */
+export const inspect = (id: string, type: SchemaProp): SchemaProp[] => [
+  ...openRecord(id, type),
+  { $invoke: 'shellStore.openTemplatePanel', args: [INSPECTOR_PANEL] },
+];
 
 /** A definition in the inspector, as its tree row — so a definition read beside a page is lit. */
 const INSPECTED_DNA = dnaKindOf('routeStore.params.cardType');

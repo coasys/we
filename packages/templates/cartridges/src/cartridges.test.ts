@@ -254,6 +254,7 @@ describe('the Coasys cartridge', () => {
       expect(onNodeClick.$if.then).toEqual([
         { $invoke: 'routeStore.setParam', args: ['cardType', { $: 'event.recordType' }] },
         { $invoke: 'routeStore.setParam', args: ['card', { $: 'event.recordId' }] },
+        { $invoke: 'shellStore.openTemplatePanel', args: ['inspector'] },
       ]);
       const pressed = (recordId: string, recordType: string) =>
         at([], { view: 'canvas' }, { event: { recordId, recordType } })(onNodeClick.$if.condition);
@@ -269,14 +270,26 @@ describe('the Coasys cartridge', () => {
       );
     });
 
-    it('folds the inspector away while nothing is chosen', () => {
+    /*
+      The lane on the right holds the inspector and the space's settings in one place, as tabs, both
+      closed until opened, and folds while neither is.
+    */
+    it('shares the right lane between the inspector and the space settings, folded while neither is open', () => {
       const lane = findNode(
         coasys.shell,
         (n) => n.type === '$panels' && (n.props as { lane?: string }).lane === 'inspector',
       )!;
-      const collapsed = (lane.props as { collapsed: unknown }).collapsed;
-      expect(at([], {})(collapsed)).toBe(true);
-      expect(at([], { card: 'like', cardType: 'SignalType' })(collapsed)).toBe(false);
+      expect((lane.props as { foldEmpty?: boolean }).foldEmpty).toBe(true);
+      const panels = (
+        coasys.shell.meta as {
+          panels: { id: string; module?: string; home?: string; order?: number; open?: boolean }[];
+        }
+      ).panels;
+      const right = panels.filter((panel) => panel.home === 'inspector');
+      expect(right.map((panel) => [panel.id, panel.module, panel.order, panel.open])).toEqual([
+        ['inspector', undefined, 0, false],
+        ['settings', 'shell', 0, false],
+      ]);
     });
   });
 });

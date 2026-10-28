@@ -1,5 +1,5 @@
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
-import { field, formModal, openRecord, SOCIAL_DNA_LABELS, TREE_LEAD, treeRow } from '@we/template-kit';
+import { field, formModal, SOCIAL_DNA_LABELS, TREE_LEAD, treeRow } from '@we/template-kit';
 
 import { countPill, liveDot } from './marks.ts';
 import {
@@ -9,6 +9,7 @@ import {
   dnaEntityOf,
   GROUP_PAGES,
   IN_CANVAS,
+  inspect,
   personPath,
   ROW_ID,
   SELECTED_EXPR,
@@ -441,7 +442,7 @@ const onSelect: SchemaProp = [
   {
     $if: {
       condition: { $: `startsWith(event.detail.value, 'dna|') && ${DEF_KIND} != 'model'` },
-      then: openRecord(DEF_ID, { $: dnaEntityOf(DEF_KIND) }),
+      then: inspect(DEF_ID, { $: dnaEntityOf(DEF_KIND) }),
     },
   },
   {
