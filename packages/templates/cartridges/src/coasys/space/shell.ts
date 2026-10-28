@@ -1,6 +1,7 @@
 import type { TemplateSchema } from '@we/schema-shared';
+import { inspectorPanel } from '@we/template-kit';
 
-import { canvasPane } from './canvas.ts';
+import { CALL, canvasPane } from './canvas.ts';
 import { IN_CANVAS } from './paths.ts';
 import { treeSection } from './tree.ts';
 import { callPage, spaceRoutes } from './views.ts';
@@ -17,7 +18,19 @@ import { callPage, spaceRoutes } from './views.ts';
  *
  * On a narrow screen the lane takes the whole width, so the tree is what a phone opens on; folding it
  * shows the view.
+ *
+ * The inspector is the same shape on the right: a section in a lane of its own, resizable from its
+ * inner edge, holding the kit's inspector for whatever the address names (`card`, `cardType`) — a
+ * card pressed on the canvas, a definition chosen in the tree or on the vocabulary map. Folded while
+ * nothing is chosen, so it slides in when something is and out when it is closed; there in Page mode
+ * too, beside whatever page is open.
  */
+
+/** Put the inspector away: nothing chosen, so its lane folds. */
+const CLOSE_INSPECTOR = [
+  { $invoke: 'routeStore.setParam', args: ['card', ''] },
+  { $invoke: 'routeStore.setParam', args: ['cardType', ''] },
+];
 export const coasysSpace: TemplateSchema & { id: string } = {
   id: 'coasys-space',
   meta: {
@@ -38,6 +51,20 @@ export const coasysSpace: TemplateSchema & { id: string } = {
         grow: 1,
         fixed: true,
       },
+      {
+        id: 'inspector',
+        node: inspectorPanel({
+          call: { $: CALL },
+          empty: 'Choose something in the tree, or on the canvas, to look inside it.',
+          close: CLOSE_INSPECTOR,
+        }),
+        title: 'Inspector',
+        home: 'inspector',
+        snap: 'right',
+        size: 'sm',
+        grow: 1,
+        fixed: true,
+      },
     ],
     recordViews: { 'CollectionBlock:call': callPage },
   },
@@ -52,6 +79,17 @@ export const coasysSpace: TemplateSchema & { id: string } = {
       // mounted while the tree's choice changes; the address still changes as the tree is used, and
       // the pages come back as they were when the mode does.
       children: [{ type: '$if', props: { condition: { $: IN_CANVAS }, then: canvasPane, else: { type: '$routes' } } }],
+    },
+    {
+      type: '$panels',
+      props: {
+        lane: 'inspector',
+        width: '340px',
+        minWidth: '280px',
+        maxWidth: '560px',
+        resize: 'start',
+        collapsed: { $: '!routeStore.params.card' },
+      },
     },
   ],
   routes: spaceRoutes,

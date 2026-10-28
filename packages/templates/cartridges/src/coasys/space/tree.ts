@@ -1,11 +1,12 @@
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
-import { field, formModal, SOCIAL_DNA_LABELS, TREE_LEAD, treeRow } from '@we/template-kit';
+import { field, formModal, openRecord, SOCIAL_DNA_LABELS, TREE_LEAD, treeRow } from '@we/template-kit';
 
 import { countPill, liveDot } from './marks.ts';
 import {
   callPath,
   channelPath,
   DNA_PARAM,
+  dnaEntityOf,
   GROUP_PAGES,
   IN_CANVAS,
   personPath,
@@ -188,17 +189,11 @@ const people = group(
   its policy. Four levels — the group, each kind of definition, each definition, and what it says —
   so the tree is the space's own graph read as an outline, the same things the canvas draws.
 
-  Values are `dnakind|<kind>` for a kind, `dna|<kind>|<id>` for a definition (choosing it opens that
-  definition in the vocabulary settings) and `dnaprop|<kind>|<id>|<field>` for what it says, by the
-  field's own name — the name the vocabulary map's node for that field has, so choosing one in Canvas
-  mode selects it there.
+  Values are `dnakind|<kind>` for a kind, `dna|<kind>|<id>` for a definition and `dnaprop|policy|<rule>`
+  for one rule of the policy. A definition is a leaf: what it is goes in the inspector beside the view
+  (its fields), and what it is used for on the vocabulary map (its uses) — never as rows under it here,
+  which listed a hand-picked few of its fields and drifted from what the definition holds.
 */
-
-/** A row under a definition: one thing it says, read here. */
-const property = (value: string, label: string, condition?: string): SchemaNode => {
-  const row = treeRow({ nested: true, value: { $: value }, label: { $: label } });
-  return condition ? { type: '$if', props: { condition: { $: condition }, then: row } } : row;
-};
 
 /** A row that opens and closes by its own value, held with the tree's other open rows. */
 const openable = (value: string) => ({
@@ -207,8 +202,8 @@ const openable = (value: string) => ({
 });
 
 /**
- * One kind of definition: a row with its count, and a row for each definition, which opens to what
- * it says. `as` is the name each definition is bound as; `id` and `label` are expressions over it.
+ * One kind of definition: a row with its count, and a row for each definition. `as` is the name each
+ * definition is bound as; `id` and `name` are expressions over it.
  */
 const dnaKind = (opts: {
   kind: string;
@@ -219,9 +214,6 @@ const dnaKind = (opts: {
   id: string;
   name: string;
   itemIcon: string;
-  /** Whether a definition has anything to show under it, so a caret is not a promise of nothing. */
-  hasProperties: string;
-  properties: SchemaNode[];
 }): SchemaNode => {
   const kindValue = `'dnakind|${opts.kind}'`;
   const value = `'dna|${opts.kind}|' + ${opts.id}`;
@@ -243,9 +235,6 @@ const dnaKind = (opts: {
             value: { $: value },
             label: { $: opts.name },
             icon: { $: opts.itemIcon },
-            ...openable(value),
-            expandable: { $: opts.hasProperties },
-            children: opts.properties,
           }),
         ],
       },
@@ -264,16 +253,6 @@ const DNA_KINDS: SchemaNode[] = [
     id: 'sig.id',
     name: 'sig.name',
     itemIcon: "sig.icon ? sig.icon : 'heart'",
-    hasProperties: 'true',
-    properties: [
-      property("'dnaprop|signal|' + sig.id + '|mode'", "'Mode · ' + sig.mode"),
-      property(
-        "'dnaprop|signal|' + sig.id + '|rangeMin'",
-        "'From ' + sig.rangeMin + ' to ' + sig.rangeMax",
-        "sig.mode != 'toggle'",
-      ),
-      property("'dnaprop|signal|' + sig.id + '|retired'", "'Retired'", 'sig.retired'),
-    ],
   }),
   dnaKind({
     kind: 'connection',
@@ -284,15 +263,6 @@ const DNA_KINDS: SchemaNode[] = [
     id: 'conn.id',
     name: 'conn.name',
     itemIcon: "'arrows-left-right'",
-    hasProperties: 'conn.inverseName || conn.description',
-    properties: [
-      property(
-        "'dnaprop|connection|' + conn.id + '|inverseName'",
-        "'Reads backwards as · ' + conn.inverseName",
-        'conn.inverseName',
-      ),
-      property("'dnaprop|connection|' + conn.id + '|description'", 'conn.description', 'conn.description'),
-    ],
   }),
   dnaKind({
     kind: 'state',
@@ -303,16 +273,6 @@ const DNA_KINDS: SchemaNode[] = [
     id: 'state.id',
     name: 'state.name',
     itemIcon: "state.icon ? state.icon : 'circle'",
-    hasProperties: 'true',
-    properties: [
-      property("'dnaprop|state|' + state.id + '|semantic'", "'Means · ' + state.semantic"),
-      property(
-        "'dnaprop|state|' + state.id + '|approvals'",
-        "state.approvals + ' ' + plural(state.approvals, 'approval', 'approvals') + ' to move on'",
-        'state.approvals > 0',
-      ),
-      property("'dnaprop|state|' + state.id + '|retired'", "'Retired'", 'state.retired'),
-    ],
   }),
   dnaKind({
     kind: 'involvement',
@@ -323,16 +283,6 @@ const DNA_KINDS: SchemaNode[] = [
     id: 'part.id',
     name: 'part.name',
     itemIcon: "part.icon ? part.icon : 'user'",
-    hasProperties: 'true',
-    properties: [
-      property("'dnaprop|involvement|' + part.id + '|semantic'", "'Means · ' + part.semantic"),
-      property(
-        "'dnaprop|involvement|' + part.id + '|appliesTo'",
-        "'For · ' + join(part.appliesTo, ', ')",
-        'count(part.appliesTo) > 0',
-      ),
-      property("'dnaprop|involvement|' + part.id + '|retired'", "'Retired'", 'part.retired'),
-    ],
   }),
   dnaKind({
     kind: 'topic',
@@ -343,8 +293,6 @@ const DNA_KINDS: SchemaNode[] = [
     id: 'topic.id',
     name: 'topic.name',
     itemIcon: "'hash'",
-    hasProperties: 'topic.description',
-    properties: [property("'dnaprop|topic|' + topic.id + '|description'", 'topic.description', 'topic.description')],
   }),
   dnaKind({
     kind: 'model',
@@ -355,15 +303,6 @@ const DNA_KINDS: SchemaNode[] = [
     id: 'shape.id',
     name: 'shape.name',
     itemIcon: "shape.icon ? shape.icon : 'dna'",
-    hasProperties: 'count(recordStore.displays[shape.name].fields) > 0',
-    // A model's fields, as a form for one would show them.
-    properties: [
-      {
-        type: '$each',
-        props: { items: { $: 'recordStore.displays[shape.name].fields' }, as: 'field' },
-        children: [property("'dnaprop|model|' + shape.id + '|' + field.name", "field.label + ' · ' + field.kind")],
-      },
-    ],
   }),
 ];
 
@@ -409,12 +348,9 @@ const DNA_QUERIES = {
   topics: { entity: 'Topic', order: { name: 'asc' } },
 };
 
-/** A `dnaprop|…` row's value as the address's Social DNA focus: `<kind>|<id>|<field>`, or `policy|<rule>`. */
-const DNAPROP_FOCUS = [1, 2, 3]
-  .map(
-    (i) => `(split(event.detail.value, '|')[${i}] ? '${i > 1 ? '|' : ''}' + split(event.detail.value, '|')[${i}] : '')`,
-  )
-  .join(' + ');
+/** A definition row's kind and id — `dna|<kind>|<id>`. */
+const DEF_KIND = "split(event.detail.value, '|')[1]";
+const DEF_ID = "split(event.detail.value, '|')[2]";
 
 /**
  * What choosing a row does, by the kind its value names.
@@ -491,27 +427,27 @@ const onSelect: SchemaProp = [
       then: { $invoke: 'routeStore.navigate', args: [{ $: personPath(ROW_ID) }] },
     },
   },
-  // A definition opens and closes as a group does, and opens where it is edited — or, in Canvas mode,
-  // is lit on the vocabulary map.
+  /*
+    A definition opens in the inspector beside the view, in either mode — what it is — and in Canvas
+    mode is lit on the vocabulary map too, opened into its uses. A model is a Shape, which the
+    inspector does not read, so it still opens where it is edited.
+  */
   {
     $if: {
-      condition: { $: "startsWith(event.detail.value, 'dna|')" },
-      then: [
-        { $toggleLocalIn: 'openRows', value: { $: 'event.detail.value' } },
-        {
-          $if: {
-            condition: { $: IN_CANVAS },
-            then: {
-              $invoke: 'routeStore.setParam',
-              args: [DNA_PARAM, { $: "split(event.detail.value, '|')[1] + '|' + split(event.detail.value, '|')[2]" }],
-            },
-            else: {
-              $invoke: 'shellStore.openSpaceSettings',
-              args: ['vocabulary', { $: "split(event.detail.value, '|')[2]" }],
-            },
-          },
-        },
-      ],
+      condition: { $: `(${IN_CANVAS}) && startsWith(event.detail.value, 'dna|')` },
+      then: { $invoke: 'routeStore.setParam', args: [DNA_PARAM, { $: `${DEF_KIND} + '|' + ${DEF_ID}` }] },
+    },
+  },
+  {
+    $if: {
+      condition: { $: `startsWith(event.detail.value, 'dna|') && ${DEF_KIND} != 'model'` },
+      then: openRecord(DEF_ID, { $: dnaEntityOf(DEF_KIND) }),
+    },
+  },
+  {
+    $if: {
+      condition: { $: `!(${IN_CANVAS}) && startsWith(event.detail.value, 'dna|') && ${DEF_KIND} == 'model'` },
+      then: { $invoke: 'shellStore.openSpaceSettings', args: ['vocabulary', { $: DEF_ID }] },
     },
   },
   // A kind of definition opens as a group does — and, in Canvas mode, is lit with all it holds.
@@ -529,27 +465,13 @@ const onSelect: SchemaProp = [
       ],
     },
   },
-  /*
-    What a definition says, or one rule of the policy: in Canvas mode, selected on the map — a field by
-    its name, a rule by its words. On a page, a field opens its definition where it is edited.
-  */
+  // One rule of the policy, lit on the map by its words.
   {
     $if: {
-      condition: { $: `(${IN_CANVAS}) && startsWith(event.detail.value, 'dnaprop|')` },
+      condition: { $: `(${IN_CANVAS}) && startsWith(event.detail.value, 'dnaprop|policy|')` },
       then: {
         $invoke: 'routeStore.setParam',
-        args: [DNA_PARAM, { $: DNAPROP_FOCUS }],
-      },
-    },
-  },
-  {
-    $if: {
-      condition: {
-        $: `!(${IN_CANVAS}) && startsWith(event.detail.value, 'dnaprop|') && !startsWith(event.detail.value, 'dnaprop|policy|')`,
-      },
-      then: {
-        $invoke: 'shellStore.openSpaceSettings',
-        args: ['vocabulary', { $: "split(event.detail.value, '|')[2]" }],
+        args: [DNA_PARAM, { $: "'policy|' + split(event.detail.value, '|')[2]" }],
       },
     },
   },

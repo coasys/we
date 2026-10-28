@@ -1,4 +1,4 @@
-import type { SchemaNode } from '@we/schema-shared';
+import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 import {
   askWhatGoesHere,
   BACK_TO_CHOOSER,
@@ -9,6 +9,7 @@ import {
   focusDimWhere,
   newNoteModal,
   newThingChooser,
+  openRecord,
   PLACED_CARD_STYLE,
   recordFormModal,
   SOCIAL_DNA_LABELS,
@@ -47,7 +48,7 @@ import { DNA_FOCUS, IN_CANVAS, PAGE_EXPR } from './paths.ts';
  * (`SELECTED_EXPR`), which is long enough that the few places using it here passed what an expression
  * may be.
  */
-const CALL = `(${PAGE_EXPR}) == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : ''`;
+export const CALL = `(${PAGE_EXPR}) == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : ''`;
 const PERSON = `(${PAGE_EXPR}) == 'person' ? routeStore.params.did : ''`;
 const WORKFLOW = `(${PAGE_EXPR}) == 'workflows' && workflowStore.open`;
 
@@ -55,14 +56,13 @@ const WORKFLOW = `(${PAGE_EXPR}) == 'workflows' && workflowStore.open`;
 const CANVAS_EXPR = "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''";
 const CANVAS = { $: CANVAS_EXPR };
 
-/** A record's own page, which is where a suggested change is read old against new. */
+/** A record's own page, which a double-click opens. */
 const RECORD_PAGE = "spaceStore.spacePath + '/record/' + event.recordType + '?id=' + event.recordId";
 
-/** Social DNA in focus: the map, and which kind, which definition of it, and which of its fields. */
+/** Social DNA in focus: the map, and which kind, and which definition of it. */
 const ON_DNA = `(${IN_CANVAS}) && ${DNA_FOCUS}`;
 const DNA_KIND = `split(${DNA_FOCUS}, '|')[0]`;
 const DNA_ID = `split(${DNA_FOCUS}, '|')[1]`;
-const DNA_FIELD = `split(${DNA_FOCUS}, '|')[2]`;
 
 /** A kind of Social DNA in the tree, as the vocabulary map's bucket for it, and as the bar names it. */
 const DNA_KINDS: Record<string, { bucket: string; label: string }> = Object.fromEntries(
@@ -104,8 +104,13 @@ const SIBLINGS = `(${DNA_KIND} == 'model' ? ${SIBLING('data.entity', MODEL_NAME)
 /** The definition chosen, opened: a record or a model by what the graph's `open` takes; a rule has nothing inside. */
 const OPEN_DEFINITION = `${DNA_ID} && ${DNA_KIND} != 'policy' ? [${DNA_KIND} == 'model' ? ${MODEL_NAME} : ${DNA_ID}] : []`;
 
-/** What the map selects: a field of the definition, a model's by the model's name, or a record definition. */
-const FOCUS = `${DNA_FIELD} ? (${DNA_KIND} == 'model' ? ${MODEL_NAME} : ${DNA_ID}) + '#' + ${DNA_FIELD} : ${DNA_ID} && !(${DNA_KIND} in ['model', 'policy']) ? ${DNA_ID} : ''`;
+/** A node pressed, opened in the inspector — when it stands for a record the inspector reads. */
+const OPEN_IN_INSPECTOR: SchemaProp = {
+  $if: {
+    condition: { $: "event.recordId && event.recordType && event.recordType != '$schema'" },
+    then: openRecord('event.recordId', { $: 'event.recordType' }),
+  },
+};
 
 /** The bar's words for what is in focus. */
 const TITLE = [
@@ -180,10 +185,14 @@ export const canvasPane: SchemaNode = {
             emptyIcon: 'squares-four',
             ...canvasEditing({
               canvas: CANVAS,
-              onReview: { $invoke: 'routeStore.navigate', args: [{ $: RECORD_PAGE }] },
+              // Read old against new in the inspector beside the canvas, as the workshop does.
+              onReview: openRecord('event.recordId', { $: 'event.recordType' }),
             }),
             onCanvasDoubleClick: askWhatGoesHere(CANVAS),
             onNodeDoubleClick: { $invoke: 'routeStore.navigate', args: [{ $: RECORD_PAGE }] },
+            // A card opens in the inspector beside the canvas, which selects what the inspector shows.
+            onNodeClick: OPEN_IN_INSPECTOR,
+            focus: { $: 'routeStore.params.card' },
           },
         },
         // Social DNA, over the canvas, which stays mounted beneath so coming back to it is instant.
@@ -202,8 +211,10 @@ export const canvasPane: SchemaNode = {
                   $: 'event.open ? distinct(local.vocabOpen, [event.id]) : local.vocabOpen.filter(k, k != event.id)',
                 },
               },
-              // A field chosen is selected, by the graph's `<id>#<field>`; else a definition that is a record.
-              focus: { $: FOCUS },
+              // A definition that is a record is selected and brought into view.
+              focus: { $: `${DNA_ID} && !(${DNA_KIND} in ['model', 'policy']) ? ${DNA_ID} : ''` },
+              // A definition, or one of its uses, opens in the inspector; a model is not a record it reads.
+              onNodeClick: OPEN_IN_INSPECTOR,
               focusRules: [focusDimWhere(`${DNA_FOCUS} != 'all'`, OTHER_KINDS), focusDimWhere(DNA_ID, SIBLINGS)],
             }),
           },

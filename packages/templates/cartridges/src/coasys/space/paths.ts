@@ -21,10 +21,28 @@ export const withView = (pathExpr: string): string =>
 
 /**
  * The Social DNA in focus on the canvas — `all`, a kind (`signal`), or a definition (`signal|<id>`).
- * In Canvas only: on a page, a definition opens where it is edited, in the space's settings.
+ * In Canvas only: in either mode a definition is read in the inspector, which follows `card`.
  */
 export const DNA_PARAM = 'dna';
 export const DNA_FOCUS = `routeStore.params.${DNA_PARAM}`;
+
+/** The record type of each kind of definition the tree lists (a model is a Shape, which it opens elsewhere). */
+const DNA_ENTITIES: Record<string, string> = {
+  signal: 'SignalType',
+  connection: 'RelationshipType',
+  state: 'TaskState',
+  involvement: 'InvolvementType',
+  topic: 'Topic',
+};
+const table = (entries: [string, string][]) => `{ ${entries.map(([k, v]) => `${k}: '${v}'`).join(', ')} }`;
+/** A kind of definition's record type, as an expression over an expression naming the kind. */
+export const dnaEntityOf = (kind: string): string => `${table(Object.entries(DNA_ENTITIES))}[${kind}]`;
+/** The kind of definition a record type is, or nothing. */
+export const dnaKindOf = (entity: string): string =>
+  `${table(Object.entries(DNA_ENTITIES).map(([k, v]) => [v, k]))}[${entity}]`;
+
+/** A definition in the inspector, as its tree row — so a definition read beside a page is lit. */
+const INSPECTED_DNA = dnaKindOf('routeStore.params.cardType');
 
 /** The channel on screen: the one the address names, or the space's own collection, its root channel. */
 export const CHANNEL_EXPR = 'routeStore.params.channel ? routeStore.params.channel : spaceStore.root';
@@ -70,9 +88,10 @@ export const groupPath = (page: GroupPage): string => withView(`spaceStore.space
  */
 export const SELECTED_EXPR = [
   // Social DNA in focus on the canvas, which is the address's rather than a page's.
-  `(${IN_CANVAS}) && ${DNA_FOCUS} ? (${DNA_FOCUS} == 'all' ? 'group|dna' : contains(${DNA_FOCUS}, '|') ? (startsWith(${DNA_FOCUS}, 'policy|') || count(split(${DNA_FOCUS}, '|')) > 2 ? 'dnaprop|' : 'dna|') + ${DNA_FOCUS} : 'dnakind|' + ${DNA_FOCUS})`,
+  `(${IN_CANVAS}) && ${DNA_FOCUS} ? (${DNA_FOCUS} == 'all' ? 'group|dna' : contains(${DNA_FOCUS}, '|') ? (startsWith(${DNA_FOCUS}, 'policy|') ? 'dnaprop|' : 'dna|') + ${DNA_FOCUS} : 'dnakind|' + ${DNA_FOCUS})`,
   `:`,
-  `(${PAGE_EXPR}) == 'record' ? 'call|' + routeStore.params.id`,
+  `routeStore.params.card && ${INSPECTED_DNA} ? 'dna|' + ${INSPECTED_DNA} + '|' + routeStore.params.card`,
+  `: (${PAGE_EXPR}) == 'record' ? 'call|' + routeStore.params.id`,
   `: (${PAGE_EXPR}) == 'person' ? 'person|' + routeStore.params.did`,
   `: (${PAGE_EXPR}) == 'workflows' ? (workflowStore.open ? 'workflow|' + workflowStore.open.name : 'group|workflows')`,
   `: (${PAGE_EXPR}) in [${GROUP_PAGES.filter((p) => p !== 'workflows')

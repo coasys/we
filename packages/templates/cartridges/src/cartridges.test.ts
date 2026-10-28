@@ -121,8 +121,8 @@ describe('the Coasys cartridge', () => {
     expect(props.onEdgeCreate).toBeTruthy();
     expect(JSON.stringify(props.onCanvasDoubleClick)).toContain('chooserOpen');
     expect(JSON.stringify(props)).not.toContain('createOnCanvas');
-    // Reviewing a suggested change opens the record's own page: there is no inspector beside it.
-    expect(JSON.stringify(props.onNodeAction)).toContain("'/record/'");
+    // Reviewing a suggested change opens the record in the inspector beside the canvas.
+    expect(JSON.stringify(props.onNodeAction)).toContain('"cardType"');
     expect(JSON.stringify(canvasPane)).toContain('Add to the canvas');
   });
 
@@ -232,24 +232,41 @@ describe('the Coasys cartridge', () => {
       ]);
     });
 
-    // A field chosen in the tree is selected on the map by the graph's `<id>#<field>`, its definition open.
-    it('selects a field of a definition, and lights its row in the tree', () => {
+    /*
+      A definition opens in the inspector beside the view, in either mode, and lights its row there;
+      on the canvas, a press on a definition or on one of its uses opens it too, while a model — a
+      type, not a record — does not.
+    */
+    it('opens a definition in the inspector, from the tree or the map', () => {
       const map = findNode(canvasPane, (n) => n.type === '$if' && JSON.stringify(n).includes('source":"vocabulary'));
       const vocab = findNode(map, (n) => n.type === 'GraphView')!;
-      const props = vocab.props as { focus: unknown; open: unknown };
-      const field = at([], { view: 'canvas', dna: 'signal|like|mode' });
-      expect(field(props.focus)).toBe('like#mode');
-      expect(field(props.open)).toEqual(['we-graph://cluster/vocabulary/signals', 'like']);
-      expect(field({ $: SELECTED_EXPR })).toBe('dnaprop|signal|like|mode');
-      // A model's field, by the model's name, which is what the map knows a model by.
-      const shapes = { shapeStore: { spaceShapes: [{ id: 'shape-1', name: 'Recipe' }] } };
-      expect(at([], { view: 'canvas', dna: 'model|shape-1|title' }, shapes)(props.focus)).toBe('Recipe#title');
-      // A definition alone selects the definition; a rule of the policy is a field of nothing.
-      expect(at([], { view: 'canvas', dna: 'signal|like' })(props.focus)).toBe('like');
-      expect(at([], { view: 'canvas', dna: 'signal|like' })({ $: SELECTED_EXPR })).toBe('dna|signal|like');
+      const onNodeClick = (vocab.props as { onNodeClick: { $if: { condition: unknown; then: unknown } } }).onNodeClick;
+      expect(onNodeClick.$if.then).toEqual([
+        { $invoke: 'routeStore.setParam', args: ['cardType', { $: 'event.recordType' }] },
+        { $invoke: 'routeStore.setParam', args: ['card', { $: 'event.recordId' }] },
+      ]);
+      const pressed = (recordId: string, recordType: string) =>
+        at([], { view: 'canvas' }, { event: { recordId, recordType } })(onNodeClick.$if.condition);
+      expect(pressed('like', 'SignalType')).toBe(true);
+      expect(pressed('Recipe', '$schema')).toBe(false);
+
+      // Read beside a page, a definition lights its own row.
+      expect(at(['feed'], { card: 'like', cardType: 'SignalType' })({ $: SELECTED_EXPR })).toBe('dna|signal|like');
+      expect(at(['feed'], { card: 't1', cardType: 'TaskBlock' })({ $: SELECTED_EXPR })).not.toContain('dna|');
+      // The policy is still lit by its words on the canvas.
       expect(at([], { view: 'canvas', dna: 'policy|Members can make anything.' })({ $: SELECTED_EXPR })).toBe(
         'dnaprop|policy|Members can make anything.',
       );
+    });
+
+    it('folds the inspector away while nothing is chosen', () => {
+      const lane = findNode(
+        coasys.shell,
+        (n) => n.type === '$panels' && (n.props as { lane?: string }).lane === 'inspector',
+      )!;
+      const collapsed = (lane.props as { collapsed: unknown }).collapsed;
+      expect(at([], {})(collapsed)).toBe(true);
+      expect(at([], { card: 'like', cardType: 'SignalType' })(collapsed)).toBe(false);
     });
   });
 });
