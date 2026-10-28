@@ -15,7 +15,7 @@ const CLAIM_TIMEOUT = 300;
  * An in-memory stand-in for `BroadcastChannel`, matching the one behaviour the coordinator depends
  * on: **a tab never receives its own messages**.
  */
-function createBus() {
+function createBus(delivery: 'sync' | 'queued' = 'sync') {
   const ports = new Map<string, (message: unknown) => void>();
   const dead = new Set<string>();
   return {
@@ -23,7 +23,13 @@ function createBus() {
       return {
         post(message) {
           if (dead.has(tabId)) return;
-          for (const [id, cb] of ports) if (id !== tabId) cb(message);
+          for (const id of [...ports.keys()]) {
+            if (id === tabId) continue;
+            // 'queued' is what a real `BroadcastChannel` does: each message is a task of its own, run
+            // after the sender's handler returns, in the order the messages were posted.
+            if (delivery === 'sync') ports.get(id)?.(message);
+            else setTimeout(() => ports.get(id)?.(message), 0);
+          }
         },
         subscribe(cb) {
           ports.set(tabId, cb);
@@ -259,6 +265,127 @@ describe('createTabCoordinator', () => {
 
       expect(a.coordinator.isLeader()).toBe(true);
       expect(b.coordinator.isLeader()).toBe(false);
+    });
+  });
+
+  /*
+    A handover passes leadership on, and it must pass on who else is waiting with it. Only a leader
+    records pinned tabs it turns away, so a tab that took over by handover knew none of them: when it
+    unpinned in turn it kept leading, its heartbeats kept the other pinned tab a follower, and that
+    tab's call left every peer's roster although it was still running.
+  */
+  describe.each(['sync', 'queued'] as const)('chained handover (%s delivery)', (delivery) => {
+    beforeEach(() => {
+      bus.current = createBus(delivery);
+    });
+
+    /** Lets every queued message arrive. A no-op for synchronous delivery. */
+    const settle = () => vi.advanceTimersByTime(1);
+
+    function threePinned() {
+      const a = tab('a');
+      const b = tab('b');
+      const c = tab('c');
+      vi.advanceTimersByTime(LEADER_TIMEOUT);
+      expect(a.coordinator.isLeader()).toBe(true);
+      a.coordinator.setPinned(true);
+      settle();
+      b.coordinator.setPinned(true);
+      settle();
+      c.coordinator.setPinned(true);
+      settle();
+      expect([a, b, c].filter((t) => t.coordinator.isLeader())).toEqual([a]);
+      return { a, b, c };
+    }
+
+    const leaders = (...tabs: ReturnType<typeof tab>[]) =>
+      tabs.filter((t) => t.coordinator.isLeader()).map((t) => t.id);
+
+    it('hands on to every pinned tab in turn', () => {
+      const { a, b, c } = threePinned();
+
+      a.coordinator.setPinned(false);
+      settle();
+      expect(leaders(a, b, c), 'the newest pinned tab takes over').toEqual(['c']);
+
+      c.coordinator.setPinned(false);
+      settle();
+      expect(leaders(a, b, c), 'the tab still in a call takes over next').toEqual(['b']);
+
+      vi.advanceTimersByTime(LEADER_TIMEOUT * 2);
+      expect(leaders(a, b, c)).toEqual(['b']);
+    });
+
+    it('does not hand on to a tab that left its call after the first handover', () => {
+      const { a, b, c } = threePinned();
+      a.coordinator.setPinned(false);
+      settle();
+      expect(leaders(a, b, c)).toEqual(['c']);
+
+      b.coordinator.setPinned(false);
+      settle();
+      c.coordinator.setPinned(false);
+      settle();
+
+      expect(leaders(a, b, c)).toEqual(['c']);
+      vi.advanceTimersByTime(LEADER_TIMEOUT * 2);
+      expect(leaders(a, b, c)).toEqual(['c']);
+    });
+
+    it('does not hand on to a tab that left its call before the first handover', () => {
+      const { a, b, c } = threePinned();
+      b.coordinator.setPinned(false);
+      settle();
+      a.coordinator.setPinned(false);
+      settle();
+      expect(leaders(a, b, c)).toEqual(['c']);
+
+      c.coordinator.setPinned(false);
+      settle();
+
+      expect(leaders(a, b, c)).toEqual(['c']);
+    });
+
+    it('keeps a pinned tab whose claim was still in flight during the handover', () => {
+      const a = tab('a');
+      const b = tab('b');
+      const c = tab('c');
+      vi.advanceTimersByTime(LEADER_TIMEOUT);
+      a.coordinator.setPinned(true);
+      settle();
+      c.coordinator.setPinned(true);
+      settle();
+
+      // Queued, 'b' asks while 'a' is still leader and 'a' has stepped down before the claim
+      // arrives, so 'a' hands to 'c' without it. Synchronous, 'a' hears it first and hands to 'b'.
+      b.coordinator.setPinned(true);
+      a.coordinator.setPinned(false);
+      settle();
+      const [first] = leaders(a, b, c);
+      expect(['b', 'c']).toContain(first);
+      const [other] = [b, c].filter((t) => t.id !== first);
+
+      (first === 'b' ? b : c).coordinator.setPinned(false);
+      settle();
+
+      expect(leaders(a, b, c), 'the other tab still in a call takes over').toEqual([other.id]);
+      vi.advanceTimersByTime(LEADER_TIMEOUT * 2);
+      expect(leaders(a, b, c)).toEqual([other.id]);
+    });
+
+    it('recovers when the tab it hands to has crashed', () => {
+      const { a, b } = threePinned();
+      bus.current.kill('c'); // closed without a word: it never resigns and never answers
+
+      a.coordinator.setPinned(false);
+      settle();
+
+      expect(leaders(a, b), 'nobody leads until the crash timeout').toEqual([]);
+      vi.advanceTimersByTime(LEADER_TIMEOUT + 1);
+      settle();
+      expect(leaders(a, b), 'the pinned tab wins the takeover').toEqual(['b']);
+      vi.advanceTimersByTime(LEADER_TIMEOUT * 2);
+      expect(leaders(a, b)).toEqual(['b']);
     });
   });
 

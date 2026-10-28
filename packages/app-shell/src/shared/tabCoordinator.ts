@@ -53,8 +53,11 @@ type Message =
   /**
    * "Take over now" — sent to one tab, by a leader that stopped being pinned while that tab is pinned.
    * Unlike `resign`, it promotes only the named tab, so no other tab publishes in between.
+   *
+   * `waiting` is every other pinned tab the old leader turned away, oldest first. Only a leader
+   * records them, so the new leader takes them over and can hand on when it unpins in turn.
    */
-  | { type: 'handover'; tabId: string; to: string }
+  | { type: 'handover'; tabId: string; to: string; waiting?: string[] }
   /**
    * "Is anyone leading?" — a claim's polite cousin, for a tab that must not displace an incumbent.
    *
@@ -259,6 +262,12 @@ export function createTabCoordinator(deps: TabCoordinatorDeps = {}): TabCoordina
     timeoutTimer = setTimeout(becomeLeader, delay);
   }
 
+  /** Ask for leadership because this tab holds a call. A pinned leader records the asker. */
+  const claimPinned = (): void => {
+    watchLeader(CLAIM_TIMEOUT);
+    channel.post({ type: 'claim', tabId, pinned: true } satisfies Message);
+  };
+
   function stopWatchingLeader(): void {
     if (timeoutTimer) {
       clearTimeout(timeoutTimer);
@@ -333,9 +342,24 @@ export function createTabCoordinator(deps: TabCoordinatorDeps = {}): TabCoordina
         }
         break;
 
-      case 'handover':
-        if (raw.to === tabId) becomeLeader();
+      case 'handover': {
+        const passedOn = Array.isArray(raw.waiting)
+          ? raw.waiting.filter((id): id is string => typeof id === 'string' && id !== tabId)
+          : [];
+        if (raw.to === tabId) {
+          // Take over the pinned tabs the old leader turned away, so this tab can hand on in turn.
+          // A tab on the list that has since unpinned sends `probe`, which reaches this tab as
+          // leader and takes it off again.
+          waiting.clear();
+          passedOn.forEach((id) => waiting.add(id));
+          becomeLeader();
+        } else if (pinned && !passedOn.includes(tabId)) {
+          // A pinned tab the list does not name: its claim reached the old leader after it stepped
+          // down, so nobody remembers it. Ask the new leader again.
+          claimPinned();
+        }
         break;
+      }
 
       case 'resign':
         waiting.delete(raw.tabId);
@@ -378,18 +402,19 @@ export function createTabCoordinator(deps: TabCoordinatorDeps = {}): TabCoordina
       // Becoming pinned while not leader means this tab holds the thing that must not be interrupted
       // — claim so publishing follows it.
       if (pinned && !leader) {
-        watchLeader(CLAIM_TIMEOUT);
-        channel.post({ type: 'claim', tabId, pinned: true } satisfies Message);
+        claimPinned();
         return;
       }
       if (pinned || !was) return;
       if (leader) {
         // Hand publishing to the newest pinned tab this one turned away, if any is still waiting.
-        const to = [...waiting].pop();
+        // The rest go with it, so the new leader can hand on when it unpins too.
+        const rest = [...waiting];
+        const to = rest.pop();
         waiting.clear();
         if (!to) return;
         stepDown();
-        channel.post({ type: 'handover', tabId, to } satisfies Message);
+        channel.post({ type: 'handover', tabId, to, waiting: rest } satisfies Message);
         watchLeader();
       } else {
         // No longer waiting for leadership: say so, so the leader does not hand over to this tab.
