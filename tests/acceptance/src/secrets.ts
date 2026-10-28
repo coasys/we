@@ -23,6 +23,8 @@ interface Entry {
   kind: SecretKind;
   label: string;
   forms: Buffer[];
+  /** For the 12 words: each word, which `redact` replaces on its own. */
+  words?: string[];
 }
 
 /** A place where a secret may be found, and the requirement that allows it there. */
@@ -89,7 +91,26 @@ export class SecretLedger {
       Buffer.from(JSON.stringify(words), 'utf8'),
       Buffer.from(words.map((w) => JSON.stringify(w)).join(', '), 'utf8'),
     ];
-    this.entries.push({ kind: 'words', label, forms });
+    this.entries.push({ kind: 'words', label, forms, words });
+  }
+
+  /**
+   * The text with every recorded secret replaced by its label: for what is published rather than
+   * scanned, as a failure in the report, a console line or an issue. The 12 words are replaced word
+   * by word too, since a screen lists them apart, with their numbers between them.
+   */
+  redact(text: string): string {
+    let out = text;
+    for (const entry of this.entries) {
+      const mark = `[${entry.label}]`;
+      // Longest form first, so that a form inside another does not leave the rest of it behind.
+      const forms = entry.forms.map((f) => f.toString('utf8')).sort((a, b) => b.length - a.length);
+      for (const form of forms) out = out.split(form).join(mark);
+      for (const word of entry.words ?? []) {
+        out = out.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(word)}(?![\\p{L}\\p{N}])`, 'giu'), mark);
+      }
+    }
+    return out;
   }
 
   /** The labels recorded so far, for the report. */

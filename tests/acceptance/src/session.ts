@@ -5,7 +5,7 @@
  * the app under test.
  */
 import { spawn } from 'node:child_process';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -29,6 +29,7 @@ export async function inSession(): Promise<boolean> {
       resolve(2);
     });
   });
+  rmSync(runtime, { recursive: true, force: true });
   process.exitCode = status;
   return false;
 }

@@ -55,6 +55,11 @@ cli ─ runner ─┬─ local world: identity-store (temp database), executors,
   and no text, and the report says why.
 - **The report** (`results/<time>/`, or `--out`): `summary.md` and `report.json`, and per scenario
   a screenshot and the window text after each step, its notes and its scan.
+  The report is what a run publishes, so every secret in the ledger is redacted from a failure
+  before the report, the console or an issue holds it. A step that shows a secret keeps only the
+  first line of its failure, not the window text after it. A kept file in which the scan finds a
+  secret is removed, and `scan.json` says where it was. The world's own folder (logs, data folders)
+  is removed when a scenario passes and kept, named in its notes, when it fails.
 
 ## The scenarios
 
