@@ -9408,7 +9408,13 @@ export const seedBundles: Bundle[] = [
           },
           {
             type: 'Column',
-            props: { width: '100%', ax: 'center', bg: '#ffffff', pt: '46px', pb: '50px' },
+            props: {
+              width: '100%',
+              ax: 'center',
+              bgImage: 'linear-gradient(180deg, rgba(92,74,168,0), rgba(92,74,168,.14))',
+              pt: '46px',
+              pb: '50px',
+            },
             children: [
               {
                 type: 'Column',
@@ -9421,11 +9427,7 @@ export const seedBundles: Bundle[] = [
                   gap: '18px',
                 },
                 children: [
-                  {
-                    type: 'we-text',
-                    props: { variant: 'overline', color: '#1a1c43', opacity: 0.6 },
-                    children: ['Partners'],
-                  },
+                  { type: 'we-text', props: { variant: 'overline', color: 'text-muted' }, children: ['Partners'] },
                   {
                     type: 'Row',
                     props: {
@@ -9442,13 +9444,15 @@ export const seedBundles: Bundle[] = [
                           href: 'https://www.holochain.org',
                           target: '_blank',
                           display: 'flex',
-                          opacity: 0.9,
+                          opacity: 0.75,
                           hoverProps: { opacity: 1 },
                         },
                         children: [
                           {
                             type: 'we-image',
+                            styles: { filter: 'brightness(0) invert(1)' },
                             props: {
+                              r: '0',
                               src: 'https://coasys.org/partners/holochain.svg',
                               alt: 'holochain',
                               height: '24px',
@@ -9466,13 +9470,15 @@ export const seedBundles: Bundle[] = [
                           href: 'https://www.holo.host',
                           target: '_blank',
                           display: 'flex',
-                          opacity: 0.9,
+                          opacity: 0.75,
                           hoverProps: { opacity: 1 },
                         },
                         children: [
                           {
                             type: 'we-image',
+                            styles: { filter: 'brightness(0) invert(1)' },
                             props: {
+                              r: '0',
                               src: 'https://coasys.org/partners/holo.svg',
                               alt: 'holo',
                               height: '17px',
@@ -9490,13 +9496,15 @@ export const seedBundles: Bundle[] = [
                           href: 'https://holoventures.io',
                           target: '_blank',
                           display: 'flex',
-                          opacity: 0.9,
+                          opacity: 0.75,
                           hoverProps: { opacity: 1 },
                         },
                         children: [
                           {
                             type: 'we-image',
+                            styles: { filter: 'brightness(0) invert(1)' },
                             props: {
+                              r: '0',
                               src: 'https://coasys.org/partners/holoventures.svg',
                               alt: 'Holo Ventures',
                               height: '29px',
@@ -9514,13 +9522,15 @@ export const seedBundles: Bundle[] = [
                           href: 'https://corenexus.is',
                           target: '_blank',
                           display: 'flex',
-                          opacity: 0.9,
+                          opacity: 0.75,
                           hoverProps: { opacity: 1 },
                         },
                         children: [
                           {
                             type: 'we-image',
+                            styles: { filter: 'brightness(0) invert(1)' },
                             props: {
+                              r: '0',
                               src: 'https://coasys.org/partners/corenexus.svg',
                               alt: 'corenexus',
                               height: '21px',
@@ -9538,13 +9548,15 @@ export const seedBundles: Bundle[] = [
                           href: 'https://trustgraph.net',
                           target: '_blank',
                           display: 'flex',
-                          opacity: 0.9,
+                          opacity: 0.75,
                           hoverProps: { opacity: 1 },
                         },
                         children: [
                           {
                             type: 'we-image',
+                            styles: { filter: 'brightness(0) invert(1)' },
                             props: {
+                              r: '0',
                               src: 'https://coasys.org/partners/trustgraph.svg',
                               alt: 'trustgraph',
                               height: '32px',
@@ -9562,13 +9574,15 @@ export const seedBundles: Bundle[] = [
                           href: 'https://www.symphonics.life',
                           target: '_blank',
                           display: 'flex',
-                          opacity: 0.9,
+                          opacity: 0.75,
                           hoverProps: { opacity: 1 },
                         },
                         children: [
                           {
                             type: 'we-image',
+                            styles: { filter: 'brightness(0) invert(1)' },
                             props: {
+                              r: '0',
                               src: 'https://coasys.org/partners/symphonics.svg',
                               alt: 'symphonics',
                               height: '29px',
@@ -9586,13 +9600,15 @@ export const seedBundles: Bundle[] = [
                           href: 'https://www.michkaelbaker.com',
                           target: '_blank',
                           display: 'flex',
-                          opacity: 0.9,
+                          opacity: 0.75,
                           hoverProps: { opacity: 1 },
                         },
                         children: [
                           {
                             type: 'we-image',
+                            styles: { filter: 'brightness(0) invert(1)' },
                             props: {
+                              r: '0',
                               src: 'https://coasys.org/partners/cacoon.svg',
                               alt: 'cacoon',
                               height: '18px',
@@ -9610,13 +9626,15 @@ export const seedBundles: Bundle[] = [
                           href: 'https://asraya.io',
                           target: '_blank',
                           display: 'flex',
-                          opacity: 0.9,
+                          opacity: 0.75,
                           hoverProps: { opacity: 1 },
                         },
                         children: [
                           {
                             type: 'we-image',
+                            styles: { filter: 'brightness(0) invert(1)' },
                             props: {
+                              r: '0',
                               src: 'https://coasys.org/partners/asraya.svg',
                               alt: 'asraya',
                               height: '40px',
@@ -9634,13 +9652,15 @@ export const seedBundles: Bundle[] = [
                           href: 'https://nillion.com/',
                           target: '_blank',
                           display: 'flex',
-                          opacity: 0.9,
+                          opacity: 0.75,
                           hoverProps: { opacity: 1 },
                         },
                         children: [
                           {
                             type: 'we-image',
+                            styles: { filter: 'brightness(0) invert(1)' },
                             props: {
+                              r: '0',
                               src: 'https://coasys.org/partners/nillion.svg',
                               alt: 'nillion',
                               height: '22px',
@@ -9658,13 +9678,15 @@ export const seedBundles: Bundle[] = [
                           href: 'https://weco.io/',
                           target: '_blank',
                           display: 'flex',
-                          opacity: 0.9,
+                          opacity: 0.75,
                           hoverProps: { opacity: 1 },
                         },
                         children: [
                           {
                             type: 'we-image',
+                            styles: { filter: 'brightness(0) invert(1)' },
                             props: {
+                              r: '0',
                               src: 'https://coasys.org/partners/weco.svg',
                               alt: 'weco',
                               height: '40px',
@@ -9682,13 +9704,15 @@ export const seedBundles: Bundle[] = [
                           href: 'https://www.holons.io/',
                           target: '_blank',
                           display: 'flex',
-                          opacity: 0.9,
+                          opacity: 0.75,
                           hoverProps: { opacity: 1 },
                         },
                         children: [
                           {
                             type: 'we-image',
+                            styles: { filter: 'brightness(0) invert(1)' },
                             props: {
+                              r: '0',
                               src: 'https://coasys.org/partners/holons.svg',
                               alt: 'holons',
                               height: '32px',

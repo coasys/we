@@ -13,7 +13,7 @@ import { glowTheme } from './themes.ts';
  * - the hero — the eyebrow, the typing headline, the line under it, the film with its captions and
  *   transcript, and the photo credit the film owes. "Watch the film" plays it in place; "See the
  *   app" goes down to the app section, as the site's does;
- * - the partners — the site's white band of their logos, which is also what ends the hero's light;
+ * - the partners — their logos in white, on a band that carries the page from the hero into the app;
  * - the app — its own film and what it does, with how far along each part is. Where the site asks
  *   for an email for its waitlist, this has a way into your spaces;
  * - underneath — the three layers, each linking to its page on the site.
@@ -185,8 +185,17 @@ const PARTNERS: { name: string; alt?: string; href: string; h: number }[] = [
   { name: 'holons', href: 'https://www.holons.io/', h: 40 },
 ];
 
+/** The violet the app section's wash starts from, and the partners band arrives at. */
+const APP_VIOLET = 'rgba(92,74,168,.14)';
+
 /** The faint violet wash at the top of the app section. */
-const APP_WASH = 'linear-gradient(180deg, rgba(92,74,168,.14), rgba(19,21,51,0))';
+const APP_WASH = `linear-gradient(180deg, ${APP_VIOLET}, rgba(19,21,51,0))`;
+
+/**
+ * The partners band: the page where the hero's light has faded, deepening to the violet the app
+ * section opens with, so neither edge is a seam.
+ */
+const PARTNERS_BAND = `linear-gradient(180deg, rgba(92,74,168,0), ${APP_VIOLET})`;
 
 /**
  * The page's theme: Glow, which is the site's look, with the site's secondary button — a 2px mint
@@ -715,28 +724,37 @@ const section = (id: string, props: Record<string, unknown>, children: SchemaNod
 });
 
 /**
- * The site's white band of partners, between the hero and the app. It is what ends the hero's light:
- * without it the hero's gradients stopped dead against the plain page of the section below.
+ * The partners, between the hero and the app. The site draws them dark on a white band; beside this
+ * page's indigo that read as a hole, so the band is the page itself, shading from where the hero ends
+ * into the violet the app section starts with, and the logos are white.
  */
 const partners: SchemaNode = {
   type: 'Column',
-  props: { width: '100%', ax: 'center', bg: '#ffffff', pt: '46px', pb: '50px' },
+  props: { width: '100%', ax: 'center', bgImage: PARTNERS_BAND, pt: '46px', pb: '50px' },
   children: [
     {
       type: 'Column',
       props: { ...PAGE_BOX, ax: 'center', gap: '18px' },
       children: [
-        { type: 'we-text', props: { variant: 'overline', color: '#1a1c43', opacity: 0.6 }, children: ['Partners'] },
+        { type: 'we-text', props: { variant: 'overline', color: 'text-muted' }, children: ['Partners'] },
         {
           type: 'Row',
           props: { wrap: true, ax: 'center', ay: 'center', gap: '20px 30px', smUpProps: { gap: '26px 48px' } },
           children: PARTNERS.map((partner) => ({
             type: 'we-link',
-            props: { href: partner.href, target: '_blank', display: 'flex', opacity: 0.9, hoverProps: { opacity: 1 } },
+            // Quieter than the words around them until the pointer is on one.
+            props: { href: partner.href, target: '_blank', display: 'flex', opacity: 0.75, hoverProps: { opacity: 1 } },
             children: [
               {
                 type: 'we-image',
+                /*
+                  White, whatever colours a logo is drawn in: every pixel it paints, at the alpha it
+                  paints it. A filter, so the site's files are used as they are.
+                */
+                styles: { filter: 'brightness(0) invert(1)' },
                 props: {
+                  // Square: an image takes the theme's media corners, which cut into a logo's edges.
+                  r: '0',
                   src: `${SITE}/partners/${partner.name}.svg`,
                   alt: partner.alt ?? partner.name,
                   height: `${Math.round(partner.h * 0.8)}px`,
