@@ -11,7 +11,7 @@ import {
 import { readDeviceApp, writeDeviceApp } from '@shared/bundles/deviceApp';
 import { appSpaceTemplate, followedTemplateId } from '@shared/bundles/display';
 import { displaySourceOf, readInstalledBundles } from '@shared/bundles/installedBundles';
-import { bootScreenTemplate, placesNode } from '@shared/bundles/judgeBundle';
+import { bootScreenTemplate, placesCredentialField } from '@shared/bundles/judgeBundle';
 import { offeredInPickers } from '@shared/devOnlyOffers';
 import { appTemplateRegistry, DEFAULT_APP_ID, resolveAppTemplate } from '@shared/registries/appTemplates';
 import { withDerivedIds } from '@shared/registries/derivedIds';
@@ -690,7 +690,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     const own = face().bootScreen;
     baseBootScreen ??= slotRegistry.get('core:bootScreen')?.node;
     let node = baseBootScreen;
-    if (own && placesNode(own, 'CredentialField')) {
+    if (own && placesCredentialField(own)) {
       const accepted = acceptTemplate(bootScreenTemplate({ bootScreen: own, name: brand().name }), {
         origin: `the app “${brand().name}”`,
         grants: CHROME_TIER,

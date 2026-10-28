@@ -105,7 +105,21 @@ describe('judging a bundle', () => {
       ...bundle(),
       bootScreen: { type: 'Column', children: [{ type: 'we-input', props: { type: 'password' } }] },
     } as Bundle;
-    expect(judgeBundle(own, deps).refusals.join(' ')).toMatch(/no password field of the app/);
+    expect(judgeBundle(own, deps).refusals.join(' ')).toMatch(/no password field/);
+  });
+
+  it('takes WE’s sign-in form, placed as a part, as the password field it holds', () => {
+    const recomposed = {
+      ...bundle(),
+      bootScreen: { type: 'Column', children: [{ type: '$part', props: { id: 'host.signIn.form' } }] },
+    } as Bundle;
+    expect(judgeBundle(recomposed, deps).refusals.join(' ')).not.toMatch(/no password field/);
+    // Another part is not one: only the form holds the field.
+    const other = {
+      ...bundle(),
+      bootScreen: { type: 'Column', children: [{ type: '$part', props: { id: 'host.signIn.accounts' } }] },
+    } as Bundle;
+    expect(judgeBundle(other, deps).refusals.join(' ')).toMatch(/no password field/);
   });
 
   it('judges the app at the chrome tier and everything else at the space tier', () => {

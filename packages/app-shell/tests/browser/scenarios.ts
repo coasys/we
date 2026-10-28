@@ -5,6 +5,7 @@
  * than restated — plus the rows a seeded backend should answer with. Nothing here describes layout;
  * the assertions live beside the cases, so one scenario can be measured several ways.
  */
+import { resolveParts } from '@shared/registries/moduleParts';
 import { feedView } from '@we/module-feed';
 import { transcriptLines } from '@we/module-transcribe';
 import {
@@ -27,7 +28,7 @@ import {
   TREE_LEAD,
   treeRow,
 } from '@we/template-kit';
-import { bundlePrompt, createSpaceModal, safeModeBanner } from '@we/template-shell';
+import { bootScreen, bundlePrompt, createSpaceModal, safeModeBanner } from '@we/template-shell';
 import { CALL_CHROME_BAND, themeLabTemplate, TREE_LOCALS, TREE_QUERIES, treeStrip } from '@we/template-showcase';
 import {
   SHOWCASE_THEME_PRESETS,
@@ -1999,6 +2000,51 @@ const profilePages = (): Scenario => {
 };
 
 /**
+ * WE's sign-in screen on its unlock step, with two other accounts — drawn the way the app draws it,
+ * its `$part`s resolved by the host's own `resolveParts`. Each part's frame is unwrapped to what it
+ * holds: a frame draws nothing of its own (`display: contents`), and needs stores the harness does
+ * not mount.
+ */
+const signInScreen = (): Scenario => {
+  const unframe = (node: unknown): unknown => {
+    if (Array.isArray(node)) return node.map(unframe);
+    if (!node || typeof node !== 'object') return node;
+    const n = node as SchemaNode;
+    if (n.type === 'PartFrame') return unframe((n.children as SchemaNode[])[0]);
+    return Object.fromEntries(Object.entries(n).map(([k, v]) => [k, unframe(v)]));
+  };
+  const resolved = resolveParts(bootScreen);
+  const account = (id: string, name: string, active = false) => ({ id, name, avatar: '', active, hasAgent: true });
+  return {
+    node: unframe(Array.isArray(resolved) ? resolved[0] : resolved) as SchemaNode,
+    tables: {},
+    stores: {
+      sessionStore: {
+        signInStep: 'unlock',
+        credentialEntered: false,
+        loginLoading: false,
+        passwordError: false,
+        loginError: '',
+        clearPasswordError: () => {},
+        unlock: () => {},
+      },
+      accountStore: {
+        activeAccount: account('a', 'Ada Lovelace', true),
+        accounts: [account('a', 'Ada Lovelace', true), account('b', 'Grace Hopper'), account('c', 'Alan Kay')],
+        canManageAccounts: true,
+        isFirstRun: false,
+        creating: false,
+        switchingTo: null,
+        error: '',
+        switchAccount: () => {},
+        createAccount: () => {},
+      },
+      templateStore: { brand: { active: false, name: 'WE', mark: '' } },
+    },
+  };
+};
+
+/**
  * The Coasys mark and name as the sign-in screen draws them and as the open rail does, each from the
  * bundle itself, in boxes of the same size: signing in fades the one away over the other, so their
  * marks and names must sit on the same pixels.
@@ -2211,6 +2257,7 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'coasys:about': coasysAbout,
   'feed:view': feedViewPage,
   'coasys:lockup': coasysLockup,
+  'signIn:we': signInScreen,
   'coasys:tree-dna': coasysTreeDna,
   'profile:pages': profilePages,
   'tree:caret-end': treeCaretEnd,

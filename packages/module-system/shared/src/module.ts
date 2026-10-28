@@ -294,6 +294,12 @@ export interface ModulePart {
 export interface PartInput {
   /** What it is, in the words a person placing the part reads: "the participant this tile shows". */
   description: string;
+  /**
+   * What the part reads when a placement gives nothing — which makes the input optional. Absent, the
+   * input is one the placement must give. For words a placement may change: a button's text, a
+   * field's label, where empty can mean none.
+   */
+  default?: string | number | boolean;
 }
 
 /**
