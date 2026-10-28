@@ -286,15 +286,16 @@ jobs:
       # fail to resolve instead of failing to find.
       #
       # Formatting is a property of the source text, not of a dependency graph, so it needs neither.
-      # This also keeps the check honest about its own scope — it is exactly the nine tracked `.rs`
-      # files, `build.rs` included, and never the gitignored `src/generated/` output.
+      # This also keeps the check honest about its own scope — it is exactly the tracked `.rs` files of
+      # the Tauri app, `build.rs` included, and of `crates/` (the custody crate both desktop apps
+      # use), and never the gitignored `src/generated/` output.
       #
       # The file list comes from git rather than a glob so it cannot silently pick up `target/` or
       # generated sources, and the count is asserted because an empty list would make this pass
       # vacuously — the failure mode a formatting gate is most likely to have.
       - name: Check formatting
         run: |
-          FILES="$(git ls-files -- apps/we-tauri/src-tauri | grep '\.rs$')"
+          FILES="$(git ls-files -- apps/we-tauri/src-tauri crates | grep '\.rs$')"
           COUNT="$(printf '%s\n' "$FILES" | grep -c . || true)"
           if [ "$COUNT" -lt 1 ]; then
             echo "::error::no Rust sources found to format-check"

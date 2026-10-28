@@ -8,14 +8,20 @@
 //!   create the app did not see finish is completed on the next start rather than stranded.
 //! - [`service`] runs the identity client's flows — create, add a device, revoke — for the identity
 //!   window, and reaches the executor only over its RPC with the admin credential.
-//! - [`window`] says which window may call which command.
+//! - [`window`] says which Tauri window may call which command.
+//! - [`host`] is what every desktop host starts the service with: the custody folder and the
+//!   identity store settings.
+//! - [`sidecar`] serves the service over stdin and stdout, as the `we-custody` binary, for the
+//!   Electron app.
 //!
 //! No Windows: the desktop app does not ship there. Nothing here links the executor;
 //! `tests/boundary.rs` keeps it so.
 
+pub mod host;
 pub mod pending;
 pub mod seal;
 pub mod service;
+pub mod sidecar;
 pub mod store;
 pub mod vault;
 pub mod window;

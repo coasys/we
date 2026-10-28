@@ -49,89 +49,25 @@ and lines marked `HOST` from `src/lib.rs`. A bare `println!` reaches the termina
 
 ## The identity: custody and the identity window
 
-The person's master key never rests in the executor or in a web view. The shell keeps it in
-`src-tauri/custody` (crate `we-custody`): `DesktopVault` over the macOS keychain, or sealed under a
-passphrase (Argon2id, XChaCha20-Poly1305) in the Linux Secret Service, or in
-`<data dir>/coasys/custody/<scid>.bin` (mode 0600) — on Linux where there is no Secret Service
-(`$XDG_DATA_HOME`), and on macOS where the build lacks the `keychain-access-groups` entitlement
-(`~/Library/Application Support`), which the data-protection keychain requires: an unsigned or
-ad-hoc-signed build, as a dev build is (the app asks the keychain once at start, and a file holds
-a new key behind a passphrase). The place is decided per identity, not for the whole app: the
-folder is shared by every account on the computer, so each key is used wherever it already rests
-— a `<scid>.bin` stays in the file, opened with its passphrase, while another identity's key in
-the keychain beside it asks for none — and only a new key goes to the keychain or the Secret
-Service when this build can use one. Nothing moves on its own; a key kept on both sides, or a
-store that cannot say whether it holds one, is refused rather than guessed at. The crate runs the
-identity client's flows — make the identity, add a device, revoke one — and reaches the executor only over
-its RPC with the admin credential. It is its own crate so nothing of it links the executor;
-`custody/tests/boundary.rs` keeps it so.
+The person's master key never rests in the executor or in a web view. This app links the custody
+crate (`crates/custody`, crate `we-custody`) into its main process: where keys rest, the flows, the
+identity store settings, pending identities and how to test it are in `crates/custody/README.md`,
+shared with the Electron app, which runs the same crate as a sidecar.
 
-Only the **identity window** runs a flow. It is a separate bundle (`identity/`, built by
-`vite.identity.config.ts` into `dist/identity/`) under a strict CSP, with its own capability
-(`src-tauri/capabilities/identity.json`). The main window may only open it on a step and read public
-custody state (`identity_open`, `identity_public_state`); `build.rs` declares every command in an app
-manifest so none is callable without a capability.
+Only the **identity window** runs a flow. Its page is the shared window (`packages/identity-window`)
+over the `identity_flow_*` commands, built from `identity/` by `vite.identity.config.ts` into
+`dist/identity/` under a strict CSP, with its own capability (`src-tauri/capabilities/identity.json`).
+The main window may only open it on a step and read public custody state (`identity_open`,
+`identity_public_state`); `build.rs` declares every command in an app manifest so none is callable
+without a capability.
 
-### The identity store
-
-The executor's identity store is two settings, named as the executor's own CLI names them:
-`AD4M_IDENTITY_STORE_URL` (where the store is) and `AD4M_IDENTITY_STORE_KEYS` (the store's signing
-keys, comma-separated multikeys — the executor accepts a head from the store only when one of
-these signed it). The app reads each from its run-time environment, and otherwise from the value
-the build was compiled with (`option_env!` in `src-tauri/src/lib.rs`), so a build handed to
-somebody carries them:
+The identity store reaches this app from its run-time environment, and otherwise from the value the
+build was compiled with (`option_env!` in `src-tauri/src/lib.rs`), so a build handed to somebody
+carries it:
 
 ```sh
 # A demo build that carries its store. Set both while compiling; cargo rebuilds when they change.
 AD4M_IDENTITY_STORE_URL=<store url> AD4M_IDENTITY_STORE_KEYS=<store key> pnpm tauri:build
-
-# Development, or to point a built app at another store for one run (overrides what it carries):
-AD4M_IDENTITY_STORE_URL=<store url> AD4M_IDENTITY_STORE_KEYS=<store key> pnpm tauri:dev
-```
-
-No store is deployed for the app yet, so there are no values to give here; use those of the store
-you run (`custody/tests/live.rs` starts a local one).
-
-**A build with no store key cannot make or change an identity, and says so.** The executor would
-refuse every publish (it trusts no head the store could answer), so the custody service refuses
-make, add-device and revoke before anything starts — before any words are made — and reports
-`blocked` in its public state. The first-run screen then draws "Make my identity here" disabled with
-the reason, and "Start now" is the way in. Without a URL the agent language keeps its own store
-setting, and Add a device cannot make an offer link.
-
-### Pending identities
-
-`create` keeps the identity's incept in `<custody dir>/pending-incepts.json` until its publish is
-confirmed, and the next attempt publishes it again. That folder is shared by every account on the
-computer, so an account only finishes — or reports — an incept that lists its own executor's device
-key. An incept that can never be published is not retried forever: one whose executor already
-speaks for another identity is forgotten, and one the store refused for good (its key already in a
-key log, a different log under its identifier, an event it calls invalid) is shown with its cause
-when the person next makes an identity, with "Discard it" to forget it. Discarding forgets the
-incept only; the master key stays where it rests.
-
-### Testing the custody crate
-
-```sh
-cd src-tauri/custody
-cargo test                       # vault, sealing, screens, command table, the executor boundary
-```
-
-It builds against the ad4m commit WE pins, by git (`custody/Cargo.toml`; `tests/boundary.rs` fails
-if that rev and `package.json`'s pin differ). Against a local ad4m checkout at that commit:
-
-```sh
-A=<ad4m>; P='patch."https://github.com/coasys/ad4m"'
-cargo test --config "$P.ad4m-identity-client.path=\"$A/ad4m-identity-client\"" \
-  --config "$P.ad4m-identity-core.path=\"$A/ad4m-identity-core\"" \
-  --config "$P.ad4m-client.path=\"$A/rust-client\""
-```
-
-The end-to-end test runs the three flows against a real identity-store and two real executors; see
-the header of `custody/tests/live.rs` for what it needs:
-
-```sh
-CUSTODY_LIVE=1 AD4M_REPO=<ad4m> cargo test --features cheap-kdf --test live -- --nocapture
 ```
 
 In the app build the generated `Cargo.toml` patches the custody crate's ad4m crates to the seed's

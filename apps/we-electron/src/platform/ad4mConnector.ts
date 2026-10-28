@@ -1,4 +1,4 @@
-import type { Account, BackendConnector, ExecutorSettings, ScreenSource } from '@we/app-shell/shared';
+import type { Account, BackendConnector, ExecutorSettings, IdentityHost, ScreenSource } from '@we/app-shell/shared';
 import { createLocalAd4mConnector } from '@we/backend-ad4m';
 import weSeed from '@we/seed-file';
 
@@ -27,6 +27,8 @@ declare global {
       restartExecutor: () => Promise<void>;
       chooseFile: (options: { save: boolean; defaultName?: string }) => Promise<string | null>;
       saveFile: (file: { name: string; type: string; bytes: Uint8Array }) => Promise<boolean>;
+      // The identity window and public custody state; absent where there is no custody service.
+      identity?: IdentityHost;
     };
   }
 }

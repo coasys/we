@@ -1,0 +1,23 @@
+{
+  "name": "@we/identity-window",
+  "version": "0.1.0",
+  "description": "The desktop identity window, shared by the Tauri and Electron apps",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./vite": {
+      "types": "./vite.d.ts",
+      "import": "./vite.js"
+    }
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.5"
+  }
+}
