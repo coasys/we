@@ -9444,13 +9444,13 @@ export const seedBundles: Bundle[] = [
                           href: 'https://www.holochain.org',
                           target: '_blank',
                           display: 'flex',
-                          opacity: 0.75,
+                          opacity: 0.85,
                           hoverProps: { opacity: 1 },
                         },
                         children: [
                           {
                             type: 'we-image',
-                            styles: { filter: 'brightness(0) invert(1)' },
+                            styles: { filter: 'invert(1) hue-rotate(180deg)' },
                             props: {
                               r: '0',
                               src: 'https://coasys.org/partners/holochain.svg',
@@ -9470,13 +9470,13 @@ export const seedBundles: Bundle[] = [
                           href: 'https://www.holo.host',
                           target: '_blank',
                           display: 'flex',
-                          opacity: 0.75,
+                          opacity: 0.85,
                           hoverProps: { opacity: 1 },
                         },
                         children: [
                           {
                             type: 'we-image',
-                            styles: { filter: 'brightness(0) invert(1)' },
+                            styles: { filter: 'invert(1) hue-rotate(180deg)' },
                             props: {
                               r: '0',
                               src: 'https://coasys.org/partners/holo.svg',
@@ -9496,13 +9496,13 @@ export const seedBundles: Bundle[] = [
                           href: 'https://holoventures.io',
                           target: '_blank',
                           display: 'flex',
-                          opacity: 0.75,
+                          opacity: 0.85,
                           hoverProps: { opacity: 1 },
                         },
                         children: [
                           {
                             type: 'we-image',
-                            styles: { filter: 'brightness(0) invert(1)' },
+                            styles: { filter: 'invert(1) hue-rotate(180deg)' },
                             props: {
                               r: '0',
                               src: 'https://coasys.org/partners/holoventures.svg',
@@ -9522,13 +9522,13 @@ export const seedBundles: Bundle[] = [
                           href: 'https://corenexus.is',
                           target: '_blank',
                           display: 'flex',
-                          opacity: 0.75,
+                          opacity: 0.85,
                           hoverProps: { opacity: 1 },
                         },
                         children: [
                           {
                             type: 'we-image',
-                            styles: { filter: 'brightness(0) invert(1)' },
+                            styles: { filter: 'invert(1) hue-rotate(180deg)' },
                             props: {
                               r: '0',
                               src: 'https://coasys.org/partners/corenexus.svg',
@@ -9548,13 +9548,13 @@ export const seedBundles: Bundle[] = [
                           href: 'https://trustgraph.net',
                           target: '_blank',
                           display: 'flex',
-                          opacity: 0.75,
+                          opacity: 0.85,
                           hoverProps: { opacity: 1 },
                         },
                         children: [
                           {
                             type: 'we-image',
-                            styles: { filter: 'brightness(0) invert(1)' },
+                            styles: { filter: 'invert(1) hue-rotate(180deg)' },
                             props: {
                               r: '0',
                               src: 'https://coasys.org/partners/trustgraph.svg',
@@ -9574,13 +9574,13 @@ export const seedBundles: Bundle[] = [
                           href: 'https://www.symphonics.life',
                           target: '_blank',
                           display: 'flex',
-                          opacity: 0.75,
+                          opacity: 0.85,
                           hoverProps: { opacity: 1 },
                         },
                         children: [
                           {
                             type: 'we-image',
-                            styles: { filter: 'brightness(0) invert(1)' },
+                            styles: { filter: 'invert(1) hue-rotate(180deg)' },
                             props: {
                               r: '0',
                               src: 'https://coasys.org/partners/symphonics.svg',
@@ -9600,13 +9600,13 @@ export const seedBundles: Bundle[] = [
                           href: 'https://www.michkaelbaker.com',
                           target: '_blank',
                           display: 'flex',
-                          opacity: 0.75,
+                          opacity: 0.85,
                           hoverProps: { opacity: 1 },
                         },
                         children: [
                           {
                             type: 'we-image',
-                            styles: { filter: 'brightness(0) invert(1)' },
+                            styles: { filter: 'invert(1) hue-rotate(180deg)' },
                             props: {
                               r: '0',
                               src: 'https://coasys.org/partners/cacoon.svg',
@@ -9626,13 +9626,13 @@ export const seedBundles: Bundle[] = [
                           href: 'https://asraya.io',
                           target: '_blank',
                           display: 'flex',
-                          opacity: 0.75,
+                          opacity: 0.85,
                           hoverProps: { opacity: 1 },
                         },
                         children: [
                           {
                             type: 'we-image',
-                            styles: { filter: 'brightness(0) invert(1)' },
+                            styles: { filter: 'invert(1) hue-rotate(180deg)' },
                             props: {
                               r: '0',
                               src: 'https://coasys.org/partners/asraya.svg',
@@ -9652,13 +9652,13 @@ export const seedBundles: Bundle[] = [
                           href: 'https://nillion.com/',
                           target: '_blank',
                           display: 'flex',
-                          opacity: 0.75,
+                          opacity: 0.85,
                           hoverProps: { opacity: 1 },
                         },
                         children: [
                           {
                             type: 'we-image',
-                            styles: { filter: 'brightness(0) invert(1)' },
+                            styles: { filter: 'invert(1) hue-rotate(180deg)' },
                             props: {
                               r: '0',
                               src: 'https://coasys.org/partners/nillion.svg',
@@ -9678,13 +9678,13 @@ export const seedBundles: Bundle[] = [
                           href: 'https://weco.io/',
                           target: '_blank',
                           display: 'flex',
-                          opacity: 0.75,
+                          opacity: 0.85,
                           hoverProps: { opacity: 1 },
                         },
                         children: [
                           {
                             type: 'we-image',
-                            styles: { filter: 'brightness(0) invert(1)' },
+                            styles: { filter: 'invert(1) hue-rotate(180deg)' },
                             props: {
                               r: '0',
                               src: 'https://coasys.org/partners/weco.svg',
@@ -9704,13 +9704,13 @@ export const seedBundles: Bundle[] = [
                           href: 'https://www.holons.io/',
                           target: '_blank',
                           display: 'flex',
-                          opacity: 0.75,
+                          opacity: 0.85,
                           hoverProps: { opacity: 1 },
                         },
                         children: [
                           {
                             type: 'we-image',
-                            styles: { filter: 'brightness(0) invert(1)' },
+                            styles: { filter: 'invert(1) hue-rotate(180deg)' },
                             props: {
                               r: '0',
                               src: 'https://coasys.org/partners/holons.svg',

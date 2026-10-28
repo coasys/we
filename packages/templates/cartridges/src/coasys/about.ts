@@ -13,7 +13,7 @@ import { glowTheme } from './themes.ts';
  * - the hero — the eyebrow, the typing headline, the line under it, the film with its captions and
  *   transcript, and the photo credit the film owes. "Watch the film" plays it in place; "See the
  *   app" goes down to the app section, as the site's does;
- * - the partners — their logos in white, on a band that carries the page from the hero into the app;
+ * - the partners — their logos, light, on a band that carries the page from the hero into the app;
  * - the app — its own film and what it does, with how far along each part is. Where the site asks
  *   for an email for its waitlist, this has a way into your spaces;
  * - underneath — the three layers, each linking to its page on the site.
@@ -726,7 +726,7 @@ const section = (id: string, props: Record<string, unknown>, children: SchemaNod
 /**
  * The partners, between the hero and the app. The site draws them dark on a white band; beside this
  * page's indigo that read as a hole, so the band is the page itself, shading from where the hero ends
- * into the violet the app section starts with, and the logos are white.
+ * into the violet the app section starts with, and the logos are turned light, keeping their colours.
  */
 const partners: SchemaNode = {
   type: 'Column',
@@ -742,16 +742,20 @@ const partners: SchemaNode = {
           props: { wrap: true, ax: 'center', ay: 'center', gap: '20px 30px', smUpProps: { gap: '26px 48px' } },
           children: PARTNERS.map((partner) => ({
             type: 'we-link',
-            // Quieter than the words around them until the pointer is on one.
-            props: { href: partner.href, target: '_blank', display: 'flex', opacity: 0.75, hoverProps: { opacity: 1 } },
+            // A little quieter than the words around them until the pointer is on one.
+            props: { href: partner.href, target: '_blank', display: 'flex', opacity: 0.85, hoverProps: { opacity: 1 } },
             children: [
               {
                 type: 'we-image',
                 /*
-                  White, whatever colours a logo is drawn in: every pixel it paints, at the alpha it
-                  paints it. A filter, so the site's files are used as they are.
+                  Light on the dark band, in its own colours. Inverting turns the logos' black words
+                  white, and the half-turn of hue after it puts each colour back where it was — Holo's
+                  teal, Asraya's blue, Holochain's violet — with its lightness flipped, which is the
+                  one thing that changes (we{co}'s pale cube comes out a deeper teal). Making them all
+                  white lost the colours; a light card under them brought back the pale box this band
+                  replaced. A filter, so the site's files are used as they are.
                 */
-                styles: { filter: 'brightness(0) invert(1)' },
+                styles: { filter: 'invert(1) hue-rotate(180deg)' },
                 props: {
                   // Square: an image takes the theme's media corners, which cut into a logo's edges.
                   r: '0',

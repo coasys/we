@@ -3,7 +3,7 @@
  *
  * - The band is the page shading into the app section, not the site's white: beside the indigo, white
  *   read as a hole.
- * - The logos are drawn white, whatever colours their files use, so they read on the dark band.
+ * - The logos are turned light, keeping their colours, so they read on the dark band.
  * - A logo's corners are square. An image takes the theme's media radius (Glow's is 22px), which cut
  *   into the edges of a logo drawn to its own edges.
  *
@@ -67,8 +67,8 @@ export async function check({ evaluate, screenshot }) {
     problems.push(`the band is ${seen.band.colour} ${seen.band.image}, not the page shading into the app`);
   const round = seen.logo.filter((l) => l.radius !== '0px');
   if (round.length) problems.push(`${round.length} logos have rounded corners (${round[0].radius})`);
-  const coloured = seen.logo.filter((l) => !/brightness\(0\) invert\(1\)/.test(l.filter));
-  if (coloured.length) problems.push(`${coloured.length} logos are not drawn white (${coloured[0].filter})`);
+  const coloured = seen.logo.filter((l) => !/invert\(1\) hue-rotate\(180deg\)/.test(l.filter));
+  if (coloured.length) problems.push(`${coloured.length} logos are not turned light (${coloured[0].filter})`);
   await screenshot('coasys-partners');
   return problems;
 }
