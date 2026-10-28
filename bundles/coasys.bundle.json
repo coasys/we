@@ -11029,452 +11029,75 @@
   "bootScreen": {
     "type": "$if",
     "props": {
-      "condition": { "$": "sessionStore.bootState != 'ready'" },
+      "condition": { "$": "sessionStore.signInStep != 'ready'" },
       "exitTransition": { "type": "fade", "duration": 400, "easing": "ease-out" },
       "then": {
         "type": "Column",
         "props": {
           "width": "100%",
           "height": "100%",
+          "ax": "center",
+          "ay": "center",
           "bg": "page",
           "position": "absolute",
-          "zIndex": 9999,
-          "overflowY": "auto"
+          "zIndex": 9999
         },
         "children": [
           {
-            "type": "Row",
+            "type": "$if",
             "props": {
-              "height": "72px",
-              "flex": "0 0 auto",
-              "ay": "center",
-              "gap": "300",
-              "pl": "calc((72px - 28px) / 2)",
-              "minWidth": "0",
-              "width": "100%"
-            },
-            "children": [
-              {
-                "type": "we-image",
-                "props": {
-                  "src": { "$": "templateStore.brand.mark" },
-                  "alt": "",
-                  "width": "28px",
-                  "height": "28px",
-                  "flexShrink": 0
-                }
+              "condition": {
+                "$": "accountStore.activeAccount && !(accountStore.isFirstRun && sessionStore.signInStep == 'starting')"
               },
-              {
-                "type": "we-text",
-                "props": { "variant": "body", "fontWeight": "semibold", "letterSpacing": "tight", "truncate": true },
-                "children": [{ "$": "templateStore.brand.name" }]
-              }
-            ]
-          },
-          {
-            "type": "Column",
-            "props": {
-              "flex": "1 1 auto",
-              "ax": "center",
-              "px": "500",
-              "pt": "800",
-              "pb": "1000",
-              "mdUpProps": { "px": "800" }
-            },
-            "children": [
-              {
+              "then": {
                 "type": "Column",
-                "props": { "width": "100%", "maxWidth": "440px", "gap": "600" },
+                "props": { "position": "absolute", "top": "0", "left": "0" },
                 "children": [
                   {
-                    "type": "$if",
+                    "type": "Row",
                     "props": {
-                      "condition": { "$": "accountStore.switchingTo" },
-                      "enterTransition": { "type": "fade", "duration": 200 },
-                      "then": {
-                        "type": "Row",
-                        "props": { "gap": "300", "ay": "center" },
-                        "children": [
-                          { "type": "we-spinner", "props": { "size": "sm" } },
-                          {
-                            "type": "we-text",
-                            "props": { "color": "text-muted" },
-                            "children": [{ "$": "`Switching to ${accountStore.switchingTo.name}…`" }]
-                          }
-                        ]
-                      }
-                    }
-                  },
-                  {
-                    "type": "$if",
-                    "props": {
-                      "condition": { "$": "accountStore.creating && !accountStore.switchingTo" },
-                      "enterTransition": { "type": "fade", "duration": 200 },
-                      "then": {
-                        "type": "Row",
-                        "props": { "gap": "300", "ay": "center" },
-                        "children": [
-                          { "type": "we-spinner", "props": { "size": "sm" } },
-                          {
-                            "type": "we-text",
-                            "props": { "color": "text-muted" },
-                            "children": ["Preparing a new account…"]
-                          }
-                        ]
-                      }
-                    }
-                  },
-                  {
-                    "type": "$if",
-                    "props": {
-                      "condition": {
-                        "$": "sessionStore.bootState == 'initialising' && !accountStore.switchingTo && !accountStore.creating"
+                      "height": "72px",
+                      "flex": "0 0 auto",
+                      "ay": "center",
+                      "gap": "300",
+                      "pl": "calc((72px - 28px) / 2)",
+                      "minWidth": "0"
+                    },
+                    "children": [
+                      {
+                        "type": "we-image",
+                        "props": {
+                          "src": { "$": "templateStore.brand.mark" },
+                          "alt": "",
+                          "width": "28px",
+                          "height": "28px",
+                          "flexShrink": 0
+                        }
                       },
-                      "enterTransition": { "type": "fade", "duration": 200 },
-                      "then": {
-                        "type": "Row",
-                        "props": { "gap": "300", "ay": "center" },
-                        "children": [
-                          { "type": "we-spinner", "props": { "size": "sm" } },
-                          { "type": "we-text", "props": { "color": "text-muted" }, "children": ["Starting up…"] }
-                        ]
-                      }
-                    }
-                  },
-                  {
-                    "type": "$if",
-                    "props": {
-                      "condition": { "$": "sessionStore.createAgentLoading || sessionStore.bootState == 'finishing'" },
-                      "enterTransition": { "type": "fade", "duration": 200 },
-                      "then": {
-                        "type": "Row",
-                        "props": { "gap": "300", "ay": "center" },
-                        "children": [
-                          { "type": "we-spinner", "props": { "size": "sm" } },
-                          {
-                            "type": "we-text",
-                            "props": { "color": "text-muted" },
-                            "children": ["Setting up your account…"]
-                          }
-                        ]
-                      }
-                    }
-                  },
-                  {
-                    "type": "$if",
-                    "props": {
-                      "condition": {
-                        "$": "sessionStore.bootState == 'login' && !accountStore.switchingTo && !accountStore.creating"
-                      },
-                      "enterTransition": { "type": "fade", "duration": 200 },
-                      "then": {
-                        "type": "Column",
-                        "props": { "gap": "600" },
-                        "children": [
-                          {
-                            "type": "Column",
-                            "props": { "gap": "300" },
-                            "children": [
-                              {
-                                "type": "we-text",
-                                "props": { "variant": "heading-xl", "tag": "h1", "letterSpacing": "tight" },
-                                "children": ["Welcome back"]
-                              },
-                              {
-                                "type": "we-text",
-                                "props": { "variant": "ingress", "color": "text-muted" },
-                                "children": [
-                                  {
-                                    "$": "accountStore.hasOtherAccounts && accountStore.activeAccount ? `Unlock ${accountStore.activeAccount.name} on this device.` : 'Unlock your account on this device.'"
-                                  }
-                                ]
-                              }
-                            ]
-                          },
-                          {
-                            "type": "we-form-field",
-                            "props": {
-                              "label": "Password",
-                              "error": {
-                                "$": "sessionStore.passwordError ? 'That password did not unlock it' : sessionStore.loginError"
-                              }
-                            },
-                            "children": [
-                              {
-                                "type": "CredentialField",
-                                "props": {
-                                  "purpose": "unlock",
-                                  "width": "100%",
-                                  "placeholder": "Your password",
-                                  "onEdit": { "$invoke": "sessionStore.clearPasswordError" },
-                                  "onSubmit": { "$invoke": "sessionStore.unlock" }
-                                }
-                              }
-                            ]
-                          },
-                          {
-                            "type": "Row",
-                            "props": { "gap": "300", "pt": "200", "ay": "center" },
-                            "children": [
-                              {
-                                "type": "we-button",
-                                "props": {
-                                  "variant": "solid",
-                                  "disabled": { "$": "!sessionStore.credentialEntered" },
-                                  "loading": { "$": "sessionStore.loginLoading" },
-                                  "onClick": { "$invoke": "sessionStore.unlock" }
-                                },
-                                "children": ["Unlock"]
-                              }
-                            ]
-                          }
-                        ]
-                      }
-                    }
-                  },
-                  {
-                    "type": "$if",
-                    "props": {
-                      "condition": {
-                        "$": "sessionStore.bootState == 'createAgent' && !sessionStore.createAgentLoading && !accountStore.switchingTo"
-                      },
-                      "enterTransition": { "type": "fade", "duration": 200 },
-                      "then": {
-                        "type": "Column",
-                        "props": { "gap": "600" },
-                        "$localState": {
-                          "name": {
-                            "type": "string",
-                            "initial": "",
-                            "validate": [{ "rule": "required", "message": "A name is required" }]
-                          }
+                      {
+                        "type": "we-text",
+                        "props": {
+                          "variant": "body",
+                          "fontWeight": "semibold",
+                          "letterSpacing": "tight",
+                          "truncate": true
                         },
-                        "children": [
-                          {
-                            "type": "Column",
-                            "props": { "gap": "300" },
-                            "children": [
-                              {
-                                "type": "we-text",
-                                "props": { "variant": "heading-xl", "tag": "h1", "letterSpacing": "tight" },
-                                "children": [
-                                  { "$": "accountStore.isFirstRun ? 'Make your account' : 'Add an account'" }
-                                ]
-                              },
-                              {
-                                "type": "we-text",
-                                "props": { "variant": "ingress", "color": "text-muted" },
-                                "children": [
-                                  "A name people will know you by, and a password that unlocks you on this device."
-                                ]
-                              }
-                            ]
-                          },
-                          {
-                            "type": "Column",
-                            "props": { "gap": "400" },
-                            "children": [
-                              {
-                                "type": "we-form-field",
-                                "key": "name",
-                                "props": { "label": "Name", "error": { "$": "error('name')" } },
-                                "children": [
-                                  {
-                                    "type": "we-input",
-                                    "props": {
-                                      "placeholder": "What people call you",
-                                      "value": { "$": "local.name" },
-                                      "onInput": { "$setLocal": "name", "value": { "$": "event.detail" } }
-                                    }
-                                  }
-                                ]
-                              },
-                              { "type": "CredentialField", "props": { "purpose": "new" } }
-                            ]
-                          },
-                          {
-                            "type": "Row",
-                            "props": { "gap": "300", "pt": "200", "ay": "center" },
-                            "children": [
-                              {
-                                "type": "we-button",
-                                "props": {
-                                  "variant": "solid",
-                                  "loading": { "$": "sessionStore.createAgentLoading" },
-                                  "onClick": [
-                                    { "$touch": "$all" },
-                                    { "$invoke": "sessionStore.touchCredential" },
-                                    {
-                                      "$if": {
-                                        "condition": { "$": "formValid() && sessionStore.credentialConfirmed" },
-                                        "then": {
-                                          "$invoke": "profileStore.completeAccountSetup",
-                                          "args": [{ "$": "local.name" }]
-                                        }
-                                      }
-                                    }
-                                  ]
-                                },
-                                "children": ["Create account"]
-                              }
-                            ]
-                          }
-                        ]
+                        "children": [{ "$": "templateStore.brand.name" }]
                       }
-                    }
-                  },
-                  {
-                    "type": "$if",
-                    "props": {
-                      "condition": { "$": "sessionStore.bootState == 'error'" },
-                      "enterTransition": { "type": "fade", "duration": 200 },
-                      "then": {
-                        "type": "Column",
-                        "props": { "gap": "600" },
-                        "children": [
-                          {
-                            "type": "Column",
-                            "props": { "gap": "300" },
-                            "children": [
-                              {
-                                "type": "we-text",
-                                "props": { "variant": "heading-xl", "tag": "h1", "letterSpacing": "tight" },
-                                "children": ["Could not reach your data"]
-                              },
-                              {
-                                "type": "we-text",
-                                "props": { "variant": "ingress", "color": "text-muted" },
-                                "children": ["Coasys could not connect to the device that holds your account."]
-                              }
-                            ]
-                          },
-                          {
-                            "type": "$if",
-                            "props": {
-                              "condition": { "$": "sessionStore.bootError" },
-                              "then": {
-                                "type": "we-code",
-                                "props": { "block": true },
-                                "children": [{ "$": "sessionStore.bootError" }]
-                              }
-                            }
-                          },
-                          {
-                            "type": "Row",
-                            "children": [
-                              {
-                                "type": "we-button",
-                                "props": { "variant": "solid", "onClick": { "$invoke": "sessionStore.retryBoot" } },
-                                "children": ["Try again"]
-                              }
-                            ]
-                          }
-                        ]
-                      }
-                    }
-                  },
-                  {
-                    "type": "$if",
-                    "props": {
-                      "condition": {
-                        "$": "sessionStore.bootState in ['login', 'createAgent', 'error'] && !sessionStore.createAgentLoading && !accountStore.switchingTo && !accountStore.creating && accountStore.canManageAccounts && accountStore.activeAccount && !accountStore.isFirstRun"
-                      },
-                      "then": {
-                        "type": "Column",
-                        "props": { "gap": "300", "pt": "400", "borderTop": "1px solid border" },
-                        "children": [
-                          {
-                            "type": "$if",
-                            "props": {
-                              "condition": { "$": "accountStore.error" },
-                              "then": {
-                                "type": "we-alert",
-                                "props": { "tone": "danger" },
-                                "children": [{ "$": "accountStore.error" }]
-                              }
-                            }
-                          },
-                          {
-                            "type": "$if",
-                            "props": {
-                              "condition": {
-                                "$": "count(filter(accountStore.accounts, { active: false, hasAgent: true }))"
-                              },
-                              "then": {
-                                "type": "we-text",
-                                "props": { "variant": "label", "color": "text-muted" },
-                                "children": ["Other accounts on this device"]
-                              }
-                            }
-                          },
-                          {
-                            "type": "$each",
-                            "props": {
-                              "items": { "$": "filter(accountStore.accounts, { active: false, hasAgent: true })" },
-                              "as": "account"
-                            },
-                            "children": [
-                              {
-                                "type": "we-button",
-                                "props": {
-                                  "variant": "ghost",
-                                  "ax": "start",
-                                  "onClick": {
-                                    "$invoke": "accountStore.switchAccount",
-                                    "args": [{ "$": "account.id" }]
-                                  }
-                                },
-                                "children": [
-                                  {
-                                    "type": "Row",
-                                    "props": { "gap": "300", "ay": "center" },
-                                    "children": [
-                                      {
-                                        "type": "we-avatar",
-                                        "props": {
-                                          "image": { "$": "account.avatar" },
-                                          "initials": { "$": "account.name" },
-                                          "hash": { "$": "account.id" },
-                                          "size": "sm"
-                                        }
-                                      },
-                                      {
-                                        "type": "we-text",
-                                        "props": { "truncate": true },
-                                        "children": [{ "$": "account.name" }]
-                                      }
-                                    ]
-                                  }
-                                ]
-                              }
-                            ]
-                          },
-                          {
-                            "type": "$if",
-                            "props": {
-                              "condition": { "$": "accountStore.activeAccount.hasAgent" },
-                              "then": {
-                                "type": "Row",
-                                "children": [
-                                  {
-                                    "type": "we-button",
-                                    "props": {
-                                      "variant": "ghost",
-                                      "onClick": { "$invoke": "accountStore.createAccount" }
-                                    },
-                                    "children": [{ "type": "we-icon", "props": { "name": "user-plus" } }, "New account"]
-                                  }
-                                ]
-                              }
-                            }
-                          }
-                        ]
-                      }
-                    }
+                    ]
                   }
                 ]
               }
-            ]
+            }
+          },
+          {
+            "type": "$part",
+            "props": { "id": "host.signIn.form", "inputs": { "unlockLabel": "Unlock", "passwordLabel": "Password" } }
+          },
+          {
+            "type": "Column",
+            "props": { "position": "absolute", "bottom": "300", "left": "300", "zIndex": 1 },
+            "children": [{ "type": "$part", "props": { "id": "host.signIn.accounts" } }]
           }
         ]
       }

@@ -2005,22 +2005,31 @@ const profilePages = (): Scenario => {
  * holds: a frame draws nothing of its own (`display: contents`), and needs stores the harness does
  * not mount.
  */
-const signInScreen = (): Scenario => {
-  const unframe = (node: unknown): unknown => {
-    if (Array.isArray(node)) return node.map(unframe);
-    if (!node || typeof node !== 'object') return node;
-    const n = node as SchemaNode;
-    if (n.type === 'PartFrame') return unframe((n.children as SchemaNode[])[0]);
-    return Object.fromEntries(Object.entries(n).map(([k, v]) => [k, unframe(v)]));
-  };
-  const resolved = resolveParts(bootScreen);
+/** A part's frame unwrapped to what it holds: it draws nothing of its own, and needs stores the harness does not mount. */
+const unframe = (node: unknown): unknown => {
+  if (Array.isArray(node)) return node.map(unframe);
+  if (!node || typeof node !== 'object') return node;
+  const n = node as SchemaNode;
+  if (n.type === 'PartFrame') return unframe((n.children as SchemaNode[])[0]);
+  return Object.fromEntries(Object.entries(n).map(([k, v]) => [k, unframe(v)]));
+};
+
+/** A sign-in screen on its unlock step, with two other accounts, its parts resolved as the host does. */
+const signInScenario = (
+  screen: SchemaNode,
+  brand: Record<string, unknown>,
+  theme?: Record<string, unknown>,
+): Scenario => {
+  const resolved = resolveParts(screen);
+  const node = unframe(Array.isArray(resolved) ? resolved[0] : resolved) as SchemaNode;
   const account = (id: string, name: string, active = false) => ({ id, name, avatar: '', active, hasAgent: true });
   return {
-    node: unframe(Array.isArray(resolved) ? resolved[0] : resolved) as SchemaNode,
+    node: theme ? { type: 'Column', theme, props: { width: '100%', height: '100%' }, children: [node] } : node,
     tables: {},
     stores: {
       sessionStore: {
         signInStep: 'unlock',
+        bootState: 'login',
         credentialEntered: false,
         loginLoading: false,
         passwordError: false,
@@ -2039,9 +2048,23 @@ const signInScreen = (): Scenario => {
         switchAccount: () => {},
         createAccount: () => {},
       },
-      templateStore: { brand: { active: false, name: 'WE', mark: '' } },
+      templateStore: { brand },
     },
   };
+};
+
+/** WE's sign-in screen — see `signInScenario`. */
+const signInScreen = (): Scenario => signInScenario(bootScreen, { active: false, name: 'WE', mark: '' });
+
+/** The Coasys sign-in screen as its bundle carries it, in Glow, with Coasys's own mark. */
+const coasysSignIn = (): Scenario => {
+  const glow = BUNDLE_LAB_THEMES.find((t) => t.label === 'coasys-glow')?.theme ?? {};
+  const bundle = coasysBundle as unknown as { bootScreen: SchemaNode; brand: { name: string; mark: string } };
+  return signInScenario(
+    bundle.bootScreen,
+    { active: true, name: bundle.brand.name, mark: `data:image/svg+xml,${encodeURIComponent(bundle.brand.mark)}` },
+    glow,
+  );
 };
 
 /**
@@ -2257,6 +2280,7 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'coasys:about': coasysAbout,
   'feed:view': feedViewPage,
   'coasys:lockup': coasysLockup,
+  'signIn:coasys': coasysSignIn,
   'signIn:we': signInScreen,
   'coasys:tree-dna': coasysTreeDna,
   'profile:pages': profilePages,

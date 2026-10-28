@@ -63,7 +63,10 @@ describe('the Coasys cartridge', () => {
     const bundle = cartridgeBundles().find((b) => b.id === 'coasys')!;
     expect(bundle.brand?.name).toBe('Coasys');
     expect(bundle.brand?.mark).toMatch(/^<svg/);
-    expect(JSON.stringify(bundle.bootScreen)).toContain('CredentialField');
+    // WE's sign-in form, placed with Coasys's words, rather than a copy of it: the form holds the
+    // host's password field, and every step of signing in arrives with it.
+    expect(JSON.stringify(bundle.bootScreen)).toContain('"id":"host.signIn.form"');
+    expect(JSON.stringify(bundle.bootScreen)).toContain('"unlockLabel":"Unlock"');
     // Its About is a page of its own, which the bundle carries; the Markdown stays as the fallback.
     expect(bundle.pages?.map((page) => page.id)).toEqual([bundle.brand?.aboutPage]);
     expect(bundle.brand?.about).toBeTruthy();
