@@ -59,9 +59,14 @@ function isIdentityStep(step) {
  * `openWindow({ onClosed })` makes the identity window and calls `onClosed` once it is gone.
  */
 export function createIdentity({ custody, openWindow }) {
-  let window = null;
-  let step = null;
-  let outcome = null;
+  /**
+   * The open window's run: the window, the step it was opened on and how that step ended. Each
+   * call keeps the run it came from, so an answer that arrives after its window closed changes
+   * nothing of the next one.
+   */
+  let run = null;
+  /** The cancels still unanswered. The next step asks custody nothing until they are, so none ends it. */
+  let ending = null;
 
   const service = () => {
     const client = custody();
@@ -69,39 +74,56 @@ export function createIdentity({ custody, openWindow }) {
     return client;
   };
 
+  const cancelStep = (client) => {
+    const sent = client.call('cancel');
+    const settled = Promise.all([ending, sent.catch(() => {})]).then(() => {
+      if (ending === settled) ending = null;
+    });
+    ending = settled;
+    return sent;
+  };
+
+  /** A request of the step `of` runs, once every cancel before it is answered, and never after its window closed. */
+  const ask = async (of, method, params) => {
+    while (ending) await ending;
+    if (of !== run) throw new Error('the identity window was closed');
+    return service().call(method, params);
+  };
+
   /** Hands the window its screen, keeping how the step ended when the screen is its last. */
-  const shown = ({ screen, outcome: ended }) => {
-    if (ended) outcome = ended;
+  const shown = (of, { screen, outcome: ended }) => {
+    if (ended && of) of.outcome = ended;
     return screen;
   };
 
-  const close = () => {
-    if (window && !window.isDestroyed()) window.close();
+  /** Closes the window of `of`, never one opened after it. */
+  const close = (of) => {
+    if (of?.window && !of.window.isDestroyed()) of.window.close();
   };
 
   return {
     /** The identity window, while one is open. */
-    window: () => (window && !window.isDestroyed() ? window : null),
+    window: () => (run?.window && !run.window.isDestroyed() ? run.window : null),
 
     async open(asked) {
       if (!isIdentityStep(asked)) throw new Error('not an identity step');
       service();
-      if (window && !window.isDestroyed()) {
+      if (run?.window && !run.window.isDestroyed()) {
         // The step already in it goes on; this call did not start one.
-        window.focus();
+        run.window.focus();
         return 'cancelled';
       }
-      step = asked;
-      outcome = null;
+      const opened = { step: asked, outcome: null, window: null };
+      run = opened;
       return new Promise((resolve) => {
-        window = openWindow({
+        opened.window = openWindow({
           onClosed: () => {
-            window = null;
-            const ended = outcome ?? 'cancelled';
-            if (ended === 'cancelled')
-              custody()
-                ?.call('cancel')
-                .catch(() => {});
+            if (run === opened) run = null;
+            const ended = opened.outcome ?? 'cancelled';
+            if (ended === 'cancelled') {
+              const client = custody();
+              if (client) cancelStep(client).catch(() => {});
+            }
             resolve(ended);
           },
         });
@@ -112,21 +134,26 @@ export function createIdentity({ custody, openWindow }) {
 
     /** Starts the step the main window opened this window for. The window cannot choose another. */
     async start() {
-      if (!step) throw new Error('no step was asked for');
-      return shown(await service().call('start', { step }));
+      const of = run;
+      if (!of) throw new Error('no step was asked for');
+      return shown(of, await ask(of, 'start', { step: of.step }));
     },
 
-    step: async (input) => shown(await service().call('step', { input })),
+    async step(input) {
+      const of = run;
+      return shown(of, await ask(of, 'step', { input }));
+    },
 
     /** Cancels the step and closes the window. */
     async cancel() {
-      await service().call('cancel');
-      close();
+      const of = run;
+      await cancelStep(service());
+      close(of);
     },
 
     /** Closes the window after the step's last screen. */
     async finish() {
-      close();
+      close(run);
     },
   };
 }

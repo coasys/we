@@ -41,6 +41,19 @@ function setup(answers = {}) {
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
+/** An answer custody holds back until the test lets it go. */
+function held() {
+  let release;
+  const answer = new Promise((r) => (release = r));
+  return { answer, release };
+}
+
+/** Answers the first call with `first` and every later one with `then`. */
+function firstThen(first, then) {
+  let calls = 0;
+  return () => (calls++ === 0 ? first : then);
+}
+
 describe('the identity window', () => {
   it('runs the step the main window asked for, and resolves with how it ended once it closes', async () => {
     const { identity, calls, windows } = setup({ start: WORDS, step: READY });
@@ -91,6 +104,91 @@ describe('the identity window', () => {
     await expect(outcome).resolves.toBe('cancelled');
     expect(calls.map(([m]) => m)).toContain('cancel');
     expect(identity.window()).toBeNull();
+  });
+
+  it('a cancel answered after its window closed closes no window opened since', async () => {
+    const cancel = held();
+    const { identity, calls, windows } = setup({ start: WORDS, cancel: firstThen(cancel.answer, null) });
+    const first = identity.open({ kind: 'create' });
+    await identity.start();
+    const cancelling = identity.cancel();
+    windows[0].close();
+    await expect(first).resolves.toBe('cancelled');
+
+    const second = identity.open({ kind: 'add-device' });
+    const started = identity.start();
+    await flush();
+    // Nor does its step start before that cancel is answered.
+    expect(calls.filter(([m]) => m === 'start')).toHaveLength(1);
+    cancel.release(null);
+    await cancelling;
+    await started;
+
+    expect(windows).toHaveLength(2);
+    expect(windows[1].isDestroyed()).toBe(false);
+    expect(identity.window()).toBe(windows[1]);
+    windows[1].close();
+    await expect(second).resolves.toBe('cancelled');
+  });
+
+  it('an outcome answered after its window closed is not the next step’s', async () => {
+    const failed = { screen: { screen: 'failed', message: 'no' }, outcome: 'failed' };
+    const start = held();
+    const { identity, calls, windows } = setup({ start: firstThen(start.answer, WORDS), cancel: null });
+    const first = identity.open({ kind: 'create' });
+    const startedFirst = identity.start();
+    windows[0].close();
+    await expect(first).resolves.toBe('cancelled');
+    await flush();
+
+    const second = identity.open({ kind: 'add-device' });
+    expect(await identity.start()).toEqual(WORDS.screen);
+    start.release(failed);
+    await startedFirst;
+
+    // The second step is unfinished, so closing its window still cancels it.
+    windows[1].close();
+    await expect(second).resolves.toBe('cancelled');
+    await flush();
+    expect(calls.filter(([m]) => m === 'cancel')).toHaveLength(2);
+    expect(calls.at(-1)).toEqual(['cancel', undefined]);
+  });
+
+  it('the next step asks custody nothing until the closed one’s cancel is answered', async () => {
+    const cancel = held();
+    const { identity, calls, windows } = setup({ start: WORDS, cancel: firstThen(cancel.answer, null) });
+    const first = identity.open({ kind: 'create' });
+    await identity.start();
+    windows[0].close();
+    await expect(first).resolves.toBe('cancelled');
+
+    identity.open({ kind: 'add-device' });
+    const started = identity.start();
+    await flush();
+    // A cancel custody answers after the next start would end that step instead.
+    expect(calls.map(([m]) => m)).toEqual(['start', 'cancel']);
+
+    cancel.release(null);
+    expect(await started).toEqual(WORDS.screen);
+    expect(calls.map(([m]) => m)).toEqual(['start', 'cancel', 'start']);
+    expect(calls.at(-1)).toEqual(['start', { step: { kind: 'add-device' } }]);
+  });
+
+  it('a step waiting on that cancel is never started once its own window closed', async () => {
+    const cancel = held();
+    const { identity, calls, windows } = setup({ start: WORDS, cancel: firstThen(cancel.answer, null) });
+    identity.open({ kind: 'create' });
+    await identity.start();
+    windows[0].close();
+
+    const second = identity.open({ kind: 'add-device' });
+    const started = identity.start();
+    windows[1].close();
+    await expect(second).resolves.toBe('cancelled');
+    cancel.release(null);
+
+    await expect(started).rejects.toThrow('the identity window was closed');
+    expect(calls.map(([m]) => m)).toEqual(['start', 'cancel', 'cancel']);
   });
 
   it('reports a failed step as failed', async () => {
