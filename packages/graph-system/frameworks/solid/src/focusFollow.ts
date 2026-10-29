@@ -7,32 +7,34 @@
  * still for a moment — a change arriving after that is somebody else's write, not the settling, and
  * must not yank the camera back. Somebody panning or zooming lets go at once (`stop`).
  *
- * ## A glide with momentum
+ * ## The card is anchored; the map moves around it
  *
- * The camera is a critically damped spring pulled towards the card: it carries a speed, starts from
- * rest, and eases in without overshooting. The point it is pulled to is not fixed — the card is itself
- * travelling while the layout settles, and its resting place moves as what is around it opens and
- * closes — so the camera bends towards each new place without losing the speed it had.
+ * What eases is where the card is *on screen* — its distance from the middle, a critically damped
+ * spring that starts from rest and comes in without overshooting. The camera is whatever puts the card
+ * there: every frame it measures where the card is drawn now and pans by exactly enough. So a layout
+ * moving the card — the kinds beside it opening and closing, the card opening into its uses — moves
+ * the camera with it, and the card does not move on screen at all; once it has arrived it is held in
+ * the middle while the map settles around it.
  *
- * It closed a share of the remaining gap each frame, which has no speed to keep: it set off at full
- * speed, and each time the resting place moved it turned towards the new one at once. Choosing a
- * definition in another kind of Social DNA moves that place three times — the kind opens, the
- * definition arrives, it opens into its uses — and each one was a kink in the camera's path.
- * Under reduced motion it closes the whole gap at once.
+ * Twice before this aimed the camera at a point instead: at the card, then at where the card would
+ * come to rest. Either way the camera moved on one curve and the drawn card on another (the layout's
+ * travel, re-aimed each time the forest shifted), and the difference was the card shaking from side
+ * to side. Measured from where the card is drawn, there is no second curve. The correction runs in the
+ * same tick as the layout's own move (`moved`), so it is never a frame behind.
  *
  * ## A new focus lets go of the old one
  *
  * `release` stops following without stopping the camera: it brakes, keeping the speed it had, until
  * the next card is there to follow. Until then it went on following the old card — which, when the
  * kind it was in closed, travelled up into its parent, and the camera went up with it before crossing
- * to the new one.
+ * to the new one. Under reduced motion the card is put in the middle at once.
  */
 export interface FocusFollow {
   /** Start following a node, and glide it to the middle — from whatever speed the camera has. */
   start(id: string): void;
   /** Stop following, and brake to a stop: the focus is changing, and what comes next is not there yet. */
   release(): void;
-  /** The graph moved: keep gliding after the node, unless it has been still long enough to let go. */
+  /** The graph moved: hold the node where it is on screen, unless it has been still long enough to let go. Call it in the same tick as the move. */
   moved(): void;
   /** Let go — somebody took the camera. */
   stop(): void;
@@ -63,7 +65,7 @@ export function springStep(gap: number, speed: number, dt: number, smoothMs = GL
 }
 
 export function createFocusFollow(deps: {
-  /** How far the camera must pan, in screen pixels, to put a node in the middle — or nothing. */
+  /** How far the camera must pan, in screen pixels, to put a node *as drawn now* in the middle — or nothing. */
   offset: (id: string) => { dx: number; dy: number } | undefined;
   /** Pan the camera by this much. */
   pan: (dx: number, dy: number) => void;
@@ -78,7 +80,9 @@ export function createFocusFollow(deps: {
   const reduced = deps.reduced ?? (() => false);
   /** What is followed: a node, or nothing while braking after `release`. */
   let following: { id?: string; quietUntil: number; giveUpAt: number } | undefined;
-  /** The camera's speed, in screen pixels a millisecond. */
+  /** Where the card should be on screen, as its distance from the middle — what the spring eases. */
+  let aim = { x: 0, y: 0 };
+  /** How fast that distance is closing, in screen pixels a millisecond — the camera's own speed. */
   let speed = { x: 0, y: 0 };
   let scheduled = false;
   let last = 0;
@@ -87,46 +91,67 @@ export function createFocusFollow(deps: {
     following = undefined;
     speed = { x: 0, y: 0 };
   };
+  const still = () => Math.hypot(speed.x, speed.y) * 16 < 0.5;
 
   const glide = () => {
-    scheduled = false;
     if (!following) return;
     const t = now();
     if (t > following.giveUpAt) return rest();
-    // Braking is following a target where the camera already is; a node gone is braked from too.
-    const gap = (following.id ? deps.offset(following.id) : undefined) ?? { dx: 0, dy: 0 };
-    if (reduced()) {
-      if (Math.abs(gap.dx) >= 0.5 || Math.abs(gap.dy) >= 0.5) deps.pan(gap.dx, gap.dy);
-      speed = { x: 0, y: 0 };
-      if (!following.id) following = undefined;
-      return;
-    }
     const dt = Math.min(Math.max(t - last, 1), 64);
     last = t;
-    const x = springStep(gap.dx, speed.x, dt);
-    const y = springStep(gap.dy, speed.y, dt);
-    speed = { x: x.speed, y: y.speed };
-    const settled = Math.abs(gap.dx) < 0.5 && Math.abs(gap.dy) < 0.5 && Math.hypot(speed.x, speed.y) * 16 < 0.5;
-    if (settled) {
-      // The last fraction of a pixel, so it comes to rest in the middle rather than beside it.
-      if (following.id && (gap.dx || gap.dy)) deps.pan(gap.dx, gap.dy);
-      speed = { x: 0, y: 0 };
-      if (!following.id) following = undefined;
-      return;
+    const gap = following.id ? deps.offset(following.id) : undefined;
+
+    // Braking: the camera coasts on the speed it had and comes to a stop.
+    if (!gap) {
+      if (reduced()) return rest();
+      const x = springStep(0, speed.x, dt);
+      const y = springStep(0, speed.y, dt);
+      speed = { x: x.speed, y: y.speed };
+      if (still()) {
+        if (!following.id) following = undefined;
+        speed = { x: 0, y: 0 };
+        return;
+      }
+      deps.pan(x.move, y.move);
+      return schedule();
     }
-    deps.pan(x.move, y.move);
-    schedule();
+
+    // Where the card should be now: the spring's next step towards the middle, or the middle itself.
+    if (reduced()) {
+      aim = { x: 0, y: 0 };
+      speed = { x: 0, y: 0 };
+    } else {
+      const x = springStep(aim.x, speed.x, dt);
+      const y = springStep(aim.y, speed.y, dt);
+      aim = { x: aim.x - x.move, y: aim.y - y.move };
+      speed = { x: x.speed, y: y.speed };
+      if (Math.abs(aim.x) < 0.5 && Math.abs(aim.y) < 0.5 && still()) {
+        aim = { x: 0, y: 0 };
+        speed = { x: 0, y: 0 };
+      }
+    }
+    // Whatever puts it there, however the layout has moved it since the last frame.
+    const dx = gap.dx - aim.x;
+    const dy = gap.dy - aim.y;
+    if (Math.abs(dx) >= 0.01 || Math.abs(dy) >= 0.01) deps.pan(dx, dy);
+    if (aim.x || aim.y) schedule();
   };
   const schedule = () => {
     if (scheduled) return;
     scheduled = true;
-    frame(glide);
+    frame(() => {
+      scheduled = false;
+      glide();
+    });
   };
 
   return {
     start(id) {
       const t = now();
       following = { id, quietUntil: t + FOLLOW_QUIET_MS, giveUpAt: t + FOLLOW_MAX_MS };
+      // From where the card is drawn now, at the speed the camera already has.
+      const gap = deps.offset(id);
+      aim = reduced() || !gap ? { x: 0, y: 0 } : { x: gap.dx, y: gap.dy };
       // A frame's worth of glide on the first step, rather than the whole gap from a stale clock.
       if (!scheduled) last = t - 16;
       schedule();
@@ -141,7 +166,8 @@ export function createFocusFollow(deps: {
       const t = now();
       if (t > following.quietUntil || t > following.giveUpAt) return rest();
       following.quietUntil = t + FOLLOW_QUIET_MS;
-      schedule();
+      // Now, in the tick that moved it, so the card is held rather than caught up with a frame late.
+      glide();
     },
     stop: rest,
   };

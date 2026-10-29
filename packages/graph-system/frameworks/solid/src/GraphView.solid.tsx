@@ -776,9 +776,9 @@ export function GraphView(props: GraphViewProps) {
 
   /** A focus held in the middle while the graph settles around it — see `focusCentre`. */
   const follow = createFocusFollow({
-    // Towards where the card will rest, not where the layout's travel has it this frame — see `restingPosition`.
+    // From where the card is drawn this frame, so a layout moving it moves the camera with it — see `focusFollow`.
     offset: (id) => {
-      const at = engine.restingPosition(id);
+      const at = engine.getPositions().get(id);
       const clear = engine.viewport.visibleRect();
       if (!at || !clear.width || !clear.height) return undefined;
       const screen = engine.viewport.toScreen({ x: at.x, y: at.y });

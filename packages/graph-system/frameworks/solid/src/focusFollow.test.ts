@@ -93,32 +93,52 @@ describe('a focus followed while the map settles', () => {
   });
 
   /*
-    Choosing a definition in another kind moves where the card will rest several times while the map
-    opens around it. The camera closed a share of the gap each frame, so it set off at full speed and
-    turned at once each time the place moved — a kink, every time.
+    Choosing a definition beside kinds that are opening and closing moves the card while the camera is
+    on its way to it. The camera was aimed at a point — the card, then where it would rest — and moved
+    on its own curve while the card moved on the layout's, and the card shook from side to side. Its
+    place on screen is what eases now: the layout moving it is taken up by the camera at once.
   */
-  it('sets off gently and keeps its speed when the place it is heading for moves', () => {
+  it('eases the card in on screen, untouched by the layout moving it on the way', () => {
     const { follow, card, camera, step } = follower();
-    const moves: number[] = [];
-    const record = (frames: number) => {
-      for (let i = 0; i < frames; i++) {
-        const before = camera.x;
+    const onScreen: number[] = [];
+    const frames = (n: number, move?: () => void) => {
+      for (let i = 0; i < n; i++) {
+        move?.();
+        follow.moved();
         step();
-        moves.push(camera.x - before);
+        onScreen.push(card.x - camera.x);
       }
     };
     follow.start('card');
-    record(6);
-    // From rest: each frame faster than the one before, rather than the largest step first.
-    expect(moves[0]).toBeLessThan(moves[1]);
-    expect(moves[1]).toBeLessThan(moves[2]);
-    // The card's resting place moves behind the camera; it slows and turns, not reverses at once.
-    card.x = -300;
-    follow.moved();
-    record(1);
-    expect(moves[6]).toBeGreaterThan(0);
-    record(120);
-    expect(camera.x).toBeCloseTo(-300, 0);
+    frames(4);
+    // The layout carries the card one way and then the other while it comes in.
+    frames(6, () => (card.x += 40));
+    frames(6, () => (card.x -= 70));
+    frames(80);
+    // On screen it only ever closes on the middle — never back out, never across it.
+    for (let i = 1; i < onScreen.length; i++) {
+      expect(Math.abs(onScreen[i])).toBeLessThanOrEqual(Math.abs(onScreen[i - 1]) + 1e-6);
+      expect(onScreen[i]).toBeGreaterThanOrEqual(-1e-6);
+    }
+    expect(camera.x).toBeCloseTo(card.x, 0);
+    // From rest: it sets off gently rather than with its largest step.
+    expect(300 - onScreen[0]).toBeLessThan(onScreen[0] - onScreen[1] + 300 - onScreen[0]);
+  });
+
+  it('holds the card in the middle while the map settles around it', () => {
+    const { follow, card, camera, step } = follower();
+    follow.start('card');
+    // The map still settling, so it is still held.
+    for (let i = 0; i < 80; i++) {
+      follow.moved();
+      step();
+    }
+    for (const x of [340, 410, 380, 520]) {
+      card.x = x;
+      follow.moved();
+      // In the same tick, before a frame is drawn.
+      expect(card.x - camera.x).toBeCloseTo(0, 6);
+    }
   });
 
   /*
