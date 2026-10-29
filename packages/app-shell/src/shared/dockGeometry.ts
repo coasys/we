@@ -975,10 +975,23 @@ export interface DockGeometry {
    */
   laneAxis?: 'vertical' | 'horizontal' | '';
   /**
-   * In the template at its `$panels` outlet rather than in the dock layer. The frame renders
-   * nothing for it; the outlet renders the body. See {@link FloatPlacement.home}.
+   * In the template at its `$panels` outlet rather than in the dock layer: its frame is drawn by the
+   * outlet (`PanelLane`), in the page's flow. See {@link FloatPlacement.home}.
    */
   home?: boolean;
+  /**
+   * May not be moved out of where it is — its declaration says `fixed`. A section at home in a
+   * template keeps no grip to break it out by.
+   */
+  fixed?: boolean;
+  /**
+   * Framed inside its edge's lane rather than over the window: a panel pushing the content aside is
+   * a section of the lane the host draws at that edge (`EdgeLanes`), which arranges its sections by
+   * flex along the lane, and its frame fills its section. The box here is still the engine's, for the
+   * drop targets, the grips between sections and a drag's origin — the same division, worked out the
+   * same way (`laneBase`).
+   */
+  inLane?: boolean;
   /**
    * Stacked behind another panel in a shared seat — a tab that is not showing. The frame hides
    * itself entirely while this is true; hides, never unmounts, so a call in a background tab keeps
@@ -1011,7 +1024,7 @@ export interface DockGeometry {
   canCollapse?: boolean;
   /**
    * In a lane collapsed to its edge — see {@link FloatPlacement.stowed}. The frame is hidden, as a
-   * background tab's is; the lane's strip is what is on screen instead.
+   * background tab's is; the lane's strip is what is on screen instead (`EdgeLanes`).
    */
   stowed?: boolean;
   /**
@@ -1020,20 +1033,6 @@ export interface DockGeometry {
    * own, and the topmost titlebar is the one that reads as one.
    */
   canStow?: boolean;
-  /**
-   * The strip a stowed lane becomes, published on its first member for the frame to draw — one name
-   * per panel in the lane. Drawn outside every frame, because every frame in the lane is hidden.
-   */
-  strip?: {
-    top: string;
-    left: string;
-    width: string;
-    height: string;
-    vertical: boolean;
-    tabs: DockTab[];
-    /** Beneath every panel in the lane, which shrink onto it over the top while the lane closes. */
-    layer: number;
-  };
   /**
    * The size to lay the panel's titlebar and contents out at while its box eases in or out of a lane's
    * strip — the box it is heading for when opening, the box it had when closing. Absent at rest, when
@@ -1058,37 +1057,6 @@ export interface DockGeometry {
    */
   stowPending?: boolean;
   /**
-   * The boundary between this panel and the next one in its lane, as a box to put a divider in.
-   * Absent when there is no next panel. See {@link seamBetween}.
-   *
-   * Published rather than left to the frame, because the frame cannot draw it: the divider used to
-   * be a grip inside the earlier panel's box, straddling its bottom edge by six pixels — and the box
-   * is `overflow: hidden`, so the outer half and the whole of the accent line were clipped. A seam is
-   * a property of the pair, drawn from outside both.
-   */
-  seam?: { top: string; left: string; width: string; height: string };
-  /**
-   * The box the grip for the whole lane's thickness sits in — its inboard edge, along its full
-   * length. Present on a displacing lane's **first** member only, and absent everywhere else. See
-   * {@link laneEdgeBox}.
-   *
-   * The seam's sibling, and published for the same reason: a displacing lane has one thickness that
-   * every member shares, so dragging any member's inboard edge moves all of them — but a per-panel
-   * grip lights only the panel under the pointer, so the feedback said "this one" while the effect
-   * was "all of them". A boundary belonging to several panels is not any one panel's to draw.
-   */
-  laneEdge?: { top: string; left: string; width: string; height: string };
-  /**
-   * The layer the lane's own grip paints at: above every panel in the lane.
-   *
-   * A layer *name* is wrong here for the reason it is wrong for {@link seamLayer}, and this is where
-   * that lesson was learned twice. The grip straddles the lane's edge, so half of it lies over the
-   * lane's own panels — and `sticky` is `200`, which is exactly `PANEL_LAYER_BASE`, so it fell under
-   * every panel that had ever been raised. The inboard half was painted over and the line read as
-   * about half the thickness of every other grip in the app, which is how it was noticed.
-   */
-  laneEdgeLayer?: number;
-  /**
    * Just joined or left a seat, so this panel lands rather than travels. True for one frame.
    *
    * A drop into a stack changes two things at once: the panel that was showing goes hidden, and the
@@ -1100,15 +1068,6 @@ export interface DockGeometry {
    * panel should still ease into whatever room the change left it.
    */
   settling?: boolean;
-  /**
-   * The layer the seam's divider paints at: above both panels it divides.
-   *
-   * It cannot take a layer *name*. A displacing lane has no gap, so the divider straddles the shared
-   * edge and overlaps both panels — and the two carry their own steps now, so a fixed `sticky` would
-   * fall under whichever had been raised. `chrome` would clear them and tie with the rail, which is
-   * the layer that has to stay reachable above everything a panel does.
-   */
-  seamLayer?: number;
   /**
    * The z-index this panel paints at — its step above `PANEL_LAYER_BASE`, by how recently it was
    * touched. See {@link layerOrder}. The frame binds its `zIndex` to this rather than to a layer
@@ -1183,6 +1142,23 @@ export const NO_INSET: ContentInset = { left: 0, right: 0, top: 0, bottom: 0 };
  * every *other* displacing panel, plus the editor's rails, which take room the same way and are not
  * docks. A panel never counts itself, or it would shrink away from its own edge.
  */
+/**
+ * Where an edge's lanes go: the box the lanes pushing the content aside at that edge share, as CSS
+ * offsets from the window's sides — its depth into the window is the lanes' own thickness, which they
+ * lay out themselves. Side lanes own the corners, top and bottom lanes run between them, the rule the
+ * displacing branch of `resolveDock` keeps.
+ */
+export function edgeLaneBox(
+  edge: Exclude<DockEdge, null>,
+  inset: ContentInset,
+): { top?: number; right?: number; bottom?: number; left?: number } {
+  const region = contentRegion({ width: 0, height: 0 } as Viewport);
+  if (edge === 'left') return { left: region.left, top: region.top, bottom: region.bottom };
+  if (edge === 'right') return { right: region.right, top: region.top, bottom: region.bottom };
+  const sides = { left: region.left + inset.left, right: region.right + inset.right };
+  return edge === 'top' ? { top: region.top, ...sides } : { bottom: region.bottom, ...sides };
+}
+
 function contentRegion(viewport: Viewport, occupied: ContentInset = NO_INSET) {
   const left = frame.left + occupied.left;
   const right = RAIL_PX + occupied.right;
@@ -1731,7 +1707,7 @@ const withinSeat = <T extends { placement: FloatPlacement }>(a: T, b: T) =>
  * a run of them is one seat. A panel with no `order` is a seat of its own — two unnamed panels are
  * never merged, whatever sorted them next to each other.
  */
-function seatsOf<T extends { placement: FloatPlacement }>(members: T[]): T[][] {
+export function seatsOf<T extends { placement: FloatPlacement }>(members: T[]): T[][] {
   const seats: T[][] = [];
   let open: { order: number; seat: T[] } | null = null;
   for (const member of members) {
@@ -2047,54 +2023,6 @@ export function stripBox(edge: Exclude<DockEdge, null>, viewport: Viewport, occu
 export const SEAM_PX = 12;
 
 /**
- * The box a divider sits in, between two consecutive members of one lane.
- *
- * Centred on the boundary — the middle of the gap for a floating lane, the shared edge for a
- * displacing one — and spanning the pair across the lane, so it reads as the line *between* them
- * rather than as the edge of either. `SEAM_PX` thick, because a target you can hit while dragging
- * has to be far thicker than a seam anybody wants to look at; the handle draws its own 3px line.
- */
-export function seamBetween(a: Rect, b: Rect, axis: 'vertical' | 'horizontal'): Rect {
-  if (axis === 'vertical') {
-    const x = Math.min(a.x, b.x);
-    const boundary = (a.y + a.h + b.y) / 2;
-    return { x, y: boundary - SEAM_PX / 2, w: Math.max(a.x + a.w, b.x + b.w) - x, h: SEAM_PX };
-  }
-  const y = Math.min(a.y, b.y);
-  const boundary = (a.x + a.w + b.x) / 2;
-  return { x: boundary - SEAM_PX / 2, y, w: SEAM_PX, h: Math.max(a.y + a.h, b.y + b.h) - y };
-}
-
-/**
- * The box the handle that resizes a whole lane sits in — its inboard side, along its full length.
- *
- * The sibling of {@link seamBetween}, and it exists for the same reason: a boundary belonging to
- * several panels cannot be drawn by any one of them. Dragging the inboard edge of a *displacing*
- * lane resizes every member — the lane has one thickness and they share it — but the grip was a
- * per-panel one, so it lit up the height of the panel under the pointer while moving the whole
- * column. The feedback disagreed with the effect.
- *
- * Spanning the lane and centred on its edge, so it reads as the boundary between the lane and the
- * content it pushed aside rather than as the side of whichever panel you happened to grab.
- *
- * `edge` is the screen edge the lane is docked to, so the inboard side is the opposite one: a lane
- * on the right is dragged by its left.
- */
-export function laneEdgeBox(boxes: Rect[], edge: Exclude<DockEdge, null>): Rect {
-  const x = Math.min(...boxes.map((box) => box.x));
-  const y = Math.min(...boxes.map((box) => box.y));
-  const right = Math.max(...boxes.map((box) => box.x + box.w));
-  const bottom = Math.max(...boxes.map((box) => box.y + box.h));
-
-  if (edge === 'left' || edge === 'right') {
-    const boundary = edge === 'left' ? right : x;
-    return { x: boundary - SEAM_PX / 2, y, w: SEAM_PX, h: bottom - y };
-  }
-  const boundary = edge === 'top' ? bottom : y;
-  return { x, y: boundary - SEAM_PX / 2, w: right - x, h: SEAM_PX };
-}
-
-/**
  * Give every member of a seat the box the member that is showing resolved to. Mutates `resolved`.
  *
  * A seat has one size, so a tab brought forward appears exactly where the seat is. Most seats get
@@ -2164,12 +2092,13 @@ export function columnMembers<T extends { placement: FloatPlacement }>(
 /**
  * Hand a span out between members that each want a base and a share of what is left.
  *
- * Flexbox, computed rather than delegated. Spare room after the bases goes out by grow ratio; a
- * shortfall shrinks the bases proportionally and floors each at `floor`.
+ * Flexbox, computed. Spare room after the bases goes out by grow ratio; a shortfall shrinks the bases
+ * proportionally and floors each at `floor`.
  *
- * Delegating to real CSS flex was the tempting alternative and is not available: making a lane a flex
- * container means reparenting panels out of fixed positioning, which remounts their subtrees — the
- * hazard `dockFrame` exists to avoid, and it would drop a call's live video streams.
+ * A lane pushing the content aside is drawn by real flex now (`EdgeLanes`) — panels drawn once and
+ * moved (`PanelHost`) made reparenting a frame cheap, where it used to remount a call's video. This
+ * still answers the same division for what is measured from the boxes rather than drawn in them: the
+ * drop targets, the grips between seats, a drag's origin.
  */
 function divide(bases: number[], grows: number[], available: number, floors: number[]): number[] {
   const sumBase = bases.reduce((total, base) => total + base, 0);
@@ -2196,7 +2125,7 @@ export type LaneMember = FloatPlacement & { min?: DockMin };
  * lane — which divides the width — a folded member keeps its share of the width and gives up its
  * height on the other axis instead. See {@link FloatPlacement.collapsed}.
  */
-function laneBase(
+export function laneBase(
   member: LaneMember,
   axis: 'w' | 'h',
   spanning: boolean,
@@ -2912,7 +2841,88 @@ export function withChromeCovered(covered: ContentInset, chrome: { top: number; 
  */
 export function contentInset(requests: DockRequest[], viewport: Viewport): ContentInset {
   const inset: ContentInset = { left: 0, right: 0, top: 0, bottom: 0 };
+  for (const lane of displacingLanes(requests, viewport)) inset[lane.edge] += lane.thickness;
+  return inset;
+}
 
+/**
+ * The cards snapped to one edge, when there are several seats of them: a lane over the content.
+ *
+ * `box` is the room the lane stands in, as CSS offsets from the window's sides — the region the
+ * displacing lanes leave, less the chrome a float clears; the cards stand a gap inside it and a gap
+ * apart, each keeping its own size across the lane (clamped to `room`), as `columnLayout` has them. A
+ * lane of one seat is not one: its card stays at its snap, as it always has.
+ */
+export interface CoveringLane {
+  edge: Exclude<DockEdge, null>;
+  box: { top: number; right: number; bottom: number; left: number };
+  /** The most a card may be across the lane — its width down a side, its height along the top. */
+  room: number;
+  seats: { placement: FloatPlacement; index: number }[][];
+}
+
+/**
+ * Every edge's floating lane of two seats or more — what `columnLayout` lays out as a column of
+ * cards, for the host to draw as one (`EdgeLanes`). Not below `NARROW_VIEWPORT_PX`, where a floating
+ * lane is one seat of tabs at its snap.
+ */
+export function coveringLanes(
+  requests: DockRequest[],
+  viewport: Viewport,
+  chrome: ContentInset = DEFAULT_FLOAT_CHROME,
+): CoveringLane[] {
+  if (viewport.width < NARROW_VIEWPORT_PX) return [];
+  const lanes: CoveringLane[] = [];
+  const panels = laneable(requests, viewport);
+  for (const edge of EDGES) {
+    const group = edgeGroups(panels, edge, viewport).find((candidate) => !candidate.displacing);
+    if (!group || group.seats.length < 2) continue;
+    const region = contentRegion(viewport, occupiedFor(requests, group.members[0].index, viewport));
+    const free = {
+      width: Math.max(0, region.width - chrome.left - chrome.right),
+      height: Math.max(0, region.height - chrome.top - chrome.bottom),
+    };
+    const vertical = edge === 'left' || edge === 'right';
+    lanes.push({
+      edge,
+      box: {
+        top: region.top + chrome.top,
+        right: region.right + chrome.right,
+        bottom: region.bottom + chrome.bottom,
+        left: region.left + chrome.left,
+      },
+      room: Math.max(MIN_FLOAT_PX, (vertical ? free.width : free.height) - DOCK_GAP_PX * 2),
+      seats: group.seats,
+    });
+  }
+  return lanes;
+}
+
+/** One lane pushing the content aside: its edge, how thick it is, and its panels seat by seat. */
+export interface DisplacingLane<
+  T extends { placement: FloatPlacement } = { placement: FloatPlacement; index: number },
+> {
+  edge: Exclude<DockEdge, null>;
+  /**
+   * What the lane is called while it lasts — `band:<n>` for a lane somebody named, else its one panel's
+   * id (an unnamed displacing lane holds one panel; see `edgeGroups`).
+   */
+  key: string;
+  thickness: number;
+  /** Put away whole, to its strip. See {@link FloatPlacement.stowed}. */
+  stowed: boolean;
+  seats: T[][];
+}
+
+/**
+ * Every lane pushing the content aside, outboard first on each edge, with the thickness each gets.
+ *
+ * The one answer to how thick a lane is, read by both the content inset (the sum, per edge) and the
+ * lanes the host draws (each band's own) — so the room the content gives up and the room the lanes
+ * take cannot disagree.
+ */
+export function displacingLanes(requests: DockRequest[], viewport: Viewport): DisplacingLane[] {
+  const lanes: DisplacingLane[] = [];
   const region = contentRegion(viewport);
   /*
     What is left on each axis after the panels already counted — the same room `resolveDock` clamps
@@ -2948,11 +2958,17 @@ export function contentInset(requests: DockRequest[], viewport: Viewport): Conte
       // — and the room it gave up is the point. See `laneShrunk`.
       const floor = laneShrunk(members, edge) ? 0 : MIN_DOCK_PX;
       const thickness = Math.min(clamp(wanted, floor, room[axis]), room[axis]);
-      inset[edge] += thickness;
       room[axis] -= thickness;
+      lanes.push({
+        edge,
+        key: group.band === null ? `solo:${requests[group.members[0].index].id}` : `band:${group.band}`,
+        thickness,
+        stowed: members.every((member) => member.stowed),
+        seats: group.seats,
+      });
     }
   }
-  return inset;
+  return lanes;
 }
 
 /**

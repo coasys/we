@@ -196,7 +196,8 @@ docs/architecture/template-fragments.md.
 **A template is one of three things.** A *shell* owns a space's chrome, arrangement and route table;
 a *view* renders one section inside one; an *app* is WE's own chrome around every space — the
 sidebar and the module rail placed as host parts (`{ type: '$part', props: { id: 'host.sidebar' } }`)
-beside nodes of its own, with the bands that chrome holds declared in `meta.frame`. An app is
+beside nodes of its own, with the bands that chrome holds declared in `meta.frame` (and how its
+window edges frame the panels docked there in `meta.edges`). An app is
 chosen by the agent, never applied as a space's template, and only an app may place a host part.
 `meta.role` says which, and absent means shell. A shell
 marks where its sections go with `{ path: '$views' }` and the host expands that per space, from
@@ -3432,6 +3433,7 @@ ShellStore:
   - dockResizing: boolean — a panel is being dragged or resized right now. Suspend transitions while it is true so the edge tracks the cursor
   - panelMaximised: boolean — some panel covers the whole window. The app's own chrome — sidebar, module rail — hides while it is true; a template's fixed chrome should too
   - dockPlacement: Record<dockId, { snap, displace, canDisplace, … }> — where each panel is parked, for its frame to read: which of the eight snaps it is at, whether it displaces content, and whether it may. The state a position menu ticks; dockGeometry is the resulting box
+  - panelFrames: Record<dockId, 'window' | 'flush' | 'none'> — how each panel is framed where it is not a window: its own declared frame, else — pushing the content aside at an edge — that edge's frame as the app template declares it (meta.edges); absent, a window's frame
   - movingDock: string | null — the id of the panel being dragged, or null. What mounts the snap-target overlay
   - activeSnap: SnapPoint | null — the snap the moving panel would take if dropped now ('top-left' | 'top' | … | 'left'), so that target can light up
   - snapTargets: { id, top, left, width, height }[] — every snap target’s box while a panel is being dragged, measured against the room left for it. A place a card is already parked at is left out: the question there has stopped being whether and started being where among what is there, which the insert slots answer. Empty otherwise
@@ -3441,6 +3443,7 @@ ShellStore:
   - layoutPinned: Record<string, boolean> keyed by panel id — whether that panel has been dragged away from where meta.panels declared it. False for a panel no layout mentions, since there is nothing to go back to. Gate a "reset to layout" affordance on it rather than on a placement merely existing
   - layoutDirty: boolean — the interface on screen has been rearranged: one of its panels moved, resized or closed. What a whole-arrangement "reset layout" control is gated on, and not the same question as any layoutPinned entry — a closed panel has no placement, and a panel declared for another route is not among the docks at all. False for an interface declaring no panels
   - panelSupplied: Record<moduleId, boolean> — modules whose panel this interface supplies itself, by declaring a `meta.panels` entry that names the module and carries a `node`. What a module's dock frame asks before drawing its own contents; the module still owns whether the panel is open and how big it is
+  - panelInstances: { id, panel, inputs, title? }[] — the instances open in the interface on screen: which declared panel each is of, and what it was opened with. To list them, or to tell a control whether its record already has one
   - collapsedLanes: string[] — the home lanes the reader has folded away on the interface on screen, by name. Read it to draw a collapse button in the right state: { $: "'tree' in shellStore.collapsedLanes" }
   - customisingLayout: boolean — every section's grip is showing, so the reader can see what can be moved. Off, a grip shows only on hover or focus
   - layoutNames: string[] — the arrangements saved for the interface on screen, by name, sorted. The three-rung chain has one user slot; these are how to keep more than one — a “recording” and a “reviewing” for the same template. Empty for an interface with none
@@ -3474,6 +3477,8 @@ ShellStore:
   - resetDockToLayout(panelId: string): puts a panel back where meta.panels asked for it, forgetting where it was dragged. Forgets rather than rewrites, so the panel keeps following the layout afterwards — including when the template changes it. Pair with layoutPinned
   - closeTemplatePanel(panelId: string): dismisses a panel the interface declared in meta.panels, by that panel's id. What its titlebar's close button calls
   - openTemplatePanel(panelId: string): puts a closed one back. The only way back to a panel that has been closed — it has no titlebar left to ask from — so a template offering a close should offer this too
+  - openPanel(panelId: string, inputs?: object, options?: { key?, title? }): opens a panel the interface supplies in meta.panels (one with a `node`) once more, with these inputs — an inspector per record, a view per call. Its node reads them as panel.inputs, and which instance it is as panel.id. It opens where the declared panel would, as a tab beside it where the declaration names an `order`. The same inputs open the same instance, brought to the front, so opening the record already open makes no second; `key` names the instance outright where the inputs should not decide, `title` is what its tab says. Kept per agent and per template across reloads
+  - closePanel(instanceId: string): closes an instance openPanel opened — what its close button calls. Where it was dragged is forgotten with it
   - resetTemplateLayout(): puts every panel of the interface on screen back the way meta.panels declared them, and reopens the ones that were closed. The whole-arrangement counterpart of resetDockToLayout, and the only way back for a closed panel, which has no titlebar to reset itself from. Scoped to the template rather than the route, so a declaration that varies by route is reset once. Pair with layoutDirty
   - toggleLane(lane: string): folds a home lane (a `$panels` outlet) away, or brings it back — what a sidebar's collapse button calls. Its sections stay mounted and hidden, so a feed keeps its place. Kept per agent and per template, and undone by resetTemplateLayout
   - setLaneCollapsed(lane: string, collapsed: boolean): folds a lane away or brings it back, as said rather than flipped
@@ -5422,9 +5427,21 @@ ordinary panel: it can be docked, folded, stacked, saved in a layout — and its
 - **Any panel can live in a lane, not only one the template draws.** A `module` entry with `home`
   puts that module's panel there, and the host's own panels are named the same way —
   `{ "id": "settings", "module": "shell", "home": "right" }` places the space's settings, which the
-  gear then opens beside the page rather than as a window on the edge. In a lane a panel is flush: no
-  titlebar, no frame. One that does not draw its own heading gets a slim header with its name and its
-  close; a template's own section draws its own.
+  gear then opens beside the page rather than as a window on the edge. In a lane a panel is flush by
+  default: no titlebar, no frame. One that does not draw its own heading gets a slim header with its
+  name and its close; a template's own section draws its own.
+- **How a panel is framed is a choice, wherever it is.** `frame` on an entry — `'window'` (a
+  titlebar with its grip, menu and close), `'flush'` (part of the page, a grip and close in its corner
+  on hover), or `'none'` — holds in a lane, on an edge and floating alike. `frame` on a `$panels`
+  outlet sets that lane's default. An app template sets its window edges' default with
+  `meta.edges`: `{ "right": { "frame": "flush" } }` makes the panels pushing the content aside on
+  the right part of the app, as a sidebar is; it does not reach a card floating over the content.
+- **A panel can be opened more than once.** `shellStore.openPanel('inspector', { recordId: … })`
+  opens another instance of a panel the template supplies, with its own inputs — an inspector per
+  record, side by side or as tabs. Inside the node, `panel.inputs` is what it was opened with and
+  `panel.id` which instance it is (for the declared panel itself the inputs are empty). It starts
+  where the declaration says, so with an `order` it joins that place as a tab; opening the same
+  inputs again brings that instance forward, and its close is `shellStore.closePanel(panel.id)`.
 - **Two sections with the same explicit `order` share one place, as tabs** — as panels in an edge's
   seat do. One shows, the one most recently opened or chosen, with a strip naming them all; `tab`
   orders the strip, else the order they are declared in. An inspector and the space's settings taking

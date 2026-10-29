@@ -6,6 +6,7 @@ export type {
   SchemaProp,
   RecordViewDraws,
   TemplateMeta,
+  PanelFrame,
   TemplatePanel,
   TemplateSchema,
   TemplateSource,

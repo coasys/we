@@ -7392,6 +7392,9 @@
         "dockPlacement": {
           "type": "object"
         },
+        "panelFrames": {
+          "type": "object"
+        },
         "movingDock": {
           "type": "string"
         },
@@ -7418,6 +7421,9 @@
         },
         "panelSupplied": {
           "type": "object"
+        },
+        "panelInstances": {
+          "type": "array"
         },
         "collapsedLanes": {
           "type": "array"
@@ -7465,6 +7471,8 @@
         "resetDockToLayout",
         "closeTemplatePanel",
         "openTemplatePanel",
+        "openPanel",
+        "closePanel",
         "resetTemplateLayout",
         "toggleLane",
         "setLaneCollapsed",
@@ -7508,6 +7516,8 @@
         "endDockMove",
         "closeTemplatePanel",
         "openTemplatePanel",
+        "openPanel",
+        "closePanel",
         "resetTemplateLayout",
         "toggleLane",
         "setLaneCollapsed",
@@ -7538,6 +7548,8 @@
         "resetDockToLayout",
         "closeTemplatePanel",
         "openTemplatePanel",
+        "openPanel",
+        "closePanel",
         "toggleLane",
         "setLaneCollapsed",
         "saveLayout",
@@ -8356,6 +8368,7 @@
     "EditorInspectorPanel",
     "EditorThemePanel",
     "PanelLane",
+    "PanelSlot",
     "PartFrame",
     "TemplateCard",
     "TemplatePanelBody",

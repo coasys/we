@@ -389,49 +389,39 @@ describe('breakpoint tiers', () => {
   });
 });
 
-describe('"open" on a panel that supplies its own node', () => {
+describe('"open" on a panel, and what a panel\'s node can read', () => {
   /*
-    The failure class this validator exists for, in its purest form: a field that typechecks,
-    validates, reads exactly as intended and is never consulted.
-
-    `open` suppresses a MODULE launcher — the call module's is `goToCall`, which joins a call when
-    there is not one, so `open: false` is what lets an interface place the call window without
-    starting a call for whoever walks in. An authored panel has no launcher to suppress: the host
-    places it and it is up. The shell reads the flag under a `panel.module &&` guard and there is no
-    second read site, so on a `node` entry it does nothing at all.
-
-    It shipped that way in the workshop template, which declared its calls list `open: false` and
-    got a panel that was always open — and was never wrong on screen, which is exactly why nobody
-    noticed for as long as they did.
+    `open: false` places a panel without opening it — a module's without invoking its launcher (the
+    call module's joins a call), a template's own until `shellStore.openTemplatePanel` opens it: an
+    inspector, opened when something is chosen. It was once read only for a module's panel, and this
+    validator warned that it did nothing on one the template supplies; the shell reads it for both now.
   */
-  const shell = (panel: Record<string, unknown>): SchemaNode =>
+  const shell = (panel: Record<string, unknown>, root: Record<string, unknown> = {}): SchemaNode =>
     ({
       meta: { name: 'T', description: 'D', icon: 'i', panels: [panel] },
       type: 'Column',
       props: { bg: 'page' },
+      ...root,
     }) as unknown as SchemaNode;
 
-  it('warns when an authored panel declares it', () => {
-    const warnings = messages(shell({ id: 'notes', node: { type: 'Column' }, open: false }), 'warning');
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toContain('"module"');
+  it('says nothing about `open` on a panel the template supplies, which it starts closed', () => {
+    expect(messages(shell({ id: 'notes', node: { type: 'Column' }, open: false }), 'warning')).toEqual([]);
   });
 
-  it('warns on `open: true` as well — it is equally unread, not merely redundant', () => {
-    expect(messages(shell({ id: 'notes', node: { type: 'Column' }, open: true }), 'warning')).toHaveLength(1);
-  });
-
-  it('says nothing about a module panel, which is what the field is for', () => {
+  it('says nothing about `open` on a module panel', () => {
     expect(messages(shell({ id: 'call', module: 'call', open: false }), 'warning')).toEqual([]);
   });
 
-  it('says nothing about an authored panel that leaves it alone', () => {
-    expect(messages(shell({ id: 'notes', node: { type: 'Column' } }), 'warning')).toEqual([]);
-  });
-
-  it('warns rather than refuses, so a stranger’s template still installs', () => {
-    const result = check(shell({ id: 'notes', node: { type: 'Column' }, open: false }));
-    expect(result.valid).toBe(true);
+  /*
+    A panel's node is told which panel it is and what it was opened with — `shellStore.openPanel`
+    opens one as many times as asked, each with inputs of its own.
+  */
+  it("lets a panel's node read `panel`, and nothing else", () => {
+    const reads = { type: 'we-text', children: [{ $: 'panel.inputs.recordId' }] };
+    expect(messages(shell({ id: 'inspector', node: reads }), 'error')).toEqual([]);
+    expect(messages(shell({ id: 'inspector', node: { type: 'Column' } }, { children: [reads] }), 'error')).not.toEqual(
+      [],
+    );
   });
 });
 

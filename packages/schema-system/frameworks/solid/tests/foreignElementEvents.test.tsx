@@ -42,4 +42,23 @@ describe('a foreign custom element', () => {
     element.pick(5);
     expect(picked).toEqual([5]);
   });
+
+  /*
+    `data-` and `aria-` props mean something only as attributes: a selector cannot see a property, and
+    a screen reader cannot hear one. Set as properties, as every other prop is, both did nothing.
+  */
+  it('sets `data-` and `aria-` props as attributes', () => {
+    const stores = { state: { label: 'Rate this' as string | null } };
+    const node: SchemaNode = {
+      type: 'x-rating',
+      props: { value: 2, 'data-we-grip': 'panel:1', 'aria-label': { $: 'state.label' } },
+    };
+    const { container } = render(() => <RenderSchema node={node} stores={stores} registry={{}} />);
+    const element = container.querySelector('x-rating') as TestRating;
+
+    expect(element.value).toBe(2);
+    expect(element.getAttribute('data-we-grip')).toBe('panel:1');
+    expect(element.getAttribute('aria-label')).toBe('Rate this');
+    expect(container.querySelector('[data-we-grip="panel:1"]')).toBe(element);
+  });
 });

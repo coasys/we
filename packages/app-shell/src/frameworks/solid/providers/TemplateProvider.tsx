@@ -3,7 +3,7 @@ import { datasetAddressedBy } from '@shared/datasetIdentity';
 import { collectionFacts } from '@shared/destructiveFacts';
 import { involvementOptimism } from '@shared/involvementOptimism';
 import { linkNewMentions, type MentionWriter, prepareMentionUpdate } from '@shared/lineMentions';
-import { appFrame, declareAppFrame } from '@shared/registries/appFrame';
+import { appFrame, declareAppEdges, declareAppFrame } from '@shared/registries/appFrame';
 import { HOST_PART_SLOTS } from '@shared/registries/hostParts';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { resolveParts, resolvePartsInRoutes } from '@shared/registries/moduleParts';
@@ -76,7 +76,9 @@ import { RECORD_ROUTE_PATH, recordPage } from '@we/template-views';
 import { createEffect, createMemo, createSignal, getOwner, onCleanup, onMount, Show, untrack } from 'solid-js';
 
 import { createCollabSession } from '../collab/collabSession';
+import { EdgeLanes } from '../components/EdgeLanes';
 import { moduleBlockDisplays } from '../components/moduleBlockDisplays';
+import { PanelHost } from '../components/PanelHost';
 import { registerRecordGhost } from '../drag/recordGhost';
 import { PersistentAppFrames } from '../layouts/PersistentAppFrames';
 import { TemplateLayout } from '../layouts/TemplateLayout';
@@ -119,6 +121,8 @@ export default function TemplateProvider() {
   // publishes no rail width, so nothing keeps clear of a rail that is not there.
   // The bands the app's chrome holds, as it declares them — what panels dock against.
   createEffect(() => declareAppFrame(templateStore.appTemplate().meta?.frame));
+  // And how its edges frame the panels pushing the content aside there (`meta.edges`).
+  createEffect(() => declareAppEdges(templateStore.appTemplate().meta?.edges));
 
   createEffect(() => {
     const frame = appFrame();
@@ -1669,6 +1673,10 @@ export default function TemplateProvider() {
               <RenderSchema node={appSchema} stores={chromeBag} registry={registry} />
             </div>
             <RenderSchema node={shellSchema} stores={chromeBag} registry={registry} />
+            {/* The lanes pushing the content aside at the window's edges. */}
+            <EdgeLanes />
+            {/* Every panel, drawn once here, inside these providers, and moved to its place. */}
+            <PanelHost />
 
             {/* Router — keyed on the template ID *and* the resolved section list, since both decide what
            `buildRoutes` produces. Adding, removing or reordering a section remounts the space's

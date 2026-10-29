@@ -62,6 +62,24 @@ function permitted(key: string, value: unknown, native: boolean): unknown {
   return undefined;
 }
 
+/**
+ * Give a web component one prop: as an attribute when it is a `data-` or `aria-` one, as a property
+ * otherwise.
+ *
+ * Every prop on a custom element is set as a property, which is right for the element's own API — an
+ * object, a list, a number — and wrong for these two families, which mean something only as
+ * attributes: `aria-label` as a property names nothing to a screen reader, and `data-*` as a property
+ * is invisible to a selector. Both used to be set that way, silently.
+ */
+function assignToHost(host: HTMLElement & Record<string, unknown>, key: string, value: unknown): void {
+  if (!/^(data|aria)-/.test(key)) {
+    host[key] = value;
+    return;
+  }
+  if (value === undefined || value === null || value === false) host.removeAttribute(key);
+  else host.setAttribute(key, String(value));
+}
+
 /** Check if a prop key is an event handler name (e.g. onClick, onInput, onKeyDown) */
 function isEventProp(key: string): boolean {
   return key.length > 2 && key.startsWith('on') && key[2] === key[2].toUpperCase();
@@ -1449,7 +1467,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
     for (const [key, memo] of Object.entries(propMemos)) {
       if (isEventProp(key)) continue;
       createEffect(() => {
-        if (hostRef) hostRef[key] = permitted(key, memo(), false);
+        if (hostRef) assignToHost(hostRef, key, permitted(key, memo(), false));
       });
     }
 
@@ -1464,13 +1482,13 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
         for (const key of Object.keys(currentProps)) {
           if (!(key in propMemos) && !isEventProp(key)) {
             const resolved = resolveProp(currentProps[key], stores, effectiveContext, createMemo);
-            hostRef[key] = permitted(key, deepUnwrap(resolved), false);
+            assignToHost(hostRef, key, permitted(key, deepUnwrap(resolved), false));
             currentDynamicKeys.add(key);
           }
         }
       }
       for (const key of prevDynamicKeys) {
-        if (!currentDynamicKeys.has(key)) hostRef[key] = undefined;
+        if (!currentDynamicKeys.has(key)) assignToHost(hostRef, key, undefined);
       }
       prevDynamicKeys.clear();
       for (const key of currentDynamicKeys) prevDynamicKeys.add(key);

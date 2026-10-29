@@ -343,6 +343,22 @@ async function main() {
           await page.waitForTimeout(150);
         },
         /*
+          A real drag from the middle of something, by a distance in any direction — a grip between two
+          panels, a panel by its titlebar. Through the mouse, so what answers is whatever is actually
+          under the pointer: a grip that is drawn but covered, or has no box, cannot be dragged.
+        */
+        dragBy: async (sel, dx, dy) => {
+          const box = await page.locator(sel).locator('visible=true').first().boundingBox({ timeout: 3000 });
+          if (!box) throw new Error(`nothing to drag at ${sel}`);
+          const x = box.x + box.width / 2;
+          const y = box.y + box.height / 2;
+          await page.mouse.move(x, y);
+          await page.mouse.down();
+          await page.mouse.move(x + dx, y + dy, { steps: 8 });
+          await page.mouse.up();
+          await page.waitForTimeout(150);
+        },
+        /*
           The same gesture, stopped halfway: pressed and moved, still held.
 
           What separates "the popover closed when I pressed" from "the popover closed when I let
@@ -356,6 +372,18 @@ async function main() {
           await page.mouse.move(box.x + box.width * from, y);
           await page.mouse.down();
           await page.mouse.move(box.x + box.width * to, y, { steps: 6 });
+          await page.waitForTimeout(80);
+        },
+        /** Press the middle of something and hold — the start of a drag `pointTo` carries on. */
+        press: async (sel) => {
+          const box = await page.locator(sel).locator('visible=true').first().boundingBox({ timeout: 3000 });
+          if (!box) throw new Error(`nothing to press at ${sel}`);
+          await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+          await page.mouse.down();
+        },
+        /** Move the held pointer to a point on the page, in steps, as a hand does. */
+        pointTo: async (x, y) => {
+          await page.mouse.move(x, y, { steps: 10 });
           await page.waitForTimeout(80);
         },
         /** Let go of whatever `grab` is holding. */
