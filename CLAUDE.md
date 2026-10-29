@@ -196,7 +196,8 @@ docs/architecture/template-fragments.md.
 **A template is one of three things.** A *shell* owns a space's chrome, arrangement and route table;
 a *view* renders one section inside one; an *app* is WE's own chrome around every space — the
 sidebar and the module rail placed as host parts (`{ type: '$part', props: { id: 'host.sidebar' } }`)
-beside nodes of its own, with the bands that chrome holds declared in `meta.frame`. An app is
+beside nodes of its own, with the bands that chrome holds declared in `meta.frame` (and how its
+window edges frame the panels docked there in `meta.edges`). An app is
 chosen by the agent, never applied as a space's template, and only an app may place a host part.
 `meta.role` says which, and absent means shell. A shell
 marks where its sections go with `{ path: '$views' }` and the host expands that per space, from
@@ -3432,7 +3433,7 @@ ShellStore:
   - dockResizing: boolean — a panel is being dragged or resized right now. Suspend transitions while it is true so the edge tracks the cursor
   - panelMaximised: boolean — some panel covers the whole window. The app's own chrome — sidebar, module rail — hides while it is true; a template's fixed chrome should too
   - dockPlacement: Record<dockId, { snap, displace, canDisplace, … }> — where each panel is parked, for its frame to read: which of the eight snaps it is at, whether it displaces content, and whether it may. The state a position menu ticks; dockGeometry is the resulting box
-  - panelFrames: Record<dockId, 'window' | 'flush' | 'none'> — how each panel an interface declared a frame for is framed; absent, a panel on an edge or floating has a window's frame
+  - panelFrames: Record<dockId, 'window' | 'flush' | 'none'> — how each panel is framed where it is not a window: its own declared frame, else — pushing the content aside at an edge — that edge's frame as the app template declares it (meta.edges); absent, a window's frame
   - movingDock: string | null — the id of the panel being dragged, or null. What mounts the snap-target overlay
   - activeSnap: SnapPoint | null — the snap the moving panel would take if dropped now ('top-left' | 'top' | … | 'left'), so that target can light up
   - snapTargets: { id, top, left, width, height }[] — every snap target’s box while a panel is being dragged, measured against the room left for it. A place a card is already parked at is left out: the question there has stopped being whether and started being where among what is there, which the insert slots answer. Empty otherwise
@@ -5423,9 +5424,15 @@ ordinary panel: it can be docked, folded, stacked, saved in a layout — and its
 - **Any panel can live in a lane, not only one the template draws.** A `module` entry with `home`
   puts that module's panel there, and the host's own panels are named the same way —
   `{ "id": "settings", "module": "shell", "home": "right" }` places the space's settings, which the
-  gear then opens beside the page rather than as a window on the edge. In a lane a panel is flush: no
-  titlebar, no frame. One that does not draw its own heading gets a slim header with its name and its
-  close; a template's own section draws its own.
+  gear then opens beside the page rather than as a window on the edge. In a lane a panel is flush by
+  default: no titlebar, no frame. One that does not draw its own heading gets a slim header with its
+  name and its close; a template's own section draws its own.
+- **How a panel is framed is a choice, wherever it is.** `frame` on an entry — `'window'` (a
+  titlebar with its grip, menu and close), `'flush'` (part of the page, a grip and close in its corner
+  on hover), or `'none'` — holds in a lane, on an edge and floating alike. `frame` on a `$panels`
+  outlet sets that lane's default. An app template sets its window edges' default with
+  `meta.edges`: `{ "right": { "frame": "flush" } }` makes the panels pushing the content aside on
+  the right part of the app, as a sidebar is; it does not reach a card floating over the content.
 - **Two sections with the same explicit `order` share one place, as tabs** — as panels in an edge's
   seat do. One shows, the one most recently opened or chosen, with a strip naming them all; `tab`
   orders the strip, else the order they are declared in. An inspector and the space's settings taking

@@ -179,9 +179,15 @@ ordinary panel: it can be docked, folded, stacked, saved in a layout — and its
 - **Any panel can live in a lane, not only one the template draws.** A \`module\` entry with \`home\`
   puts that module's panel there, and the host's own panels are named the same way —
   \`{ "id": "settings", "module": "shell", "home": "right" }\` places the space's settings, which the
-  gear then opens beside the page rather than as a window on the edge. In a lane a panel is flush: no
-  titlebar, no frame. One that does not draw its own heading gets a slim header with its name and its
-  close; a template's own section draws its own.
+  gear then opens beside the page rather than as a window on the edge. In a lane a panel is flush by
+  default: no titlebar, no frame. One that does not draw its own heading gets a slim header with its
+  name and its close; a template's own section draws its own.
+- **How a panel is framed is a choice, wherever it is.** \`frame\` on an entry — \`'window'\` (a
+  titlebar with its grip, menu and close), \`'flush'\` (part of the page, a grip and close in its corner
+  on hover), or \`'none'\` — holds in a lane, on an edge and floating alike. \`frame\` on a \`$panels\`
+  outlet sets that lane's default. An app template sets its window edges' default with
+  \`meta.edges\`: \`{ "right": { "frame": "flush" } }\` makes the panels pushing the content aside on
+  the right part of the app, as a sidebar is; it does not reach a card floating over the content.
 - **Two sections with the same explicit \`order\` share one place, as tabs** — as panels in an edge's
   seat do. One shows, the one most recently opened or chosen, with a strip naming them all; \`tab\`
   orders the strip, else the order they are declared in. An inspector and the space's settings taking
