@@ -12,13 +12,13 @@
  * with, names for some of them (`landmarks`), and switches for the opinionated behaviours (`input`:
  * extract the loose messages typed into the space).
  *
- * ## Two levels, the app's first
+ * ## Two levels, the app's in place of the deployment's
  *
  * The seed carries the deployment's starters under `spaceStarters`, and a bundle carries its app's
  * under `starters` (`Bundle.starters`), in this same format. The create dialog offers the starters of
- * the app in use when that app came in a bundle the seed builds in, then the seed's, then nothing,
- * and the first is chosen unless somebody changes it — see `bundleStarter.ts` in the app shell. The
- * app's come first because a space made inside Coasys is meant to be a Coasys space.
+ * the app in use when that app came in a bundle the seed builds in, otherwise the seed's, then an
+ * empty space; the first is chosen unless somebody changes it — see `bundleStarter.ts` in the app
+ * shell. The app's win because a space made inside Coasys is meant to be a Coasys space.
  *
  * Only a built-in bundle's starters are offered. One installed from a file is somebody else's, and
  * its starter would write into the space for everyone in it; until choosing it says so, it is left

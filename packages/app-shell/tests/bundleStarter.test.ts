@@ -1,6 +1,6 @@
 /**
  * What a new space can start with: the app's starters when it came in a bundle the seed builds in,
- * then the deployment's, then nothing — and what each one writes, counted from its records.
+ * otherwise the deployment's, then an empty space — and what each one writes, counted from its records.
  */
 import { NO_STARTER, spaceStarterChoices, starterIncludes } from '@shared/bundles/bundleStarter';
 import type { SpaceStarter } from '@we/schema-shared';
@@ -19,7 +19,8 @@ describe('what a new space can start with', () => {
   it('leads with the app’s starter, named by its brand, while an app that brings one is in use', () => {
     const [first] = spaceStarterChoices({ app: inApp('coasys'), builtIn, seed: [seedStarter] });
     expect(first).toMatchObject({ id: 'app', name: 'Kit', icon: 'dna', app: 'Coasys', starter: appStarter });
-    expect(ids({ app: inApp('coasys'), builtIn, seed: [seedStarter] })).toEqual(['app', 'seed', NO_STARTER]);
+    // In place of the deployment's, not beside it.
+    expect(ids({ app: inApp('coasys'), builtIn, seed: [seedStarter] })).toEqual(['app', NO_STARTER]);
   });
 
   it('leads with the deployment’s in WE’s own app, and in an app that brings none', () => {
@@ -32,19 +33,10 @@ describe('what a new space can start with', () => {
     expect(ids({ app: inApp('stranger'), builtIn, seed: [seedStarter] })).toEqual(['seed', NO_STARTER]);
   });
 
-  it('always offers nothing, last, which applies no starter', () => {
+  it('always offers an empty space, last, which applies no starter', () => {
     const choices = spaceStarterChoices({ app: inApp(), builtIn, seed: undefined });
     expect(choices).toHaveLength(1);
-    expect(choices[0]).toMatchObject({ id: NO_STARTER, starter: undefined });
-  });
-
-  it('lists a starter both levels carry once, as the app’s', () => {
-    const shared = [{ ...builtIn[0], starters: [{ id: 'seed', name: 'App copy' }] }];
-    const choices = spaceStarterChoices({ app: inApp('coasys'), builtIn: shared, seed: [seedStarter] });
-    expect(choices.map((c) => [c.id, c.name])).toEqual([
-      ['seed', 'App copy'],
-      [NO_STARTER, 'Nothing'],
-    ]);
+    expect(choices[0]).toMatchObject({ id: NO_STARTER, name: 'Empty space', starter: undefined });
   });
 });
 

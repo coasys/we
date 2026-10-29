@@ -16,18 +16,18 @@ export async function check({ click, count, type, hover, screenshot }) {
   await hover('text=Starts with');
   await screenshot('create-space-starter');
   if (!(await count("text=Coasys's starter kit"))) problems.push('the app’s kit is not what a new space starts with');
-  if (await count('text=Workshop')) problems.push('the other starters show before anybody asks to change');
+  if (await count('text=Empty space')) problems.push('the other choice shows before anybody asks to change');
 
   await click('we-button:has-text("Change")');
-  for (const choice of ["Coasys's starter kit", 'Workshop', 'Nothing']) {
+  for (const choice of ["Coasys's starter kit", 'Empty space']) {
     if (!(await count(`we-button:has-text("${choice}")`))) problems.push(`Change does not offer ${choice}`);
   }
-  await hover('text=Nothing');
+  await hover('text=Empty space');
   await screenshot('create-space-starter-choosing');
 
-  await click('we-button:has-text("Nothing")');
-  if (await count('we-button:has-text("Workshop")')) problems.push('choosing a starter leaves the list open');
-  if (!(await count('text=Only what every space has.'))) problems.push('the card does not show the starter chosen');
+  await click('we-button:has-text("Empty space")');
+  if (await count('we-button:has-text("Coasys")')) problems.push('choosing a starter leaves the list open');
+  if (!(await count('text=Set up your own in Social DNA'))) problems.push('the card does not show the starter chosen');
   await hover('text=Starts with');
   await screenshot('create-space-starter-nothing');
 

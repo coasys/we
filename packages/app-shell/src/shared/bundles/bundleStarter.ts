@@ -1,7 +1,7 @@
 /**
  * What a new space can start with: the app's starters, when the app in use came in a bundle the seed
- * builds in, then the deployment's, then nothing. The first is what a space gets unless somebody
- * chooses otherwise in the create dialog. See `spaceStarter.ts` in `@we/schema-shared` for why the
+ * builds in and brings some, otherwise the deployment's — and an empty space either way. The first is
+ * what a space gets unless somebody chooses otherwise in the create dialog. See `spaceStarter.ts` in `@we/schema-shared` for why the
  * app's come first.
  *
  * Only built-in bundles are asked, which is what keeps an installed bundle's starter out: an app
@@ -40,8 +40,9 @@ export interface StarterChoice {
 }
 
 /**
- * Everything a new space can start with, the one it gets by default first: the app's starters, when
- * the app in use came in a built-in bundle, then the deployment's, then nothing at all.
+ * Everything a new space can start with, the one it gets by default first: the app's starters when
+ * the app in use came in a built-in bundle that brings some, otherwise the deployment's, then an
+ * empty space.
  */
 export function spaceStarterChoices(facts: StarterFacts): StarterChoice[] {
   const bundleId = facts.app?.source?.bundle;
@@ -56,18 +57,18 @@ export function spaceStarterChoices(facts: StarterFacts): StarterChoice[] {
     starter,
     ...(from ? { app: from } : {}),
   });
-  const choices = [
-    ...(bundle?.starters ?? []).map((starter) => choice(starter, app)),
-    ...(facts.seed ?? []).map((starter) => choice(starter)),
-  ];
-  // The same id twice would make one of them unselectable; the app's wins, as it does by default.
-  const unique = choices.filter((c, i) => choices.findIndex((other) => other.id === c.id) === i);
+  // An app's kit takes the deployment's place rather than sitting beside it: the deployment's is an
+  // earlier take on the same records, and listed together they differed mostly in their look.
+  const kits = bundle?.starters?.length
+    ? bundle.starters.map((starter) => choice(starter, app))
+    : (facts.seed ?? []).map((starter) => choice(starter));
   return [
-    ...unique,
+    ...kits,
     {
       id: NO_STARTER,
-      name: 'Nothing',
-      description: 'Only what every space has, drawn with your own default template and theme.',
+      // Named by what is missing: what every space has anyway is not something anybody can see.
+      name: 'Empty space',
+      description: 'No task states, reactions, canvas or board. Set up your own in Social DNA.',
       icon: 'circle-dashed',
       includes: '',
       starter: undefined,

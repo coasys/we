@@ -50,7 +50,7 @@ const starterWords = (at: string, chosen: string): SchemaNode => ({
  * What the space starts with, last in the form: a card naming the starter it will get, and Change to
  * choose another in place. The app's kit is chosen until somebody changes it — a space made in Coasys
  * is meant to be a Coasys space — but a space is the community's, so the choice is shown rather than
- * made silently, and Nothing is always there. Hidden where Nothing is all there is.
+ * made silently, and an empty space is always there. Hidden where that is all there is.
  */
 const starterChoice: SchemaNode = {
   type: '$if',

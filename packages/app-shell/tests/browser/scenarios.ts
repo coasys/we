@@ -1759,16 +1759,9 @@ const createSpaceShared = (): Scenario => ({
           app: 'Coasys',
         },
         {
-          id: 'we-default',
-          name: 'Workshop',
-          description: 'A shared canvas, a board and a calendar.',
-          icon: 'squares-four',
-          includes: '3 task states · a canvas · a board',
-        },
-        {
           id: '$none',
-          name: 'Nothing',
-          description: 'Only what every space has.',
+          name: 'Empty space',
+          description: 'No task states, reactions, canvas or board. Set up your own in Social DNA.',
           icon: 'circle-dashed',
           includes: '',
         },

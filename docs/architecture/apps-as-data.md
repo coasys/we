@@ -176,9 +176,13 @@ they land on the bundle's pieces (`coasys--space`).
 
 The create dialog offers, in order:
 
-1. the starters of the bundle whose app is in use, when the seed builds that bundle in;
-2. the seed's, which are all WE's own app offers besides the last;
-3. Nothing: only what every space has, drawn with the agent's own default template and theme.
+1. the starters of the bundle whose app is in use, when the seed builds that bundle in and it brings
+   some; otherwise the seed's, which is what WE's own app offers;
+2. an empty space: no task states, reactions, canvas or board, drawn with the agent's own default
+   template and theme.
+
+An app's kit takes the seed's place rather than sitting beside it: listed together, Coasys's kit and
+the Workshop starter it grew out of differed mostly in their look.
 
 The first is chosen until somebody changes it. The app's come first because a space made inside
 Coasys is meant to be a Coasys space; but a space is the community's, and the app somebody happens to
