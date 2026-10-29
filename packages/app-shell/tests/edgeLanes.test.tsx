@@ -11,6 +11,7 @@ import { EdgeLanes } from '../src/frameworks/solid/components/EdgeLanes';
 import { PanelHost } from '../src/frameworks/solid/components/PanelHost';
 import type { ShellStore } from '../src/frameworks/solid/stores/ShellStore';
 import { ShellStoreProvider, useShellStore } from '../src/frameworks/solid/stores/ShellStore';
+import { declareAppEdges } from '../src/shared/registries/appFrame';
 import {
   DOCK_FRAME_ATTR,
   dockFrame,
@@ -46,6 +47,7 @@ afterEach(() => {
   unregisterHostDockStore(HOST);
   release.forEach((done) => done());
   release = [];
+  declareAppEdges(undefined);
 });
 
 function mount() {
@@ -127,5 +129,19 @@ describe('the lanes at the edges', () => {
 
     (buttons[0] as HTMLElement).click();
     expect(store.dockGeometry()[ID]?.stowed).toBeFalsy();
+  });
+
+  it('frames a panel pushing the content aside as its edge says, unless the panel says otherwise', () => {
+    const { store } = mount();
+    expect(store.panelFrames()[ID]).toBeUndefined();
+
+    declareAppEdges({ right: { frame: 'flush' } });
+    expect(store.panelFrames()[ID]).toBe('flush');
+
+    // Over the content, a card is a window whatever the edge it is snapped to says.
+    store.beginDockMove(ID, 1000, 10);
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: 600, clientY: 200 }));
+    expect(store.panelFrames()[ID]).toBeUndefined();
+    window.dispatchEvent(new PointerEvent('pointerup', { clientX: 600, clientY: 200 }));
   });
 });

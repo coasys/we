@@ -75,7 +75,7 @@ import {
   withChromeCovered,
 } from '@shared/dockGeometry';
 import type { ScreenSource } from '@shared/platform/types';
-import { appFrame } from '@shared/registries/appFrame';
+import { appEdgeFrames, appFrame } from '@shared/registries/appFrame';
 import {
   DOCK_CONTENT_ATTR,
   DOCK_FRAME_ATTR,
@@ -431,8 +431,9 @@ export interface ShellStore {
    */
   laneSections: Accessor<Record<string, LaneSection[]>>;
   /**
-   * How each panel an interface declared a frame for is framed, by dock id — what a frame on an edge
-   * reads to draw a titlebar, or not. A panel with no entry has a window's frame there.
+   * How each panel is framed where it is not a window, by dock id — what a frame reads to draw a
+   * titlebar, or not: its own declaration, else, pushing the content aside at an edge, that edge's
+   * frame as the app template declares it (`meta.edges`). A panel with no entry has a window's frame.
    */
   panelFrames: Accessor<Record<string, PanelFrame>>;
   /**
@@ -4237,6 +4238,11 @@ export function ShellStoreProvider(props: ParentProps) {
     edgeLanes,
     panelFrames: createMemo(() => {
       const frames: Record<string, PanelFrame> = {};
+      // A panel pushing the content aside takes its edge's frame, as the app declares it (`meta.edges`)…
+      const edges = appEdgeFrames();
+      for (const [id, box] of Object.entries(dockGeometry()))
+        if (box.inLane && !box.floating && box.edge && edges[box.edge]) frames[id] = edges[box.edge]!;
+      // …and a panel's own declaration wins wherever it is.
       for (const [id, declared] of Object.entries(declarationFor())) if (declared.frame) frames[id] = declared.frame;
       return frames;
     }),

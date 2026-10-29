@@ -429,6 +429,11 @@ export const zSchemaProp: z.ZodType<SchemaProp> = z.union([
   z.undefined(),
 ]);
 
+/** How a panel is framed. See `PanelFrame`. */
+const zPanelFrame = z.enum(['window', 'flush', 'none']);
+/** One edge of an app. See `TemplateMeta.edges`. */
+const zEdgeSetting = z.object({ frame: zPanelFrame.optional() }).strict().optional();
+
 export const zTemplateMeta: z.ZodType<TemplateMeta> = z
   .object({
     name: z.string(),
@@ -469,6 +474,11 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
         top: z.number().optional(),
         bottom: z.number().optional(),
       })
+      .strict()
+      .optional(),
+    /** How an app's edges frame the panels pushing the content aside there. See `TemplateMeta.edges`. */
+    edges: z
+      .object({ left: zEdgeSetting, right: zEdgeSetting, top: zEdgeSetting, bottom: zEdgeSetting })
       .strict()
       .optional(),
     /**
@@ -514,6 +524,8 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
           // it says *whether* rather than *where*.
           route: z.union([z.string(), z.array(z.string())]).optional(),
           open: z.boolean().optional(),
+          // Its titlebar, or not. See `frame` on `TemplatePanel`.
+          frame: zPanelFrame.optional(),
         }),
       )
       .optional(),

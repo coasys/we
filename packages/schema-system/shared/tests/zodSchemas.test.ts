@@ -82,6 +82,13 @@ describe('zodSchemas', () => {
     expect(() => zTemplateMeta.parse({ name: 'T', description: 'd', icon: 'i', extra: true })).toThrow();
   });
 
+  it('accepts how an app frames the panels at its edges, and only a frame it knows', () => {
+    const meta = { name: 'T', description: 'd', icon: 'i' };
+    expect(() => zTemplateMeta.parse({ ...meta, edges: { right: { frame: 'flush' } } })).not.toThrow();
+    expect(() => zTemplateMeta.parse({ ...meta, edges: { right: { frame: 'glass' } } })).toThrow();
+    expect(() => zTemplateMeta.parse({ ...meta, edges: { middle: { frame: 'flush' } } })).toThrow();
+  });
+
   // --- TemplateSchema ---
   it('parses a template schema with meta', () => {
     const template = {

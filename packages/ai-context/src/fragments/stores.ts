@@ -1780,7 +1780,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       panelMaximised:
         "boolean — some panel covers the whole window. The app's own chrome — sidebar, module rail — hides while it is true; a template's fixed chrome should too",
       panelFrames:
-        "Record<dockId, 'window' | 'flush' | 'none'> — how each panel an interface declared a frame for is framed; absent, a panel on an edge or floating has a window's frame",
+        "Record<dockId, 'window' | 'flush' | 'none'> — how each panel is framed where it is not a window: its own declared frame, else — pushing the content aside at an edge — that edge's frame as the app template declares it (meta.edges); absent, a window's frame",
       dockPlacement:
         'Record<dockId, { snap, displace, canDisplace, … }> — where each panel is parked, for its frame to read: which of the eight snaps it is at, whether it displaces content, and whether it may. The state a position menu ticks; dockGeometry is the resulting box',
       movingDock: 'string | null — the id of the panel being dragged, or null. What mounts the snap-target overlay',

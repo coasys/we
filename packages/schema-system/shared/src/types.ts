@@ -297,6 +297,13 @@ export type TemplateMeta = {
    */
   frame?: { left?: number; right?: number; top?: number; bottom?: number };
   /**
+   * For an `'app'`: how a panel pushing the content aside at each window edge is framed, when the
+   * panel declares no frame of its own — `'flush'` makes that edge's lanes part of the app around
+   * them, as a sidebar is, rather than a stack of windows. An edge left out frames its panels as
+   * windows. See {@link PanelFrame}. Ignored on a shell or a view.
+   */
+  edges?: Partial<Record<'left' | 'right' | 'top' | 'bottom', { frame?: PanelFrame }>>;
+  /**
    * The panels this interface has, and where each one starts. See {@link TemplatePanel}.
    *
    * A **suggestion**, resolved live and never written — the same rung `themeId` occupies. A drag

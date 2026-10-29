@@ -3,7 +3,7 @@ import { datasetAddressedBy } from '@shared/datasetIdentity';
 import { collectionFacts } from '@shared/destructiveFacts';
 import { involvementOptimism } from '@shared/involvementOptimism';
 import { linkNewMentions, type MentionWriter, prepareMentionUpdate } from '@shared/lineMentions';
-import { appFrame, declareAppFrame } from '@shared/registries/appFrame';
+import { appFrame, declareAppEdges, declareAppFrame } from '@shared/registries/appFrame';
 import { HOST_PART_SLOTS } from '@shared/registries/hostParts';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { resolveParts, resolvePartsInRoutes } from '@shared/registries/moduleParts';
@@ -121,6 +121,8 @@ export default function TemplateProvider() {
   // publishes no rail width, so nothing keeps clear of a rail that is not there.
   // The bands the app's chrome holds, as it declares them — what panels dock against.
   createEffect(() => declareAppFrame(templateStore.appTemplate().meta?.frame));
+  // And how its edges frame the panels pushing the content aside there (`meta.edges`).
+  createEffect(() => declareAppEdges(templateStore.appTemplate().meta?.edges));
 
   createEffect(() => {
     const frame = appFrame();
