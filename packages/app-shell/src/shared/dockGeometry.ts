@@ -2942,6 +2942,59 @@ export function contentInset(requests: DockRequest[], viewport: Viewport): Conte
   return inset;
 }
 
+/**
+ * The cards snapped to one edge, when there are several seats of them: a lane over the content.
+ *
+ * `box` is the room the lane stands in, as CSS offsets from the window's sides — the region the
+ * displacing lanes leave, less the chrome a float clears; the cards stand a gap inside it and a gap
+ * apart, each keeping its own size across the lane (clamped to `room`), as `columnLayout` has them. A
+ * lane of one seat is not one: its card stays at its snap, as it always has.
+ */
+export interface CoveringLane {
+  edge: Exclude<DockEdge, null>;
+  box: { top: number; right: number; bottom: number; left: number };
+  /** The most a card may be across the lane — its width down a side, its height along the top. */
+  room: number;
+  seats: { placement: FloatPlacement; index: number }[][];
+}
+
+/**
+ * Every edge's floating lane of two seats or more — what `columnLayout` lays out as a column of
+ * cards, for the host to draw as one (`EdgeLanes`). Not below `NARROW_VIEWPORT_PX`, where a floating
+ * lane is one seat of tabs at its snap.
+ */
+export function coveringLanes(
+  requests: DockRequest[],
+  viewport: Viewport,
+  chrome: ContentInset = DEFAULT_FLOAT_CHROME,
+): CoveringLane[] {
+  if (viewport.width < NARROW_VIEWPORT_PX) return [];
+  const lanes: CoveringLane[] = [];
+  const panels = laneable(requests, viewport);
+  for (const edge of EDGES) {
+    const group = edgeGroups(panels, edge, viewport).find((candidate) => !candidate.displacing);
+    if (!group || group.seats.length < 2) continue;
+    const region = contentRegion(viewport, occupiedFor(requests, group.members[0].index, viewport));
+    const free = {
+      width: Math.max(0, region.width - chrome.left - chrome.right),
+      height: Math.max(0, region.height - chrome.top - chrome.bottom),
+    };
+    const vertical = edge === 'left' || edge === 'right';
+    lanes.push({
+      edge,
+      box: {
+        top: region.top + chrome.top,
+        right: region.right + chrome.right,
+        bottom: region.bottom + chrome.bottom,
+        left: region.left + chrome.left,
+      },
+      room: Math.max(MIN_FLOAT_PX, (vertical ? free.width : free.height) - DOCK_GAP_PX * 2),
+      seats: group.seats,
+    });
+  }
+  return lanes;
+}
+
 /** One lane pushing the content aside: its edge, how thick it is, and its panels seat by seat. */
 export interface DisplacingLane<
   T extends { placement: FloatPlacement } = { placement: FloatPlacement; index: number },

@@ -94,12 +94,13 @@ export async function check({ call }) {
     },
   );
 
-  // Two floats snapped to the right edge: stacked down it as cards with room between, over the space.
+  // Two floats snapped to the right edge: stacked down it as cards with room between, over the space,
+  // each keeping its own width against the edge.
   await run(
     'floats on an edge',
     [
       { id: 'a', snap: 'right', order: 0, width: 300 },
-      { id: 'b', snap: 'right', order: 1, width: 300 },
+      { id: 'b', snap: 'right', order: 1, width: 240 },
     ],
     null,
     ({ a, b, $space, $window }) => {
@@ -108,6 +109,9 @@ export async function check({ call }) {
       if (!(a.bottom < b.top)) out.push(`not stacked with room between: ${a.bottom} → ${b.top}`);
       if (!(a.right < $window.right)) out.push('a float should stand off the edge');
       if (!near($space.right, $window.right)) out.push(`a float should not push the space aside: ${$space.right}`);
+      if (!near(a.right, b.right)) out.push(`not against the same edge: ${a.right} vs ${b.right}`);
+      if (!near(a.right - a.left, 300) || !near(b.right - b.left, 240))
+        out.push(`not each its own width: ${a.right - a.left}, ${b.right - b.left}`);
       return out;
     },
   );

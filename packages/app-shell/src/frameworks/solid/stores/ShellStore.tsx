@@ -13,11 +13,13 @@ import {
   arrangeHomeDrop,
   canFold,
   chooseTarget,
+  COLLAPSED_PX,
   columnLayout,
   columnSlots,
   type ContentInset,
   contentInset,
   coveredInset,
+  coveringLanes,
   displaces,
   displacingLanes,
   type DockGeometry,
@@ -41,6 +43,7 @@ import {
   laneEdgeBox,
   layerOrder,
   looseSeats,
+  MIN_FLOAT_PX,
   NARROW_VIEWPORT_PX,
   nearEdge,
   NO_INSET,
@@ -205,6 +208,13 @@ export interface EdgeSeat {
   grow: number;
   floor: number;
   folded: boolean;
+  /** A card's own size across a lane over the content; absent where a lane's thickness decides. */
+  cross?: number;
+}
+
+/** An edge's lane of cards over the content, and the room it stands in — see `coveringLanes`. */
+export interface CoveringEdgeLane extends EdgeLane {
+  box: { top: number; right: number; bottom: number; left: number };
 }
 
 /** Where each edge's lanes go, as CSS offsets from the window's sides — see `edgeLaneBox`. */
@@ -431,7 +441,12 @@ export interface ShellStore {
    * The lanes pushing the content aside, by edge, outboard first, and the box each edge's lanes share
    * — what `EdgeLanes` draws. Each panel in one is framed inside it (`dockGeometry[id].inLane`).
    */
-  edgeLanes: Accessor<{ lanes: Record<Exclude<DockEdge, null>, EdgeLane[]>; boxes: EdgeLaneBoxes }>;
+  edgeLanes: Accessor<{
+    lanes: Record<Exclude<DockEdge, null>, EdgeLane[]>;
+    /** Each edge's lane of cards over the content, where it has one. */
+    covers: Partial<Record<Exclude<DockEdge, null>, CoveringEdgeLane>>;
+    boxes: EdgeLaneBoxes;
+  }>;
   /** The declaration an interface made about a dock, by dock id — its title, `fixed`, `grow`. */
   panelDeclaration: (dockId: string) => TemplatePanel | undefined;
   /** Which of several docks sharing a seat is in front: the one most recently raised or opened. */
@@ -2498,6 +2513,8 @@ export function ShellStoreProvider(props: ParentProps) {
 
   /** Every lane pushing the content aside, and how thick each is — see `displacingLanes`. */
   const laneLayout = createMemo(() => displacingLanes(dockRequests(), viewport()));
+  /** Every edge's floating lane of two seats or more — see `coveringLanes`. */
+  const coverLayout = createMemo(() => coveringLanes(dockRequests(), viewport(), floatChrome()));
 
   const dockGeometry = createMemo(() => {
     const requests = dockRequests();
@@ -2663,7 +2680,7 @@ export function ShellStoreProvider(props: ParentProps) {
 
     // A panel pushing the content aside is framed inside its edge's lane — see `edgeLanes`. Its box
     // stays the engine's: the drop targets, the grips and a drag's origin are measured from it.
-    for (const lane of laneLayout())
+    for (const lane of [...laneLayout(), ...coverLayout()])
       for (const seat of lane.seats)
         for (const member of seat) {
           const id = requests[member.index]?.id;
@@ -2711,30 +2728,59 @@ export function ShellStoreProvider(props: ParentProps) {
     const requests = dockRequests();
     const touched = activation();
     const at = (index: number) => touched[placementKey(requests[index].id)] ?? -1;
+    type Member = { placement: FloatPlacement; index: number };
+    // A seat's panels and its share of its lane: the showing member's size and the widest floor of
+    // any, as `laneSeating` hands the layout — spanning for a lane pushing the content aside.
+    const seatOf = (seat: Member[], along: 'w' | 'h', spanning: boolean) => {
+      const ids = seat.map((member) => requests[member.index].id);
+      const front = seat.reduce((best, member) => (at(member.index) > at(best.index) ? member : best));
+      const share = laneBase(
+        { ...front.placement, min: widestMin(seat.map((member) => requests[member.index].min)) },
+        along,
+        spanning,
+      );
+      return { seat: { key: ids.join('|'), ids, ...share, folded: Boolean(front.placement.collapsed) }, front };
+    };
+    const alongOf = (edge: Exclude<DockEdge, null>) => (edge === 'left' || edge === 'right' ? 'h' : 'w');
+
     const lanes: Record<Exclude<DockEdge, null>, EdgeLane[]> = { left: [], right: [], top: [], bottom: [] };
     for (const lane of laneLayout()) {
-      const along = lane.edge === 'left' || lane.edge === 'right' ? 'h' : 'w';
       lanes[lane.edge].push({
         key: lane.key,
         thickness: lane.thickness,
         stowed: lane.stowed,
-        seats: lane.seats.map((seat) => {
-          const ids = seat.map((member) => requests[member.index].id);
-          // The showing member's size, and the widest floor of any — as `laneSeating` hands the layout.
-          const front = seat.reduce((best, member) => (at(member.index) > at(best.index) ? member : best));
-          const share = laneBase(
-            { ...front.placement, min: widestMin(seat.map((member) => requests[member.index].min)) },
-            along,
-            true,
-          );
-          return { key: ids.join('|'), ids, ...share, folded: Boolean(front.placement.collapsed) };
-        }),
+        seats: lane.seats.map((seat) => seatOf(seat, alongOf(lane.edge), true).seat),
       });
     }
+
+    const covers: Partial<Record<Exclude<DockEdge, null>, CoveringEdgeLane>> = {};
+    for (const lane of coverLayout()) {
+      const vertical = lane.edge === 'left' || lane.edge === 'right';
+      covers[lane.edge] = {
+        key: `cover:${lane.edge}`,
+        thickness: 0,
+        stowed: false,
+        box: lane.box,
+        seats: lane.seats.map((members) => {
+          const { seat, front } = seatOf(members, alongOf(lane.edge), false);
+          // Its own size across the lane, clamped as `columnLayout` clamps it; folded, its bar.
+          const own = vertical ? front.placement.w : front.placement.collapsed ? COLLAPSED_PX : front.placement.h;
+          return {
+            ...seat,
+            cross: front.placement.collapsed && !vertical ? own : Math.min(Math.max(own, MIN_FLOAT_PX), lane.room),
+          };
+        }),
+      };
+    }
+
     const all = laneLayout().reduce((sum, lane) => ({ ...sum, [lane.edge]: sum[lane.edge] + lane.thickness }), {
       ...NO_INSET,
     });
-    return { lanes, boxes: Object.fromEntries(EDGES.map((edge) => [edge, edgeLaneBox(edge, all)])) as EdgeLaneBoxes };
+    return {
+      lanes,
+      covers,
+      boxes: Object.fromEntries(EDGES.map((edge) => [edge, edgeLaneBox(edge, all)])) as EdgeLaneBoxes,
+    };
   });
   /*
     The same requests, asked the other question: not what the panels take, but what they hide.

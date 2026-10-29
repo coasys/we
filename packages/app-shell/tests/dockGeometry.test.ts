@@ -27,6 +27,7 @@ import {
   type ContentInset,
   contentInset,
   coveredInset,
+  coveringLanes,
   displaces,
   displacingLanes,
   DOCK_GAP_PX,
@@ -3056,5 +3057,31 @@ describe('every member of a seat resolves to one box', () => {
     expect(px(box.height)).toBe(0);
     expect(px(box.top)).toBe(0);
     expect(px(box.width)).toBe(MIN_DOCK_PX);
+  });
+});
+
+describe('cards snapped to an edge, as a lane over the content', () => {
+  const card = (id: string, order: number, w = 300): DockRequest =>
+    dock({ id, float: true, placement: placement({ displace: false, order, w }) });
+
+  it('is a lane once there are two seats, standing in the room the chrome leaves', () => {
+    const [lane] = coveringLanes([card('a', 0), card('b', 1, 240)], desktop, { left: 0, right: 0, top: 0, bottom: 74 });
+    expect(lane.edge).toBe('right');
+    expect(lane.seats.map((seat) => seat.map((member) => member.index))).toEqual([[0], [1]]);
+    expect(lane.box).toEqual({ top: 0, right: 0, bottom: 74, left: SIDEBAR_PX });
+  });
+
+  it('is not one for a single card, which stays at its snap', () => {
+    expect(coveringLanes([card('a', 0)], desktop)).toEqual([]);
+  });
+
+  it('is not one on a narrow window, where the cards are one seat of tabs', () => {
+    expect(coveringLanes([card('a', 0), card('b', 1)], laptop)).toEqual([]);
+  });
+
+  it('stands clear of a lane pushing the content aside on the same edge', () => {
+    const sidebar: DockRequest = { id: 's', edge: 'right', size: 'md', float: false, placement: placement({ w: 400 }) };
+    const [lane] = coveringLanes([sidebar, card('a', 0), card('b', 1)], desktop);
+    expect(lane.box.right).toBe(400);
   });
 });
