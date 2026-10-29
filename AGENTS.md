@@ -5422,7 +5422,9 @@ ordinary panel: it can be docked, folded, stacked, saved in a layout — and its
 - **`$panels` is a layout node.** It takes `lane` (required), `direction` (`column` by default, or
   `row`), `accepts` (section ids it will take, comma-separated; empty means any), and the ordinary
   layout props — `width`, `flex`, `minWidth` — which is how a template holds room for an empty lane.
-  `resize: 'start'` or `'end'` puts a drag handle on that edge, and `foldEmpty: true` folds the lane
+  `resize: 'start'` or `'end'` puts a drag handle on that edge — dragged as wide as the reader likes,
+  short of leaving the rest of the row less than 360px; give `maxWidth` only where a lane must stay
+  narrow — and `foldEmpty: true` folds the lane
   away while nothing in it is open — a lane that is only there while something is chosen.
   `bg` (a colour role) and `borderLeft` / `borderRight` paint the lane itself, behind whatever is in
   it — a sidebar as `bg: 'chrome'` with `borderRight: '1px solid border'`. Paint the lane rather

@@ -18144,7 +18144,6 @@
             "lane": "tree",
             "width": "280px",
             "minWidth": "220px",
-            "maxWidth": "440px",
             "resize": "end",
             "bg": "chrome",
             "borderRight": "1px solid border"
@@ -21034,7 +21033,6 @@
             "lane": "inspector",
             "width": "340px",
             "minWidth": "280px",
-            "maxWidth": "560px",
             "resize": "start",
             "foldEmpty": true,
             "bg": "chrome",

@@ -31,7 +31,8 @@
  * A lane can be the left column of a page — a space's tree beside its view — and a sidebar wants two
  * things a plain lane did not have. `resize: 'end'` (or `'start'`) puts a handle on that edge alone,
  * and the width somebody drags it to is kept per agent and per template (`shellStore.laneWidth`),
- * between the template's `minWidth` and `maxWidth`. And a lane can be folded away
+ * from the template's `minWidth` up to as wide as the row allows: what is beside it always keeps
+ * `LANE_LEAVES_PX`. A `maxWidth` caps it lower, for a lane that should not grow at all. And a lane can be folded away
  * (`shellStore.toggleLane`): its sections stay mounted and hidden, so a feed keeps its place.
  *
  * Folding slides. The lane's own width goes to nothing while what is in it keeps its width, held to
@@ -65,6 +66,25 @@ function pixels(value: string | number | undefined): number | undefined {
   if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
   const match = /^\s*(\d+(?:\.\d+)?)px\s*$/.exec(value ?? '');
   return match ? Number(match[1]) : undefined;
+}
+
+/**
+ * How much of its row a lane leaves for everything else: however wide somebody drags a sidebar, the
+ * view beside it keeps room to be used, and its handle somewhere to be grabbed back from.
+ */
+export const LANE_LEAVES_PX = 360;
+
+/** Marks a lane's own box (`data-we-panel-lane` on it), so a lane can find the other lanes in its row. */
+const LANE_ATTR = 'data-we-panel-lane';
+
+/** Moves whenever a lane mounts or unmounts, so every lane watches the ones that came after it. */
+const [lanesVersion, setLanesVersion] = createSignal(0);
+
+/** The element a node is laid out in: its parent, past any `display: contents` wrappers. */
+function layoutParent(node: Element): HTMLElement | null {
+  let parent = node.parentElement;
+  while (parent && getComputedStyle(parent).display === 'contents') parent = parent.parentElement;
+  return parent;
 }
 
 /** Whether the window is narrower than a lane can keep a column's width in. */
@@ -145,10 +165,28 @@ export function PanelLane(props: {
     move would serialise the whole lane map to storage at the frame rate.
   */
   const [dragWidth, setDragWidth] = createSignal<number | undefined>(undefined);
+  /*
+    The widest the lane may be: its row less what it leaves for the rest (`LANE_LEAVES_PX`) and less
+    the other lanes in the row as they are drawn. Measured, and measured again whenever the row or
+    another lane changes size — a window made narrower, the inspector sliding in beside the tree — so
+    a kept width that no longer fits gives way rather than squeezing the view. Unbounded until the
+    lane is in the page.
+  */
+  const [room, setRoom] = createSignal(Number.POSITIVE_INFINITY);
+  const measureRoom = () => {
+    const self = el;
+    const row = self && layoutParent(self);
+    if (!self || !row) return;
+    const others = [...row.querySelectorAll(`[${LANE_ATTR}]`)]
+      .filter((other) => other !== self && !self.contains(other) && !other.contains(self))
+      .reduce((sum, other) => sum + other.getBoundingClientRect().width, 0);
+    setRoom(Math.max(0, row.getBoundingClientRect().width - others - LANE_LEAVES_PX));
+  };
   const clamp = (width: number) => {
     const min = pixels(props.minWidth) ?? 120;
-    const max = pixels(props.maxWidth) ?? Number.POSITIVE_INFINITY;
-    return Math.min(Math.max(width, min), max);
+    const max = Math.min(pixels(props.maxWidth) ?? Number.POSITIVE_INFINITY, room());
+    // The minimum wins over the room: a lane too wide for a small window is the narrow layout's job.
+    return Math.max(min, Math.min(width, max));
   };
   const width = () => {
     if (narrow()) return '100%';
@@ -231,9 +269,23 @@ export function PanelLane(props: {
   let handle: HTMLElement | undefined;
   let startWidth = 0;
   onMount(() => {
+    setLanesVersion((v) => v + 1);
+    onCleanup(() => setLanesVersion((v) => v + 1));
+  });
+  createEffect(() => {
+    lanesVersion();
+    const row = el && layoutParent(el);
+    if (!row || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measureRoom);
+    observer.observe(row);
+    for (const other of row.querySelectorAll(`[${LANE_ATTR}]`)) if (other !== el) observer.observe(other);
+    onCleanup(() => observer.disconnect());
+  });
+  onMount(() => {
     if (!handle) return;
     // Direct listeners: the handle's gesture events are its own — see the section grip below.
     handle.addEventListener('resizestart', () => {
+      measureRoom();
       startWidth = el?.getBoundingClientRect().width ?? 0;
     });
     handle.addEventListener('resize', (event) => {
@@ -261,6 +313,7 @@ export function PanelLane(props: {
         register();
       }}
       inert={collapsed()}
+      data-we-panel-lane=""
       style={{
         display: 'flex',
         position: 'relative',

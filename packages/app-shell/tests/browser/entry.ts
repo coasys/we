@@ -1392,6 +1392,48 @@ function editorProbeEnterApp(): void {
 function editorProbeSelect(id: string | null): void {
   probeSelect(id);
 }
+/**
+ * A row as a template lays one out — a resizable lane on each side of a view — 1200px wide, for
+ * reading how far a lane can be dragged. Disposed by `editorProbeDispose`.
+ */
+function laneRoomProbe(): void {
+  for (const key of Object.keys(localStorage)) if (key.startsWith('we-local:shell.')) localStorage.removeItem(key);
+  const root = document.createElement('div');
+  root.id = 'room-row';
+  Object.assign(root.style, {
+    position: 'fixed',
+    left: '0',
+    top: '0',
+    width: '1200px',
+    height: '400px',
+    display: 'flex',
+  });
+  document.body.append(root);
+  const view = () => {
+    const div = document.createElement('div');
+    div.id = 'room-view';
+    Object.assign(div.style, { flex: '1', minWidth: '0' });
+    return div;
+  };
+  const dispose = render(
+    () =>
+      createComponent(ShellStoreProvider, {
+        get children() {
+          return [
+            createComponent(PanelLane, { lane: 'room-a', width: '280px', minWidth: '220px', resize: 'end' }),
+            view(),
+            createComponent(PanelLane, { lane: 'room-b', width: '300px', minWidth: '220px', resize: 'start' }),
+          ];
+        },
+      }),
+    root,
+  );
+  probeDisposers.push(() => {
+    dispose();
+    root.remove();
+  });
+}
+
 function editorProbeDispose(): void {
   for (const dispose of probeDisposers.splice(0)) dispose();
 }
@@ -1493,6 +1535,7 @@ function toastProbe(message: string, actionLabel = ''): string {
 (window as unknown as Record<string, unknown>).__harness = {
   toastProbe,
   dockProbe,
+  laneRoomProbe,
   dockProbeAct,
   dockProbeBoxes,
   dockProbeTargets,
