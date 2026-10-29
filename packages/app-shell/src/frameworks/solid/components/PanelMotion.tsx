@@ -21,6 +21,7 @@ import { DOCK_FRAME_ATTR } from '@shared/registries/dockRegistry';
 import { createEffect, onCleanup } from 'solid-js';
 
 import { useShellStore } from '../stores/ShellStore';
+import { panelTrace } from '@shared/panelTrace';
 
 /** As long as a frame's own transition (`300`) at the default animation speed. */
 const MOTION_MS = 300;
@@ -131,6 +132,14 @@ export function PanelMotion() {
           Math.abs(before.rect.height - rect.height) < STILL_PX;
         if (still || !Number.isFinite(sx) || !Number.isFinite(sy) || before.rect.width === 0) continue;
 
+        panelTrace('motion plays', {
+          id,
+          arrived,
+          dx: Math.round(dx),
+          dy: Math.round(dy),
+          sx: sx.toFixed(2),
+          sy: sy.toFixed(2),
+        });
         const animation = el.animate(
           [
             { transformOrigin: 'top left', transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})` },
