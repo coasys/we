@@ -7,6 +7,7 @@ import { cleanup, fireEvent, render } from '@solidjs/testing-library';
 import { createSignal } from 'solid-js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { PanelHost } from '../src/frameworks/solid/components/PanelHost';
 import PanelLane from '../src/frameworks/solid/components/PanelLane';
 import type { ShellStore } from '../src/frameworks/solid/stores/ShellStore';
 import { ShellStoreProvider, useShellStore } from '../src/frameworks/solid/stores/ShellStore';
@@ -50,6 +51,7 @@ function mountLane() {
     <ShellStoreProvider>
       <Grab />
       <PanelLane lane="side" width="320px" resize="start" foldEmpty />
+      <PanelHost />
     </ShellStoreProvider>
   ));
   return { store, lane: container.firstElementChild as HTMLElement };

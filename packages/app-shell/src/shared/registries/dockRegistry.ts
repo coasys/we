@@ -29,6 +29,7 @@ import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
 import { COLLAPSED_PX, FRAME_BORDER_PX, type SnapPoint } from '../dockGeometry';
 import { createRegistry } from './createRegistry';
+import { registerPanelContent } from './panelContents';
 
 /**
  * A dock as the shell sees it: a node, and the string keys its geometry is read through.
@@ -299,6 +300,8 @@ const GLASS_BLUR = `blur(var(--we-theme-surface-blur, ${PANEL_BLUR_PX}))`;
 
 export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
   const geo = (field: string) => ({ $: dockGeometryPath(entry.id, field) });
+  // The content is the panel host's to draw, once — this frame is one of the places it can be.
+  registerPanelContent(entry.id, node);
   const glass = isGlass(entry.id);
 
   return {
@@ -539,7 +542,7 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
                   host-declared: a container query with no container is silently false, so a module
                   relying on one it did not get would look correct and never adapt.
                 */
-                children: [{ type: '$surface', children: [node] }],
+                children: [{ type: '$surface', children: [{ type: 'PanelSlot', props: { id: entry.id } }] }],
               },
             ],
           },

@@ -77,6 +77,7 @@ import { createEffect, createMemo, createSignal, getOwner, onCleanup, onMount, S
 
 import { createCollabSession } from '../collab/collabSession';
 import { moduleBlockDisplays } from '../components/moduleBlockDisplays';
+import { PanelHost } from '../components/PanelHost';
 import { registerRecordGhost } from '../drag/recordGhost';
 import { PersistentAppFrames } from '../layouts/PersistentAppFrames';
 import { TemplateLayout } from '../layouts/TemplateLayout';
@@ -1669,6 +1670,8 @@ export default function TemplateProvider() {
               <RenderSchema node={appSchema} stores={chromeBag} registry={registry} />
             </div>
             <RenderSchema node={shellSchema} stores={chromeBag} registry={registry} />
+            {/* Every panel, drawn once here, inside these providers, and moved to its place. */}
+            <PanelHost />
 
             {/* Router — keyed on the template ID *and* the resolved section list, since both decide what
            `buildRoutes` produces. Adding, removing or reordering a section remounts the space's

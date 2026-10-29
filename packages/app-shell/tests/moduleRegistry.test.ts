@@ -22,6 +22,7 @@ import {
   moduleStores,
   moduleSurface,
 } from '../src/shared/registries/moduleRegistry';
+import { panelContent } from '../src/shared/registries/panelContents';
 import { PROTECTED_SLOTS, registerCoreSlots, slotRegistry } from '../src/shared/registries/slotRegistry';
 
 const host = { backend: 'ad4m', framework: 'solid' };
@@ -617,7 +618,8 @@ describe('panels — the host’s half', () => {
       host,
     );
     const frames = slotRegistry.all().filter((entry) => entry.id.startsWith('dock:twin'));
-    const json = frames.map((entry) => JSON.stringify(entry.node));
+    // What each frame shows is registered with the panel host, beside the gated frame — see `PanelHost`.
+    const json = frames.map((entry) => JSON.stringify([entry.node, panelContent(entry.id.replace(/^dock:/, ''))]));
     expect(frames.map((f) => f.id)).toEqual(['dock:twin:transcript', 'dock:twin:extraction']);
     expect(json[0]).toContain("shellStore.panelSupplied['twin:transcript']");
     expect(json[1]).toContain('"dock":"extraction"');
@@ -643,12 +645,8 @@ describe('panels — the host’s half', () => {
       }),
       host,
     );
-    const rendered = JSON.stringify(
-      slotRegistry.nodes().map((node) => {
-        const expanded = resolveParts(node);
-        return Array.isArray(expanded) ? expanded : [expanded];
-      }),
-    );
+    // The panel host composes what a frame shows, as the chrome is composed — see `PanelHost`.
+    const rendered = JSON.stringify(resolveParts(slotRegistry.resolve(panelContent('twin:p')!) as never));
     expect(rendered).toContain('from the part');
     expect(rendered).not.toContain('$part');
   });

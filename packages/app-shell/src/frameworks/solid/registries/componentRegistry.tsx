@@ -72,6 +72,8 @@ import CredentialField from '../components/CredentialField';
   second call from inside one tree. See `shared/registries/templateBag.ts`.
 */
 const TemplatePanelBodyOnDemand = lazy(() => import('../components/TemplatePanelBody'));
+// Where a place shows a panel the panel host draws once — see `PanelHost`.
+const PanelSlotOnDemand = lazy(() => import('../components/PanelHost'));
 
 /*
   A `$panels` outlet — a lane in the template's own flow. The marker is rewritten to this name by
@@ -154,6 +156,7 @@ export const componentRegistry: ComponentRegistry = {
   // Host-only: a template names panels, never this. It is what a panel's *frame* wraps around the
   // template's node so the two can be rendered with different grants.
   TemplatePanelBody: TemplatePanelBodyOnDemand,
+  PanelSlot: PanelSlotOnDemand,
   /*
     The password field, which a sign-in screen places and cannot replace or read. Eager: it is on
     the first screen anybody sees. See `CredentialField.tsx`.

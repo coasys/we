@@ -8356,6 +8356,7 @@
     "EditorInspectorPanel",
     "EditorThemePanel",
     "PanelLane",
+    "PanelSlot",
     "PartFrame",
     "TemplateCard",
     "TemplatePanelBody",

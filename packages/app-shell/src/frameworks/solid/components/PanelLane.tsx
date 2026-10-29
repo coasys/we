@@ -55,19 +55,14 @@
 import { NARROW_VIEWPORT_PX } from '@shared/dockGeometry';
 import { type DockEntry, dockRegistry, dockTitle, hostDockStores } from '@shared/registries/dockRegistry';
 import { HOME_SECTION_ATTR, registerHomeLane } from '@shared/registries/homeLanes';
-import { resolveParts } from '@shared/registries/moduleParts';
 import { moduleStores } from '@shared/registries/moduleRegistry';
-import { slotRegistry } from '@shared/registries/slotRegistry';
-import { chromeBag } from '@shared/registries/templateBag';
 import { TEMPLATE_DOCK_STORE_ID } from '@shared/registries/templatePanels';
-import { componentRegistry as registry } from '@solid/registries/componentRegistry';
 import { Row } from '@we/components/solid';
-import type { SchemaNode, TemplatePanel } from '@we/schema-shared';
-import { RenderSchema } from '@we/schema-solid';
-import { type Accessor, createMemo, createSignal, ErrorBoundary, For, onCleanup, onMount, Show } from 'solid-js';
+import type { TemplatePanel } from '@we/schema-shared';
+import { type Accessor, createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 
 import { type LaneSection, useShellStore } from '../stores/ShellStore';
-import TemplatePanelBody from './TemplatePanelBody';
+import { PanelSlot } from './PanelHost';
 
 /** How far the pointer must travel before a press on the grip is a drag rather than a click. */
 const BREAK_OUT_DRAG_PX = 4;
@@ -354,64 +349,9 @@ function closeDock(entry: DockEntry): void {
 /** A section's id as the outlet's seams know it: a template's panel by its own id, anything else by its dock's. */
 const sectionKey = (dockId: string) => dockId.replace(/^template:/, '');
 
-/**
- * A module's or the host's panel, composed as the host composes it on an edge — the `$slot`
- * markers modules leave for each other filled in (the call's control bar holds one), then its parts
- * expanded. Drawn raw, the first marker was a node type nothing renders, and a call started with
- * its window in a lane took the app down.
- */
-function composed(node: SchemaNode): SchemaNode {
-  const withSlots = slotRegistry.resolve(node);
-  const expanded = (Array.isArray(withSlots) ? withSlots : [withSlots]).flatMap((part) => {
-    const out = resolveParts(part);
-    return Array.isArray(out) ? out : [out];
-  });
-  return expanded.length === 1
-    ? expanded[0]
-    : { type: 'Column', props: { styles: { display: 'contents' } }, children: expanded };
-}
-
-/**
- * What a section draws: a template's own panel through the template's bag, anything else — a
- * module's panel, the host's settings — through the chrome bag, as its frame on an edge would.
- *
- * Inside a boundary: a panel that cannot be drawn here says so in its own place, with the way back
- * to where it was declared, rather than taking the whole app with it. Anything can be dropped into a
- * lane, and a lane cannot know that everything will be at home there.
- */
+/** What a section draws: its panel, which the panel host draws once and moves here — see `PanelHost`. */
 function SectionBody(props: { dockId: string }) {
-  const shellStore = useShellStore();
-  const entry = () => dockRegistry.get(props.dockId);
-  const body = createMemo(() => {
-    const dock = entry();
-    if (!dock || dock.moduleId === TEMPLATE_DOCK_STORE_ID) return null;
-    const bag = chromeBag();
-    return bag ? RenderSchema({ node: composed(dock.node), stores: bag, registry }) : null;
-  });
-  return (
-    <ErrorBoundary
-      fallback={(error) => {
-        console.error(`[PanelLane] ${props.dockId} could not be drawn in its lane`, error);
-        return (
-          <Row ay="center" ax="between" gap="200" px="300" py="200">
-            <we-text variant="footnote" color="text-muted">
-              {sectionTitle(props.dockId, shellStore.panelDeclaration(props.dockId))} can't be shown here
-            </we-text>
-            <we-button size="xs" variant="ghost" onClick={() => shellStore.resetDockToLayout(props.dockId)}>
-              Put it back
-            </we-button>
-          </Row>
-        );
-      }}
-    >
-      <Show
-        when={entry()?.moduleId !== TEMPLATE_DOCK_STORE_ID}
-        fallback={<TemplatePanelBody panelId={sectionKey(props.dockId)} />}
-      >
-        {body()}
-      </Show>
-    </ErrorBoundary>
-  );
+  return <PanelSlot id={props.dockId} />;
 }
 
 /**

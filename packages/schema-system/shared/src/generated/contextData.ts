@@ -3684,6 +3684,7 @@ export const contextData: ContextData = {
     'EditorInspectorPanel',
     'EditorThemePanel',
     'PanelLane',
+    'PanelSlot',
     'PartFrame',
     'TemplateCard',
     'TemplatePanelBody',
