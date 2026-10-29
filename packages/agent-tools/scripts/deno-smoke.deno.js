@@ -93,7 +93,7 @@ const host = Deno;
 const now = performance.now.bind(performance);
 const fullCrypto = crypto;
 const [bundlePath, dir] = host.args;
-const names = ['kanban', 'workshop'];
+const names = ['trello', 'workshop'];
 const records = {};
 for (const name of names) records[name] = JSON.parse(await host.readTextFile(`${dir}/${name}.json`));
 
@@ -137,8 +137,22 @@ try {
   const toolset = toolsets.template;
   check(toolset?.appliesTo.includes('Template'), 'offers tools for Template records');
   check(
-    toolset.tools.map((tool) => `${tool.name}:${tool.writes}`).join(' ') === 'template_read:false template_update:true',
-    'offers template_read, which writes nothing, and template_update, which writes',
+    toolset.tools.map((tool) => `${tool.name}:${tool.writes}`).join(' ') ===
+      'template_read:false template_update:true template_create:true',
+    'offers template_read, which writes nothing, and template_update and template_create, which write',
+  );
+
+  // Made with nothing but the globals a host provides: the new id comes from crypto.getRandomValues.
+  const made = await toolset.call('template_create', { args: { name: 'Smoke shell' }, author: 'did:smoke' });
+  check(
+    made.create?.entity === 'Template' &&
+      made.create?.place === 'library' &&
+      /^smoke-shell-/.test(made.properties?.slug),
+    'makes a new template in the library, with an id of its own',
+  );
+  check(
+    readFile(made.properties?.schema)?.schema?.meta?.name === 'Smoke shell',
+    'writes the new template as the file the app stores',
   );
 
   const topics = await toolset.docs.list();

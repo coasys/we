@@ -264,11 +264,12 @@ export const storeEntries: StoreEntry[] = [
     name: 'routeStore',
     state: {
       currentPath: { type: 'string' },
+      page: { type: 'string' },
       segments: { type: 'array' },
       templateSegments: { type: 'array' },
       params: { type: 'object' },
     },
-    actions: ['navigate', 'setParam', 'back'],
+    actions: ['navigate', 'resolve', 'setParam', 'back'],
   },
   {
     name: 'themeStore',
@@ -751,7 +752,9 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       identityCapabilities:
         'IdentityCapabilities — what the backend in use can do with the person\'s identity beyond this session, one boolean per part of Settings: password, passkey, masterKey, recoveryWords, keyLog, export, logOutEverywhere, deleteAccount, devices, linkDevice, switchDevice, bots, plan, billing. All false until a backend reports otherwise, and all false on a backend with no identity support. Gate an identity control on its own flag rather than hiding the section — the kit\'s comingSoon fragment draws it greyed out with a "Coming soon" tag until the flag turns true',
       isDevelopment:
-        'boolean — whether this is a development build. A fact about the build. Do NOT gate developer-only UI on it; gate on devTools, which is the same answer plus a switch',
+        'boolean — whether this is a development build. A fact about the build. Do NOT gate developer-only UI on it; gate on devTools',
+      devFeatures:
+        'boolean — whether this build has developer features at all: a dev server, or a deploy of work in progress (a preview). The ceiling devTools sits under. Gate the way to the developer switch on this',
       devTools:
         'boolean — whether developer affordances should be VISIBLE. True in a development build unless a developer has thrown the Settings → Developer switch to see what a shipped app looks like. Reactive, so a control gated on it appears and disappears on the press. Gate any developer-only control on this — a schema-test page, a fixture toggle — and wrap it in $if rather than hiding it, since a hidden row is still in the accessibility tree and still found by find-in-page. Never true in a production build, whatever the switch says',
       credentialEntered:
@@ -759,7 +762,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       credentialConfirmed:
         "boolean — a CredentialField with purpose 'new' holds a password typed twice and the same both times. Gate the call to profileStore.completeAccountSetup on it",
       setDevTools:
-        'shows or hides developer affordances for this device. Takes the value a switch emits, so pass `event.detail` bare — wrapping it in another token would resolve at render time and send a constant. Cannot turn them ON in a production build; the build is the ceiling. Gate the control that calls this on isDevelopment, NOT on devTools — gating the way to the switch on the switch makes turning it off a one-way door',
+        'shows or hides developer affordances for this device. Takes the value a switch emits, so pass `event.detail` bare — wrapping it in another token would resolve at render time and send a constant. Cannot turn them ON in a production build; the build is the ceiling. Gate the control that calls this on devFeatures, NOT on devTools — gating the way to the switch on the switch makes turning it off a one-way door',
     },
     actions: {
       unlock:
@@ -992,15 +995,18 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
   routeStore: {
     state: {
       currentPath: 'string (the current route path)',
+      page: 'string — the page on screen: currentPath, plus ?id=… when the query names the record the page is about. /board?id=a and /board?id=b are two pages where currentPath says only "a board". What presence compares to tell who is on the same page',
       segments: 'string[] (currentPath split by "/", e.g. ["/foo/bar"] → ["foo", "bar"])',
       templateSegments:
-        'string[] — the segments BELOW the space prefix, which is a template\'s own coordinate space. A template mounted at /space/<id> reading its own route params wants this: at /space/abc/photo/xyz it is ["photo", "xyz"], so a `/photo/:postId` route reads templateSegments[1] and keeps reading it wherever the host mounts the template. Reading `segments` by index pins a template to the host\'s prefix and breaks when it moves.',
+        'string[] — the segments BELOW the space prefix, which is a template\'s own coordinate space. A template mounted at /space/<id> reading its own screens wants this: at /space/abc/canvas/notes it is ["canvas", "notes"], whatever prefix the host mounts the template under. Not for a record\'s id, which is a query value: routeStore.params.id. Reading `segments` by index pins a template to the host\'s prefix and breaks when it moves.',
       params:
         "Record<string, string> — the URL's query parameters, reactive; read one as { $: 'routeStore.params.<name>' }. Prefer $localState with syncParam for fields a view owns; read params directly only for parameters something else writes",
     },
     actions: {
       navigate:
-        "(to: string, options?): navigates to a route (a bare path restores that route's remembered query string)",
+        "(to: string, options?: { query? }): navigates to a route (a bare path restores that route's remembered query string). A path is relative to the route the node is in: '.' is that route itself (so a button navigating to '.' inside a route does nothing), '..' the route above, './x' a page below it. '~/x' is from the template's root, from anywhere — write it for home ('~/') and for links between a template's screens, since it means the same in a header and inside a page. '?q' is the page on screen with that query. An absolute path ('/settings') leaves the template. A relative href is resolved the same way. A record's id goes in `query`, never in the path: { $invoke: 'routeStore.navigate', args: ['~/board', { $: '{ query: { id: board.id } }' }] }, read back on that page as routeStore.params.id. An id is a URI, so in the path it is several segments and the route never matches; navigate writes it so it reads back exactly",
+      resolve:
+        '(to: string): the address a path leads to, resolved as navigate would, without going there. A relative href is rendered through it already, so a template rarely needs it',
       setParam:
         '(name: string, value: string | null, options?: { push?: boolean }): writes one query parameter (null removes); replaceState by default, push: true for changes that deserve a Back entry. Prefer $localState syncParam over calling this directly',
       back: "(): goes back one entry, the browser's own way. Use it on a page reached from several places — a record page is opened from a list, from a search and from a link somebody sent, and only one of those has a parent worth guessing. Does nothing at the start of the session's history",
@@ -1217,7 +1223,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       personalSpaces: 'array of Space objects (local/personal spaces; all Space fields)',
       sharedSpaces: 'array of Space objects (shared/neighbourhood spaces; all Space fields)',
       spacePath:
-        "string — the path a space's own pages hang off (`/space/<segment>`), empty outside a space. What a link to one record is built from: an href has to be absolute, since a browser resolves a relative one against the current URL rather than against the route tree, and the segment is the neighbourhood CID for a shared space and the dataset id for a personal one — only the URL says which",
+        "string — the path a space's own pages hang off (`/space/<segment>`), empty outside a space. For a link that has to reach the space's own pages from any surface, the shell overlay included, whose '~/' is the overlay's own root: recordLink builds on it. Within a template, write '~/' instead. The segment is the neighbourhood CID for a shared space and the dataset id for a personal one — only the URL says which",
       routeSpaceUnjoined:
         'boolean — the current route points at a space this agent has not joined, as a settled fact. What a join gate should read: `currentDataset` being null is also true for the first frames of a refresh, so gating on that flashes a join prompt at someone already inside. False while the answer is still unknown',
       spaceList:
@@ -1274,7 +1280,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '{ label, value }[] — options for the per-space template override picker: "Use the space\u2019s default" (space-default), "Use my default" (agent-default), then every template. Each of the first two names what it resolves to. Pre-built because a schema can map a store array into options but cannot prepend one, and without those entries overriding would be one-way',
       themeOverrideOptions: '{ label, value }[] — the same, for themes',
       sharingOptions:
-        '{ label, value, icon, description }[] — how a shared space can sync, for a we-select, default first; value is what createSpace takes. Labelled by how it syncs ("Peer-to-peer", "Server (host)") rather than by the backend’s own name for it, and `description` is one sentence on what choosing it means — bind a we-form-field’s description to the selected entry’s. Only options this deployment can fill in are listed. Empty until the backend answers, and on a backend with no choice to offer',
+        '{ label, value, icon, description, servers }[] — how a shared space can sync, for a we-select, default first; value is what createSpace takes. Labelled by how it syncs ("Peer-to-peer", "Server") rather than by the backend’s own name for it, and `description` is one sentence on what choosing it means — bind a we-form-field’s description to the selected entry’s. `servers` is, for a server option, a second we-select’s { label, value }[]: the servers it can sync through, default first and named by host, then "Custom…" (value \'custom\') for typing an http(s) address in; empty for a peer-to-peer option. Only options this deployment can fill in are listed. Empty until the backend answers, and on a backend with no choice to offer',
       defaultSharing:
         'string — the option publishing uses when none is chosen: the backend’s default, empty until it answers. Show it as the picker’s value while nothing is chosen — { $: "local.sharing ? local.sharing : spaceStore.defaultSharing" } — and pass the bare choice to createSpace, rather than copying it into local state, which freezes whatever it was at that moment',
       canAdministerCurrentSpace:
@@ -1332,7 +1338,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       removeSpaceFromGlobal:
         "(spaceUuid: string): withdraws a space's listing from the global discovery space, leaving the space itself alone. Only its author may; removeSpace does this for you",
       createSpace:
-        "(name, description, access: 'personal' | 'shared', discovery: 'hidden' | 'listed', avatarFile?, coverImageFile?, location?, sharing?): creates a new space with full setup. sharing is a value from sharingOptions and only matters for a shared space; empty uses the backend's default. Resolves once the local space exists; sharing a shared one follows in the background, reported on `spaceList[].sharing`, and the space stays local if it fails",
+        "(name, description, access: 'personal' | 'shared', discovery: 'hidden' | 'listed', avatarFile?, coverImageFile?, location?, sharing?, server?): creates a new space with full setup. sharing is a value from sharingOptions and only matters for a shared space; empty uses the backend's default. server is the http(s) address a server option syncs through — one of its `servers` values or a typed one — and empty uses the option's first; one that is not an http(s) address rejects before anything is created. Resolves once the local space exists; sharing a shared one follows in the background, reported on `spaceList[].sharing`, and the space stays local if it fails",
       shareSpace:
         '(uuid: string): shares a space that is still local — what retries a share that failed, with the sharing option and listing it was asked for. Watch `spaceList[].sharing`',
       joinSpace:

@@ -118,7 +118,7 @@ export interface FixtureSignalType {
 /** A peer to show as present. `path` puts them on a route, which is what `onlineHere` filters on. */
 export interface FixturePresence {
   did: string;
-  /** Route within the template, e.g. `/channel/general`. Omit for "in the space, not on this page". */
+  /** Route within the template, e.g. `/channel?id=general`. Omit for "in the space, not on this page". */
   path?: string;
 }
 
@@ -205,7 +205,7 @@ export interface Fixture {
   modules?: string[];
   /**
    * Route within the template where a screenshot of this fixture should land — e.g.
-   * `/channel/discord-general`. Node ids are deterministic (see {@link FixtureNode.id}), so this is
+   * `/channel?id=discord-general`. Node ids are deterministic (see {@link FixtureNode.id}), so this is
    * a literal string and the shoot script can navigate straight to it on first load.
    *
    * Defaults to `/`.

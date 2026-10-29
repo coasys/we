@@ -106,7 +106,7 @@ Glossary (these terms pervade stores, models, and `$query`/`perspective` in sche
 | `@we/entities` | packages/entities | WE's domain models: the authored neutral manifest (src/manifest, the source of truth), the neutral type contract, and the entity proxies backends register into | **Agnostic** |
 | `@we/app-shell` | packages/app-shell | App shell, stores, registries, built-in template schemas | Solid |
 | `@we/ai-context` | packages/ai-context | Generates this reference (CLAUDE.md et al.) from code + fragments | Build tool |
-| `@we/agent-tools` | packages/agent-tools | What a model can do with WE: template editing as tools and as the editor's loop, one set of rules for both, plus a single-file bundle for agent hosts | **Agnostic** |
+| `@we/agent-tools` | packages/agent-tools | What a model can do with WE: templates and themes as tools for any host, a space's records and WE's conventions for a conversation WE runs itself, and a single-file bundle for agent hosts | **Agnostic** |
 
 Apps (`apps/we-web`, `apps/we-electron`, `apps/we-tauri`) are thin hosts over `@we/app-shell`.
 Each supplies two things: a `PlatformAdapter` (where am I running) and a `BackendConnector`
@@ -178,6 +178,9 @@ that declares `backends: ['ad4m']` — nothing else. See `docs/architecture/pack
 - What no template may replace — the password field, the safety prompts, safe mode — and the one
   place each is enforced → docs/architecture/protected-pieces.md. Read it before touching the boot
   screen, a confirmation the host raises, or how a template becomes the live one.
+- What a language model can do with WE — which rules are WE's to ship as tools and which are the
+  backend's, where a new template or theme goes, and who runs the conversation →
+  docs/architecture/agents.md; the tools themselves → `packages/agent-tools/`.
 
 **Where a new thing goes** — module or host store, panel or fragment, who decides placement, and how
 two capabilities cooperate without depending on each other — is
@@ -421,7 +424,7 @@ Example node:
 {
   "type": "we-button",
   "props": {
-    "onClick": { "$invoke": "routeStore.navigate", "args": ["/home"] }
+    "onClick": { "$invoke": "routeStore.navigate", "args": ["~/"] }
   },
   "children": [
     { "type": "we-icon", "props": { "name": "house" } },
@@ -2518,7 +2521,6 @@ AgentSettings extends Ad4mModel:
   - systemLightThemeId: string [we://system_light_theme]
   - systemDarkThemeId: string [we://system_dark_theme]
   - displayPreferences: string [we://display_preferences]
-  - claudeApiKey: string [we://claude_api_key]
   - datasetOrder: string [we://dataset_order]
   - globalSpaceJoined: boolean = false [we://global_space_joined]
   - globalSpaceUrl: string [we://global_space_url]
@@ -2529,7 +2531,7 @@ AgentSettings extends Ad4mModel:
   - installedModules: string [we://installed_modules]
   - moduleSettings: string [we://module_settings]
   Relations:
-  - installedTemplates: HasMany → Template [we://installed_template]
+  - hiddenTemplates: HasMany → Template [we://hidden_template]
   - installedThemes: HasMany → Theme [we://installed_theme]
   - spaceTemplatePreferences: HasMany → SpaceTemplatePreference [we://space_template_preference]
 
@@ -3224,10 +3226,12 @@ RouteStore:
 - State:
   - currentPath: string (the current route path)
   - segments: string[] (currentPath split by "/", e.g. ["/foo/bar"] → ["foo", "bar"])
-  - templateSegments: string[] — the segments BELOW the space prefix, which is a template's own coordinate space. A template mounted at /space/<id> reading its own route params wants this: at /space/abc/photo/xyz it is ["photo", "xyz"], so a `/photo/:postId` route reads templateSegments[1] and keeps reading it wherever the host mounts the template. Reading `segments` by index pins a template to the host's prefix and breaks when it moves.
+  - templateSegments: string[] — the segments BELOW the space prefix, which is a template's own coordinate space. A template mounted at /space/<id> reading its own screens wants this: at /space/abc/canvas/notes it is ["canvas", "notes"], whatever prefix the host mounts the template under. Not for a record's id, which is a query value: routeStore.params.id. Reading `segments` by index pins a template to the host's prefix and breaks when it moves.
   - params: Record<string, string> — the URL's query parameters, reactive; read one as { $: 'routeStore.params.<name>' }. Prefer $localState with syncParam for fields a view owns; read params directly only for parameters something else writes
+  - page: string — the page on screen: currentPath, plus ?id=… when the query names the record the page is about. /board?id=a and /board?id=b are two pages where currentPath says only "a board". What presence compares to tell who is on the same page
 - Actions:
-  - navigate(to: string, options?): navigates to a route (a bare path restores that route's remembered query string)
+  - navigate(to: string, options?: { query? }): navigates to a route (a bare path restores that route's remembered query string). A path is relative to the route the node is in: '.' is that route itself (so a button navigating to '.' inside a route does nothing), '..' the route above, './x' a page below it. '~/x' is from the template's root, from anywhere — write it for home ('~/') and for links between a template's screens, since it means the same in a header and inside a page. '?q' is the page on screen with that query. An absolute path ('/settings') leaves the template. A relative href is resolved the same way. A record's id goes in `query`, never in the path: { $invoke: 'routeStore.navigate', args: ['~/board', { $: '{ query: { id: board.id } }' }] }, read back on that page as routeStore.params.id. An id is a URI, so in the path it is several segments and the route never matches; navigate writes it so it reads back exactly
+  - resolve(to: string): the address a path leads to, resolved as navigate would, without going there. A relative href is rendered through it already, so a template rarely needs it
   - setParam(name: string, value: string | null, options?: { push?: boolean }): writes one query parameter (null removes); replaceState by default, push: true for changes that deserve a Back entry. Prefer $localState syncParam over calling this directly
   - back(): goes back one entry, the browser's own way. Use it on a page reached from several places — a record page is opened from a list, from a search and from a link somebody sent, and only one of those has a parent worth guessing. Does nothing at the start of the session's history
 
@@ -3325,7 +3329,8 @@ SessionStore:
   - hostAccount: BackendAccountInfo | undefined — this agent's account with that node (email, remainingCredits, walletAddress, freeAccess). Check freeAccess before showing a balance: on a free node the credit figure means nothing and "0" reads as an account that has run dry
   - isGuest: boolean — this identity was minted for somebody who arrived on a guest invite link rather than chosen by them. NOT the same question as `host`: an ordinary member of a hosted deployment has a host and is not a guest. Read it where the app explains itself to the person using it — why it is asking for a name, what "log out" would mean for an identity with no other way back
   - identityCapabilities: IdentityCapabilities — what the backend in use can do with the person's identity beyond this session, one boolean per part of Settings: password, passkey, masterKey, recoveryWords, keyLog, export, logOutEverywhere, deleteAccount, devices, linkDevice, switchDevice, bots, plan, billing. All false until a backend reports otherwise, and all false on a backend with no identity support. Gate an identity control on its own flag rather than hiding the section — the kit's comingSoon fragment draws it greyed out with a "Coming soon" tag until the flag turns true
-  - isDevelopment: boolean — whether this is a development build. A fact about the build. Do NOT gate developer-only UI on it; gate on devTools, which is the same answer plus a switch
+  - isDevelopment: boolean — whether this is a development build. A fact about the build. Do NOT gate developer-only UI on it; gate on devTools
+  - devFeatures: boolean — whether this build has developer features at all: a dev server, or a deploy of work in progress (a preview). The ceiling devTools sits under. Gate the way to the developer switch on this
   - devTools: boolean — whether developer affordances should be VISIBLE. True in a development build unless a developer has thrown the Settings → Developer switch to see what a shipped app looks like. Reactive, so a control gated on it appears and disappears on the press. Gate any developer-only control on this — a schema-test page, a fixture toggle — and wrap it in $if rather than hiding it, since a hidden row is still in the accessibility tree and still found by find-in-page. Never true in a production build, whatever the switch says
   - credentialEntered: boolean — something has been typed into the host's password field. The password itself is never readable from a template — see CredentialField — so gate a Sign in button on this
   - credentialConfirmed: boolean — a CredentialField with purpose 'new' holds a password typed twice and the same both times. Gate the call to profileStore.completeAccountSetup on it
@@ -3486,7 +3491,7 @@ SpaceStore:
   - sharedSpaces: array of Space objects (shared/neighbourhood spaces; all Space fields)
   - spaceList: { uuid, name, description, avatar, kind: 'shared' | 'personal' | 'foreign', isWeSpace, canAdminister }[] — one row per joined dataset the agent can act on, ordered like the sidebar and excluding the system datasets. Includes datasets that are not WE spaces (kind 'foreign', isWeSpace false), which are waiting to be initialized. `uuid` is the dataset id, so it keys navigation and settings whether or not a Space record exists. `sharing` is 'sharing' while a new shared space is still being shared (it is usable meanwhile), 'failed' when that did not work — `shareError` says why, and shareSpace tries again — and '' otherwise; a shared space has a `shareLink`
   - routeSpaceUnjoined: boolean — the current route points at a space this agent has not joined, as a settled fact. What a join gate should read: `currentDataset` being null is also true for the first frames of a refresh, so gating on that flashes a join prompt at someone already inside. False while the answer is still unknown
-  - spacePath: string — the path a space's own pages hang off (`/space/<segment>`), empty outside a space. What a link to one record is built from: an href has to be absolute, since a browser resolves a relative one against the current URL rather than against the route tree, and the segment is the neighbourhood CID for a shared space and the dataset id for a personal one — only the URL says which
+  - spacePath: string — the path a space's own pages hang off (`/space/<segment>`), empty outside a space. For a link that has to reach the space's own pages from any surface, the shell overlay included, whose '~/' is the overlay's own root: recordLink builds on it. Within a template, write '~/' instead. The segment is the neighbourhood CID for a shared space and the dataset id for a personal one — only the URL says which
   - creatingSpace: boolean (true while a new space is being created)
   - joiningSpace: string — the shared id of the space a join is running for, '' when none is. The id rather than a flag so a list can spin only the row being joined; a gate compares it against its own route segment. Stays set for the whole join, which outlives the network call that starts it
   - joinSlow: boolean — that join has been going long enough to be worth mentioning. Joining a shared space has to fetch and install it before it exists anywhere, so a first join routinely takes a minute; pair with joiningSpace to say so instead of spinning in silence
@@ -3518,7 +3523,7 @@ SpaceStore:
   - routableViews: ResolvedView[] — every view that could render here, at its permanent segment — what routes are built from. Separate from spaceViews because it changes when a view is installed, not when a switch is flicked
   - enabledViewIds: string[] — ids of the sections the community has turned on here. What a route body is gated on; not the nav list, which also drops this agent's hidden ones — hiding a section for yourself must not make its URL refuse you
   - viewNav: { id, segment, label, icon, path }[] — the sections as a nav strip reads them: enabled by the community, minus those this agent hid, in order. One source with the routes, so nav and routes cannot disagree
-  - sharingOptions: { label, value, icon, description }[] — how a shared space can sync, for a we-select, default first; value is what createSpace takes. Labelled by how it syncs ("Peer-to-peer", "Server (host)") rather than by the backend’s own name for it, and `description` is one sentence on what choosing it means — bind a we-form-field’s description to the selected entry’s. Only options this deployment can fill in are listed. Empty until the backend answers, and on a backend with no choice to offer
+  - sharingOptions: { label, value, icon, description, servers }[] — how a shared space can sync, for a we-select, default first; value is what createSpace takes. Labelled by how it syncs ("Peer-to-peer", "Server") rather than by the backend’s own name for it, and `description` is one sentence on what choosing it means — bind a we-form-field’s description to the selected entry’s. `servers` is, for a server option, a second we-select’s { label, value }[]: the servers it can sync through, default first and named by host, then "Custom…" (value 'custom') for typing an http(s) address in; empty for a peer-to-peer option. Only options this deployment can fill in are listed. Empty until the backend answers, and on a backend with no choice to offer
   - defaultSharing: string — the option publishing uses when none is chosen: the backend’s default, empty until it answers. Show it as the picker’s value while nothing is chosen — { $: "local.sharing ? local.sharing : spaceStore.defaultSharing" } — and pass the bare choice to createSpace, rather than copying it into local state, which freezes whatever it was at that moment
   - mutedDids: string[] — DIDs this agent has muted, everywhere. Private, held in the root dataset. A feed filters on it before rendering: { $: '!(post.author in spaceStore.mutedDids)' }. Hides on this screen only — a neighbourhood is writable by every member, so nothing here removes anything for anyone else
   - mutedAgents: MutedAgent[] — the full mute records (did, description), for a settings list that wants the note as well as the DID
@@ -3538,7 +3543,7 @@ SpaceStore:
   - canAdministerCurrentSpace: boolean — whether this agent may change what every member of the space on screen sees. The readable form of canAdministerSpace, which an expression cannot call. Gate an admin-only control on this rather than on `x.author == me.did`, which asks who made the row and not who runs the space
   - policy: { loaded, preset, permissions, frozen, me, roles, sentences } — the space's policy in force: who may do what to its records. Pass it whole to can() to decide whether to offer a control: { $: "can({ policy: spaceStore.policy, action: 'CollectionBlock.delete', record: post })" }. `preset` is 'open', 'community', or null for rules the community wrote itself; `sentences` is each permission in words, for a page that explains the rules; `roles` are the viewer's, admin included while they administer the space. A write the policy does not allow is refused when it is made whatever a template offered — its handler's onError receives the reason as result.message
 - Actions:
-  - createSpace(name, description, access: 'personal' | 'shared', discovery: 'hidden' | 'listed', avatarFile?, coverImageFile?, location?, sharing?): creates a new space with full setup. sharing is a value from sharingOptions and only matters for a shared space; empty uses the backend's default. Resolves once the local space exists; sharing a shared one follows in the background, reported on `spaceList[].sharing`, and the space stays local if it fails
+  - createSpace(name, description, access: 'personal' | 'shared', discovery: 'hidden' | 'listed', avatarFile?, coverImageFile?, location?, sharing?, server?): creates a new space with full setup. sharing is a value from sharingOptions and only matters for a shared space; empty uses the backend's default. server is the http(s) address a server option syncs through — one of its `servers` values or a typed one — and empty uses the option's first; one that is not an http(s) address rejects before anything is created. Resolves once the local space exists; sharing a shared one follows in the background, reported on `spaceList[].sharing`, and the space stays local if it fails
   - shareSpace(uuid: string): shares a space that is still local — what retries a share that failed, with the sharing option and listing it was asked for. Watch `spaceList[].sharing`
   - joinSpace(id: string, focus = true): joins a shared space by share link, neighbourhood URL or CID, or focuses it if already joined. Pass focus: false to join without navigating there — for a caller that needs the dataset present rather than open, which is how the marketplace reads its own dataset without moving you out of the space you are in. Rejects when the join could not be completed, so onSuccess means what it says; watch joiningSpace/joinSlow/joinError for what to show while it runs. A join whose network call times out keeps going: the backend usually finishes anyway, and this waits for that before believing the failure
   - initializeAsWeSpace(name: string, description: string, avatarValue?: File | string | null): installs WE's Space SDNA into the current, already-joined, foreign-native dataset (e.g. one synced in from Flux) and creates a Space entity in place — access is always 'shared' since the dataset is already a published neighbourhood
@@ -4071,7 +4076,7 @@ Example: { "$": "routeStore.currentPath" }
 
 Calling actions:
 { "$invoke": "storeName.method", "args": [...] }
-Example: { "$invoke": "routeStore.navigate", "args": ["/home"] }
+Example: { "$invoke": "routeStore.navigate", "args": ["~/"] } (the template's home; see routeStore.navigate for where a path is from)
 
 Feature-module stores:
 { "$": "modules.<moduleId>.<member>" } and { "$invoke": "modules.<moduleId>.<action>" }
@@ -4189,14 +4194,14 @@ Example — Channel list → Conversation list:
           "type": "we-button",
           "props": {
             "variant": "ghost",
-            "onClick": { "$invoke": "routeStore.navigate", "args": [{ "$": "`/channels/${channel.id}`" }] }
+            "onClick": { "$invoke": "routeStore.navigate", "args": ["~/channels", { "$": "{ query: { id: channel.id } }" }] }
           },
           "children": [{ "$": "channel.name" }]
         }]
       }]
     },
     {
-      "path": "/channels/:channelId",
+      "path": "/channels",
       "type": "Column",
       "props": { "gap": "300", "p": "400" },
       "children": [{
@@ -4205,7 +4210,7 @@ Example — Channel list → Conversation list:
           "items": {
             "$query": {
               "entity": "Conversation",
-              "scope": { "anchor": "Channel", "via": "conversations", "anchorId": { "$": "routeStore.segments[1]" } },
+              "scope": { "anchor": "Channel", "via": "conversations", "anchorId": { "$": "routeStore.params.id" } },
               "dataset": { "$": "currentDataset" }
             }
           },
@@ -4222,6 +4227,7 @@ Example — Channel list → Conversation list:
 Notes:
 - Use include when you need related data displayed inline (e.g. a post with its comments, a channel with its conversation count).
 - Use a scope drill-down when you're on a detail route and want only children belonging to the current record.
+- A detail route takes its record's id from the query, never the path: open it with navigate('~/channels', { query: { id } }) and read routeStore.params.id. An id is a URI, so in a path it is several segments and the route never matches.
 - dataset must point to the dataset that holds the data. For external apps (e.g. Flux) opened as a WE space, use { "$": "currentDataset" }.
 - The relation name (in include, or scope.via) is the HasMany field name on the parent entity.
 

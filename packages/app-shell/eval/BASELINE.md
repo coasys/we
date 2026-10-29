@@ -10,6 +10,77 @@ the payload was: that is the part that goes stale. **Say which scale it was**, a
 separate tables — `small` and `large` answer different questions and a combined pass rate is a
 figure about nothing. See "Two scales" in `README.md`.
 
+Template names changed on 2026-10-27: what the sections below call `kanban` (its cases
+`kanban-*`) is the `trello` template now (`trello-*`). The records are left as they were written.
+
+---
+
+## 2026-10-26 — `toolset` against `lookup`, Sonnet 5.5 and qwen3:4b
+
+Can the editor run on the tools a host's agent gets (`template_read`, `template_update` and
+`get_documentation`, with the `template` topic as the whole prompt), without losing anything to the
+35K prompt `lookup` ships? 23 cases at both scales, 3 repeats, the Electron dev node at `bc921da62`.
+
+Two changes to the cases came first. `delete-with-confirm` was replaced by `post-details-dialog`:
+the host now confirms a destructive action itself, so the case's own dialog was a warning the
+editor refuses, and every run on both strategies failed 0/3 for doing the right thing.
+`evalCases.test.ts` now checks that each solution is an edit the editor would keep. And a
+`template_update` sent with its patches as JSON text, which Sonnet did once, is now read.
+
+### Sonnet 5.5
+
+| scale | strategy  | passed    | valid | model calls | context calls | retries | sent per case | median time |
+| ----- | --------- | --------- | ----- | ----------- | ------------- | ------- | ------------- | ----------- |
+| small | `lookup`  | **48/51** | 51/51 | 2.5         | 0.4           | 0.2     | 96K           | 8s          |
+| small | `toolset` | **48/51** | 51/51 | 3.9         | 2.3           | 0.3     | 71K           | 8s          |
+| large | `lookup`  | **18/18** | 18/18 | 2.0         | 0.0           | 0.0     | 154K          | 4s          |
+| large | `toolset` | **18/18** | 18/18 | 2.0         | 0.0           | 0.0     | 66K           | 3s          |
+
+**On Sonnet, `toolset` costs nothing in accuracy and sends less.** Its prompt is 7K where
+`lookup`'s is 35K. It makes up some of that by reading topics (2.3 a case on the small cases),
+and a topic read sits in the conversation, where it isn't cached. On large cases it never needs
+to: the reference entries come with the first read. The failures are different cases, one or two
+runs each: `responsive-grid` and `post-details-dialog` for `lookup`, `tabs-with-pages` and
+`responsive-grid` for `toolset`, plus the stringified patches since fixed.
+
+### qwen3:4b, 40,960 context, 100% GPU
+
+| scale | strategy  | passed | valid | asked | timed out | model calls | sent per case | median time\* |
+| ----- | --------- | ------ | ----- | ----- | --------- | ----------- | ------------- | ------------- |
+| small | `lookup`  | 13/51  | 24/51 | 4     | 27        | 0.9         | 34K           | 44s           |
+| small | `toolset` | 14/51  | 51/51 | 11    | 0         | 2.3         | 20K           | 40s           |
+| large | `lookup`  | 6/18   | 13/18 | 3     | 5         | 1.7         | 148K          | 61s           |
+| large | `toolset` | 7/18   | 18/18 | 6     | 0         | 2.0         | 58K           | 46s           |
+
+\* Of the runs that finished.
+
+**The headline is not a comparison.** All 32 `lookup` timeouts are the 300s `fetch` cap described
+in `README.md`: a 35K prompt is too long for the 4B to prefill and answer in time, and the cap
+falls on the bigger prompt only. **On the 37 runs both finished, `lookup` passed 19 and `toolset` 16.** So for this model the larger prompt is somewhat better on quality, and four to five times
+slower: its median turn including the timeouts is 250s, where `toolset`'s is 40s.
+
+Where the 4B fails under `toolset`, it is for one of three reasons:
+
+- **It guesses rather than reads.** It made almost no documentation calls (0.1 a case).
+  `page-background` asks for "the sunken surface colour": `lookup`'s prompt lists the colour
+  roles and passed 3/3, while `toolset`'s doesn't and the model wrote `surface` 3/3.
+- **It answers the last thing it read.** On workshop the first read is a long outline, and the
+  model described the workspace in all six runs. `template_read` now ends with what the edit was
+  for, and a re-run of the `toolset` arm (`2026-10-27T03-37-22-447Z`, 19/69, the same within
+  noise) shows that worked: the model then found the right node and wrote the right patch. It
+  wrote the patch as JSON in its reply instead of calling the tool, so it still failed.
+- **It answers with nothing.** 11 runs ended after one call with no text and no tool call. The
+  node doesn't log what the model sent back, so the cause isn't known.
+
+### What it decides
+
+**The editor moves to `toolset`.** On a capable model it is as accurate, from a fifth of the
+prompt, and it is the same set of tools a host's agent uses. A 4B fails about 70% of edits under
+either strategy, so neither makes it a usable template editor, and it should not decide what the
+editor ships. If the small-model question comes back, re-run it once the 300s cap is gone, and
+compare against `full` as the control and `lookup` as the previous default. All the strategies
+stay in the eval for that.
+
 ---
 
 ## 2026-10-04 — bounding `workshopTemplate`, and the bug it found

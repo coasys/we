@@ -146,7 +146,7 @@ export type {
   DatasetRef,
   SharingOption,
 } from './lifecycle';
-export { isSessionTimeout, SessionTimeoutError } from './lifecycle';
+export { isSessionTimeout, parseServerUrl, SessionTimeoutError } from './lifecycle';
 export { manifestEntries } from './manifestEntry';
 export type { EntityManifestEntry, EntityManifestProperty } from './manifestEntry';
 export { NAME_CANDIDATES, nameFromProperties, namePropertyOf } from './recordName';
@@ -214,6 +214,8 @@ export type {
   LanguageModelPort,
   LanguageModelStatus,
 } from './languageModel';
+export type { AgentPort, AgentRunReply, AgentRunRequest, AgentTurn } from './agents';
+export { AgentUnavailableError } from './agents';
 export {
   allowedMoves,
   approvalsFor,

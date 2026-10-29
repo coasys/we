@@ -68,7 +68,7 @@ const boardsRoute: RouteSchema = {
               props: {
                 variant: 'bare',
                 width: '100%',
-                onClick: { $invoke: 'routeStore.navigate', args: [{ $: '`./board/${board.id}`' }] },
+                onClick: { $invoke: 'routeStore.navigate', args: ['~/board', { $: '{ query: { id: board.id } }' }] },
               },
               children: [
                 {
@@ -111,7 +111,7 @@ const boardsRoute: RouteSchema = {
           title: 'New board',
           kind: KIND.board,
           placeholder: 'Roadmap',
-          navigateTo: './board/',
+          navigateTo: '~/board',
         }),
       ],
     },
@@ -146,7 +146,7 @@ function postCard(as: string): SchemaNode {
 }
 
 const boardRoute: RouteSchema = {
-  path: '/board/:boardId',
+  path: '/board',
   type: 'Column',
   props: { width: '100%', height: '100%' },
   $queries: signalTypesQuery,
@@ -165,7 +165,11 @@ const boardRoute: RouteSchema = {
       children: [
         {
           type: 'we-button',
-          props: { variant: 'ghost', size: 'sm', onClick: { $invoke: 'routeStore.navigate', args: ['.'] } },
+          props: {
+            variant: 'ghost',
+            size: 'sm',
+            onClick: { $invoke: 'routeStore.navigate', args: ['~/'] },
+          },
           children: [{ type: 'we-icon', props: { name: 'arrow-left' } }],
         },
         {
@@ -174,7 +178,7 @@ const boardRoute: RouteSchema = {
             item: {
               $query: {
                 entity: 'CollectionBlock',
-                where: { id: { $: 'routeStore.templateSegments[1]' } },
+                where: { id: { $: 'routeStore.params.id' } },
                 limit: 1,
               },
             },
@@ -196,7 +200,7 @@ const boardRoute: RouteSchema = {
           arrangement is an ordered relation.
         */
         taskBoard({
-          boardId: { $: 'routeStore.templateSegments[1]' },
+          boardId: { $: 'routeStore.params.id' },
           entity: 'CollectionBlock',
           where: { kind: KIND.post },
           lanesOnly: true,
@@ -225,9 +229,9 @@ const boardRoute: RouteSchema = {
   ],
 };
 
-export const kanbanTemplate: TemplateSchema = {
+export const trelloTemplate: TemplateSchema = {
   meta: {
-    name: 'Boards',
+    name: 'Trello',
     description: 'Kanban boards where a card’s column is its status — coordination on the same substrate.',
     icon: 'kanban',
     // The board's suggestion controls name `modules.transcribe.*` — see `taskBoard`. Declared so a
@@ -242,11 +246,24 @@ export const kanbanTemplate: TemplateSchema = {
   routes: [
     boardsRoute,
     boardRoute,
+    // An address this template has no page for, an old board link among them. It needs its own way
+    // back: nothing else on the page leads anywhere.
     {
       path: '*',
       type: 'Column',
-      props: { p: '600', ax: 'center' },
-      children: [{ type: 'we-text', props: { color: 'text-faint' }, children: ['No such board.'] }],
+      props: { p: '600', ax: 'center', gap: '300' },
+      children: [
+        { type: 'we-text', props: { color: 'text-faint' }, children: ['No such board.'] },
+        {
+          type: 'we-button',
+          props: {
+            variant: 'soft',
+            size: 'sm',
+            onClick: { $invoke: 'routeStore.navigate', args: ['~/'] },
+          },
+          children: ['All boards'],
+        },
+      ],
     },
   ],
 };

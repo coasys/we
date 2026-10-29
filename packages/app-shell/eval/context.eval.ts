@@ -12,13 +12,12 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
-  CONTEXT_STRATEGIES,
-  type ContextStrategyId,
   DEFAULT_TEMPLATE_BUDGET,
   type EditSessionResult,
   prepareTemplateRequest,
-  requestMessage,
   runEditSession,
+  TEMPLATE_STRATEGIES,
+  type TemplateStrategyId,
 } from '@we/agent-tools';
 import { createAd4mLanguageModelPort } from '@we/backend-ad4m';
 import { buildValidationContext, contextData } from '@we/schema-shared';
@@ -38,8 +37,8 @@ const list = (value: string | undefined) =>
 const url = env.WE_EVAL_URL || 'http://localhost:12000';
 const token = env.WE_EVAL_TOKEN || '';
 const models = list(env.WE_EVAL_MODELS).length ? list(env.WE_EVAL_MODELS) : ['default'];
-const strategies = (list(env.WE_EVAL_STRATEGIES).length ? list(env.WE_EVAL_STRATEGIES) : CONTEXT_STRATEGIES).filter(
-  (s): s is ContextStrategyId => (CONTEXT_STRATEGIES as string[]).includes(s),
+const strategies = (list(env.WE_EVAL_STRATEGIES).length ? list(env.WE_EVAL_STRATEGIES) : TEMPLATE_STRATEGIES).filter(
+  (s): s is TemplateStrategyId => (TEMPLATE_STRATEGIES as string[]).includes(s),
 );
 const caseIds = list(env.WE_EVAL_CASES);
 /*
@@ -224,15 +223,16 @@ for (const model of models) {
               const result = await runEditSession({
                 converse: port.converse!,
                 system: prepared.system,
-                turns: [{ role: 'user', text: requestMessage(evalCase.request, prepared.sent) }],
+                turns: [...prepared.opening],
                 tools: prepared.tools,
                 resolveTool: prepared.resolveTool,
+                patchTool: prepared.patchTool,
                 schema: prepared.tree.schema,
                 mint: prepared.tree.mint,
                 uses: prepared.tree.uses,
                 validationContext,
                 model: model === 'default' ? undefined : model,
-                accept: () => 'Template updated successfully.',
+                accept: () => prepared.accepted,
               });
               const score = scoreCase(evalCase, start, result, validationContext);
               Object.assign(record, score, {

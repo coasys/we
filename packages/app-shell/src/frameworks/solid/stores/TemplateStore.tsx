@@ -11,23 +11,23 @@ import { readDeviceApp, writeDeviceApp } from '@shared/bundles/deviceApp';
 import { appSpaceTemplate, followedTemplateId } from '@shared/bundles/display';
 import { displaySourceOf, readInstalledBundles } from '@shared/bundles/installedBundles';
 import { bootScreenTemplate, placesNode } from '@shared/bundles/judgeBundle';
+import { offeredInPickers } from '@shared/devOnlyOffers';
 import { appTemplateRegistry, DEFAULT_APP_ID, resolveAppTemplate } from '@shared/registries/appTemplates';
 import { withDerivedIds } from '@shared/registries/derivedIds';
 import { reservedTemplateIds } from '@shared/registries/reservedTemplateIds';
 import { seedBundleAppId, seedBundlePieces } from '@shared/registries/seedBundles';
 import { slotRegistry } from '@shared/registries/slotRegistry';
-import { templateRegistry } from '@shared/registries/templateRegistry';
+import { devOnlyTemplateIds, templateRegistry } from '@shared/registries/templateRegistry';
 import { profileTemplate, settingsTemplate } from '@shared/schemas';
 import { getSeed } from '@shared/seedRegistry';
 import { reserveId } from '@shared/templateIdentity';
-import { withLibrary } from '@shared/templateLists';
+import { withLibrary, withLibraryListed } from '@shared/templateLists';
 import { explain } from '@shared/userMessage';
 import { deepClone } from '@shared/utils';
 import { type NewRecord, trace } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import {
   AGENT_DEFAULT,
-  AgentSettings,
   asFileField,
   compressImageToFileData,
   decodeTemplateFile,
@@ -64,7 +64,12 @@ import {
   describeCapabilities,
   describeRefusal,
 } from '../../../shared/templateAcceptance';
-import { remoteUpdateFor, TEMPLATE_WATCH_FIELDS, templateChanges } from '../../../shared/templateSync';
+import {
+  remoteUpdateFor,
+  sameTemplateContent,
+  TEMPLATE_WATCH_FIELDS,
+  templateChanges,
+} from '../../../shared/templateSync';
 import { type AppDataset, canonicalSpaceId, useDatasetStore } from './DatasetStore';
 import { useRouteStore } from './RouteStore';
 import { useSessionStore } from './SessionStore';
@@ -252,6 +257,21 @@ export interface TemplateStore {
   /** Save a template's working copy to its own record, whichever template it is — see the definition. */
   persistTemplate: (template: TemplateSchema) => Promise<void>;
   /**
+   * Where a template is stored: the dataset holding its record and the record's id. Undefined for one
+   * with no record of its own — a built-in, or a copy not yet saved.
+   */
+  storedAt: (template: TemplateSchema) => { dataset: unknown; recordId: string } | undefined;
+  /**
+   * Run something that writes a template's record from outside this store — an agent on the
+   * backend — and read the record back afterwards. While it runs, the watch leaves that record alone,
+   * so the write is not taken for a change from another device. Answers with what `run` answered and
+   * the template as it is now stored, for the caller to put in front of the person.
+   */
+  writtenElsewhere: <T>(
+    template: TemplateSchema,
+    run: () => Promise<T>,
+  ) => Promise<{ result: T; stored: TemplateSchema | undefined }>;
+  /**
    * Whether somebody else's change to the template on screen is applied as it arrives, or offered
    * with an "Update now" notice. Off by default. This agent's own changes, and any change to a
    * template being edited here, always apply. See "Live template sync" in the definition.
@@ -358,28 +378,44 @@ export function TemplateStoreProvider(props: ParentProps) {
    * `templateChanges`.
    */
   const ownSaves = new Map<string, string>();
+  /**
+   * Records something outside this store is writing right now (`writtenElsewhere`). Their writer
+   * reads them back itself, so the watch does not act on them meanwhile.
+   */
+  const writingElsewhere = new Set<string>();
   /** Note a write this agent made to a template record, so its echo is not taken for news. */
   function noteOwnWrite(record: { id: string; version?: unknown }): void {
     ownSaves.set(record.id, String(record.version ?? ''));
   }
 
   /**
-   * Make a template in this agent's library and mark it installed, as one write.
+   * Make a template in this agent's library.
    *
-   * Two writes before: the record, then the link that puts it in the pickers. Another of this
-   * agent's devices, watching the library, could read the first without the second, and the new
-   * template stayed out of its lists until a reload.
+   * The record is all there is to write: a library template is listed unless the agent hid it
+   * (`AgentSettings.hiddenTemplates`), so another device watching the library lists it as soon as
+   * it arrives, and so does one written by an agent or a bundle.
    */
+  /**
+   * Hides and unhides this session made, by record id, until the agent's settings read them back. A
+   * reload of the library can land before the settings it reads have heard of the change, and would
+   * otherwise put back a template just hidden.
+   */
+  const hiddenHere = new Map<string, boolean>();
+
+  /** Whether this agent hid a library record from their lists. */
+  function isHidden(recordId: string): boolean {
+    const here = hiddenHere.get(recordId);
+    if (here !== undefined) return here;
+    // Without `include` a relation reads back as ids, or as records carrying one.
+    const refs = (datasetStore.agentSettings()?.hiddenTemplates ?? []) as (string | { id: string })[];
+    return refs.some((ref) => (typeof ref === 'string' ? ref : ref.id) === recordId);
+  }
+
   async function createLibraryTemplate(
     handle: unknown,
     data: Parameters<typeof Template.create>[1],
   ): Promise<NewRecord<Template>> {
-    const prefs = datasetStore.agentSettings();
-    const record = await runEntityTransaction(handle, async (tx) => {
-      const created = await Template.create(handle, data, { batchId: tx.batchId });
-      if (prefs) await AgentSettings.addRelation(handle, prefs.id, 'installedTemplates', created.id, tx.batchId);
-      return created;
-    });
+    const record = await Template.create(handle, data);
     noteOwnWrite(record);
     return record;
   }
@@ -488,7 +524,13 @@ export function TemplateStoreProvider(props: ParentProps) {
     It is stored like any template, so every list a space's template is chosen from leaves it out.
   */
   const isApp = (t: TemplateSchema) => t.meta?.role === 'app';
-  const spaceChoosable = () => allTemplates().filter((t) => !isApp(t));
+  // A showcase template only while developer tools are showing — see `offeredInPickers`.
+  const spaceChoosable = () =>
+    offeredInPickers(
+      allTemplates().filter((t) => !isApp(t)),
+      session.devTools(),
+      devOnlyTemplateIds,
+    );
 
   const personalTemplates = () => {
     const installed = installedIds();
@@ -746,28 +788,8 @@ export function TemplateStoreProvider(props: ParentProps) {
       setAllTemplates((prev) => withLibrary(prev, [...filteredCore, ...savedTemplates]));
       setLibraryLoaded(true);
 
-      // Build installed ID set from AgentSettings HasMany relation
-      // HasMany without .include() returns raw URI strings, not model instances.
-      // Build a reverse map from AD4M model ID → template slug so we can match them.
-      // Merge with existing installedIds to preserve any just-added entries
-      // (HasMany may not reflect recent addInstalledTemplates calls yet).
-      const prefs = datasetStore.agentSettings();
-      if (prefs) {
-        const installedRefs = prefs.installedTemplates || [];
-        const modelIdToSlug = new Map<string, string>();
-        for (const [slug, model] of savedTemplateMap.entries()) {
-          modelIdToSlug.set(model.id, slug);
-        }
-
-        const ids = new Set<string>(installedIds());
-        for (const ref of installedRefs) {
-          // ref may be a string URI or an object with .id
-          const modelId = typeof ref === 'string' ? ref : ref.id;
-          const slug = modelIdToSlug.get(modelId);
-          if (slug) ids.add(slug);
-        }
-        setInstalledIds(ids);
-      }
+      const library = [...savedTemplateMap].map(([id, model]): [string, string] => [id, model.id]);
+      setInstalledIds((prev) => withLibraryListed(prev, library, isHidden, (id) => spaceTemplateMap.has(id)));
     } catch (error) {
       console.error('TemplateStore: loadSavedTemplates error', error);
     }
@@ -1321,7 +1343,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       });
       // Unlink from AgentSettings and delete template
       const prefs = datasetStore.agentSettings();
-      if (prefs) await prefs.removeInstalledTemplates(template).catch(() => {});
+      if (prefs) await prefs.removeHiddenTemplates(template).catch(() => {});
       template.delete?.().catch((err: unknown) => console.error('TemplateStore: delete error', err));
     }
 
@@ -1338,7 +1360,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     // Delete from AD4M first, before updating local state
     try {
       const prefs = datasetStore.agentSettings();
-      if (prefs) await prefs.removeInstalledTemplates(template).catch(() => {});
+      if (prefs) await prefs.removeHiddenTemplates(template).catch(() => {});
       await template.delete();
     } catch (err) {
       console.error('TemplateStore: deleteTemplate AD4M error', err);
@@ -1379,7 +1401,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     setOperationLoading(`delete:${recordId}`);
     try {
       const prefs = datasetStore.agentSettings();
-      if (prefs) await prefs.removeInstalledTemplates(template).catch(() => {});
+      if (prefs) await prefs.removeHiddenTemplates(template).catch(() => {});
       await template.delete();
       refusedRecords.delete(recordId);
       setRefusedTemplates((rows) => rows.filter((row) => row.id !== recordId));
@@ -1401,7 +1423,8 @@ export function TemplateStoreProvider(props: ParentProps) {
       const prefs = datasetStore.agentSettings();
       // `.catch(() => {})` swallowed the only write this function makes, so the sidebar gained a
       // template that the next boot would not have — the state moved and the record did not.
-      if (prefs) await prefs.addInstalledTemplates(template);
+      if (prefs) await prefs.removeHiddenTemplates(template);
+      hiddenHere.set(template.id, false);
 
       setInstalledIds((prev) => {
         const next = new Set(prev);
@@ -1425,7 +1448,8 @@ export function TemplateStoreProvider(props: ParentProps) {
     setOperationLoading(`uninstall:${templateId}`);
     try {
       const prefs = datasetStore.agentSettings();
-      if (prefs) await prefs.removeInstalledTemplates(template);
+      if (prefs) await prefs.addHiddenTemplates(template);
+      hiddenHere.set(template.id, true);
 
       setInstalledIds((prev) => {
         const next = new Set(prev);
@@ -1651,21 +1675,6 @@ export function TemplateStoreProvider(props: ParentProps) {
     return go;
   }
 
-  const sameContent = (a: TemplateSchema, b: TemplateSchema) => {
-    const bare = (t: TemplateSchema) => {
-      const {
-        templateVersion: _v,
-        author: _a,
-        _fromSpace: _s,
-        ...rest
-      } = deepClone(t) as TemplateSchema & {
-        author?: string;
-      };
-      return JSON.stringify(rest);
-    };
-    return bare(a) === bare(b);
-  };
-
   /** The notice offering a change somebody else made, while it is up. One at a time. */
   let offered: string | null = null;
 
@@ -1681,8 +1690,9 @@ export function TemplateStoreProvider(props: ParentProps) {
     */
     const record = current.id ? (fromSpace ? spaceTemplateMap : savedTemplateMap).get(current.id) : undefined;
     if (!record || !records.has(record.id)) return;
+    if (writingElsewhere.has(record.id)) return;
     const fresh = allTemplates().find((t) => t.id === current.id && !!t._fromSpace === fromSpace);
-    if (!fresh || sameContent(fresh, current)) return;
+    if (!fresh || sameTemplateContent(fresh, current)) return;
 
     const decision = remoteUpdateFor({
       author: (fresh as { author?: string }).author,
@@ -2153,6 +2163,42 @@ export function TemplateStoreProvider(props: ParentProps) {
     if (cached) cached.schemas = allTemplates().filter((t) => t._fromSpace);
   }
 
+  function recordOfTemplate(template: TemplateSchema): NewRecord<Template> | undefined {
+    const id = template.id;
+    if (!id) return undefined;
+    return template._fromSpace
+      ? (spaceTemplateMap.get(id) ?? savedTemplateMap.get(id))
+      : (savedTemplateMap.get(id) ?? spaceTemplateMap.get(id));
+  }
+
+  /** See the interface. The same record and dataset `persistTemplate` writes. */
+  function storedAt(template: TemplateSchema): { dataset: unknown; recordId: string } | undefined {
+    const record = recordOfTemplate(template);
+    const dataset = (template._fromSpace ? datasetStore.currentDataset() : datasetStore.rootDataset())?.handle;
+    return record && dataset ? { dataset, recordId: record.id } : undefined;
+  }
+
+  /** See the interface. */
+  async function writtenElsewhere<T>(
+    template: TemplateSchema,
+    run: () => Promise<T>,
+  ): Promise<{ result: T; stored: TemplateSchema | undefined }> {
+    const record = recordOfTemplate(template);
+    const fromSpace = !!template._fromSpace;
+    if (record) writingElsewhere.add(record.id);
+    try {
+      const result = await run();
+      // Read back now rather than when the watch next fires, so the caller shows the write at once.
+      const dataset = fromSpace ? datasetStore.currentDataset() : null;
+      if (dataset) await refreshSpaceTemplatesInPlace(dataset);
+      else await loadSavedTemplates();
+      const stored = allTemplates().find((t) => t.id === template.id && !!t._fromSpace === fromSpace);
+      return { result, stored };
+    } finally {
+      if (record) writingElsewhere.delete(record.id);
+    }
+  }
+
   /** Copy the current template into a specific space perspective */
   async function publishToSpace(perspectiveUuid: string, spaceName: string): Promise<boolean> {
     const targetDs = datasetStore.datasets().find((d) => d.id === perspectiveUuid);
@@ -2450,6 +2496,8 @@ export function TemplateStoreProvider(props: ParentProps) {
     publishToMarketplace,
     persistCurrentTemplate,
     persistTemplate,
+    storedAt,
+    writtenElsewhere,
     followTemplateUpdates,
     setFollowTemplateUpdates,
     provideEditingProbe,

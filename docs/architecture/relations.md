@@ -75,7 +75,7 @@ Add it if a room-wide read measurably needs it.
 One relation holds every kind of response, so **surfaces filter by what a response is**: a thread
 list or a reply count says `kind: 'reply'` (what the discussion composer writes), and a listing of
 calls says `kind: 'call'`. The host writes the thread link — `completeResponse` in
-`app-shell/src/shared/responses.ts` runs for every write made with the response predicate — so no
+`entities/src/utils/responses.ts` runs for every write made with the response predicate — so no
 template or module writes it itself.
 
 A space is its own dataset, so "a space made in response to a post" cannot be a link in either. That

@@ -8,9 +8,11 @@
  * request loop live in `@we/agent-tools` — this store orchestrates them against its own
  * signals, and never learns which model or provider answered.
  */
+import { agentTurns } from '@shared/agentTurns';
 import { isEditorChord } from '@shared/editorChord';
 import { registerHostDockStore, unregisterHostDockStore } from '@shared/registries/dockRegistry';
 import { EDITOR_STORE_ID } from '@shared/registries/editorDocks';
+import { sameTemplateContent } from '@shared/templateSync';
 import { deepClone } from '@shared/utils';
 import {
   type EditingTheme,
@@ -20,14 +22,9 @@ import {
   useTemplateStore,
   useThemeStore,
 } from '@solid/stores';
-import {
-  countedPatches,
-  datasetModelExtras,
-  prepareTemplateRequest,
-  requestMessage,
-  runEditSession,
-} from '@we/agent-tools';
+import { countedPatches, prepareTemplateRequest, runEditSession } from '@we/agent-tools';
 import type { ConversationTurn, LanguageModelStatus, NewRecord } from '@we/backend-shared';
+import { AgentUnavailableError } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import { ChatMessage as ChatMessageRecord, ChatSession as ChatSessionRecord } from '@we/entities';
 import type { DockEdge, DockSize } from '@we/module-shared';
@@ -212,6 +209,7 @@ function devLog(...args: unknown[]): void {
 const EditorContext = createContext<EditorStore>();
 
 let msgIdCounter = 0;
+
 function createMessage(role: ChatMessage['role'], content: string, status?: ChatMessage['status']): ChatMessage {
   return {
     id: `msg-${++msgIdCounter}`,
@@ -1011,7 +1009,7 @@ export function EditorStoreProvider(props: ParentProps) {
     setStreamingContent('<span class="shimmer">*Thinking...*</span>');
 
     try {
-      await sendViaNode(text);
+      if (!(await sendViaAgent(text))) await sendViaNode(text);
     } catch (err) {
       console.error('[EditorStore] sendMessage caught error:', err);
       // A failure is often the model's — a revoked key, a removed default — so the status line
@@ -1043,6 +1041,63 @@ export function EditorStoreProvider(props: ParentProps) {
   }
 
   // ----------------------------------------------------------------
+  // The edit, by an agent on the backend
+  // ----------------------------------------------------------------
+
+  /**
+   * Hand the request to an agent the backend runs, with the template tools it carries, and show
+   * what it did.
+   * Answers false when this request is not one to hand over — no such backend, or a template the
+   * agent could not save in place — and the editor's own loop then does the work.
+   *
+   * Only a template this agent owns and has saved: the agent writes the stored record, as the
+   * editor's own save does, so a built-in (whose edits wait for a fork) or anything with buffered
+   * changes stays with the loop that understands buffering.
+   */
+  async function sendViaAgent(text: string): Promise<boolean> {
+    const agents = session.backendPorts()?.agents;
+    const template = edit.template();
+    const stored = agents && !isReadOnly() && !hasPendingChanges() ? templateStore.storedAt(template) : undefined;
+    if (!agents || !stored) return false;
+
+    const streamMsg = createMessage('assistant', '', 'streaming');
+    setMessages((prev) => [...prev, streamMsg]);
+    setStreamingContent('<span class="shimmer">*Working on it…*</span>');
+    try {
+      const before = deepClone(template) as TemplateSchema;
+      const { result, stored: after } = await templateStore.writtenElsewhere(template, () =>
+        agents.run({
+          dataset: stored.dataset,
+          turns: agentTurns(messages(), text),
+          about: { entity: 'Template', id: stored.recordId },
+          mayEdit: true,
+        }),
+      );
+
+      // The agent saved the record; the editor shows what it saved, and one undo puts it back.
+      const changed = !!after && !sameTemplateContent(after, before);
+      if (after && changed) {
+        pushSnapshot();
+        edit.update(after);
+      }
+      setStreamingContent('');
+      updateAssistantMessage(
+        streamMsg.id,
+        [result.text || 'Done.', changed ? '<span class="success">✓ Template updated</span>' : '']
+          .filter(Boolean)
+          .join('\n\n'),
+      );
+      return true;
+    } catch (error) {
+      if (!(error instanceof AgentUnavailableError)) throw error;
+      // Not this node's to do — the editor's own loop takes the request instead.
+      devLog('[editor] backend agent unavailable:', error.message);
+      setMessages((prev) => prev.filter((m) => m.id !== streamMsg.id));
+      return false;
+    }
+  }
+
+  // ----------------------------------------------------------------
   // The conversation, on the node's language model
   // ----------------------------------------------------------------
 
@@ -1066,6 +1121,7 @@ export function EditorStoreProvider(props: ParentProps) {
     const prepared = await prepareTemplateRequest({
       template: deepClone(pendingTemplate() ?? edit.template()) as SchemaNode,
       request: text,
+      models: datasetStore.currentDatasetEntities(),
     });
     const modelTree = prepared.tree;
     devLog('[editSession] template', prepared.bounded.whole ? 'whole' : 'bounded', prepared.bounded);
@@ -1073,9 +1129,10 @@ export function EditorStoreProvider(props: ParentProps) {
     const result = await runEditSession({
       converse,
       system: prepared.system,
-      turns: buildTurns(text, prepared.sent),
+      turns: [...historyTurns(), ...prepared.opening],
       tools: prepared.tools,
       resolveTool: prepared.resolveTool,
+      patchTool: prepared.patchTool,
       schema: modelTree.schema,
       mint: modelTree.mint,
       uses: modelTree.uses,
@@ -1104,7 +1161,7 @@ export function EditorStoreProvider(props: ParentProps) {
         } as TemplateSchema);
         await edit.persist();
         setPendingTemplate(null);
-        return 'Template updated successfully.';
+        return prepared.accepted;
       },
       acceptedLine: (patches) =>
         isReadOnly() && pendingTemplate() !== null
@@ -1139,52 +1196,18 @@ export function EditorStoreProvider(props: ParentProps) {
   }
 
   /**
-   * The conversation so far, as turns.
-   * The currentSchema is included in the latest user message so the AI
-   * always sees the current template state.
+   * The conversation before this request, as turns. The request itself, and the template it is
+   * about, are the turns `prepareTemplateRequest` opens with, which go after these.
    */
-  function buildTurns(latestText: string, template: unknown): ConversationTurn[] {
+  function historyTurns(): ConversationTurn[] {
     const history: ConversationTurn[] = [];
-
-    // Include prior conversation (skip system messages)
     for (const msg of messages()) {
       if (msg.role === 'system') continue;
-      // The request being sent is already in the list, marked `sending`, and goes last below with
-      // the schema attached. Reading it here too sent every request to the model twice.
+      // The request being sent is already in the list, marked `sending`, and goes last with the
+      // template attached. Reading it here too sent every request to the model twice.
       if (msg.status === 'sending') continue;
-      if (msg.role === 'user') {
-        history.push({
-          role: 'user',
-          text: requestMessage(msg.content, {}),
-        });
-      } else {
-        history.push({ role: 'assistant', text: msg.content });
-      }
+      history.push({ role: msg.role === 'user' ? 'user' : 'assistant', text: msg.content });
     }
-
-    /*
-      `template` is what `boundTemplate` decided to send — the tree itself when it fits the
-      budget, an outline plus the parts the request implicates when it does not. Either way it
-      comes from the one tree compacted and numbered in `sendMessage`, which is the same object
-      the session resolves the model's ids against. It carries buffered changes where there are
-      any, which matters on a read-only template: patched into `pendingTemplate` while the store
-      is deliberately untouched, so showing `currentTemplate` would show the model a tree without
-      its own last answer in it.
-
-      Compaction is why it is worth the care. A template repeats itself because a fragment stamps
-      its whole tree at every call site, and the editor is where that is most expensive — the
-      schema crosses the wire every turn and comes back. It takes CardsView down 50% and the
-      workshop template 32%, the difference between a request that fits a context window and one
-      that does not. It also gives the model two scopes rather than one: a patch inside a
-      definition changes every use of that shape, a patch on a `$ref` changes that one use, and
-      the tool result says which happened.
-    */
-    const extras = datasetModelExtras(datasetStore.currentDatasetEntities(), baseValidationCtx.entityNames);
-    history.push({
-      role: 'user',
-      text: requestMessage(latestText, template, extras),
-    });
-
     return history;
   }
 

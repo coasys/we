@@ -13,11 +13,12 @@ a product that has not shipped since #248.
 
 ## What it compares
 
-| Strategy   | System prompt                                                                                                                                  | The rest of the reference                                               |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| `full`     | Everything, as the editor ships (~88K tokens)                                                                                                  | —                                                                       |
-| `sections` | A core (~9K): structure, rules, routing, models, tokens                                                                                        | One tool per section, loaded whole (Josh's split from #196)             |
-| `lookup`   | A larger core (~30K), adding the expression grammar and design-system props, plus the components and stores the template and request implicate | One `we_reference` tool fetching components, stores or sections by name |
+| Strategy   | System prompt                                                                                                                                  | The rest of the reference                                                                                        |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `full`     | Everything (~88K tokens)                                                                                                                       | —                                                                                                                |
+| `sections` | A core (~9K): structure, rules, routing, models, tokens                                                                                        | One tool per section, loaded whole (Josh's split from #196)                                                      |
+| `lookup`   | A larger core (~30K), adding the expression grammar and design-system props, plus the components and stores the template and request implicate | One `we_reference` tool fetching components, stores or sections by name                                          |
+| `toolset`  | The `template` documentation topic (~7K), as a host's agent gets it. **What the editor ships.**                                                | `template_read`'s first answer carries the entries the edit needs; the rest are topics `get_documentation` reads |
 
 See `packages/agent-tools/src/templates/contextStrategies.ts`.
 
@@ -42,12 +43,16 @@ WE_EVAL_MODELS=claude-sonnet-5,qwen3.6:35b \
 pnpm --filter @we/app-shell eval:context
 ```
 
+**Build `@we/agent-tools` first** (`pnpm --filter @we/agent-tools build`) after changing it. The
+eval imports the package's `dist/`, not its source, so a run on a stale build measures the code as
+it was, and nothing says so.
+
 | Variable             | Default                  |                                                                                                                  |
 | -------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------- |
 | `WE_EVAL_URL`        | `http://localhost:12000` | The executor's HTTP base.                                                                                        |
 | `WE_EVAL_TOKEN`      | none                     | A token with `AI_PROMPT`. For the desktop app's executor, the `--admin-credential` in `pgrep -fa ad4m-executor`. |
 | `WE_EVAL_MODELS`     | `default`                | Model names or ids as Settings → AI shows them, comma-separated. `default` is the node's default LLM.            |
-| `WE_EVAL_STRATEGIES` | all three                | Any of `full,sections,lookup`.                                                                                   |
+| `WE_EVAL_STRATEGIES` | all four                 | Any of `full,sections,lookup,toolset`.                                                                           |
 | `WE_EVAL_CASES`      | all at the chosen scale  | Case ids from `cases.ts`. Overrides `WE_EVAL_SCALE`.                                                             |
 | `WE_EVAL_SCALE`      | `small`                  | `small`, `large`, or both. See **Two scales** below — a large run costs several times more.                      |
 | `WE_EVAL_REPEAT`     | `1`                      | Runs per combination. Models are not deterministic; use 3 before drawing a conclusion.                           |
@@ -67,12 +72,12 @@ half of the context budget: which parts of the generated schema reference a stra
 of the model. They are nearly blind to the template half — a strategy that sent no template at all
 would still pass most of them.
 
-**`large`** — four cases on `kanban`, a real template (57,440 chars, 37,516 compacted). Here the
+**`large`** — four cases on `trello` (until 2026-10-27 `kanban`, and "Boards" in the picker), a real template (57,440 chars, 37,516 compacted). Here the
 proportions invert and the template is the bigger half. These exist to measure what bounding the
 template does, which the small cases cannot see.
 
-One of the four turns on something no small case can reach. Kanban shares shapes: its card is one
-shape used four times, its column header one used twice. So `kanban-card-radius` ("the cards") is
+One of the four turns on something no small case can reach. Trello shares shapes: its card is one
+shape used four times, its column header one used twice. So `trello-card-radius` ("the cards") is
 right only when the shape itself changes — a model that patches one use leaves three cards behind.
 
 A second case asked for the opposite, a `split`, and was removed after the calibration run

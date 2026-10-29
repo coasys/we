@@ -102,7 +102,7 @@ export async function gatherTranscriptTurns(
 
     /*
       Replies come with the lines they answer. A reply is a child of nothing — it is in the `thread`
-      of the line it answers (see `@shared/responses`) — so each line is read with its thread, and
+      of the line it answers (see `completeResponse` in `@we/entities`) — so each line is read with its thread, and
       the two together are everything said in the conversation. A call held about a line is in its
       thread too; it carries no text, so the checks below leave it out.
     */

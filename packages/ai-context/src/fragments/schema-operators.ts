@@ -119,7 +119,7 @@ Example node:
 {
   "type": "we-button",
   "props": {
-    "onClick": { "$invoke": "routeStore.navigate", "args": ["/home"] }
+    "onClick": { "$invoke": "routeStore.navigate", "args": ["~/"] }
   },
   "children": [
     { "type": "we-icon", "props": { "name": "house" } },

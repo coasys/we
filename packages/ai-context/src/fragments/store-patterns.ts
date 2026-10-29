@@ -12,7 +12,7 @@ Example: { "$": "routeStore.currentPath" }
 
 Calling actions:
 { "$invoke": "storeName.method", "args": [...] }
-Example: { "$invoke": "routeStore.navigate", "args": ["/home"] }
+Example: { "$invoke": "routeStore.navigate", "args": ["~/"] } (the template's home; see routeStore.navigate for where a path is from)
 
 Feature-module stores:
 { "$": "modules.<moduleId>.<member>" } and { "$invoke": "modules.<moduleId>.<action>" }
@@ -130,14 +130,14 @@ Example — Channel list → Conversation list:
           "type": "we-button",
           "props": {
             "variant": "ghost",
-            "onClick": { "$invoke": "routeStore.navigate", "args": [{ "$": "\`/channels/\${channel.id}\`" }] }
+            "onClick": { "$invoke": "routeStore.navigate", "args": ["~/channels", { "$": "{ query: { id: channel.id } }" }] }
           },
           "children": [{ "$": "channel.name" }]
         }]
       }]
     },
     {
-      "path": "/channels/:channelId",
+      "path": "/channels",
       "type": "Column",
       "props": { "gap": "300", "p": "400" },
       "children": [{
@@ -146,7 +146,7 @@ Example — Channel list → Conversation list:
           "items": {
             "$query": {
               "entity": "Conversation",
-              "scope": { "anchor": "Channel", "via": "conversations", "anchorId": { "$": "routeStore.segments[1]" } },
+              "scope": { "anchor": "Channel", "via": "conversations", "anchorId": { "$": "routeStore.params.id" } },
               "dataset": { "$": "currentDataset" }
             }
           },
@@ -163,6 +163,7 @@ Example — Channel list → Conversation list:
 Notes:
 - Use include when you need related data displayed inline (e.g. a post with its comments, a channel with its conversation count).
 - Use a scope drill-down when you're on a detail route and want only children belonging to the current record.
+- A detail route takes its record's id from the query, never the path: open it with navigate('~/channels', { query: { id } }) and read routeStore.params.id. An id is a URI, so in a path it is several segments and the route never matches.
 - dataset must point to the dataset that holds the data. For external apps (e.g. Flux) opened as a WE space, use { "$": "currentDataset" }.
 - The relation name (in include, or scope.via) is the HasMany field name on the parent entity.
 
