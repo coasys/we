@@ -1197,9 +1197,20 @@ export function GraphView(props: GraphViewProps) {
   let clearedFor: string | undefined;
   /** The fold last asked to open for this focus, so an interface that ignores it is asked once. */
   let revealedFor: string | undefined;
+  /** The focus value the camera last heard about, so a new one lets go of the card it was following. */
+  let focusHeard: string | undefined;
   createEffect(() => {
     version();
     const recordId = props.focus;
+    /*
+      A new focus lets go of the old card at once, braking rather than stopping — see `release`.
+      Waiting for the new card to be there kept the camera on the old one meanwhile, and a card whose
+      kind was closing went up into its parent, taking the camera up with it.
+    */
+    if (recordId !== focusHeard) {
+      focusHeard = recordId;
+      untrack(() => follow.release());
+    }
     if (!recordId) {
       applied = undefined;
       clearedFor = undefined;

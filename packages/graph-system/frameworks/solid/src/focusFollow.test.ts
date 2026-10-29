@@ -92,6 +92,55 @@ describe('a focus followed while the map settles', () => {
     expect(busy.camera.x).toBe(0);
   });
 
+  /*
+    Choosing a definition in another kind moves where the card will rest several times while the map
+    opens around it. The camera closed a share of the gap each frame, so it set off at full speed and
+    turned at once each time the place moved — a kink, every time.
+  */
+  it('sets off gently and keeps its speed when the place it is heading for moves', () => {
+    const { follow, card, camera, step } = follower();
+    const moves: number[] = [];
+    const record = (frames: number) => {
+      for (let i = 0; i < frames; i++) {
+        const before = camera.x;
+        step();
+        moves.push(camera.x - before);
+      }
+    };
+    follow.start('card');
+    record(6);
+    // From rest: each frame faster than the one before, rather than the largest step first.
+    expect(moves[0]).toBeLessThan(moves[1]);
+    expect(moves[1]).toBeLessThan(moves[2]);
+    // The card's resting place moves behind the camera; it slows and turns, not reverses at once.
+    card.x = -300;
+    follow.moved();
+    record(1);
+    expect(moves[6]).toBeGreaterThan(0);
+    record(120);
+    expect(camera.x).toBeCloseTo(-300, 0);
+  });
+
+  /*
+    The camera went on following the old card until the new one was there — and the old card, its
+    kind closing, travelled up into its parent, so the camera went up before it went across.
+  */
+  it('lets go of the old card when the focus changes, braking rather than following it away', () => {
+    const { follow, card, camera, step, idle } = follower();
+    follow.start('card');
+    step(8);
+    const moving = camera.x;
+    follow.release();
+    // The old card folds away upwards.
+    card.y = -900;
+    follow.moved();
+    step(120);
+    // It carried on a little the way it was going, then stopped; it never went after the card.
+    expect(camera.x).toBeGreaterThan(moving);
+    expect(camera.y).toBeGreaterThan(-300);
+    expect(idle()).toBe(true);
+  });
+
   it('stops asking for frames once the card is in the middle', () => {
     const { follow, step, idle } = follower();
     follow.start('card');
