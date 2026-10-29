@@ -102,8 +102,19 @@ function Divider(props: { above: () => string | undefined; edge: Edge; gap: numb
   const shellStore = useShellStore();
   const vertical = props.edge === 'left' || props.edge === 'right';
   return (
-    <div style={{ position: 'relative', flex: 'none', [vertical ? 'height' : 'width']: px(props.gap) }}>
+    <div
+      style={{
+        position: 'relative',
+        flex: 'none',
+        // Across the whole lane, whatever its cards are aligned to: over the content they keep to the
+        // edge (`align-items: flex-end`), and a divider that did too had no width to be grabbed by.
+        'align-self': 'stretch',
+        height: vertical ? px(props.gap) : undefined,
+        width: vertical ? undefined : px(props.gap),
+      }}
+    >
       <we-resize-handle
+        data-we-lane-divider=""
         // A seam across a column is a horizontal bar, dragged up and down — the primitive names the bar.
         orientation={vertical ? 'horizontal' : 'vertical'}
         align="center"
@@ -142,6 +153,7 @@ function InnerEdge(props: { first: () => string | undefined; edge: Edge }) {
   const across = side === 'left' || side === 'right';
   return (
     <we-resize-handle
+      data-we-lane-edge=""
       // A lane down a side is dragged left and right: a vertical bar.
       orientation={across ? 'vertical' : 'horizontal'}
       // Flush with the lane's own border, so dragging thickens the line already there.

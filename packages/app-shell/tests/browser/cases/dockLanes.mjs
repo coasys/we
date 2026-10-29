@@ -11,7 +11,7 @@ export const widths = [1280];
 const NEAR = 3;
 const near = (a, b) => Math.abs(a - b) <= NEAR;
 
-export async function check({ call }) {
+export async function check({ call, dragBy }) {
   const problems = [];
   const settle = () => new Promise((resolve) => setTimeout(resolve, 450));
   const boxes = () => call('dockProbeBoxes');
@@ -115,6 +115,29 @@ export async function check({ call }) {
       return out;
     },
   );
+
+  // The grip between two cards snapped to one edge moves the boundary between them.
+  {
+    await call('dockProbe', [
+      { id: 'a', snap: 'right', order: 0, width: 300 },
+      { id: 'b', snap: 'right', order: 1, width: 300 },
+    ]);
+    try {
+      await settle();
+      const before = await boxes();
+      try {
+        await dragBy('[data-we-edge-cover] [data-we-lane-divider]', 0, 80);
+        await settle();
+        const after = await boxes();
+        const grew = after.a.bottom - after.a.top - (before.a.bottom - before.a.top);
+        if (!near(grew, 80)) problems.push(`the grip between cards: the upper card grew ${grew}px for an 80px drag`);
+      } catch (error) {
+        problems.push(`the grip between cards: ${error.message.split('\n')[0]}`);
+      }
+    } finally {
+      await call('editorProbeDispose');
+    }
+  }
 
   return problems;
 }
