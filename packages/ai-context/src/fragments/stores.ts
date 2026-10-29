@@ -1779,6 +1779,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         'boolean — a panel is being dragged or resized right now. Suspend transitions while it is true so the edge tracks the cursor',
       panelMaximised:
         "boolean — some panel covers the whole window. The app's own chrome — sidebar, module rail — hides while it is true; a template's fixed chrome should too",
+      panelFrames:
+        "Record<dockId, 'window' | 'flush' | 'none'> — how each panel an interface declared a frame for is framed; absent, a panel on an edge or floating has a window's frame",
       dockPlacement:
         'Record<dockId, { snap, displace, canDisplace, … }> — where each panel is parked, for its frame to read: which of the eight snaps it is at, whether it displaces content, and whether it may. The state a position menu ticks; dockGeometry is the resulting box',
       movingDock: 'string | null — the id of the panel being dragged, or null. What mounts the snap-target overlay',

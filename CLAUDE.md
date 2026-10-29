@@ -3432,6 +3432,7 @@ ShellStore:
   - dockResizing: boolean — a panel is being dragged or resized right now. Suspend transitions while it is true so the edge tracks the cursor
   - panelMaximised: boolean — some panel covers the whole window. The app's own chrome — sidebar, module rail — hides while it is true; a template's fixed chrome should too
   - dockPlacement: Record<dockId, { snap, displace, canDisplace, … }> — where each panel is parked, for its frame to read: which of the eight snaps it is at, whether it displaces content, and whether it may. The state a position menu ticks; dockGeometry is the resulting box
+  - panelFrames: Record<dockId, 'window' | 'flush' | 'none'> — how each panel an interface declared a frame for is framed; absent, a panel on an edge or floating has a window's frame
   - movingDock: string | null — the id of the panel being dragged, or null. What mounts the snap-target overlay
   - activeSnap: SnapPoint | null — the snap the moving panel would take if dropped now ('top-left' | 'top' | … | 'left'), so that target can light up
   - snapTargets: { id, top, left, width, height }[] — every snap target’s box while a panel is being dragged, measured against the room left for it. A place a card is already parked at is left out: the question there has stopped being whether and started being where among what is there, which the insert slots answer. Empty otherwise

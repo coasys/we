@@ -98,7 +98,7 @@ import {
 import { usePlatform } from '@solid/providers/PlatformProvider';
 import { DRAGGING_ATTR } from '@we/drag';
 import type { ChromeReserve, DockAspect, DockEdge, DockSize } from '@we/module-shared';
-import type { SchemaNode, TemplatePanel, TemplateSchema } from '@we/schema-shared';
+import type { PanelFrame, SchemaNode, TemplatePanel, TemplateSchema } from '@we/schema-shared';
 import {
   Accessor,
   createContext,
@@ -391,6 +391,11 @@ export interface ShellStore {
    * ones; see `PanelLane`.
    */
   laneSections: Accessor<Record<string, LaneSection[]>>;
+  /**
+   * How each panel an interface declared a frame for is framed, by dock id — what a frame on an edge
+   * reads to draw a titlebar, or not. A panel with no entry has a window's frame there.
+   */
+  panelFrames: Accessor<Record<string, PanelFrame>>;
   /** The declaration an interface made about a dock, by dock id — its title, `fixed`, `grow`. */
   panelDeclaration: (dockId: string) => TemplatePanel | undefined;
   /** Which of several docks sharing a seat is in front: the one most recently raised or opened. */
@@ -4156,6 +4161,11 @@ export function ShellStoreProvider(props: ParentProps) {
 
     raiseDock: raise,
     laneSections,
+    panelFrames: createMemo(() => {
+      const frames: Record<string, PanelFrame> = {};
+      for (const [id, declared] of Object.entries(declarationFor())) if (declared.frame) frames[id] = declared.frame;
+      return frames;
+    }),
     panelDeclaration: (dockId) => declarationFor()[dockId],
     seatFront: (ids) => {
       const order = activation();

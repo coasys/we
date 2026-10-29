@@ -41,7 +41,7 @@ afterEach(() => {
   release.forEach((done) => done());
 });
 
-function mountLane() {
+function mountLane(frame?: 'window' | 'flush' | 'none') {
   let store!: ShellStore;
   const Grab = () => {
     store = useShellStore();
@@ -50,7 +50,7 @@ function mountLane() {
   const { container } = render(() => (
     <ShellStoreProvider>
       <Grab />
-      <PanelLane lane="side" width="320px" resize="start" foldEmpty />
+      <PanelLane lane="side" width="320px" resize="start" foldEmpty frame={frame} />
       <PanelHost />
     </ShellStoreProvider>
   ));
@@ -166,5 +166,43 @@ describe('a lane holding any panel', () => {
     store.endDockMove(`${HOST}:panel`);
 
     expect(lane.querySelector('span')).toBe(before);
+  });
+
+  // How a section is framed, wherever it lives: its declaration, else its lane's, else flush.
+  it('frames a section as its declaration says, else as its lane does', () => {
+    setTemplatePanels(
+      [
+        { id: 'inspector', node: text('Inspector'), title: 'Inspector', home: 'side' },
+        { id: 'bare', node: text('Bare'), title: 'Bare', home: 'side', frame: 'none' },
+      ],
+      'coasys-space',
+    );
+    const { lane } = mountLane('window');
+    const moveHandles = [...lane.querySelectorAll('we-move-handle')];
+    // A window's titlebar for the one that says nothing, none for the one that asks for none.
+    expect(moveHandles).toHaveLength(1);
+    expect(moveHandles[0].textContent).toContain('Inspector');
+    expect(lane.querySelectorAll('we-button[label="Close"]')).toHaveLength(1);
+  });
+
+  it('draws a flush section with no titlebar, its grip in the corner instead', () => {
+    setTemplatePanels([{ id: 'inspector', node: text('Inspector'), title: 'Inspector', home: 'side' }], 'coasys-space');
+    const { lane } = mountLane();
+    const labels = [...lane.querySelectorAll('we-move-handle')].map(
+      (h) => (h as HTMLElement & { label: string }).label,
+    );
+    expect(labels).toEqual(['Break Inspector out into a panel']);
+  });
+
+  it("tells a frame on an edge how its panel is framed, from the panel's declaration", () => {
+    setTemplatePanels(
+      [
+        { id: 'tree', node: text('Tree'), snap: 'left', frame: 'flush' },
+        { id: 'plain', node: text('Plain'), snap: 'right' },
+      ],
+      'coasys-space',
+    );
+    const { store } = mountLane();
+    expect(store.panelFrames()).toEqual({ 'template:tree': 'flush' });
   });
 });

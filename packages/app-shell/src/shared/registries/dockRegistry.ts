@@ -302,6 +302,8 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
   const geo = (field: string) => ({ $: dockGeometryPath(entry.id, field) });
   // The content is the panel host's to draw, once — this frame is one of the places it can be.
   registerPanelContent(entry.id, node);
+  // How it is framed: a window's titlebar unless its declaration says flush or none — see `PanelFrame`.
+  const frame = `(shellStore.panelFrames['${entry.id}'] ?? 'window')`;
   const glass = isGlass(entry.id);
 
   return {
@@ -418,7 +420,7 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
                 */
                 visibility: { $: `${dockGeometryPath(entry.id, 'hidden')} ? 'hidden' : 'visible'` },
               },
-              border: '1px solid border',
+              border: { $: `${frame} == 'none' ? 'none' : '1px solid border'` },
               /*
                 Dimmed while a resize has pulled its lane past the point where letting go puts it
                 away — the drag's only way to say so before it happens. See `stowPending`.
@@ -449,6 +451,10 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
               */
               zIndex: geo('layer'),
               onPointerdown: { $invoke: 'shellStore.raiseDock', args: [entry.id] },
+              onPointerenter: { $setLocal: 'framePointed', value: true },
+              onPointerleave: { $setLocal: 'framePointed', value: false },
+              onFocusin: { $setLocal: 'framePointed', value: true },
+              onFocusout: { $setLocal: 'framePointed', value: false },
               /*
                 Marked so "fit to content" can measure the chrome rather than assume it.
 
@@ -462,9 +468,12 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
               */
               [DOCK_FRAME_ATTR]: entry.id,
             },
+            // Whether the pointer or focus is on it, for a flush frame's grip and close — see `flushControls`.
+            $localState: { framePointed: { type: 'boolean', initial: false } },
             children: [
               ...grips(entry.id),
-              titleBar(entry),
+              { type: '$if', props: { condition: { $: `${frame} == 'window'` }, then: titleBar(entry) } },
+              { type: '$if', props: { condition: { $: `${frame} == 'flush'` }, then: flushControls(entry) } },
               /*
                 The panel gets what is left, and no more.
 
@@ -568,6 +577,48 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
  * sides; 4px of vertical padding and 8px of horizontal is enough to clear the curve at the height the
  * button actually occupies.
  */
+/**
+ * A flush frame's controls: the grip to move it by and its close, in its top corner, shown while the
+ * pointer or focus is on the panel — a flush panel is part of the page around it, as a sidebar is,
+ * so it has no titlebar, and these are the two things a titlebar was for that it still needs.
+ * Over the content rather than in flow, so the panel's own header keeps the top of the frame.
+ */
+function flushControls(entry: DockEntry): SchemaNode {
+  return {
+    type: 'Row',
+    props: {
+      position: 'absolute',
+      top: '100',
+      right: '100',
+      zIndex: 1,
+      gap: '100',
+      ay: 'center',
+      p: '100',
+      r: '300',
+      bg: 'surface-raised',
+      shadow: 'sm',
+      opacity: { $: 'local.framePointed ? 1 : 0' },
+      transition: 'opacity 150 ease',
+    },
+    children: [
+      {
+        type: 'we-move-handle',
+        props: {
+          label: 'Move panel',
+          onMovestart: {
+            $invoke: 'shellStore.beginDockMove',
+            args: [entry.id, { $: 'arg.detail.x' }, { $: 'arg.detail.y' }],
+          },
+          onMove: { $invoke: 'shellStore.moveDock', args: [entry.id, { $: 'arg.detail.dx' }, { $: 'arg.detail.dy' }] },
+          onMoveend: { $invoke: 'shellStore.endDockMove', args: [entry.id] },
+        },
+        children: [{ type: 'we-icon', props: { name: 'dots-six', size: 'sm', color: 'text-faint' } }],
+      },
+      ...(entry.close || entry.closeAction ? [closeButton(entry)] : []),
+    ],
+  };
+}
+
 /**
  * Show a control only while the panel is *not* maximised.
  *

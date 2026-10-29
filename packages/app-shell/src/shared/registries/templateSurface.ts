@@ -1250,6 +1250,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     raiseDock: ambient('host-layout'),
     // What a lane draws and which tab of a seat is in front — read by the lane, never by a template.
     laneSections: WIRING,
+    // How a panel on an edge is framed — read by the frame the host draws around it.
+    panelFrames: state('host-layout'),
     panelDeclaration: WIRING,
     seatFront: WIRING,
     // A move's own calls are ambient, for the reason a resize's are — see `resizeDock`.

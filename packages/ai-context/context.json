@@ -7392,6 +7392,9 @@
         "dockPlacement": {
           "type": "object"
         },
+        "panelFrames": {
+          "type": "object"
+        },
         "movingDock": {
           "type": "string"
         },

@@ -58,7 +58,7 @@ import { HOME_SECTION_ATTR, registerHomeLane } from '@shared/registries/homeLane
 import { moduleStores } from '@shared/registries/moduleRegistry';
 import { TEMPLATE_DOCK_STORE_ID } from '@shared/registries/templatePanels';
 import { Row } from '@we/components/solid';
-import type { TemplatePanel } from '@we/schema-shared';
+import type { PanelFrame, TemplatePanel } from '@we/schema-shared';
 import { type Accessor, createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 
 import { type LaneSection, useShellStore } from '../stores/ShellStore';
@@ -104,6 +104,8 @@ export function PanelLane(props: {
    * template holds room for one.
    */
   foldEmpty?: boolean;
+  /** How its sections are framed, where a section's declaration does not say — see `PanelFrame`. Default flush. */
+  frame?: PanelFrame;
 }) {
   const shellStore = useShellStore();
   const lane = () => props.lane ?? '';
@@ -252,7 +254,9 @@ export function PanelLane(props: {
             'box-sizing': 'border-box',
           }}
         >
-          <For each={seats()}>{(seat) => <Seat members={seat.split('\n')} direction={direction()} />}</For>
+          <For each={seats()}>
+            {(seat) => <Seat members={seat.split('\n')} direction={direction()} frame={props.frame} />}
+          </For>
           <For each={away()}>{(id) => <Placeholder dockId={id} />}</For>
         </div>
       </div>
@@ -286,11 +290,14 @@ export function PanelLane(props: {
  * in a lane: an inspector and the space's settings can take turns in one column rather than
  * stacking, and opening either brings it forward.
  */
-function Seat(props: { members: string[]; direction: 'row' | 'column' }) {
+function Seat(props: { members: string[]; direction: 'row' | 'column'; frame?: PanelFrame }) {
   const shellStore = useShellStore();
   const front = () => shellStore.seatFront(props.members) ?? props.members[0];
   return (
-    <Show when={props.members.length > 1} fallback={<Section dockId={props.members[0]} direction={props.direction} />}>
+    <Show
+      when={props.members.length > 1}
+      fallback={<Section dockId={props.members[0]} direction={props.direction} laneFrame={props.frame} />}
+    >
       <div style={{ display: 'flex', 'flex-direction': 'column', flex: '1 1 0', 'min-height': '0', width: '100%' }}>
         <Row ay="center" gap="100" px="200" pt="200">
           <For each={props.members}>
@@ -307,7 +314,7 @@ function Seat(props: { members: string[]; direction: 'row' | 'column' }) {
         </Row>
         {/* Keyed by the front, so the section showing is the one drawn — its own state is its own. */}
         <Show when={front()} keyed>
-          {(id) => <Section dockId={id} direction={props.direction} tabbed />}
+          {(id) => <Section dockId={id} direction={props.direction} laneFrame={props.frame} tabbed />}
         </Show>
       </div>
     </Show>
@@ -386,6 +393,60 @@ function SectionHeader(props: { dockId: string; tabbed?: boolean }) {
 }
 
 /**
+ * A window's titlebar for a section in a lane: what it is, a grip to take it out of the lane by, and
+ * its close. The grip breaks the section out under the pointer and carries it, as a flush section's
+ * corner grip does; pressed without a drag, it goes to the snap its declaration names.
+ */
+function LaneTitleBar(props: { dockId: string; tabbed?: boolean }) {
+  const shellStore = useShellStore();
+  const entry = () => dockRegistry.get(props.dockId);
+  let grip: HTMLElement | undefined;
+  let moved = false;
+  onMount(() => {
+    if (!grip) return;
+    grip.addEventListener('movestart', (event) => {
+      const { x, y } = (event as CustomEvent<{ x: number; y: number }>).detail;
+      moved = false;
+      shellStore.breakOut(props.dockId, x, y);
+      shellStore.beginDockMove(props.dockId, x, y);
+    });
+    grip.addEventListener('move', (event) => {
+      const { dx, dy } = (event as CustomEvent<{ dx: number; dy: number }>).detail;
+      if (Math.abs(dx) + Math.abs(dy) >= BREAK_OUT_DRAG_PX) moved = true;
+      shellStore.moveDock(props.dockId, dx, dy);
+    });
+    grip.addEventListener('moveend', () => {
+      shellStore.endDockMove(props.dockId);
+      if (!moved) shellStore.breakOut(props.dockId);
+    });
+  });
+  const close = () => {
+    const dock = entry();
+    if (!dock) return;
+    if (dock.moduleId === TEMPLATE_DOCK_STORE_ID) shellStore.closeTemplatePanel(sectionKey(props.dockId));
+    else closeDock(dock);
+  };
+  return (
+    <Row ay="center" gap="100" px="200" py="100" bg="chrome" borderBottom="1px solid border">
+      <we-move-handle ref={grip} label="Move panel" style={{ flex: '1', 'min-width': '0' }}>
+        <Show when={!props.tabbed}>
+          <we-text variant="label" truncate>
+            {sectionTitle(props.dockId, shellStore.panelDeclaration(props.dockId))}
+          </we-text>
+        </Show>
+      </we-move-handle>
+      <Show when={entry()?.close || entry()?.moduleId === TEMPLATE_DOCK_STORE_ID}>
+        <we-tooltip content="Close" placement="left">
+          <we-button size="xs" variant="ghost" square label="Close" onClick={close}>
+            <we-icon name="x" />
+          </we-button>
+        </we-tooltip>
+      </Show>
+    </Row>
+  );
+}
+
+/**
  * One section at home: its body, and the grip that takes it away.
  *
  * As long as its content, unless its panel declares `grow`: then it takes that share of whatever
@@ -393,9 +454,11 @@ function SectionHeader(props: { dockId: string; tabbed?: boolean }) {
  * fills a sidebar (a tree, a list) reaches the bottom of the lane and scrolls inside itself rather
  * than growing past it. A column, so what the section draws can say `height: 100%` and mean it.
  */
-function Section(props: { dockId: string; direction: 'row' | 'column'; tabbed?: boolean }) {
+function Section(props: { dockId: string; direction: 'row' | 'column'; tabbed?: boolean; laneFrame?: PanelFrame }) {
   const shellStore = useShellStore();
   const declared = () => shellStore.panelDeclaration(props.dockId);
+  // Its own declaration first, then its lane's, then flush — see `PanelFrame`.
+  const frame = (): PanelFrame => declared()?.frame ?? props.laneFrame ?? 'flush';
   const [hover, setHover] = createSignal(false);
   const [focus, setFocus] = createSignal(false);
   let moved = false;
@@ -453,9 +516,18 @@ function Section(props: { dockId: string; direction: 'row' | 'column'; tabbed?: 
       onFocusIn={() => setFocus(true)}
       onFocusOut={() => setFocus(false)}
     >
-      <SectionHeader dockId={props.dockId} tabbed={props.tabbed} />
+      <Show
+        when={frame() === 'window'}
+        fallback={
+          <Show when={frame() === 'flush'}>
+            <SectionHeader dockId={props.dockId} tabbed={props.tabbed} />
+          </Show>
+        }
+      >
+        <LaneTitleBar dockId={props.dockId} tabbed={props.tabbed} />
+      </Show>
       <SectionBody dockId={props.dockId} />
-      <Show when={!declared()?.fixed}>
+      <Show when={!declared()?.fixed && frame() === 'flush'}>
         {/*
           Revealed on hover and on keyboard focus, never only hover: a hover-only affordance does
           not exist on a touchscreen, and a grip somebody cannot tab to is a control some people

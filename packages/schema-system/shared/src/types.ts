@@ -3,6 +3,9 @@ import type { RendererStores } from '@we/backend-shared';
 // Pure framework-agnostic schema types
 export type SchemaProp = string | number | boolean | Record<string, unknown> | SchemaProp[] | undefined;
 export type StoreDeclaration = Record<string, true | { actions?: string[]; state?: string[] }>;
+/** How a panel is framed — see `TemplatePanel.frame`. */
+export type PanelFrame = 'window' | 'flush' | 'none';
+
 /**
  * A panel this interface has, and where it starts.
  *
@@ -94,6 +97,14 @@ export type TemplatePanel = {
    * panel, and a corner button on it is noise.
    */
   fixed?: boolean;
+  /**
+   * How the panel is framed, wherever it is: `window` — a titlebar to move it by, its name and its
+   * controls; `flush` — no titlebar, as a sidebar is part of the page around it, with a grip and its
+   * close shown on hover (and a slim header naming it, in a lane, where it draws no heading of its
+   * own); `none` — its content and nothing else. Absent, the place decides: a panel on an edge or
+   * floating has a window's frame, one in a lane the lane's `frame`, or flush.
+   */
+  frame?: PanelFrame;
   /** How much room it asks for. Resolved against the viewport by the host. */
   size?: 'sm' | 'md' | 'lg' | 'full';
   /**
