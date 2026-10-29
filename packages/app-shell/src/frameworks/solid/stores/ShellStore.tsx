@@ -1831,7 +1831,12 @@ export function ShellStoreProvider(props: ParentProps) {
     ones of the interface on screen, published for the bodies that render them (`panelInstances`).
   */
   const [allInstances, setAllInstances] = createSignal(loadInstances());
-  const instancesHere = createMemo(() => allInstances()[templatePanelScope()] ?? {});
+  // Following every announcement of a declaration, which is what says the interface on screen has
+  // changed — the scope itself is a plain read, and the same declaration can arrive for another one.
+  const instancesHere = createMemo(() => {
+    panelsVersion();
+    return allInstances()[templatePanelScope()] ?? {};
+  });
   createEffect(() => publishPanelInstances(instancesHere()));
   const writeInstances = (change: (here: Record<string, PanelInstance>) => Record<string, PanelInstance>) =>
     setAllInstances((all) => {

@@ -113,4 +113,16 @@ describe('a panel opened more than once', () => {
     expect(store.panelInstances()).toHaveLength(0);
     warn.mockRestore();
   });
+
+  it("keeps each interface's instances to itself, and brings them back with it", () => {
+    const { store } = mount();
+    const declaration = [{ id: 'inspector', title: 'Inspector', home: 'side', node: { type: 'span' } }];
+    const ada = store.openPanel('inspector', { name: 'Ada' });
+
+    setTemplatePanels(declaration, 'another-template');
+    expect(store.panelInstances()).toEqual([]);
+
+    setTemplatePanels(declaration, 'instances-test');
+    expect(store.panelInstances().map((instance) => instance.id)).toEqual([ada]);
+  });
 });

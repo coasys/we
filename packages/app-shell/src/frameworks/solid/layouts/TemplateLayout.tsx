@@ -23,7 +23,7 @@ import { activePanels as panelsFor } from '@shared/panelScope';
 import { appFrame } from '@shared/registries/appFrame';
 import { registerHostChromeReserve } from '@shared/registries/dockRegistry';
 import { resolveParts } from '@shared/registries/moduleParts';
-import { setTemplatePanels } from '@shared/registries/templatePanels';
+import { holdTemplatePanels, setTemplatePanels } from '@shared/registries/templatePanels';
 import { buildTemplateBag, CHROME_TIER } from '@shared/registries/templateSurface';
 import { isValidThemeKey } from '@shared/registries/themeRegistry';
 import { TemplateBoundary } from '@solid/components/TemplateBoundary';
@@ -273,7 +273,8 @@ export function TemplateLayout(
   });
 
   createEffect(() => setTemplatePanels(activePanels(), stores.templateStore.currentTemplate?.id ?? ''));
-  onCleanup(() => setTemplatePanels([], ''));
+  // Withdrawn when this layout leaves — unless the layout replacing it declares in the same breath.
+  onCleanup(holdTemplatePanels());
 
   /**
    * The template's root node with its `$part` markers expanded.
