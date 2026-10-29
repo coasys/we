@@ -13,7 +13,7 @@
  *
  * - a line in the channel's feed, written the way a module write is (`TextBlock` and its `mentions`
  *   relation): woken, naming the line;
- * - the bot's own post naming itself: not woken;
+ * - the bot's own feed line naming itself: not woken;
  * - a known gap: a post into a channel through WE's own create path (`createBlocks`, which is what
  *   `spaceStore.createPost` calls) is not woken yet. Its mention link is on the root, which has no
  *   text of its own, so the root is not a TextContent record; the case pins that until it is.
@@ -387,16 +387,18 @@ describe('a bot @mentioned in a WE channel', () => {
     },
   );
 
-  it('is not woken by its own post that mentions it', { timeout: 180_000 }, async () => {
+  it('is not woken by its own feed line that mentions it', { timeout: 180_000 }, async () => {
     const fixture = await botWithWaker();
 
-    // The bot posts into a channel of the watched neighbourhood itself, mentioning itself: the
-    // `we://mention` link to its DID is its own.
+    // The bot writes a line into a channel of the watched neighbourhood itself, mentioning itself:
+    // the `we://mention` link to its DID is its own. A feed line, as the person's below is, so the
+    // only thing keeping it from waking the bot is who wrote it — a post root would not wake it
+    // whoever wrote it (the known gap above).
     const ownChannel = (await CollectionBlock.create(fixture.watched.handle as never, {
       kind: 'channel',
       title: 'own',
     })) as { id: string };
-    const ownRoot = await postMentioning(fixture.watched.handle, ownChannel.id, UNKNOWN_NAME, fixture.bot);
+    const ownLine = await lineMentioning(fixture.watched.handle, ownChannel.id, UNKNOWN_NAME, fixture.bot);
     await new Promise((r) => setTimeout(r, 3_000));
 
     // Then a person mentions it in a feed line, so the waker is shown to be listening.
@@ -404,7 +406,7 @@ describe('a bot @mentioned in a WE channel', () => {
     const { woken, why } = await fixture.deliver();
     const addresses = woken.map((m) => m.address);
     expect(addresses, why).toContain(theirLine);
-    expect(addresses, why).not.toContain(ownRoot);
+    expect(addresses, why).not.toContain(ownLine);
   });
 
   it('leaves the agent’s public profile as it found it', async () => {
