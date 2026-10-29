@@ -114,9 +114,27 @@ export function PanelLane(props: {
   const lane = () => props.lane ?? '';
   const direction = () => props.direction ?? 'column';
   const narrow = createNarrow();
-  const sections = () => shellStore.laneSections()[lane()] ?? [];
-  const here = createMemo(() => sections().filter((section) => section.open && !section.away));
-  const away = createMemo(() => sections().filter((section) => section.away));
+  /*
+    By id, and only when what the lane holds changes. The shell's list is worked out again whenever
+    any panel moves — every frame of a drag, of a resize — and hands back new entries each time; drawn
+    from those, every section was unmounted and drawn again on every frame, the tree and the inspector
+    included, which is what made dragging a call window in a Coasys space judder where a template
+    without lanes did not. Ids are strings, which a list keeps by value.
+  */
+  const sections = createMemo(() => shellStore.laneSections()[lane()] ?? [], undefined, { equals: sameSections });
+  const here = createMemo(() => sections().filter((section) => section.open && !section.away), undefined, {
+    equals: sameSections,
+  });
+  const away = createMemo(
+    () =>
+      sections()
+        .filter((section) => section.away)
+        .map((section) => section.id),
+    undefined,
+    {
+      equals: sameIds,
+    },
+  );
   const collapsed = () =>
     shellStore.collapsedLanes().includes(lane()) || (!!props.foldEmpty && !here().length && !away().length);
 
@@ -140,15 +158,20 @@ export function PanelLane(props: {
     Sections sharing a seat, as tabs: consecutive ones with the same explicit `order` — the rule an
     edge's seats follow. Anything that said no `order` is a seat of its own.
   */
-  const seats = createMemo(() => {
-    const out: LaneSection[][] = [];
-    for (const section of here()) {
-      const last = out[out.length - 1];
-      if (last && section.order !== undefined && last[0].order === section.order) last.push(section);
-      else out.push([section]);
-    }
-    return out;
-  });
+  const seats = createMemo(
+    () => {
+      const out: LaneSection[][] = [];
+      for (const section of here()) {
+        const last = out[out.length - 1];
+        if (last && section.order !== undefined && last[0].order === section.order) last.push(section);
+        else out.push([section]);
+      }
+      // Each seat by the ids in it, joined — a string, so the list keeps a seat that has not changed.
+      return out.map((seat) => seat.map((section) => section.id).join('\n'));
+    },
+    undefined,
+    { equals: sameIds },
+  );
 
   let el: HTMLDivElement | undefined;
   const register = () => {
@@ -234,8 +257,8 @@ export function PanelLane(props: {
             'box-sizing': 'border-box',
           }}
         >
-          <For each={seats()}>{(seat) => <Seat members={seat} direction={direction()} />}</For>
-          <For each={away()}>{(section) => <Placeholder dockId={section.id} />}</For>
+          <For each={seats()}>{(seat) => <Seat members={seat.split('\n')} direction={direction()} />}</For>
+          <For each={away()}>{(id) => <Placeholder dockId={id} />}</For>
         </div>
       </div>
       {/*
@@ -268,24 +291,21 @@ export function PanelLane(props: {
  * in a lane: an inspector and the space's settings can take turns in one column rather than
  * stacking, and opening either brings it forward.
  */
-function Seat(props: { members: LaneSection[]; direction: 'row' | 'column' }) {
+function Seat(props: { members: string[]; direction: 'row' | 'column' }) {
   const shellStore = useShellStore();
-  const front = () => shellStore.seatFront(props.members.map((member) => member.id)) ?? props.members[0].id;
+  const front = () => shellStore.seatFront(props.members) ?? props.members[0];
   return (
-    <Show
-      when={props.members.length > 1}
-      fallback={<Section dockId={props.members[0].id} direction={props.direction} />}
-    >
+    <Show when={props.members.length > 1} fallback={<Section dockId={props.members[0]} direction={props.direction} />}>
       <div style={{ display: 'flex', 'flex-direction': 'column', flex: '1 1 0', 'min-height': '0', width: '100%' }}>
         <Row ay="center" gap="100" px="200" pt="200">
           <For each={props.members}>
             {(member) => (
               <we-button
                 size="sm"
-                variant={member.id === front() ? 'soft' : 'ghost'}
-                onClick={() => shellStore.raiseDock(member.id)}
+                variant={member === front() ? 'soft' : 'ghost'}
+                onClick={() => shellStore.raiseDock(member)}
               >
-                {sectionTitle(member.id, shellStore.panelDeclaration(member.id))}
+                {sectionTitle(member, shellStore.panelDeclaration(member))}
               </we-button>
             )}
           </For>
@@ -298,6 +318,19 @@ function Seat(props: { members: LaneSection[]; direction: 'row' | 'column' }) {
     </Show>
   );
 }
+
+/** Two lists of a lane's sections that would draw the same. */
+function sameSections(a: readonly LaneSection[], b: readonly LaneSection[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every((x, i) => {
+      const y = b[i];
+      return x.id === y.id && x.open === y.open && x.order === y.order && x.tab === y.tab && x.away === y.away;
+    })
+  );
+}
+
+const sameIds = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 
 /** What a section is called: its declared title, else its dock's name. */
 function sectionTitle(dockId: string, declared: TemplatePanel | undefined): string {

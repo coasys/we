@@ -146,4 +146,23 @@ describe('a lane holding any panel', () => {
     expect(lane.style.width).toBe('0px');
     expect(store.dockPlacement()[`${HOST}:panel`].snap).not.toBe('home');
   });
+
+  /*
+    The judder: the shell's list of what each lane holds is worked out again whenever any panel moves,
+    and the lane drew its sections from the new entries — so every frame of dragging a call window
+    unmounted and redrew the tree and the inspector beside it. A move elsewhere must leave a lane alone.
+  */
+  it('leaves its sections mounted while a panel elsewhere is dragged', () => {
+    setTemplatePanels([{ id: 'inspector', node: text('Inspector'), home: 'side' }], 'coasys-space');
+    const { store, lane } = mountLane();
+    setHostOpen(true);
+    const before = lane.querySelector('span');
+    expect(before?.textContent).toBe('Inspector');
+
+    store.beginDockMove(`${HOST}:panel`, 100, 100);
+    for (let step = 1; step <= 5; step++) store.moveDock(`${HOST}:panel`, step * 10, step * 5);
+    store.endDockMove(`${HOST}:panel`);
+
+    expect(lane.querySelector('span')).toBe(before);
+  });
 });
