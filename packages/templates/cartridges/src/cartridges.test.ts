@@ -86,6 +86,21 @@ describe('the Coasys cartridge', () => {
     expect(offenders).toEqual([]);
   });
 
+  // Each a row of its own, opened in one press: a menu choosing between the two cost every new space
+  // a second click, and kept joining — which a desktop build has nowhere else to start — out of sight.
+  it('offers creating and joining a space as rows of the rail, each opening its dialog', () => {
+    const rail = JSON.stringify(coasys.app);
+    for (const [label, opens] of [
+      ['Create a space', 'shellStore.setCreateSpaceOpen'],
+      ['Join a space', 'shellStore.setJoinSpaceOpen'],
+    ]) {
+      const row = findNode(coasys.app!, (n) => (n.props as { label?: unknown } | undefined)?.label === label);
+      expect(row, label).toBeDefined();
+      expect(JSON.stringify(row)).toContain(opens);
+    }
+    expect(rail).not.toContain('Add a space');
+  });
+
   /*
     It defines no kinds of record of its own, so there is no gap to record: every template it brings
     must validate as it stands — the app around every space, the space template with its pages, and

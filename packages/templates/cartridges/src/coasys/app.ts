@@ -75,39 +75,30 @@ const accountMenu: SchemaNode = {
 };
 
 /*
-  The way to a new space: a row at the foot of the spaces, offering to create one or join one.
+  The ways to a new space: two rows at the foot of the spaces, creating one and joining one, each
+  opening its dialog directly.
 
-  A row rather than a + beside the "Spaces" heading, because the heading is only there while the
-  rail is open. Closed, the rail had no way to add a space at all — and on a first run, with no
-  spaces yet, nothing on it said spaces existed. A row is drawn either way, icon-only when closed.
-  One way, not two: the heading's + went when this arrived.
+  Rows rather than a + beside the "Spaces" heading, because the heading is only there while the rail
+  is open. Closed, the rail had no way to add a space at all — and on a first run, with no spaces yet,
+  nothing on it said spaces existed. A row is drawn either way, icon-only when closed.
+
+  Two rows rather than one row opening a menu of the two: the menu cost every new space a second
+  click to choose between options there is room to show. Joining is the one that most needs showing —
+  a desktop build has no address bar, so an address somebody was sent needs a visible place to go.
+  WE's sidebar keeps its menu, for the reason its narrow heading gives.
 */
-const addSpace: SchemaNode = {
-  type: 'DropdownMenu',
-  props: {
-    placement: 'right-start',
-    itemSize: 'sm',
-    items: [
-      { id: 'create', label: 'Create a space', icon: 'plus' },
-      { id: 'join', label: 'Join a space', icon: 'link' },
-    ],
-    onSelect: [
-      {
-        $if: {
-          condition: { $: "arg.id == 'create'" },
-          then: { $invoke: 'shellStore.setCreateSpaceOpen', args: [true] },
-        },
-      },
-      {
-        $if: {
-          condition: { $: "arg.id == 'join'" },
-          then: { $invoke: 'shellStore.setJoinSpaceOpen', args: [true] },
-        },
-      },
-    ],
-  },
-  children: [railItem({ icon: 'plus', label: 'Add a space' })],
-};
+const addSpace: SchemaNode[] = [
+  railItem({
+    icon: 'plus',
+    label: 'Create a space',
+    onClick: { $invoke: 'shellStore.setCreateSpaceOpen', args: [true] },
+  }),
+  railItem({
+    icon: 'link',
+    label: 'Join a space',
+    onClick: { $invoke: 'shellStore.setJoinSpaceOpen', args: [true] },
+  }),
+];
 
 const rail: SchemaNode = railShell({
   collapsedWidth: COLLAPSED,
@@ -158,7 +149,7 @@ const rail: SchemaNode = railShell({
       foldable: false,
       reorderable: true,
       onReorder: { $invoke: 'datasetStore.reorderDatasets', args: [{ $: 'arg.detail' }] },
-      after: [addSpace],
+      after: addSpace,
       children: [
         {
           type: '$each',
