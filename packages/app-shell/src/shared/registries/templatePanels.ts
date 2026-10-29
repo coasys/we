@@ -16,7 +16,6 @@
  * channel and registrations on that one, and the loop cannot close.
  */
 import type { TemplatePanel } from '@we/schema-shared';
-import { panelTrace } from '../panelTrace';
 
 let declared: readonly TemplatePanel[] = [];
 
@@ -49,7 +48,6 @@ export function setTemplatePanels(panels: readonly TemplatePanel[] | undefined, 
   // A template re-rendering with the same declaration must not re-announce: every announcement
   // rebuilds dock entries, and rebuilding them mid-drag would drop the drag.
   if (from === scope && next.length === declared.length && next.every((panel, i) => panel === declared[i])) return;
-  panelTrace('declare', { scope: from, ids: next.map((panel) => panel.id) });
   declared = next;
   scope = from;
   for (const listener of listeners) listener();
@@ -73,15 +71,12 @@ let holders = 0;
 /** Hold the declaration while mounted. The returned release lets go of it — see {@link holders}. */
 export function holdTemplatePanels(): () => void {
   holders++;
-  panelTrace('hold', { holders });
   let released = false;
   return () => {
     if (released) return;
     released = true;
     holders--;
-    panelTrace('release', { holders });
     queueMicrotask(() => {
-      panelTrace('release settled', { holders, clearing: holders === 0 });
       if (holders === 0) setTemplatePanels([], '');
     });
   };

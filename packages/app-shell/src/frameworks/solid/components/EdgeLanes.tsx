@@ -29,13 +29,12 @@ import { COLLAPSED_PX, DOCK_GAP_PX, EDGES, PANEL_LAYER_BASE } from '@shared/dock
 import { dockRegistry, dockTitle, STOW_ICONS } from '@shared/registries/dockRegistry';
 import { weProps } from '@we/design-utils/solid';
 import type { DockEdge } from '@we/module-shared';
-import { createEffect, createMemo, For, Index, Show } from 'solid-js';
+import { createMemo, For, Index, Show } from 'solid-js';
 
 import { type EdgeLane, type EdgeSeat, useShellStore } from '../stores/ShellStore';
 import { LaneDivider } from './LaneDivider';
 import { PanelGroup } from './PanelGroup';
 import { PanelMotion } from './PanelMotion';
-import { panelTrace } from '@shared/panelTrace';
 
 type Edge = Exclude<DockEdge, null>;
 
@@ -302,15 +301,6 @@ function EdgeOf(props: { edge: Edge }) {
   const lanes = () => shellStore.edgeLanes().lanes[props.edge];
   const keys = createMemo(() => lanes().map((lane) => lane.key), [], { equals: sameStrings });
   const box = () => shellStore.edgeLanes().boxes[props.edge];
-  createEffect(
-    () =>
-      keys().length &&
-      panelTrace(
-        'edge lanes',
-        props.edge,
-        lanes().map((lane) => lane.seats.map((seat) => seat.ids)),
-      ),
-  );
   return (
     <Show when={keys().length > 0}>
       <div

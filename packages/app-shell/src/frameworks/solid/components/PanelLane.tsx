@@ -58,7 +58,6 @@ import { type Accessor, createEffect, createMemo, createSignal, For, onCleanup, 
 import { type LaneSection, useShellStore } from '../stores/ShellStore';
 import { LaneDivider } from './LaneDivider';
 import { PanelGroup, panelTitle, sectionKey } from './PanelGroup';
-import { panelTrace } from '@shared/panelTrace';
 
 /** A CSS length the lane can do arithmetic on: a number of pixels, or `'240px'`. Anything else is not a bound. */
 function pixels(value: string | number | undefined): number | undefined {
@@ -104,16 +103,6 @@ export function PanelLane(props: {
   const lane = () => props.lane ?? '';
   const direction = () => props.direction ?? 'column';
   const narrow = createNarrow();
-  panelTrace('PanelLane mount', lane());
-  onCleanup(() => panelTrace('PanelLane cleanup', lane()));
-  createEffect(() =>
-    panelTrace('PanelLane state', {
-      lane: lane(),
-      collapsed: collapsed(),
-      here: here().map((section) => section.id),
-      away: away(),
-    }),
-  );
   // How its sections are framed where theirs do not say — read by every frame through `panelFrames`.
   createEffect(() => onCleanup(declareLaneFrame(lane(), props.frame ?? 'flush')));
   /*

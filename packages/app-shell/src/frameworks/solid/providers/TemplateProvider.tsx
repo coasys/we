@@ -84,7 +84,6 @@ import { PersistentAppFrames } from '../layouts/PersistentAppFrames';
 import { TemplateLayout } from '../layouts/TemplateLayout';
 import { useEditTarget } from '../stores/editTarget';
 import { buildRoutes } from '../utils/buildRoutes';
-import { panelTrace } from '@shared/panelTrace';
 
 export default function TemplateProvider() {
   // Stores
@@ -1337,8 +1336,6 @@ export default function TemplateProvider() {
       .join(',');
     return `${id}|${table}`;
   });
-
-  createEffect(() => panelTrace('routeKey', routeKey()));
 
   /**
    * Keep the URL on a section this space actually has.

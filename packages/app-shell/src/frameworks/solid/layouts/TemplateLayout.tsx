@@ -53,7 +53,6 @@ import { createEffect, createMemo, onCleanup, Show } from 'solid-js';
 import { buildRoutes, RouteSurface } from '../utils/buildRoutes';
 import { createLiveSchema } from '../utils/liveSchema';
 import { resolveShellView, type ShellViewEntry } from './shellViews';
-import { panelTrace } from '@shared/panelTrace';
 
 // Width of the collapsed shell sidebar — also set as --we-sidebar-width on :root.
 export const SHELL_SIDEBAR_WIDTH = '80px';
@@ -276,8 +275,6 @@ export function TemplateLayout(
   createEffect(() => setTemplatePanels(activePanels(), stores.templateStore.currentTemplate?.id ?? ''));
   // Withdrawn when this layout leaves — unless the layout replacing it declares in the same breath.
   onCleanup(holdTemplatePanels());
-  panelTrace('TemplateLayout mount');
-  onCleanup(() => panelTrace('TemplateLayout cleanup'));
 
   /**
    * The template's root node with its `$part` markers expanded.

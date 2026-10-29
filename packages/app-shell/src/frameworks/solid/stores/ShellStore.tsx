@@ -134,7 +134,6 @@ export interface TemplateSaver {
 }
 
 import { describeDestructive, type DestructiveFacts } from '../../../shared/destructiveWording';
-import { panelTrace } from '@shared/panelTrace';
 
 /** How long the host waits for what a delete takes with it before asking without it. */
 const FACTS_WAIT_MS = 500;
@@ -2782,28 +2781,6 @@ export function ShellStoreProvider(props: ParentProps) {
     }
     return resolved;
   });
-
-  // TEMPORARY tracing — see panelTrace.ts.
-  createEffect(() => panelTrace('spaceSettingsOpen', spaceSettingsOpen()));
-  createEffect(() => {
-    const box = dockGeometry()['shell:space-settings'];
-    panelTrace(
-      'settings geometry',
-      box
-        ? {
-            edge: box.edge,
-            snap: box.snap,
-            home: box.home,
-            inLane: box.inLane,
-            hidden: box.hidden,
-            floating: box.floating,
-            tabs: box.tabs?.map((tab) => tab.id),
-          }
-        : null,
-    );
-  });
-  createEffect(() => panelTrace('inspector lane', laneSections()['inspector'] ?? null));
-  createEffect(() => panelTrace('settings declared', declarationFor()['shell:space-settings']?.home ?? null));
 
   // Nothing taken while the panels are away: the overlay or the content gets the whole region, and
   // gets it back the moment they return, before they fade in.

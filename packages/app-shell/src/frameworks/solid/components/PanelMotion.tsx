@@ -17,7 +17,6 @@
  * the window whose own transition already eases it, and not at all for a reader who asked for less
  * motion.
  */
-import { panelTrace } from '@shared/panelTrace';
 import { DOCK_FRAME_ATTR } from '@shared/registries/dockRegistry';
 import { createEffect, onCleanup } from 'solid-js';
 
@@ -198,14 +197,6 @@ export function PanelMotion() {
           Math.abs(before.rect.height - rect.height) < STILL_PX;
         if (still || !Number.isFinite(sx) || !Number.isFinite(sy) || before.rect.width === 0) continue;
 
-        panelTrace('motion plays', {
-          id,
-          arrived,
-          dx: Math.round(dx),
-          dy: Math.round(dy),
-          sx: sx.toFixed(2),
-          sy: sy.toFixed(2),
-        });
         const animation = el.animate(
           [
             { transformOrigin: 'top left', transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})` },
