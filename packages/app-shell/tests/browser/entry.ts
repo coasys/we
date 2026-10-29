@@ -1219,6 +1219,25 @@ function dockProbeTargets(): {
   };
 }
 
+/** Which probe panels' frames are moving by animation right now — see `PanelMotion`. */
+function dockProbeMoving(): string[] {
+  return (
+    [...document.querySelectorAll('[data-we-dock-frame]')]
+      // Played by script — not the frame's own CSS transitions and fade-in, which run whenever one fades or mounts.
+      .filter((el) =>
+        el
+          .getAnimations()
+          .some(
+            (animation) =>
+              animation.playState === 'running' &&
+              !(animation instanceof CSSTransition) &&
+              !(animation instanceof CSSAnimation),
+          ),
+      )
+      .map((el) => String(el.getAttribute('data-we-dock-frame')).replace(/^probe:/, ''))
+  );
+}
+
 /** Every probe panel's box on screen and whether it shows, by id, and the space's box. */
 function dockProbeBoxes(): Record<
   string,
@@ -1437,6 +1456,7 @@ function toastProbe(message: string, actionLabel = ''): string {
   dockProbeAct,
   dockProbeBoxes,
   dockProbeTargets,
+  dockProbeMoving,
   // The theme pipeline itself, for a probe of how an apply behaves.
   themeApi: { applyThemeVars, clearThemeVars, setDisplayPreferences, setThemeLive },
   themeDrag,

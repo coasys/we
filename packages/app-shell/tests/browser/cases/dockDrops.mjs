@@ -197,5 +197,30 @@ export async function check({ call, press, pointTo, release }) {
     },
   );
 
+  // Dropped into a lane, a card travels there rather than appearing; its lane-mate eases aside.
+  await run(
+    'a card dropped into a lane, and its lane-mate, ease into place',
+    [
+      { id: 'a', snap: 'right', displace: true, band: 0, order: 0, width: 320 },
+      { id: 'c', snap: 'bottom-left', width: 260 },
+    ],
+    async () => {
+      await press(grip('c'));
+      await pointTo(1100, 360);
+      const offered = await call('dockProbeTargets');
+      const target = offered.slots.find(
+        (slot) => slot.mode === 'lane' && slot.edge === 'right' && slot.key.endsWith(':1'),
+      );
+      if (!target) return [`no seat offered below a: ${summary(offered)}`];
+      await pointTo(target.x, target.y);
+      await release();
+      const moving = await call('dockProbeMoving');
+      const out = [];
+      if (!moving.includes('c')) out.push(`the dropped card did not ease into the lane: ${JSON.stringify(moving)}`);
+      if (!moving.includes('a')) out.push(`its lane-mate did not ease aside: ${JSON.stringify(moving)}`);
+      return out;
+    },
+  );
+
   return problems;
 }

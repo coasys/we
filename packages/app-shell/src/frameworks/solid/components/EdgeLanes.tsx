@@ -34,6 +34,7 @@ import { createMemo, For, Index, Show } from 'solid-js';
 import { type EdgeLane, type EdgeSeat, useShellStore } from '../stores/ShellStore';
 import { LaneDivider } from './LaneDivider';
 import { PanelGroup } from './PanelGroup';
+import { PanelMotion } from './PanelMotion';
 
 type Edge = Exclude<DockEdge, null>;
 
@@ -377,14 +378,18 @@ function CoverOf(props: { edge: Edge }) {
 
 export function EdgeLanes() {
   return (
-    <For each={EDGES}>
-      {(edge) => (
-        <>
-          <EdgeOf edge={edge} />
-          <CoverOf edge={edge} />
-        </>
-      )}
-    </For>
+    <>
+      {/* And how every panel moves between boxes, wherever it is — see `PanelMotion`. */}
+      <PanelMotion />
+      <For each={EDGES}>
+        {(edge) => (
+          <>
+            <EdgeOf edge={edge} />
+            <CoverOf edge={edge} />
+          </>
+        )}
+      </For>
+    </>
   );
 }
 
