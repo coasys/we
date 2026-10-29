@@ -28,6 +28,7 @@ import { provideChromeBag } from '@shared/registries/templateBag';
 import { setTemplatePanels } from '@shared/registries/templatePanels';
 import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/templateSurface';
 import { hostSourceBag } from '@shared/sources';
+import { EdgeLanes } from '@solid/components/EdgeLanes';
 import { PanelHost } from '@solid/components/PanelHost';
 import { MissingMarker, PresentPart } from '@solid/components/PartFrame';
 import { injectDSInteropStyles } from '@solid/dsInterop';
@@ -1156,7 +1157,7 @@ function dockProbe(panels: DockProbePanel[]): void {
         bottom: `${inset.bottom}px`,
       });
     });
-    return [space, ...frames, createComponent(PanelHost, {})];
+    return [space, ...frames, createComponent(EdgeLanes, {}), createComponent(PanelHost, {})];
   };
   const dispose = render(
     () =>

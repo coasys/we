@@ -28,6 +28,7 @@ import {
   contentInset,
   coveredInset,
   displaces,
+  displacingLanes,
   DOCK_GAP_PX,
   type DockGeometry,
   type DockRequest,
@@ -1024,6 +1025,16 @@ describe('the inset when the panels do not fit', () => {
     // left edge of the screen, and `--we-chrome-center-x` — derived from the same number — took the
     // call bar with it.
     expect(contentInset(strip([700, 700, 700]), desktop).right).toBe(region);
+  });
+
+  it('gives each lane, outboard first, the share of it the inset counted', () => {
+    // The lanes the host draws are as thick as these, so the content and the lanes beside it agree.
+    const lanes = displacingLanes(strip([700, 700, 700]), desktop);
+    expect(lanes.map((lane) => [lane.key, lane.thickness])).toEqual([
+      ['solo:p0', 700],
+      ['solo:p1', 700],
+      ['solo:p2', region - 1400],
+    ]);
   });
 
   it('is not pushed past it by the minimum size either', () => {

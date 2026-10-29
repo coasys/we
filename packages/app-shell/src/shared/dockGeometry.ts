@@ -980,6 +980,14 @@ export interface DockGeometry {
    */
   home?: boolean;
   /**
+   * Framed inside its edge's lane rather than over the window: a panel pushing the content aside is
+   * a section of the lane the host draws at that edge (`EdgeLanes`), which arranges its sections by
+   * flex along the lane, and its frame fills its section. The box here is still the engine's, for the
+   * drop targets, the grips between sections and a drag's origin — the same division, worked out the
+   * same way (`laneBase`).
+   */
+  inLane?: boolean;
+  /**
    * Stacked behind another panel in a shared seat — a tab that is not showing. The frame hides
    * itself entirely while this is true; hides, never unmounts, so a call in a background tab keeps
    * its streams. See {@link FloatPlacement.tab}.
@@ -1183,6 +1191,23 @@ export const NO_INSET: ContentInset = { left: 0, right: 0, top: 0, bottom: 0 };
  * every *other* displacing panel, plus the editor's rails, which take room the same way and are not
  * docks. A panel never counts itself, or it would shrink away from its own edge.
  */
+/**
+ * Where an edge's lanes go: the box the lanes pushing the content aside at that edge share, as CSS
+ * offsets from the window's sides — its depth into the window is the lanes' own thickness, which they
+ * lay out themselves. Side lanes own the corners, top and bottom lanes run between them, the rule the
+ * displacing branch of `resolveDock` keeps.
+ */
+export function edgeLaneBox(
+  edge: Exclude<DockEdge, null>,
+  inset: ContentInset,
+): { top?: number; right?: number; bottom?: number; left?: number } {
+  const region = contentRegion({ width: 0, height: 0 } as Viewport);
+  if (edge === 'left') return { left: region.left, top: region.top, bottom: region.bottom };
+  if (edge === 'right') return { right: region.right, top: region.top, bottom: region.bottom };
+  const sides = { left: region.left + inset.left, right: region.right + inset.right };
+  return edge === 'top' ? { top: region.top, ...sides } : { bottom: region.bottom, ...sides };
+}
+
 function contentRegion(viewport: Viewport, occupied: ContentInset = NO_INSET) {
   const left = frame.left + occupied.left;
   const right = RAIL_PX + occupied.right;
@@ -2164,12 +2189,13 @@ export function columnMembers<T extends { placement: FloatPlacement }>(
 /**
  * Hand a span out between members that each want a base and a share of what is left.
  *
- * Flexbox, computed rather than delegated. Spare room after the bases goes out by grow ratio; a
- * shortfall shrinks the bases proportionally and floors each at `floor`.
+ * Flexbox, computed. Spare room after the bases goes out by grow ratio; a shortfall shrinks the bases
+ * proportionally and floors each at `floor`.
  *
- * Delegating to real CSS flex was the tempting alternative and is not available: making a lane a flex
- * container means reparenting panels out of fixed positioning, which remounts their subtrees — the
- * hazard `dockFrame` exists to avoid, and it would drop a call's live video streams.
+ * A lane pushing the content aside is drawn by real flex now (`EdgeLanes`) — panels drawn once and
+ * moved (`PanelHost`) made reparenting a frame cheap, where it used to remount a call's video. This
+ * still answers the same division for what is measured from the boxes rather than drawn in them: the
+ * drop targets, the grips between seats, a drag's origin.
  */
 function divide(bases: number[], grows: number[], available: number, floors: number[]): number[] {
   const sumBase = bases.reduce((total, base) => total + base, 0);
@@ -2196,7 +2222,7 @@ export type LaneMember = FloatPlacement & { min?: DockMin };
  * lane — which divides the width — a folded member keeps its share of the width and gives up its
  * height on the other axis instead. See {@link FloatPlacement.collapsed}.
  */
-function laneBase(
+export function laneBase(
   member: LaneMember,
   axis: 'w' | 'h',
   spanning: boolean,
@@ -2912,7 +2938,35 @@ export function withChromeCovered(covered: ContentInset, chrome: { top: number; 
  */
 export function contentInset(requests: DockRequest[], viewport: Viewport): ContentInset {
   const inset: ContentInset = { left: 0, right: 0, top: 0, bottom: 0 };
+  for (const lane of displacingLanes(requests, viewport)) inset[lane.edge] += lane.thickness;
+  return inset;
+}
 
+/** One lane pushing the content aside: its edge, how thick it is, and its panels seat by seat. */
+export interface DisplacingLane<
+  T extends { placement: FloatPlacement } = { placement: FloatPlacement; index: number },
+> {
+  edge: Exclude<DockEdge, null>;
+  /**
+   * What the lane is called while it lasts — `band:<n>` for a lane somebody named, else its one panel's
+   * id (an unnamed displacing lane holds one panel; see `edgeGroups`).
+   */
+  key: string;
+  thickness: number;
+  /** Put away whole, to its strip. See {@link FloatPlacement.stowed}. */
+  stowed: boolean;
+  seats: T[][];
+}
+
+/**
+ * Every lane pushing the content aside, outboard first on each edge, with the thickness each gets.
+ *
+ * The one answer to how thick a lane is, read by both the content inset (the sum, per edge) and the
+ * lanes the host draws (each band's own) — so the room the content gives up and the room the lanes
+ * take cannot disagree.
+ */
+export function displacingLanes(requests: DockRequest[], viewport: Viewport): DisplacingLane[] {
+  const lanes: DisplacingLane[] = [];
   const region = contentRegion(viewport);
   /*
     What is left on each axis after the panels already counted — the same room `resolveDock` clamps
@@ -2948,11 +3002,17 @@ export function contentInset(requests: DockRequest[], viewport: Viewport): Conte
       // — and the room it gave up is the point. See `laneShrunk`.
       const floor = laneShrunk(members, edge) ? 0 : MIN_DOCK_PX;
       const thickness = Math.min(clamp(wanted, floor, room[axis]), room[axis]);
-      inset[edge] += thickness;
       room[axis] -= thickness;
+      lanes.push({
+        edge,
+        key: group.band === null ? `solo:${requests[group.members[0].index].id}` : `band:${group.band}`,
+        thickness,
+        stowed: members.every((member) => member.stowed),
+        seats: group.seats,
+      });
     }
   }
-  return inset;
+  return lanes;
 }
 
 /**

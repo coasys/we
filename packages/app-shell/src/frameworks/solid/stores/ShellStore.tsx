@@ -19,6 +19,7 @@ import {
   contentInset,
   coveredInset,
   displaces,
+  displacingLanes,
   type DockGeometry,
   type DockMin,
   type DockRequest,
@@ -26,6 +27,7 @@ import {
   dockThickness,
   EDGE_REACH_PX,
   edgeGroups,
+  edgeLaneBox,
   edgeOfSnap,
   EDGES,
   fitPlacement,
@@ -35,6 +37,7 @@ import {
   grown,
   insertionSlots,
   laneable,
+  laneBase,
   laneEdgeBox,
   layerOrder,
   looseSeats,
@@ -80,6 +83,7 @@ import {
   dockTitle,
   hostChromeReserves,
   hostDockStores,
+  isFramed,
   onDockRegistryChanged,
   registerHostDockStore,
   unregisterHostDockStore,
@@ -178,6 +182,33 @@ export interface LaneSection {
   /** Declared at home here, and somewhere else for now — the lane shows a placeholder with the way back. */
   away?: boolean;
 }
+
+/** A lane pushing the content aside at one edge, as `EdgeLanes` draws it. */
+export interface EdgeLane {
+  /** Its name while it lasts — see `DisplacingLane.key`. */
+  key: string;
+  /** How far into the window it reaches: the room the content gives up for it. */
+  thickness: number;
+  /** Put away whole, to its strip. */
+  stowed: boolean;
+  seats: EdgeSeat[];
+}
+
+/**
+ * A seat of an edge lane — its panels, tabs when there are several — and its share of the lane: flex
+ * `grow 1 base`, never below `floor`. Folded, it is its titlebar.
+ */
+export interface EdgeSeat {
+  key: string;
+  ids: string[];
+  base: number;
+  grow: number;
+  floor: number;
+  folded: boolean;
+}
+
+/** Where each edge's lanes go, as CSS offsets from the window's sides — see `edgeLaneBox`. */
+export type EdgeLaneBoxes = Record<Exclude<DockEdge, null>, ReturnType<typeof edgeLaneBox>>;
 
 export interface ShellStore {
   /** Id of the currently open shell overlay, or null. */
@@ -396,6 +427,11 @@ export interface ShellStore {
    * reads to draw a titlebar, or not. A panel with no entry has a window's frame there.
    */
   panelFrames: Accessor<Record<string, PanelFrame>>;
+  /**
+   * The lanes pushing the content aside, by edge, outboard first, and the box each edge's lanes share
+   * — what `EdgeLanes` draws. Each panel in one is framed inside it (`dockGeometry[id].inLane`).
+   */
+  edgeLanes: Accessor<{ lanes: Record<Exclude<DockEdge, null>, EdgeLane[]>; boxes: EdgeLaneBoxes }>;
   /** The declaration an interface made about a dock, by dock id — its title, `fixed`, `grow`. */
   panelDeclaration: (dockId: string) => TemplatePanel | undefined;
   /** Which of several docks sharing a seat is in front: the one most recently raised or opened. */
@@ -2155,6 +2191,36 @@ export function ShellStoreProvider(props: ParentProps) {
     return lastStrips[key];
   };
 
+  /*
+    A drag carried on from the window once its grip is gone.
+
+    The grip a panel is dragged by belongs to the place holding it — a lane's section, an edge lane's
+    frame — and the first thing a drag does is take the panel out of that place, which takes the grip
+    out of the page and its pointer capture with it. So the window follows the same pointer for as long
+    as the move lasts: while the grip is still there both report the same distance from the same start,
+    and the move answers the second as it did the first (`moveDock` is measured from where the drag
+    began); once it is gone the window is all there is.
+  */
+  let releaseCarry: (() => void) | null = null;
+  const carryPastTheGrip = (id: string, startX: number, startY: number) => {
+    releaseCarry?.();
+    if (typeof window === 'undefined') return;
+    const follow = (event: PointerEvent) => store.moveDock(id, event.clientX - startX, event.clientY - startY);
+    const land = () => {
+      releaseCarry?.();
+      if (movingDock() === id) store.endDockMove(id);
+    };
+    window.addEventListener('pointermove', follow);
+    window.addEventListener('pointerup', land);
+    window.addEventListener('pointercancel', land);
+    releaseCarry = () => {
+      window.removeEventListener('pointermove', follow);
+      window.removeEventListener('pointerup', land);
+      window.removeEventListener('pointercancel', land);
+      releaseCarry = null;
+    };
+  };
+
   const laneSeating = createMemo(() => {
     const requests = dockRequests();
     const panels = laneable(requests, viewport());
@@ -2430,6 +2496,9 @@ export function ShellStoreProvider(props: ParentProps) {
     };
   });
 
+  /** Every lane pushing the content aside, and how thick each is — see `displacingLanes`. */
+  const laneLayout = createMemo(() => displacingLanes(dockRequests(), viewport()));
+
   const dockGeometry = createMemo(() => {
     const requests = dockRequests();
     const { seats, below, above, axis, lanes, seams, laneEdges, hidden, follows, tabs, laneRoom, ...lanesAway } =
@@ -2592,6 +2661,15 @@ export function ShellStoreProvider(props: ParentProps) {
     // because the front is resolved by the same walk. See `shareSeatBox`.
     shareSeatBox(resolved, follows);
 
+    // A panel pushing the content aside is framed inside its edge's lane — see `edgeLanes`. Its box
+    // stays the engine's: the drop targets, the grips and a drag's origin are measured from it.
+    for (const lane of laneLayout())
+      for (const seat of lane.seats)
+        for (const member of seat) {
+          const id = requests[member.index]?.id;
+          if (id && resolved[id] && isFramed(id)) resolved[id] = { ...resolved[id], inLane: true };
+        }
+
     /*
       Every panel away — see `panelsAway`. Hidden once gone, as a background tab is, so a call keeps its
       streams and a transcript its scroll; faded on the way out and in. The grips between and beside
@@ -2623,6 +2701,41 @@ export function ShellStoreProvider(props: ParentProps) {
   // Nothing taken while the panels are away: the overlay or the content gets the whole region, and
   // gets it back the moment they return, before they fade in.
   const inset = createMemo(() => (panelsAway() ? { ...NO_INSET } : contentInset(dockRequests(), viewport())));
+
+  /*
+    The lanes the host draws at the window's edges — every lane pushing the content aside, its
+    thickness (the same number the inset sums) and its seats, each with its share of the lane worked
+    out as `columnLayout` works it out, for flex to hand out. See `EdgeLanes`.
+  */
+  const edgeLanes = createMemo(() => {
+    const requests = dockRequests();
+    const touched = activation();
+    const at = (index: number) => touched[placementKey(requests[index].id)] ?? -1;
+    const lanes: Record<Exclude<DockEdge, null>, EdgeLane[]> = { left: [], right: [], top: [], bottom: [] };
+    for (const lane of laneLayout()) {
+      const along = lane.edge === 'left' || lane.edge === 'right' ? 'h' : 'w';
+      lanes[lane.edge].push({
+        key: lane.key,
+        thickness: lane.thickness,
+        stowed: lane.stowed,
+        seats: lane.seats.map((seat) => {
+          const ids = seat.map((member) => requests[member.index].id);
+          // The showing member's size, and the widest floor of any — as `laneSeating` hands the layout.
+          const front = seat.reduce((best, member) => (at(member.index) > at(best.index) ? member : best));
+          const share = laneBase(
+            { ...front.placement, min: widestMin(seat.map((member) => requests[member.index].min)) },
+            along,
+            true,
+          );
+          return { key: ids.join('|'), ids, ...share, folded: Boolean(front.placement.collapsed) };
+        }),
+      });
+    }
+    const all = laneLayout().reduce((sum, lane) => ({ ...sum, [lane.edge]: sum[lane.edge] + lane.thickness }), {
+      ...NO_INSET,
+    });
+    return { lanes, boxes: Object.fromEntries(EDGES.map((edge) => [edge, edgeLaneBox(edge, all)])) as EdgeLaneBoxes };
+  });
   /*
     The same requests, asked the other question: not what the panels take, but what they hide.
 
@@ -3476,6 +3589,7 @@ export function ShellStoreProvider(props: ParentProps) {
       if (typeof document !== 'undefined') document.documentElement.setAttribute(DRAGGING_ATTR, '');
       setMovingDock(id);
       setDockResizing(true);
+      carryPastTheGrip(id, pointerX, pointerY);
     },
 
     beginTabDrag: (id, pointerX, pointerY) => {
@@ -3753,6 +3867,7 @@ export function ShellStoreProvider(props: ParentProps) {
 
       dragOrigin = null;
       dragPointer = null;
+      releaseCarry?.();
       setDragCarry(null);
       if (typeof document !== 'undefined') document.documentElement.removeAttribute(DRAGGING_ATTR);
       setMovingDock(null);
@@ -4161,6 +4276,7 @@ export function ShellStoreProvider(props: ParentProps) {
 
     raiseDock: raise,
     laneSections,
+    edgeLanes,
     panelFrames: createMemo(() => {
       const frames: Record<string, PanelFrame> = {};
       for (const [id, declared] of Object.entries(declarationFor())) if (declared.frame) frames[id] = declared.frame;

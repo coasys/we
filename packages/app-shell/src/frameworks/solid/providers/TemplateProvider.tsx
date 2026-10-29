@@ -76,6 +76,7 @@ import { RECORD_ROUTE_PATH, recordPage } from '@we/template-views';
 import { createEffect, createMemo, createSignal, getOwner, onCleanup, onMount, Show, untrack } from 'solid-js';
 
 import { createCollabSession } from '../collab/collabSession';
+import { EdgeLanes } from '../components/EdgeLanes';
 import { moduleBlockDisplays } from '../components/moduleBlockDisplays';
 import { PanelHost } from '../components/PanelHost';
 import { registerRecordGhost } from '../drag/recordGhost';
@@ -1670,6 +1671,8 @@ export default function TemplateProvider() {
               <RenderSchema node={appSchema} stores={chromeBag} registry={registry} />
             </div>
             <RenderSchema node={shellSchema} stores={chromeBag} registry={registry} />
+            {/* The lanes pushing the content aside at the window's edges. */}
+            <EdgeLanes />
             {/* Every panel, drawn once here, inside these providers, and moved to its place. */}
             <PanelHost />
 
