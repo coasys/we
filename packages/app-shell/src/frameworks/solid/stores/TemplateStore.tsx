@@ -70,12 +70,12 @@ import { type AppDataset, canonicalSpaceId, useDatasetStore } from './DatasetSto
 import { useRouteStore } from './RouteStore';
 import { useSessionStore } from './SessionStore';
 import { createSpaceRecordWait } from './spaceRecordWait';
+import { createSpaceTemplateChoosing } from './spaceTemplateChoosing';
 import { createTemplateDrafts } from './templateDrafts';
 import { useThemeStore } from './ThemeStore';
 
 const emptyMeta: TemplateMeta = { name: '', description: '', icon: '' };
 const emptyTemplate: TemplateSchema = { id: '', meta: emptyMeta, type: '', children: [], slots: {}, routes: [] };
-
 export type TemplateManagementItem = {
   id: string;
   name: string;
@@ -306,6 +306,14 @@ export interface TemplateStore {
    * rather than a template the space may not use. See `spaceRecordWait.ts`.
    */
   awaitingSpaceRecord: Accessor<string | null>;
+  /**
+   * True while the space on screen has arrived and no template has been put up for it yet — on a cold
+   * start, its templates (or the app's own one for spaces) still being read. The template on screen
+   * then is the one before, from another space or the landing page, and the host shows that it is
+   * loading rather than drawing the space's address in it. Lowered the moment a template is applied,
+   * or when choosing ends.
+   */
+  choosingSpaceTemplate: Accessor<boolean>;
 
   /**
    * Whether this tab is in safe mode — WE's own templates and themes in place of what was chosen —
@@ -965,6 +973,9 @@ export function TemplateStoreProvider(props: ParentProps) {
     return !!dataset && templateResolvedFor() !== dataset.id;
   };
 
+  // A space arrived in with nothing put up for it yet — see `spaceTemplateChoosing.ts`.
+  const choosing = createSpaceTemplateChoosing({ currentId: () => datasetStore.currentDataset()?.id ?? null });
+
   // A space joined a moment ago may not have its own record yet — see `spaceRecordWait.ts`.
   const spaceRecord = createSpaceRecordWait({
     currentId: () => datasetStore.currentDataset()?.id ?? null,
@@ -1003,6 +1014,9 @@ export function TemplateStoreProvider(props: ParentProps) {
           allTemplates().find((t) => t.id === followed && t._fromSpace) ||
           allTemplates().find((t) => t.id === followed);
         if (template) replaceTemplate(template);
+        // Named and not loaded yet — the app's own template, early on a cold start. The follow below
+        // puts it up when it arrives; until then the one on screen is not this space's.
+        else choosing.start(perspective.id);
       }
       /*
         Settled only once the space's own record is here. The cache says the templates were read,
@@ -1022,12 +1036,15 @@ export function TemplateStoreProvider(props: ParentProps) {
       const policy = untrack(appSpaceTemplateId);
       const early = policy ? untrack(allTemplates).find((t) => t.id === policy) : undefined;
       if (early) replaceTemplate(early);
+      else choosing.start(perspective.id);
       // Deep link or first boot — async path. Settled on every way out, a failure included: the
       // template on screen is then the answer, and anything waiting on one should stop waiting. Only
       // while still in that space: a slow answer for one already left must not overwrite the
       // answer for the space now open, which would leave it pending for good.
       void applySpaceTemplate(perspective, undefined, { shownEarly: !!early }).finally(() => {
         if (lastSpacePerspectiveUuid !== perspective.id) return;
+        // Choosing is over, whatever it decided — including "leave what is there".
+        choosing.done(perspective.id);
         // A space joined a moment ago may not have its own record yet, so nothing above could say
         // which template it shows. Not settled: see `spaceRecordWait.ts`.
         if (!resolveSpaceFromPerspective(perspective)) spaceRecord.wait(perspective.id);
@@ -1274,6 +1291,8 @@ export function TemplateStoreProvider(props: ParentProps) {
    *  Preferred for AI updates where large structural changes (new routes, etc.) need
    *  reliable reactivity. Caller is responsible for pre-validating the schema. */
   function replaceTemplate(newTemplate: TemplateSchema) {
+    // A template put up is the answer to "which, for this space" — see `choosingSpaceTemplate`.
+    choosing.done();
     commitTemplate(newTemplate);
   }
 
@@ -2493,6 +2512,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     clearSpaceTemplates,
     spaceTemplatePending,
     awaitingSpaceRecord: spaceRecord.waiting,
+    choosingSpaceTemplate: choosing.choosing,
     safeMode: () => safe,
     leaveSafeMode,
     leaveSafeModeInto,
