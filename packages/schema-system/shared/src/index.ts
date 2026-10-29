@@ -64,6 +64,7 @@ export {
   validateSchema,
   validateSemantic,
   withEntities,
+  controlShapedBoxes,
 } from './semanticValidation';
 export type { ValidationContext } from './semanticValidation';
 export { validateStructure } from './validators';

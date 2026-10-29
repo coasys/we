@@ -11,6 +11,7 @@ export const contextData: ContextData = {
       ownProps: [
         { name: 'variant', type: "'soft' | 'edge'", optional: false, default: "'soft'" },
         { name: 'dismissible', type: 'boolean', optional: false, default: 'false' },
+        { name: 'icon', type: 'string', optional: false, default: "''" },
       ],
     },
     {

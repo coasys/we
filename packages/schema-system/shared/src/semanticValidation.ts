@@ -526,6 +526,67 @@ interface WalkState {
   isApp: boolean;
 }
 
+/**
+ * Every box under a node shaped as a control that holds nothing to press — the warning `walkNode`
+ * gives, as a list of paths, for surfaces the validator is not run over (a host dialog, a kit
+ * fragment) to be checked the same way.
+ */
+export function controlShapedBoxes(root: unknown, path = ''): string[] {
+  if (Array.isArray(root)) return root.flatMap((item, i) => controlShapedBoxes(item, `${path}[${i}]`));
+  if (!root || typeof root !== 'object') return [];
+  const record = root as Record<string, unknown>;
+  const here =
+    typeof record.type === 'string' &&
+    CONTROL_SHAPED_BOXES.has(record.type) &&
+    (record.props as { r?: unknown } | undefined)?.r === 'control' &&
+    !holdsControl(record)
+      ? [path || '(root)']
+      : [];
+  return [...here, ...Object.entries(record).flatMap(([key, value]) => controlShapedBoxes(value, `${path}.${key}`))];
+}
+
+/** Boxes that can be shaped as a control — see the check in `walkNode`. */
+const CONTROL_SHAPED_BOXES = new Set(['Row', 'Column', 'Grid', 'Card']);
+
+/** What counts as something to press or type into, for a box shaped as a control to hold. */
+const CONTROLS = new Set([
+  'we-button',
+  'we-link',
+  'we-tag',
+  'we-move-handle',
+  'we-input',
+  'we-textarea',
+  'we-select',
+  'we-switch',
+  'we-checkbox',
+  'we-radio',
+  'we-slider',
+  'we-number-input',
+  'we-date-picker',
+  'we-color-picker',
+  'we-icon-picker',
+  'DropdownMenu',
+  'Select',
+  'Combobox',
+  'Search',
+]);
+
+/**
+ * Whether anything under a node — its children, its slots, the branches of an `$if` — is a control.
+ * A module's part or a slot others fill is drawn by somebody else and may well be one (the Workshop's
+ * call pill holds the call module's "continue" button as a `$part`), so either counts.
+ */
+function holdsControl(node: unknown): boolean {
+  if (Array.isArray(node)) return node.some(holdsControl);
+  if (!node || typeof node !== 'object') return false;
+  const record = node as Record<string, unknown>;
+  if (
+    typeof record.type === 'string' &&
+    (CONTROLS.has(record.type) || record.type === '$part' || record.type === '$slot')
+  )
+    return true;
+  return Object.values(record).some((value) => typeof value === 'object' && holdsControl(value));
+}
 function walkNode(
   node: unknown,
   path: string,
@@ -581,6 +642,27 @@ function walkNode(
         `${n.children.length - 1}. Wrap them in one node — a Column or a Row — so the whole ` +
         `${type === '$each' ? 'row' : 'subject'} is one child.`,
       severity: 'error',
+    });
+  }
+
+  /**
+   * A box shaped as a control that holds nothing to press.
+   *
+   * `r: 'control'` is the radius of the things you press — buttons, tags, chips — and a theme with
+   * pill-shaped buttons (Coasys Glow) makes everything in that family a pill. A box borrowing it
+   * because "control" read like a sensible small radius became a pill under that theme: the
+   * create-space dialog's note, a task's waiting line wrapped across two lines as one capsule. Every
+   * box that rightly takes the shape — a segmented switch, a toolbar, a removable chip — holds a
+   * control, and none of the wrong ones did, which is the whole test. A box inside a sheet is
+   * `r: 'surface'`; a note is a `we-alert`.
+   */
+  if (CONTROL_SHAPED_BOXES.has(type) && (n.props as { r?: unknown } | undefined)?.r === 'control' && !holdsControl(n)) {
+    errors.push({
+      path: `${path}.props.r`,
+      message:
+        `This ${type} takes the control family's corners (r: 'control') but holds nothing to press, so a theme with ` +
+        `pill-shaped buttons makes it a pill. A box inside a sheet is r: 'surface'; a note is a we-alert.`,
+      severity: 'warning',
     });
   }
 

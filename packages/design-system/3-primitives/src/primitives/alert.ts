@@ -69,6 +69,14 @@ export const ALERT_TONE_ICONS: Record<'neutral' | 'accent' | 'success' | 'warnin
   danger: 'x-circle',
 };
 
+/**
+ * Whether it interrupts. `alert` is an assertive live region: a screen reader stops what it is
+ * reading to say it, the moment it appears — right for a failure or a warning somebody must not
+ * miss, and wrong for a note inside a dialog they have just opened, which it read out over the
+ * dialog's own title. Everything else is `status`, which is spoken when the reader is free.
+ */
+export const announces = (tone: ToneName | undefined): boolean => tone === 'warning' || tone === 'danger';
+
 const iconFor = (tone: ToneName | undefined): string =>
   ALERT_TONE_ICONS[(tone ?? 'accent') as keyof typeof ALERT_TONE_ICONS] ?? 'info';
 
@@ -126,6 +134,12 @@ export default class Alert extends DesignSystemElement {
 
   @property({ type: String, reflect: true }) variant: AlertVariant = 'soft';
   @property({ type: Boolean }) dismissible = false;
+  /**
+   * The glyph it leads with, where its tone's would not say what it is about — an app, a person, a
+   * calendar. Absent, the tone's (`ALERT_TONE_ICONS`), which is what carries a status to somebody who
+   * cannot tell the tints apart; so give a warning or a danger its own icon only with care.
+   */
+  @property({ type: String }) icon = '';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   static getDefaultProps() {
@@ -147,13 +161,17 @@ export default class Alert extends DesignSystemElement {
 
   render() {
     const neutral = this.tone === 'neutral';
-    const icon = iconFor(this.tone);
+    const icon = this.icon || iconFor(this.tone);
     // Under `edge` the words are `text`, so the icon is the only thing left carrying the status as
     // colour. Empty means inherit, which is what `soft` wants — there the whole panel is tinted.
     const iconColor = this.variant === 'edge' ? ALERT_EDGE_FILL[neutral ? 'neutral' : 'toned'] : '';
 
     return html`
-      <div part="base" role="alert" style=${styleMap({ ...borderStyle(neutral, this.variant), ...this.styles })}>
+      <div
+        part="base"
+        role=${announces(this.tone) ? 'alert' : 'status'}
+        style=${styleMap({ ...borderStyle(neutral, this.variant), ...this.styles })}
+      >
         <we-icon name=${icon} size="20px" color=${iconColor}></we-icon>
         <div part="content"><slot></slot></div>
         ${

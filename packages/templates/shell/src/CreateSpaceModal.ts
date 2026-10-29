@@ -101,11 +101,15 @@ export const createSpaceModal = {
       type: '$if',
       props: {
         condition: { $: 'spaceStore.startsAs' },
+        /*
+          A note, so an alert in its neutral tone: a sheet, with the surface family's corners, and a
+          status rather than an interruption. It was drawn by hand with the control family's radius,
+          which a theme with pill buttons (Coasys Glow) turned into a pill.
+        */
         then: {
-          type: 'Row',
-          props: { gap: '300', ay: 'start', p: '400', r: 'control', bg: 'surface-sunken' },
+          type: 'we-alert',
+          props: { tone: 'neutral', icon: 'app-window' },
           children: [
-            { type: 'we-icon', props: { name: 'app-window', color: 'text-muted' } },
             {
               type: 'Column',
               props: { gap: '100' },

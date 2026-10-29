@@ -815,3 +815,53 @@ describe('a relative path that goes nowhere useful', () => {
     expect(warned(button('../..'), CLIMB)).toBe(false);
   });
 });
+
+/*
+  A box shaped as a control — `r: 'control'` — that holds nothing to press. A theme with pill buttons
+  made every such box a pill: the create-space dialog's note, a task's waiting line.
+*/
+describe('a box shaped as a control', () => {
+  const box = (children: SchemaNode[], r = 'control'): SchemaNode =>
+    ({
+      meta: { name: 'T', description: 'D', icon: 'i' },
+      type: 'Column',
+      children: [{ type: 'Row', props: { r, gap: '200' }, children }],
+    }) as unknown as SchemaNode;
+  const warnings = (node: SchemaNode) => messages(node, 'warning').filter((m) => m.includes('control family'));
+
+  it('is a pill waiting to happen when it holds only words and an icon', () => {
+    expect(
+      warnings(
+        box([
+          { type: 'we-icon', props: { name: 'app-window' } },
+          { type: 'we-text', children: ['Note'] },
+        ]),
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('is right when it holds something to press — a segmented switch, a chip with its remove', () => {
+    expect(
+      warnings(
+        box([
+          { type: 'we-button', children: ['Page'] },
+          { type: 'we-button', children: ['Canvas'] },
+        ]),
+      ),
+    ).toEqual([]);
+    // However deep, and on either side of an `$if`.
+    expect(
+      warnings(
+        box([{ type: '$if', props: { condition: true, then: { type: 'Row', children: [{ type: 'we-button' }] } } }]),
+      ),
+    ).toEqual([]);
+  });
+
+  it('gives a module part the benefit of the doubt — it may well be a button', () => {
+    expect(warnings(box([{ type: '$part', props: { id: 'call.continueCallButton' } }]))).toEqual([]);
+  });
+
+  it('says nothing about a box in the surface family', () => {
+    expect(warnings(box([{ type: 'we-text', children: ['Note'] }], 'surface'))).toEqual([]);
+  });
+});

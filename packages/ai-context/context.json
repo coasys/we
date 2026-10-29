@@ -16,6 +16,12 @@
           "type": "boolean",
           "optional": false,
           "default": "false"
+        },
+        {
+          "name": "icon",
+          "type": "string",
+          "optional": false,
+          "default": "''"
         }
       ]
     },
