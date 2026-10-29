@@ -38,7 +38,6 @@ import {
   COMPONENT_THEME_STATES,
   componentChain,
   roleTakes,
-  surfaceImageFixed,
   type SurfaceImageRole,
   surfaceImageRoleOf,
   surfaceImageVar,
@@ -752,7 +751,6 @@ function updateCustomVars(
           ? `var(${surfaceImageVar(surface)}, none)`
           : undefined,
     );
-    setProperty(el, `${prefix}bg-attachment`, surface && surfaceImageFixed(surface) ? 'fixed' : undefined);
     setProperty(el, `${prefix}bg-image-fit`, props.bgImage ? (props.bgFit ?? 'cover') : undefined);
     setProperty(el, `${prefix}bg-image-position`, props.bgImage ? (props.bgPosition ?? 'center') : undefined);
   }
@@ -1402,8 +1400,7 @@ export function getStaticDSStyles(
   if (l.has('visual')) {
     base.push(
       `[part='base'] { background-image: var(${p}bg-image, none); background-size: var(${p}bg-image-fit, cover); ` +
-        `background-position: var(${p}bg-image-position, center); background-repeat: no-repeat; ` +
-        `background-attachment: var(${p}bg-attachment, scroll); }\n` +
+        `background-position: var(${p}bg-image-position, center); background-repeat: no-repeat; }\n` +
         `:host([bgimage]) [part='base'] { position: relative; isolation: isolate; }\n` +
         `:host([bgimage]) [part='base']::before { content: ''; position: absolute; inset: 0; z-index: -1; ` +
         `border-radius: inherit; pointer-events: none; ` +

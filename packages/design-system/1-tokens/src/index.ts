@@ -72,7 +72,7 @@ export type {
 } from './font.js';
 export type { ShadowToken, ShadowValue } from './shadow.js';
 export { GLOW_SHADOW } from './shadow.js';
-export { SURFACE_IMAGE_ROLES, surfaceImageFixed, surfaceImageRoleOf, surfaceImageVar } from './surfaceImages.js';
+export { SURFACE_IMAGE_ROLES, surfaceImageRoleOf, surfaceImageVar } from './surfaceImages.js';
 export type { SurfaceImageRole } from './surfaceImages.js';
 export type { SizeToken, SizeValue, RadiusToken, RadiusValue, ComponentSize } from './size.js';
 export type { GapValue, PaddingValue, SpaceToken, SpaceValue } from './space.js';

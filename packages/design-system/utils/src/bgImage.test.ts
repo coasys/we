@@ -22,6 +22,20 @@ describe('bgImageLayer', () => {
     expect(bgImageLayer('none')).toBe('none');
   });
 
+  /*
+    Fixed attachment placed the page's and the chrome's images against the window, which the browser
+    cannot hand to the GPU: everything moving over them — a call window dragged across a space under
+    Coasys Glow — repainted both whole on every frame, and they misdrew where a moving layer crossed
+    them. The default attachment already holds an image still behind a box's own scrolling content.
+  */
+  it('paints a surface’s image against its own box, never fixed to the window', () => {
+    for (const bg of ['page', 'chrome', 'surface']) {
+      const style = buildLayoutStyles({ bg }, 'column');
+      expect(style['background-image']).toContain('--we-surface-image-');
+      expect(style['background-attachment']).toBeUndefined();
+    }
+  });
+
   it('lets none take the surface’s image away and keep its colour', () => {
     const style = buildLayoutStyles({ bg: 'page', bgImage: 'none' }, 'column');
     expect(style['background-image']).toBe('none');

@@ -8,7 +8,6 @@ import {
   semanticValues,
   shadow,
   space,
-  surfaceImageFixed,
   surfaceImageRoleOf,
   surfaceImageVar,
   type Tier,
@@ -1246,7 +1245,6 @@ export function buildLayoutStyles(props: LayoutStyleProps, direction: 'row' | 'c
       const surface = surfaceImageRoleOf(props.bg);
       if (surface && !props.bgImage) {
         style['background-image'] = `var(${surfaceImageVar(surface)}, none)`;
-        if (surfaceImageFixed(surface)) style['background-attachment'] = 'fixed';
       }
     }
   }
