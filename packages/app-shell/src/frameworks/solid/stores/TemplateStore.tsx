@@ -73,6 +73,7 @@ import { createSpaceRecordWait } from './spaceRecordWait';
 import { createSpaceTemplateChoosing } from './spaceTemplateChoosing';
 import { createTemplateDrafts } from './templateDrafts';
 import { useThemeStore } from './ThemeStore';
+import { spaceOpenTrace } from '@shared/spaceOpenTrace';
 
 const emptyMeta: TemplateMeta = { name: '', description: '', icon: '' };
 const emptyTemplate: TemplateSchema = { id: '', meta: emptyMeta, type: '', children: [], slots: {}, routes: [] };
@@ -975,6 +976,8 @@ export function TemplateStoreProvider(props: ParentProps) {
 
   // A space arrived in with nothing put up for it yet — see `spaceTemplateChoosing.ts`.
   const choosing = createSpaceTemplateChoosing({ currentId: () => datasetStore.currentDataset()?.id ?? null });
+  createEffect(() => spaceOpenTrace('choosing', choosing.choosing()));
+  createEffect(() => spaceOpenTrace('current dataset', datasetStore.currentDataset()?.id ?? null));
 
   // A space joined a moment ago may not have its own record yet — see `spaceRecordWait.ts`.
   const spaceRecord = createSpaceRecordWait({
@@ -1009,10 +1012,19 @@ export function TemplateStoreProvider(props: ParentProps) {
       // Templates were pre-loaded by navigateToSpace — apply synchronously
       const cachedSpace = resolveSpaceFromPerspective(perspective);
       const followed = followedTemplateId(cachedSpace?.defaultTemplateId, untrack(appSpaceTemplateId));
+      spaceOpenTrace('arrive: cached', {
+        space: perspective.id,
+        record: !!cachedSpace,
+        spaceDefault: cachedSpace?.defaultTemplateId ?? null,
+        appPolicy: untrack(appSpaceTemplateId) ?? null,
+        followed: followed ?? null,
+        loaded: untrack(allTemplates).map((t) => t.id),
+      });
       if (followed) {
         const template =
           allTemplates().find((t) => t.id === followed && t._fromSpace) ||
           allTemplates().find((t) => t.id === followed);
+        spaceOpenTrace('arrive: cached template found', !!template);
         if (template) replaceTemplate(template);
         // Named and not loaded yet — the app's own template, early on a cold start. The follow below
         // puts it up when it arrives; until then the one on screen is not this space's.
@@ -1035,6 +1047,12 @@ export function TemplateStoreProvider(props: ParentProps) {
       */
       const policy = untrack(appSpaceTemplateId);
       const early = policy ? untrack(allTemplates).find((t) => t.id === policy) : undefined;
+      spaceOpenTrace('arrive: not cached', {
+        space: perspective.id,
+        appPolicy: policy ?? null,
+        early: early?.id ?? null,
+        loaded: untrack(allTemplates).map((t) => t.id),
+      });
       if (early) replaceTemplate(early);
       else choosing.start(perspective.id);
       // Deep link or first boot — async path. Settled on every way out, a failure included: the
@@ -1042,6 +1060,10 @@ export function TemplateStoreProvider(props: ParentProps) {
       // while still in that space: a slow answer for one already left must not overwrite the
       // answer for the space now open, which would leave it pending for good.
       void applySpaceTemplate(perspective, undefined, { shownEarly: !!early }).finally(() => {
+        spaceOpenTrace('apply settled', {
+          space: perspective.id,
+          stillHere: lastSpacePerspectiveUuid === perspective.id,
+        });
         if (lastSpacePerspectiveUuid !== perspective.id) return;
         // Choosing is over, whatever it decided — including "leave what is there".
         choosing.done(perspective.id);
@@ -1292,6 +1314,7 @@ export function TemplateStoreProvider(props: ParentProps) {
    *  reliable reactivity. Caller is responsible for pre-validating the schema. */
   function replaceTemplate(newTemplate: TemplateSchema) {
     // A template put up is the answer to "which, for this space" — see `choosingSpaceTemplate`.
+    spaceOpenTrace('replaceTemplate', newTemplate.id);
     choosing.done();
     commitTemplate(newTemplate);
   }
