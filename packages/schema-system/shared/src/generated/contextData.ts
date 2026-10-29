@@ -2526,6 +2526,7 @@ export const contextData: ContextData = {
         recordDraft: { type: 'object' },
         recordDraftDirty: { type: 'boolean' },
         displays: { type: 'object' },
+        kinds: { type: 'array' },
         recordErrors: { type: 'array' },
         savingRecord: { type: 'boolean' },
         lastCreatedId: { type: 'string' },

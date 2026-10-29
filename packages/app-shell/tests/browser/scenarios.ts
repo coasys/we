@@ -2314,10 +2314,6 @@ const feedViewPage = (): Scenario => {
   };
 };
 
-/**
- * TEMPORARY — a mockup, not a check: the create-space dialog with a choice of starter, placed three
- * ways, under Coasys Glow.
- */
 export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'coasys:about': coasysAbout,
   'feed:view': feedViewPage,

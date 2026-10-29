@@ -96,7 +96,16 @@ export type { Choice } from './we/designChoices.ts';
 export { SOCIAL_DNA_LABELS, VOCABULARY_BUCKETS, vocabularyMap } from './we/vocabularyMap.ts';
 export type { VocabularyMapOptions } from './we/vocabularyMap.ts';
 export { askWhatGoesHere, BACK_TO_CHOOSER, CARD_LOCALS, newNoteModal, newThingChooser } from './we/canvasCards.ts';
-export type { CanvasCardOptions } from './we/canvasCards.ts';
+export {
+  KIND_CARD_RULES,
+  KIND_STYLES_QUERY,
+  kindCardFill,
+  kindChosen,
+  kindColour,
+  kindDisc,
+  kindGlyph,
+  withKindStyles,
+} from './we/kindColour.ts';
 export type { ProfilePageOptions } from './we/profile.ts';
 export { marketplaceList } from './we/marketplaceList.ts';
 export type { MarketplaceListOptions } from './we/marketplaceList.ts';

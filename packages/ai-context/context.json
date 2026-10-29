@@ -6693,6 +6693,9 @@
         "displays": {
           "type": "object"
         },
+        "kinds": {
+          "type": "array"
+        },
         "recordErrors": {
           "type": "array"
         },

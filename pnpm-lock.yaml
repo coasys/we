@@ -2231,6 +2231,9 @@ importers:
       '@we/schema-shared':
         specifier: workspace:*
         version: link:../../schema-system/shared
+      '@we/tokens':
+        specifier: workspace:*
+        version: link:../../design-system/1-tokens
     devDependencies:
       '@types/node':
         specifier: ^26.6.5

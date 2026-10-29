@@ -72,6 +72,7 @@ import {
   focusDim,
   formModal,
   inspectorPanel,
+  kindGlyph,
   newNoteModal,
   newThingChooser,
   openRecord,
@@ -101,7 +102,6 @@ import {
   FOLDED_CARDS,
   HIDDEN_KINDS,
   keyPanel,
-  kindFill,
   LENS_PARAM,
   LENS_QUERY,
   lensNodeRules,
@@ -1739,8 +1739,8 @@ const canvas: SchemaNode = {
 
           `PLAIN_FILL` is what a card is when nothing colours it — which, with both lenses off and
           no colour of its own, is the honest answer; see `WorkshopKey` for why it is a neutral step.
-          The per-kind tints that used to sit here are the kind lens's defaults now, in
-          `KIND_DEFAULTS`, so the key can show them beside each name.
+          The per-kind tints that used to sit here are the kind lens's now: each kind's own palette
+          hue, which the key shows beside each name.
 
           It is the floor rather than the last word: the first rule `lensNodeRules` contributes is
           the community's own plain colour, which is this one where nobody has chosen another.
@@ -2158,11 +2158,11 @@ const canvasBody: Omit<RouteSchema, 'path'> = {
     */
     // Back goes to the chooser a record was picked from; a drawn connection gets no Back button.
     // No model picker: the kind was just chosen on the screen before. The header's disc takes the
-    // kind's colour, as the chooser's card did — `kindFill` reads the route's `typeStyles`.
-    recordFormModal({ back: BACK_TO_CHOOSER, entityPicker: false, iconColor: kindFill }),
+    // kind's colour, as the chooser's card did — `kindGlyph` reads the route's `typeStyles`.
+    recordFormModal({ back: BACK_TO_CHOOSER, entityPicker: false, iconColor: kindGlyph }),
     // What goes here, a new note, and the selected note opened — see `WorkshopCards`.
-    newThingChooser(SPACE_CANVAS, { fill: kindFill }),
-    newNoteModal(SPACE_CANVAS, { fill: kindFill }),
+    newThingChooser(SPACE_CANVAS),
+    newNoteModal(SPACE_CANVAS),
     editNoteModal,
   ],
 };

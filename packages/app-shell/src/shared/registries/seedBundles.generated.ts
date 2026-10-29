@@ -20553,6 +20553,12 @@ export const seedBundles: Bundle[] = [
                       vocabOpen: { type: 'array', initial: [] },
                     },
                     $queries: {
+                      typeStyles: {
+                        entity: 'TypeStyle',
+                        scope: { anchor: 'Space', via: 'typeStyles', anchorId: { $: 'spaceStore.currentSpace.id' } },
+                        limit: 50,
+                        when: { $: 'spaceStore.currentSpace.id' },
+                      },
                       focusCall: {
                         entity: 'CollectionBlock',
                         where: {
@@ -20689,6 +20695,9 @@ export const seedBundles: Bundle[] = [
                                     content: 'record',
                                     contentMinZoom: 0.4,
                                   },
+                                },
+                                {
+                                  $: "recordStore.kinds.map(k, { when: { type: k.value }, style: { color: (((find(local.typeStyles, { nodeType: k.value }).color ? find(local.typeStyles, { nodeType: k.value }).color : find(recordStore.kinds, { value: k.value }).hue)) in ['red', 'orange', 'yellow', 'lime', 'green', 'teal', 'cyan', 'blue', 'purple', 'pink'] ? ((find(local.typeStyles, { nodeType: k.value }).color ? find(local.typeStyles, { nodeType: k.value }).color : find(recordStore.kinds, { value: k.value }).hue)) + '-soft' : (find(local.typeStyles, { nodeType: k.value }).color ? find(local.typeStyles, { nodeType: k.value }).color : find(recordStore.kinds, { value: k.value }).hue)) } })",
                                 },
                                 {
                                   style: {
@@ -21198,7 +21207,12 @@ export const seedBundles: Bundle[] = [
                                     children: [
                                       {
                                         type: 'we-icon',
-                                        props: { name: { $: 'recordStore.recordDraft.icon' }, color: 'text' },
+                                        props: {
+                                          name: { $: 'recordStore.recordDraft.icon' },
+                                          color: {
+                                            $: "(((find(local.typeStyles, { nodeType: recordStore.recordDraft.entity }).color ? find(local.typeStyles, { nodeType: recordStore.recordDraft.entity }).color : find(recordStore.kinds, { value: recordStore.recordDraft.entity }).hue)) in ['red', 'orange', 'yellow', 'lime', 'green', 'teal', 'cyan', 'blue', 'purple', 'pink'] ? ((find(local.typeStyles, { nodeType: recordStore.recordDraft.entity }).color ? find(local.typeStyles, { nodeType: recordStore.recordDraft.entity }).color : find(recordStore.kinds, { value: recordStore.recordDraft.entity }).hue)) + '-text' : ((find(local.typeStyles, { nodeType: recordStore.recordDraft.entity }).color ? find(local.typeStyles, { nodeType: recordStore.recordDraft.entity }).color : find(recordStore.kinds, { value: recordStore.recordDraft.entity }).hue) ? (find(local.typeStyles, { nodeType: recordStore.recordDraft.entity }).color ? find(local.typeStyles, { nodeType: recordStore.recordDraft.entity }).color : find(recordStore.kinds, { value: recordStore.recordDraft.entity }).hue) : 'text'))",
+                                          },
+                                        },
                                       },
                                     ],
                                   },
@@ -22740,7 +22754,9 @@ export const seedBundles: Bundle[] = [
                                                               r: 'full',
                                                               ax: 'center',
                                                               ay: 'center',
-                                                              bg: 'surface-raised',
+                                                              bg: {
+                                                                $: "(((find(local.typeStyles, { nodeType: kind.value }).color ? find(local.typeStyles, { nodeType: kind.value }).color : find(recordStore.kinds, { value: kind.value }).hue)) in ['red', 'orange', 'yellow', 'lime', 'green', 'teal', 'cyan', 'blue', 'purple', 'pink'] ? ((find(local.typeStyles, { nodeType: kind.value }).color ? find(local.typeStyles, { nodeType: kind.value }).color : find(recordStore.kinds, { value: kind.value }).hue)) + '-soft' : 'surface-raised')",
+                                                              },
                                                             },
                                                             children: [
                                                               {
@@ -22749,7 +22765,9 @@ export const seedBundles: Bundle[] = [
                                                                   name: {
                                                                     $: "kind.via == 'composer' ? 'note' : kind.icon ? kind.icon : 'cube'",
                                                                   },
-                                                                  color: 'text',
+                                                                  color: {
+                                                                    $: "(((find(local.typeStyles, { nodeType: kind.value }).color ? find(local.typeStyles, { nodeType: kind.value }).color : find(recordStore.kinds, { value: kind.value }).hue)) in ['red', 'orange', 'yellow', 'lime', 'green', 'teal', 'cyan', 'blue', 'purple', 'pink'] ? ((find(local.typeStyles, { nodeType: kind.value }).color ? find(local.typeStyles, { nodeType: kind.value }).color : find(recordStore.kinds, { value: kind.value }).hue)) + '-text' : ((find(local.typeStyles, { nodeType: kind.value }).color ? find(local.typeStyles, { nodeType: kind.value }).color : find(recordStore.kinds, { value: kind.value }).hue) ? (find(local.typeStyles, { nodeType: kind.value }).color ? find(local.typeStyles, { nodeType: kind.value }).color : find(recordStore.kinds, { value: kind.value }).hue) : 'text'))",
+                                                                  },
                                                                 },
                                                               },
                                                             ],
@@ -22887,7 +22905,9 @@ export const seedBundles: Bundle[] = [
                                                               r: 'full',
                                                               ax: 'center',
                                                               ay: 'center',
-                                                              bg: 'surface-raised',
+                                                              bg: {
+                                                                $: "(((find(local.typeStyles, { nodeType: kind.value }).color ? find(local.typeStyles, { nodeType: kind.value }).color : find(recordStore.kinds, { value: kind.value }).hue)) in ['red', 'orange', 'yellow', 'lime', 'green', 'teal', 'cyan', 'blue', 'purple', 'pink'] ? ((find(local.typeStyles, { nodeType: kind.value }).color ? find(local.typeStyles, { nodeType: kind.value }).color : find(recordStore.kinds, { value: kind.value }).hue)) + '-soft' : 'surface-raised')",
+                                                              },
                                                             },
                                                             children: [
                                                               {
@@ -22896,7 +22916,9 @@ export const seedBundles: Bundle[] = [
                                                                   name: {
                                                                     $: "kind.via == 'composer' ? 'note' : kind.icon ? kind.icon : 'cube'",
                                                                   },
-                                                                  color: 'text',
+                                                                  color: {
+                                                                    $: "(((find(local.typeStyles, { nodeType: kind.value }).color ? find(local.typeStyles, { nodeType: kind.value }).color : find(recordStore.kinds, { value: kind.value }).hue)) in ['red', 'orange', 'yellow', 'lime', 'green', 'teal', 'cyan', 'blue', 'purple', 'pink'] ? ((find(local.typeStyles, { nodeType: kind.value }).color ? find(local.typeStyles, { nodeType: kind.value }).color : find(recordStore.kinds, { value: kind.value }).hue)) + '-text' : ((find(local.typeStyles, { nodeType: kind.value }).color ? find(local.typeStyles, { nodeType: kind.value }).color : find(recordStore.kinds, { value: kind.value }).hue) ? (find(local.typeStyles, { nodeType: kind.value }).color ? find(local.typeStyles, { nodeType: kind.value }).color : find(recordStore.kinds, { value: kind.value }).hue) : 'text'))",
+                                                                  },
                                                                 },
                                                               },
                                                             ],
@@ -23034,7 +23056,9 @@ export const seedBundles: Bundle[] = [
                                                               r: 'full',
                                                               ax: 'center',
                                                               ay: 'center',
-                                                              bg: 'surface-raised',
+                                                              bg: {
+                                                                $: "(((find(local.typeStyles, { nodeType: kind.value }).color ? find(local.typeStyles, { nodeType: kind.value }).color : find(recordStore.kinds, { value: kind.value }).hue)) in ['red', 'orange', 'yellow', 'lime', 'green', 'teal', 'cyan', 'blue', 'purple', 'pink'] ? ((find(local.typeStyles, { nodeType: kind.value }).color ? find(local.typeStyles, { nodeType: kind.value }).color : find(recordStore.kinds, { value: kind.value }).hue)) + '-soft' : 'surface-raised')",
+                                                              },
                                                             },
                                                             children: [
                                                               {
@@ -23043,7 +23067,9 @@ export const seedBundles: Bundle[] = [
                                                                   name: {
                                                                     $: "kind.via == 'composer' ? 'note' : kind.icon ? kind.icon : 'cube'",
                                                                   },
-                                                                  color: 'text',
+                                                                  color: {
+                                                                    $: "(((find(local.typeStyles, { nodeType: kind.value }).color ? find(local.typeStyles, { nodeType: kind.value }).color : find(recordStore.kinds, { value: kind.value }).hue)) in ['red', 'orange', 'yellow', 'lime', 'green', 'teal', 'cyan', 'blue', 'purple', 'pink'] ? ((find(local.typeStyles, { nodeType: kind.value }).color ? find(local.typeStyles, { nodeType: kind.value }).color : find(recordStore.kinds, { value: kind.value }).hue)) + '-text' : ((find(local.typeStyles, { nodeType: kind.value }).color ? find(local.typeStyles, { nodeType: kind.value }).color : find(recordStore.kinds, { value: kind.value }).hue) ? (find(local.typeStyles, { nodeType: kind.value }).color ? find(local.typeStyles, { nodeType: kind.value }).color : find(recordStore.kinds, { value: kind.value }).hue) : 'text'))",
+                                                                  },
                                                                 },
                                                               },
                                                             ],
@@ -23174,7 +23200,17 @@ export const seedBundles: Bundle[] = [
                                       ay: 'center',
                                       bg: 'surface-sunken',
                                     },
-                                    children: [{ type: 'we-icon', props: { name: 'note', color: 'text' } }],
+                                    children: [
+                                      {
+                                        type: 'we-icon',
+                                        props: {
+                                          name: 'note',
+                                          color: {
+                                            $: "(((find(local.typeStyles, { nodeType: 'CollectionBlock' }).color ? find(local.typeStyles, { nodeType: 'CollectionBlock' }).color : find(recordStore.kinds, { value: 'CollectionBlock' }).hue)) in ['red', 'orange', 'yellow', 'lime', 'green', 'teal', 'cyan', 'blue', 'purple', 'pink'] ? ((find(local.typeStyles, { nodeType: 'CollectionBlock' }).color ? find(local.typeStyles, { nodeType: 'CollectionBlock' }).color : find(recordStore.kinds, { value: 'CollectionBlock' }).hue)) + '-text' : ((find(local.typeStyles, { nodeType: 'CollectionBlock' }).color ? find(local.typeStyles, { nodeType: 'CollectionBlock' }).color : find(recordStore.kinds, { value: 'CollectionBlock' }).hue) ? (find(local.typeStyles, { nodeType: 'CollectionBlock' }).color ? find(local.typeStyles, { nodeType: 'CollectionBlock' }).color : find(recordStore.kinds, { value: 'CollectionBlock' }).hue) : 'text'))",
+                                          },
+                                        },
+                                      },
+                                    ],
                                   },
                                   { type: 'we-text', props: { variant: 'heading-md' }, children: ['New note'] },
                                 ],

@@ -15,7 +15,8 @@
   },
   "dependencies": {
     "@we/schema-kit": "workspace:*",
-    "@we/schema-shared": "workspace:*"
+    "@we/schema-shared": "workspace:*",
+    "@we/tokens": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

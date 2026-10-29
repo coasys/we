@@ -3,14 +3,15 @@
  * you clicked — a note in the composer, anything else through the record form.
  *
  * Shared by every canvas that makes things — the workshop's and the Coasys space's — so the chooser,
- * the composer and where the new card lands are one behaviour. A canvas route declares `CARD_LOCALS`,
- * binds `onCanvasDoubleClick` to `askWhatGoesHere`, and places `newThingChooser` and `newNoteModal`.
- * How the chooser colours each kind is the caller's: the workshop's key paints them, a canvas without
- * one leaves the picker's own colours.
+ * the composer and where the new card lands are one behaviour. A canvas route declares `CARD_LOCALS`
+ * and the space's colours by kind (`typeStyles`, `KIND_STYLES_QUERY`), binds `onCanvasDoubleClick` to
+ * `askWhatGoesHere`, and places `newThingChooser` and `newNoteModal`. Each kind is drawn in its colour
+ * (`kindColour.ts`), as its cards on the canvas are.
  */
 import { composerModal } from '@we/schema-kit';
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
+import { kindDisc, kindGlyph } from './kindColour.ts';
 import { typePicker } from './typePicker.ts';
 
 /** The locals a canvas route declares for these. All ephemeral: nothing here survives a reload. */
@@ -69,20 +70,16 @@ export const BACK_TO_CHOOSER: SchemaProp[] = [{ $setLocal: 'chooserOpen', value:
  * "What goes here?" — anything this space can make, as `typePicker`'s searchable grid.
  *
  * The note first (a collection, written in the composer — its description says it is a document of
- * blocks, which is what tells it apart from Text), then this space's own types, then WE's blocks led by tasks and events. Each card's
- * icon is drawn in the colour the key gives its kind, so the chooser and the key agree.
+ * blocks, which is what tells it apart from Text), then this space's own types, then WE's blocks led by
+ * tasks and events. Each card's glyph is drawn in its kind's colour, on its kind's tint, as the
+ * kind's cards are on the canvas.
  *
  * A composed kind opens the composer. Anything else opens the generic form through `createOnCanvas`,
  * which remembers the canvas and the point, and then switches the form to the chosen model — two
  * actions, because the first opens on whatever model comes first and the second is the one that says
  * which. Nothing is written until the form or the composer is saved.
  */
-export interface CanvasCardOptions {
-  /** The colour a kind is drawn in, as an expression over its name — a canvas with a key passes it. */
-  fill?: (kind: string) => string;
-}
-
-export function newThingChooser(canvas: SchemaProp, opts: CanvasCardOptions = {}): SchemaNode {
+export function newThingChooser(canvas: SchemaProp): SchemaNode {
   const close: SchemaProp = { $setLocal: 'chooserOpen', value: false };
   return {
     type: '$if',
@@ -98,8 +95,9 @@ export function newThingChooser(canvas: SchemaProp, opts: CanvasCardOptions = {}
             lead: LEADING_KINDS,
             composedLabel: 'Note',
             composedIcon: 'note',
-            // The key's colour is looked up by the kind's *name*; a picker entry is the whole row.
-            ...(opts.fill ? { fill: (kind: string) => opts.fill!(`${kind}.value`) } : {}),
+            // A kind's colour is looked up by its *name*; a picker entry is the whole row.
+            fill: (kind: string) => kindGlyph(`${kind}.value`),
+            disc: (kind: string) => kindDisc(`${kind}.value`),
             pick: (kind) => [
               close,
               {
@@ -130,7 +128,7 @@ export function newThingChooser(canvas: SchemaProp, opts: CanvasCardOptions = {}
  * a single commit, so nothing watching the data layer sees a note in the tray for as long as the
  * placement takes to arrive. The same handshake the graph section's canvas uses.
  */
-export function newNoteModal(canvas: SchemaProp, opts: CanvasCardOptions = {}): SchemaNode {
+export function newNoteModal(canvas: SchemaProp): SchemaNode {
   return composerModal({
     openLocal: 'newNoteOpen',
     title: 'New note',
@@ -143,6 +141,6 @@ export function newNoteModal(canvas: SchemaProp, opts: CanvasCardOptions = {}): 
     onSaved: [{ $setLocal: 'newAt', value: null }],
     back: BACK_TO_CHOOSER,
     // The disc the chooser drew a note with — its glyph, in the note's colour.
-    icon: { name: 'note', ...(opts.fill ? { color: { $: opts.fill("'CollectionBlock'") } } : {}) },
+    icon: { name: 'note', color: { $: kindGlyph("'CollectionBlock'") } },
   });
 }

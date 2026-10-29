@@ -7,6 +7,9 @@ import {
   CARD_LOCALS,
   focusDim,
   focusDimWhere,
+  KIND_CARD_RULES,
+  KIND_STYLES_QUERY,
+  kindGlyph,
   newNoteModal,
   newThingChooser,
   PLACED_CARD_STYLE,
@@ -135,6 +138,8 @@ export const canvasPane: SchemaNode = {
     vocabOpen: { type: 'array', initial: [] },
   },
   $queries: {
+    // The space's colours by kind, which the cards and the chooser below are drawn in.
+    typeStyles: KIND_STYLES_QUERY,
     focusCall: {
       entity: 'CollectionBlock',
       where: { id: { $: CALL } },
@@ -166,6 +171,8 @@ export const canvasPane: SchemaNode = {
             backdrop: { pattern: 'dots', gap: 24 },
             nodeStyle: [
               { style: { shape: 'card', width: 200, height: 140, content: 'record', contentMinZoom: 0.4 } },
+              // Each kind in its colour; a card somebody coloured keeps its own, over it.
+              KIND_CARD_RULES,
               { style: PLACED_CARD_STYLE },
               ...SUGGESTION_STYLES,
               // The focus, after the suggestions: a suggestion out of focus is dimmed with the rest.
@@ -234,7 +241,7 @@ export const canvasPane: SchemaNode = {
         },
       ],
     },
-    recordFormModal({ back: BACK_TO_CHOOSER, entityPicker: false }),
+    recordFormModal({ back: BACK_TO_CHOOSER, entityPicker: false, iconColor: kindGlyph }),
     newThingChooser(CANVAS),
     newNoteModal(CANVAS),
   ],
