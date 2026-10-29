@@ -123,8 +123,10 @@ const TINTS = Object.fromEntries(
  * The colours are settings, not pins, so the corrections reach them: mint for the accent and
  * success, the site's orange for warnings. The palette is the site's pastels — its purple, its blue
  * (WE's cyan, at 220), its orange and its mint — and every other hue lifted to sit beside them.
- * The site has no red; danger is a pastel a little redder than the warning orange, so the two can
- * still be told apart.
+ * The site has no red, so danger is the theme's own: a clear crimson, darker than the pastels so it
+ * reads as red rather than salmon — and well apart from the warning orange. Danger *text* stays
+ * derived: to be read on this indigo it must be light, and a light red is the lightest, reddest the
+ * correction allows; a pinned darker red failed the contrast bar on the tint and on a card.
  *
  * Headings are light (300), controls 600, badges and eyebrows 700 with the site's tracking. Shadows
  * are flat, as the site's cards are, and a glow is strong: a highlighted card is ringed and lit in
@@ -146,9 +148,9 @@ export const glowTheme: BundleTheme = {
     warningHue: 50,
     warningSaturation: 97,
     warningLightness: 84,
-    dangerHue: 28,
-    dangerSaturation: 90,
-    dangerLightness: 78,
+    dangerHue: 20,
+    dangerSaturation: 100,
+    dangerLightness: 62,
     saturation: 70,
     neutralHue: 277,
     neutralSaturation: 35,
