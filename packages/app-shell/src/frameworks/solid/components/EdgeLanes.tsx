@@ -86,12 +86,28 @@ function Seat(props: { seat: () => EdgeSeat | undefined; edge: Edge }) {
 }
 
 /** The grip between a seat and the next, on an edge: moves the stored sizes either side (`resizeColumn`). */
-function Divider(props: { above: () => string | undefined; edge: Edge; gap: number }) {
+function Divider(props: {
+  above: () => string | undefined;
+  edge: Edge;
+  gap: number;
+  /** How far across the lane it reaches, against the edge — absent, the whole lane. */
+  across?: number;
+}) {
   const shellStore = useShellStore();
+  const vertical = props.edge === 'left' || props.edge === 'right';
   return (
     <LaneDivider
-      direction={props.edge === 'left' || props.edge === 'right' ? 'column' : 'row'}
+      direction={vertical ? 'column' : 'row'}
       size={px(props.gap) ?? '0px'}
+      style={
+        props.across === undefined
+          ? undefined
+          : {
+              'align-self': props.edge === 'right' || props.edge === 'bottom' ? 'flex-end' : 'flex-start',
+              // Only the cross axis: a key left undefined here would clear the length along the lane.
+              ...(vertical ? { width: px(props.across) } : { height: px(props.across) }),
+            }
+      }
       onStart={() => {
         const id = props.above();
         if (id) shellStore.beginDockResize(id);
@@ -365,6 +381,8 @@ function CoverOf(props: { edge: Edge }) {
                   above={() => showing(lane()?.seats[index() - 1], shellStore.dockGeometry())}
                   edge={props.edge}
                   gap={DOCK_GAP_PX}
+                  // As wide as the widest card, against the edge — not the whole room the lane stands in.
+                  across={Math.max(0, ...(lane()?.seats.map((seat) => seat.cross ?? 0) ?? []))}
                 />
               </Show>
               <Seat seat={() => lane()?.seats.find((seat) => seat.key === key)} edge={props.edge} />

@@ -98,10 +98,17 @@ export async function check({ call, press, pointTo, release }) {
     async () => {
       const { offered, target } = await dragTo(grip('c'), slotOf('tab', 'right'), { x: 1100, y: 200 });
       if (!target) return [`no seat offered to stack on: ${summary(offered)}`];
-      await settle();
+      // Joining a seat lands where it was dropped, as a tab always has: no travel, then or later.
+      const out = [];
+      const moving = await call('dockProbeMoving');
+      if (moving.length) out.push(`a tab joining its seat travelled: ${JSON.stringify(moving)}`);
+      await new Promise((resolve) => setTimeout(resolve, 1800));
+      const later = await call('dockProbeMoving');
+      if (later.length) out.push(`something moved again after landing: ${JSON.stringify(later)}`);
       const { a, c } = await boxes();
       const showing = [a, c].filter((box) => box?.visible);
-      return showing.length === 1 ? [] : [`${showing.length} of the seat showing, not one`];
+      if (showing.length !== 1) out.push(`${showing.length} of the seat showing, not one`);
+      return out;
     },
   );
 
@@ -218,6 +225,16 @@ export async function check({ call, press, pointTo, release }) {
       const out = [];
       if (!moving.includes('c')) out.push(`the dropped card did not ease into the lane: ${JSON.stringify(moving)}`);
       if (!moving.includes('a')) out.push(`its lane-mate did not ease aside: ${JSON.stringify(moving)}`);
+      /*
+        Once, not again when the arrangement is recounted — mid-flight (a box read then includes the
+        transform) and a second later, as a tab's highlight fading or a raise recounts it in the app.
+      */
+      await call('dockProbeAct', 'raiseDock', 'a');
+      await new Promise((resolve) => setTimeout(resolve, 900));
+      await call('dockProbeAct', 'raiseDock', 'c');
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      const later = await call('dockProbeMoving');
+      if (later.length) out.push(`something moved again after landing: ${JSON.stringify(later)}`);
       return out;
     },
   );

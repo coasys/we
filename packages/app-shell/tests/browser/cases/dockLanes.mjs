@@ -11,7 +11,7 @@ export const widths = [1280];
 const NEAR = 3;
 const near = (a, b) => Math.abs(a - b) <= NEAR;
 
-export async function check({ call, dragBy }) {
+export async function check({ call, dragBy, measure }) {
   const problems = [];
   const settle = () => new Promise((resolve) => setTimeout(resolve, 450));
   const boxes = () => call('dockProbeBoxes');
@@ -125,6 +125,11 @@ export async function check({ call, dragBy }) {
     try {
       await settle();
       const before = await boxes();
+      // As wide as the widest card, against their edge — not across the whole room the lane stands in.
+      const line = await measure('[data-we-edge-cover] [data-we-lane-divider]');
+      const widest = Math.max(before.a.right - before.a.left, before.b.right - before.b.left);
+      if (!line || !near(line.w, widest) || !near(line.x + line.w, before.a.right))
+        problems.push(`the grip between cards is not the cards' width: ${JSON.stringify(line)} vs ${widest}`);
       try {
         await dragBy('[data-we-edge-cover] [data-we-lane-divider]', 0, 80);
         await settle();

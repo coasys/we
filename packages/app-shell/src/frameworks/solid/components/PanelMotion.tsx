@@ -9,7 +9,8 @@
  * last, invert, play) with a transform — a card dropped into a lane, a section broken out of the page,
  * lane-mates making room for a newcomer.
  *
- * Not while a drag or a resize is live (the frame must follow the hand, and the one being dragged is
+ * Not for a panel joining or leaving a seat (`settling`), which lands where it is dropped as a tab
+ * always has. Not while a drag or a resize is live (the frame must follow the hand, and the one being dragged is
  * remembered all the way so its landing starts from where it was let go), not for a lane easing into
  * or out of its strip (the lane eases its own thickness), not across a change of the
  * window's size (everything moves at once, and easing that is a lurch), not for a frame floating over
@@ -36,6 +37,18 @@ interface Seen {
 export function PanelMotion() {
   const shellStore = useShellStore();
   const seen = new Map<string, Seen>();
+  /*
+    The box each frame is heading for while it plays — what it is measured as until it gets there. A
+    box read mid-animation includes the transform, so the next recount saw the frame "move" from
+    there to where it already was and played it a second time, a second or so after the first.
+  */
+  const playing = new WeakMap<Element, { animation: Animation; to: DOMRect }>();
+  /*
+    Panels that joined or left a seat — see `settling`. They land rather than travel, as a tab always
+    has: the drag was the animation. Held until the next measurement, because `settling` is true for
+    one frame and the recount that clears it can arrive before the measurement does.
+  */
+  const landing = new Set<string>();
   let viewport = '';
   let frame: number | undefined;
   onCleanup(() => frame !== undefined && cancelAnimationFrame(frame));
@@ -54,6 +67,7 @@ export function PanelMotion() {
     const resizing = shellStore.dockResizing();
     const moving = shellStore.movingDock();
     if (typeof document === 'undefined') return;
+    for (const [id, box] of Object.entries(geometry)) if (box.settling) landing.add(id);
 
     // After the DOM has the new arrangement laid out — read once, in the frame it is painted.
     if (frame !== undefined) cancelAnimationFrame(frame);
@@ -65,16 +79,23 @@ export function PanelMotion() {
 
       for (const el of document.querySelectorAll<HTMLElement>(`[${DOCK_FRAME_ATTR}]`)) {
         const id = el.getAttribute(DOCK_FRAME_ATTR) ?? '';
-        const rect = el.getBoundingClientRect();
+        const going = playing.get(el);
+        const rect = going?.animation.playState === 'running' ? going.to : el.getBoundingClientRect();
         const before = seen.get(id);
         const box = geometry[id];
         const stowing = Boolean(box?.stowed || box?.layoutWidth || box?.contentsFaded);
         seen.set(id, { el, rect, stowing });
+        const landed = landing.delete(id);
         if (resizing || resized || !before || reduced() || id === moving || stowing || before.stowing) continue;
         if (rect.width === 0 || rect.height === 0 || getComputedStyle(el).visibility === 'hidden') continue;
 
         // A frame that stayed over the window eases itself; one that arrived, or is laid out by a lane, does not.
         const arrived = before.el !== el;
+        // A panel moving between places is not one opening: no fade-in where it lands (`we-dock-in`).
+        if (arrived)
+          for (const animation of el.getAnimations())
+            if (animation instanceof CSSAnimation && animation.animationName === 'we-dock-in') animation.cancel();
+        if (landed) continue;
         if (!arrived && !box?.inLane && !box?.home) continue;
 
         const dx = before.rect.left - rect.left;
@@ -88,17 +109,14 @@ export function PanelMotion() {
           Math.abs(before.rect.height - rect.height) < STILL_PX;
         if (still || !Number.isFinite(sx) || !Number.isFinite(sy) || before.rect.width === 0) continue;
 
-        // A panel travelling is not one arriving: no fade-in where it lands (`we-dock-in`), only the move.
-        if (arrived)
-          for (const animation of el.getAnimations())
-            if (animation instanceof CSSAnimation && animation.animationName === 'we-dock-in') animation.cancel();
-        el.animate(
+        const animation = el.animate(
           [
             { transformOrigin: 'top left', transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})` },
             { transformOrigin: 'top left', transform: 'none' },
           ],
           { duration: MOTION_MS, easing: 'ease' },
         );
+        playing.set(el, { animation, to: rect });
       }
       // Forget what is gone, so a panel opened again later does not fly in from where it closed.
       const present = new Set(
