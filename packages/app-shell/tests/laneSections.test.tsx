@@ -94,15 +94,18 @@ describe('a lane holding any panel', () => {
       'coasys-space',
     );
     const { lane } = mountLane();
-    // What is drawn, as against the tabs naming it.
-    const shown = () => [...lane.querySelectorAll('span')].map((span) => span.textContent);
+    // What is showing, as against the tabs naming it — a tab behind the front is hidden, not gone.
+    const visible = (el: Element) => !el.closest('[style*="display: none"]');
+    const shown = () => [...lane.querySelectorAll('span')].filter(visible).map((span) => span.textContent);
+    const mounted = () => [...lane.querySelectorAll('span')].map((span) => span.textContent);
     expect(shown()).toEqual(['Inspector']);
 
     setHostOpen(true);
     const tabs = [...lane.querySelectorAll('we-button')].filter((button) => !button.getAttribute('label'));
     expect(tabs.map((button) => button.textContent?.trim())).toEqual(['Inspector', 'Settings']);
-    // Opened on purpose, so in front.
+    // Opened on purpose, so in front — and the inspector behind it still mounted, as a background tab keeps its state.
     expect(shown()).toEqual(['Settings']);
+    expect(mounted()).toEqual(expect.arrayContaining(['Inspector', 'Settings']));
 
     fireEvent.click(tabs[0]);
     expect(shown()).toEqual(['Inspector']);
