@@ -18,6 +18,9 @@ import { countPill, liveDot } from './marks.ts';
 import {
   callPath,
   channelPath,
+  DNA_FOCUS,
+  DNA_PARAM,
+  DNA_SHOWN,
   dnaEntityOf,
   GROUP_PAGES,
   inspect,
@@ -70,14 +73,18 @@ const group = (
   label: string,
   icon: string,
   children: SchemaNode[],
-  opts: { count: string; tone?: SchemaProp; action?: SchemaNode },
+  opts: {
+    count: string;
+    tone?: SchemaProp;
+    action?: SchemaNode;
+    openness?: { open: SchemaProp; onOpenChange: SchemaProp };
+  },
 ): SchemaNode =>
   treeRow({
     value: `group|${key}`,
     label,
     icon,
-    open: isOpen(`group|${key}`),
-    onOpenChange: toggle(`group|${key}`),
+    ...(opts.openness ?? { open: isOpen(`group|${key}`), onOpenChange: toggle(`group|${key}`) }),
     expandable: { $: `${opts.count} > 0` },
     badge: {
       type: 'Row',
@@ -208,11 +215,29 @@ const people = group(
   which listed a hand-picked few of its fields and drifted from what the definition holds.
 */
 
-/** A row that opens and closes by its own value, held with the tree's other open rows. */
-const openable = (value: string) => ({
-  open: { $: `(${value}) in ${OPEN}` },
-  onOpenChange: { $toggleLocalIn: 'openRows', value: { $: value } },
-});
+/**
+ * A Social DNA row, open while what is in focus is inside it — so a definition chosen on the vocabulary
+ * map is shown lit in the tree, not lit inside a row that is closed. `inside` is that condition, and
+ * `up` the focus that is not inside it: closing the row moves the focus up to the row itself, rather
+ * than leaving a row that will not close.
+ */
+const revealing = (value: string, inside: string, up: string) => {
+  const within = `(${DNA_SHOWN}) && (${inside})`;
+  const toggle = { $toggleLocalIn: 'openRows', value: { $: value } };
+  return {
+    open: { $: `((${value}) in ${OPEN}) || (${within})` },
+    onOpenChange: {
+      $if: {
+        condition: { $: `!event.detail.open && (${within})` },
+        then: [
+          { $invoke: 'routeStore.setParam', args: [DNA_PARAM, { $: up }] },
+          { $if: { condition: { $: `(${value}) in ${OPEN}` }, then: toggle } },
+        ],
+        else: toggle,
+      },
+    },
+  };
+};
 
 /** One kind of definition: a row with its count, and a row for each definition, bound as `def`. */
 const dnaKind = (list: DnaList): SchemaNode => {
@@ -222,7 +247,7 @@ const dnaKind = (list: DnaList): SchemaNode => {
     value: { $: kindValue },
     label: list.label,
     icon: list.icon,
-    ...openable(kindValue),
+    ...revealing(kindValue, `startsWith(${DNA_FOCUS}, '${list.kind}|')`, `'${list.kind}'`),
     expandable: { $: `count(${list.items}) > 0` },
     badge: countPill(`count(${list.items})`),
     children: [
@@ -251,7 +276,7 @@ const policyKind: SchemaNode = treeRow({
   value: { $: "'dnakind|policy'" },
   label: POLICY.label,
   icon: POLICY.icon,
-  ...openable("'dnakind|policy'"),
+  ...revealing("'dnakind|policy'", `startsWith(${DNA_FOCUS}, 'policy|')`, "'policy'"),
   expandable: { $: `count(${POLICY_RULES}) > 0` },
   badge: countPill(`count(${POLICY_RULES})`),
   children: [
@@ -268,7 +293,11 @@ const policyKind: SchemaNode = treeRow({
 const DNA_COUNT = [...DNA_LISTS.map((list) => list.items), POLICY_RULES].map((list) => `count(${list})`).join(' + ');
 
 /** Everything the space has defined about itself — see above. */
-const socialDna = group('dna', 'Social DNA', 'dna', [...DNA_KINDS, policyKind], { count: DNA_COUNT });
+const socialDna = group('dna', 'Social DNA', 'dna', [...DNA_KINDS, policyKind], {
+  count: DNA_COUNT,
+  // Open while anything in it is in focus; closing it then shows all of it.
+  openness: revealing("'group|dna'", `${DNA_FOCUS} != 'all'`, "'all'"),
+});
 
 /*
   How the space looks: the templates and the themes somebody would switch between here, each with the

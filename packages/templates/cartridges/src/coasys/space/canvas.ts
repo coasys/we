@@ -19,8 +19,8 @@ import {
 } from '@we/template-kit';
 
 import { type Crumb, viewBar } from './bar.ts';
-import { BUCKET, DNA_AT, DNA_ID, DNA_KIND, DNA_QUERIES, dnaCrumbs, editDna, MODEL_NAME } from './dna.ts';
-import { DNA_FOCUS, IN_CANVAS, inspect, PAGE_EXPR, withView } from './paths.ts';
+import { BUCKET, DNA_AT, DNA_ID, DNA_KIND, DNA_QUERIES, dnaCrumbs, dnaFocusOf, editDna } from './dna.ts';
+import { DNA_FOCUS, DNA_PARAM, IN_CANVAS, inspect, PAGE_EXPR, withView } from './paths.ts';
 
 /**
  * The space in Canvas mode: whatever the tree has chosen, seen on the map it lives on.
@@ -76,16 +76,16 @@ const BUCKET_NODE = `'we-graph://cluster/vocabulary/' + ${BUCKET}`;
 const OTHER_KINDS = `{ 'data.bucket': { exists: true, not: ${BUCKET} } }`;
 const SIBLING = (key: string, value: string) =>
   `{ 'data.bucket': ${BUCKET}, type: { not: 'vocabulary' }, '${key}': { not: ${value} } }`;
-const SIBLINGS = `(${DNA_KIND} == 'model' ? ${SIBLING('data.entity', MODEL_NAME)} : ${DNA_KIND} == 'policy' ? ${SIBLING('data.item', DNA_ID)} : ${SIBLING('data.recordId', DNA_ID)})`;
+const SIBLINGS = `(${DNA_KIND} == 'model' ? ${SIBLING('data.entity', DNA_ID)} : ${DNA_KIND} == 'policy' ? ${SIBLING('data.item', DNA_ID)} : ${SIBLING('data.recordId', DNA_ID)})`;
 
 /** The definition chosen, opened: a record or a model by what the graph's `open` takes; a rule has nothing inside. */
-const OPEN_DEFINITION = `${DNA_ID} && ${DNA_KIND} != 'policy' ? [${DNA_KIND} == 'model' ? ${MODEL_NAME} : ${DNA_ID}] : []`;
+const OPEN_DEFINITION = `${DNA_ID} && ${DNA_KIND} != 'policy' ? [${DNA_ID}] : []`;
 
 /**
  * What the map centres on: a definition (a model by its name), a rule of the policy by its key on the
  * map (`policy:<rule>`), or a kind's bucket. All of it, nothing.
  */
-const FOCUS = `${DNA_AT} == 'all' ? '' : !(${DNA_ID}) ? ${BUCKET_NODE} : ${DNA_KIND} == 'policy' ? 'policy:' + ${DNA_ID} : ${DNA_KIND} == 'model' ? ${MODEL_NAME} : ${DNA_ID}`;
+const FOCUS = `${DNA_AT} == 'all' ? '' : !(${DNA_ID}) ? ${BUCKET_NODE} : ${DNA_KIND} == 'policy' ? 'policy:' + ${DNA_ID} : ${DNA_ID}`;
 
 /** A node pressed, opened in the inspector — when it stands for a record the inspector reads. */
 const OPEN_IN_INSPECTOR: SchemaProp = {
@@ -113,8 +113,21 @@ const dnaMap: SchemaNode = vocabularyMap({
   // What the tree chose, centred and held there while the map opens around it.
   focus: { $: FOCUS },
   focusCentre: true,
-  // A definition, or one of its uses, opens in the inspector; a model is not a record it reads.
-  onNodeClick: OPEN_IN_INSPECTOR,
+  /*
+    Pressing a bucket, a definition, a model or a rule moves the focus to it, as choosing its row in the
+    tree does — the map lights it and dims the rest, and the tree lights its row. It used to only open
+    the inspector, so the map stayed lit for whatever the tree had chosen before. A definition, or one
+    of its uses, opens in the inspector as well; a model is not a record it reads.
+  */
+  onNodeClick: [
+    {
+      $if: {
+        condition: { $: dnaFocusOf('event') },
+        then: { $invoke: 'routeStore.setParam', args: [DNA_PARAM, { $: dnaFocusOf('event') }] },
+      },
+    },
+    OPEN_IN_INSPECTOR,
+  ],
   focusRules: [focusDimWhere(`${DNA_AT} != 'all'`, OTHER_KINDS), focusDimWhere(DNA_ID, SIBLINGS)],
 });
 

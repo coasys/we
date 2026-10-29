@@ -63,7 +63,10 @@ export const DNA_LISTS: DnaList[] = [
     kind: 'model',
     bucket: 'models',
     icon: 'shapes',
-    items: 'shapeStore.spaceShapes',
+    // Every kind of thing a record can be, WE's own and the community's: what the vocabulary map's
+    // Models bucket holds, known by name, as the map knows them. Only the community's are Shapes.
+    items:
+      'recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description })',
     itemIcon: "def.icon ? def.icon : 'dna'",
   },
 ].map((list) => ({ ...list, label: SOCIAL_DNA_LABELS[list.bucket as DnaList['bucket']] }) as DnaList);
@@ -85,8 +88,22 @@ export const byKind = (field: (list: DnaList | typeof POLICY) => string, quote =
 /** The vocabulary map's bucket for the kind in focus. */
 export const BUCKET = byKind((list) => list.bucket);
 
-/** A model's name, the tree knowing a model by the Shape record's id. */
-export const MODEL_NAME = `shapeStore.spaceShapes.find(s, s.id == (${DNA_ID})).name`;
+/**
+ * A node of the vocabulary map, as the focus it stands for — so pressing it on the map moves the focus
+ * there, as choosing its row in the tree does. `node` is an expression naming the graph's node. A
+ * bucket is its kind, a definition its kind and id, a model its name, a rule its words; anything else
+ * (what a definition is used for, a workflow) is nothing, and leaves the focus where it was.
+ */
+export const dnaFocusOf = (node: string): string => {
+  const kind = `{ ${[...DNA_LISTS, POLICY].map((list) => `${list.bucket}: '${list.kind}'`).join(', ')} }[${node}.data.bucket]`;
+  return [
+    `!(${kind}) ? ''`,
+    `: ${node}.type == 'vocabulary' ? ${kind}`,
+    `: (${kind}) == 'model' ? 'model|' + ${node}.data.entity`,
+    `: (${kind}) == 'policy' ? 'policy|' + ${node}.data.item`,
+    `: ${node}.recordId ? (${kind}) + '|' + ${node}.recordId : ''`,
+  ].join(' ');
+};
 
 /** The definition in focus, by name: a rule of the policy is its own words. */
 const DEF_NAME = `${DNA_KIND} == 'policy' ? ${DNA_ID} : ${byKind((list) => ('items' in list ? list.items : '[]'), false)}.find(d, d.id == (${DNA_ID})).name`;
@@ -97,6 +114,9 @@ export const dnaCrumbs = (when = 'true'): Crumb[] => [
   { label: { $: byKind((list) => list.label) }, onClick: showDna(DNA_KIND), when: `(${when}) && ${DNA_AT} != 'all'` },
   { label: { $: `(${DEF_NAME}) ?? 'Definition'` }, when: `(${when}) && ${DNA_ID}` },
 ];
+
+/** The model in focus as the community's Shape, where it is one of theirs — what its settings know it by. */
+const MODEL_SHAPE = `shapeStore.spaceShapes.find(s, s.name == (${DNA_ID})).id`;
 
 /**
  * Where the definitions are edited, from the bar of either view of them: the space's vocabulary
@@ -109,7 +129,7 @@ export const editDna: SchemaNode = {
     size: 'sm',
     onClick: {
       $invoke: 'shellStore.openSpaceSettings',
-      args: ['vocabulary', { $: `${DNA_KIND} == 'model' ? ${DNA_ID} : ''` }],
+      args: ['vocabulary', { $: `${DNA_KIND} == 'model' ? (${MODEL_SHAPE}) ?? '' : ''` }],
     },
   },
   children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }, 'Edit in settings'],

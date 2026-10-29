@@ -28,10 +28,12 @@ import {
   SPACE_TEMPLATE_CHOICES,
   templateChoice,
   themeChoice,
+  VOCABULARY_BUCKETS,
 } from '@we/template-kit';
 import { describe, expect, it } from 'vitest';
 
 import { canvasPane } from './coasys/space/canvas.ts';
+import { DNA_LISTS } from './coasys/space/dna.ts';
 import { callPath, groupPath, personPath, SELECTED_EXPR } from './coasys/space/paths.ts';
 import { treeSection } from './coasys/space/tree.ts';
 import { callPage, spaceRoutes } from './coasys/space/views.ts';
@@ -345,7 +347,8 @@ describe('the Coasys cartridge', () => {
     it('opens a definition in the inspector, from the tree or the map', () => {
       const map = findNode(canvasPane, (n) => n.type === '$if' && JSON.stringify(n).includes('source":"vocabulary'));
       const vocab = findNode(map, (n) => n.type === 'GraphView')!;
-      const onNodeClick = (vocab.props as { onNodeClick: { $if: { condition: unknown; then: unknown } } }).onNodeClick;
+      const onNodeClick = (vocab.props as { onNodeClick: { $if: { condition: unknown; then: unknown } }[] })
+        .onNodeClick[1];
       expect(onNodeClick.$if.then).toEqual([
         { $invoke: 'routeStore.setParam', args: ['cardType', { $: 'event.recordType' }] },
         { $invoke: 'routeStore.setParam', args: ['card', { $: 'event.recordId' }] },
@@ -362,6 +365,71 @@ describe('the Coasys cartridge', () => {
       // The policy is still lit by its words on the canvas.
       expect(at([], { view: 'canvas', dna: 'policy|Members can make anything.' })({ $: SELECTED_EXPR })).toBe(
         'dnaprop|policy|Members can make anything.',
+      );
+    });
+
+    /*
+      Pressing a node of the map only opened the inspector, so the map stayed lit for whatever the tree
+      had chosen and the tree lit nothing new. It moves the focus now, as the tree does, and the tree
+      opens its rows around what is lit.
+    */
+    it('moves the focus to what is pressed on the map, and opens the tree around it', () => {
+      const map = findNode(canvasPane, (n) => n.type === '$if' && JSON.stringify(n).includes('source":"vocabulary'));
+      const vocab = findNode(map, (n) => n.type === 'GraphView')!;
+      const press = (vocab.props as { onNodeClick: { $if: { condition: unknown; then: { args: unknown[] } } }[] })
+        .onNodeClick[0].$if;
+      const focusOf = (event: Record<string, unknown>) => {
+        const evaluate = at([], { view: 'canvas', dna: 'state' }, { event });
+        return evaluate(press.condition) ? [press.then.args[0], evaluate(press.then.args[1])] : null;
+      };
+      expect(focusOf({ type: 'vocabulary', kind: 'cluster', data: { bucket: 'signals' } })).toEqual(['dna', 'signal']);
+      expect(focusOf({ type: 'SignalType', recordId: 'like', data: { bucket: 'signals' } })).toEqual([
+        'dna',
+        'signal|like',
+      ]);
+      expect(focusOf({ type: '$schema', data: { bucket: 'models', entity: 'TaskBlock' } })).toEqual([
+        'dna',
+        'model|TaskBlock',
+      ]);
+      expect(focusOf({ type: 'vocabulary-item', data: { bucket: 'policy', item: 'A rule.' } })).toEqual([
+        'dna',
+        'policy|A rule.',
+      ]);
+      // What a definition is used for leaves the focus where it was.
+      expect(focusOf({ type: 'TaskBlock', recordId: 't1', data: {} })).toBeNull();
+
+      // The tree opens Social DNA and the kind around a definition in focus, and nothing else.
+      const row = (value: string) =>
+        findNode(treeSection, (n) =>
+          String(JSON.stringify((n.props as { open?: unknown } | undefined)?.open)).includes(
+            `((${value}) in local.openRows)`,
+          ),
+        )!;
+      const open = (value: string, params: Record<string, string>) =>
+        at([], params, { local: { openRows: [] } })((row(value).props as { open: unknown }).open);
+      const onCanvas = { view: 'canvas', dna: 'signal|like' };
+      expect(open("'group|dna'", onCanvas)).toBe(true);
+      expect(open("'dnakind|signal'", onCanvas)).toBe(true);
+      expect(open("'dnakind|state'", onCanvas)).toBe(false);
+      expect(open("'dnakind|signal'", { view: 'canvas', dna: 'all' })).toBe(false);
+    });
+
+    it('lists every model the map does under Models, by name', () => {
+      const models = DNA_LISTS.find((list) => list.kind === 'model')!;
+      const evaluate = at(
+        [],
+        {},
+        {
+          recordStore: {
+            creatableEntities: [{ value: 'TaskBlock', label: 'Task', icon: 'check', description: 'Work' }],
+          },
+        },
+      );
+      expect(evaluate({ $: models.items })).toEqual([
+        { id: 'TaskBlock', name: 'Task', icon: 'check', description: 'Work' },
+      ]);
+      expect(JSON.stringify(VOCABULARY_BUCKETS)).toContain(
+        "key: 'models', label: 'Models', models: recordStore.creatableEntities",
       );
     });
 
