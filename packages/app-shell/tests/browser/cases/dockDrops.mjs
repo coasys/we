@@ -257,5 +257,26 @@ export async function check({ call, press, pointTo, release }) {
     },
   );
 
+  /*
+    A panel opening into a folded lane slides in with the lane — once. The lane's slide moves its
+    contents, so a box read mid-slide is not where the panel rests, and a recount for some other reason
+    a few seconds later (the app has one every five) played it sliding in again.
+  */
+  await run(
+    'a panel opening into a folded lane, then a recount',
+    [
+      { id: 'a', snap: 'left', home: true, closed: true },
+      { id: 'b', snap: 'bottom-right', width: 260 },
+    ],
+    async () => {
+      await call('dockProbeOpen', 'a');
+      await new Promise((resolve) => setTimeout(resolve, 900));
+      await call('dockProbeAct', 'raiseDock', 'b');
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      const moving = await call('dockProbeMoving');
+      return moving.length ? [`played again on a recount: ${JSON.stringify(moving)}`] : [];
+    },
+  );
+
   return problems;
 }

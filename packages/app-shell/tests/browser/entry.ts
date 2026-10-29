@@ -1077,6 +1077,16 @@ interface DockProbePanel {
   frame?: 'window' | 'flush' | 'none';
   /** At home in the probe's template lane (`probe`), drawn on the left in the page's flow. */
   home?: boolean;
+  /** Closed until `dockProbeOpen` opens it, as a gear opens space settings. */
+  closed?: boolean;
+}
+
+/** Which probe panels that started closed have been opened. */
+const [probeOpen, setProbeOpen] = createSignal<Record<string, boolean>>({});
+
+/** Open a probe panel that started closed. */
+function dockProbeOpen(id: string): void {
+  setProbeOpen((open) => ({ ...open, [id]: true }));
 }
 let dockProbeShell: ReturnType<typeof useShellStore> | undefined;
 function dockProbe(panels: DockProbePanel[]): void {
@@ -1085,9 +1095,11 @@ function dockProbe(panels: DockProbePanel[]): void {
   // In a space: at the root address the shell opens its landing page, and panels stand aside for it.
   const address = window.location.pathname;
   window.history.replaceState({}, '', '/space/probe');
+  setProbeOpen({});
   const keys: Record<string, unknown> = {};
   for (const panel of panels) {
-    keys[`edge:${panel.id}`] = () => edgeOfSnap(panel.snap) ?? 'right';
+    keys[`edge:${panel.id}`] = () =>
+      panel.closed && !probeOpen()[panel.id] ? null : (edgeOfSnap(panel.snap) ?? 'right');
     keys[`size:${panel.id}`] = () => 'md';
     keys[`float:${panel.id}`] = () => !panel.displace;
   }
@@ -1166,7 +1178,8 @@ function dockProbe(panels: DockProbePanel[]): void {
     lane.id = 'probe-lane';
     Object.assign(lane.style, { position: 'fixed', left: '0', top: '0', bottom: '0', width: '300px', display: 'flex' });
     const laneChildren = panels.some((panel) => panel.home)
-      ? [createComponent(PanelLane, { lane: 'probe', flex: '1', direction: 'column' })]
+      ? // Folded while nothing in it is open, as the Coasys inspector lane is.
+        [createComponent(PanelLane, { lane: 'probe', width: '300px', direction: 'column', foldEmpty: true })]
       : [];
     insert(lane, () => laneChildren);
     return [space, lane, ...frames, createComponent(EdgeLanes, {}), createComponent(PanelHost, {})];
@@ -1464,6 +1477,7 @@ function toastProbe(message: string, actionLabel = ''): string {
   dockProbeTargets,
   dockProbeMoving,
   dockProbeGrow,
+  dockProbeOpen,
   // The theme pipeline itself, for a probe of how an apply behaves.
   themeApi: { applyThemeVars, clearThemeVars, setDisplayPreferences, setThemeLive },
   themeDrag,

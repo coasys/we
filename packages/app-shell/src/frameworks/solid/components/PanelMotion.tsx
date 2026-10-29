@@ -17,11 +17,11 @@
  * the window whose own transition already eases it, and not at all for a reader who asked for less
  * motion.
  */
+import { panelTrace } from '@shared/panelTrace';
 import { DOCK_FRAME_ATTR } from '@shared/registries/dockRegistry';
 import { createEffect, onCleanup } from 'solid-js';
 
 import { useShellStore } from '../stores/ShellStore';
-import { panelTrace } from '@shared/panelTrace';
 
 /** As long as a frame's own transition (`300`) at the default animation speed. */
 const MOTION_MS = 300;
@@ -75,6 +75,57 @@ export function PanelMotion() {
         });
   onCleanup(() => resized?.disconnect());
 
+  /*
+    And as a transition settles — a lane sliding open or shut moves its frames without resizing them,
+    so a box read mid-slide was remembered as where the panel rested.
+  */
+  const settled = () => {
+    if (frame !== undefined || typeof document === 'undefined') return;
+    for (const el of document.querySelectorAll<HTMLElement>(`[${DOCK_FRAME_ATTR}]`)) {
+      const id = el.getAttribute(DOCK_FRAME_ATTR) ?? '';
+      const known = seen.get(id);
+      if (!known || known.el !== el || playing.get(el)?.animation.playState === 'running') continue;
+      seen.set(id, { ...known, rect: el.getBoundingClientRect() });
+    }
+  };
+  if (typeof document !== 'undefined') {
+    document.addEventListener('transitionend', settled);
+    onCleanup(() => document.removeEventListener('transitionend', settled));
+  }
+
+  /*
+    What the arrangement is — which panel is where, in which lane and seat, which tab is in front —
+    and nothing that changes without it. Only a change to this plays anything: the shell recounts its
+    geometry for many reasons (every few seconds, in the app), and a recount that moved nothing must
+    not replay a panel from wherever it was last measured.
+  */
+  let arrangement = '';
+  /*
+    A change to it not yet played. Owed until a pass is free to play it: a drop writes where the panel
+    lands while the drag is still live, and the recount that ends the drag changes nothing further.
+  */
+  let owed = false;
+  const arrangementOf = (geometry: ReturnType<typeof shellStore.dockGeometry>) =>
+    JSON.stringify([
+      Object.entries(geometry).map(([id, box]) => [
+        id,
+        box.edge,
+        box.snap,
+        box.home,
+        box.inLane,
+        box.hidden,
+        box.floating,
+        box.maximised,
+        box.collapsed,
+        box.stowed,
+        (box.tabs ?? []).map((tab) => tab.id),
+      ]),
+      shellStore.laneSections(),
+      Object.values(shellStore.edgeLanes().lanes).map((lanes) =>
+        lanes.map((lane) => [lane.key, lane.thickness, lane.seats.map((seat) => [seat.key, seat.base, seat.grow])]),
+      ),
+    ]);
+
   // The reader's system setting, or the app's own (`data-we-motion`), as the frame's fade-in honours.
   const reduced = () =>
     typeof window !== 'undefined' &&
@@ -89,12 +140,17 @@ export function PanelMotion() {
     const resizing = shellStore.dockResizing();
     const moving = shellStore.movingDock();
     if (typeof document === 'undefined') return;
+    const now = arrangementOf(geometry);
+    if (now !== arrangement) owed = true;
+    arrangement = now;
     for (const [id, box] of Object.entries(geometry)) if (box.settling) landing.add(id);
 
     // After the DOM has the new arrangement laid out — read once, in the frame it is painted.
     if (frame !== undefined) cancelAnimationFrame(frame);
     frame = requestAnimationFrame(() => {
       frame = undefined;
+      const rearranged = owed && !resizing;
+      if (!resizing) owed = false;
       const size = `${window.innerWidth}x${window.innerHeight}`;
       const windowResized = size !== viewport;
       viewport = size;
@@ -109,7 +165,17 @@ export function PanelMotion() {
         const stowing = Boolean(box?.stowed || box?.layoutWidth || box?.contentsFaded);
         seen.set(id, { el, rect, stowing });
         const landed = landing.delete(id);
-        if (resizing || windowResized || !before || reduced() || id === moving || stowing || before.stowing) continue;
+        if (
+          !rearranged ||
+          resizing ||
+          windowResized ||
+          !before ||
+          reduced() ||
+          id === moving ||
+          stowing ||
+          before.stowing
+        )
+          continue;
         if (rect.width === 0 || rect.height === 0 || getComputedStyle(el).visibility === 'hidden') continue;
 
         // A frame that stayed over the window eases itself; one that arrived, or is laid out by a lane, does not.
