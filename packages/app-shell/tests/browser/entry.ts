@@ -30,6 +30,7 @@ import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/te
 import { hostSourceBag } from '@shared/sources';
 import { EdgeLanes } from '@solid/components/EdgeLanes';
 import { PanelHost } from '@solid/components/PanelHost';
+import PanelLane from '@solid/components/PanelLane';
 import { MissingMarker, PresentPart } from '@solid/components/PartFrame';
 import { injectDSInteropStyles } from '@solid/dsInterop';
 import { componentRegistry } from '@solid/registries/componentRegistry';
@@ -67,7 +68,7 @@ import { VisualEditorProvider } from '@we/schema-solid';
 import { THEME_PRESETS } from '@we/themes/presets';
 import { createComponent, createEffect, createSignal } from 'solid-js';
 import { createStore } from 'solid-js/store';
-import { render } from 'solid-js/web';
+import { insert, render } from 'solid-js/web';
 
 import { installLayoutCounter, profile } from './instrument';
 import { type Scenario, scenarios } from './scenarios';
@@ -1074,6 +1075,8 @@ interface DockProbePanel {
   grow?: number;
   width?: number;
   frame?: 'window' | 'flush' | 'none';
+  /** At home in the probe's template lane (`probe`), drawn on the left in the page's flow. */
+  home?: boolean;
 }
 let dockProbeShell: ReturnType<typeof useShellStore> | undefined;
 function dockProbe(panels: DockProbePanel[]): void {
@@ -1115,6 +1118,7 @@ function dockProbe(panels: DockProbePanel[]): void {
       ...(panel.grow !== undefined ? { grow: panel.grow } : {}),
       ...(panel.width ? { box: { width: panel.width } } : {}),
       ...(panel.frame ? { frame: panel.frame } : {}),
+      ...(panel.home ? { home: 'probe' } : {}),
     })),
     'dock-probe',
   );
@@ -1157,7 +1161,15 @@ function dockProbe(panels: DockProbePanel[]): void {
         bottom: `${inset.bottom}px`,
       });
     });
-    return [space, ...frames, createComponent(EdgeLanes, {}), createComponent(PanelHost, {})];
+    // A template's lane, for panels at home: a column down the left of the window, as a sidebar is.
+    const lane = document.createElement('div');
+    lane.id = 'probe-lane';
+    Object.assign(lane.style, { position: 'fixed', left: '0', top: '0', bottom: '0', width: '300px', display: 'flex' });
+    const laneChildren = panels.some((panel) => panel.home)
+      ? [createComponent(PanelLane, { lane: 'probe', flex: '1', direction: 'column' })]
+      : [];
+    insert(lane, () => laneChildren);
+    return [space, lane, ...frames, createComponent(EdgeLanes, {}), createComponent(PanelHost, {})];
   };
   const dispose = render(
     () =>

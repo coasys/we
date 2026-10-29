@@ -431,6 +431,12 @@ export interface ShellStore {
    */
   laneSections: Accessor<Record<string, LaneSection[]>>;
   /**
+   * Set how much of its lane each named section at home in a template takes — its `grow`, kept with
+   * the reader's placement, so the boundary somebody dragged between two sections stays where they
+   * left it. What a template lane's divider writes when a drag ends.
+   */
+  setSectionGrow: (grows: Record<string, number>) => void;
+  /**
    * How each panel is framed where it is not a window, by dock id — what a frame reads to draw a
    * titlebar, or not: its own declaration, else, pushing the content aside at an edge, that edge's
    * frame as the app template declares it (`meta.edges`). A panel with no entry has a window's frame.
@@ -4294,6 +4300,13 @@ export function ShellStoreProvider(props: ParentProps) {
     raiseDock: raise,
     laneSections,
     edgeLanes,
+    setSectionGrow: (grows) => {
+      for (const [id, grow] of Object.entries(grows)) {
+        const request = dockRequests().find((entry) => entry.id === id);
+        if (request && placementOf(request).snap === 'home')
+          writePlacement(id, { ...placementOf(request), grow: Math.max(0, grow) });
+      }
+    },
     panelFrames: createMemo(() => {
       const frames: Record<string, PanelFrame> = {};
       // A panel pushing the content aside takes its edge's frame, as the app declares it (`meta.edges`)…

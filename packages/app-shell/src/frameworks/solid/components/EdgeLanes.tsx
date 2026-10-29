@@ -25,13 +25,14 @@
  * The drop targets are still measured from the engine's boxes — the same division, so they land on
  * the seams the flex makes.
  */
-import { COLLAPSED_PX, DOCK_GAP_PX, EDGES, PANEL_LAYER_BASE, SEAM_PX } from '@shared/dockGeometry';
+import { COLLAPSED_PX, DOCK_GAP_PX, EDGES, PANEL_LAYER_BASE } from '@shared/dockGeometry';
 import { dockRegistry, dockTitle, STOW_ICONS } from '@shared/registries/dockRegistry';
 import { weProps } from '@we/design-utils/solid';
 import type { DockEdge } from '@we/module-shared';
 import { createMemo, For, Index, Show } from 'solid-js';
 
 import { type EdgeLane, type EdgeSeat, useShellStore } from '../stores/ShellStore';
+import { LaneDivider } from './LaneDivider';
 import { PanelGroup } from './PanelGroup';
 
 type Edge = Exclude<DockEdge, null>;
@@ -83,52 +84,23 @@ function Seat(props: { seat: () => EdgeSeat | undefined; edge: Edge }) {
   );
 }
 
-/**
- * The grip between a seat and the next: dragged, it moves the boundary between them (`resizeColumn`).
- * A box of no size along the lane — or the gap between cards, over the content — with the grip
- * straddling it, so the line it draws is the boundary itself.
- */
+/** The grip between a seat and the next, on an edge: moves the stored sizes either side (`resizeColumn`). */
 function Divider(props: { above: () => string | undefined; edge: Edge; gap: number }) {
   const shellStore = useShellStore();
-  const vertical = props.edge === 'left' || props.edge === 'right';
   return (
-    <div
-      style={{
-        position: 'relative',
-        flex: 'none',
-        // Across the whole lane, whatever its cards are aligned to: over the content they keep to the
-        // edge (`align-items: flex-end`), and a divider that did too had no width to be grabbed by.
-        'align-self': 'stretch',
-        height: vertical ? px(props.gap) : undefined,
-        width: vertical ? undefined : px(props.gap),
+    <LaneDivider
+      direction={props.edge === 'left' || props.edge === 'right' ? 'column' : 'row'}
+      size={px(props.gap) ?? '0px'}
+      onStart={() => {
+        const id = props.above();
+        if (id) shellStore.beginDockResize(id);
       }}
-    >
-      <we-resize-handle
-        data-we-lane-divider=""
-        // A seam across a column is a horizontal bar, dragged up and down — the primitive names the bar.
-        orientation={vertical ? 'horizontal' : 'vertical'}
-        align="center"
-        line="auto"
-        style={{
-          position: 'absolute',
-          'z-index': 2,
-          'pointer-events': 'auto',
-          '--we-resize-handle-thickness': '3px',
-          ...(vertical
-            ? { left: '0', right: '0', top: `calc(50% - ${SEAM_PX / 2}px)`, height: px(SEAM_PX) }
-            : { top: '0', bottom: '0', left: `calc(50% - ${SEAM_PX / 2}px)`, width: px(SEAM_PX) }),
-        }}
-        on:resizestart={() => {
-          const id = props.above();
-          if (id) shellStore.beginDockResize(id);
-        }}
-        on:resize={(event: CustomEvent<{ delta: number }>) => {
-          const id = props.above();
-          if (id) shellStore.resizeColumn(id, event.detail.delta);
-        }}
-        on:resizeend={() => shellStore.endDockResize()}
-      />
-    </div>
+      onMove={(delta) => {
+        const id = props.above();
+        if (id) shellStore.resizeColumn(id, delta);
+      }}
+      onEnd={() => shellStore.endDockResize()}
+    />
   );
 }
 

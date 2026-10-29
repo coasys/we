@@ -56,6 +56,7 @@ import type { PanelFrame } from '@we/schema-shared';
 import { type Accessor, createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 
 import { type LaneSection, useShellStore } from '../stores/ShellStore';
+import { LaneDivider } from './LaneDivider';
 import { PanelGroup, panelTitle, sectionKey } from './PanelGroup';
 
 /** A CSS length the lane can do arithmetic on: a number of pixels, or `'240px'`. Anything else is not a bound. */
@@ -163,6 +164,49 @@ export function PanelLane(props: {
     { equals: sameIds },
   );
 
+  /*
+    Dragging the boundary between two sections that grow: each takes the share of the lane it is on
+    screen as the drag begins, and the boundary moves within their two lengths — held here while the
+    drag lasts and written once at its end, as the lane's width is.
+  */
+  const frontOf = (seat: string) => shellStore.seatFront(seat.split('\n')) ?? seat.split('\n')[0];
+  const grows = (seat: string | undefined) =>
+    !!seat &&
+    !!(
+      seat.includes('\n') ||
+      (shellStore.dockPlacement()[frontOf(seat)]?.grow ?? shellStore.panelDeclaration(frontOf(seat))?.grow)
+    );
+  const [dragGrow, setDragGrow] = createSignal<Record<string, number> | null>(null);
+  /** The smallest a section may be dragged to — enough to keep its header and a line of it. */
+  const SECTION_FLOOR_PX = 48;
+  let share: { before: string; after: string; a: number; b: number } | null = null;
+  const lengthOf = (seat: string) => {
+    const box = el?.querySelector(`[${HOME_SECTION_ATTR}="${sectionKey(frontOf(seat))}"]`)?.getBoundingClientRect();
+    return box ? (direction() === 'column' ? box.height : box.width) : 0;
+  };
+  const startShare = (before: string, after: string) => {
+    share = { before, after, a: lengthOf(before), b: lengthOf(after) };
+  };
+  const moveShare = (delta: number) => {
+    if (!share) return;
+    const room = share.a + share.b;
+    const a = Math.min(
+      Math.max(share.a + delta, SECTION_FLOOR_PX),
+      Math.max(SECTION_FLOOR_PX, room - SECTION_FLOOR_PX),
+    );
+    setDragGrow({ [share.before]: a, [share.after]: room - a });
+  };
+  const endShare = () => {
+    const held = dragGrow();
+    share = null;
+    setDragGrow(null);
+    if (!held) return;
+    // Each seat's share, written on every panel in it, so whichever is in front keeps it.
+    const grows: Record<string, number> = {};
+    for (const [seat, length] of Object.entries(held)) for (const id of seat.split('\n')) grows[id] = length;
+    shellStore.setSectionGrow(grows);
+  };
+
   let el: HTMLDivElement | undefined;
   const register = () => {
     if (!el) return;
@@ -247,7 +291,28 @@ export function PanelLane(props: {
             'box-sizing': 'border-box',
           }}
         >
-          <For each={seats()}>{(seat) => <HomeSeat members={seat.split('\n')} direction={direction()} />}</For>
+          <For each={seats()}>
+            {(seat, index) => (
+              <>
+                {/* Between two sections that share the lane's length, a boundary to drag. */}
+                <Show when={index() > 0 && grows(seats()[index() - 1]) && grows(seat)}>
+                  <LaneDivider
+                    direction={direction()}
+                    size="0px"
+                    // The lane's gap is either side of this box; pulled back by one, it sits mid-gap.
+                    style={{
+                      'margin-top': direction() === 'column' ? 'calc(-1 * var(--we-space-400))' : undefined,
+                      'margin-left': direction() === 'row' ? 'calc(-1 * var(--we-space-400))' : undefined,
+                    }}
+                    onStart={() => startShare(seats()[index() - 1], seat)}
+                    onMove={moveShare}
+                    onEnd={endShare}
+                  />
+                </Show>
+                <HomeSeat members={seat.split('\n')} direction={direction()} grow={dragGrow()?.[seat]} />
+              </>
+            )}
+          </For>
           <For each={away()}>{(id) => <Placeholder dockId={id} />}</For>
         </div>
       </div>
@@ -293,10 +358,14 @@ const sameIds = (a: readonly string[], b: readonly string[]) => a.length === b.l
  * share of what the lane has left, held to it so a tree or a list scrolls inside itself. A seat of
  * several fills the room its place gives it.
  */
-function HomeSeat(props: { members: string[]; direction: 'column' | 'row' }) {
+function HomeSeat(props: { members: string[]; direction: 'column' | 'row'; grow?: number }) {
   const shellStore = useShellStore();
   const front = () => shellStore.seatFront(props.members) ?? props.members[0];
-  const grow = () => (props.members.length > 1 ? 1 : shellStore.panelDeclaration(front())?.grow);
+  // A share being dragged, else the reader's, else the declaration's; a seat of several fills its room.
+  const grow = () =>
+    props.grow ??
+    shellStore.dockPlacement()[front()]?.grow ??
+    (props.members.length > 1 ? 1 : shellStore.panelDeclaration(front())?.grow);
   return (
     <PanelGroup
       members={props.members}

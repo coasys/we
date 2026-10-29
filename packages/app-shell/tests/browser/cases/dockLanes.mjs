@@ -139,5 +139,33 @@ export async function check({ call, dragBy }) {
     }
   }
 
+  // Two sections sharing a template's lane: the boundary between them moves where it is dragged.
+  {
+    await call('dockProbe', [
+      { id: 'a', snap: 'left', home: true, grow: 1 },
+      { id: 'b', snap: 'left', home: true, grow: 1 },
+    ]);
+    try {
+      await settle();
+      const before = await boxes();
+      if (!before.a?.visible || !before.b?.visible)
+        problems.push(`the sections in a template's lane should show: ${JSON.stringify(before)}`);
+      else {
+        try {
+          await dragBy('#probe-lane [data-we-lane-divider]', 0, 100);
+          await settle();
+          const after = await boxes();
+          const grew = after.a.bottom - after.a.top - (before.a.bottom - before.a.top);
+          if (!near(grew, 100))
+            problems.push(`the grip between sections: the upper one grew ${grew}px for a 100px drag`);
+        } catch (error) {
+          problems.push(`the grip between sections: ${error.message.split('\n')[0]}`);
+        }
+      }
+    } finally {
+      await call('editorProbeDispose');
+    }
+  }
+
   return problems;
 }

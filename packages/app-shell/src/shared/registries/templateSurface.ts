@@ -1254,6 +1254,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     panelFrames: state('host-layout'),
     // The lanes at the window's edges — read by the host's edge lanes, never by a template.
     edgeLanes: WIRING,
+    // What a template lane's divider writes — called by the lane, never by a template.
+    setSectionGrow: WIRING,
     panelDeclaration: WIRING,
     seatFront: WIRING,
     // A move's own calls are ambient, for the reason a resize's are — see `resizeDock`.
