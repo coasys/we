@@ -35,9 +35,13 @@ export const ALERT_VARIANT_DEFAULTS: Record<
   { neutral: Partial<DesignSystemProps>; toned: Partial<DesignSystemProps> }
 > = {
   soft: {
-    // `surfaceSunken`, not `page`: an alert is a tinted panel, and the toned ones beside it are
-    // tints. `page` won this slot only because neutral-50 happened to be the value here.
-    neutral: { bg: 'surface-sunken', color: 'text' },
+    /*
+      A quiet panel — the surface it sits on, and its outline — not a well. It was `surfaceSunken`,
+      the colour of a field, so a neutral note in a form read as one more field (the create-space
+      dialog's, under Coasys Glow most of all). A note that wants to be seen is an info alert, the
+      default tone; a neutral one is the quietest thing that is still a box.
+    */
+    neutral: { bg: 'surface', color: 'text' },
     toned: { bg: 'accent-soft', color: 'accent-text' },
   },
   /*

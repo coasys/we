@@ -135,6 +135,9 @@ leave them unset:
 - **Fills** move if no label can sit on them at all.
 - **Hover and pressed states** are steps from their fill, away from its label.
 - **The elevation stack** (`surface`, `surfaceRaised`, `surfaceSunken`) is measured from `page`.
+- **Fields** (`field`, `fieldHover`) follow `surfaceSunken` and its hover unless pinned. Pin them to
+  draw inputs differently from troughs, wells and code blocks, which keep `surfaceSunken`: for
+  example, `field: surface` gives outlined fields on the sheet, as many design systems draw them.
 
 Pin one of these and you own it, including in the polarity you were not looking at.
 

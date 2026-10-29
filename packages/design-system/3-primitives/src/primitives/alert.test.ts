@@ -10,6 +10,7 @@ import './alert';
 import { describe, expect, it } from 'vitest';
 
 import { componentCascadeFor } from '../shared/helpers';
+import { ALERT_VARIANT_DEFAULTS } from './alert';
 
 interface AlertEl extends HTMLElement {
   tone?: string;
@@ -48,5 +49,11 @@ describe('we-alert', () => {
   // a pill under Coasys Glow — and the alert is what such a box should be.
   it('takes its corners from the surface family, as a card does', () => {
     expect(componentCascadeFor('alert')?.radiusGroup).toBe('--we-theme-surface-radius');
+  });
+
+  // A neutral note sat in the fields' well, so in a form it read as one more field.
+  it('is never drawn in the colour of a field', () => {
+    for (const variant of Object.values(ALERT_VARIANT_DEFAULTS))
+      for (const props of [variant.neutral, variant.toned]) expect(['field', 'surface-sunken']).not.toContain(props.bg);
   });
 });

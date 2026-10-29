@@ -102,13 +102,14 @@ export const createSpaceModal = {
       props: {
         condition: { $: 'spaceStore.startsAs' },
         /*
-          A note, so an alert in its neutral tone: a sheet, with the surface family's corners, and a
+          A note about what is being made, so an info alert — the default tone: tinted, so it never
+          reads as one more field above the dialog's own, with the surface family's corners, and a
           status rather than an interruption. It was drawn by hand with the control family's radius,
           which a theme with pill buttons (Coasys Glow) turned into a pill.
         */
         then: {
           type: 'we-alert',
-          props: { tone: 'neutral', icon: 'app-window' },
+          props: { icon: 'app-window' },
           children: [
             {
               type: 'Column',
