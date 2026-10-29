@@ -800,10 +800,10 @@ export const SUB_CHANNELS = {
 /** The space's calls, newest first. The tree lists the latest few; the Calls page more. */
 export const CALLS = { entity: 'CollectionBlock', where: { kind: 'call' }, order: { createdAt: 'desc' } };
 
-/** The tree section, as the space template's left lane holds it. */
+/** The tree section, as the space template's left lane holds it — the lane paints the chrome behind it. */
 export const treeSection: SchemaNode = {
   type: 'Column',
-  props: { width: '100%', height: '100%', bg: 'chrome', borderRight: '1px solid border' },
+  props: { width: '100%', height: '100%' },
   $localState: {
     openRows: {
       type: 'array',

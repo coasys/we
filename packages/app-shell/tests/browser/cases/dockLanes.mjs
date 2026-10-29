@@ -156,6 +156,10 @@ export async function check({ call, dragBy, measure }) {
       if (!before.a?.visible || !before.b?.visible)
         problems.push(`the sections in a template's lane should show: ${JSON.stringify(before)}`);
       else {
+        // A flush section paints nothing, so it shows what its lane is painted — whoever drew it.
+        const shown = await call('paintAt', (before.a.left + before.a.right) / 2, (before.a.top + before.a.bottom) / 2);
+        const lane = await call('roleColor', 'accent-soft');
+        if (shown !== lane) problems.push(`a section in a painted lane shows ${shown}, not the lane's ${lane}`);
         try {
           await dragBy('#probe-lane [data-we-lane-divider]', 0, 100);
           await settle();

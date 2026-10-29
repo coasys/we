@@ -670,7 +670,7 @@
             "id": "tree",
             "node": {
               "type": "Column",
-              "props": { "width": "100%", "height": "100%", "bg": "chrome", "borderRight": "1px solid border" },
+              "props": { "width": "100%", "height": "100%" },
               "$localState": {
                 "openRows": {
                   "type": "array",
@@ -18140,7 +18140,15 @@
       "children": [
         {
           "type": "$panels",
-          "props": { "lane": "tree", "width": "280px", "minWidth": "220px", "maxWidth": "440px", "resize": "end" }
+          "props": {
+            "lane": "tree",
+            "width": "280px",
+            "minWidth": "220px",
+            "maxWidth": "440px",
+            "resize": "end",
+            "bg": "chrome",
+            "borderRight": "1px solid border"
+          }
         },
         {
           "type": "Column",
@@ -21028,7 +21036,9 @@
             "minWidth": "280px",
             "maxWidth": "560px",
             "resize": "start",
-            "foldEmpty": true
+            "foldEmpty": true,
+            "bg": "chrome",
+            "borderLeft": "1px solid border"
           }
         }
       ],

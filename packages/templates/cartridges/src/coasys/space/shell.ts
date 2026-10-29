@@ -91,7 +91,23 @@ export const coasysSpace: TemplateSchema & { id: string } = {
   type: 'Row',
   props: { bg: 'page', width: '100%', height: '100%' },
   children: [
-    { type: '$panels', props: { lane: 'tree', width: '280px', minWidth: '220px', maxWidth: '440px', resize: 'end' } },
+    /*
+      Both lanes are painted as the app's chrome, with a line along the edge facing the view. The
+      lane paints, not its sections: the right one holds the host's settings as well as the
+      inspector, and a flush section paints nothing of its own.
+    */
+    {
+      type: '$panels',
+      props: {
+        lane: 'tree',
+        width: '280px',
+        minWidth: '220px',
+        maxWidth: '440px',
+        resize: 'end',
+        bg: 'chrome',
+        borderRight: '1px solid border',
+      },
+    },
     {
       type: 'Column',
       props: { flex: '1', minWidth: '0', height: '100%' },
@@ -109,6 +125,8 @@ export const coasysSpace: TemplateSchema & { id: string } = {
         maxWidth: '560px',
         resize: 'start',
         foldEmpty: true,
+        bg: 'chrome',
+        borderLeft: '1px solid border',
       },
     },
   ],

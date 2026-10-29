@@ -52,6 +52,7 @@
 import { NARROW_VIEWPORT_PX } from '@shared/dockGeometry';
 import { declareLaneFrame, HOME_SECTION_ATTR, registerHomeLane } from '@shared/registries/homeLanes';
 import { Row } from '@we/components/solid';
+import { parseBorder, tokenVar } from '@we/design-utils';
 import type { PanelFrame } from '@we/schema-shared';
 import { type Accessor, createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 
@@ -98,6 +99,16 @@ export function PanelLane(props: {
   foldEmpty?: boolean;
   /** How its sections are framed, where a section's declaration does not say — see `PanelFrame`. Default flush. */
   frame?: PanelFrame;
+  /**
+   * What the lane is painted, behind its sections — a colour role (`chrome`) — and the line along
+   * its inner edge. The lane's rather than each section's, because a lane holds panels its template
+   * does not draw (a module's, the space's settings), and a flush frame paints nothing of its own:
+   * a sidebar painted by its first section looked bare the moment anything else opened in it.
+   * Painted on what slides when the lane folds, so they leave with its content.
+   */
+  bg?: string;
+  borderLeft?: string;
+  borderRight?: string;
 }) {
   const shellStore = useShellStore();
   const lane = () => props.lane ?? '';
@@ -289,6 +300,9 @@ export function PanelLane(props: {
             'min-width': narrow() ? '0' : (props.minWidth ?? '0'),
             'flex-shrink': '0',
             'box-sizing': 'border-box',
+            background: props.bg ? tokenVar('color', props.bg, '') : undefined,
+            'border-left': props.borderLeft ? parseBorder(props.borderLeft) : undefined,
+            'border-right': props.borderRight ? parseBorder(props.borderRight) : undefined,
           }}
         >
           <For each={seats()}>

@@ -405,6 +405,18 @@ function partStyle(selector: string, property: string, part = 'base', nth = 0): 
   return el ? getComputedStyle(el, pseudo ? `::${pseudo}` : null).getPropertyValue(property) : null;
 }
 
+/**
+ * The colour a point on the page shows: the first painted background found walking out from what is
+ * there. For a box whose colour is its container's — a flush section in a painted lane.
+ */
+function paintAt(x: number, y: number): string {
+  for (let el = document.elementFromPoint(x, y); el; el = el.parentElement) {
+    const color = getComputedStyle(el).backgroundColor;
+    if (color && color !== 'rgba(0, 0, 0, 0)' && color !== 'transparent') return color;
+  }
+  return pageColor();
+}
+
 /** What a role resolves to at the document root, through a probe painted with it. */
 function roleColor(role: string): string {
   return probeColor(`var(--we-role-${role})`);
@@ -1178,8 +1190,17 @@ function dockProbe(panels: DockProbePanel[]): void {
     lane.id = 'probe-lane';
     Object.assign(lane.style, { position: 'fixed', left: '0', top: '0', bottom: '0', width: '300px', display: 'flex' });
     const laneChildren = panels.some((panel) => panel.home)
-      ? // Folded while nothing in it is open, as the Coasys inspector lane is.
-        [createComponent(PanelLane, { lane: 'probe', width: '300px', direction: 'column', foldEmpty: true })]
+      ? // Folded while nothing in it is open, and painted, as the Coasys inspector lane is.
+        [
+          createComponent(PanelLane, {
+            lane: 'probe',
+            width: '300px',
+            direction: 'column',
+            foldEmpty: true,
+            bg: 'accent-soft',
+            borderRight: '1px solid border',
+          }),
+        ]
       : [];
     insert(lane, () => laneChildren);
     return [space, lane, ...frames, createComponent(EdgeLanes, {}), createComponent(PanelHost, {})];
@@ -1514,6 +1535,7 @@ function toastProbe(message: string, actionLabel = ''): string {
   pageColor,
   partStyle,
   roleColor,
+  paintAt,
   probeColor,
   focused,
   html,

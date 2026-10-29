@@ -176,6 +176,9 @@ ordinary panel: it can be docked, folded, stacked, saved in a layout — and its
   layout props — \`width\`, \`flex\`, \`minWidth\` — which is how a template holds room for an empty lane.
   \`resize: 'start'\` or \`'end'\` puts a drag handle on that edge, and \`foldEmpty: true\` folds the lane
   away while nothing in it is open — a lane that is only there while something is chosen.
+  \`bg\` (a colour role) and \`borderLeft\` / \`borderRight\` paint the lane itself, behind whatever is in
+  it — a sidebar as \`bg: 'chrome'\` with \`borderRight: '1px solid border'\`. Paint the lane rather
+  than a section: a lane can hold panels the template does not draw, and a flush one paints nothing.
 - **Any panel can live in a lane, not only one the template draws.** A \`module\` entry with \`home\`
   puts that module's panel there, and the host's own panels are named the same way —
   \`{ "id": "settings", "module": "shell", "home": "right" }\` places the space's settings, which the

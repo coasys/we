@@ -668,7 +668,7 @@ export const seedBundles: Bundle[] = [
               id: 'tree',
               node: {
                 type: 'Column',
-                props: { width: '100%', height: '100%', bg: 'chrome', borderRight: '1px solid border' },
+                props: { width: '100%', height: '100%' },
                 $localState: {
                   openRows: { type: 'array', initial: ['group|calls', 'group|workflows'], persist: 'coasys.tree.open' },
                 },
@@ -20489,7 +20489,15 @@ export const seedBundles: Bundle[] = [
         children: [
           {
             type: '$panels',
-            props: { lane: 'tree', width: '280px', minWidth: '220px', maxWidth: '440px', resize: 'end' },
+            props: {
+              lane: 'tree',
+              width: '280px',
+              minWidth: '220px',
+              maxWidth: '440px',
+              resize: 'end',
+              bg: 'chrome',
+              borderRight: '1px solid border',
+            },
           },
           {
             type: 'Column',
@@ -23306,6 +23314,8 @@ export const seedBundles: Bundle[] = [
               maxWidth: '560px',
               resize: 'start',
               foldEmpty: true,
+              bg: 'chrome',
+              borderLeft: '1px solid border',
             },
           },
         ],
