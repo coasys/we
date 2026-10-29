@@ -1,4 +1,4 @@
-import type { SchemaNode, SchemaProp } from '@we/schema-shared';
+import type { RouteSchema, SchemaNode, SchemaProp } from '@we/schema-shared';
 import {
   askWhatGoesHere,
   BACK_TO_CHOOSER,
@@ -63,8 +63,10 @@ const RECORD_PAGE = "spaceStore.spacePath + '/record/' + event.recordType + '?id
 
 /** Social DNA in focus: the map, and which kind, and which definition of it. */
 const ON_DNA = `(${IN_CANVAS}) && ${DNA_FOCUS}`;
-const DNA_KIND = `split(${DNA_FOCUS}, '|')[0]`;
-const DNA_ID = `split(${DNA_FOCUS}, '|')[1]`;
+/** The focus, as `all` where the address names none — the Social DNA page reached without one. */
+const DNA_AT = `(${DNA_FOCUS} ? ${DNA_FOCUS} : 'all')`;
+const DNA_KIND = `split(${DNA_AT}, '|')[0]`;
+const DNA_ID = `split(${DNA_AT}, '|')[1]`;
 
 /** A kind of Social DNA in the tree, as the vocabulary map's bucket for it, and as the bar names it. */
 const DNA_KINDS: Record<string, { bucket: string; label: string }> = Object.fromEntries(
@@ -110,7 +112,7 @@ const OPEN_DEFINITION = `${DNA_ID} && ${DNA_KIND} != 'policy' ? [${DNA_KIND} == 
  * What the map centres on: a definition (a model by its name), a rule of the policy by its key on the
  * map (`policy:<rule>`), or a kind's bucket. All of it, nothing.
  */
-const FOCUS = `${DNA_FOCUS} == 'all' ? '' : !(${DNA_ID}) ? ${BUCKET_NODE} : ${DNA_KIND} == 'policy' ? 'policy:' + ${DNA_ID} : ${DNA_KIND} == 'model' ? ${MODEL_NAME} : ${DNA_ID}`;
+const FOCUS = `${DNA_AT} == 'all' ? '' : !(${DNA_ID}) ? ${BUCKET_NODE} : ${DNA_KIND} == 'policy' ? 'policy:' + ${DNA_ID} : ${DNA_KIND} == 'model' ? ${MODEL_NAME} : ${DNA_ID}`;
 
 /** A node pressed, opened in the inspector — when it stands for a record the inspector reads. */
 const OPEN_IN_INSPECTOR: SchemaProp = {
@@ -120,9 +122,73 @@ const OPEN_IN_INSPECTOR: SchemaProp = {
   },
 };
 
+/**
+ * The vocabulary map with the Social DNA in focus — drawn over the canvas in Canvas mode, and as the
+ * Social DNA page in Page mode, so the two modes show the space's definitions the same way. Reads
+ * `local.vocabOpen`, which whatever places it declares.
+ */
+const dnaMap: SchemaNode = vocabularyMap({
+  // Its kind opened, and the definition chosen opened into what it is.
+  open: {
+    $: `distinct(local.vocabOpen, ${DNA_AT} != 'all' ? [${BUCKET_NODE}] : [], ${OPEN_DEFINITION})`,
+  },
+  onNodeOpen: {
+    $setLocal: 'vocabOpen',
+    value: {
+      $: 'event.open ? distinct(local.vocabOpen, [event.id]) : local.vocabOpen.filter(k, k != event.id)',
+    },
+  },
+  // What the tree chose, centred and held there while the map opens around it.
+  focus: { $: FOCUS },
+  focusCentre: true,
+  // A definition, or one of its uses, opens in the inspector; a model is not a record it reads.
+  onNodeClick: OPEN_IN_INSPECTOR,
+  focusRules: [focusDimWhere(`${DNA_AT} != 'all'`, OTHER_KINDS), focusDimWhere(DNA_ID, SIBLINGS)],
+});
+
+/** The bar's words for Social DNA in focus. */
+const DNA_TITLE = `${DNA_AT} == 'all' ? 'Social DNA' : ${lookup('label')}`;
+
+/**
+ * Where the definitions are edited, from the bar of either view of them: the space's vocabulary
+ * settings — at the model chosen, where it is one, since the inspector does not read a model.
+ */
+const editDna: SchemaNode = {
+  type: 'we-button',
+  props: {
+    variant: 'ghost',
+    size: 'sm',
+    onClick: {
+      $invoke: 'shellStore.openSpaceSettings',
+      args: ['vocabulary', { $: `${DNA_KIND} == 'model' ? ${DNA_ID} : ''` }],
+    },
+  },
+  children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }, 'Edit in settings'],
+};
+
+/**
+ * Social DNA as a page — what the tree's Social DNA rows open in Page mode, as every other group row
+ * opens its page. It used to open the space's settings instead: an edit surface off to the side, for
+ * somebody who only wanted to look. The focus is in the address (`?dna=`), as on the canvas.
+ */
+export const dnaRoute: RouteSchema = {
+  path: '/dna',
+  type: 'Column',
+  props: { width: '100%', height: '100%' },
+  $localState: { vocabOpen: { type: 'array', initial: [] } },
+  children: [
+    viewBar([{ $: DNA_TITLE }], 'dna', [editDna]),
+    {
+      type: 'Column',
+      props: { flex: '1', minHeight: '0', position: 'relative' },
+      children: [dnaMap],
+    },
+  ],
+};
+
 /** The bar's words for what is in focus. */
 const TITLE = [
-  `(${ON_DNA}) ? (${DNA_FOCUS} == 'all' ? 'Social DNA' : ${lookup('label')})`,
+  `(${ON_DNA}) ? (${DNA_TITLE})`,
   `: (${CALL}) ? (first(local.focusCall).title ? first(local.focusCall).title : 'A call')`,
   `: (${PERSON}) ? (profileStore.profiles.find(p, p.did == (${PERSON})).name ?? 'A person')`,
   `: ${WORKFLOW} ? workflowStore.open.label`,
@@ -149,7 +215,9 @@ export const canvasPane: SchemaNode = {
     },
   },
   children: [
-    viewBar([{ $: TITLE }], { $: `(${ON_DNA}) ? 'dna' : 'squares-four'` }),
+    viewBar([{ $: TITLE }], { $: `(${ON_DNA}) ? 'dna' : 'squares-four'` }, [
+      { type: '$if', props: { condition: { $: ON_DNA }, then: editDna } },
+    ]),
     {
       type: 'Column',
       props: { flex: '1', minHeight: '0', position: 'relative' },
@@ -219,24 +287,7 @@ export const canvasPane: SchemaNode = {
           type: '$if',
           props: {
             condition: { $: ON_DNA },
-            then: vocabularyMap({
-              // Its kind opened, and the definition chosen opened into what it is.
-              open: {
-                $: `distinct(local.vocabOpen, ${DNA_FOCUS} != 'all' ? [${BUCKET_NODE}] : [], ${OPEN_DEFINITION})`,
-              },
-              onNodeOpen: {
-                $setLocal: 'vocabOpen',
-                value: {
-                  $: 'event.open ? distinct(local.vocabOpen, [event.id]) : local.vocabOpen.filter(k, k != event.id)',
-                },
-              },
-              // What the tree chose, centred and held there while the map opens around it.
-              focus: { $: FOCUS },
-              focusCentre: true,
-              // A definition, or one of its uses, opens in the inspector; a model is not a record it reads.
-              onNodeClick: OPEN_IN_INSPECTOR,
-              focusRules: [focusDimWhere(`${DNA_FOCUS} != 'all'`, OTHER_KINDS), focusDimWhere(DNA_ID, SIBLINGS)],
-            }),
+            then: dnaMap,
           },
         },
       ],

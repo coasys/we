@@ -18,14 +18,13 @@ import { countPill, liveDot } from './marks.ts';
 import {
   callPath,
   channelPath,
-  DNA_PARAM,
   dnaEntityOf,
   GROUP_PAGES,
-  IN_CANVAS,
   inspect,
   personPath,
   ROW_ID,
   SELECTED_EXPR,
+  showDna,
   withView,
 } from './paths.ts';
 
@@ -442,7 +441,7 @@ const DEF_ID = "split(event.detail.value, '|')[2]";
  * Every row is a place. A group's row opens its page — Channels, Calls, Workflows and People are full
  * views of what the group lists — and opens or closes the group, as its caret does. Opening on a press
  * but closing only on the caret read as two rules for one row, so a press folds as well. Social DNA's
- * page is the space's vocabulary settings until it has one of its own.
+ * page is the vocabulary map (`showDna`).
  */
 const onSelect: SchemaProp = [
   {
@@ -471,17 +470,11 @@ const onSelect: SchemaProp = [
       ],
     },
   },
-  // Social DNA in Canvas mode is the vocabulary map, in focus; on a page, it is where it is edited.
+  // Social DNA is the vocabulary map: over the canvas in Canvas mode, its own page in Page mode.
   {
     $if: {
       condition: { $: "event.detail.value == 'group|dna'" },
-      then: {
-        $if: {
-          condition: { $: IN_CANVAS },
-          then: { $invoke: 'routeStore.setParam', args: [DNA_PARAM, 'all'] },
-          else: { $invoke: 'shellStore.openSpaceSettings', args: ['vocabulary'] },
-        },
-      },
+      then: showDna("'all'"),
     },
   },
   {
@@ -512,14 +505,14 @@ const onSelect: SchemaProp = [
     },
   },
   /*
-    A definition opens in the inspector beside the view, in either mode — what it is — and in Canvas
-    mode is lit on the vocabulary map too, opened into its uses. A model is a Shape, which the
-    inspector does not read, so it still opens where it is edited.
+    A definition is lit on the vocabulary map, opened into its uses, and opens in the inspector beside
+    it — what it is. A model is a Shape, which the inspector does not read; the map's bar has the way
+    to where it is edited.
   */
   {
     $if: {
-      condition: { $: `(${IN_CANVAS}) && startsWith(event.detail.value, 'dna|')` },
-      then: { $invoke: 'routeStore.setParam', args: [DNA_PARAM, { $: `${DEF_KIND} + '|' + ${DEF_ID}` }] },
+      condition: { $: "startsWith(event.detail.value, 'dna|')" },
+      then: showDna(`${DEF_KIND} + '|' + ${DEF_ID}`),
     },
   },
   {
@@ -528,25 +521,11 @@ const onSelect: SchemaProp = [
       then: inspect(DEF_ID, { $: dnaEntityOf(DEF_KIND) }),
     },
   },
-  {
-    $if: {
-      condition: { $: `!(${IN_CANVAS}) && startsWith(event.detail.value, 'dna|') && ${DEF_KIND} == 'model'` },
-      then: { $invoke: 'shellStore.openSpaceSettings', args: ['vocabulary', { $: DEF_ID }] },
-    },
-  },
-  // A kind of definition opens as a group does — and, in Canvas mode, is lit with all it holds.
+  // A kind of definition opens as a group does, and is lit on the map with all it holds.
   {
     $if: {
       condition: { $: "startsWith(event.detail.value, 'dnakind|')" },
-      then: [
-        { $toggleLocalIn: 'openRows', value: { $: 'event.detail.value' } },
-        {
-          $if: {
-            condition: { $: IN_CANVAS },
-            then: { $invoke: 'routeStore.setParam', args: [DNA_PARAM, { $: ROW_ID }] },
-          },
-        },
-      ],
+      then: [{ $toggleLocalIn: 'openRows', value: { $: 'event.detail.value' } }, showDna(ROW_ID)],
     },
   },
   // A template or a theme is worn by choosing it, as in the rail's pickers.
@@ -565,11 +544,8 @@ const onSelect: SchemaProp = [
   // One rule of the policy, lit on the map by its words.
   {
     $if: {
-      condition: { $: `(${IN_CANVAS}) && startsWith(event.detail.value, 'dnaprop|policy|')` },
-      then: {
-        $invoke: 'routeStore.setParam',
-        args: [DNA_PARAM, { $: "'policy|' + split(event.detail.value, '|')[2]" }],
-      },
+      condition: { $: "startsWith(event.detail.value, 'dnaprop|policy|')" },
+      then: showDna("'policy|' + split(event.detail.value, '|')[2]"),
     },
   },
 ];

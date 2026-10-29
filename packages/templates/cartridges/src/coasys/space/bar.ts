@@ -1,6 +1,6 @@
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
-import { DNA_PARAM, IN_CANVAS, VIEW_PARAM } from './paths.ts';
+import { DNA_FOCUS, dnaPage, IN_CANVAS, ON_DNA_PAGE, VIEW_PARAM } from './paths.ts';
 
 /**
  * The bar across the top of every view beside the tree: the way back to a folded sidebar, what the
@@ -37,8 +37,8 @@ const showTree: SchemaNode = {
 
 /**
  * Page or Canvas, at the end of every bar, in the same place whatever is chosen — see `canvas.ts`. Into
- * the address, which every navigation then carries; leaving the canvas lets go of a Social DNA focus,
- * which only the canvas has.
+ * the address, which every navigation then carries. A Social DNA focus is kept either way: from the
+ * canvas, Page goes to the Social DNA page with it; from that page, Canvas draws it over the canvas.
  */
 const modeSwitch: SchemaNode = {
   type: 'Row',
@@ -53,10 +53,14 @@ const modeSwitch: SchemaNode = {
       variant: { $: `${canvas ? '' : '!'}(${IN_CANVAS}) ? 'soft' : 'ghost'` },
       onClick: canvas
         ? { $invoke: 'routeStore.setParam', args: [VIEW_PARAM, 'canvas'] }
-        : [
-            { $invoke: 'routeStore.setParam', args: [VIEW_PARAM, null] },
-            { $invoke: 'routeStore.setParam', args: [DNA_PARAM, null] },
-          ],
+        : {
+            // Decided before anything moves: the page's address carries no `view`, so it is Page mode too.
+            $if: {
+              condition: { $: `${DNA_FOCUS} && !(${ON_DNA_PAGE})` },
+              then: dnaPage(DNA_FOCUS),
+              else: { $invoke: 'routeStore.setParam', args: [VIEW_PARAM, null] },
+            },
+          },
     },
     children: [{ type: 'we-icon', props: { name: icon } }, label],
   })),

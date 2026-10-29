@@ -897,7 +897,7 @@ export const seedBundles: Bundle[] = [
                         props: {
                           label: 'This space',
                           selected: {
-                            $: "(routeStore.params.view == 'canvas') && routeStore.params.dna ? (routeStore.params.dna == 'all' ? 'group|dna' : contains(routeStore.params.dna, '|') ? (startsWith(routeStore.params.dna, 'policy|') ? 'dnaprop|' : 'dna|') + routeStore.params.dna : 'dnakind|' + routeStore.params.dna) : routeStore.params.card && { SignalType: 'signal', RelationshipType: 'connection', TaskState: 'state', InvolvementType: 'involvement', Topic: 'topic' }[routeStore.params.cardType] ? 'dna|' + { SignalType: 'signal', RelationshipType: 'connection', TaskState: 'state', InvolvementType: 'involvement', Topic: 'topic' }[routeStore.params.cardType] + '|' + routeStore.params.card : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' ? 'call|' + routeStore.params.id : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? 'person|' + routeStore.params.did : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' ? (workflowStore.open ? 'workflow|' + workflowStore.open.name : 'group|workflows') : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') in ['channels', 'calls', 'people'] ? 'group|' + (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') : 'channel|' + (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)",
+                            $: "((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna ? (routeStore.params.dna == 'all' ? 'group|dna' : contains(routeStore.params.dna, '|') ? (startsWith(routeStore.params.dna, 'policy|') ? 'dnaprop|' : 'dna|') + routeStore.params.dna : 'dnakind|' + routeStore.params.dna) : routeStore.params.card && { SignalType: 'signal', RelationshipType: 'connection', TaskState: 'state', InvolvementType: 'involvement', Topic: 'topic' }[routeStore.params.cardType] ? 'dna|' + { SignalType: 'signal', RelationshipType: 'connection', TaskState: 'state', InvolvementType: 'involvement', Topic: 'topic' }[routeStore.params.cardType] + '|' + routeStore.params.card : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' ? 'call|' + routeStore.params.id : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? 'person|' + routeStore.params.did : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' ? (workflowStore.open ? 'workflow|' + workflowStore.open.name : 'group|workflows') : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') in ['channels', 'calls', 'people'] ? 'group|' + (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') : 'channel|' + (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)",
                           },
                           onSelect: [
                             {
@@ -943,8 +943,14 @@ export const seedBundles: Bundle[] = [
                                 then: {
                                   $if: {
                                     condition: { $: "routeStore.params.view == 'canvas'" },
-                                    then: { $invoke: 'routeStore.setParam', args: ['dna', 'all'] },
-                                    else: { $invoke: 'shellStore.openSpaceSettings', args: ['vocabulary'] },
+                                    then: { $invoke: 'routeStore.setParam', args: ['dna', { $: "'all'" }] },
+                                    else: {
+                                      $invoke: 'routeStore.navigate',
+                                      args: [
+                                        { $: "spaceStore.spacePath + '/dna'" },
+                                        { $: "{ query: { dna: 'all' } }" },
+                                      ],
+                                    },
                                   },
                                 },
                               },
@@ -1009,17 +1015,29 @@ export const seedBundles: Bundle[] = [
                             },
                             {
                               $if: {
-                                condition: {
-                                  $: "(routeStore.params.view == 'canvas') && startsWith(event.detail.value, 'dna|')",
-                                },
+                                condition: { $: "startsWith(event.detail.value, 'dna|')" },
                                 then: {
-                                  $invoke: 'routeStore.setParam',
-                                  args: [
-                                    'dna',
-                                    {
-                                      $: "split(event.detail.value, '|')[1] + '|' + split(event.detail.value, '|')[2]",
+                                  $if: {
+                                    condition: { $: "routeStore.params.view == 'canvas'" },
+                                    then: {
+                                      $invoke: 'routeStore.setParam',
+                                      args: [
+                                        'dna',
+                                        {
+                                          $: "split(event.detail.value, '|')[1] + '|' + split(event.detail.value, '|')[2]",
+                                        },
+                                      ],
                                     },
-                                  ],
+                                    else: {
+                                      $invoke: 'routeStore.navigate',
+                                      args: [
+                                        { $: "spaceStore.spacePath + '/dna'" },
+                                        {
+                                          $: "{ query: { dna: split(event.detail.value, '|')[1] + '|' + split(event.detail.value, '|')[2] } }",
+                                        },
+                                      ],
+                                    },
+                                  },
                                 },
                               },
                             },
@@ -1048,17 +1066,6 @@ export const seedBundles: Bundle[] = [
                             },
                             {
                               $if: {
-                                condition: {
-                                  $: "!(routeStore.params.view == 'canvas') && startsWith(event.detail.value, 'dna|') && split(event.detail.value, '|')[1] == 'model'",
-                                },
-                                then: {
-                                  $invoke: 'shellStore.openSpaceSettings',
-                                  args: ['vocabulary', { $: "split(event.detail.value, '|')[2]" }],
-                                },
-                              },
-                            },
-                            {
-                              $if: {
                                 condition: { $: "startsWith(event.detail.value, 'dnakind|')" },
                                 then: [
                                   { $toggleLocalIn: 'openRows', value: { $: 'event.detail.value' } },
@@ -1068,6 +1075,13 @@ export const seedBundles: Bundle[] = [
                                       then: {
                                         $invoke: 'routeStore.setParam',
                                         args: ['dna', { $: "split(event.detail.value, '|')[1]" }],
+                                      },
+                                      else: {
+                                        $invoke: 'routeStore.navigate',
+                                        args: [
+                                          { $: "spaceStore.spacePath + '/dna'" },
+                                          { $: "{ query: { dna: split(event.detail.value, '|')[1] } }" },
+                                        ],
                                       },
                                     },
                                   },
@@ -1094,12 +1108,22 @@ export const seedBundles: Bundle[] = [
                             },
                             {
                               $if: {
-                                condition: {
-                                  $: "(routeStore.params.view == 'canvas') && startsWith(event.detail.value, 'dnaprop|policy|')",
-                                },
+                                condition: { $: "startsWith(event.detail.value, 'dnaprop|policy|')" },
                                 then: {
-                                  $invoke: 'routeStore.setParam',
-                                  args: ['dna', { $: "'policy|' + split(event.detail.value, '|')[2]" }],
+                                  $if: {
+                                    condition: { $: "routeStore.params.view == 'canvas'" },
+                                    then: {
+                                      $invoke: 'routeStore.setParam',
+                                      args: ['dna', { $: "'policy|' + split(event.detail.value, '|')[2]" }],
+                                    },
+                                    else: {
+                                      $invoke: 'routeStore.navigate',
+                                      args: [
+                                        { $: "spaceStore.spacePath + '/dna'" },
+                                        { $: "{ query: { dna: 'policy|' + split(event.detail.value, '|')[2] } }" },
+                                      ],
+                                    },
+                                  },
                                 },
                               },
                             },
@@ -20427,10 +20451,21 @@ export const seedBundles: Bundle[] = [
                           props: {
                             size: 'sm',
                             variant: { $: "!(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
-                            onClick: [
-                              { $invoke: 'routeStore.setParam', args: ['view', null] },
-                              { $invoke: 'routeStore.setParam', args: ['dna', null] },
-                            ],
+                            onClick: {
+                              $if: {
+                                condition: {
+                                  $: "routeStore.params.dna && !((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna')",
+                                },
+                                then: {
+                                  $invoke: 'routeStore.navigate',
+                                  args: [
+                                    { $: "spaceStore.spacePath + '/dna'" },
+                                    { $: '{ query: { dna: routeStore.params.dna } }' },
+                                  ],
+                                },
+                                else: { $invoke: 'routeStore.setParam', args: ['view', null] },
+                              },
+                            },
                           },
                           children: [{ type: 'we-icon', props: { name: 'file-text' } }, 'Page'],
                         },
@@ -20626,11 +20661,34 @@ export const seedBundles: Bundle[] = [
                                 props: { variant: 'heading-sm', truncate: true, minWidth: '0' },
                                 children: [
                                   {
-                                    $: "((routeStore.params.view == 'canvas') && routeStore.params.dna) ? (routeStore.params.dna == 'all' ? 'Social DNA' : { signal: 'Signal types', connection: 'Connection types', state: 'Task states', involvement: 'Involvement', topic: 'Topics', model: 'Models', policy: 'Policy' }[split(routeStore.params.dna, '|')[0]]) : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? (first(local.focusCall).title ? first(local.focusCall).title : 'A call') : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? (profileStore.profiles.find(p, p.did == ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '')).name ?? 'A person') : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open ? workflowStore.open.label : 'Canvas'",
+                                    $: "((routeStore.params.view == 'canvas') && routeStore.params.dna) ? ((routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' ? 'Social DNA' : { signal: 'Signal types', connection: 'Connection types', state: 'Task states', involvement: 'Involvement', topic: 'Topics', model: 'Models', policy: 'Policy' }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]]) : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? (first(local.focusCall).title ? first(local.focusCall).title : 'A call') : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? (profileStore.profiles.find(p, p.did == ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '')).name ?? 'A person') : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open ? workflowStore.open.label : 'Canvas'",
                                   },
                                 ],
                               },
                             ],
+                          },
+                          {
+                            type: '$if',
+                            props: {
+                              condition: { $: "(routeStore.params.view == 'canvas') && routeStore.params.dna" },
+                              then: {
+                                type: 'we-button',
+                                props: {
+                                  variant: 'ghost',
+                                  size: 'sm',
+                                  onClick: {
+                                    $invoke: 'shellStore.openSpaceSettings',
+                                    args: [
+                                      'vocabulary',
+                                      {
+                                        $: "split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'model' ? split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1] : ''",
+                                      },
+                                    ],
+                                  },
+                                },
+                                children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }, 'Edit in settings'],
+                              },
+                            },
                           },
                           {
                             type: 'Row',
@@ -20641,10 +20699,21 @@ export const seedBundles: Bundle[] = [
                                 props: {
                                   size: 'sm',
                                   variant: { $: "!(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
-                                  onClick: [
-                                    { $invoke: 'routeStore.setParam', args: ['view', null] },
-                                    { $invoke: 'routeStore.setParam', args: ['dna', null] },
-                                  ],
+                                  onClick: {
+                                    $if: {
+                                      condition: {
+                                        $: "routeStore.params.dna && !((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna')",
+                                      },
+                                      then: {
+                                        $invoke: 'routeStore.navigate',
+                                        args: [
+                                          { $: "spaceStore.spacePath + '/dna'" },
+                                          { $: '{ query: { dna: routeStore.params.dna } }' },
+                                        ],
+                                      },
+                                      else: { $invoke: 'routeStore.setParam', args: ['view', null] },
+                                    },
+                                  },
                                 },
                                 children: [{ type: 'we-icon', props: { name: 'file-text' } }, 'Page'],
                               },
@@ -21070,10 +21139,10 @@ export const seedBundles: Bundle[] = [
                                         },
                                         { when: { kind: 'literal' }, style: { shape: 'circle', size: 12 } },
                                         {
-                                          $: "(routeStore.params.dna != 'all') ? [{ when: { 'data.bucket': { exists: true, not: { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split(routeStore.params.dna, '|')[0]] } }, style: { opacity: 0.1 } }] : []",
+                                          $: "((routeStore.params.dna ? routeStore.params.dna : 'all') != 'all') ? [{ when: { 'data.bucket': { exists: true, not: { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]] } }, style: { opacity: 0.1 } }] : []",
                                         },
                                         {
-                                          $: "(split(routeStore.params.dna, '|')[1]) ? [{ when: (split(routeStore.params.dna, '|')[0] == 'model' ? { 'data.bucket': { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split(routeStore.params.dna, '|')[0]], type: { not: 'vocabulary' }, 'data.entity': { not: shapeStore.spaceShapes.find(s, s.id == (split(routeStore.params.dna, '|')[1])).name } } : split(routeStore.params.dna, '|')[0] == 'policy' ? { 'data.bucket': { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split(routeStore.params.dna, '|')[0]], type: { not: 'vocabulary' }, 'data.item': { not: split(routeStore.params.dna, '|')[1] } } : { 'data.bucket': { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split(routeStore.params.dna, '|')[0]], type: { not: 'vocabulary' }, 'data.recordId': { not: split(routeStore.params.dna, '|')[1] } }), style: { opacity: 0.1 } }] : []",
+                                          $: "(split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]) ? [{ when: (split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'model' ? { 'data.bucket': { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]], type: { not: 'vocabulary' }, 'data.entity': { not: shapeStore.spaceShapes.find(s, s.id == (split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1])).name } } : split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'policy' ? { 'data.bucket': { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]], type: { not: 'vocabulary' }, 'data.item': { not: split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1] } } : { 'data.bucket': { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]], type: { not: 'vocabulary' }, 'data.recordId': { not: split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1] } }), style: { opacity: 0.1 } }] : []",
                                         },
                                       ],
                                       edgeStyle: [
@@ -21094,7 +21163,7 @@ export const seedBundles: Bundle[] = [
                                         { when: { type: 'move' }, style: { dashed: true, color: 'accent-text' } },
                                       ],
                                       open: {
-                                        $: "distinct(local.vocabOpen, routeStore.params.dna != 'all' ? ['we-graph://cluster/vocabulary/' + { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split(routeStore.params.dna, '|')[0]]] : [], split(routeStore.params.dna, '|')[1] && split(routeStore.params.dna, '|')[0] != 'policy' ? [split(routeStore.params.dna, '|')[0] == 'model' ? shapeStore.spaceShapes.find(s, s.id == (split(routeStore.params.dna, '|')[1])).name : split(routeStore.params.dna, '|')[1]] : [])",
+                                        $: "distinct(local.vocabOpen, (routeStore.params.dna ? routeStore.params.dna : 'all') != 'all' ? ['we-graph://cluster/vocabulary/' + { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]]] : [], split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1] && split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] != 'policy' ? [split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'model' ? shapeStore.spaceShapes.find(s, s.id == (split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1])).name : split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]] : [])",
                                       },
                                       onNodeOpen: {
                                         $setLocal: 'vocabOpen',
@@ -21103,7 +21172,7 @@ export const seedBundles: Bundle[] = [
                                         },
                                       },
                                       focus: {
-                                        $: "routeStore.params.dna == 'all' ? '' : !(split(routeStore.params.dna, '|')[1]) ? 'we-graph://cluster/vocabulary/' + { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split(routeStore.params.dna, '|')[0]] : split(routeStore.params.dna, '|')[0] == 'policy' ? 'policy:' + split(routeStore.params.dna, '|')[1] : split(routeStore.params.dna, '|')[0] == 'model' ? shapeStore.spaceShapes.find(s, s.id == (split(routeStore.params.dna, '|')[1])).name : split(routeStore.params.dna, '|')[1]",
+                                        $: "(routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' ? '' : !(split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]) ? 'we-graph://cluster/vocabulary/' + { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]] : split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'policy' ? 'policy:' + split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1] : split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'model' ? shapeStore.spaceShapes.find(s, s.id == (split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1])).name : split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]",
                                       },
                                       focusCentre: true,
                                       onNodeClick: {
@@ -23478,10 +23547,21 @@ export const seedBundles: Bundle[] = [
                         props: {
                           size: 'sm',
                           variant: { $: "!(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
-                          onClick: [
-                            { $invoke: 'routeStore.setParam', args: ['view', null] },
-                            { $invoke: 'routeStore.setParam', args: ['dna', null] },
-                          ],
+                          onClick: {
+                            $if: {
+                              condition: {
+                                $: "routeStore.params.dna && !((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna')",
+                              },
+                              then: {
+                                $invoke: 'routeStore.navigate',
+                                args: [
+                                  { $: "spaceStore.spacePath + '/dna'" },
+                                  { $: '{ query: { dna: routeStore.params.dna } }' },
+                                ],
+                              },
+                              else: { $invoke: 'routeStore.setParam', args: ['view', null] },
+                            },
+                          },
                         },
                         children: [{ type: 'we-icon', props: { name: 'file-text' } }, 'Page'],
                       },
@@ -23847,10 +23927,21 @@ export const seedBundles: Bundle[] = [
                         props: {
                           size: 'sm',
                           variant: { $: "!(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
-                          onClick: [
-                            { $invoke: 'routeStore.setParam', args: ['view', null] },
-                            { $invoke: 'routeStore.setParam', args: ['dna', null] },
-                          ],
+                          onClick: {
+                            $if: {
+                              condition: {
+                                $: "routeStore.params.dna && !((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna')",
+                              },
+                              then: {
+                                $invoke: 'routeStore.navigate',
+                                args: [
+                                  { $: "spaceStore.spacePath + '/dna'" },
+                                  { $: '{ query: { dna: routeStore.params.dna } }' },
+                                ],
+                              },
+                              else: { $invoke: 'routeStore.setParam', args: ['view', null] },
+                            },
+                          },
                         },
                         children: [{ type: 'we-icon', props: { name: 'file-text' } }, 'Page'],
                       },
@@ -26596,10 +26687,21 @@ export const seedBundles: Bundle[] = [
                         props: {
                           size: 'sm',
                           variant: { $: "!(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
-                          onClick: [
-                            { $invoke: 'routeStore.setParam', args: ['view', null] },
-                            { $invoke: 'routeStore.setParam', args: ['dna', null] },
-                          ],
+                          onClick: {
+                            $if: {
+                              condition: {
+                                $: "routeStore.params.dna && !((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna')",
+                              },
+                              then: {
+                                $invoke: 'routeStore.navigate',
+                                args: [
+                                  { $: "spaceStore.spacePath + '/dna'" },
+                                  { $: '{ query: { dna: routeStore.params.dna } }' },
+                                ],
+                              },
+                              else: { $invoke: 'routeStore.setParam', args: ['view', null] },
+                            },
+                          },
                         },
                         children: [{ type: 'we-icon', props: { name: 'file-text' } }, 'Page'],
                       },
@@ -26801,10 +26903,21 @@ export const seedBundles: Bundle[] = [
                         props: {
                           size: 'sm',
                           variant: { $: "!(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
-                          onClick: [
-                            { $invoke: 'routeStore.setParam', args: ['view', null] },
-                            { $invoke: 'routeStore.setParam', args: ['dna', null] },
-                          ],
+                          onClick: {
+                            $if: {
+                              condition: {
+                                $: "routeStore.params.dna && !((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna')",
+                              },
+                              then: {
+                                $invoke: 'routeStore.navigate',
+                                args: [
+                                  { $: "spaceStore.spacePath + '/dna'" },
+                                  { $: '{ query: { dna: routeStore.params.dna } }' },
+                                ],
+                              },
+                              else: { $invoke: 'routeStore.setParam', args: ['view', null] },
+                            },
+                          },
                         },
                         children: [{ type: 'we-icon', props: { name: 'file-text' } }, 'Page'],
                       },
@@ -26999,10 +27112,21 @@ export const seedBundles: Bundle[] = [
                         props: {
                           size: 'sm',
                           variant: { $: "!(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
-                          onClick: [
-                            { $invoke: 'routeStore.setParam', args: ['view', null] },
-                            { $invoke: 'routeStore.setParam', args: ['dna', null] },
-                          ],
+                          onClick: {
+                            $if: {
+                              condition: {
+                                $: "routeStore.params.dna && !((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna')",
+                              },
+                              then: {
+                                $invoke: 'routeStore.navigate',
+                                args: [
+                                  { $: "spaceStore.spacePath + '/dna'" },
+                                  { $: '{ query: { dna: routeStore.params.dna } }' },
+                                ],
+                              },
+                              else: { $invoke: 'routeStore.setParam', args: ['view', null] },
+                            },
+                          },
                         },
                         children: [{ type: 'we-icon', props: { name: 'file-text' } }, 'Page'],
                       },
@@ -27108,6 +27232,227 @@ export const seedBundles: Bundle[] = [
             ],
           },
           {
+            path: '/dna',
+            type: 'Column',
+            props: { width: '100%', height: '100%' },
+            $localState: { vocabOpen: { type: 'array', initial: [] } },
+            children: [
+              {
+                type: 'Row',
+                props: {
+                  gap: '300',
+                  ay: 'center',
+                  px: '500',
+                  py: '300',
+                  borderBottom: '1px solid border',
+                  minHeight: '56px',
+                },
+                children: [
+                  {
+                    type: '$if',
+                    props: {
+                      condition: { $: "'tree' in shellStore.collapsedLanes" },
+                      then: {
+                        type: 'we-tooltip',
+                        props: { content: 'Show the sidebar', placement: 'bottom' },
+                        children: [
+                          {
+                            type: 'we-button',
+                            props: {
+                              variant: 'ghost',
+                              size: 'md',
+                              square: true,
+                              label: 'Show the sidebar',
+                              onClick: { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', false] },
+                            },
+                            children: [{ type: 'we-icon', props: { name: 'sidebar-simple' } }],
+                          },
+                        ],
+                      },
+                    },
+                  },
+                  { type: 'we-icon', props: { name: 'dna', color: 'text-muted' } },
+                  {
+                    type: 'Row',
+                    props: { flex: '1', minWidth: '0', gap: '100', ay: 'center' },
+                    children: [
+                      {
+                        type: 'we-text',
+                        props: { variant: 'heading-sm', truncate: true, minWidth: '0' },
+                        children: [
+                          {
+                            $: "(routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' ? 'Social DNA' : { signal: 'Signal types', connection: 'Connection types', state: 'Task states', involvement: 'Involvement', topic: 'Topics', model: 'Models', policy: 'Policy' }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]]",
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                  {
+                    type: 'we-button',
+                    props: {
+                      variant: 'ghost',
+                      size: 'sm',
+                      onClick: {
+                        $invoke: 'shellStore.openSpaceSettings',
+                        args: [
+                          'vocabulary',
+                          {
+                            $: "split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'model' ? split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1] : ''",
+                          },
+                        ],
+                      },
+                    },
+                    children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }, 'Edit in settings'],
+                  },
+                  {
+                    type: 'Row',
+                    props: { gap: '100', p: '100', r: 'control', bg: 'surface-sunken', flexShrink: 0 },
+                    children: [
+                      {
+                        type: 'we-button',
+                        props: {
+                          size: 'sm',
+                          variant: { $: "!(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
+                          onClick: {
+                            $if: {
+                              condition: {
+                                $: "routeStore.params.dna && !((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna')",
+                              },
+                              then: {
+                                $invoke: 'routeStore.navigate',
+                                args: [
+                                  { $: "spaceStore.spacePath + '/dna'" },
+                                  { $: '{ query: { dna: routeStore.params.dna } }' },
+                                ],
+                              },
+                              else: { $invoke: 'routeStore.setParam', args: ['view', null] },
+                            },
+                          },
+                        },
+                        children: [{ type: 'we-icon', props: { name: 'file-text' } }, 'Page'],
+                      },
+                      {
+                        type: 'we-button',
+                        props: {
+                          size: 'sm',
+                          variant: { $: "(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
+                          onClick: { $invoke: 'routeStore.setParam', args: ['view', 'canvas'] },
+                        },
+                        children: [{ type: 'we-icon', props: { name: 'squares-four' } }, 'Canvas'],
+                      },
+                    ],
+                  },
+                ],
+              },
+              {
+                type: 'Column',
+                props: { flex: '1', minHeight: '0', position: 'relative' },
+                children: [
+                  {
+                    type: 'Column',
+                    props: {
+                      position: 'absolute',
+                      top: '0',
+                      left: '0',
+                      width: '100%',
+                      height: '100%',
+                      bg: 'page',
+                      zIndex: 1,
+                    },
+                    children: [
+                      {
+                        type: 'GraphView',
+                        props: {
+                          seeds: {
+                            source: 'vocabulary',
+                            options: {
+                              buckets: {
+                                $: "[\n  { key: 'signals', label: 'Signal types', entity: 'SignalType', opens: { entity: recordStore.creatableEntities.map(k, k.value), through: 'signals', field: 'signalTypeId', key: 'id', label: 'reacted to', limit: 12 } },\n  { key: 'connections', label: 'Connection types', entity: 'RelationshipType', opens: { entity: 'Relationship', field: 'relationshipTypeId', key: 'id', pair: ['source', 'target'], label: 'connects', limit: 12 } },\n  { key: 'states', label: 'Task states', entity: 'TaskState', opens: { entity: 'TaskBlock', field: 'status', key: 'slug', label: 'in it', limit: 12 } },\n  { key: 'kinds', label: 'Involvement', entity: 'InvolvementType', opens: { entity: 'Involvement', field: 'kind', key: 'slug', follow: 'node', label: 'involved in', limit: 12 } },\n  { key: 'topics', label: 'Topics', entity: 'Topic', opens: { entity: 'Relationship', through: 'target', field: 'id', key: 'id', follow: 'source', label: 'about it', limit: 12 } },\n  { key: 'models', label: 'Models', models: recordStore.creatableEntities.map(k, { name: k.value, label: k.label }) },\n  { key: 'other', label: 'From other apps', models: datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value))).map(e, { name: e.name }) },\n  { key: 'workflows', label: 'Workflows', workflows: workflowStore.workflows.map(f, { name: f.name, label: f.label, steps: f.steps, moves: f.moves }) },\n  { key: 'policy', label: 'Policy', items: spaceStore.policy.sentences.map(s, { id: s, label: s }) }\n].filter(b, b.key != 'other' || count(b.models))",
+                              },
+                            },
+                          },
+                          expansion: {
+                            defaultDepth: 0,
+                            direction: 'out',
+                            expanders: ['vocabulary', 'vocabulary-records', 'schema'],
+                          },
+                          layout: {
+                            type: 'forest',
+                            options: {
+                              card: { width: 200, height: 96 },
+                              levelGap: 110,
+                              siblingGap: 36,
+                              treeGap: 90,
+                              unattached: 'trees',
+                              sortBy: 'order',
+                            },
+                          },
+                          nodeStyle: [
+                            { style: { shape: 'card', width: 200, height: 64, color: 'accent-soft' } },
+                            { when: { kind: 'cluster', type: 'vocabulary' }, style: { color: 'accent', height: 56 } },
+                            { when: { 'data.final': true }, style: { borderColor: 'accent-text', borderWidth: 2 } },
+                            {
+                              when: { kind: 'entity', type: { not: '$schema' } },
+                              style: { height: 96, content: 'record', contentMinZoom: 0.4 },
+                            },
+                            { when: { kind: 'literal' }, style: { shape: 'circle', size: 12 } },
+                            {
+                              $: "((routeStore.params.dna ? routeStore.params.dna : 'all') != 'all') ? [{ when: { 'data.bucket': { exists: true, not: { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]] } }, style: { opacity: 0.1 } }] : []",
+                            },
+                            {
+                              $: "(split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]) ? [{ when: (split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'model' ? { 'data.bucket': { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]], type: { not: 'vocabulary' }, 'data.entity': { not: shapeStore.spaceShapes.find(s, s.id == (split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1])).name } } : split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'policy' ? { 'data.bucket': { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]], type: { not: 'vocabulary' }, 'data.item': { not: split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1] } } : { 'data.bucket': { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]], type: { not: 'vocabulary' }, 'data.recordId': { not: split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1] } }), style: { opacity: 0.1 } }] : []",
+                            },
+                          ],
+                          edgeStyle: [
+                            {
+                              when: { type: 'contains' },
+                              style: { sourceAnchor: 's', targetAnchor: 'n', ignoreRoute: true },
+                            },
+                            {
+                              when: { type: 'instance' },
+                              style: { sourceAnchor: 's', targetAnchor: 'n', ignoreRoute: true },
+                            },
+                            {
+                              when: { type: 'property' },
+                              style: { sourceAnchor: 's', targetAnchor: 'n', ignoreRoute: true },
+                            },
+                            { when: { type: 'instance' }, style: { showLabel: true } },
+                            { when: { type: 'property' }, style: { showLabel: true } },
+                            { when: { type: 'move' }, style: { dashed: true, color: 'accent-text' } },
+                          ],
+                          open: {
+                            $: "distinct(local.vocabOpen, (routeStore.params.dna ? routeStore.params.dna : 'all') != 'all' ? ['we-graph://cluster/vocabulary/' + { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]]] : [], split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1] && split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] != 'policy' ? [split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'model' ? shapeStore.spaceShapes.find(s, s.id == (split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1])).name : split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]] : [])",
+                          },
+                          onNodeOpen: {
+                            $setLocal: 'vocabOpen',
+                            value: {
+                              $: 'event.open ? distinct(local.vocabOpen, [event.id]) : local.vocabOpen.filter(k, k != event.id)',
+                            },
+                          },
+                          focus: {
+                            $: "(routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' ? '' : !(split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]) ? 'we-graph://cluster/vocabulary/' + { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]] : split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'policy' ? 'policy:' + split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1] : split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'model' ? shapeStore.spaceShapes.find(s, s.id == (split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1])).name : split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]",
+                          },
+                          focusCentre: true,
+                          onNodeClick: {
+                            $if: {
+                              condition: { $: "event.recordId && event.recordType && event.recordType != '$schema'" },
+                              then: [
+                                { $invoke: 'routeStore.setParam', args: ['cardType', { $: 'event.recordType' }] },
+                                { $invoke: 'routeStore.setParam', args: ['card', { $: 'event.recordId' }] },
+                                { $invoke: 'shellStore.openTemplatePanel', args: ['inspector'] },
+                              ],
+                            },
+                          },
+                          showStatus: true,
+                        },
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+          {
             path: '/person',
             type: 'Column',
             props: { width: '100%', height: '100%' },
@@ -27186,10 +27531,21 @@ export const seedBundles: Bundle[] = [
                             props: {
                               size: 'sm',
                               variant: { $: "!(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
-                              onClick: [
-                                { $invoke: 'routeStore.setParam', args: ['view', null] },
-                                { $invoke: 'routeStore.setParam', args: ['dna', null] },
-                              ],
+                              onClick: {
+                                $if: {
+                                  condition: {
+                                    $: "routeStore.params.dna && !((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna')",
+                                  },
+                                  then: {
+                                    $invoke: 'routeStore.navigate',
+                                    args: [
+                                      { $: "spaceStore.spacePath + '/dna'" },
+                                      { $: '{ query: { dna: routeStore.params.dna } }' },
+                                    ],
+                                  },
+                                  else: { $invoke: 'routeStore.setParam', args: ['view', null] },
+                                },
+                              },
                             },
                             children: [{ type: 'we-icon', props: { name: 'file-text' } }, 'Page'],
                           },

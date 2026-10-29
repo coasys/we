@@ -23,11 +23,34 @@ export const withView = (pathExpr: string): string =>
   `(${pathExpr}) + ((${IN_CANVAS}) ? (contains(${pathExpr}, '?') ? '&' : '?') + '${VIEW_PARAM}=canvas' : '')`;
 
 /**
- * The Social DNA in focus on the canvas — `all`, a kind (`signal`), or a definition (`signal|<id>`).
- * In Canvas only: in either mode a definition is read in the inspector, which follows `card`.
+ * The Social DNA in focus — `all`, a kind (`signal`), a definition (`signal|<id>`) or a rule of the
+ * policy (`policy|<rule>`) — drawn as the vocabulary map: over the canvas in Canvas mode, as its own
+ * page (`/dna`) in Page mode. A definition is read in the inspector as well, which follows `card`.
  */
 export const DNA_PARAM = 'dna';
 export const DNA_FOCUS = `routeStore.params.${DNA_PARAM}`;
+
+/** The vocabulary map is being shown, in either mode. */
+export const ON_DNA_PAGE = "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna'";
+export const DNA_SHOWN = `((${IN_CANVAS}) || ${ON_DNA_PAGE}) && ${DNA_FOCUS}`;
+
+/**
+ * Show a focus of Social DNA: on the canvas in Canvas mode, which stays where it is; on the Social DNA
+ * page otherwise, as every other group row opens its page. `focus` is an expression.
+ */
+export const showDna = (focus: string): SchemaProp => ({
+  $if: {
+    condition: { $: IN_CANVAS },
+    then: { $invoke: 'routeStore.setParam', args: [DNA_PARAM, { $: focus }] },
+    else: dnaPage(focus),
+  },
+});
+
+/** The Social DNA page, with `focus` in the address — and nothing else, so it is in Page mode. */
+export const dnaPage = (focus: string): SchemaProp => ({
+  $invoke: 'routeStore.navigate',
+  args: [{ $: "spaceStore.spacePath + '/dna'" }, { $: `{ query: { ${DNA_PARAM}: ${focus} } }` }],
+});
 
 /** The record type of each kind of definition the tree lists (a model is a Shape, which it opens elsewhere). */
 const DNA_ENTITIES: Record<string, string> = {
@@ -102,8 +125,8 @@ export const groupPath = (page: GroupPage): string => withView(`spaceStore.space
  * A group's page lights the group's row — every group with a page, not only Workflows.
  */
 export const SELECTED_EXPR = [
-  // Social DNA in focus on the canvas, which is the address's rather than a page's.
-  `(${IN_CANVAS}) && ${DNA_FOCUS} ? (${DNA_FOCUS} == 'all' ? 'group|dna' : contains(${DNA_FOCUS}, '|') ? (startsWith(${DNA_FOCUS}, 'policy|') ? 'dnaprop|' : 'dna|') + ${DNA_FOCUS} : 'dnakind|' + ${DNA_FOCUS})`,
+  // Social DNA in focus, on the canvas or its page.
+  `${DNA_SHOWN} ? (${DNA_FOCUS} == 'all' ? 'group|dna' : contains(${DNA_FOCUS}, '|') ? (startsWith(${DNA_FOCUS}, 'policy|') ? 'dnaprop|' : 'dna|') + ${DNA_FOCUS} : 'dnakind|' + ${DNA_FOCUS})`,
   `:`,
   `routeStore.params.card && ${INSPECTED_DNA} ? 'dna|' + ${INSPECTED_DNA} + '|' + routeStore.params.card`,
   `: (${PAGE_EXPR}) == 'record' ? 'call|' + routeStore.params.id`,

@@ -2,6 +2,7 @@ import type { RouteSchema, SchemaNode, SchemaProp } from '@we/schema-shared';
 import { FLOWS_LOCALS, lineComposer, workflowsPage } from '@we/template-kit';
 
 import { viewBar } from './bar.ts';
+import { dnaRoute } from './canvas.ts';
 import { groupRoutes } from './groups.ts';
 import { liveDot } from './marks.ts';
 import { CHANNEL, IN_ROOT_EXPR } from './paths.ts';
@@ -264,6 +265,7 @@ export const spaceRoutes: RouteSchema[] = [
   chatRoute,
   workflowsRoute,
   ...groupRoutes,
+  dnaRoute,
   personRoute,
   { path: '*', redirect: './' },
 ];

@@ -34,6 +34,7 @@ import { describe, expect, it } from 'vitest';
 import { canvasPane } from './coasys/space/canvas.ts';
 import { callPath, groupPath, personPath, SELECTED_EXPR } from './coasys/space/paths.ts';
 import { treeSection } from './coasys/space/tree.ts';
+import { spaceRoutes } from './coasys/space/views.ts';
 import { bundleFileName, type Cartridge, cartridgeBundles, coasys, fieldGuide, toolLibrary } from './index.ts';
 
 const contextData = JSON.parse(readFileSync(resolve(import.meta.dirname, '../../../ai-context/context.json'), 'utf-8'));
@@ -362,6 +363,20 @@ describe('the Coasys cartridge', () => {
       expect(at([], { view: 'canvas', dna: 'policy|Members can make anything.' })({ $: SELECTED_EXPR })).toBe(
         'dnaprop|policy|Members can make anything.',
       );
+    });
+
+    /*
+      Every group row opens a page in Page mode, and Social DNA's used to open the space's settings
+      instead: an edit surface off to the side, for somebody who only wanted to look. It is a page of
+      its own now — the vocabulary map the canvas draws — lit in the tree as the canvas's focus is.
+    */
+    it('shows Social DNA as a page of its own in Page mode, never the settings', () => {
+      expect(JSON.stringify(treeSection)).not.toContain('"shellStore.openSpaceSettings","args":["vocabulary"');
+      expect(spaceRoutes.map((route) => route.path)).toContain('/dna');
+      expect(at(['dna'], { dna: 'all' })({ $: SELECTED_EXPR })).toBe('group|dna');
+      expect(at(['dna'], { dna: 'signal' })({ $: SELECTED_EXPR })).toBe('dnakind|signal');
+      // Anywhere else in Page mode, a leftover focus lights nothing.
+      expect(at(['people'], { dna: 'signal' })({ $: SELECTED_EXPR })).toBe('group|people');
     });
 
     /*
