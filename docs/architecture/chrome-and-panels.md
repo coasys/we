@@ -58,19 +58,25 @@ declares no `right`, and nothing keeps clear of a rail that is not there.
 
 ## Where a panel is drawn
 
-Four ideas, each answered in one place:
+Five ideas, each answered in one place:
 
 - **A panel is drawn once.** `PanelHost` draws every panel's content, inside the app's providers,
   into a wrapper of its own; a place holds a `PanelSlot` naming the panel, and the wrapper is moved
   into whichever slot shows it — with `moveBefore` where the browser has it, which keeps an embedded
   page, focus and a WebGL context across the move. So a panel dragged from a template's lane to an
   edge to a card is the same element throughout, and nothing about a place owns a panel's lifetime.
+- **A panel has one frame** (`frameBox`), wherever it is: over the window, filling its seat in an
+  edge's lane, or in the page's flow at home in a template. Its titlebar, tabs, fold, menu and grips
+  are the same in each, with what means nothing somewhere left out there (a section in the page has
+  no resize grips, and does not fit, push the content aside or fill the window).
 - **A group** is one or more panels sharing a place — tabs when there are several, one showing, the
-  rest hidden and still mounted. One component wherever a group is (`PanelGroup` in a template's
-  lane; a seat of an edge lane).
+  rest hidden and still mounted. One component wherever a group is (`PanelGroup`): it arranges its
+  members' frames, and the front one's frame names them all.
 - **A lane** is groups along an axis: their order, their share of its length (flex, `grow 1 base`,
-  never below a floor), the grips between them, a fold or a strip to put it away. A template's
-  `$panels` outlet is one (`PanelLane`); each window edge has its own (`EdgeLanes`).
+  never below a floor), the grip between two of them (`LaneDivider`), a fold or a strip to put it
+  away. A template's `$panels` outlet is one (`PanelLane`), whose sections that `grow` have a
+  boundary to drag (written as each one's `grow`, per reader); each window edge has its own
+  (`EdgeLanes`).
 - **A place** only positions a box: a lane in the page's flow; a lane at a window edge pushing the
   content aside; a lane at an edge over the content, for cards snapped there; or the free layer — a
   card anywhere, a corner, full screen.
@@ -82,11 +88,31 @@ lane's default — `frame` on a `$panels` outlet, flush when unsaid; an app's `m
 panels pushing the content aside at an edge, a window when unsaid. A card over the content is a
 window unless its own declaration says otherwise.
 
-The geometry engine (`dockGeometry.ts`) still answers how thick each lane at an edge is
+**One drop model.** Where a dragged panel could land — a new lane, a seat between two, a tab in a
+seat, a place in a template's lane, a snap — is offered from one question, `boxOnScreen`: a panel in
+a lane is where its frame is drawn, measured; anywhere else it is where the engine placed it. So a
+lane offers what it actually shows, and a drag's origin and a divider's starting sizes read the same.
+A template's lane is offered only to a panel the interface declared for a lane, since a lane keeps
+nothing else.
+
+The geometry engine (`dockGeometry.ts`) answers how thick each lane at an edge is
 (`displacingLanes`, which the content inset sums, so the two cannot disagree) and where a card on the
-free layer goes. It also still works out every lane's division as boxes — the same division the flex
-draws, from the same numbers (`laneBase`) — because the drop targets and a drag's origin are measured
-from those boxes. Measuring them from the lanes on screen instead is what would let that half go.
+free layer goes. It still divides a lane into boxes as well — the division the flex draws, from the
+same numbers (`laneBase`) — as the fallback where nothing is laid out: a test without a layout, a dock
+drawn by something other than its frame.
+
+**Motion.** A frame over the window eases between boxes with its own transition. One in a lane is
+laid out by the lane, and one moving between places is a new frame where it lands, so `PanelMotion`
+remembers where each panel's frame was drawn and plays it from there to its new box (FLIP) — a card
+dropped into a lane, a section broken out, lane-mates making room. Not during a drag, a resize or a
+change of the window's size, for a lane easing into or out of its strip, or for a reader who asked
+for less motion.
+
+**Instances.** A panel an interface supplies can be opened more than once —
+`shellStore.openPanel(panel, inputs)` — each instance a panel of its own (`template:<panel>~<key>`),
+declared as the panel it is of, so it opens where that one would (a tab beside it, where the
+declaration names an `order`). Its node reads its inputs as `panel.inputs`. The same inputs open the
+same instance; instances are kept per agent and per interface. See `panelInstances.ts`.
 
 ## A panel has one position and four states
 
@@ -411,6 +437,8 @@ keep a card's heading.
 - `packages/app-shell/src/frameworks/solid/components/PanelHost.tsx` — every panel's content, drawn
   once and moved to its slot.
 - `packages/app-shell/src/frameworks/solid/components/EdgeLanes.tsx` — the lanes at the window's
-  edges, their grips and strips; `PanelLane.tsx` and `PanelGroup.tsx` — a template's lane and a group.
+  edges, their grips and strips; `PanelLane.tsx` and `PanelGroup.tsx` — a template's lane and a group;
+  `LaneDivider.tsx` — the grip between two groups; `PanelMotion.tsx` — panels easing between boxes.
+- `packages/app-shell/src/shared/registries/panelInstances.ts` — a panel opened more than once.
 - `packages/schema-system/kit/src/layout/panelShell.ts` — the header every panel body opens with.
 - `packages/templates/shell/src/ChromeRail.schema.ts`, `Sidebar.schema.ts` — the two strips.

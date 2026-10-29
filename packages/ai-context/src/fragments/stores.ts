@@ -1779,6 +1779,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         'boolean — a panel is being dragged or resized right now. Suspend transitions while it is true so the edge tracks the cursor',
       panelMaximised:
         "boolean — some panel covers the whole window. The app's own chrome — sidebar, module rail — hides while it is true; a template's fixed chrome should too",
+      panelInstances:
+        '{ id, panel, inputs, title? }[] — the instances open in the interface on screen: which declared panel each is of, and what it was opened with. To list them, or to tell a control whether its record already has one',
       panelFrames:
         "Record<dockId, 'window' | 'flush' | 'none'> — how each panel is framed where it is not a window: its own declared frame, else — pushing the content aside at an edge — that edge's frame as the app template declares it (meta.edges); absent, a window's frame",
       dockPlacement:
@@ -1889,8 +1891,6 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '(panelId: string, inputs?: object, options?: { key?, title? }): opens a panel the interface supplies in meta.panels (one with a `node`) once more, with these inputs — an inspector per record, a view per call. Its node reads them as panel.inputs, and which instance it is as panel.id. It opens where the declared panel would, as a tab beside it where the declaration names an `order`. The same inputs open the same instance, brought to the front, so opening the record already open makes no second; `key` names the instance outright where the inputs should not decide, `title` is what its tab says. Kept per agent and per template across reloads',
       closePanel:
         '(instanceId: string): closes an instance openPanel opened — what its close button calls. Where it was dragged is forgotten with it',
-      panelInstances:
-        '{ id, panel, inputs, title? }[] — the instances open in the interface on screen: which declared panel each is of, and what it was opened with. To list them, or to tell a control whether its record already has one',
       toggleLane:
         "(lane: string): folds a home lane (a `$panels` outlet) away, or brings it back — what a sidebar's collapse button calls. Its sections stay mounted and hidden, so a feed keeps its place. Kept per agent and per template, and undone by resetTemplateLayout",
       setLaneCollapsed:

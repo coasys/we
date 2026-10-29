@@ -7422,6 +7422,9 @@
         "panelSupplied": {
           "type": "object"
         },
+        "panelInstances": {
+          "type": "array"
+        },
         "collapsedLanes": {
           "type": "array"
         },
@@ -7468,6 +7471,8 @@
         "resetDockToLayout",
         "closeTemplatePanel",
         "openTemplatePanel",
+        "openPanel",
+        "closePanel",
         "resetTemplateLayout",
         "toggleLane",
         "setLaneCollapsed",
@@ -7511,6 +7516,8 @@
         "endDockMove",
         "closeTemplatePanel",
         "openTemplatePanel",
+        "openPanel",
+        "closePanel",
         "resetTemplateLayout",
         "toggleLane",
         "setLaneCollapsed",
@@ -7541,6 +7548,8 @@
         "resetDockToLayout",
         "closeTemplatePanel",
         "openTemplatePanel",
+        "openPanel",
+        "closePanel",
         "toggleLane",
         "setLaneCollapsed",
         "saveLayout",
