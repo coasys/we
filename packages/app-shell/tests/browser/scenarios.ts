@@ -2291,6 +2291,10 @@ const coasysTreeDna = (): Scenario => {
       },
       shapeStore: { spaceShapes: [{ id: 'shape-hive', name: 'Hive', icon: 'hexagon' }] },
       recordStore: {
+        // What the tree's Models lists, as the vocabulary map's Models does: every kind of record.
+        creatableEntities: [
+          { value: 'Hive', label: 'Hive', icon: 'hexagon', hue: 'yellow', group: '', description: '', via: 'form' },
+        ],
         displays: {
           Hive: {
             fields: [
