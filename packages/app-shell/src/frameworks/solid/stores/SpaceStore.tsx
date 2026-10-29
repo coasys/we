@@ -203,7 +203,6 @@ import { useShapeStore } from './ShapeStore';
 import { useShellStore } from './ShellStore';
 import { useTemplateStore } from './TemplateStore';
 import { useThemeStore } from './ThemeStore';
-import { spaceOpenTrace } from '@shared/spaceOpenTrace';
 
 /**
  * One row of the spaces list — every joined dataset the agent can act on, space or not.
@@ -2615,13 +2614,10 @@ export function SpaceStoreProvider(props: ParentProps) {
     const arrivingFromHere = Boolean(
       ds && datasetStore.currentDataset()?.id === ds.id && segs[0] === 'space' && datasetAddressedBy(ds, segs[1] ?? ''),
     );
-    spaceOpenTrace('navigateToSpace', { spaceId, found: !!ds, current: datasetStore.currentDataset()?.id ?? null });
     if (ds && datasetStore.currentDataset()?.id !== ds.id) {
       // Pre-load space templates before switching so the template and data arrive together
       await templateStore.preloadSpaceTemplates(ds);
-      spaceOpenTrace('preloaded; switching');
       await datasetStore.switchDataset(ds.id);
-      spaceOpenTrace('switched');
     }
     // If no dataset found, route change alone will show the join gate
 

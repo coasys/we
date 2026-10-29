@@ -84,7 +84,6 @@ import { PersistentAppFrames } from '../layouts/PersistentAppFrames';
 import { TemplateLayout } from '../layouts/TemplateLayout';
 import { useEditTarget } from '../stores/editTarget';
 import { buildRoutes } from '../utils/buildRoutes';
-import { spaceOpenTrace } from '@shared/spaceOpenTrace';
 
 export default function TemplateProvider() {
   // Stores
@@ -1352,11 +1351,6 @@ export default function TemplateProvider() {
       .join(',');
     return `${id}|${table}`;
   });
-
-  createEffect(() => spaceOpenTrace('routeKey', routeKey()));
-  createEffect(() => spaceOpenTrace('template on screen', templateSchema.id || 'empty'));
-  createEffect(() => spaceOpenTrace('address', routeStore.segments().join('/')));
-  createEffect(() => spaceOpenTrace('shell overlay', shellStore.activeShellView()));
 
   /**
    * Keep the URL on a section this space actually has.
