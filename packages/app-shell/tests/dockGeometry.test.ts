@@ -393,11 +393,13 @@ describe('what a module’s bid becomes', () => {
     expect(seeded.h).toBeLessThan(desktop.height / 2);
   });
 
-  it('opens a panel that asked to float as a card in the bottom-right', () => {
-    const seeded = seedPlacement(dock({ float: true, size: 'sm' }), desktop);
+  it('opens a panel that asked to float as a card at the middle of the edge it asked for', () => {
+    const seeded = seedPlacement(dock({ edge: 'bottom', float: true, size: 'sm' }), desktop);
 
-    expect(seeded.snap).toBe('bottom-right');
+    expect(seeded.snap).toBe('bottom');
     expect(seeded.displace).toBe(false);
+    // Naming no edge, it goes where picture-in-picture is looked for.
+    expect(seedPlacement(dock({ edge: undefined, float: true, size: 'sm' }), desktop).snap).toBe('bottom-right');
     // 16:9, because the first thing to float is a video stage.
     expect(seeded.h).toBe(Math.round((seeded.w * 9) / 16));
   });

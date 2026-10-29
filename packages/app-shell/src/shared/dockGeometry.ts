@@ -1213,8 +1213,10 @@ export function dockThickness(
  *
  * A module that asked to inset opens where it asked, spanning and displacing — which is the whole of
  * the old behaviour, so a panel nobody has dragged looks exactly as it did. One that asked to float
- * opens as a card in the bottom-right, the corner every picture-in-picture in every application has
- * trained people to look for, at a 16:9 box sized from the `sm` thickness.
+ * opens as a card at the middle of the edge it asked for, at a 16:9 box sized from the `sm` thickness:
+ * the call's stage, asking for the bottom, opens centred above the call bar, under the faces it is
+ * beside. It opened in the bottom-right whatever it asked, so `edge` on a floating bid said nothing.
+ * The bottom-right, where picture-in-picture is looked for, is still where one that names no edge goes.
  */
 export function seedPlacement(
   request: DockRequest,
@@ -1242,7 +1244,7 @@ export function seedPlacement(
     };
   }
 
-  return { ...card, snap: 'bottom-right', displace: false };
+  return { ...card, snap: request.edge ?? 'bottom-right', displace: false };
 }
 
 /**
