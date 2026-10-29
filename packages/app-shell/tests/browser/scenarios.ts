@@ -2087,6 +2087,38 @@ const coasysSignIn = (): Scenario => {
   );
 };
 
+/**
+ * A card that lights on hover, with a border at rest: the state stylesheet once reset each side its
+ * element had not named, so it drew no border at all, lit or not.
+ */
+const borderWithHover = (): Scenario => ({
+  node: {
+    type: 'Column',
+    props: { width: '400px', p: '400', gap: '400', bg: 'page' },
+    children: [
+      {
+        type: 'Card',
+        props: {
+          'data-probe': 'resting',
+          border: '2px solid danger',
+          hoverProps: { shadow: 'glow' },
+        },
+        children: ['A border at rest'],
+      },
+      {
+        type: 'Card',
+        props: {
+          'data-probe': 'lit',
+          border: '2px solid transparent',
+          hoverProps: { border: '2px solid danger' },
+        },
+        children: ['A border when lit'],
+      },
+    ],
+  },
+  tables: {},
+});
+
 /** A Coasys view's bar, with the Page / Canvas switch at its end, in Glow — on the Canvas side. */
 const coasysBar = (): Scenario => {
   const glow = BUNDLE_LAB_THEMES.find((t) => t.label === 'coasys-glow')?.theme ?? {};
@@ -2318,6 +2350,7 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'coasys:about': coasysAbout,
   'feed:view': feedViewPage,
   'coasys:bar': coasysBar,
+  'border:with-hover': borderWithHover,
   'coasys:lockup': coasysLockup,
   'signIn:coasys': coasysSignIn,
   'signIn:we': signInScreen,

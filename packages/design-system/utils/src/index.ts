@@ -1443,6 +1443,37 @@ export const CSS_PROP_TO_VAR_SUFFIX = new Map(INTERACTIVE_SPECS.map(([cssProp, v
 // Remaps a computed style object's CSS-property keys to --we-ds-{prefix}{varSuffix}
 // custom properties, using the shared PropSpec tables' cssProp -> varSuffix mapping.
 // Keys outside the interactive-state surface (e.g. --we-bg-image-*) are left alone.
+const BORDER_SIDES = ['border-top', 'border-right', 'border-bottom', 'border-left'] as const;
+
+/**
+ * A style with each side of its border written out, from the shorthand and any colour or width beside
+ * it, before it becomes `--we-ds-*` variables.
+ *
+ * The state stylesheet declares the shorthand, then colour and width, then each side — so a side
+ * wins. A variable nobody set makes its declaration invalid, and an invalid declaration resets its
+ * property: `border-top: var(--we-ds-border-top)` with no side set drew no top, and the same for the
+ * other three, so a layout element with `hoverProps` and a `border` drew no border at all — every
+ * card that lights on hover, at rest and lit. Writing the sides here is what a primitive does for the
+ * same rules (`syncBorderVars` in @we/primitives).
+ *
+ * `beneath` is the resting style under a state's fragment: a fragment that changes only the colour
+ * keeps the resting width and style, and a side the element names itself is left to win, as written.
+ */
+export function withBorderSides(style: CSSStyleObject, beneath: CSSStyleObject = {}): CSSStyleObject {
+  const record = style as Record<string, string | undefined>;
+  const below = beneath as Record<string, string | undefined>;
+  if (!record.border && !record['border-color'] && !record['border-width']) return style;
+  const parts = borderParts(record.border ?? below.border ?? '');
+  if (!parts) return style;
+  const width = record['border-width'] ?? (record.border ? undefined : below['border-width']) ?? parts.width;
+  const color = record['border-color'] ?? (record.border ? undefined : below['border-color']) ?? parts.color;
+  const out: Record<string, string | undefined> = { ...record };
+  for (const side of BORDER_SIDES) {
+    if (out[side] === undefined && below[side] === undefined) out[side] = `${width} ${parts.style} ${color}`;
+  }
+  return out as CSSStyleObject;
+}
+
 export function toInteractiveVars(prefix: string, computed: CSSStyleObject): CSSStyleObject {
   const out: Record<string, string> = {};
   for (const [cssProp, value] of Object.entries(computed)) {
