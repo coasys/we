@@ -124,12 +124,13 @@ function draw(id: string, owner: Owner | null): Drawn {
         if (!node) return null;
         // A template's own panel, drawn with the template's bag — directly, not through the registry's lazy copy.
         if (node.type === 'TemplatePanelBody') {
-          const { panelId, moduleId, dock } = (node.props ?? {}) as {
+          const { panelId, moduleId, dock, instance } = (node.props ?? {}) as {
             panelId?: string;
             moduleId?: string;
             dock?: string;
+            instance?: string;
           };
-          return <TemplatePanelBody panelId={panelId} moduleId={moduleId} dock={dock} />;
+          return <TemplatePanelBody panelId={panelId} moduleId={moduleId} dock={dock} instance={instance} />;
         }
         const bag = chromeBag();
         return bag ? RenderSchema({ node: composed(node), stores: bag, registry }) : null;

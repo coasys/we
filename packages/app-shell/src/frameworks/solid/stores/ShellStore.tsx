@@ -91,6 +91,13 @@ import {
 } from '@shared/registries/dockRegistry';
 import { HOME_SECTION_ATTR, homeLanes, laneFrames } from '@shared/registries/homeLanes';
 import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry';
+import {
+  declaredPanelOf,
+  instanceDockId,
+  instanceKeyOf,
+  type PanelInstance,
+  publishPanelInstances,
+} from '@shared/registries/panelInstances';
 import { SHELL_DOCK_STORE_ID } from '@shared/registries/shellDocks';
 import { slotRegistry } from '@shared/registries/slotRegistry';
 import {
@@ -604,6 +611,20 @@ export interface ShellStore {
   closeTemplatePanel: (id: string) => void;
   openTemplatePanel: (id: string) => void;
   /**
+   * Open a panel the interface declared — once more, with these inputs — and answer the instance's
+   * dock id. The same inputs open the same instance (it is brought forward), so opening the record
+   * already open does not make a second. Its node reads `panel.inputs`; it opens where the declared
+   * panel would, beside it as a tab where the declaration names an `order`. `key` names the instance
+   * outright, where the inputs alone should not decide which it is; `title` is what its tab says.
+   *
+   * Only a panel the interface supplies (`node`), whose contents can read inputs.
+   */
+  openPanel: (panel: string, inputs?: Record<string, unknown>, options?: { key?: string; title?: string }) => string;
+  /** Close an instance `openPanel` opened. Its placement goes with it. */
+  closePanel: (instance: string) => void;
+  /** The instances open in the interface on screen — which panel each is of, and its inputs. */
+  panelInstances: Accessor<PanelInstance[]>;
+  /**
    * Put *every* panel of the interface on screen back the way it declared them.
    *
    * The one gesture for "this is not the arrangement the template designed" — three panels dragged
@@ -1024,6 +1045,30 @@ interface LaneState {
 }
 
 const LANES_KEY = 'we-local:shell.lanes';
+
+/** Every interface's open panel instances, by interface — see `PanelInstance`. */
+const INSTANCES_KEY = 'we-local:shell.panelInstances';
+
+function loadInstances(): Record<string, Record<string, PanelInstance>> {
+  if (typeof localStorage === 'undefined') return {};
+  try {
+    const parsed = JSON.parse(localStorage.getItem(INSTANCES_KEY) ?? '{}') as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, Record<string, PanelInstance>>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveInstances(all: Record<string, Record<string, PanelInstance>>): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(INSTANCES_KEY, JSON.stringify(all));
+  } catch {
+    // The instances open now stay open; a reload starts without them.
+  }
+}
 
 function loadLanes(): Record<string, LaneState> {
   if (typeof localStorage === 'undefined') return {};
@@ -1781,6 +1826,26 @@ export function ShellStoreProvider(props: ParentProps) {
    */
   const [closedPanels, setClosedPanels] = createSignal<Record<string, boolean>>({});
 
+  /*
+    Every interface's panel instances, kept across reloads like the reader's placements — and the
+    ones of the interface on screen, published for the bodies that render them (`panelInstances`).
+  */
+  const [allInstances, setAllInstances] = createSignal(loadInstances());
+  const instancesHere = createMemo(() => allInstances()[templatePanelScope()] ?? {});
+  createEffect(() => publishPanelInstances(instancesHere()));
+  const writeInstances = (change: (here: Record<string, PanelInstance>) => Record<string, PanelInstance>) =>
+    setAllInstances((all) => {
+      const scope = templatePanelScope();
+      const here = change({ ...(all[scope] ?? {}) });
+      const next = { ...all };
+      if (Object.keys(here).length) next[scope] = here;
+      else delete next[scope];
+      saveInstances(next);
+      // Published as it is written, so a body drawn in the same breath reads its inputs.
+      publishPanelInstances(here);
+      return next;
+    });
+
   /** Home lanes' widths and folds, for every template — see `LaneState`. */
   const [lanes, setLanes] = createSignal<Record<string, LaneState>>(loadLanes());
   const laneKey = (lane: string) => `${templatePanelScope()}::${lane}`;
@@ -1866,6 +1931,11 @@ export function ShellStoreProvider(props: ParentProps) {
     for (const panel of declaredPanels()) {
       const id = dockIdFor(panel);
       if (id) byDock[id] = panel;
+    }
+    // An instance is declared as the panel it is of — its placement, its lane, its frame.
+    for (const instance of Object.values(instancesHere())) {
+      const declared = byDock[templatePanelDockId(instance.panel)];
+      if (declared) byDock[instance.id] = declared;
     }
     return byDock;
   });
@@ -1970,9 +2040,16 @@ export function ShellStoreProvider(props: ParentProps) {
     const along = (section: LaneSection) => section.order ?? Number.POSITIVE_INFINITY;
     // Ties — tabs that name no `tab` — in the order the interface declared them, not the registry's.
     const declaredAt = new Map(declaredPanels().map((panel, index) => [dockIdFor(panel), index]));
-    const listed = (section: LaneSection) => declaredAt.get(section.id) ?? Number.POSITIVE_INFINITY;
+    // An instance where the panel it is of is declared, after it, in the order they were opened.
+    const instances = instancesHere();
+    const listed = (section: LaneSection) =>
+      declaredAt.get(instances[section.id] ? templatePanelDockId(instances[section.id].panel) : section.id) ??
+      Number.POSITIVE_INFINITY;
+    const opened = (section: LaneSection) => instances[section.id]?.opened ?? 0;
     for (const sections of Object.values(byLane)) {
-      sections.sort((a, b) => along(a) - along(b) || (a.tab ?? 0) - (b.tab ?? 0) || listed(a) - listed(b));
+      sections.sort(
+        (a, b) => along(a) - along(b) || (a.tab ?? 0) - (b.tab ?? 0) || listed(a) - listed(b) || opened(a) - opened(b),
+      );
     }
     return byLane;
   });
@@ -3015,8 +3092,49 @@ export function ShellStoreProvider(props: ParentProps) {
       }
     }
 
+    /*
+      And every instance of one: a dock of its own, open while it exists, with the declaration's size
+      and floor, and its body told which instance it is (see `TemplatePanelBody`).
+    */
+    const instances = Object.values(instancesHere()).filter((instance) =>
+      authored.some((panel) => panel.id === instance.panel),
+    );
+    for (const instance of instances) {
+      const panel = authored.find((entry) => entry.id === instance.panel)!;
+      const key = instance.id.replace(/^template:/, '');
+      keys[`edge:${key}`] = () => edgeOfSnap(panel.snap ?? null) ?? 'right';
+      keys[`size:${key}`] = () => panel.size ?? 'md';
+      keys[`float:${key}`] = () => !panel.displace;
+      keys[`min:${key}`] = () => panel.min;
+      if (!registeredPanels.includes(instance.id)) {
+        const entry = {
+          id: instance.id,
+          moduleId: TEMPLATE_DOCK_STORE_ID,
+          edge: `edge:${key}`,
+          size: `size:${key}`,
+          float: `float:${key}`,
+          min: `min:${key}`,
+          closeAction: { $invoke: 'shellStore.closePanel', args: [instance.id] },
+          title: instance.title ?? panel.title,
+          storeRef: 'shellStore',
+          node: panel.node as SchemaNode,
+          order: panel.order,
+        };
+        dockRegistry.register(entry);
+        slotRegistry.register({
+          anchor: 'dock-right',
+          order: panel.order,
+          id: `dock:${instance.id}`,
+          node: dockFrame(entry, { type: 'TemplatePanelBody', props: { panelId: panel.id, instance: instance.id } }),
+        });
+      }
+    }
+
     // Withdraw anything the interface has stopped declaring, or the panel outlives the template.
-    const live = authored.map((panel) => templatePanelDockId(panel.id));
+    const live = [
+      ...authored.map((panel) => templatePanelDockId(panel.id)),
+      ...instances.map((instance) => instance.id),
+    ];
     for (const dockId of registeredPanels) {
       if (live.includes(dockId)) continue;
       dockRegistry.remove(dockId);
@@ -4061,7 +4179,8 @@ export function ShellStoreProvider(props: ParentProps) {
         if (!declarationFor()[moving]?.home || !carried) return [];
         const panelId = moving.replace(/^template:/, '');
         return homeLanes().flatMap((outlet) => {
-          if (outlet.accepts.length > 0 && !outlet.accepts.includes(panelId)) return [];
+          // An instance is taken where the panel it is of is.
+          if (outlet.accepts.length > 0 && !outlet.accepts.includes(declaredPanelOf(moving))) return [];
           // Only an outlet the panel has been carried to. Its seams are the one target family with
           // no band of their own, so the outlet's own box, grown a little, stands in for one.
           const box = outlet.el.getBoundingClientRect();
@@ -4388,6 +4507,48 @@ export function ShellStoreProvider(props: ParentProps) {
       const key = placementKey(templatePanelDockId(id));
       setClosedPanels((prev) => ({ ...prev, [key]: true }));
     },
+
+    openPanel: (panel, inputs = {}, options = {}) => {
+      const declared = declaredPanels().find((entry) => entry.id === panel && entry.node && !entry.module);
+      if (!declared) {
+        console.warn(`[shellStore] openPanel: "${panel}" is not a panel this interface supplies.`);
+        return '';
+      }
+      const id = instanceDockId(panel, options.key ?? instanceKeyOf(inputs));
+      // Strictly after every instance already open, however quickly they were opened.
+      const openedNow = (here: Record<string, PanelInstance>) =>
+        Math.max(Date.now(), ...Object.values(here).map((instance) => instance.opened + 1));
+      writeInstances((here) => ({
+        ...here,
+        [id]: {
+          id,
+          panel,
+          inputs,
+          opened: here[id]?.opened ?? openedNow(here),
+          ...(options.title ? { title: options.title } : {}),
+        },
+      }));
+      // Opened on purpose, so in front of whatever shares its place.
+      raise(id);
+      return id;
+    },
+
+    closePanel: (instance) => {
+      if (!instancesHere()[instance]) return;
+      const key = placementKey(instance);
+      writeInstances((here) => {
+        delete here[instance];
+        return here;
+      });
+      // Its placement goes with it: an instance opened again later is a new one, where it starts.
+      if (placements()[key]) {
+        const { [key]: _gone, ...rest } = placements();
+        setPlacements(rest);
+        savePlacements(rest);
+      }
+    },
+
+    panelInstances: () => Object.values(instancesHere()),
 
     openTemplatePanel: (id) => {
       const dockId = templatePanelDockId(id);

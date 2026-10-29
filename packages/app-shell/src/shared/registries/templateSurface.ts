@@ -1321,6 +1321,10 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     */
     closeTemplatePanel: ambient('view-state'),
     openTemplatePanel: ambient('view-state'),
+    // Opening a panel again for another record is the same act as opening it once.
+    openPanel: ambient('view-state'),
+    closePanel: ambient('view-state'),
+    panelInstances: state('view-state'),
   },
 
   presenceStore: {

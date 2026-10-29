@@ -188,6 +188,12 @@ ordinary panel: it can be docked, folded, stacked, saved in a layout — and its
   outlet sets that lane's default. An app template sets its window edges' default with
   \`meta.edges\`: \`{ "right": { "frame": "flush" } }\` makes the panels pushing the content aside on
   the right part of the app, as a sidebar is; it does not reach a card floating over the content.
+- **A panel can be opened more than once.** \`shellStore.openPanel('inspector', { recordId: … })\`
+  opens another instance of a panel the template supplies, with its own inputs — an inspector per
+  record, side by side or as tabs. Inside the node, \`panel.inputs\` is what it was opened with and
+  \`panel.id\` which instance it is (for the declared panel itself the inputs are empty). It starts
+  where the declaration says, so with an \`order\` it joins that place as a tab; opening the same
+  inputs again brings that instance forward, and its close is \`shellStore.closePanel(panel.id)\`.
 - **Two sections with the same explicit \`order\` share one place, as tabs** — as panels in an edge's
   seat do. One shows, the one most recently opened or chosen, with a strip naming them all; \`tab\`
   orders the strip, else the order they are declared in. An inspector and the space's settings taking
