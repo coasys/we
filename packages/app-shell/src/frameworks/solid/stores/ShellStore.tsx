@@ -1635,9 +1635,14 @@ export function ShellStoreProvider(props: ParentProps) {
     if (laneMoveTimer !== undefined) clearTimeout(laneMoveTimer);
   });
   const beginLaneMove = (ids: readonly string[], closing: boolean) => {
-    const geometry = dockGeometry();
+    // The size each is drawn at now — held while it shrinks onto the strip. See `boxOnScreen`.
     const sizes = Object.fromEntries(
-      ids.map((id) => [id, { width: geometry[id]?.width, height: geometry[id]?.height }]),
+      ids.map((id) => {
+        const request = dockRequests().find((entry) => entry.id === id);
+        if (!request) return [id, {}];
+        const box = boxOnScreen(id, placementOf(request));
+        return [id, { width: `${Math.round(box.w)}px`, height: `${Math.round(box.h)}px` }];
+      }),
     );
     const move = { ids, closing, faded: true, sizes };
     setLaneMove(move);
@@ -1675,9 +1680,29 @@ export function ShellStoreProvider(props: ParentProps) {
    * A snapped panel stores no position at all — its x and y come from the snap on every frame — so a
    * drag that started from the stored values would jump to the origin as soon as it began.
    */
+  /**
+   * A panel's box as it is drawn — the one answer every drop target, drag origin and divider reads.
+   *
+   * In a lane (an edge's, or a template's) the lane lays its panels out, so the box is the frame
+   * measured on screen; anywhere else the engine places the frame, and its box is the engine's. One
+   * question, asked the same way of every place, is the whole of the drop model: a lane offers what
+   * it actually shows. Where nothing is laid out — off screen, or a test without a layout — the
+   * engine's box stands in, which matches the lane's by construction (`laneBase`).
+   */
+  const boxOnScreen = (id: string, placement: FloatPlacement): Rect => {
+    const box = dockGeometry()[id];
+    if ((box?.inLane || box?.home) && typeof document !== 'undefined') {
+      const frame = document.querySelector(`[${DOCK_FRAME_ATTR}="${CSS.escape(id)}"]`);
+      const drawn = frame?.getBoundingClientRect();
+      if (drawn && drawn.width > 0 && drawn.height > 0)
+        return { x: drawn.x, y: drawn.y, w: drawn.width, h: drawn.height };
+    }
+    return rectOf(box, viewport(), placement);
+  };
+
   const resolvedPlacement = (id: string, placement: FloatPlacement): FloatPlacement => ({
     ...placement,
-    ...rectOf(dockGeometry()[id], viewport(), placement),
+    ...boxOnScreen(id, placement),
   });
 
   /**
@@ -3291,7 +3316,7 @@ export function ShellStoreProvider(props: ParentProps) {
           .filter((member): member is DockRequest => member !== undefined && !placementOf(member).collapsed)
           .map((member) => ({
             member,
-            rendered: rectOf(dockGeometry()[member.id], viewport(), placementOf(member))[along],
+            rendered: boxOnScreen(member.id, placementOf(member))[along],
           }));
 
         for (const { member, rendered } of lane) {
@@ -4004,7 +4029,6 @@ export function ShellStoreProvider(props: ParentProps) {
     insertSlots: () => {
       const moving = movingDock();
       if (!moving) return [];
-      const boxes = dockGeometry();
       const requests = dockRequests();
 
       /*
@@ -4029,7 +4053,7 @@ export function ShellStoreProvider(props: ParentProps) {
         stack's own edge offered its seams from the first frame, wherever the pointer was.
       */
       const dragged = requests.find((entry) => entry.id === moving);
-      const carried = dragCarry()?.box ?? (dragged ? rectOf(boxes[moving], viewport(), placementOf(dragged)) : null);
+      const carried = dragCarry()?.box ?? (dragged ? boxOnScreen(moving, placementOf(dragged)) : null);
 
       const homeSlots = () => {
         // Only for a panel an interface declared at home in a lane: a lane keeps nothing else (see
@@ -4117,7 +4141,7 @@ export function ShellStoreProvider(props: ParentProps) {
 
         const rects = (group: (typeof groups)[number]) =>
           group.members.map((member) =>
-            rectOf(boxes[requests[member.index].id], viewport(), requests[member.index].placement ?? member.placement),
+            boxOnScreen(requests[member.index].id, requests[member.index].placement ?? member.placement),
           );
 
         /*
@@ -4170,11 +4194,7 @@ export function ShellStoreProvider(props: ParentProps) {
         const seatRects = (group: (typeof groups)[number]) =>
           group.seats.map((seat) => {
             const front = seat.find((member) => !laneSeating().hidden[requests[member.index].id]) ?? seat[0];
-            return rectOf(
-              boxes[requests[front.index].id],
-              viewport(),
-              requests[front.index].placement ?? front.placement,
-            );
+            return boxOnScreen(requests[front.index].id, requests[front.index].placement ?? front.placement);
           });
 
         let displacingLane = -1;
@@ -4240,7 +4260,7 @@ export function ShellStoreProvider(props: ParentProps) {
         where you aim to get *past* it, not at it.
       */
       const stackSlots = stackTargets(moving).map(({ request }, index) => {
-        const box = rectOf(boxes[request.id], viewport(), request.placement ?? placementOf(request));
+        const box = boxOnScreen(request.id, request.placement ?? placementOf(request));
         // The whole card to aim at, its middle drawn — the same split as a lane's seat above.
         const line = tabTarget(box);
         return {

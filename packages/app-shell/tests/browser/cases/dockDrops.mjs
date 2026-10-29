@@ -70,12 +70,16 @@ export async function check({ call, press, pointTo, release }) {
       { id: 'c', snap: 'bottom-left', width: 260 },
     ],
     async () => {
+      // Where the boundary between the two is drawn — the seam offered must be exactly there.
+      const drawn = await boxes();
       const { offered, target } = await dragTo(
         grip('c'),
         (o) => o.slots.find((slot) => slot.mode === 'lane' && slot.edge === 'right' && slot.key.endsWith(':1')),
         { x: 1100, y: 360 },
       );
       if (!target) return [`no seat offered between the two: ${summary(offered)}`];
+      if (!near(target.y, drawn.a.bottom))
+        return [`the seam offered is not on the boundary drawn: ${target.y} vs ${drawn.a.bottom}`];
       await settle();
       const { a, b, c } = await boxes();
       const out = [];
