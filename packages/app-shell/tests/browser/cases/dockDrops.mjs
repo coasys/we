@@ -239,5 +239,23 @@ export async function check({ call, press, pointTo, release }) {
     },
   );
 
+  // A section whose content arrives late grows, and that is not a move: nothing plays.
+  await run(
+    'a section growing as its content arrives',
+    [
+      { id: 'a', snap: 'left', home: true },
+      { id: 'b', snap: 'left', home: true },
+    ],
+    async () => {
+      await call('dockProbeGrow', 'a', 400);
+      await settle();
+      // The app recounting for some other reason a moment later — a raise, a highlight fading.
+      await call('dockProbeAct', 'raiseDock', 'b');
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      const moving = await call('dockProbeMoving');
+      return moving.length ? [`played as though it moved: ${JSON.stringify(moving)}`] : [];
+    },
+  );
+
   return problems;
 }

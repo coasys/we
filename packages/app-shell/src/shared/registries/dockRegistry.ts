@@ -639,63 +639,83 @@ export function frameBox(entry: DockEntry): SchemaNode {
 function flushControls(entry: DockEntry): SchemaNode {
   const geo = (field: string) => dockGeometryPath(entry.id, field);
   const home = geo('home');
+  /*
+    Its close, where the flush header does not carry one — and never on a template's own section in
+    the page, which is part of the page as the rest of it is: the template offers a close of its own
+    if it wants one. That close arrived on the Coasys tree when the edge's frame became the frame
+    everywhere.
+  */
+  const closes =
+    entry.close || entry.closeAction
+      ? entry.moduleId === TEMPLATE_DOCK_STORE_ID
+        ? `!(${flushHeaded(entry)}) && !${home}`
+        : `!(${flushHeaded(entry)})`
+      : 'false';
+  const grips = `!${geo('fixed')}`;
   return {
-    type: 'Row',
+    type: '$if',
+    // Nothing to offer, nothing drawn: an empty pill in the corner of a fixed section is noise.
     props: {
-      position: 'absolute',
-      top: '100',
-      right: '100',
-      zIndex: 1,
-      gap: '100',
-      ay: 'center',
-      p: '100',
-      r: '300',
-      bg: 'surface-raised',
-      shadow: 'sm',
-      // Every grip at once while somebody is asking what can be moved — see `customisingLayout`.
-      opacity: { $: 'local.framePointed || shellStore.customisingLayout ? 1 : 0' },
-      transition: 'opacity 150 ease',
-    },
-    children: [
-      {
-        type: '$if',
+      condition: { $: `(${grips}) || (${closes})` },
+      then: {
+        type: 'Row',
         props: {
-          condition: { $: `!${geo('fixed')}` },
-          then: {
-            type: 'we-move-handle',
-            props: {
-              // At home in a template, the grip takes the section out of the page: dragged, under the
-              // pointer; pressed, to the snap its declaration names.
-              label: { $: `${home} ? 'Break out into a panel' : 'Move panel'` },
-              'data-we-panel-grip': entry.id,
-              onMovestart: {
-                $invoke: 'shellStore.beginDockMove',
-                args: [entry.id, { $: 'arg.detail.x' }, { $: 'arg.detail.y' }, { $: home }],
-              },
-              onMove: {
-                $invoke: 'shellStore.moveDock',
-                args: [entry.id, { $: 'arg.detail.dx' }, { $: 'arg.detail.dy' }],
-              },
-              onMoveend: { $invoke: 'shellStore.endDockMove', args: [entry.id] },
-            },
-            children: [
-              {
-                type: 'we-icon',
-                props: {
-                  name: { $: `${home} ? '${GRIP_ICONS.breakOut.icon}' : '${GRIP_ICONS.move.icon}'` },
-                  size: 'sm',
-                  color: 'text-faint',
-                },
-              },
-            ],
-          },
+          position: 'absolute',
+          top: '100',
+          right: '100',
+          zIndex: 1,
+          gap: '100',
+          ay: 'center',
+          p: '100',
+          r: '300',
+          bg: 'surface-raised',
+          shadow: 'sm',
+          // Every grip at once while somebody is asking what can be moved — see `customisingLayout`.
+          opacity: { $: 'local.framePointed || shellStore.customisingLayout ? 1 : 0' },
+          transition: 'opacity 150 ease',
         },
+        children: [
+          {
+            type: '$if',
+            props: {
+              condition: { $: grips },
+              then: {
+                type: 'we-move-handle',
+                props: {
+                  // At home in a template, the grip takes the section out of the page: dragged, under the
+                  // pointer; pressed, to the snap its declaration names.
+                  label: { $: `${home} ? 'Break out into a panel' : 'Move panel'` },
+                  'data-we-panel-grip': entry.id,
+                  onMovestart: {
+                    $invoke: 'shellStore.beginDockMove',
+                    args: [entry.id, { $: 'arg.detail.x' }, { $: 'arg.detail.y' }, { $: home }],
+                  },
+                  onMove: {
+                    $invoke: 'shellStore.moveDock',
+                    args: [entry.id, { $: 'arg.detail.dx' }, { $: 'arg.detail.dy' }],
+                  },
+                  onMoveend: { $invoke: 'shellStore.endDockMove', args: [entry.id] },
+                },
+                children: [
+                  {
+                    type: 'we-icon',
+                    props: {
+                      name: { $: `${home} ? '${GRIP_ICONS.breakOut.icon}' : '${GRIP_ICONS.move.icon}'` },
+                      size: 'sm',
+                      color: 'text-faint',
+                    },
+                  },
+                ],
+              },
+            },
+          },
+          // Here only where the flush header is not drawn, which carries the close itself.
+          ...(entry.close || entry.closeAction
+            ? [{ type: '$if', props: { condition: { $: closes }, then: closeButton(entry) } }]
+            : []),
+        ],
       },
-      // Here only where the flush header is not drawn, which carries the close itself.
-      ...(entry.close || entry.closeAction
-        ? [{ type: '$if', props: { condition: { $: `!(${flushHeaded(entry)})` }, then: closeButton(entry) } }]
-        : []),
-    ],
+    },
   };
 }
 

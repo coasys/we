@@ -53,6 +53,27 @@ export function PanelMotion() {
   let frame: number | undefined;
   onCleanup(() => frame !== undefined && cancelAnimationFrame(frame));
 
+  /*
+    A frame that changes size by itself — content arriving late, a lane dragged wider — has not moved.
+    Remembered as it settles, so the next change to the arrangement starts from where it really is:
+    otherwise a panel whose content loaded after it opened played, on the next recount, from the size
+    it opened at — vanishing and sliding in again. Not while a measurement is pending, whose whole
+    point is the box from *before* the change that scheduled it; and not for a frame mid-animation.
+  */
+  const resized =
+    typeof ResizeObserver === 'undefined'
+      ? undefined
+      : new ResizeObserver(() => {
+          if (frame !== undefined) return;
+          for (const el of document.querySelectorAll<HTMLElement>(`[${DOCK_FRAME_ATTR}]`)) {
+            const id = el.getAttribute(DOCK_FRAME_ATTR) ?? '';
+            const known = seen.get(id);
+            if (!known || known.el !== el || playing.get(el)?.animation.playState === 'running') continue;
+            seen.set(id, { ...known, rect: el.getBoundingClientRect() });
+          }
+        });
+  onCleanup(() => resized?.disconnect());
+
   // The reader's system setting, or the app's own (`data-we-motion`), as the frame's fade-in honours.
   const reduced = () =>
     typeof window !== 'undefined' &&
@@ -74,11 +95,12 @@ export function PanelMotion() {
     frame = requestAnimationFrame(() => {
       frame = undefined;
       const size = `${window.innerWidth}x${window.innerHeight}`;
-      const resized = size !== viewport;
+      const windowResized = size !== viewport;
       viewport = size;
 
       for (const el of document.querySelectorAll<HTMLElement>(`[${DOCK_FRAME_ATTR}]`)) {
         const id = el.getAttribute(DOCK_FRAME_ATTR) ?? '';
+        resized?.observe(el);
         const going = playing.get(el);
         const rect = going?.animation.playState === 'running' ? going.to : el.getBoundingClientRect();
         const before = seen.get(id);
@@ -86,7 +108,7 @@ export function PanelMotion() {
         const stowing = Boolean(box?.stowed || box?.layoutWidth || box?.contentsFaded);
         seen.set(id, { el, rect, stowing });
         const landed = landing.delete(id);
-        if (resizing || resized || !before || reduced() || id === moving || stowing || before.stowing) continue;
+        if (resizing || windowResized || !before || reduced() || id === moving || stowing || before.stowing) continue;
         if (rect.width === 0 || rect.height === 0 || getComputedStyle(el).visibility === 'hidden') continue;
 
         // A frame that stayed over the window eases itself; one that arrived, or is laid out by a lane, does not.

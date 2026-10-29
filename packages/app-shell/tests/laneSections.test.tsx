@@ -225,6 +225,22 @@ describe('a lane holding any panel', () => {
       (h) => (h as HTMLElement & { label: string }).label,
     );
     expect(labels).toEqual(['Break out into a panel']);
+    // Part of the page: no close of the host's on a template's own section.
+    expect(
+      [...lane.querySelectorAll('we-icon')].some((icon) => (icon as HTMLElement & { name?: string }).name === 'x'),
+    ).toBe(false);
+  });
+
+  // The Coasys tree: a template's own section, flush and fixed — nothing in its corner at all.
+  it('draws nothing in the corner of a fixed section of the page', async () => {
+    setTemplatePanels(
+      [{ id: 'tree', node: text('Tree'), title: 'This space', home: 'side', fixed: true }],
+      'coasys-space',
+    );
+    const { lane } = mountLane();
+    await vi.waitFor(() => expect(lane.textContent).toContain('Tree'));
+    expect(lane.querySelectorAll('we-move-handle')).toHaveLength(0);
+    expect(lane.querySelectorAll('we-button')).toHaveLength(0);
   });
 
   it("tells a frame on an edge how its panel is framed, from the panel's declaration", () => {

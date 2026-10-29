@@ -1219,6 +1219,12 @@ function dockProbeTargets(): {
   };
 }
 
+/** Make a probe panel's content this tall, as content arriving late makes a panel taller. */
+function dockProbeGrow(id: string, height: number): void {
+  const content = document.getElementById(`content-${id}`);
+  if (content) content.style.height = `${height}px`;
+}
+
 /** Which probe panels' frames are moving by animation right now — see `PanelMotion`. */
 function dockProbeMoving(): string[] {
   return (
@@ -1457,6 +1463,7 @@ function toastProbe(message: string, actionLabel = ''): string {
   dockProbeBoxes,
   dockProbeTargets,
   dockProbeMoving,
+  dockProbeGrow,
   // The theme pipeline itself, for a probe of how an apply behaves.
   themeApi: { applyThemeVars, clearThemeVars, setDisplayPreferences, setThemeLive },
   themeDrag,
