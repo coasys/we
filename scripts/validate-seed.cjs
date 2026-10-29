@@ -379,7 +379,19 @@ function validateSpaceStarter(seed) {
           : [];
   const knownPlaceholders = new Set(['space.name', 'space.description']);
   const ids = new Set();
-  const starterKeys = new Set(['id', 'name', 'description', 'settings', 'records', 'landmarks', 'policy', 'input']);
+  // STARTER_KEYS in @we/schema-shared's spaceStarter.ts, copied because this runs before any build;
+  // app-shell's spaceStarter test fails when the two differ.
+  const starterKeys = new Set([
+    'id',
+    'name',
+    'description',
+    'icon',
+    'settings',
+    'records',
+    'landmarks',
+    'policy',
+    'input',
+  ]);
 
   starters.forEach((starter, n) => {
     const p = `spaceStarters[${n}]`;

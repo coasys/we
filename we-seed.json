@@ -48,6 +48,7 @@
       "id": "we-default",
       "name": "Workshop",
       "description": "A shared canvas, a board and a calendar for what the community's calls and messages produce.",
+      "icon": "squares-four",
       "settings": {
         "defaultTemplateId": "workshop",
         "defaultThemeId": "dark",

@@ -1,38 +1,86 @@
 /**
- * Which starter a new space gets: the app's, when it came in a bundle the seed builds in, and
- * otherwise the deployment's.
+ * What a new space can start with: the app's starters when it came in a bundle the seed builds in,
+ * then the deployment's, then nothing — and what each one writes, counted from its records.
  */
-import { newSpaceStarter } from '@shared/bundles/bundleStarter';
+import { NO_STARTER, spaceStarterChoices, starterIncludes } from '@shared/bundles/bundleStarter';
 import type { SpaceStarter } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
-const seedStarter: SpaceStarter = { id: 'seed' };
-const appStarter: SpaceStarter = { id: 'app', description: 'A tree and a view' };
+const seedStarter: SpaceStarter = { id: 'seed', name: 'Workshop' };
+const appStarter: SpaceStarter = { id: 'app', name: 'Kit', description: 'A tree and a view', icon: 'dna' };
 const builtIn = [
   { bundleId: 'coasys', name: 'Coasys app', brand: { name: 'Coasys' }, starters: [appStarter] },
   { bundleId: 'plain', name: 'Plain', starters: [] },
 ];
 const inApp = (bundle?: string) => ({ source: bundle ? { bundle, version: '1', piece: 'app' } : undefined });
+const ids = (facts: Parameters<typeof spaceStarterChoices>[0]) => spaceStarterChoices(facts).map((c) => c.id);
 
-describe('the starter a new space gets', () => {
-  it('is the app’s, named by its brand, while an app that brings one is in use', () => {
-    expect(newSpaceStarter({ app: inApp('coasys'), builtIn, seed: [seedStarter] })).toEqual({
-      starter: appStarter,
-      app: 'Coasys',
-    });
+describe('what a new space can start with', () => {
+  it('leads with the app’s starter, named by its brand, while an app that brings one is in use', () => {
+    const [first] = spaceStarterChoices({ app: inApp('coasys'), builtIn, seed: [seedStarter] });
+    expect(first).toMatchObject({ id: 'app', name: 'Kit', icon: 'dna', app: 'Coasys', starter: appStarter });
+    expect(ids({ app: inApp('coasys'), builtIn, seed: [seedStarter] })).toEqual(['app', 'seed', NO_STARTER]);
   });
 
-  it('is the deployment’s in WE’s own app, and in an app that brings none', () => {
-    expect(newSpaceStarter({ app: inApp(), builtIn, seed: [seedStarter] })).toEqual({ starter: seedStarter });
-    expect(newSpaceStarter({ app: inApp('plain'), builtIn, seed: [seedStarter] })).toEqual({ starter: seedStarter });
+  it('leads with the deployment’s in WE’s own app, and in an app that brings none', () => {
+    expect(ids({ app: inApp(), builtIn, seed: [seedStarter] })).toEqual(['seed', NO_STARTER]);
+    expect(ids({ app: inApp('plain'), builtIn, seed: [seedStarter] })).toEqual(['seed', NO_STARTER]);
   });
 
-  it('is the deployment’s in an installed app — its starter is somebody else’s, and not asked about yet', () => {
+  it('leaves out an installed app’s starter — it is somebody else’s, and not asked about yet', () => {
     // An installed app's bundle is never among the seed's, whatever starters it carries.
-    expect(newSpaceStarter({ app: inApp('stranger'), builtIn, seed: [seedStarter] })).toEqual({ starter: seedStarter });
+    expect(ids({ app: inApp('stranger'), builtIn, seed: [seedStarter] })).toEqual(['seed', NO_STARTER]);
   });
 
-  it('is nothing when neither has one', () => {
-    expect(newSpaceStarter({ app: inApp(), builtIn, seed: undefined })).toEqual({ starter: undefined });
+  it('always offers nothing, last, which applies no starter', () => {
+    const choices = spaceStarterChoices({ app: inApp(), builtIn, seed: undefined });
+    expect(choices).toHaveLength(1);
+    expect(choices[0]).toMatchObject({ id: NO_STARTER, starter: undefined });
+  });
+
+  it('lists a starter both levels carry once, as the app’s', () => {
+    const shared = [{ ...builtIn[0], starters: [{ id: 'seed', name: 'App copy' }] }];
+    const choices = spaceStarterChoices({ app: inApp('coasys'), builtIn: shared, seed: [seedStarter] });
+    expect(choices.map((c) => [c.id, c.name])).toEqual([
+      ['seed', 'App copy'],
+      [NO_STARTER, 'Nothing'],
+    ]);
+  });
+});
+
+describe('what a starter includes', () => {
+  it('counts what it writes by what each record is, and a collection by its kind', () => {
+    const starter: SpaceStarter = {
+      id: 'kit',
+      records: [
+        { entity: 'SignalType' },
+        { entity: 'TaskState' },
+        { entity: 'TaskState' },
+        { entity: 'InvolvementType' },
+        { $id: 'canvas', entity: 'CollectionBlock', fields: { kind: 'canvas' }, in: '$root' },
+        { $id: 'board', entity: 'CollectionBlock', fields: { kind: 'board' }, in: '$root' },
+      ],
+    };
+    expect(starterIncludes(starter)).toBe('1 reaction · 2 task states · 1 way to be involved · a canvas · a board');
+  });
+
+  it('leaves out what sits inside another of its records — a board’s columns are the board', () => {
+    const starter: SpaceStarter = {
+      id: 'kit',
+      records: [
+        { $id: 'board', entity: 'CollectionBlock', fields: { kind: 'board' }, in: '$root' },
+        { entity: 'CollectionBlock', fields: { kind: 'column' }, in: '$board' },
+        { entity: 'CollectionBlock', fields: { kind: 'column' }, in: '$board' },
+      ],
+    };
+    expect(starterIncludes(starter)).toBe('a board');
+  });
+
+  it('names an entity it has no word for by the entity', () => {
+    expect(starterIncludes({ id: 'kit', records: [{ entity: 'Badge' }, { entity: 'Badge' }] })).toBe('2 Badges');
+  });
+
+  it('is empty for a starter that writes nothing', () => {
+    expect(starterIncludes({ id: 'settings-only', settings: { autoInterpret: true } })).toBe('');
   });
 });

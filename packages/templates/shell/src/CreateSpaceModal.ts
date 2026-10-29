@@ -7,6 +7,147 @@ const close = { $invoke: 'shellStore.setCreateSpaceOpen', args: [false] };
 const chosenSharing =
   'find(spaceStore.sharingOptions, { value: local.sharing ? local.sharing : spaceStore.defaultSharing })';
 
+/** What the space will start with: the starter chosen, or the default until somebody chooses. */
+const chosenStarter =
+  'local.starter ? find(spaceStore.starterChoices, { id: local.starter }) : first(spaceStore.starterChoices)';
+
+/** A starter's name, what it says about itself and what it writes, read off `at` — a path to one. */
+const starterWords = (at: string, chosen: string): SchemaNode => ({
+  type: 'Column',
+  props: { gap: '100', flex: '1', minWidth: '0' },
+  children: [
+    {
+      type: 'we-text',
+      props: { fontWeight: '600', color: { $: `(${chosen}) ? 'accent-text' : 'text'` } },
+      children: [{ $: `${at}.name` }],
+    },
+    {
+      type: '$if',
+      props: {
+        condition: { $: `${at}.description` },
+        then: {
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'text-muted' },
+          children: [{ $: `${at}.description` }],
+        },
+      },
+    },
+    {
+      type: '$if',
+      props: {
+        condition: { $: `${at}.includes` },
+        then: {
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'text-faint' },
+          children: [{ $: `${at}.includes` }],
+        },
+      },
+    },
+  ],
+});
+
+/**
+ * What the space starts with, last in the form: a card naming the starter it will get, and Change to
+ * choose another in place. The app's kit is chosen until somebody changes it — a space made in Coasys
+ * is meant to be a Coasys space — but a space is the community's, so the choice is shown rather than
+ * made silently, and Nothing is always there. Hidden where Nothing is all there is.
+ */
+const starterChoice: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'count(spaceStore.starterChoices) > 1' },
+    then: {
+      type: 'Column',
+      props: { gap: '200', mt: '200' },
+      children: [
+        { type: 'we-text', props: { variant: 'label' }, children: ['Starts with'] },
+        {
+          type: '$if',
+          props: {
+            condition: { $: '!local.choosingStarter' },
+            then: {
+              type: 'Row',
+              props: {
+                gap: '300',
+                ay: 'center',
+                p: '300',
+                r: 'surface',
+                bg: 'accent-soft',
+                border: '1px solid accent-border',
+              },
+              children: [
+                { type: 'we-icon', props: { name: { $: `(${chosenStarter}).icon` }, color: 'accent-text' } },
+                starterWords(`(${chosenStarter})`, 'true'),
+                {
+                  type: 'we-button',
+                  props: {
+                    variant: 'ghost',
+                    size: 'sm',
+                    text: 'Change',
+                    label: 'Change what the space starts with',
+                    onClick: { $setLocal: 'choosingStarter', value: true },
+                  },
+                },
+              ],
+            },
+            // Every option as a card of its own, the chosen one drawn as the card above was; choosing
+            // one closes the list, so choosing the same one again is how to leave it unchanged.
+            else: {
+              type: 'Column',
+              props: { gap: '200' },
+              children: [
+                {
+                  type: '$each',
+                  props: { items: { $: 'spaceStore.starterChoices' }, as: 'choice' },
+                  children: [
+                    {
+                      type: 'we-button',
+                      props: {
+                        variant: 'bare',
+                        width: '100%',
+                        onClick: [
+                          { $setLocal: 'starter', value: { $: 'choice.id' } },
+                          { $setLocal: 'choosingStarter', value: false },
+                        ],
+                      },
+                      children: [
+                        {
+                          type: 'Row',
+                          props: {
+                            gap: '300',
+                            ay: 'center',
+                            p: '300',
+                            r: 'surface',
+                            width: '100%',
+                            bg: { $: `choice.id == (${chosenStarter}).id ? 'accent-soft' : 'surface'` },
+                            border: {
+                              $: `choice.id == (${chosenStarter}).id ? '1px solid accent-border' : '1px solid border'`,
+                            },
+                          },
+                          children: [
+                            {
+                              type: 'we-icon',
+                              props: {
+                                name: { $: 'choice.icon' },
+                                color: { $: `choice.id == (${chosenStarter}).id ? 'accent-text' : 'text-muted'` },
+                              },
+                            },
+                            starterWords('choice', `choice.id == (${chosenStarter}).id`),
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      ],
+    },
+  },
+};
+
 /**
  * Forgets a server choice, for when the control it was made in goes away. A typed address that does
  * not parse would otherwise keep `formValid()` false from a field nobody can see.
@@ -78,6 +219,12 @@ export const createSpaceModal = {
         },
       ],
     },
+    /*
+      The starter chosen: '' for the default, read through `chosenStarter`, for the same reason as
+      `sharing` — what the store offers may not have settled when the modal opens.
+    */
+    starter: { type: 'string', initial: '' },
+    choosingStarter: { type: 'boolean', initial: false },
     submitting: { type: 'boolean', initial: false },
     ...guard.localState,
   },
@@ -91,52 +238,6 @@ export const createSpaceModal = {
       was the one that did not.
     */
     { type: 'we-text', props: { variant: 'heading-md' }, slot: 'header', children: ['Create a New Space'] },
-
-    /*
-      Which app's starter the space gets, when it is not the deployment's own: a space is the
-      community's, and the app somebody happens to be in should not decide its defaults silently.
-      Nothing in WE's own app, where the deployment's starter applies.
-    */
-    {
-      type: '$if',
-      props: {
-        condition: { $: 'spaceStore.startsAs' },
-        /*
-          A note about what is being made, so an info alert — the default tone: tinted, so it never
-          reads as one more field above the dialog's own, with the surface family's corners, and a
-          status rather than an interruption. It was drawn by hand with the control family's radius,
-          which a theme with pill buttons (Coasys Glow) turned into a pill.
-        */
-        then: {
-          type: 'we-alert',
-          props: { icon: { $: 'spaceStore.startsAs.icon' } },
-          children: [
-            {
-              type: 'Column',
-              props: { gap: '100' },
-              children: [
-                {
-                  type: 'we-text',
-                  props: { fontWeight: '600' },
-                  children: [{ $: 'spaceStore.startsAs.title' }],
-                },
-                {
-                  type: '$if',
-                  props: {
-                    condition: { $: 'spaceStore.startsAs.description' },
-                    then: {
-                      type: 'we-text',
-                      props: { variant: 'footnote', color: 'text-muted' },
-                      children: [{ $: 'spaceStore.startsAs.description' }],
-                    },
-                  },
-                },
-              ],
-            },
-          ],
-        },
-      },
-    },
 
     /*
       Cover and avatar, arranged the way the space header this is composing arranges them: the
@@ -574,6 +675,8 @@ export const createSpaceModal = {
             },
           },
         },
+
+        starterChoice,
       ],
     },
 
@@ -619,6 +722,7 @@ export const createSpaceModal = {
                       { $: 'local.location' },
                       { $: 'local.sharing' },
                       { $: "local.server == 'custom' ? local.customServer : local.server" },
+                      { $: 'local.starter' },
                     ],
                     // Into the space just made, as joining one does: making it was a step towards using it.
                     onSuccess: [

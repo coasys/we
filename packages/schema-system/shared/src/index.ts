@@ -188,6 +188,7 @@ export {
   SPACE_REF,
   type SpaceStarter,
   type SpaceStarterRecord,
+  STARTER_KEYS,
   type StarterContext,
   starterProblems,
   starterSettings,

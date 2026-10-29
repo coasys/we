@@ -1749,8 +1749,34 @@ const createSpaceShared = (): Scenario => ({
         },
       ]),
       defaultSharing: 'Qm-p2p',
-      createSpace: async (...args: unknown[]) =>
-        document.body.setAttribute('data-created', JSON.stringify(args.slice(7))),
+      starterChoices: [
+        {
+          id: 'coasys-default',
+          name: "Coasys's starter kit",
+          description: 'Social DNA, a canvas and a task board. You can change any of it later.',
+          icon: 'dna',
+          includes: '1 reaction · 3 task states · 5 ways to be involved · a canvas · a board',
+          app: 'Coasys',
+        },
+        {
+          id: 'we-default',
+          name: 'Workshop',
+          description: 'A shared canvas, a board and a calendar.',
+          icon: 'squares-four',
+          includes: '3 task states · a canvas · a board',
+        },
+        {
+          id: '$none',
+          name: 'Nothing',
+          description: 'Only what every space has.',
+          icon: 'circle-dashed',
+          includes: '',
+        },
+      ],
+      createSpace: async (...args: unknown[]) => {
+        document.body.setAttribute('data-created', JSON.stringify(args.slice(7, 9)));
+        document.body.setAttribute('data-starter', String(args[9]));
+      },
     },
     shellStore: { setCreateSpaceOpen: () => {} },
     datasetStore: { globalDataset: null, globalSpaceConfigured: false },
@@ -2295,6 +2321,10 @@ const feedViewPage = (): Scenario => {
   };
 };
 
+/**
+ * TEMPORARY — a mockup, not a check: the create-space dialog with a choice of starter, placed three
+ * ways, under Coasys Glow.
+ */
 export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'coasys:about': coasysAbout,
   'feed:view': feedViewPage,

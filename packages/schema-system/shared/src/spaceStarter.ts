@@ -15,15 +15,15 @@
  * ## Two levels, the app's first
  *
  * The seed carries the deployment's starters under `spaceStarters`, and a bundle carries its app's
- * under `starters` (`Bundle.starters`), in this same format. A new space gets the first starter of
- * the app in use when that app came in a bundle the seed builds in, and otherwise the seed's first —
- * which is what WE's own app gets. The app wins because a space made inside Coasys is meant to be a
- * Coasys space; a deployment that needs every space to start its way has no switch for that yet.
+ * under `starters` (`Bundle.starters`), in this same format. The create dialog offers the starters of
+ * the app in use when that app came in a bundle the seed builds in, then the seed's, then nothing,
+ * and the first is chosen unless somebody changes it — see `bundleStarter.ts` in the app shell. The
+ * app's come first because a space made inside Coasys is meant to be a Coasys space.
  *
- * Only a built-in bundle's starter applies. One installed from a file is somebody else's, and its
- * starter would write into every space made while in that app, for everyone in it; until an install
- * asks about that, it is ignored. Here because `readBundle` checks a bundle's starters with the rules
- * a seed's get, and the bundle format lives beside it.
+ * Only a built-in bundle's starters are offered. One installed from a file is somebody else's, and
+ * its starter would write into the space for everyone in it; until choosing it says so, it is left
+ * out. Here because `readBundle` checks a bundle's starters with the rules a seed's get, and the
+ * bundle format lives beside it.
  *
  * ## Records are records
  *
@@ -78,14 +78,9 @@ export interface SpaceStarterRecord {
 
 export interface SpaceStarter {
   id: string;
-  /** What somebody choosing between starters reads. */
+  /** What somebody choosing between starters reads — "Coasys's starter kit". */
   name?: string;
   description?: string;
-  /**
-   * What the create dialog leads with when an app's starter applies — "Comes with Coasys's starter
-   * kit". Absent, it says the space starts as the app's.
-   */
-  title?: string;
   /** The glyph beside it — what the kit is mostly about (`dna` for a starter that is Social DNA). */
   icon?: string;
   /**
@@ -370,7 +365,6 @@ export const STARTER_KEYS: ReadonlySet<string> = new Set([
   'id',
   'name',
   'description',
-  'title',
   'icon',
   'settings',
   'records',

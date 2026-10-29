@@ -7747,9 +7747,8 @@
         "defaultSharing": {
           "type": "string"
         },
-        "startsAs": {
-          "type": "object",
-          "properties": ["app", "title", "description", "icon"]
+        "starterChoices": {
+          "type": "array"
         },
         "mutedDids": {
           "type": "array"

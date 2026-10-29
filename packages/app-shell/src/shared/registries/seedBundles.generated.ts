@@ -29297,8 +29297,7 @@ export const seedBundles: Bundle[] = [
     starters: [
       {
         id: 'coasys-default',
-        name: 'Coasys space',
-        title: "Comes with Coasys's starter kit",
+        name: "Coasys's starter kit",
         description:
           "Social DNA for likes, tasks and who's involved, a canvas and a task board, and calls read for the work that comes out of them. You can change any of it later.",
         icon: 'dna',

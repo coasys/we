@@ -10,10 +10,9 @@ import type { SpaceStarter } from '@we/schema-shared';
 
 export const coasysStarter: SpaceStarter = {
   id: 'coasys-default',
-  name: 'Coasys space',
   // Read in the create dialog while somebody is in Coasys: what the kit gives, in Coasys's own words,
   // and that it is a start rather than a commitment.
-  title: "Comes with Coasys's starter kit",
+  name: "Coasys's starter kit",
   description:
     "Social DNA for likes, tasks and who's involved, a canvas and a task board, and calls read for the work that comes out of them. You can change any of it later.",
   icon: 'dna',

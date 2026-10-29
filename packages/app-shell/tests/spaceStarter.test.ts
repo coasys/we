@@ -5,6 +5,9 @@
  * space simply arrives without its canvas. So these pin the order records are written in, what
  * contains each, and that a broken reference costs that record rather than the space.
  */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import {
   applyStarterRecords,
@@ -12,6 +15,7 @@ import {
   linkSpaceRelations,
   type RelationWrites,
   type SpaceStarter,
+  STARTER_KEYS,
   starterProblems,
   starterSettings,
   type StarterWriter,
@@ -251,9 +255,17 @@ describe('checking a starter', () => {
     ).toEqual(['lonely']);
   });
 
+  // `validate:seed` runs before any build, so it keeps a copy of the keys. A copy without `icon`
+  // refused the seed's own starter once a glyph was given to it.
+  it('is checked by validate:seed with the same keys', () => {
+    const script = readFileSync(join(__dirname, '..', '..', '..', 'scripts', 'validate-seed.cjs'), 'utf8');
+    const copied = /const starterKeys = new Set\(\[([^\]]*)\]\)/.exec(script)?.[1];
+    expect(copied?.match(/'[^']+'/g)?.map((key) => key.slice(1, -1))).toEqual([...STARTER_KEYS]);
+  });
+
   it('refuses a key nothing reads, and a policy that is not one', () => {
     expect(starterProblems({ id: 'x', roles: {} } as unknown as SpaceStarter, vocabulary)).toEqual([
-      'roles is not part of a starter (id, name, description, title, icon, settings, records, landmarks, policy, input)',
+      'roles is not part of a starter (id, name, description, icon, settings, records, landmarks, policy, input)',
     ]);
     expect(starterProblems({ id: 'x', policy: 'closed' } as unknown as SpaceStarter, vocabulary)).toEqual([
       'policy must be "open" or "community": closed',

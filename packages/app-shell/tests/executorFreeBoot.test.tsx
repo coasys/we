@@ -127,6 +127,7 @@ import { type SessionStore, SessionStoreProvider, useSessionStore } from '../src
 import { type ShapeStore, ShapeStoreProvider, useShapeStore } from '../src/frameworks/solid/stores/ShapeStore';
 import { ShellStoreProvider } from '../src/frameworks/solid/stores/ShellStore';
 import { type SpaceStore, SpaceStoreProvider, useSpaceStore } from '../src/frameworks/solid/stores/SpaceStore';
+import { NO_STARTER } from '../src/shared/bundles/bundleStarter';
 import { createModuleStoreDeps } from '../src/shared/registries/moduleHostServices';
 import { provideSeed } from '../src/shared/seedRegistry';
 import { writeSpaceLandmark } from '../src/shared/spaceLandmarks';
@@ -631,15 +632,36 @@ describe('dataset lifecycle through the real stores', () => {
     await ready(stores);
     app.use({ id: 'coasys--app', source: { bundle: 'coasys' } });
     try {
-      expect(stores.spaces.startsAs()?.app).toBe('Coasys');
-      // In the starter's own words and with its own glyph — the note says what the kit gives.
-      expect(stores.spaces.startsAs()).toMatchObject({ title: "Comes with Coasys's starter kit", icon: 'dna' });
-      expect(stores.spaces.startsAs()?.description).toContain('Social DNA');
+      const [kit, ...rest] = stores.spaces.starterChoices();
+      // In the starter's own words, with its own glyph and what it writes counted from its records.
+      expect(kit).toMatchObject({ app: 'Coasys', name: "Coasys's starter kit", icon: 'dna' });
+      expect(kit.description).toContain('Social DNA');
+      expect(kit.includes).toBe('1 reaction · 3 task states · 5 ways to be involved · a canvas · a board');
+      // A template chooses by id; the records stay in the store.
+      expect(kit).not.toHaveProperty('starter');
+      expect(rest.map((c) => c.id)).toEqual([NO_STARTER]);
       await stores.spaces.createSpace('In Coasys', '', 'personal', 'hidden');
+      await stores.spaces.createSpace(
+        'Bare in Coasys',
+        '',
+        'personal',
+        'hidden',
+        undefined,
+        undefined,
+        null,
+        '',
+        '',
+        NO_STARTER,
+      );
+      // One no longer offered is refused before a space exists, rather than swapped for the default.
+      await expect(
+        stores.spaces.createSpace('Stale', '', 'personal', 'hidden', undefined, undefined, null, '', '', 'gone'),
+      ).rejects.toThrow('gone');
     } finally {
       app.use({ id: 'we-app' });
     }
-    expect(stores.spaces.startsAs()).toBeNull();
+    // The test seed has no starter of its own, so in WE's app there is nothing to choose between.
+    expect(stores.spaces.starterChoices().map((c) => c.id)).toEqual([NO_STARTER]);
     await stores.spaces.createSpace('In WE', '', 'personal', 'hidden');
 
     const rowOf = async (name: string) => {
@@ -648,7 +670,8 @@ describe('dataset lifecycle through the real stores', () => {
       return stores.spaces.spaceList().find((r) => r.uuid === uuid)!;
     };
     expect((await rowOf('In Coasys')).defaultThemeId).toBe('coasys--glow');
-    // The test seed has no starter of its own, so a space made in WE's app keeps every default.
+    expect((await rowOf('Bare in Coasys')).defaultThemeId).not.toBe('coasys--glow');
+    expect((await lifecycle.list()).some((d) => d.name === 'Stale')).toBe(false);
     expect((await rowOf('In WE')).defaultThemeId).not.toBe('coasys--glow');
   }, 10000);
 

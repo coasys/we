@@ -1,33 +1,109 @@
 /**
- * Which starter a new space gets: the app's, when the app in use came in a bundle the seed builds in
- * and that bundle brings one, and otherwise the deployment's. See `spaceStarter.ts` in
- * `@we/schema-shared` for why the app wins.
+ * What a new space can start with: the app's starters, when the app in use came in a bundle the seed
+ * builds in, then the deployment's, then nothing. The first is what a space gets unless somebody
+ * chooses otherwise in the create dialog. See `spaceStarter.ts` in `@we/schema-shared` for why the
+ * app's come first.
  *
- * Only built-in bundles are asked, which is what keeps an installed bundle's starter from applying:
- * an app installed from a file is in the agent's library, never among the seed's bundles, so the
- * lookup by its bundle id finds nothing and the seed's starter applies.
+ * Only built-in bundles are asked, which is what keeps an installed bundle's starter out: an app
+ * installed from a file is in the agent's library, never among the seed's bundles, so the lookup by
+ * its bundle id finds nothing. Its starter would write into the space for everyone in it, and no
+ * install asks about that yet.
  */
-import { defaultSpaceStarter, type SpaceStarter, type TemplateSchema } from '@we/schema-shared';
+import type { SpaceStarter, TemplateSchema } from '@we/schema-shared';
 
 import type { BundlePieces } from './bundlePieces';
 
-export interface NewSpaceStarter {
-  starter: SpaceStarter | undefined;
-  /** The app the starter came with, by name — absent when it is the deployment's own. */
-  app?: string;
-}
-
-export function newSpaceStarter(facts: {
+export interface StarterFacts {
   /** The app in use — its `source` says which bundle it came in, if any. */
   app: Pick<TemplateSchema, 'source'> | undefined;
   /** The bundles the seed builds in. */
   builtIn: readonly Pick<BundlePieces, 'bundleId' | 'name' | 'brand' | 'starters'>[];
   /** The seed's own starters. */
   seed: readonly SpaceStarter[] | undefined;
-}): NewSpaceStarter {
+}
+
+/** The id of the choice that applies no starter. */
+export const NO_STARTER = '$none';
+
+/** One thing a new space can start with, as the create dialog offers it. */
+export interface StarterChoice {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  /** What it writes, counted from its records — "3 task states · 1 reaction · a canvas". */
+  includes: string;
+  /** Absent for the choice that applies none. */
+  starter: SpaceStarter | undefined;
+  /** The app it came with, by name — absent for the deployment's own and for none. */
+  app?: string;
+}
+
+/**
+ * Everything a new space can start with, the one it gets by default first: the app's starters, when
+ * the app in use came in a built-in bundle, then the deployment's, then nothing at all.
+ */
+export function spaceStarterChoices(facts: StarterFacts): StarterChoice[] {
   const bundleId = facts.app?.source?.bundle;
   const bundle = bundleId ? facts.builtIn.find((pieces) => pieces.bundleId === bundleId) : undefined;
-  const own = bundle && defaultSpaceStarter(bundle.starters);
-  if (bundle && own) return { starter: own, app: bundle.brand?.name ?? bundle.name };
-  return { starter: defaultSpaceStarter(facts.seed) };
+  const app = bundle && (bundle.brand?.name ?? bundle.name);
+  const choice = (starter: SpaceStarter, from?: string): StarterChoice => ({
+    id: starter.id,
+    name: starter.name ?? starter.id,
+    description: starter.description ?? '',
+    icon: starter.icon ?? 'package',
+    includes: starterIncludes(starter),
+    starter,
+    ...(from ? { app: from } : {}),
+  });
+  const choices = [
+    ...(bundle?.starters ?? []).map((starter) => choice(starter, app)),
+    ...(facts.seed ?? []).map((starter) => choice(starter)),
+  ];
+  // The same id twice would make one of them unselectable; the app's wins, as it does by default.
+  const unique = choices.filter((c, i) => choices.findIndex((other) => other.id === c.id) === i);
+  return [
+    ...unique,
+    {
+      id: NO_STARTER,
+      name: 'Nothing',
+      description: 'Only what every space has, drawn with your own default template and theme.',
+      icon: 'circle-dashed',
+      includes: '',
+      starter: undefined,
+    },
+  ];
+}
+
+/** What a record of each entity is called in an includes line, one and many. */
+const RECORD_WORDS: Record<string, [string, string]> = {
+  SignalType: ['reaction', 'reactions'],
+  TaskState: ['task state', 'task states'],
+  InvolvementType: ['way to be involved', 'ways to be involved'],
+  Role: ['role', 'roles'],
+};
+
+/**
+ * What a starter writes, as one line counted from its records — so the line cannot drift from what
+ * a create press does. A record inside another of the starter's (a board's columns) is part of that
+ * one and is not counted; a collection is named by its kind.
+ */
+export function starterIncludes(starter: SpaceStarter): string {
+  const counts = new Map<string, number>();
+  for (const record of starter.records ?? []) {
+    if (record.in !== undefined && record.in !== '$root') continue;
+    const kind = record.entity === 'CollectionBlock' ? record.fields?.kind : undefined;
+    const key = typeof kind === 'string' && kind ? `kind:${kind}` : record.entity;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return [...counts]
+    .map(([key, n]) => {
+      if (key.startsWith('kind:')) {
+        const kind = key.slice(5);
+        return n === 1 ? `a ${kind}` : `${n} ${kind}s`;
+      }
+      const [one, many] = RECORD_WORDS[key] ?? [key, `${key}s`];
+      return `${n} ${n === 1 ? one : many}`;
+    })
+    .join(' · ');
 }

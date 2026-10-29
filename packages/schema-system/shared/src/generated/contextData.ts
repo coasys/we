@@ -3226,7 +3226,7 @@ export const contextData: ContextData = {
         viewNav: { type: 'array' },
         sharingOptions: { type: 'array' },
         defaultSharing: { type: 'string' },
-        startsAs: { type: 'object', properties: ['app', 'title', 'description', 'icon'] },
+        starterChoices: { type: 'array' },
         mutedDids: { type: 'array' },
         mutedAgents: { type: 'array' },
         readMarkers: { type: 'array' },

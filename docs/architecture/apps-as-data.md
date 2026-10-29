@@ -174,19 +174,21 @@ A bundle's `starters` are space starters in the format a seed's `spaceStarters` 
 the bundle's own template and theme by their ids in the bundle (`"defaultTemplateId": "space"`), and
 they land on the bundle's pieces (`coasys--space`).
 
-A new space gets, in order:
+The create dialog offers, in order:
 
-1. the first starter of the bundle whose app is in use, when the seed builds that bundle in;
-2. otherwise the seed's first, which is what WE's own app gets.
+1. the starters of the bundle whose app is in use, when the seed builds that bundle in;
+2. the seed's, which are all WE's own app offers besides the last;
+3. Nothing: only what every space has, drawn with the agent's own default template and theme.
 
-The app wins because a space made inside Coasys is meant to be a Coasys space. The create dialog says
-so ("Starts as a Coasys space", with the starter's `description` under it) whenever the app's starter
-is the one that applies, since a space is the community's and the app somebody happens to be in should
-not decide its defaults silently. In WE's own app it shows nothing new.
+The first is chosen until somebody changes it. The app's come first because a space made inside
+Coasys is meant to be a Coasys space; but a space is the community's, and the app somebody happens to
+be in should not decide its defaults silently, so the dialog's last field shows the starter that will
+apply, with Change to choose another (`spaceStore.starterChoices`, the id passed to `createSpace`).
+What each one includes is counted from its records, so the line cannot drift from what it writes.
 
-**Only a built-in bundle's starter applies.** One installed from a file is somebody else's, and its
-starter would write into every space made while in that app, for everyone in it, so it is ignored
-until an install asks about that. A starter applies to new spaces only: changing one never changes a
+**Only a built-in bundle's starters are offered.** One installed from a file is somebody else's, and its
+starter would write into the space for everyone in it, so it is left out until choosing it can say
+so. A starter applies to new spaces only: changing one never changes a
 space made from an earlier version.
 
 A built-in bundle's record types are not built in, so its starter may only write records of the

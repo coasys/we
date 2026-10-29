@@ -125,9 +125,9 @@ export interface Bundle {
    */
   bootScreen?: SchemaNode;
   /**
-   * What a space made while in this app starts with, its first being the one that applies — in the
-   * shape a seed's `spaceStarters` take. `defaultTemplateId` and `defaultThemeId` may name the
-   * bundle's own pieces by their ids here. Only a bundle the seed builds in has its starter applied;
+   * What a space made while in this app can start with, its first chosen unless somebody changes it —
+   * in the shape a seed's `spaceStarters` take. `defaultTemplateId` and `defaultThemeId` may name the
+   * bundle's own pieces by their ids here. Only a bundle the seed builds in has its starters offered;
    * see `spaceStarter.ts`.
    */
   starters?: SpaceStarter[];

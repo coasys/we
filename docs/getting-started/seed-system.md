@@ -231,12 +231,14 @@ names `host.ui.app: "we-app"`, or everyone who has not chosen an app would open 
 
 ### `spaceStarters`
 
-What a new space begins with, beyond the structure every space gets. It's a list: a new space gets
-the first entry, unless the app in use came in a built-in bundle that brings a starter of its own (see
-`bundles` above), and the others are there for a create dialog to offer. The format is in
+What a new space begins with, beyond the structure every space gets. It's a list, and the create
+dialog offers every entry, after the app's own when the app in use came in a built-in bundle that
+brings starters (see `bundles` above), and before "Nothing". The first one offered is chosen until
+somebody changes it. `name`, `description` and `icon` are what the dialog shows; what a starter
+includes is counted from its records. The format is in
 `packages/schema-system/shared/src/spaceStarter.ts`, and `pnpm validate:seed` checks every starter.
 
-A starter has four parts:
+What it writes:
 
 - **`settings`:** the `Space` record's own fields (template, theme, `extractionTargets`, …).
 - **`records`:** written in order, each `{ "$id", "entity", "fields", "in" }`:
