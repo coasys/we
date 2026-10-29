@@ -184,10 +184,17 @@ export const canvasPane: SchemaNode = {
               'pan-zoom',
             ],
             resizable: true,
+            /*
+              `CANVAS_EXPR` parenthesised: it is a ternary itself, and a ternary binds to the right, so
+              pasted in bare it answered with the canvas's own `ad4m://` address whenever there was a
+              canvas — the workshop's canvas once said a call's id the same way. Drawn as an invitation,
+              with the workshop's gradient, since neither sentence is a dead end.
+            */
             empty: {
-              $: `${CANVAS_EXPR} ? 'Nothing here yet. Double-click to make something, or drop something in from Pocket.' : 'This space has no canvas.'`,
+              $: `(${CANVAS_EXPR}) ? 'Nothing on this canvas yet. Double-click anywhere to add a card, or start a call: what it commits to appears here on its own.' : 'This space has no canvas of its own. Spaces made with a starter kit have one.'`,
             },
             emptyIcon: 'squares-four',
+            emptyGradient: 'accent',
             ...canvasEditing({
               canvas: CANVAS,
               // Read old against new in the inspector beside the canvas, as the workshop does.

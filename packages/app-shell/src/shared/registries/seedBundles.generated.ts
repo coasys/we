@@ -20733,9 +20733,10 @@ export const seedBundles: Bundle[] = [
                               ],
                               resizable: true,
                               empty: {
-                                $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '' ? 'Nothing here yet. Double-click to make something, or drop something in from Pocket.' : 'This space has no canvas.'",
+                                $: "(spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') ? 'Nothing on this canvas yet. Double-click anywhere to add a card, or start a call: what it commits to appears here on its own.' : 'This space has no canvas of its own. Spaces made with a starter kit have one.'",
                               },
                               emptyIcon: 'squares-four',
+                              emptyGradient: 'accent',
                               onEdgeCreate: {
                                 $invoke: 'recordStore.connectNodesNow',
                                 args: [{ $: 'event' }],

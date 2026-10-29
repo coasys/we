@@ -241,6 +241,13 @@ describe('the Coasys cartridge', () => {
     const focusRules = ((graph.props as { nodeStyle: unknown[] }).nodeStyle as unknown[]).slice(-3);
     const dims = (evaluate: (p: unknown) => unknown) => focusRules.flatMap((rule) => evaluate(rule) as unknown[]);
 
+    it('says what to do on an empty canvas, rather than the canvas’s address', () => {
+      const empty = (graph.props as { empty: unknown }).empty;
+      expect(at([], { view: 'canvas' })(empty)).toMatch(/^Nothing on this canvas yet\. Double-click/);
+      const noCanvas = at([], { view: 'canvas' }, { spaceStore: { landmarks: {}, policy: { sentences: [] } } });
+      expect(noCanvas(empty)).toMatch(/^This space has no canvas/);
+    });
+
     it('is drawn beside the pages, by the mode in the address', () => {
       const view = (coasys.shell.children as SchemaNode[])[1];
       expect(JSON.stringify(view)).toContain("routeStore.params.view == 'canvas'");
