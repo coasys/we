@@ -667,6 +667,7 @@ function flushControls(entry: DockEntry): SchemaNode {
               // At home in a template, the grip takes the section out of the page: dragged, under the
               // pointer; pressed, to the snap its declaration names.
               label: { $: `${home} ? 'Break out into a panel' : 'Move panel'` },
+              'data-we-panel-grip': entry.id,
               onMovestart: {
                 $invoke: 'shellStore.beginDockMove',
                 args: [entry.id, { $: 'arg.detail.x' }, { $: 'arg.detail.y' }, { $: home }],
@@ -819,6 +820,8 @@ function titleBar(entry: DockEntry): SchemaNode {
           minWidth: '0',
           height: '100%',
           label: 'Move panel',
+          // What a drag picks the panel up by — named, so a test (or a tool) can find it.
+          'data-we-panel-grip': entry.id,
           // `onXxx`, not `on:xxx`: the schema renderer recognises an event prop by a capital after
           // "on" and Solid lowercases the rest, so these bind `movestart`, `move` and `moveend`.
           onMovestart: {
@@ -1050,6 +1053,7 @@ function tabStrip(id: string): SchemaNode {
                       height: '100%',
                       ay: 'center',
                       label: { $: '`${tab.title} — drag out of the stack`' },
+                      'data-we-panel-tab': { $: 'tab.id' },
                       onMovestart: {
                         $invoke: 'shellStore.beginTabDrag',
                         args: [{ $: 'tab.id' }, { $: 'arg.detail.x' }, { $: 'arg.detail.y' }],

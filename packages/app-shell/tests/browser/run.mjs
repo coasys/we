@@ -374,6 +374,18 @@ async function main() {
           await page.mouse.move(box.x + box.width * to, y, { steps: 6 });
           await page.waitForTimeout(80);
         },
+        /** Press the middle of something and hold — the start of a drag `pointTo` carries on. */
+        press: async (sel) => {
+          const box = await page.locator(sel).locator('visible=true').first().boundingBox({ timeout: 3000 });
+          if (!box) throw new Error(`nothing to press at ${sel}`);
+          await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+          await page.mouse.down();
+        },
+        /** Move the held pointer to a point on the page, in steps, as a hand does. */
+        pointTo: async (x, y) => {
+          await page.mouse.move(x, y, { steps: 10 });
+          await page.waitForTimeout(80);
+        },
         /** Let go of whatever `grab` is holding. */
         release: async () => {
           await page.mouse.up();

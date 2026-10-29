@@ -4032,7 +4032,9 @@ export function ShellStoreProvider(props: ParentProps) {
       const carried = dragCarry()?.box ?? (dragged ? rectOf(boxes[moving], viewport(), placementOf(dragged)) : null);
 
       const homeSlots = () => {
-        if (!declarationFor()[moving] || !carried) return [];
+        // Only for a panel an interface declared at home in a lane: a lane keeps nothing else (see
+        // `placementOf`), so offering it to one would be a drop that silently goes nowhere.
+        if (!declarationFor()[moving]?.home || !carried) return [];
         const panelId = moving.replace(/^template:/, '');
         return homeLanes().flatMap((outlet) => {
           if (outlet.accepts.length > 0 && !outlet.accepts.includes(panelId)) return [];

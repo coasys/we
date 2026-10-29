@@ -1189,6 +1189,36 @@ function dockProbeAct(action: string, id: string): void {
   fn?.(`probe:${id}`);
 }
 
+/** Where a panel being dragged could land now — the store's insert slots and snap targets, as boxes. */
+function dockProbeTargets(): {
+  slots: { key: string; mode: string; edge: string; lane: string; x: number; y: number }[];
+  snaps: { id: string; left: number; top: number; width: number; height: number }[];
+} {
+  const n = (value: string | number | undefined) => parseFloat(String(value ?? '0'));
+  const shell = dockProbeShell as unknown as {
+    insertSlots: () => (Record<string, string | number> & { hit: { x: number; y: number; w: number; h: number } })[];
+    snapTargets: () => Record<string, string>[];
+  };
+  return {
+    slots: (shell?.insertSlots() ?? []).map((slot) => ({
+      key: String(slot.key),
+      mode: String(slot.mode),
+      edge: String(slot.edge ?? ''),
+      lane: String(slot.lane ?? ''),
+      // The middle of where it answers the pointer — where a hand aims.
+      x: slot.hit.x + slot.hit.w / 2,
+      y: slot.hit.y + slot.hit.h / 2,
+    })),
+    snaps: (shell?.snapTargets() ?? []).map((snap) => ({
+      id: snap.id,
+      left: n(snap.left),
+      top: n(snap.top),
+      width: n(snap.width),
+      height: n(snap.height),
+    })),
+  };
+}
+
 /** Every probe panel's box on screen and whether it shows, by id, and the space's box. */
 function dockProbeBoxes(): Record<
   string,
@@ -1406,6 +1436,7 @@ function toastProbe(message: string, actionLabel = ''): string {
   dockProbe,
   dockProbeAct,
   dockProbeBoxes,
+  dockProbeTargets,
   // The theme pipeline itself, for a probe of how an apply behaves.
   themeApi: { applyThemeVars, clearThemeVars, setDisplayPreferences, setThemeLive },
   themeDrag,
