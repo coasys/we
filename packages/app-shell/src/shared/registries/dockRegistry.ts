@@ -318,9 +318,6 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
       snapTargets(entry.id),
       insertLines(entry.id),
       dragGhost(entry.id),
-      laneDivider(entry.id),
-      laneOuterEdge(entry.id),
-      laneStrip(entry.id),
       {
         type: '$if',
         props: {
@@ -483,7 +480,8 @@ export function frameBox(entry: DockEntry): SchemaNode {
         each panel its own step by how recently it was touched (`layerOrder`), and touching is
         the pointer landing anywhere on the frame.
       */
-      zIndex: geo('layer'),
+      // In a lane, its lane is what is layered — see `EdgeLanes` — and the lane's grips sit over it.
+      zIndex: { $: `${inLane} ? null : ${dockGeometryPath(entry.id, 'layer')}` },
       onPointerdown: { $invoke: 'shellStore.raiseDock', args: [entry.id] },
       onPointerenter: { $setLocal: 'framePointed', value: true },
       onPointerleave: { $setLocal: 'framePointed', value: false },
@@ -782,7 +780,7 @@ function foldedName(entry: DockEntry): SchemaNode {
  * bundler collects names it can see as values — see `positionMenu` for the day that mattered — and an
  * icon it misses renders as a blank square on an offline build.
  */
-const STOW_ICONS = {
+export const STOW_ICONS = {
   left: { icon: 'caret-double-left' },
   right: { icon: 'caret-double-right' },
   top: { icon: 'caret-double-up' },
@@ -791,7 +789,7 @@ const STOW_ICONS = {
 
 /**
  * Collapse this panel's lane to a strip at its edge. The strip itself is the way back — see
- * `laneStrip`.
+ * `StowStrip` in `EdgeLanes`.
  *
  * Only on the lane's first titlebar (see `canStow`), because it acts on the column rather than the
  * panel: a button on every titlebar that put three panels away would be a surprise on two of them.
@@ -1485,10 +1483,9 @@ function grips(id: string): SchemaNode[] {
   /*
     A boundary in a lane belongs to both panels, so neither of them draws it.
 
-    Stacked, the later panel's leading edge and the earlier one's trailing edge are the same line a
-    few pixels apart — two grips for one boundary, each resizing only its own panel, which is why
-    pulling it felt like neither. Both are suppressed, and `laneDivider` draws the seam from outside
-    both frames (see there for why it cannot be drawn from inside either).
+    Stacked, the later panel's leading edge and the earlier one's trailing edge are the same line —
+    two grips for one boundary, each resizing only its own panel, which is why pulling it felt like
+    neither. Both are suppressed, and the lane draws the boundary (`Divider` in `EdgeLanes`).
 
     Which sides those are comes from `laneAxis`, because it depends on the edge: a lane down the left
     divides the height, so the pair meet top-to-bottom; a lane across the top divides the width, so
@@ -1501,16 +1498,13 @@ function grips(id: string): SchemaNode[] {
   const trailing = { vertical: 'bottom', horizontal: 'right' } as const;
 
   /*
-    And the lane's *own* edge is not any one member's either.
+    And a lane's *own* edge is not any one member's either.
 
-    The side facing the content is where a displacing panel's thickness is dragged from, and in a
-    lane that thickness is shared: every member moves. A per-panel grip there lit the height of the
-    panel under the pointer while resizing the whole column, so the feedback and the effect
-    disagreed. `laneOuterEdge` draws one grip spanning the lane, from outside every frame, for the
-    reason the seam is drawn that way — and it is published on the lane's first member, so only that
-    member suppresses its own.
+    The side facing the content is where a displacing panel's thickness is dragged from, and in a lane
+    that thickness is shared: every member moves. So the lane draws that grip (`InnerEdge`), spanning
+    it, and no frame in it draws its own.
   */
-  const inLane = `${geo('above')} || ${geo('below')}`;
+  const inLane = geo('inLane');
 
   const edges: SchemaNode[] = (['left', 'right', 'top', 'bottom'] as const).map((side) => {
     const facing = geo(side === 'left' || side === 'right' ? 'handleX' : 'handleY');
@@ -1519,9 +1513,9 @@ function grips(id: string): SchemaNode[] {
     // Suppressed only when this side really is a seam — a panel with a lane-mate on the other axis
     // keeps every grip it had.
     const seam = side === trailing[axis] ? geo('below') : geo('above');
-    // The lane's own edge, which the lane draws instead. Only for a displacing lane-mate: a floating
-    // one owns its width, so its grip means what it says.
-    const laneOwned = `!${geo('floating')} && (${inLane}) && ${facing} == '${side}'`;
+    // The lane's own edge, which the lane draws instead. Only in a lane pushing the content aside: a
+    // card over the content owns its width, so its grip means what it says.
+    const laneOwned = `!${geo('floating')} && ${inLane} && ${facing} == '${side}'`;
     return {
       type: '$if',
       props: {
@@ -1576,227 +1570,6 @@ function resizeEdge(id: string, side: 'left' | 'right' | 'top' | 'bottom'): Sche
         args: vertical ? [id, side, { $: 'arg.detail.delta' }, 0] : [id, side, 0, { $: 'arg.detail.delta' }],
       },
       onResizeend: { $invoke: 'shellStore.endDockResize' },
-    },
-  };
-}
-
-/**
- * The divider between this panel and the next one in its lane — drawn over the seam, from outside
- * both frames.
- *
- * It was a grip inside the earlier panel's frame, straddling its bottom edge by six pixels so that
- * it would sit on the boundary. The frame is `overflow: hidden`, so the outer half was clipped: what
- * was left was 6px of `row-resize` inside the panel, then the 8px gap belonging to nobody, then
- * `grab` on the next panel's titlebar — and the accent line, aligned to the handle's outer end, was
- * entirely in the clipped region and never drew. The affordance the whole thing was for did not
- * render.
- *
- * A seam is a property of the pair, not of either panel, so it is drawn where the drag guides are:
- * in the frame's wrapper, outside the clipped box, at the box the geometry publishes. Fixed rather
- * than absolute, on the chrome layer, because it has to sit over both panels whatever their own
- * layers are.
- */
-function laneDivider(id: string): SchemaNode {
-  const geo = (field: string) => ({ $: dockGeometryPath(id, field) });
-  return {
-    type: '$if',
-    props: {
-      condition: { $: `${dockGeometryPath(id, 'below')} && ${dockGeometryPath(id, 'seam')}` },
-      then: {
-        type: 'we-resize-handle',
-        props: {
-          // A vertical lane's seam is a horizontal line, and a horizontal handle is one dragged up
-          // and down — the primitive names the bar, not the drag.
-          orientation: { $: `${dockGeometryPath(id, 'laneAxis')} == 'vertical' ? 'horizontal' : 'vertical'` },
-          align: 'center',
-          // Always drawn: a seam between two panels is a real boundary, and the 3px bar answering
-          // under the pointer is what a splitter looks like everywhere else.
-          line: 'auto',
-          styles: { '--we-resize-handle-thickness': '3px' },
-          position: 'fixed',
-          // Above the two panels it divides, and still under the app's own chrome — see `seamLayer`.
-          zIndex: geo('seamLayer'),
-          top: geo('seam.top'),
-          left: geo('seam.left'),
-          width: geo('seam.width'),
-          height: geo('seam.height'),
-          onResizestart: { $invoke: 'shellStore.beginDockResize', args: [id] },
-          onResize: { $invoke: 'shellStore.resizeColumn', args: [id, { $: 'arg.detail.delta' }] },
-          onResizeend: { $invoke: 'shellStore.endDockResize' },
-        },
-      },
-    },
-  };
-}
-
-/**
- * The grip for a whole displacing lane's thickness — its inboard edge, spanning every member.
- *
- * The sibling of {@link laneDivider}, drawn the same way and for the same reason: a lane's thickness
- * belongs to all of its members, so no one of them can draw the boundary. The per-panel grip on that
- * side resized the whole column already and lit only the panel under the pointer, so the feedback
- * said "this one" while the effect was "all of them".
- *
- * `resizeDock` rather than `resizeColumn`: this is the lane's thickness against the content, not the
- * boundary between two lane-mates, and it is reported on whichever member the geometry hung the box
- * on — every member resolves to the same lane thickness, so which one it is does not matter.
- */
-function laneOuterEdge(id: string): SchemaNode {
-  const geo = (field: string) => ({ $: dockGeometryPath(id, field) });
-  return {
-    type: '$if',
-    props: {
-      condition: geo('laneEdge'),
-      then: {
-        type: 'we-resize-handle',
-        props: {
-          // A lane down a side is dragged left and right, which the primitive calls vertical — it
-          // names the bar, not the drag.
-          orientation: { $: `${dockGeometryPath(id, 'laneAxis')} == 'vertical' ? 'vertical' : 'horizontal'` },
-          align: 'center',
-          line: 'auto',
-          styles: { '--we-resize-handle-thickness': '3px' },
-          position: 'fixed',
-          // Above every panel in the lane — see `laneEdgeLayer`. A layer name cannot do it: the grip
-          // straddles the lane's edge, so half of it lies over the lane's own panels, and `sticky`
-          // is `PANEL_LAYER_BASE` exactly. Under it, the inboard half was painted over and the line
-          // came out half the thickness of every other grip.
-          zIndex: geo('laneEdgeLayer'),
-          top: geo('laneEdge.top'),
-          left: geo('laneEdge.left'),
-          width: geo('laneEdge.width'),
-          height: geo('laneEdge.height'),
-          onResizestart: { $invoke: 'shellStore.beginDockResize', args: [id] },
-          onResize: {
-            $invoke: 'shellStore.resizeDock',
-            args: [
-              id,
-              {
-                $: `${dockGeometryPath(id, 'handleX')} ? ${dockGeometryPath(id, 'handleX')} : ${dockGeometryPath(id, 'handleY')}`,
-              },
-              { $: `${dockGeometryPath(id, 'handleX')} ? arg.detail.delta : 0` },
-              { $: `${dockGeometryPath(id, 'handleX')} ? 0 : arg.detail.delta` },
-            ],
-          },
-          onResizeend: { $invoke: 'shellStore.endDockResize' },
-        },
-      },
-    },
-  };
-}
-
-/**
- * The strip a stowed lane becomes: the names of the panels put away, and one way back — the strip.
- *
- * Drawn from outside every frame, as the seams and the lane's edge are, because every frame in the
- * lane is hidden while it is stowed — and published on the lane's first member alone, so one strip is
- * drawn however many panels are in it. See `DockGeometry.strip`.
- *
- * ## One target, the whole strip
- *
- * A press anywhere on it opens the lane. The names used to be tabs of their own, each popping its
- * panel out as a card beside the strip — easy to hit by accident on a strip this thin, and a panel
- * floating out of a collapsed column read as the arrangement having come apart. A strip is a column
- * put away, and the only thing to do with one is take it back out, so the whole of it is that
- * button: a real `<button>`, keyboard-reachable, rather than a clickable box.
- *
- * Laid out from the head — down a side from the top, along the top or bottom from the left — with
- * the open glyph first, because the collapse button it undoes sat at the head of the column. Faint
- * until pointed at, the same as a folded bar's name, so the two ways of putting a panel away read as
- * one family; pointing brightens every name at once, since the whole strip is what a press would open.
- *
- * Vertical text down a side, read top to bottom — the collapsed tool windows every docking IDE draws.
- * Set as `writing-mode` on a wrapper, which the text inherits through its own shadow root; there is
- * no design-system prop for it, and rotating with a transform would leave the box the wrong shape.
- */
-function laneStrip(id: string): SchemaNode {
-  const geo = (field: string) => dockGeometryPath(id, field);
-  const vertical = geo('strip.vertical');
-  const edge = geo('edge');
-  const openIcon = `${edge} == 'left' ? '${STOW_ICONS.right.icon}' : ${edge} == 'right' ? '${STOW_ICONS.left.icon}' : ${edge} == 'top' ? '${STOW_ICONS.bottom.icon}' : '${STOW_ICONS.top.icon}'`;
-  const stripContents = (writingMode: 'vertical-rl' | 'horizontal-tb'): SchemaNode[] => [
-    { type: 'we-icon', props: { name: { $: openIcon } } },
-    {
-      type: '$each',
-      props: { items: { $: geo('strip.tabs') }, as: 'tab' },
-      children: [
-        {
-          type: 'Column',
-          props: { maxHeight: '180px', maxWidth: '180px', styles: { 'writing-mode': writingMode } },
-          children: [{ type: 'we-text', props: { variant: 'label', truncate: true }, children: [{ $: 'tab.title' }] }],
-        },
-      ],
-    },
-  ];
-
-  return {
-    type: '$if',
-    props: {
-      condition: { $: geo('strip') },
-      then: {
-        type: 'Column',
-        props: {
-          position: 'fixed',
-          top: { $: geo('strip.top') },
-          left: { $: geo('strip.left') },
-          width: { $: geo('strip.width') },
-          height: { $: geo('strip.height') },
-          bg: 'chrome',
-          /*
-            All the way round, as every panel frame is. Only the side facing the content had one, and on
-            the left that left the strip running straight into the sidebar — two strips of the same
-            ground with nothing between them.
-          */
-          border: '1px solid border',
-          overflow: 'hidden',
-          zIndex: { $: geo('strip.layer') },
-          // Fades with its lane's panels when every panel is put away or brought back.
-          opacity: { $: `${geo('awayFaded')} ? 0 : 1` },
-          transition: 'opacity 300 ease',
-        },
-        children: [
-          {
-            type: 'we-button',
-            props: {
-              variant: 'bare',
-              size: 'xs',
-              width: '100%',
-              height: '100%',
-              label: 'Open',
-              color: 'text-faint',
-              hoverProps: { color: 'text' },
-              // Eased rather than switched, so the names come up as the pointer arrives. A token duration,
-              // so a theme's animation speed and reduced motion still decide.
-              transition: 'color 200 ease',
-              onClick: { $invoke: 'shellStore.toggleStowLane', args: [id] },
-            },
-            children: [
-              /*
-                A column down a side and a row along the top or bottom — two nodes, because a
-                `Column` is a column whatever `direction` it is handed, which laid a top strip's names
-                out down a box 34px tall and hid all but the first. Packed from the head along the
-                strip and centred across it.
-              */
-              {
-                type: '$if',
-                props: {
-                  condition: { $: vertical },
-                  then: {
-                    type: 'Column',
-                    props: { width: '100%', height: '100%', ax: 'center', ay: 'start', gap: '300', p: '200' },
-                    children: stripContents('vertical-rl'),
-                  },
-                  else: {
-                    type: 'Row',
-                    props: { width: '100%', height: '100%', ax: 'start', ay: 'center', gap: '300', p: '200' },
-                    children: stripContents('horizontal-tb'),
-                  },
-                },
-              },
-            ],
-          },
-        ],
-      },
     },
   };
 }

@@ -40,7 +40,6 @@ import {
   insertionSlots,
   laneable,
   laneBase,
-  laneEdgeBox,
   layerOrder,
   looseSeats,
   MIN_FLOAT_PX,
@@ -56,7 +55,6 @@ import {
   resolveDock,
   RESTORE_DRAG_PX,
   roomElsewhere,
-  seamBetween,
   seatOrder,
   seatSize,
   seedPlacement,
@@ -2245,9 +2243,6 @@ export function ShellStoreProvider(props: ParentProps) {
     const above: Record<string, string> = {};
     const axis: Record<string, 'vertical' | 'horizontal'> = {};
     const lanes: Record<string, string[]> = {};
-    const seams: Record<string, Rect> = {};
-    /** The lane's own inboard edge, on its first member. See `laneEdgeBox`. */
-    const laneEdges: Record<string, Rect> = {};
     const hidden: Record<string, boolean> = {};
     /**
      * A hidden seat-mate, and the front whose resolved box it takes. Only for a seat whose lane
@@ -2261,8 +2256,6 @@ export function ShellStoreProvider(props: ParentProps) {
     const canStow: Record<string, boolean> = {};
     /** Every member of a stowed lane, and the strip it is folded into. */
     const stowed: Record<string, Rect> = {};
-    /** A stowed lane's strip and its tabs, on the lane's first member. */
-    const strips: Record<string, { box: Rect; vertical: boolean; tabs: DockTab[] }> = {};
     const titleOf = (id: string) => {
       const entry = dockRegistry.get(id);
       return entry ? dockTitle(entry) : id;
@@ -2328,8 +2321,6 @@ export function ShellStoreProvider(props: ParentProps) {
         */
         if (group.displacing && group.members.every((member) => member.placement.stowed)) {
           const box = stripBox(edge, viewport(), occupied);
-          const strip = ids.map((id) => ({ id, title: titleOf(id), active: false }));
-          strips[ids[0]] = { box, vertical, tabs: stableStrip(`strip:${ids[0]}`, strip) };
           /*
             Each seat keeps the place along the edge it has open, at the strip's thickness.
 
@@ -2464,21 +2455,6 @@ export function ShellStoreProvider(props: ParentProps) {
           { displacing: group.displacing },
         );
 
-        /*
-          One grip for the lane's own thickness, on its first member.
-
-          A displacing lane has one thickness that every member shares, so dragging any member's
-          inboard edge moves all of them — but the grip was per panel, so it lit the height of the
-          one under the pointer while resizing the column. Drawn from outside all of them, like the
-          seam, and for the same reason: a boundary belonging to several panels is not any one
-          panel's to draw. A floating lane keeps its per-panel grips, where each member really does
-          own its own width.
-        */
-        // Not on a lane folded down to its bars along a top or bottom edge: its thickness is the bar,
-        // and a grip on it would resize a height nothing is showing.
-        const foldedFlat = !vertical && showing.every((member) => member.placement.collapsed);
-        if (group.displacing && !foldedFlat) laneEdges[requests[showing[0].index].id] = laneEdgeBox(boxes, edge);
-
         showing.forEach((member, i) => {
           const id = requests[member.index].id;
           for (const mate of seating[i]) seats[requests[mate.index].id] = boxes[i];
@@ -2488,7 +2464,6 @@ export function ShellStoreProvider(props: ParentProps) {
             const nextId = requests[next.index].id;
             below[id] = nextId;
             above[nextId] = id;
-            seams[id] = seamBetween(boxes[i], boxes[i + 1], vertical ? 'vertical' : 'horizontal');
           }
         });
       }
@@ -2499,15 +2474,12 @@ export function ShellStoreProvider(props: ParentProps) {
       above,
       axis,
       lanes,
-      seams,
-      laneEdges,
       hidden,
       follows,
       tabs,
       laneRoom,
       canStow,
       stowed,
-      strips,
     };
   });
 
@@ -2518,9 +2490,7 @@ export function ShellStoreProvider(props: ParentProps) {
 
   const dockGeometry = createMemo(() => {
     const requests = dockRequests();
-    const { seats, below, above, axis, lanes, seams, laneEdges, hidden, follows, tabs, laneRoom, ...lanesAway } =
-      laneSeating();
-    const { canStow, stowed, strips } = lanesAway;
+    const { seats, below, above, axis, lanes, hidden, follows, tabs, laneRoom, canStow, stowed } = laneSeating();
     const pendingStow = stowPending();
     const move = laneMove();
     const pendingLane = pendingStow ? (lanes[pendingStow] ?? [pendingStow]) : [];
@@ -2577,32 +2547,6 @@ export function ShellStoreProvider(props: ParentProps) {
         above: above[request.id] ?? '',
         laneAxis: axis[request.id] ?? '',
         layer: layers[request.id],
-        // The grips between and beside lanes are drawn outside the frame, so hiding the frame does not
-        // hide them — an eclipsed panel simply has none.
-        ...(seams[request.id] && !eclipsed
-          ? {
-              seam: {
-                top: px(seams[request.id].y),
-                left: px(seams[request.id].x),
-                width: px(seams[request.id].w),
-                height: px(seams[request.id].h),
-              },
-              // Above both panels it divides — see `seamLayer`.
-              seamLayer: Math.max(layers[request.id] ?? 0, layers[below[request.id]] ?? 0) + 1,
-            }
-          : {}),
-        ...(laneEdges[request.id] && !eclipsed
-          ? {
-              laneEdge: {
-                top: px(laneEdges[request.id].y),
-                left: px(laneEdges[request.id].x),
-                width: px(laneEdges[request.id].w),
-                height: px(laneEdges[request.id].h),
-              },
-              // Above every panel in the lane it edges — see `laneEdgeLayer`.
-              laneEdgeLayer: Math.max(...(lanes[request.id] ?? [request.id]).map((member) => layers[member] ?? 0)) + 1,
-            }
-          : {}),
         canStow: Boolean(canStow[request.id]),
         stowPending: pendingLane.includes(request.id),
       };
@@ -2616,7 +2560,6 @@ export function ShellStoreProvider(props: ParentProps) {
       */
       const away = stowed[request.id];
       if (away) {
-        const strip = strips[request.id];
         // Still shrinking onto the strip: on screen, at the size it had, fading out. See `laneMove`.
         const leaving = move?.closing && move.ids.includes(request.id) ? move.sizes[request.id] : undefined;
         resolved[request.id] = {
@@ -2649,27 +2592,6 @@ export function ShellStoreProvider(props: ParentProps) {
           above: '',
           laneAxis: '',
           layer: layers[request.id],
-          ...(strip && !eclipsed
-            ? {
-                strip: {
-                  top: px(strip.box.y),
-                  left: px(strip.box.x),
-                  width: px(strip.box.w),
-                  height: px(strip.box.h),
-                  vertical: strip.vertical,
-                  tabs: strip.tabs,
-                  /*
-                    Beneath every panel in the lane, not level with the first.
-
-                    The panels are on screen over the strip while they shrink onto it, and the strip runs
-                    the edge's whole length. At the first member's own layer it painted over any lane-mate
-                    touched less recently — a band of empty strip down the side of the lower panel, for
-                    the length of the close. At rest the panels are hidden and this changes nothing.
-                  */
-                  layer: Math.min(...(lanes[request.id] ?? [request.id]).map((member) => layers[member] ?? 0)) - 1,
-                },
-              }
-            : {}),
         };
       }
     });
@@ -2689,25 +2611,15 @@ export function ShellStoreProvider(props: ParentProps) {
 
     /*
       Every panel away — see `panelsAway`. Hidden once gone, as a background tab is, so a call keeps its
-      streams and a transcript its scroll; faded on the way out and in. The grips between and beside
-      lanes go at once, being lines rather than surfaces, and a stowed lane's strip fades with its
-      panels.
+      streams and a transcript its scroll; faded on the way out and in. A lane's own grips and its
+      strip follow its panels — see `EdgeLanes`.
     */
     const phase = awayPhase();
     if (phase !== 'shown') {
       for (const [id, geometry] of Object.entries(resolved)) {
-        const {
-          seam: _seam,
-          seamLayer: _seamLayer,
-          laneEdge: _laneEdge,
-          laneEdgeLayer: _edgeLayer,
-          strip,
-          ...rest
-        } = geometry;
         resolved[id] = {
-          ...rest,
-          ...(strip && phase !== 'away' ? { strip } : {}),
-          hidden: phase === 'away' || rest.hidden,
+          ...geometry,
+          hidden: phase === 'away' || geometry.hidden,
           awayFaded: true,
         };
       }

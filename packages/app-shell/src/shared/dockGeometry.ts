@@ -1019,7 +1019,7 @@ export interface DockGeometry {
   canCollapse?: boolean;
   /**
    * In a lane collapsed to its edge — see {@link FloatPlacement.stowed}. The frame is hidden, as a
-   * background tab's is; the lane's strip is what is on screen instead.
+   * background tab's is; the lane's strip is what is on screen instead (`EdgeLanes`).
    */
   stowed?: boolean;
   /**
@@ -1028,20 +1028,6 @@ export interface DockGeometry {
    * own, and the topmost titlebar is the one that reads as one.
    */
   canStow?: boolean;
-  /**
-   * The strip a stowed lane becomes, published on its first member for the frame to draw — one name
-   * per panel in the lane. Drawn outside every frame, because every frame in the lane is hidden.
-   */
-  strip?: {
-    top: string;
-    left: string;
-    width: string;
-    height: string;
-    vertical: boolean;
-    tabs: DockTab[];
-    /** Beneath every panel in the lane, which shrink onto it over the top while the lane closes. */
-    layer: number;
-  };
   /**
    * The size to lay the panel's titlebar and contents out at while its box eases in or out of a lane's
    * strip — the box it is heading for when opening, the box it had when closing. Absent at rest, when
@@ -1066,37 +1052,6 @@ export interface DockGeometry {
    */
   stowPending?: boolean;
   /**
-   * The boundary between this panel and the next one in its lane, as a box to put a divider in.
-   * Absent when there is no next panel. See {@link seamBetween}.
-   *
-   * Published rather than left to the frame, because the frame cannot draw it: the divider used to
-   * be a grip inside the earlier panel's box, straddling its bottom edge by six pixels — and the box
-   * is `overflow: hidden`, so the outer half and the whole of the accent line were clipped. A seam is
-   * a property of the pair, drawn from outside both.
-   */
-  seam?: { top: string; left: string; width: string; height: string };
-  /**
-   * The box the grip for the whole lane's thickness sits in — its inboard edge, along its full
-   * length. Present on a displacing lane's **first** member only, and absent everywhere else. See
-   * {@link laneEdgeBox}.
-   *
-   * The seam's sibling, and published for the same reason: a displacing lane has one thickness that
-   * every member shares, so dragging any member's inboard edge moves all of them — but a per-panel
-   * grip lights only the panel under the pointer, so the feedback said "this one" while the effect
-   * was "all of them". A boundary belonging to several panels is not any one panel's to draw.
-   */
-  laneEdge?: { top: string; left: string; width: string; height: string };
-  /**
-   * The layer the lane's own grip paints at: above every panel in the lane.
-   *
-   * A layer *name* is wrong here for the reason it is wrong for {@link seamLayer}, and this is where
-   * that lesson was learned twice. The grip straddles the lane's edge, so half of it lies over the
-   * lane's own panels — and `sticky` is `200`, which is exactly `PANEL_LAYER_BASE`, so it fell under
-   * every panel that had ever been raised. The inboard half was painted over and the line read as
-   * about half the thickness of every other grip in the app, which is how it was noticed.
-   */
-  laneEdgeLayer?: number;
-  /**
    * Just joined or left a seat, so this panel lands rather than travels. True for one frame.
    *
    * A drop into a stack changes two things at once: the panel that was showing goes hidden, and the
@@ -1108,15 +1063,6 @@ export interface DockGeometry {
    * panel should still ease into whatever room the change left it.
    */
   settling?: boolean;
-  /**
-   * The layer the seam's divider paints at: above both panels it divides.
-   *
-   * It cannot take a layer *name*. A displacing lane has no gap, so the divider straddles the shared
-   * edge and overlaps both panels — and the two carry their own steps now, so a fixed `sticky` would
-   * fall under whichever had been raised. `chrome` would clear them and tie with the rail, which is
-   * the layer that has to stay reachable above everything a panel does.
-   */
-  seamLayer?: number;
   /**
    * The z-index this panel paints at — its step above `PANEL_LAYER_BASE`, by how recently it was
    * touched. See {@link layerOrder}. The frame binds its `zIndex` to this rather than to a layer
@@ -2070,54 +2016,6 @@ export function stripBox(edge: Exclude<DockEdge, null>, viewport: Viewport, occu
 
 /** How thick the divider's target is, centred on the boundary. Wider than the line it draws. */
 export const SEAM_PX = 12;
-
-/**
- * The box a divider sits in, between two consecutive members of one lane.
- *
- * Centred on the boundary — the middle of the gap for a floating lane, the shared edge for a
- * displacing one — and spanning the pair across the lane, so it reads as the line *between* them
- * rather than as the edge of either. `SEAM_PX` thick, because a target you can hit while dragging
- * has to be far thicker than a seam anybody wants to look at; the handle draws its own 3px line.
- */
-export function seamBetween(a: Rect, b: Rect, axis: 'vertical' | 'horizontal'): Rect {
-  if (axis === 'vertical') {
-    const x = Math.min(a.x, b.x);
-    const boundary = (a.y + a.h + b.y) / 2;
-    return { x, y: boundary - SEAM_PX / 2, w: Math.max(a.x + a.w, b.x + b.w) - x, h: SEAM_PX };
-  }
-  const y = Math.min(a.y, b.y);
-  const boundary = (a.x + a.w + b.x) / 2;
-  return { x: boundary - SEAM_PX / 2, y, w: SEAM_PX, h: Math.max(a.y + a.h, b.y + b.h) - y };
-}
-
-/**
- * The box the handle that resizes a whole lane sits in — its inboard side, along its full length.
- *
- * The sibling of {@link seamBetween}, and it exists for the same reason: a boundary belonging to
- * several panels cannot be drawn by any one of them. Dragging the inboard edge of a *displacing*
- * lane resizes every member — the lane has one thickness and they share it — but the grip was a
- * per-panel one, so it lit up the height of the panel under the pointer while moving the whole
- * column. The feedback disagreed with the effect.
- *
- * Spanning the lane and centred on its edge, so it reads as the boundary between the lane and the
- * content it pushed aside rather than as the side of whichever panel you happened to grab.
- *
- * `edge` is the screen edge the lane is docked to, so the inboard side is the opposite one: a lane
- * on the right is dragged by its left.
- */
-export function laneEdgeBox(boxes: Rect[], edge: Exclude<DockEdge, null>): Rect {
-  const x = Math.min(...boxes.map((box) => box.x));
-  const y = Math.min(...boxes.map((box) => box.y));
-  const right = Math.max(...boxes.map((box) => box.x + box.w));
-  const bottom = Math.max(...boxes.map((box) => box.y + box.h));
-
-  if (edge === 'left' || edge === 'right') {
-    const boundary = edge === 'left' ? right : x;
-    return { x: boundary - SEAM_PX / 2, y, w: SEAM_PX, h: bottom - y };
-  }
-  const boundary = edge === 'top' ? bottom : y;
-  return { x, y: boundary - SEAM_PX / 2, w: right - x, h: SEAM_PX };
-}
 
 /**
  * Give every member of a seat the box the member that is showing resolved to. Mutates `resolved`.

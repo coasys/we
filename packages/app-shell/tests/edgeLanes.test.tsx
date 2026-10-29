@@ -98,4 +98,34 @@ describe('the lanes at the edges', () => {
     window.dispatchEvent(new PointerEvent('pointermove', { clientX: 100, clientY: 100 }));
     expect(parseFloat(store.dockGeometry()[ID]?.left ?? '')).toBe(left);
   });
+
+  it('draws the grip on its inner edge, which sets the lane’s thickness', () => {
+    const { store, lane } = mount();
+    const before = store.contentInset().right;
+    // A lane of one seat has no divider: its only grip is its inner edge.
+    const edge = lane()?.querySelector<HTMLElement>('we-resize-handle');
+    expect(edge).not.toBeNull();
+
+    edge!.dispatchEvent(new CustomEvent('resizestart', { detail: { delta: 0 } }));
+    // Leftward, into the content, on a right-hand lane: thicker.
+    edge!.dispatchEvent(new CustomEvent('resize', { detail: { delta: -50 } }));
+    edge!.dispatchEvent(new CustomEvent('resizeend', { detail: { delta: -50 } }));
+    expect(store.contentInset().right).toBe(before + 50);
+  });
+
+  it('becomes one strip when put away, naming its panels, which opens the lane on a press', () => {
+    const { store, lane } = mount();
+    vi.useFakeTimers();
+    store.toggleStowLane(ID);
+    vi.runAllTimers();
+    vi.useRealTimers();
+
+    const buttons = lane()?.querySelectorAll('we-button[label="Open"]') ?? [];
+    expect(buttons).toHaveLength(1);
+    // No grips on a lane put away: the strip is the whole of it.
+    expect(lane()?.querySelectorAll('we-resize-handle')).toHaveLength(0);
+
+    (buttons[0] as HTMLElement).click();
+    expect(store.dockGeometry()[ID]?.stowed).toBeFalsy();
+  });
 });
