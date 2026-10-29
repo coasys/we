@@ -67,6 +67,26 @@ describe.each([fieldGuide, toolLibrary])('the $name cartridge', (cartridge) => {
 
 describe('the Coasys cartridge', () => {
   /*
+    The landing page is an overlay over whatever template is behind it, at the root address — for a
+    space, the spaces as cards. A rail button that closed the overlay and then navigated exposed that
+    page for as long as the switch took, which on the first space after a boot was long enough to see.
+    `navigateToSpace` closes the overlay itself, once the space has switched.
+  */
+  it('never closes an overlay ahead of going to a space, which shows what is behind it', () => {
+    const offenders: string[] = [];
+    (function walk(node: unknown, path: string) {
+      if (Array.isArray(node)) {
+        const invoked = node.map((step) => (step as { $invoke?: string } | null)?.$invoke);
+        const close = invoked.indexOf('shellStore.closeShellView');
+        if (close >= 0 && invoked.indexOf('spaceStore.navigateToSpace') > close) offenders.push(path);
+        node.forEach((item, i) => walk(item, `${path}[${i}]`));
+      } else if (node && typeof node === 'object')
+        for (const [key, value] of Object.entries(node)) walk(value, `${path}.${key}`);
+    })(coasys.app, 'app');
+    expect(offenders).toEqual([]);
+  });
+
+  /*
     It defines no kinds of record of its own, so there is no gap to record: every template it brings
     must validate as it stands — the app around every space, the space template with its pages, and
     the pages of the app's own.

@@ -196,13 +196,10 @@ export const seedBundles: Bundle[] = [
                                                 py: '300',
                                                 px: { $: 'local.railInset' },
                                                 label: { $: 'space.name' },
-                                                onClick: [
-                                                  { $invoke: 'shellStore.closeShellView' },
-                                                  {
-                                                    $invoke: 'spaceStore.navigateToSpace',
-                                                    args: [{ $: 'space.spaceId' }],
-                                                  },
-                                                ],
+                                                onClick: {
+                                                  $invoke: 'spaceStore.navigateToSpace',
+                                                  args: [{ $: 'space.spaceId' }],
+                                                },
                                                 bg: {
                                                   $: "(space.spaceId == routeStore.segments[1] && !shellStore.activeShellView) ? 'accent-soft' : ''",
                                                 },

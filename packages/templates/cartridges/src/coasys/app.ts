@@ -169,10 +169,13 @@ const rail: SchemaNode = railShell({
               avatar: { src: { $: 'space.avatar' }, name: { $: 'space.name' }, hash: { $: 'space.uuid' } },
               label: { $: 'space.name' },
               active: { $: 'space.spaceId == routeStore.segments[1] && !shellStore.activeShellView' },
-              onClick: [
-                { $invoke: 'shellStore.closeShellView' },
-                { $invoke: 'spaceStore.navigateToSpace', args: [{ $: 'space.spaceId' }] },
-              ],
+              /*
+                Only the navigation: it closes whatever overlay is up itself, once the space has
+                switched under it. Closing it first exposed the page behind the landing overlay — the
+                spaces, as cards — for as long as the switch took, which on the first space after a
+                boot is long enough to see.
+              */
+              onClick: { $invoke: 'spaceStore.navigateToSpace', args: [{ $: 'space.spaceId' }] },
               // The space a call is running in, so the way back to it is on the rail.
               live: {
                 when: { $: 'modules.call.active && `neighbourhood://${space.spaceId}` == modules.call.callSpace.uri' },
