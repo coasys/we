@@ -711,7 +711,8 @@ const callButton: SchemaNode = {
       children: [
         {
           type: 'we-button',
-          props: { variant: 'soft', onClick: { $invoke: 'modules.call.goToCall' } },
+          // Solid, in the accent: starting a call is the one thing the tree invites, as Join is once one runs.
+          props: { variant: 'solid', onClick: { $invoke: 'modules.call.goToCall' } },
           children: [{ type: 'we-icon', props: { name: 'phone' } }, 'Start a call'],
         },
       ],

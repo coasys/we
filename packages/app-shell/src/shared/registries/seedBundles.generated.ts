@@ -2375,7 +2375,7 @@ export const seedBundles: Bundle[] = [
                         children: [
                           {
                             type: 'we-button',
-                            props: { variant: 'soft', onClick: { $invoke: 'modules.call.goToCall' } },
+                            props: { variant: 'solid', onClick: { $invoke: 'modules.call.goToCall' } },
                             children: [{ type: 'we-icon', props: { name: 'phone' } }, 'Start a call'],
                           },
                         ],
