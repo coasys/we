@@ -30,6 +30,7 @@ import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 import { COLLAPSED_PX, FRAME_BORDER_PX, type SnapPoint } from '../dockGeometry';
 import { createRegistry } from './createRegistry';
 import { registerPanelContent } from './panelContents';
+import { TEMPLATE_DOCK_STORE_ID } from './templatePanels';
 
 /**
  * A dock as the shell sees it: a node, and the string keys its geometry is read through.
@@ -269,7 +270,8 @@ const laidOutAt = (id: string, axis: 'width' | 'height', less: number) => {
   return { $: `${size} ? \`calc(\${${size}} - ${less}px)\` : ${rest}` };
 };
 
-const isGlass = (id: string) => `${dockGeometryPath(id, 'floating')} && !${dockGeometryPath(id, 'maximised')}`;
+const isGlass = (id: string) =>
+  `${dockGeometryPath(id, 'floating')} && !${dockGeometryPath(id, 'maximised')} && !${dockGeometryPath(id, 'home')}`;
 
 /*
   Frosted glass is a theme's decision, and it already has the vocabulary for it.
@@ -361,21 +363,25 @@ export function frameBox(entry: DockEntry): SchemaNode {
   const frame = `(shellStore.panelFrames['${entry.id}'] ?? 'window')`;
   const glass = isGlass(entry.id);
   const inLane = dockGeometryPath(entry.id, 'inLane');
-  // Its box over the window, or its whole section where it is in a lane.
-  const inSection = (field: string, filling: string | null) => ({
-    $: `${inLane} ? ${filling === null ? 'null' : `'${filling}'`} : ${dockGeometryPath(entry.id, field)}`,
+  const home = dockGeometryPath(entry.id, 'home');
+  const literal = (value: string | null) => (value === null ? 'null' : `'${value}'`);
+  // Its box over the window; its whole seat in an edge lane; in the page's flow at home in a template.
+  const placed = (field: string, filling: string | null, inFlow: string | null) => ({
+    $: `${home} ? ${literal(inFlow)} : ${inLane} ? ${literal(filling)} : ${dockGeometryPath(entry.id, field)}`,
   });
   return {
     type: 'Column',
     props: {
-      // Over the window, or filling its section of an edge lane — see `frameBox`.
-      position: { $: `${inLane} ? 'absolute' : 'fixed'` },
-      top: inSection('top', '0px'),
-      right: inSection('right', null),
-      bottom: inSection('bottom', null),
-      left: inSection('left', '0px'),
-      width: inSection('width', '100%'),
-      height: inSection('height', '100%'),
+      // Over the window, filling its seat of an edge lane, or in the page — see `frameBox`.
+      position: { $: `${home} ? 'relative' : ${inLane} ? 'absolute' : 'fixed'` },
+      top: placed('top', '0px', null),
+      right: placed('right', null, null),
+      bottom: placed('bottom', null, null),
+      left: placed('left', '0px', null),
+      width: placed('width', '100%', '100%'),
+      height: placed('height', '100%', null),
+      // In the page, as long as its group gives it — the whole of it where the group grows.
+      flex: { $: `${home} ? '1 1 auto' : null` },
       /*
         And a panel that is already open moves to a new box rather than jumping to it — a
         snap from card to sidebar, a lane-mate resizing, an edge gaining a lane.
@@ -397,7 +403,7 @@ export function frameBox(entry: DockEntry): SchemaNode {
           already the animation.
         */
         // In a lane only the fade: the lane eases its sections' sizes, and the frame just fills one.
-        $: `${dockGeometryPath(entry.id, 'settling')} || shellStore.dockResizing ? 'none' : ${inLane} ? 'opacity 300 ease' : 'top 300 ease, right 300 ease, bottom 300 ease, left 300 ease, width 300 ease, height 300 ease, opacity 300 ease'`,
+        $: `${dockGeometryPath(entry.id, 'settling')} || shellStore.dockResizing ? 'none' : ${inLane} || ${home} ? 'opacity 300 ease' : 'top 300 ease, right 300 ease, bottom 300 ease, left 300 ease, width 300 ease, height 300 ease, opacity 300 ease'`,
       },
       /*
         The panel's own surface. A module's node fills it and need not paint a background, a
@@ -427,7 +433,8 @@ export function frameBox(entry: DockEntry): SchemaNode {
         titlebar the same colour, which is deliberate: the bar's bottom border is the line
         between them, so a panel reads as one surface rather than as a header stuck on a box.
       */
-      bg: { $: `${glass} ? '${glassBg('chrome')}' : 'chrome'` },
+      // In the page and not a window, it is the page: nothing of its own behind it.
+      bg: { $: `${glass} ? '${glassBg('chrome')}' : ${home} && ${frame} != 'window' ? null : 'chrome'` },
       // Backdrop blur belongs with the transparency and goes when it does: it is expensive,
       // it makes the element a containing block for fixed descendants, and over an opaque
       // background it would cost both of those for nothing visible.
@@ -448,10 +455,12 @@ export function frameBox(entry: DockEntry): SchemaNode {
           behind costs nothing, since every frame is `position: fixed`.
         */
         visibility: { $: `${dockGeometryPath(entry.id, 'hidden')} ? 'hidden' : 'visible'` },
+        // In the page a hidden tab would still take its room, so there it is not laid out at all.
+        display: { $: `${home} && ${dockGeometryPath(entry.id, 'hidden')} ? 'none' : 'flex'` },
         // Takes the pointer inside an edge lane, whose own boxes let it through to the content.
         'pointer-events': 'auto',
       },
-      border: { $: `${frame} == 'none' ? 'none' : '1px solid border'` },
+      border: { $: `${frame} == 'none' || (${home} && ${frame} == 'flush') ? 'none' : '1px solid border'` },
       /*
         Dimmed while a resize has pulled its lane past the point where letting go puts it
         away — the drag's only way to say so before it happens. See `stowPending`.
@@ -468,8 +477,8 @@ export function frameBox(entry: DockEntry): SchemaNode {
       // top; a panel that has taken room *from* the app meets it edge to edge, where a radius
       // would leave slivers of background in the corners and a shadow would fall on content
       // that is beside it rather than beneath it.
-      r: { $: `${dockGeometryPath(entry.id, 'floating')} ? '500' : null` },
-      shadow: { $: `${dockGeometryPath(entry.id, 'floating')} ? 'xl' : null` },
+      r: { $: `${dockGeometryPath(entry.id, 'floating')} && !${home} ? '500' : null` },
+      shadow: { $: `${dockGeometryPath(entry.id, 'floating')} && !${home} ? 'xl' : null` },
       overflow: 'hidden',
       /*
         A step on the `sticky` band, not the band itself.
@@ -481,7 +490,7 @@ export function frameBox(entry: DockEntry): SchemaNode {
         the pointer landing anywhere on the frame.
       */
       // In a lane, its lane is what is layered — see `EdgeLanes` — and the lane's grips sit over it.
-      zIndex: { $: `${inLane} ? null : ${dockGeometryPath(entry.id, 'layer')}` },
+      zIndex: { $: `${inLane} || ${home} ? null : ${dockGeometryPath(entry.id, 'layer')}` },
       onPointerdown: { $invoke: 'shellStore.raiseDock', args: [entry.id] },
       onPointerenter: { $setLocal: 'framePointed', value: true },
       onPointerleave: { $setLocal: 'framePointed', value: false },
@@ -503,9 +512,25 @@ export function frameBox(entry: DockEntry): SchemaNode {
     // Whether the pointer or focus is on it, for a flush frame's grip and close — see `flushControls`.
     $localState: { framePointed: { type: 'boolean', initial: false } },
     children: [
-      ...grips(entry.id),
+      // A section in the page is sized by its lane, not by its own edges.
+      {
+        type: '$if',
+        props: {
+          condition: { $: `!${home}` },
+          then: { type: 'Column', props: { styles: { display: 'contents' } }, children: grips(entry.id) },
+        },
+      },
       { type: '$if', props: { condition: { $: `${frame} == 'window'` }, then: titleBar(entry) } },
+      { type: '$if', props: { condition: { $: `${frame} == 'flush'` }, then: flushHeader(entry) } },
       { type: '$if', props: { condition: { $: `${frame} == 'flush'` }, then: flushControls(entry) } },
+      // No frame to speak of, and still a way to choose between the panels sharing its place.
+      {
+        type: '$if',
+        props: {
+          condition: { $: `${frame} == 'none' && count(${dockGeometryPath(entry.id, 'tabs')}) > 1` },
+          then: { type: 'Row', props: { px: '200', pt: '200' }, children: [tabStrip(entry.id)] },
+        },
+      },
       /*
         The panel gets what is left, and no more.
 
@@ -612,6 +637,8 @@ export function frameBox(entry: DockEntry): SchemaNode {
  * Over the content rather than in flow, so the panel's own header keeps the top of the frame.
  */
 function flushControls(entry: DockEntry): SchemaNode {
+  const geo = (field: string) => dockGeometryPath(entry.id, field);
+  const home = geo('home');
   return {
     type: 'Row',
     props: {
@@ -625,25 +652,88 @@ function flushControls(entry: DockEntry): SchemaNode {
       r: '300',
       bg: 'surface-raised',
       shadow: 'sm',
-      opacity: { $: 'local.framePointed ? 1 : 0' },
+      // Every grip at once while somebody is asking what can be moved — see `customisingLayout`.
+      opacity: { $: 'local.framePointed || shellStore.customisingLayout ? 1 : 0' },
       transition: 'opacity 150 ease',
     },
     children: [
       {
-        type: 'we-move-handle',
+        type: '$if',
         props: {
-          label: 'Move panel',
-          onMovestart: {
-            $invoke: 'shellStore.beginDockMove',
-            args: [entry.id, { $: 'arg.detail.x' }, { $: 'arg.detail.y' }],
+          condition: { $: `!${geo('fixed')}` },
+          then: {
+            type: 'we-move-handle',
+            props: {
+              // At home in a template, the grip takes the section out of the page: dragged, under the
+              // pointer; pressed, to the snap its declaration names.
+              label: { $: `${home} ? 'Break out into a panel' : 'Move panel'` },
+              onMovestart: {
+                $invoke: 'shellStore.beginDockMove',
+                args: [entry.id, { $: 'arg.detail.x' }, { $: 'arg.detail.y' }, { $: home }],
+              },
+              onMove: {
+                $invoke: 'shellStore.moveDock',
+                args: [entry.id, { $: 'arg.detail.dx' }, { $: 'arg.detail.dy' }],
+              },
+              onMoveend: { $invoke: 'shellStore.endDockMove', args: [entry.id] },
+            },
+            children: [
+              {
+                type: 'we-icon',
+                props: {
+                  name: { $: `${home} ? '${GRIP_ICONS.breakOut.icon}' : '${GRIP_ICONS.move.icon}'` },
+                  size: 'sm',
+                  color: 'text-faint',
+                },
+              },
+            ],
           },
-          onMove: { $invoke: 'shellStore.moveDock', args: [entry.id, { $: 'arg.detail.dx' }, { $: 'arg.detail.dy' }] },
-          onMoveend: { $invoke: 'shellStore.endDockMove', args: [entry.id] },
         },
-        children: [{ type: 'we-icon', props: { name: 'dots-six', size: 'sm', color: 'text-faint' } }],
       },
-      ...(entry.close || entry.closeAction ? [closeButton(entry)] : []),
+      // Here only where the flush header is not drawn, which carries the close itself.
+      ...(entry.close || entry.closeAction
+        ? [{ type: '$if', props: { condition: { $: `!(${flushHeaded(entry)})` }, then: closeButton(entry) } }]
+        : []),
     ],
+  };
+}
+
+/** The glyphs a flush frame's grip shows — `icon:` entries, so the icon bundler sees them (see `STOW_ICONS`). */
+const GRIP_ICONS = { move: { icon: 'dots-six' }, breakOut: { icon: 'arrow-square-out' } } as const;
+
+/**
+ * Whether a flush frame draws a header: always where there are tabs to choose between, and for a
+ * panel whose content draws no heading of its own — a module's or the host's, which on an edge had
+ * the window's titlebar to say what they were. A template's own panel heads itself.
+ */
+function flushHeaded(entry: DockEntry): string {
+  const several = `count(${dockGeometryPath(entry.id, 'tabs')}) > 1`;
+  return entry.moduleId === TEMPLATE_DOCK_STORE_ID ? several : 'true';
+}
+
+/** A flush frame's header — the tabs, or the panel's name, and its close. See `flushHeaded`. */
+function flushHeader(entry: DockEntry): SchemaNode {
+  const tabs = dockGeometryPath(entry.id, 'tabs');
+  return {
+    type: '$if',
+    props: {
+      condition: { $: flushHeaded(entry) },
+      then: {
+        type: 'Row',
+        props: { ay: 'center', ax: 'between', gap: '200', px: '300', pt: '200', pb: '100', flex: '0 0 auto' },
+        children: [
+          {
+            type: '$if',
+            props: {
+              condition: { $: `count(${tabs}) > 1` },
+              then: tabStrip(entry.id),
+              else: { type: 'we-text', props: { variant: 'label', truncate: true }, children: [dockTitle(entry)] },
+            },
+          },
+          ...(entry.close || entry.closeAction ? [closeButton(entry)] : []),
+        ],
+      },
+    },
   };
 }
 
@@ -670,6 +760,15 @@ function whileRestored(id: string, node: SchemaNode): SchemaNode {
     type: '$if',
     props: { condition: { $: `!shellStore.dockPlacement['${id}'].maximised` }, then: node },
   };
+}
+
+/**
+ * Show a control only while the panel is out of the page. A section at home in a template is sized
+ * and placed by its lane, so fitting it, making it push the content aside or filling the window with
+ * it would each change a placement the page then ignores.
+ */
+function outOfPage(id: string, node: SchemaNode): SchemaNode {
+  return { type: '$if', props: { condition: { $: `!${dockGeometryPath(id, 'home')}` }, then: node } };
 }
 
 function titleBar(entry: DockEntry): SchemaNode {
@@ -731,10 +830,10 @@ function titleBar(entry: DockEntry): SchemaNode {
         },
         children: [foldedName(entry)],
       },
-      ...(entry.aspect ? [whileRestored(entry.id, fitButton(entry.id))] : []),
+      ...(entry.aspect ? [outOfPage(entry.id, whileRestored(entry.id, fitButton(entry.id)))] : []),
       whileRestored(entry.id, collapseButton(entry.id)),
-      whileRestored(entry.id, displaceButton(entry.id)),
-      maximiseButton(entry.id),
+      outOfPage(entry.id, whileRestored(entry.id, displaceButton(entry.id))),
+      outOfPage(entry.id, maximiseButton(entry.id)),
       whileRestored(entry.id, positionMenu(entry)),
       // Last, and after the menu: the one control whose consequence cannot be undone by clicking it
       // again wants to be the one furthest from the others.

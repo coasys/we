@@ -975,10 +975,15 @@ export interface DockGeometry {
    */
   laneAxis?: 'vertical' | 'horizontal' | '';
   /**
-   * In the template at its `$panels` outlet rather than in the dock layer. The frame renders
-   * nothing for it; the outlet renders the body. See {@link FloatPlacement.home}.
+   * In the template at its `$panels` outlet rather than in the dock layer: its frame is drawn by the
+   * outlet (`PanelLane`), in the page's flow. See {@link FloatPlacement.home}.
    */
   home?: boolean;
+  /**
+   * May not be moved out of where it is — its declaration says `fixed`. A section at home in a
+   * template keeps no grip to break it out by.
+   */
+  fixed?: boolean;
   /**
    * Framed inside its edge's lane rather than over the window: a panel pushing the content aside is
    * a section of the lane the host draws at that edge (`EdgeLanes`), which arranges its sections by
@@ -1702,7 +1707,7 @@ const withinSeat = <T extends { placement: FloatPlacement }>(a: T, b: T) =>
  * a run of them is one seat. A panel with no `order` is a seat of its own — two unnamed panels are
  * never merged, whatever sorted them next to each other.
  */
-function seatsOf<T extends { placement: FloatPlacement }>(members: T[]): T[][] {
+export function seatsOf<T extends { placement: FloatPlacement }>(members: T[]): T[][] {
   const seats: T[][] = [];
   let open: { order: number; seat: T[] } | null = null;
   for (const member of members) {

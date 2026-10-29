@@ -4,8 +4,8 @@
  *
  * Each edge holds its lanes side by side, outboard first; each lane its seats along it, divided by
  * flex — `grow 1 base`, never below the floor — which is the division the geometry engine works out
- * for the same seats (`columnLayout`), from the same numbers (`laneBase`). A seat holds its panels'
- * frames (`frameBox`), filling it, one showing and the rest hidden behind it as tabs. How thick a lane
+ * for the same seats (`columnLayout`), from the same numbers (`laneBase`). A seat is a group
+ * (`PanelGroup`): its panels' frames filling it, one showing and the rest hidden behind it as tabs. How thick a lane
  * is stays the engine's answer (`displacingLanes`), because it is also how far the content moves.
  *
  * Cards snapped to an edge, two seats of them or more, are a lane too — over the content rather than
@@ -26,15 +26,13 @@
  * the seams the flex makes.
  */
 import { COLLAPSED_PX, DOCK_GAP_PX, EDGES, PANEL_LAYER_BASE, SEAM_PX } from '@shared/dockGeometry';
-import { dockRegistry, dockTitle, frameBox, STOW_ICONS } from '@shared/registries/dockRegistry';
-import { chromeBag } from '@shared/registries/templateBag';
-import { componentRegistry as registry } from '@solid/registries/componentRegistry';
+import { dockRegistry, dockTitle, STOW_ICONS } from '@shared/registries/dockRegistry';
 import { weProps } from '@we/design-utils/solid';
 import type { DockEdge } from '@we/module-shared';
-import { RenderSchema } from '@we/schema-solid';
 import { createMemo, For, Index, Show } from 'solid-js';
 
 import { type EdgeLane, type EdgeSeat, useShellStore } from '../stores/ShellStore';
+import { PanelGroup } from './PanelGroup';
 
 type Edge = Exclude<DockEdge, null>;
 
@@ -59,13 +57,6 @@ function showing(seat: EdgeSeat | undefined, geometry: ReturnType<ReturnType<typ
   return seat?.ids.find((id) => !geometry[id]?.hidden) ?? seat?.ids[0];
 }
 
-/** One panel's frame, as the shell draws it over the window — here filling its seat. */
-function Frame(props: { id: string }) {
-  const entry = dockRegistry.get(props.id);
-  const bag = chromeBag();
-  return entry && bag ? RenderSchema({ node: frameBox(entry), stores: bag, registry }) : null;
-}
-
 function Seat(props: { seat: () => EdgeSeat | undefined; edge: Edge }) {
   const vertical = props.edge === 'left' || props.edge === 'right';
   const ids = createMemo(() => props.seat()?.ids ?? [], [], { equals: sameStrings });
@@ -76,7 +67,8 @@ function Seat(props: { seat: () => EdgeSeat | undefined; edge: Edge }) {
   */
   const bar = () => !vertical && props.seat()?.folded;
   return (
-    <div
+    <PanelGroup
+      members={ids()}
       style={{
         position: 'relative',
         flex: `${props.seat()?.grow ?? 1} 1 ${px(props.seat()?.base ?? 0)}`,
@@ -87,9 +79,7 @@ function Seat(props: { seat: () => EdgeSeat | undefined; edge: Edge }) {
         width: vertical && props.seat()?.cross !== undefined ? px(props.seat()?.cross) : undefined,
         height: !vertical && props.seat()?.cross !== undefined ? px(props.seat()?.cross) : undefined,
       }}
-    >
-      <For each={ids()}>{(id) => <Frame id={id} />}</For>
-    </div>
+    />
   );
 }
 

@@ -89,7 +89,7 @@ import {
   registerHostDockStore,
   unregisterHostDockStore,
 } from '@shared/registries/dockRegistry';
-import { HOME_SECTION_ATTR, homeLanes } from '@shared/registries/homeLanes';
+import { HOME_SECTION_ATTR, homeLanes, laneFrames } from '@shared/registries/homeLanes';
 import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry';
 import { SHELL_DOCK_STORE_ID } from '@shared/registries/shellDocks';
 import { slotRegistry } from '@shared/registries/slotRegistry';
@@ -455,8 +455,12 @@ export interface ShellStore {
    *
    * The pointer matters for one case — a maximised panel, which has to shrink back under the cursor
    * rather than to wherever it was before. See `moveDock`.
+   *
+   * A section at home in a template leaves its lane once the pointer travels, under it. `breakOutOnPress`
+   * is for a grip whose press means "break this out" — a flush section's corner grip: a press that goes
+   * nowhere sends the section to the snap its declaration names.
    */
-  beginDockMove: (id: string, pointerX: number, pointerY: number) => void;
+  beginDockMove: (id: string, pointerX: number, pointerY: number, breakOutOnPress?: boolean) => void;
   /**
    * Bring a panel in front of the others.
    *
@@ -2216,6 +2220,8 @@ export function ShellStoreProvider(props: ParentProps) {
     began); once it is gone the window is all there is.
   */
   let releaseCarry: (() => void) | null = null;
+  /** The move under way began on a grip whose press breaks a section out — see `beginDockMove`. */
+  let pressBreaksOut = false;
   const carryPastTheGrip = (id: string, startX: number, startY: number) => {
     releaseCarry?.();
     if (typeof window === 'undefined') return;
@@ -2611,6 +2617,39 @@ export function ShellStoreProvider(props: ParentProps) {
         }
 
     /*
+      A template's lane groups its sections as an edge does: consecutive ones naming the same `order`
+      share a seat, as tabs, the most recently touched showing and its titlebar naming them all — in
+      the lane's own order (`laneSections`), which is the order the interface declared them.
+    */
+    for (const sections of Object.values(laneSections())) {
+      const seats: string[][] = [];
+      for (const section of sections.filter((entry) => entry.open && !entry.away)) {
+        const last = seats[seats.length - 1];
+        const lastOrder = last ? sections.find((entry) => entry.id === last[0])?.order : undefined;
+        if (last && section.order !== undefined && lastOrder === section.order) last.push(section.id);
+        else seats.push([section.id]);
+      }
+      for (const ids of seats) {
+        const front = ids.reduce((best, id) =>
+          (touched[placementKey(id)] ?? -1) > (touched[placementKey(best)] ?? -1) ? id : best,
+        );
+        const strip = ids.map((id) => {
+          const entry = dockRegistry.get(id);
+          return { id, title: entry ? dockTitle(entry) : id, active: id === front };
+        });
+        for (const id of ids) {
+          if (!resolved[id]) continue;
+          resolved[id] = {
+            ...resolved[id],
+            hidden: id !== front || resolved[id].hidden,
+            tabs: id === front && ids.length > 1 ? stableStrip(id, strip) : [],
+            fixed: Boolean(declarationFor()[id]?.fixed),
+          };
+        }
+      }
+    }
+
+    /*
       Every panel away — see `panelsAway`. Hidden once gone, as a background tab is, so a call keeps its
       streams and a transcript its scroll; faded on the way out and in. A lane's own grips and its
       strip follow its panels — see `EdgeLanes`.
@@ -2618,6 +2657,8 @@ export function ShellStoreProvider(props: ParentProps) {
     const phase = awayPhase();
     if (phase !== 'shown') {
       for (const [id, geometry] of Object.entries(resolved)) {
+        // Not a section at home in the template: it is the page's, and the page stays.
+        if (geometry.home) continue;
         resolved[id] = {
           ...geometry,
           hidden: phase === 'away' || geometry.hidden,
@@ -3522,10 +3563,11 @@ export function ShellStoreProvider(props: ParentProps) {
       );
     },
 
-    beginDockMove: (id, pointerX, pointerY) => {
+    beginDockMove: (id, pointerX, pointerY, breakOutOnPress) => {
       const request = dockRequests().find((entry) => entry.id === id);
       if (!request?.edge) return;
       raise(id);
+      pressBreaksOut = Boolean(breakOutOnPress);
       /*
         The titlebar moves the **seat**, not the one panel showing in it.
 
@@ -3637,6 +3679,17 @@ export function ShellStoreProvider(props: ParentProps) {
       if (!dragTravelled) {
         if (Math.abs(dx) + Math.abs(dy) < RESTORE_DRAG_PX) return;
         dragTravelled = true;
+        /*
+          A section at home in a template leaves its lane here, under the pointer where the press was,
+          and is carried from there like any card. Not on the press: a press on a window titlebar in a
+          lane is a click, and a click must not take the section out of the page.
+        */
+        const home = dockRequests().find((entry) => entry.id === id);
+        if (home && placementOf(home).snap === 'home') {
+          store.breakOut(id, dragPointer.x, dragPointer.y);
+          const away = dockRequests().find((entry) => entry.id === id);
+          if (away) dragOrigin = placementOf(away);
+        }
       }
 
       /*
@@ -3822,6 +3875,9 @@ export function ShellStoreProvider(props: ParentProps) {
         second half the bar is open — see `toggleMaximiseDock`.
       */
       const clickedFolded = Boolean(dragOrigin && !dragTravelled && !insert && !snap && dockGeometry()[id]?.collapsed);
+      // A press on a section's break-out grip that went nowhere: out, to its declared snap.
+      const pressedOut = Boolean(dragOrigin && !dragTravelled && pressBreaksOut && dockGeometry()[id]?.home);
+      pressBreaksOut = false;
       dragTravelled = false;
 
       dragOrigin = null;
@@ -3840,6 +3896,7 @@ export function ShellStoreProvider(props: ParentProps) {
         setSeatFolded(id, false);
         clickUnfolded = { id, at: now() };
       }
+      if (pressedOut) store.breakOut(id);
     },
 
     /**
@@ -4213,7 +4270,8 @@ export function ShellStoreProvider(props: ParentProps) {
 
     toggleMaximiseDock: (id) => {
       const request = dockRequests().find((entry) => entry.id === id);
-      if (!request?.edge) return;
+      // Nor a section at home in the page, which its lane sizes — see `outOfPage` in dockRegistry.
+      if (!request?.edge || placementOf(request).snap === 'home') return;
       /*
         The second click of a double-click on a folded bar.
 
@@ -4242,6 +4300,12 @@ export function ShellStoreProvider(props: ParentProps) {
       const edges = appEdgeFrames();
       for (const [id, box] of Object.entries(dockGeometry()))
         if (box.inLane && !box.floating && box.edge && edges[box.edge]) frames[id] = edges[box.edge]!;
+      // …one at home in a template, its lane's (the outlet's `frame`), flush when it says none…
+      const lanes = laneFrames();
+      for (const request of dockRequests()) {
+        const placement = placementOf(request);
+        if (placement.snap === 'home' && placement.home) frames[request.id] = lanes[placement.home] ?? 'flush';
+      }
       // …and a panel's own declaration wins wherever it is.
       for (const [id, declared] of Object.entries(declarationFor())) if (declared.frame) frames[id] = declared.frame;
       return frames;

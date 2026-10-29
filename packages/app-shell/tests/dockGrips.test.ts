@@ -70,7 +70,7 @@ describe('the grips a panel frame draws', () => {
     })(frame);
 
     expect(path(box?.zIndex)).toBe(
-      "shellStore.dockGeometry['transcribe:transcript'].inLane ? null : shellStore.dockGeometry['transcribe:transcript'].layer",
+      "shellStore.dockGeometry['transcribe:transcript'].inLane || shellStore.dockGeometry['transcribe:transcript'].home ? null : shellStore.dockGeometry['transcribe:transcript'].layer",
     );
   });
 

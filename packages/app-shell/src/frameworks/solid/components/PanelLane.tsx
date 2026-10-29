@@ -12,22 +12,19 @@
  * menu offers the way back. While it is away, this outlet shows a placeholder in its place with the
  * same offer.
  *
- * ## Two mount points, one remount at the gesture
+ * ## One frame, wherever the section is
  *
- * A section is rendered here when home and in the dock layer when not, and moving between the two
- * is a remount. The frame's rule is "never remount on *move*", and this is not a move: it is a
- * deliberate, rare transition somebody chose, and a section is a schema node — a re-query and a
- * scroll reset, once. Module panels never take this path. The alternatives were worse: a fixed
- * frame tracking a scrolling outlet lags a frame, which on a feed is unacceptable, and a node set
- * `position: fixed` in place is trapped by any transformed ancestor a template happens to write.
+ * A section here is drawn in the frame every panel has (`frameBox`), in the page's flow rather than
+ * over it, framed as its declaration says or else as this lane's `frame` does (flush by default).
+ * Its content is drawn once and moves with it (`PanelHost`), so breaking a section out and putting it
+ * back keeps a feed's place. The frame is drawn again where the section lands, and a drag that began
+ * on its grip here is carried on by the window once the grip has gone (see `carryPastTheGrip`).
  *
  * ## The grip is the host's, not the section's
  *
- * It lives on the wrapper this component draws around each section, never inside the section's own
- * node. Two reasons. The template's tree stays clean of host chrome. And the wrapper outlives the
- * section: when the section remounts into the dock layer mid-gesture, the grip — and the pointer
- * capture it holds — are still here, so press-and-drag survives the swap. The wrapper then becomes
- * the placeholder.
+ * It is part of the frame, never inside the section's own node, so the template's tree stays clean
+ * of host chrome. A section leaves the page once its grip has been dragged a few pixels, under the
+ * pointer; pressing a flush section's grip sends it to the snap its declaration names.
  *
  * ## A lane as a sidebar
  *
@@ -53,10 +50,10 @@
  * section shows its own; `shellStore.customisingLayout` shows them all.
  */
 import { NARROW_VIEWPORT_PX } from '@shared/dockGeometry';
-import { HOME_SECTION_ATTR, registerHomeLane } from '@shared/registries/homeLanes';
+import { declareLaneFrame, HOME_SECTION_ATTR, registerHomeLane } from '@shared/registries/homeLanes';
 import { Row } from '@we/components/solid';
 import type { PanelFrame } from '@we/schema-shared';
-import { type Accessor, createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
+import { type Accessor, createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 
 import { type LaneSection, useShellStore } from '../stores/ShellStore';
 import { PanelGroup, panelTitle, sectionKey } from './PanelGroup';
@@ -105,6 +102,8 @@ export function PanelLane(props: {
   const lane = () => props.lane ?? '';
   const direction = () => props.direction ?? 'column';
   const narrow = createNarrow();
+  // How its sections are framed where theirs do not say — read by every frame through `panelFrames`.
+  createEffect(() => onCleanup(declareLaneFrame(lane(), props.frame ?? 'flush')));
   /*
     By id, and only when what the lane holds changes. The shell's list is worked out again whenever
     any panel moves — every frame of a drag, of a resize — and hands back new entries each time; drawn
@@ -248,9 +247,7 @@ export function PanelLane(props: {
             'box-sizing': 'border-box',
           }}
         >
-          <For each={seats()}>
-            {(seat) => <PanelGroup members={seat.split('\n')} direction={direction()} laneFrame={props.frame} />}
-          </For>
+          <For each={seats()}>{(seat) => <HomeSeat members={seat.split('\n')} direction={direction()} />}</For>
           <For each={away()}>{(id) => <Placeholder dockId={id} />}</For>
         </div>
       </div>
@@ -290,6 +287,32 @@ function sameSections(a: readonly LaneSection[], b: readonly LaneSection[]): boo
 }
 
 const sameIds = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
+
+/**
+ * A seat of sections, in the page's flow: as long as its content, unless it says `grow` — then that
+ * share of what the lane has left, held to it so a tree or a list scrolls inside itself. A seat of
+ * several fills the room its place gives it.
+ */
+function HomeSeat(props: { members: string[]; direction: 'column' | 'row' }) {
+  const shellStore = useShellStore();
+  const front = () => shellStore.seatFront(props.members) ?? props.members[0];
+  const grow = () => (props.members.length > 1 ? 1 : shellStore.panelDeclaration(front())?.grow);
+  return (
+    <PanelGroup
+      members={props.members}
+      attrs={{ [HOME_SECTION_ATTR]: sectionKey(front()) }}
+      style={{
+        position: 'relative',
+        width: '100%',
+        display: 'flex',
+        'flex-direction': 'column',
+        flex: grow() ? `${grow()} 1 0` : undefined,
+        'min-height': grow() && props.direction === 'column' ? '0' : undefined,
+        'min-width': grow() && props.direction === 'row' ? '0' : undefined,
+      }}
+    />
+  );
+}
 
 /** Where a section was, while it is away: says so, and offers the way back. */
 function Placeholder(props: { dockId: string }) {
