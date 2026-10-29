@@ -34,7 +34,7 @@ import { describe, expect, it } from 'vitest';
 import { canvasPane } from './coasys/space/canvas.ts';
 import { callPath, groupPath, personPath, SELECTED_EXPR } from './coasys/space/paths.ts';
 import { treeSection } from './coasys/space/tree.ts';
-import { spaceRoutes } from './coasys/space/views.ts';
+import { callPage, spaceRoutes } from './coasys/space/views.ts';
 import { bundleFileName, type Cartridge, cartridgeBundles, coasys, fieldGuide, toolLibrary } from './index.ts';
 
 const contextData = JSON.parse(readFileSync(resolve(import.meta.dirname, '../../../ai-context/context.json'), 'utf-8'));
@@ -380,6 +380,124 @@ describe('the Coasys cartridge', () => {
     });
 
     /*
+      Page and Canvas showed Social DNA identically, the map in both. The canvas keeps the map — how
+      the definitions connect — and the page lists them to read: a section of cards a kind, narrowed
+      to the kind in focus, the chosen definition outlined.
+    */
+    it('lists Social DNA on its page, where the canvas draws the map', () => {
+      const page = spaceRoutes.find((route) => route.path === '/dna')!;
+      expect(findNode(page, (n) => n.type === 'GraphView')).toBeUndefined();
+      const sections = findAll(page, (n) => n.type === '$if' && JSON.stringify(n.props).includes("== 'all' && count("))
+        .map((n) => (n.props as { condition: unknown }).condition)
+        .filter((condition) => !JSON.stringify(condition).includes('== 0'));
+      const data = {
+        local: { signalTypes: [{ id: 'like', name: 'Like' }], relationshipTypes: [], topics: [{ id: 'x', name: 'X' }] },
+        spaceStore: {
+          spacePath: '/space/s1',
+          taskStates: [],
+          involvementTypes: [],
+          policy: { sentences: ['A rule.'] },
+        },
+      };
+      const shown = (dna?: string) => sections.map((condition) => at(['dna'], dna ? { dna } : {}, data)(condition));
+      // Every kind with something in it; one kind alone, even an empty one; a definition, its kind.
+      expect(shown()).toEqual([true, false, false, false, true, false, true]);
+      expect(shown('state')).toEqual([false, false, true, false, false, false, false]);
+      expect(shown('signal|like')).toEqual([true, false, false, false, false, false, false]);
+      // The chosen card is outlined.
+      const card = findNode(page, (n) => n.type === 'Card' && JSON.stringify(n.props).includes("== 'signal'"))!;
+      const border = (card.props as { border: unknown }).border;
+      expect(at(['dna'], { dna: 'signal|like' }, { def: { id: 'like' } })(border)).toBe('1px solid accent');
+      expect(at(['dna'], { dna: 'signal|like' }, { def: { id: 'love' } })(border)).toBe('1px solid transparent');
+    });
+
+    /*
+      Every bar says where the view is as a trail: Calls › the call, People › a person, Social DNA ›
+      Signal types › Like — each step but the last a way back to it, in the mode it was in.
+    */
+    describe('the bar’s trail', () => {
+      const bar = (node: SchemaNode) =>
+        findNode(node, (n) => (n.props as { minHeight?: string } | undefined)?.minHeight === '56px')!;
+      type Step = { label: unknown; to?: unknown };
+      const whereTo = (handler: unknown, evaluate: (p: unknown) => unknown): unknown => {
+        if (Array.isArray(handler)) return whereTo(handler[handler.length - 1], evaluate);
+        const h = handler as {
+          $if?: { condition: unknown; then: unknown; else: unknown };
+          $invoke?: string;
+          args?: unknown[];
+        };
+        if (h.$if) return whereTo(evaluate(h.$if.condition) ? h.$if.then : h.$if.else, evaluate);
+        const [first, second] = (h.args ?? []).map((arg) =>
+          arg && typeof arg === 'object' && '$' in arg ? evaluate(arg) : arg,
+        );
+        if (h.$invoke === 'routeStore.setParam') return `?${first}=${second}`;
+        const query = (second as { query?: Record<string, string> } | undefined)?.query;
+        return query ? `${first}?${new URLSearchParams(query)}` : first;
+      };
+      const trail = (node: unknown, evaluate: (p: unknown) => unknown, to?: unknown): Step[] => {
+        if (!node || typeof node !== 'object') return [];
+        const n = node as SchemaNode;
+        const props = (n.props ?? {}) as Record<string, unknown>;
+        if (n.type === '$if') return trail(evaluate(props.condition) ? props.then : props.else, evaluate, to);
+        if (n.type === 'we-button')
+          return (n.children ?? []).flatMap((c) => trail(c, evaluate, whereTo(props.onClick, evaluate)));
+        if (n.type === 'we-text' && props.variant === 'heading-sm') {
+          const label = n.children![0];
+          return [{ label: typeof label === 'object' ? evaluate(label) : label, ...(to ? { to } : {}) }];
+        }
+        return (n.children ?? []).flatMap((c) => trail(c, evaluate, to));
+      };
+      const trailAt = (node: SchemaNode, path: string[], params: Record<string, string>, extra = {}) =>
+        trail(bar(node), at(path, params, { shellStore: { collapsedLanes: [] }, ...extra }));
+      const route = (path: string) => spaceRoutes.find((r) => r.path === path)! as SchemaNode;
+      const dnaData = {
+        local: { signalTypes: [{ id: 'like', name: 'Like' }], relationshipTypes: [], topics: [] },
+        spaceStore: { spacePath: '/space/s1', taskStates: [], involvementTypes: [], policy: { sentences: [] } },
+      };
+
+      it('goes back up from a call, a person, a workflow and a channel', () => {
+        expect(
+          trailAt(callPage, ['record'], { kind: 'call', id: 'c1' }, { local: { callRecord: [{ title: 'Standup' }] } }),
+        ).toEqual([{ label: 'Calls', to: '/space/s1/calls' }, { label: 'Standup' }]);
+        expect(trailAt(route('/person'), ['person'], { did: 'did:ada' }, { person: { name: 'Ada' } })).toEqual([
+          { label: 'People', to: '/space/s1/people' },
+          { label: 'Ada' },
+        ]);
+        const open = { name: 'review', label: 'Review' };
+        expect(trailAt(route('/workflows'), ['workflows'], {}, { workflowStore: { open } })).toEqual([
+          { label: 'Workflows', to: '/space/s1/workflows' },
+          { label: 'Review' },
+        ]);
+        expect(trailAt(route('/workflows'), ['workflows'], {})).toEqual([{ label: 'Workflows' }]);
+        expect(trailAt(route('/calls'), ['calls'], {})).toEqual([{ label: 'Calls' }]);
+      });
+
+      it('goes back up through Social DNA, a kind of it and a definition, on its page or the canvas', () => {
+        expect(trailAt(route('/dna'), ['dna'], { dna: 'signal|like' }, dnaData)).toEqual([
+          { label: 'Social DNA', to: '/space/s1/dna?dna=all' },
+          { label: 'Signal types', to: '/space/s1/dna?dna=signal' },
+          { label: 'Like' },
+        ]);
+        expect(trailAt(route('/dna'), ['dna'], { dna: 'all' }, dnaData)).toEqual([{ label: 'Social DNA' }]);
+        // On the canvas the same steps, which stay on it.
+        expect(trailAt(canvasPane, [], { view: 'canvas', dna: 'signal|like' }, dnaData)).toEqual([
+          { label: 'Social DNA', to: '?dna=all' },
+          { label: 'Signal types', to: '?dna=signal' },
+          { label: 'Like' },
+        ]);
+        expect(
+          trailAt(
+            canvasPane,
+            ['record'],
+            { view: 'canvas', kind: 'call', id: 'c1' },
+            { local: { focusCall: [{ title: 'Standup' }] } },
+          ),
+        ).toEqual([{ label: 'Calls', to: '/space/s1/calls?view=canvas' }, { label: 'Standup' }]);
+        expect(trailAt(canvasPane, [], { view: 'canvas' })).toEqual([{ label: 'Canvas' }]);
+      });
+    });
+
+    /*
       The lane on the right holds the inspector and the space's settings in one place, as tabs, both
       closed until opened, and folds while neither is.
     */
@@ -423,6 +541,19 @@ function findNode(root: unknown, match: (node: { type?: string; props?: unknown 
     return undefined;
   };
   return walk(root);
+}
+
+/** Every node under `root` that `match` accepts, depth first, including those inside one that matched. */
+function findAll(root: unknown, match: (node: { type?: string; props?: unknown }) => boolean) {
+  const found: { type?: string; props?: unknown }[] = [];
+  const walk = (node: unknown): void => {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) return node.forEach(walk);
+    if (match(node as { type?: string })) found.push(node as { type?: string });
+    Object.values(node).forEach(walk);
+  };
+  walk(root);
+  return found;
 }
 
 describe('the lookup that read every tool as available', () => {

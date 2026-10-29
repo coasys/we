@@ -66,14 +66,80 @@ const modeSwitch: SchemaNode = {
   })),
 };
 
+/** What a node's children hold: text, a node, or an expression. */
+type Child = NonNullable<SchemaNode['children']>[number];
+
 /**
- * A view's bar: the way back to the tree, what this is, and whatever the view offers.
+ * One step of where a view is: Calls, then the call. `when` is an expression for a step that is only
+ * sometimes there — the definition under a kind of Social DNA, the workflow open on the Workflows page.
+ * `onClick` goes there; the last step shown is where somebody already is, and is not a button.
+ */
+export interface Crumb {
+  label: Child;
+  onClick?: SchemaProp;
+  when?: string;
+}
+
+/** A crumb's words, at the bar's size. No weight of its own, so a theme's heading weight reaches it — light in Glow. */
+const crumbText = (label: Child, extra: Record<string, unknown> = {}): SchemaNode => ({
+  type: 'we-text',
+  props: { variant: 'heading-sm', truncate: true, minWidth: '0', ...extra },
+  children: [label],
+});
+
+/** A step on the way here: muted, a button where it goes somewhere, and the caret to the next. */
+const crumbStep = (crumb: Crumb): SchemaNode => ({
+  type: 'Row',
+  // Shrinks before the step somebody is on, but only so far: each keeps a word or two.
+  props: { gap: '100', ay: 'center', minWidth: '0', maxWidth: '40%', flexShrink: 1 },
+  children: [
+    crumb.onClick
+      ? {
+          type: 'we-button',
+          props: {
+            variant: 'bare',
+            minWidth: '0',
+            color: 'text-muted',
+            hoverProps: { color: 'text' },
+            onClick: crumb.onClick,
+          },
+          children: [crumbText(crumb.label)],
+        }
+      : crumbText(crumb.label, { color: 'text-muted' }),
+    { type: 'we-icon', props: { name: 'caret-right', size: 'sm', color: 'text-muted', flexShrink: 0 } },
+  ],
+});
+
+/**
+ * The crumbs as nodes. A step is where somebody is when no step after it is shown, so a trail whose
+ * later steps come and go (`when`) draws its last one plain and every one before it as a way back.
+ */
+const trail = (crumbs: Crumb[]): SchemaNode[] =>
+  crumbs.map((crumb, i) => {
+    const later = crumbs.slice(i + 1).map((c) => c.when ?? 'true');
+    const here = crumbText(crumb.label, { flexShrink: 1 });
+    const node: SchemaNode = !later.length
+      ? here
+      : later.includes('true')
+        ? crumbStep(crumb)
+        : {
+            type: '$if',
+            props: { condition: { $: `!((${later.join(') || (')}))` }, then: here, else: crumbStep(crumb) },
+          };
+    return crumb.when ? { type: '$if', props: { condition: { $: crumb.when }, then: node } } : node;
+  });
+
+/**
+ * A view's bar: the way back to the tree, where this is, and whatever the view offers.
+ *
+ * Where this is reads as a trail — Calls › the call, People › a person, Social DNA › Signal types ›
+ * Like — every step but the last a way back up to it.
  *
  * `beside` sits against the title rather than at the far end — what acts on the name itself, such as
  * the pencil that renames a call. The title still truncates first, so a long name never pushes it out.
  */
 export const viewBar = (
-  title: SchemaNode['children'],
+  crumbs: Crumb[],
   /** A glyph's name, or an expression choosing one. */
   icon: SchemaProp,
   aside: SchemaNode[] = [],
@@ -87,15 +153,7 @@ export const viewBar = (
     {
       type: 'Row',
       props: { flex: '1', minWidth: '0', gap: '100', ay: 'center' },
-      children: [
-        {
-          type: 'we-text',
-          // No weight of its own, so a theme's heading weight reaches it — light in Glow.
-          props: { variant: 'heading-sm', truncate: true, minWidth: '0' },
-          children: title,
-        },
-        ...beside,
-      ],
+      children: [...trail(crumbs), ...beside],
     },
     ...aside,
     modeSwitch,

@@ -22,12 +22,16 @@ import { CALLS, LIVE, SUB_CHANNELS } from './tree.ts';
 /** What a node's children hold: text, a node, or an expression. */
 type Child = NonNullable<SchemaNode['children']>[number];
 
-const tile = (opts: {
+/** `selected` is an expression: the card is where the address is, and is outlined as the tree's row is lit. */
+export const tile = (opts: {
   lead: SchemaNode;
   title: Child;
   detail?: SchemaNode;
   badge?: SchemaNode;
   onClick?: SchemaProp;
+  selected?: string;
+  /** Lines the title may wrap to, for a title that is a sentence; one, cut short, otherwise. */
+  titleLines?: number;
 }): SchemaNode => {
   const card: SchemaNode = {
     type: 'Card',
@@ -38,7 +42,9 @@ const tile = (opts: {
       height: '100%',
       direction: 'row',
       ay: 'center',
-      border: '1px solid transparent',
+      border: opts.selected
+        ? { $: `(${opts.selected}) ? '1px solid accent' : '1px solid transparent'` }
+        : '1px solid transparent',
       ...(opts.onClick ? { hoverProps: { border: '1px solid accent-border', shadow: 'glow' } } : {}),
     },
     children: [
@@ -47,7 +53,11 @@ const tile = (opts: {
         type: 'Column',
         props: { flex: '1', minWidth: '0', gap: '100' },
         children: [
-          { type: 'we-text', props: { fontWeight: 'semibold', truncate: true }, children: [opts.title] },
+          {
+            type: 'we-text',
+            props: { fontWeight: 'semibold', ...(opts.titleLines ? { lines: opts.titleLines } : { truncate: true }) },
+            children: [opts.title],
+          },
           ...(opts.detail ? [opts.detail] : []),
         ],
       },
@@ -59,18 +69,18 @@ const tile = (opts: {
     : card;
 };
 
-const glyph = (name: SchemaProp): SchemaNode => ({
+export const glyph = (name: SchemaProp): SchemaNode => ({
   type: 'we-icon',
   props: { name, color: 'accent-text', size: 'md' },
 });
 
-const detail = (text: Child): SchemaNode => ({
+export const detail = (text: Child): SchemaNode => ({
   type: 'we-text',
   props: { variant: 'footnote', color: 'text-muted', truncate: true },
   children: [text],
 });
 
-const grid = (cards: SchemaNode[]): SchemaNode => ({
+export const grid = (cards: SchemaNode[]): SchemaNode => ({
   type: 'Grid',
   props: { minChildWidth: '240px', gap: '300' },
   children: cards,
@@ -91,7 +101,7 @@ const groupPage = (opts: {
   props: { width: '100%', height: '100%' },
   ...(opts.queries ? { $queries: opts.queries } : {}),
   children: [
-    viewBar([opts.title], opts.icon),
+    viewBar([{ label: opts.title }], opts.icon),
     {
       type: 'Column',
       props: { flex: '1', minHeight: '0', overflowY: 'auto', px: '500', py: '500' },

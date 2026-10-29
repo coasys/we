@@ -2119,7 +2119,10 @@ const borderWithHover = (): Scenario => ({
   tables: {},
 });
 
-/** A Coasys view's bar, with the Page / Canvas switch at its end, in Glow — on the Canvas side. */
+/**
+ * A Coasys view's bar, with the Page / Canvas switch at its end, in Glow — on the Canvas side — and a
+ * trail three steps long, the first two ways back up.
+ */
 const coasysBar = (): Scenario => {
   const glow = BUNDLE_LAB_THEMES.find((t) => t.label === 'coasys-glow')?.theme ?? {};
   return {
@@ -2127,11 +2130,25 @@ const coasysBar = (): Scenario => {
       type: 'Column',
       theme: glow,
       props: { width: '900px', bg: 'page' },
-      children: [viewBar(['Feed'], 'chats-circle')],
+      children: [
+        viewBar(
+          [
+            { label: 'Social DNA', onClick: { $invoke: 'routeStore.navigate', args: ['/dna'] } },
+            { label: 'Signal types', onClick: { $invoke: 'routeStore.navigate', args: ['/dna?dna=signal'] } },
+            { label: 'Like' },
+          ],
+          'dna',
+        ),
+      ],
     },
     tables: {},
     stores: {
-      routeStore: { params: { view: 'canvas' }, templateSegments: [], setParam: () => {} },
+      routeStore: {
+        params: { view: 'canvas' },
+        templateSegments: [],
+        setParam: () => {},
+        navigate: (to: string) => ((globalThis as { __navigated?: string }).__navigated = to),
+      },
       shellStore: { collapsedLanes: [] },
     },
   };

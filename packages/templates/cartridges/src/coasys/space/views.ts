@@ -2,11 +2,11 @@ import type { RouteSchema, SchemaNode, SchemaProp } from '@we/schema-shared';
 import { FLOWS_LOCALS, lineComposer, workflowsPage } from '@we/template-kit';
 
 import { viewBar } from './bar.ts';
-import { dnaRoute } from './canvas.ts';
 import { groupRoutes } from './groups.ts';
 import { liveDot } from './marks.ts';
-import { CHANNEL, IN_ROOT_EXPR } from './paths.ts';
+import { CHANNEL, groupPath, IN_ROOT_EXPR } from './paths.ts';
 import { personRoute } from './person.ts';
+import { dnaRoute } from './socialDna.ts';
 
 /**
  * The pages beside the tree: the Feed, the space's workflows, and — as its own page — a call. Each is
@@ -15,6 +15,9 @@ import { personRoute } from './person.ts';
 
 /** The channel record, for its title. The root channel is the space's own collection: the Feed. */
 const CHANNEL_TITLE = `${IN_ROOT_EXPR} ? 'Feed' : (first(local.channelRecord).title ? first(local.channelRecord).title : 'Channel')`;
+
+/** Go to an address, an expression. */
+export const navigateTo = (path: string): SchemaProp => ({ $invoke: 'routeStore.navigate', args: [{ $: path }] });
 
 const channelQueries = {
   channelRecord: {
@@ -229,7 +232,14 @@ const chatRoute: RouteSchema = {
     focusLine: { type: 'function', initial: null },
   },
   children: [
-    viewBar([{ $: CHANNEL_TITLE }], { $: `(${IN_ROOT_EXPR}) ? 'chats-circle' : 'hash'` }),
+    viewBar(
+      [
+        // The Feed is the space's own; a channel under it is one of the Channels.
+        { label: 'Channels', onClick: navigateTo(groupPath('channels')), when: `!(${IN_ROOT_EXPR})` },
+        { label: { $: CHANNEL_TITLE } },
+      ],
+      { $: `(${IN_ROOT_EXPR}) ? 'chats-circle' : 'hash'` },
+    ),
     {
       type: '$if',
       props: {
@@ -252,7 +262,16 @@ const workflowsRoute: RouteSchema = {
   props: { width: '100%', height: '100%' },
   $localState: { ...FLOWS_LOCALS },
   children: [
-    viewBar([{ $: "workflowStore.open ? workflowStore.open.label : 'Workflows'" }], 'flow-arrow'),
+    viewBar(
+      [
+        {
+          label: 'Workflows',
+          onClick: [{ $invoke: 'workflowStore.closeWorkflow' }, navigateTo(groupPath('workflows'))],
+        },
+        { label: { $: 'workflowStore.open.label' }, when: 'workflowStore.open' },
+      ],
+      'flow-arrow',
+    ),
     {
       type: 'Column',
       props: { flex: '1', minHeight: '0', overflowY: 'auto' },
@@ -291,7 +310,10 @@ export const callPage: SchemaNode = {
   },
   children: [
     viewBar(
-      [{ $: "first(local.callRecord).title ? first(local.callRecord).title : 'Call'" }],
+      [
+        { label: 'Calls', onClick: navigateTo(groupPath('calls')) },
+        { label: { $: "first(local.callRecord).title ? first(local.callRecord).title : 'Call'" } },
+      ],
       'phone',
       [
         {

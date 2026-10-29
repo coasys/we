@@ -2,6 +2,7 @@ import type { RouteSchema } from '@we/schema-shared';
 import { profilePage } from '@we/template-kit';
 
 import { viewBar } from './bar.ts';
+import { groupPath } from './paths.ts';
 
 /** The person on screen: the one the address names. */
 const DID = 'routeStore.params.did';
@@ -22,23 +23,30 @@ export const personRoute: RouteSchema = {
       type: '$agent',
       props: { did: { $: DID }, as: 'person' },
       children: [
-        viewBar([{ $: "person.name ? person.name : 'Member'" }], 'user', [
-          {
-            type: '$if',
-            props: {
-              condition: { $: 'person.did == me.did' },
-              then: {
-                type: 'we-button',
-                props: {
-                  size: 'sm',
-                  variant: 'soft',
-                  onClick: { $invoke: 'shellStore.openShellView', args: ['profile'] },
+        viewBar(
+          [
+            { label: 'People', onClick: { $invoke: 'routeStore.navigate', args: [{ $: groupPath('people') }] } },
+            { label: { $: "person.name ? person.name : 'Member'" } },
+          ],
+          'user',
+          [
+            {
+              type: '$if',
+              props: {
+                condition: { $: 'person.did == me.did' },
+                then: {
+                  type: 'we-button',
+                  props: {
+                    size: 'sm',
+                    variant: 'soft',
+                    onClick: { $invoke: 'shellStore.openShellView', args: ['profile'] },
+                  },
+                  children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }, 'Edit profile'],
                 },
-                children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }, 'Edit profile'],
               },
             },
-          },
-        ]),
+          ],
+        ),
         {
           type: 'Column',
           props: { flex: '1', minHeight: '0', overflowY: 'auto' },

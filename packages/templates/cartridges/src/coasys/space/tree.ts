@@ -5,7 +5,6 @@ import {
   chooseTheme,
   field,
   formModal,
-  SOCIAL_DNA_LABELS,
   SPACE_TEMPLATE_CHOICES,
   SPACE_THEME_CHOICES,
   templateChoice,
@@ -14,6 +13,7 @@ import {
   treeRow,
 } from '@we/template-kit';
 
+import { DNA_LISTS, DNA_QUERIES, type DnaList, POLICY, POLICY_RULES } from './dna.ts';
 import { countPill, liveDot } from './marks.ts';
 import {
   callPath,
@@ -214,40 +214,27 @@ const openable = (value: string) => ({
   onOpenChange: { $toggleLocalIn: 'openRows', value: { $: value } },
 });
 
-/**
- * One kind of definition: a row with its count, and a row for each definition. `as` is the name each
- * definition is bound as; `id` and `name` are expressions over it.
- */
-const dnaKind = (opts: {
-  kind: string;
-  label: string;
-  icon: string;
-  items: string;
-  as: string;
-  id: string;
-  name: string;
-  itemIcon: string;
-}): SchemaNode => {
-  const kindValue = `'dnakind|${opts.kind}'`;
-  const value = `'dna|${opts.kind}|' + ${opts.id}`;
+/** One kind of definition: a row with its count, and a row for each definition, bound as `def`. */
+const dnaKind = (list: DnaList): SchemaNode => {
+  const kindValue = `'dnakind|${list.kind}'`;
   return treeRow({
     nested: true,
     value: { $: kindValue },
-    label: opts.label,
-    icon: opts.icon,
+    label: list.label,
+    icon: list.icon,
     ...openable(kindValue),
-    expandable: { $: `count(${opts.items}) > 0` },
-    badge: countPill(`count(${opts.items})`),
+    expandable: { $: `count(${list.items}) > 0` },
+    badge: countPill(`count(${list.items})`),
     children: [
       {
         type: '$each',
-        props: { items: { $: opts.items }, as: opts.as },
+        props: { items: { $: list.items }, as: 'def' },
         children: [
           treeRow({
             nested: true,
-            value: { $: value },
-            label: { $: opts.name },
-            icon: { $: opts.itemIcon },
+            value: { $: `'dna|${list.kind}|' + def.id` },
+            label: { $: 'def.name' },
+            icon: { $: list.itemIcon },
           }),
         ],
       },
@@ -256,82 +243,21 @@ const dnaKind = (opts: {
 };
 
 /** The space's own definitions, in the order the vocabulary settings show them. */
-const DNA_KINDS: SchemaNode[] = [
-  dnaKind({
-    kind: 'signal',
-    label: SOCIAL_DNA_LABELS.signals,
-    icon: 'heart',
-    items: 'local.signalTypes',
-    as: 'sig',
-    id: 'sig.id',
-    name: 'sig.name',
-    itemIcon: "sig.icon ? sig.icon : 'heart'",
-  }),
-  dnaKind({
-    kind: 'connection',
-    label: SOCIAL_DNA_LABELS.connections,
-    icon: 'arrows-left-right',
-    items: 'local.relationshipTypes',
-    as: 'conn',
-    id: 'conn.id',
-    name: 'conn.name',
-    itemIcon: "'arrows-left-right'",
-  }),
-  dnaKind({
-    kind: 'state',
-    label: SOCIAL_DNA_LABELS.states,
-    icon: 'circle-half',
-    items: 'spaceStore.taskStates',
-    as: 'state',
-    id: 'state.id',
-    name: 'state.name',
-    itemIcon: "state.icon ? state.icon : 'circle'",
-  }),
-  dnaKind({
-    kind: 'involvement',
-    label: SOCIAL_DNA_LABELS.kinds,
-    icon: 'hand-waving',
-    items: 'spaceStore.involvementTypes',
-    as: 'part',
-    id: 'part.id',
-    name: 'part.name',
-    itemIcon: "part.icon ? part.icon : 'user'",
-  }),
-  dnaKind({
-    kind: 'topic',
-    label: SOCIAL_DNA_LABELS.topics,
-    icon: 'hash',
-    items: 'local.topics',
-    as: 'topic',
-    id: 'topic.id',
-    name: 'topic.name',
-    itemIcon: "'hash'",
-  }),
-  dnaKind({
-    kind: 'model',
-    label: SOCIAL_DNA_LABELS.models,
-    icon: 'shapes',
-    items: 'shapeStore.spaceShapes',
-    as: 'shape',
-    id: 'shape.id',
-    name: 'shape.name',
-    itemIcon: "shape.icon ? shape.icon : 'dna'",
-  }),
-];
+const DNA_KINDS: SchemaNode[] = DNA_LISTS.map(dnaKind);
 
 /** The space's policy: who may do what, one rule a row, as the people settings word them. */
 const policyKind: SchemaNode = treeRow({
   nested: true,
   value: { $: "'dnakind|policy'" },
-  label: SOCIAL_DNA_LABELS.policy,
-  icon: 'scales',
+  label: POLICY.label,
+  icon: POLICY.icon,
   ...openable("'dnakind|policy'"),
-  expandable: { $: 'count(spaceStore.policy.sentences) > 0' },
-  badge: countPill('count(spaceStore.policy.sentences)'),
+  expandable: { $: `count(${POLICY_RULES}) > 0` },
+  badge: countPill(`count(${POLICY_RULES})`),
   children: [
     {
       type: '$each',
-      props: { items: { $: 'spaceStore.policy.sentences' }, as: 'rule' },
+      props: { items: { $: POLICY_RULES }, as: 'rule' },
       // By its words, which are also what the vocabulary map knows it by.
       children: [treeRow({ nested: true, value: { $: "'dnaprop|policy|' + rule" }, label: { $: 'rule' } })],
     },
@@ -339,17 +265,7 @@ const policyKind: SchemaNode = treeRow({
 });
 
 /** Every definition there is, across the kinds and the policy: the group's count. */
-const DNA_COUNT = [
-  'local.signalTypes',
-  'local.relationshipTypes',
-  'spaceStore.taskStates',
-  'spaceStore.involvementTypes',
-  'local.topics',
-  'shapeStore.spaceShapes',
-  'spaceStore.policy.sentences',
-]
-  .map((list) => `count(${list})`)
-  .join(' + ');
+const DNA_COUNT = [...DNA_LISTS.map((list) => list.items), POLICY_RULES].map((list) => `count(${list})`).join(' + ');
 
 /** Everything the space has defined about itself — see above. */
 const socialDna = group('dna', 'Social DNA', 'dna', [...DNA_KINDS, policyKind], { count: DNA_COUNT });
@@ -423,13 +339,6 @@ const themesGroup = group(
     action: newButton('New theme', { $invoke: 'themeStore.startThemeFork' }),
   },
 );
-
-/** The vocabulary the Social DNA group lists that lives in the space's records rather than in a store. */
-const DNA_QUERIES = {
-  signalTypes: { entity: 'SignalType', order: { name: 'asc' } },
-  relationshipTypes: { entity: 'RelationshipType', order: { name: 'asc' } },
-  topics: { entity: 'Topic', order: { name: 'asc' } },
-};
 
 /** A definition row's kind and id — `dna|<kind>|<id>`. */
 const DEF_KIND = "split(event.detail.value, '|')[1]";

@@ -1,4 +1,4 @@
-import type { RouteSchema, SchemaNode, SchemaProp } from '@we/schema-shared';
+import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 import {
   askWhatGoesHere,
   BACK_TO_CHOOSER,
@@ -14,13 +14,13 @@ import {
   newThingChooser,
   PLACED_CARD_STYLE,
   recordFormModal,
-  SOCIAL_DNA_LABELS,
   SUGGESTION_STYLES,
   vocabularyMap,
 } from '@we/template-kit';
 
-import { viewBar } from './bar.ts';
-import { DNA_FOCUS, IN_CANVAS, inspect, PAGE_EXPR } from './paths.ts';
+import { type Crumb, viewBar } from './bar.ts';
+import { BUCKET, DNA_AT, DNA_ID, DNA_KIND, DNA_QUERIES, dnaCrumbs, editDna, MODEL_NAME } from './dna.ts';
+import { DNA_FOCUS, IN_CANVAS, inspect, PAGE_EXPR, withView } from './paths.ts';
 
 /**
  * The space in Canvas mode: whatever the tree has chosen, seen on the map it lives on.
@@ -61,38 +61,11 @@ const CANVAS = { $: CANVAS_EXPR };
 /** A record's own page, which a double-click opens. */
 const RECORD_PAGE = "spaceStore.spacePath + '/record/' + event.recordType + '?id=' + event.recordId";
 
-/** Social DNA in focus: the map, and which kind, and which definition of it. */
+/** Social DNA in focus, over the canvas. */
 const ON_DNA = `(${IN_CANVAS}) && ${DNA_FOCUS}`;
-/** The focus, as `all` where the address names none — the Social DNA page reached without one. */
-const DNA_AT = `(${DNA_FOCUS} ? ${DNA_FOCUS} : 'all')`;
-const DNA_KIND = `split(${DNA_AT}, '|')[0]`;
-const DNA_ID = `split(${DNA_AT}, '|')[1]`;
-
-/** A kind of Social DNA in the tree, as the vocabulary map's bucket for it, and as the bar names it. */
-const DNA_KINDS: Record<string, { bucket: string; label: string }> = Object.fromEntries(
-  (
-    [
-      ['signal', 'signals'],
-      ['connection', 'connections'],
-      ['state', 'states'],
-      ['involvement', 'kinds'],
-      ['topic', 'topics'],
-      ['model', 'models'],
-      ['policy', 'policy'],
-    ] as const
-  ).map(([kind, bucket]) => [kind, { bucket, label: SOCIAL_DNA_LABELS[bucket] }]),
-);
-const lookup = (field: 'bucket' | 'label') =>
-  `{ ${Object.entries(DNA_KINDS)
-    .map(([kind, entry]) => `${kind}: '${entry[field]}'`)
-    .join(', ')} }[${DNA_KIND}]`;
-const BUCKET = lookup('bucket');
 
 /** A bucket's node on the map, by the address the vocabulary seed gives it. */
 const BUCKET_NODE = `'we-graph://cluster/vocabulary/' + ${BUCKET}`;
-
-/** A model's name, the tree knowing a model by the Shape record's id. */
-const MODEL_NAME = `shapeStore.spaceShapes.find(s, s.id == (${DNA_ID})).name`;
 
 /**
  * Social DNA in focus, as two dimmings: everything in the other kinds, and — with one definition
@@ -123,9 +96,8 @@ const OPEN_IN_INSPECTOR: SchemaProp = {
 };
 
 /**
- * The vocabulary map with the Social DNA in focus — drawn over the canvas in Canvas mode, and as the
- * Social DNA page in Page mode, so the two modes show the space's definitions the same way. Reads
- * `local.vocabOpen`, which whatever places it declares.
+ * The vocabulary map with the Social DNA in focus, drawn over the canvas in Canvas mode — how the
+ * definitions connect, where the Social DNA page (`socialDna.ts`) lists them to read through.
  */
 const dnaMap: SchemaNode = vocabularyMap({
   // Its kind opened, and the definition chosen opened into what it is.
@@ -146,54 +118,48 @@ const dnaMap: SchemaNode = vocabularyMap({
   focusRules: [focusDimWhere(`${DNA_AT} != 'all'`, OTHER_KINDS), focusDimWhere(DNA_ID, SIBLINGS)],
 });
 
-/** The bar's words for Social DNA in focus. */
-const DNA_TITLE = `${DNA_AT} == 'all' ? 'Social DNA' : ${lookup('label')}`;
+/** The group of the tree what is in focus belongs to — the page a crumb goes back to — or nothing. */
+const GROUPS: Record<string, string> = {
+  calls: 'Calls',
+  people: 'People',
+  channels: 'Channels',
+  workflows: 'Workflows',
+};
+const GROUP = `(${CALL}) ? 'calls' : (${PERSON}) ? 'people' : ({ ${Object.keys(GROUPS)
+  .map((g) => `${g}: '${g}'`)
+  .join(', ')} }[${PAGE_EXPR}] ?? '')`;
+const ITEM = `(${CALL}) || (${PERSON}) || ${WORKFLOW}`;
 
 /**
- * Where the definitions are edited, from the bar of either view of them: the space's vocabulary
- * settings — at the model chosen, where it is one, since the inspector does not read a model.
+ * Where the bar says this is: the Social DNA in focus, or what the tree chose and the group it is in —
+ * Calls › the call, People › a person, Workflows › one — each step back staying on the canvas.
  */
-const editDna: SchemaNode = {
-  type: 'we-button',
-  props: {
-    variant: 'ghost',
-    size: 'sm',
-    onClick: {
-      $invoke: 'shellStore.openSpaceSettings',
-      args: ['vocabulary', { $: `${DNA_KIND} == 'model' ? ${DNA_ID} : ''` }],
+const CRUMBS: Crumb[] = [
+  ...dnaCrumbs(ON_DNA),
+  {
+    label: {
+      $: `{ ${Object.entries(GROUPS)
+        .map(([g, label]) => `${g}: '${label}'`)
+        .join(', ')} }[${GROUP}]`,
     },
+    onClick: [
+      { $if: { condition: { $: `(${GROUP}) == 'workflows'` }, then: { $invoke: 'workflowStore.closeWorkflow' } } },
+      { $invoke: 'routeStore.navigate', args: [{ $: withView(`spaceStore.spacePath + '/' + (${GROUP})`) }] },
+    ],
+    when: `!(${ON_DNA}) && (${GROUP}) != ''`,
   },
-  children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }, 'Edit in settings'],
-};
-
-/**
- * Social DNA as a page — what the tree's Social DNA rows open in Page mode, as every other group row
- * opens its page. It used to open the space's settings instead: an edit surface off to the side, for
- * somebody who only wanted to look. The focus is in the address (`?dna=`), as on the canvas.
- */
-export const dnaRoute: RouteSchema = {
-  path: '/dna',
-  type: 'Column',
-  props: { width: '100%', height: '100%' },
-  $localState: { vocabOpen: { type: 'array', initial: [] } },
-  children: [
-    viewBar([{ $: DNA_TITLE }], 'dna', [editDna]),
-    {
-      type: 'Column',
-      props: { flex: '1', minHeight: '0', position: 'relative' },
-      children: [dnaMap],
+  {
+    label: {
+      $: [
+        `(${CALL}) ? (first(local.focusCall).title ? first(local.focusCall).title : 'A call')`,
+        `: (${PERSON}) ? (profileStore.profiles.find(p, p.did == (${PERSON})).name ?? 'A person')`,
+        `: workflowStore.open.label`,
+      ].join(' '),
     },
-  ],
-};
-
-/** The bar's words for what is in focus. */
-const TITLE = [
-  `(${ON_DNA}) ? (${DNA_TITLE})`,
-  `: (${CALL}) ? (first(local.focusCall).title ? first(local.focusCall).title : 'A call')`,
-  `: (${PERSON}) ? (profileStore.profiles.find(p, p.did == (${PERSON})).name ?? 'A person')`,
-  `: ${WORKFLOW} ? workflowStore.open.label`,
-  `: 'Canvas'`,
-].join(' ');
+    when: `!(${ON_DNA}) && (${ITEM})`,
+  },
+  { label: 'Canvas', when: `!(${ON_DNA}) && (${GROUP}) == ''` },
+];
 
 export const canvasPane: SchemaNode = {
   type: 'Column',
@@ -204,6 +170,10 @@ export const canvasPane: SchemaNode = {
     vocabOpen: { type: 'array', initial: [] },
   },
   $queries: {
+    // What the Social DNA crumbs name a definition by, asked only while it is on the canvas.
+    ...Object.fromEntries(
+      Object.entries(DNA_QUERIES).map(([name, query]) => [name, { ...query, when: { $: ON_DNA } }]),
+    ),
     // The space's colours by kind, which the cards and the chooser below are drawn in.
     typeStyles: KIND_STYLES_QUERY,
     focusCall: {
@@ -215,7 +185,7 @@ export const canvasPane: SchemaNode = {
     },
   },
   children: [
-    viewBar([{ $: TITLE }], { $: `(${ON_DNA}) ? 'dna' : 'squares-four'` }, [
+    viewBar(CRUMBS, { $: `(${ON_DNA}) ? 'dna' : 'squares-four'` }, [
       { type: '$if', props: { condition: { $: ON_DNA }, then: editDna } },
     ]),
     {
