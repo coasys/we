@@ -27154,7 +27154,9 @@
     {
       "id": "coasys-default",
       "name": "Coasys space",
-      "description": "A Feed, calls and the work that comes out of them, laid out as one tree and one view.",
+      "title": "Comes with Coasys's starter kit",
+      "description": "Social DNA for likes, tasks and who's involved, a canvas and a task board, and calls read for the work that comes out of them. You can change any of it later.",
+      "icon": "dna",
       "settings": {
         "defaultTemplateId": "space",
         "defaultThemeId": "glow",

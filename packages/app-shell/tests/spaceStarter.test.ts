@@ -253,7 +253,7 @@ describe('checking a starter', () => {
 
   it('refuses a key nothing reads, and a policy that is not one', () => {
     expect(starterProblems({ id: 'x', roles: {} } as unknown as SpaceStarter, vocabulary)).toEqual([
-      'roles is not part of a starter (id, name, description, settings, records, landmarks, policy, input)',
+      'roles is not part of a starter (id, name, description, title, icon, settings, records, landmarks, policy, input)',
     ]);
     expect(starterProblems({ id: 'x', policy: 'closed' } as unknown as SpaceStarter, vocabulary)).toEqual([
       'policy must be "open" or "community": closed',

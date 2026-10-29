@@ -420,7 +420,7 @@ export const storeEntries: StoreEntry[] = [
       taskStatesLoaded: { type: 'boolean' },
       root: { type: 'string' },
       landmarks: { type: 'object' },
-      startsAs: { type: 'object', properties: ['app', 'description'] },
+      startsAs: { type: 'object', properties: ['app', 'title', 'description', 'icon'] },
       taskWorkflowEnabled: { type: 'boolean' },
       archivedWorkflows: { type: 'array' },
       taskWorkflowRule: { type: 'string' },
@@ -1220,7 +1220,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       landmarks:
         "Record<name, id> — the records this space names as its landmarks, e.g. spaceStore.landmarks.canvas is the space's canvas. Written by the space's starter at creation. A landmark can be absent — a space can switch template and a template must never assume what another set up — so guard every read",
       startsAs:
-        '{ app, description } | null — what a space made now starts as, when the app in use brings a starter of its own: the app\'s name and what its starter says about itself. Null when a new space gets the deployment\'s starter. What the create dialog reads to say "Starts as a Coasys space"',
+        '{ app, title, description, icon } | null — what a space made now starts with, when the app in use brings a starter of its own: the app\'s name, the line its starter leads with ("Comes with Coasys\'s starter kit", else "Starts as a <app> space"), what it says about itself, and its glyph. Null when a new space gets the deployment\'s starter. What the create dialog\'s note reads',
       autoInterpret:
         'boolean — whether a NEW collection here (a call, a channel) starts out extracted into records as it grows. A community default, copied onto each collection when it is made — a conversation already under way keeps its own answer, read with autoExtractFor. Readable by every member; writing it is space-settings',
       spaceModuleSettings:

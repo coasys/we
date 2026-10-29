@@ -741,7 +741,7 @@ export interface SpaceStore {
    * and what its starter says about itself — or null when it is the deployment's. A space is the
    * community's, so the create dialog says so rather than letting the app decide its defaults silently.
    */
-  startsAs: Accessor<{ app: string; description: string } | null>;
+  startsAs: Accessor<{ app: string; title: string; description: string; icon: string } | null>;
 
   // Actions
   /**
@@ -1204,7 +1204,15 @@ export function SpaceStoreProvider(props: ParentProps) {
   );
   const startsAs = createMemo(() => {
     const { starter, app } = spaceStarter();
-    return app && starter ? { app, description: starter.description ?? '' } : null;
+    return app && starter
+      ? {
+          app,
+          // The starter's own words where it has them — each app says what its kit is.
+          title: starter.title ?? `Starts as a ${app} space`,
+          description: starter.description ?? '',
+          icon: starter.icon ?? 'package',
+        }
+      : null;
   });
   const [creatingSpace, setCreatingSpace] = createSignal(false);
   /**

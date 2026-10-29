@@ -632,6 +632,9 @@ describe('dataset lifecycle through the real stores', () => {
     app.use({ id: 'coasys--app', source: { bundle: 'coasys' } });
     try {
       expect(stores.spaces.startsAs()?.app).toBe('Coasys');
+      // In the starter's own words and with its own glyph — the note says what the kit gives.
+      expect(stores.spaces.startsAs()).toMatchObject({ title: "Comes with Coasys's starter kit", icon: 'dna' });
+      expect(stores.spaces.startsAs()?.description).toContain('Social DNA');
       await stores.spaces.createSpace('In Coasys', '', 'personal', 'hidden');
     } finally {
       app.use({ id: 'we-app' });

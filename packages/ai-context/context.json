@@ -7749,7 +7749,7 @@
         },
         "startsAs": {
           "type": "object",
-          "properties": ["app", "description"]
+          "properties": ["app", "title", "description", "icon"]
         },
         "mutedDids": {
           "type": "array"

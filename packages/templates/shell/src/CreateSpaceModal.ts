@@ -109,7 +109,7 @@ export const createSpaceModal = {
         */
         then: {
           type: 'we-alert',
-          props: { icon: 'app-window' },
+          props: { icon: { $: 'spaceStore.startsAs.icon' } },
           children: [
             {
               type: 'Column',
@@ -118,7 +118,7 @@ export const createSpaceModal = {
                 {
                   type: 'we-text',
                   props: { fontWeight: '600' },
-                  children: [{ $: '`Starts as a ${spaceStore.startsAs.app} space`' }],
+                  children: [{ $: 'spaceStore.startsAs.title' }],
                 },
                 {
                   type: '$if',

@@ -82,6 +82,13 @@ export interface SpaceStarter {
   name?: string;
   description?: string;
   /**
+   * What the create dialog leads with when an app's starter applies — "Comes with Coasys's starter
+   * kit". Absent, it says the space starts as the app's.
+   */
+  title?: string;
+  /** The glyph beside it — what the kit is mostly about (`dna` for a starter that is Social DNA). */
+  icon?: string;
+  /**
    * The `Space` record's fields, keyed by name. Lists of plain values are stored as JSON, as the
    * fields hold them; a reference or a list of references is a relation, written after the records.
    */
@@ -363,6 +370,8 @@ export const STARTER_KEYS: ReadonlySet<string> = new Set([
   'id',
   'name',
   'description',
+  'title',
+  'icon',
   'settings',
   'records',
   'landmarks',
