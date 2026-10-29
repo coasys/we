@@ -487,6 +487,12 @@ const tile: SchemaNode = {
                     right: '0',
                     bottom: '0',
                     left: '0',
+                    /*
+                      No corners of its own: the tile clips it. A video takes the theme's surface radius by
+                      default, which in a theme rounder than the tile (Glow's 22px) cut the picture's
+                      corners deeper than the box behind it.
+                    */
+                    r: '0',
                     /**
                      * `cover` for a camera, `contain` for a desktop.
                      *

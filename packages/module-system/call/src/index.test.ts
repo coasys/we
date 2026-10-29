@@ -68,6 +68,16 @@ describe('audio', () => {
     expect(videos).not.toHaveLength(0);
     for (const video of videos) expect((video.props as Record<string, unknown>).muted).toBe(true);
   });
+
+  it('rounds a picture only by the tile it sits in', () => {
+    // A video takes the theme's surface radius by default; inside a tile that clips, that cut the
+    // picture's corners deeper than the tile's own wherever a theme is rounder than the tile.
+    const tile = walk(part('tile')).find((node) => (node.props as Record<string, unknown>)?.overflow === 'hidden');
+    expect(tile).toBeDefined();
+    const videos = walk(tile!).filter((node) => node.type === 'we-video');
+    expect(videos).not.toHaveLength(0);
+    for (const video of videos) expect((video.props as Record<string, unknown>).r).toBe('0');
+  });
 });
 
 /** The nodes from the root down to `target`, so a test can ask what a node is gated by. */
