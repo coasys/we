@@ -15,9 +15,9 @@
  *   relation): woken, naming the line;
  * - the bot's own feed line naming itself: not woken, while the same kind of line by someone else
  *   is;
- * - a known gap: a post into a channel through WE's own create path (`createBlocks`, which is what
- *   `spaceStore.createPost` calls) is not woken yet. Its mention link is on the root, which has no
- *   text of its own, so the root is not a TextContent record; the case pins that until it is.
+ * - a post into a channel through WE's own create path (`createBlocks`, which is what
+ *   `spaceStore.createPost` calls): woken, naming the post's root. Its mention link is on the root,
+ *   which has no text of its own, so only the waker's `Mentioning` query finds it (`via: 'mentions'`).
  *
  * The name in the text is made up for the run, so it is in no profile the executor could know the
  * bot by. The bot's own profile is never written: an executor already running (`AD4M_LIVE_URL`) is
@@ -290,6 +290,8 @@ async function botWithWaker() {
     class?: string;
     terms?: string[];
     did?: string;
+    mention_class?: string;
+    mention_query?: string;
   };
   const wakes: MentionMessage[][] = [];
   const manager = new WakerSubscriptionManager({
@@ -312,6 +314,8 @@ async function botWithWaker() {
     ...(config.class ? { className: config.class } : {}),
     ...(config.terms ? { terms: config.terms } : {}),
     ...(config.did ? { did: config.did } : {}),
+    ...(config.mention_class ? { mentionClass: config.mention_class } : {}),
+    ...(config.mention_query ? { mentionQuery: config.mention_query } : {}),
   };
   await manager.subscribe(subscription);
 
@@ -369,31 +373,30 @@ describe('a bot @mentioned in a WE channel', () => {
     },
   );
 
-  // Known gap, kept as a test so the follow-up turns it around: a post's `we://mention` link sits
-  // on its root, which has no `text` of its own (the words are in child blocks), so the root is
-  // not a TextContent record and the executor's mention query does not read it. A feed line in
-  // the same delivery is the control that the waker is listening.
-  it(
-    'is not yet woken by a post whose only mention is the link on its root (known gap)',
-    { timeout: 180_000 },
-    async () => {
-      const fixture = await botWithWaker();
-      const rootId = await postMentioning(fixture.composing.handle, fixture.channel.id, UNKNOWN_NAME, fixture.bot);
-      const lineId = await lineMentioning(fixture.composing.handle, fixture.channel.id, UNKNOWN_NAME, fixture.bot);
+  // A post's `we://mention` link sits on its root, which has no `text` of its own (the words are in
+  // child blocks, and name the bot by a name in no profile), so only the `Mentioning` query can
+  // find it: every WE block has a `mentions` relation. A feed line in the same delivery is the
+  // control that the waker is listening.
+  it('is woken by a post whose only mention is the link on its root', { timeout: 180_000 }, async () => {
+    const fixture = await botWithWaker();
+    const rootId = await postMentioning(fixture.composing.handle, fixture.channel.id, UNKNOWN_NAME, fixture.bot);
+    const lineId = await lineMentioning(fixture.composing.handle, fixture.channel.id, UNKNOWN_NAME, fixture.bot);
 
-      const { woken, why } = await fixture.deliver();
-      const addresses = woken.map((m) => m.address);
-      expect(addresses, why).toContain(lineId);
-      expect(addresses, why).not.toContain(rootId);
-    },
-  );
+    const { woken, why } = await fixture.deliver();
+    const addresses = woken.map((m) => m.address);
+    expect(addresses, why).toContain(lineId);
+    expect(addresses, why).toContain(rootId);
+    const post = woken.find((m) => m.address === rootId);
+    expect(post?.via, why).toBe('mentions');
+    expect(post?.parents, why).toContain(fixture.channel.id);
+  });
 
   it('is not woken by its own feed line that mentions it', { timeout: 180_000 }, async () => {
     const fixture = await botWithWaker();
 
     // The bot writes a feed line into a channel of the watched neighbourhood itself, mentioning
     // itself: the line and its `we://mention` link to the bot's DID are its own. A feed line, not
-    // a post, so only the author decides: a post's root is never read (the known gap above).
+    // a post, so the case is the same shape as the person's line it is compared with.
     const ownChannel = (await CollectionBlock.create(fixture.watched.handle as never, {
       kind: 'channel',
       title: 'own',
