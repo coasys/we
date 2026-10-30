@@ -12,7 +12,7 @@
 //! cd tests/js && pnpm run prepare-test-local   # publishes the centralized agent language
 //! ```
 //!
-//! Then, from `apps/we-tauri/src-tauri/custody`:
+//! Then, from `crates/custody`:
 //!
 //! ```sh
 //! CUSTODY_LIVE=1 AD4M_REPO=<ad4m> cargo test --features cheap-kdf --test live -- --nocapture
@@ -48,7 +48,7 @@ const CHEAP: Kdf = Kdf {
 fn ad4m_repo() -> PathBuf {
     std::env::var("AD4M_REPO")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../../../ad4m"))
+        .unwrap_or_else(|_| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../ad4m"))
 }
 
 fn free_port() -> u16 {
