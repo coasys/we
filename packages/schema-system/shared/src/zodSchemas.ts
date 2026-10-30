@@ -29,6 +29,7 @@ const zTypeRole = z.enum(TYPE_ROLES);
 const zTypeStyle = z
   .object({
     family: z.string().optional(),
+    size: z.string().optional(),
     weight: z.union([z.string(), z.number()]).optional(),
     letterSpacing: z.string().optional(),
     lineHeight: z.string().optional(),
@@ -36,6 +37,12 @@ const zTypeStyle = z
     color: z.string().optional(),
   })
   .strict();
+// What a component override says about one state: the colours (COMPONENT_THEME_STATE_KEYS).
+const componentStateShape = {
+  fill: z.string().optional(),
+  text: z.string().optional(),
+  border: z.string().optional(),
+};
 const componentOverrideShape = {
   radius: z.string().optional(),
   padding: z.string().optional(),
@@ -46,6 +53,8 @@ const componentOverrideShape = {
   fill: z.string().optional(),
   text: z.string().optional(),
   border: z.string().optional(),
+  hover: z.object(componentStateShape).strict().optional(),
+  active: z.object(componentStateShape).strict().optional(),
 };
 const zComponentOverride = z
   .object({
@@ -420,6 +429,11 @@ export const zSchemaProp: z.ZodType<SchemaProp> = z.union([
   z.undefined(),
 ]);
 
+/** How a panel is framed. See `PanelFrame`. */
+const zPanelFrame = z.enum(['window', 'flush', 'none']);
+/** One edge of an app. See `TemplateMeta.edges`. */
+const zEdgeSetting = z.object({ frame: zPanelFrame.optional() }).strict().optional();
+
 export const zTemplateMeta: z.ZodType<TemplateMeta> = z
   .object({
     name: z.string(),
@@ -437,7 +451,7 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
     /** How this template draws one record, by type. See `TemplateMeta.recordViews`. */
     recordViews: z.record(z.string(), z.union([z.string(), lazySchemaNode])).optional(),
     /** Whole interface, a section inside one, or the app around them. See `TemplateMeta.role`. Absent means shell. */
-    role: z.enum(['shell', 'view', 'app']).optional(),
+    role: z.enum(['shell', 'view', 'app', 'page']).optional(),
     /** A view's default URL segment. See `TemplateMeta.segment`. */
     segment: z.string().optional(),
     /** A view that stays mounted across sibling navigation. See `TemplateMeta.keepAlive`. */
@@ -460,6 +474,11 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
         top: z.number().optional(),
         bottom: z.number().optional(),
       })
+      .strict()
+      .optional(),
+    /** How an app's edges frame the panels pushing the content aside there. See `TemplateMeta.edges`. */
+    edges: z
+      .object({ left: zEdgeSetting, right: zEdgeSetting, top: zEdgeSetting, bottom: zEdgeSetting })
       .strict()
       .optional(),
     /**
@@ -505,6 +524,8 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
           // it says *whether* rather than *where*.
           route: z.union([z.string(), z.array(z.string())]).optional(),
           open: z.boolean().optional(),
+          // Its titlebar, or not. See `frame` on `TemplatePanel`.
+          frame: zPanelFrame.optional(),
         }),
       )
       .optional(),

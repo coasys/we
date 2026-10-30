@@ -33,7 +33,17 @@ import {
 } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import { AgentSettings, type DatasetProxy, ExtractionPass, getEntityForDataset } from '@we/entities';
-import { Accessor, batch, createContext, createMemo, createSignal, onCleanup, ParentProps, useContext } from 'solid-js';
+import {
+  Accessor,
+  batch,
+  createContext,
+  createMemo,
+  createSignal,
+  onCleanup,
+  ParentProps,
+  untrack,
+  useContext,
+} from 'solid-js';
 
 import { useSessionStore } from './SessionStore';
 
@@ -820,6 +830,7 @@ export function DatasetStoreProvider(props: ParentProps) {
       // Space model data lives in links, so there's nothing to refresh here beyond the handle.
       onUpdated: (ref) => {
         setDatasets((prev) => prev.map((d) => (d.id === ref.id ? toApp(ref) : d)));
+        followPublish(ref);
       },
 
       // Removal fires for deletions from any client
@@ -1062,11 +1073,29 @@ export function DatasetStoreProvider(props: ParentProps) {
   async function trackDataset(ref: DatasetRef): Promise<void> {
     if (datasets().some((existing) => existing.id === ref.id)) {
       setDatasets((prev) => prev.map((d) => (d.id === ref.id ? toApp(ref) : d)));
+      followPublish(ref);
       return;
     }
     setDatasets((prev) => [...prev, toApp(ref)]);
     // reorderDatasets dedupes, so re-tracking a dataset the change event already ordered is safe.
     await reorderDatasets([...getDatasetOrder(), ref.id]);
+  }
+
+  /**
+   * The space on screen, once it has been published: its shared address, where it had none.
+   *
+   * A shared space is published in the background now, after it has been created and usually after
+   * it has been opened — so `currentDataset` was set from a ref with no `sharedUri`, and only the
+   * list heard that the publish had finished. Everything keyed on the open space's shared address
+   * stayed dead until a reload: no way to start a call, no presence, no live calls, and a space
+   * address built in the meantime carried the local id.
+   *
+   * Only for that change. Replacing the current dataset on any update would restart whatever follows
+   * it whenever the handle object differed — presence among them, which drops a running call.
+   */
+  function followPublish(ref: DatasetRef): void {
+    const current = untrack(currentDataset);
+    if (current?.id === ref.id && ref.sharedUri && ref.sharedUri !== current.sharedUri) setCurrentDataset(toApp(ref));
   }
 
   async function removeDataset(uuid: string): Promise<void> {

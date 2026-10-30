@@ -12,6 +12,8 @@
  * draw this, and what differs is passed in:
  *
  * - `as` — the name the list binds each line to.
+ * - `actions` — the store whose `startReply` and `editUtterance` the line calls: the transcript's
+ *   module or the Feed's. Each keeps its own, so a reply started in one list is never the other's.
  * - `surface` — which composer a reply started here belongs to. Both panels can be open at once, and
  *   a reply started in one must not be offered, or sent, by the other's box.
  * - `relative` — whether the time reads "2 min ago" or as a clock time.
@@ -26,6 +28,8 @@ import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 export function messageLine(opts: {
   /** The name each line is bound to by the list drawing it. */
   as: string;
+  /** The store the line's actions are called on — `modules.transcribe`, `modules.feed`. */
+  actions: string;
   /** Where a reply started on this line is answered from. */
   surface: 'transcript' | 'feed';
   /** Whether the time reads relative to now. */
@@ -33,7 +37,7 @@ export function messageLine(opts: {
   /** Shown after the time. */
   extra?: SchemaNode;
 }): SchemaNode {
-  const { as } = opts;
+  const { as, actions } = opts;
   return {
     type: '$agent',
     props: { did: { $: `${as}.author` }, as: 'speaker' },
@@ -358,7 +362,7 @@ export function messageLine(opts: {
                       color: 'text-faint',
                       opacity: { $: 'local.pointerOnRow ? 1 : 0' },
                       onClick: {
-                        $invoke: 'modules.transcribe.startReply',
+                        $invoke: `${actions}.startReply`,
                         args: [
                           {
                             $: `{ id: ${as}.id, text: ${as}.text, author: ${as}.author, surface: '${opts.surface}' }`,
@@ -455,7 +459,7 @@ export function messageLine(opts: {
                       value: { $: 'local.draft' },
                       onInput: { $setLocal: 'draft', value: { $: 'event.detail' } },
                       'on:submit': {
-                        $invoke: 'modules.transcribe.editUtterance',
+                        $invoke: `${actions}.editUtterance`,
                         args: [{ $: `${as}.id` }, { $: 'local.draft' }, { $: `${as}.source` }],
                         onSuccess: [{ $setLocal: 'mending', value: false }],
                       },
@@ -479,7 +483,7 @@ export function messageLine(opts: {
                           variant: 'solid',
                           disabled: { $: '!trim(local.draft)' },
                           onClick: {
-                            $invoke: 'modules.transcribe.editUtterance',
+                            $invoke: `${actions}.editUtterance`,
                             args: [{ $: `${as}.id` }, { $: 'local.draft' }, { $: `${as}.source` }],
                             // Closed on success only: a failed write leaves the words on
                             // screen to try again with, rather than discarding them and

@@ -174,6 +174,38 @@ ordinary panel: it can be docked, folded, stacked, saved in a layout — and its
 - **\`$panels\` is a layout node.** It takes \`lane\` (required), \`direction\` (\`column\` by default, or
   \`row\`), \`accepts\` (section ids it will take, comma-separated; empty means any), and the ordinary
   layout props — \`width\`, \`flex\`, \`minWidth\` — which is how a template holds room for an empty lane.
+  \`resize: 'start'\` or \`'end'\` puts a drag handle on that edge — dragged as wide as the reader likes,
+  short of leaving the rest of the row less than 360px; give \`maxWidth\` only where a lane must stay
+  narrow — and \`foldEmpty: true\` folds the lane
+  away while nothing in it is open — a lane that is only there while something is chosen.
+  \`bg\` (a colour role) and \`borderLeft\` / \`borderRight\` paint the lane itself, behind whatever is in
+  it — a sidebar as \`bg: 'chrome'\` with \`borderRight: '1px solid border'\`. Paint the lane rather
+  than a section: a lane can hold panels the template does not draw, and a flush one paints nothing.
+- **Any panel can live in a lane, not only one the template draws.** A \`module\` entry with \`home\`
+  puts that module's panel there, and the host's own panels are named the same way —
+  \`{ "id": "settings", "module": "shell", "home": "right" }\` places the space's settings, which the
+  gear then opens beside the page rather than as a window on the edge. In a lane a panel is flush by
+  default: no titlebar, no frame. One that does not draw its own heading gets a slim header with its
+  name and its close; a template's own section draws its own.
+- **How a panel is framed is a choice, wherever it is.** \`frame\` on an entry — \`'window'\` (a
+  titlebar with its grip, menu and close), \`'flush'\` (part of the page, a grip and close in its corner
+  on hover), or \`'none'\` — holds in a lane, on an edge and floating alike. \`frame\` on a \`$panels\`
+  outlet sets that lane's default. An app template sets its window edges' default with
+  \`meta.edges\`: \`{ "right": { "frame": "flush" } }\` makes the panels pushing the content aside on
+  the right part of the app, as a sidebar is; it does not reach a card floating over the content.
+- **A panel can be opened more than once.** \`shellStore.openPanel('inspector', { recordId: … })\`
+  opens another instance of a panel the template supplies, with its own inputs — an inspector per
+  record, side by side or as tabs. Inside the node, \`panel.inputs\` is what it was opened with and
+  \`panel.id\` which instance it is (for the declared panel itself the inputs are empty). It starts
+  where the declaration says, so with an \`order\` it joins that place as a tab; opening the same
+  inputs again brings that instance forward, and its close is \`shellStore.closePanel(panel.id)\`.
+- **Two sections with the same explicit \`order\` share one place, as tabs** — as panels in an edge's
+  seat do. One shows, the one most recently opened or chosen, with a strip naming them all; \`tab\`
+  orders the strip, else the order they are declared in. An inspector and the space's settings taking
+  turns in one column is the case.
+- **A section the template draws can start closed.** \`open: false\` on a \`node\` entry leaves it closed
+  until \`shellStore.openTemplatePanel(id)\` opens it — an inspector, opened when something is chosen
+  and closed again with \`closeTemplatePanel\`. With \`foldEmpty\`, its lane folds while it is closed.
 - **Reordering within a lane is arrangement, not editing.** Dragging one section above another
   rewrites \`order\` on the reader's placement; nothing touches the tree, and "Reset layout" restores
   the author's order. Dragging a section to another lane changes \`home\`; to an edge, \`snap\`.

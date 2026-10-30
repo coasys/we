@@ -1,6 +1,6 @@
 /**
  * The shell's own views — profile, settings, the marketplace, the landing page — and how one is
- * looked up.
+ * looked up, beside the pages a bundle brings.
  *
  * Each view names the stores it renders against through an optional factory, so it gets exactly what
  * it needs and nothing more. Returning `$schema` from that factory overrides the rendered schema
@@ -48,14 +48,29 @@ const lazyShellViews: Record<string, () => Promise<ShellViewEntry>> = {
 };
 
 /**
+ * What the bundles in play bring: their pages, looked up by the id each is opened at, and the one the
+ * app's brand opens for "About". See `Bundle.pages`.
+ */
+export interface BundlePages {
+  page?: (id: string) => TemplateSchema | undefined;
+  aboutPage?: string;
+}
+
+/**
  * Look up a view by id.
+ *
+ * A bundle's page answers first, by its own id or — for `landing-page` — as the brand's About page,
+ * so every way the host offers "About" opens the app's own where it has one. Its id always carries
+ * the bundle's (`coasys--about`), so it can never take one of the host's views.
  *
  * Returns `null` for an id this build has no view for — which is the honest answer for `schema-tests`
  * in production, and the same answer an unknown id has always got. Otherwise an accessor, undefined
  * until a lazy view's chunk arrives; an eager one is never undefined, so nothing about the common
  * path becomes asynchronous.
  */
-export function resolveShellView(id: string): Accessor<ShellViewEntry | undefined> | null {
+export function resolveShellView(id: string, bundles: BundlePages = {}): Accessor<ShellViewEntry | undefined> | null {
+  const page = bundles.page?.(id === 'landing-page' && bundles.aboutPage ? bundles.aboutPage : id);
+  if (page) return () => ({ schema: page });
   const eager = shellViews[id];
   if (eager) return () => eager;
   const load = lazyShellViews[id];

@@ -9,6 +9,7 @@
  */
 import { activePanels } from '@shared/panelScope';
 import { type DockEntry, dockFrame } from '@shared/registries/dockRegistry';
+import { panelContent } from '@shared/registries/panelContents';
 import type { TemplatePanel } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
@@ -82,7 +83,9 @@ describe('a template panel’s contents', () => {
       { type: 'TemplatePanelBody', props: { panelId: 'extraction' } },
     );
 
-    const json = JSON.stringify(frame);
+    // The frame holds a slot; what it shows is the panel host's to draw, once — see `PanelHost`.
+    expect(JSON.stringify(frame)).toContain('"type":"PanelSlot"');
+    const json = JSON.stringify(panelContent('template:extraction'));
     expect(json).toContain('TemplatePanelBody');
     // The id, not the node: a node passed as a prop goes through the prop resolver on the way in,
     // and freezes the declaration at the moment the frame was registered.

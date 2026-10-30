@@ -219,9 +219,9 @@ const styles = css`
 
   [part='group-heading'] {
     padding: var(--we-space-200) var(--we-space-300) var(--we-space-100);
-    font-size: 0.75em;
     ${unsafeCSS(
       typeRoleDeclarations('overline', {
+        size: '0.75em',
         textTransform: 'uppercase',
         letterSpacing: '0.05em',
         color: 'var(--we-role-text-faint)',

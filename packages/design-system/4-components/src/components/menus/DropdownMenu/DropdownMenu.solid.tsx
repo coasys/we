@@ -31,12 +31,54 @@ type SolidDropdownMenuProps = Omit<DropdownMenuProps, 'items'> & {
   /**
    * What to press, when it is not a button with a glyph and a word — a stack of faces, say.
    *
-   * Drawn inside a bare `we-button`, so it is still focusable and still opens on Enter; given, it
-   * replaces `triggerIcon`/`triggerLabel`, and `triggerTitle` becomes its accessible name rather than
-   * a tooltip, since content rich enough to be a trigger usually brings a tooltip of its own.
+   * Content that is not a control — the stack of faces — is drawn inside a bare `we-button`, so it
+   * is still focusable and still opens on Enter. Content that already is one (a `we-button`, a rail
+   * row) is the trigger itself; see `controlTrigger`. Either way it replaces
+   * `triggerIcon`/`triggerLabel`, and `triggerTitle` becomes its accessible name rather than a
+   * tooltip, since content rich enough to be a trigger usually brings a tooltip of its own.
    */
   children?: JSX.Element;
 };
+
+/** What counts as a control when a custom trigger is one — see `controlTrigger`. */
+const CONTROL = 'we-button, button, a[href], [role="button"]';
+
+/**
+ * The control an element is, or holds inside wrappers that draw no box and hold nothing else.
+ * Undefined when anything else is there — content with a control somewhere inside it is not one.
+ */
+function controlWithin(el: HTMLElement): HTMLElement | undefined {
+  let at: Element | null = el;
+  while (at instanceof HTMLElement) {
+    if (at.matches(CONTROL)) return at;
+    if (
+      at.style.display !== 'contents' ||
+      at.childElementCount !== 1 ||
+      at.textContent !== at.firstElementChild?.textContent
+    ) {
+      return undefined;
+    }
+    at = at.firstElementChild;
+  }
+  return undefined;
+}
+
+/**
+ * A control trigger, placed in the popover's trigger slot by its outermost element. `triggerTitle`
+ * names it only where it is otherwise unnamed: `we-button` takes a name through `label`, which
+ * reaches its inner `<button>`.
+ */
+function slotted(outer: HTMLElement, control: HTMLElement, title: string | undefined): HTMLElement {
+  outer.slot = 'trigger';
+  if (title && !control.getAttribute('aria-label')) {
+    if ('label' in control) {
+      if (!(control as { label?: string }).label) (control as { label?: string }).label = title;
+    } else {
+      control.setAttribute('aria-label', title);
+    }
+  }
+  return outer;
+}
 
 /**
  * DropdownMenu
@@ -79,6 +121,31 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
 
   // Resolved once: reading `props.children` twice would build the trigger twice.
   const customTrigger = resolveChildren(() => props.children);
+
+  /*
+    A trigger that is already a control, which takes the trigger slot as it is.
+
+    Wrapping it in the bare button as well, as every custom trigger used to be, did two things wrong.
+    It nested a button inside a button, which is invalid markup and two controls where a keyboard or
+    a screen reader should meet one. And it boxed the trigger in an inline button that shrinks to its
+    content, so a trigger asking for `width: 100%` — a rail row — got the width of its own content
+    instead, and stood narrower than every row beside it.
+
+    One element only, and only when it is the control: the popover listens for a click on its trigger
+    part and a press on this bubbles there, and Enter on a button is a click.
+
+    The control may be inside wrappers that draw nothing. The schema renderer puts every node in a
+    `display: contents` div, so from a schema the trigger arrives as a div holding the button; the
+    walk sees through those. The outermost element is the one slotted, for the reason the renderer
+    slots its wrapper rather than the node inside it: slot assignment considers direct children only.
+  */
+  const controlTrigger = createMemo(() => {
+    const nodes = customTrigger.toArray();
+    const only = nodes.length === 1 ? nodes[0] : undefined;
+    if (!(only instanceof HTMLElement)) return undefined;
+    const control = controlWithin(only);
+    return control ? { outer: only, control } : undefined;
+  });
 
   const handleAction = (item: DropdownMenuAction) => {
     if (item.disabled) return;
@@ -410,9 +477,16 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
       <Show
         when={!customTrigger()}
         fallback={
-          <we-button slot="trigger" variant="bare" size={props.size} aria-label={props.triggerTitle}>
-            {customTrigger()}
-          </we-button>
+          <Show
+            when={controlTrigger()}
+            fallback={
+              <we-button slot="trigger" variant="bare" size={props.size} aria-label={props.triggerTitle}>
+                {customTrigger()}
+              </we-button>
+            }
+          >
+            {(trigger) => slotted(trigger().outer, trigger().control, props.triggerTitle)}
+          </Show>
         }
       >
         <Show when={props.triggerTitle} fallback={trigger('trigger')}>

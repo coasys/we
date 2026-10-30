@@ -4,6 +4,7 @@ import {
   field,
   formModal,
   sectionCard,
+  SOCIAL_DNA_LABELS,
   stateFill,
   stateFillFor,
   stateIcon,
@@ -15,7 +16,7 @@ import { focusRow } from './focusRow';
 /**
  * The states this community's work moves through.
  *
- * The third of the same kind, beside Signal Types and Connection Types, and the same act each time:
+ * The third of the same kind, beside Signal types and Connection types, and the same act each time:
  * a community naming what it means by something, as data, in its own space. A signal type says what
  * a reaction here *is*; a connection type, what a link here *is*; a state, what a stage of work here
  * *is*.
@@ -468,7 +469,7 @@ const stateRow: SchemaNode = {
 };
 
 export const taskStatesSection: SchemaNode = sectionCard({
-  title: 'Task States',
+  title: SOCIAL_DNA_LABELS.states,
   description:
     'The stages work moves through here — "To do", "Blocked", "Shipped". Each becomes a column on the tasks board, and each says what it counts as so the rest of the app can still tell finished work from outstanding. A state can also ask for agreement, or for something to be there first: then a card dragged into it waits until enough people have approved, or is refused until it is.',
   aside: {

@@ -8,7 +8,6 @@ import {
   semanticValues,
   shadow,
   space,
-  surfaceImageFixed,
   surfaceImageRoleOf,
   surfaceImageVar,
   type Tier,
@@ -64,6 +63,7 @@ export const layoutKeys = [
   'minHeight',
   'maxWidth',
   'maxHeight',
+  'aspectRatio',
   'position',
   'top',
   'right',
@@ -216,6 +216,14 @@ export function getKeysForLayers(layers: DSLayer[]): string[] {
     enforced where the variables are emitted rather than here.
   */
   for (const key of tierKeys) keys.add(key);
+  /*
+    The state bags too, for the same reason and with the same history. `state` was a layer, and the
+    image-like primitives (`LayoutVisualElement`: we-image, we-video, we-avatar…) did not list it, so
+    `hoverProps` on a we-image validated clean and was filtered away: a film poster meant to brighten
+    under the pointer stayed dim. A state, like a tier, is a condition under which the element's own
+    kinds of prop apply, so every element takes one, bounded by its layers where it is emitted.
+  */
+  for (const key of stateKeys) keys.add(key);
   const result = [...keys];
   keysForLayersCache.set(cacheKey, result);
   return result;
@@ -624,12 +632,28 @@ function topLevelParts(value: string): string[] {
 export function parseBorder(value: string | undefined, defaultValue = ''): string {
   const val = value ?? defaultValue;
   if (!val) return '';
-  const parts = topLevelParts(val);
-  if (parts.length < 3) return val;
+  const parts = borderParts(val);
+  return parts ? `${parts.width} ${parts.style} ${parts.color}` : val;
+}
+
+/**
+ * A `width style colour` border's three parts, resolved as `parseBorder` resolves them, or
+ * undefined for anything shorter (`'none'`, `'0'`).
+ *
+ * Read from the value as written, not from `parseBorder`'s output: that output's width is
+ * `var(--we-border-width, 1px)`, which has a space in it, so splitting it again on spaces took
+ * `var(--we-border-width,` for the width and `solid var(…)` for the colour.
+ */
+export function borderParts(value: string): { width: string; style: string; color: string } | undefined {
+  const parts = topLevelParts(value);
+  if (parts.length < 3) return undefined;
   const [width, style, ...colorParts] = parts;
   const color = colorParts.join(' ');
-  const resolvedColor = /[(#]/.test(color) ? color : tokenVar('color', color, '');
-  return `${width === '1px' ? 'var(--we-border-width, 1px)' : width} ${style} ${resolvedColor}`;
+  return {
+    width: width === '1px' ? 'var(--we-border-width, 1px)' : width,
+    style,
+    color: /[(#]/.test(color) ? color : tokenVar('color', color, ''),
+  };
 }
 
 export function getMarginValues(props: DesignSystemProps) {
@@ -727,6 +751,79 @@ export function mergeProps(
   return merged;
 }
 
+/**
+ * The four values of each box the builders assemble into one declaration — padding, margin and the
+ * corners — and the props each one is read from, most specific first, as the builders read them.
+ */
+const BOX_SIDES: readonly Record<string, readonly string[]>[] = [
+  { pt: ['pt', 'py', 'p'], pr: ['pr', 'px', 'p'], pb: ['pb', 'py', 'p'], pl: ['pl', 'px', 'p'] },
+  { mt: ['mt', 'my', 'm'], mr: ['mr', 'mx', 'm'], mb: ['mb', 'my', 'm'], ml: ['ml', 'mx', 'm'] },
+  {
+    rtl: ['rtl', 'rt', 'rl', 'r'],
+    rtr: ['rtr', 'rt', 'rr', 'r'],
+    rbr: ['rbr', 'rb', 'rr', 'r'],
+    rbl: ['rbl', 'rb', 'rl', 'r'],
+  },
+];
+
+const sideOf = (props: Partial<DesignSystemProps> | undefined, chain: readonly string[]): unknown => {
+  for (const key of chain) {
+    const value = (props as Record<string, unknown> | undefined)?.[key];
+    if (value) return value;
+  }
+  return undefined;
+};
+
+/**
+ * A variant bag — a state's or a tier's — with every side of a box it touches written out, the
+ * sides it does not name taken from what it sits over.
+ *
+ * A box is one declaration (`padding: t r b l`), so a variant's padding is one custom property and
+ * falls back as a whole. A bag naming some sides therefore decided all four: the ones it left out
+ * were written as `0`, not read from below. `mdUpProps: { pt: '124px' }` over `px: '40px'` took the
+ * forty pixels away at that width, and `smUpProps: { px }` zeroed the top. The base builders had the
+ * same flaw and take a `rest` for it (see `getPaddingValues`), which is the theme; a variant has a
+ * stack beneath it rather than a theme, so it is filled from that stack here, before it is built.
+ *
+ * `below` is nearest first. A box the bag does not touch, or names all of, is left as written.
+ */
+export function withBoxSidesFilled(
+  bag: Partial<DesignSystemProps>,
+  below: readonly (Partial<DesignSystemProps> | undefined)[],
+): Partial<DesignSystemProps> {
+  let out = bag;
+  for (const box of BOX_SIDES) {
+    const named = Object.entries(box).map(([side, chain]) => [side, sideOf(bag, chain)] as const);
+    if (named.every(([, value]) => value === undefined) || named.every(([, value]) => value !== undefined)) continue;
+    const filled: Record<string, unknown> = out === bag ? { ...bag } : out;
+    for (const key of new Set(Object.values(box).flat())) delete filled[key];
+    for (const [side, value] of named) {
+      let resolved = value;
+      for (const layer of below) {
+        if (resolved !== undefined) break;
+        resolved = sideOf(layer, box[side]);
+      }
+      if (resolved !== undefined) filled[side] = resolved;
+    }
+    out = filled as Partial<DesignSystemProps>;
+  }
+  return out;
+}
+
+/**
+ * One tier's bag, ready to build: what `<tier>UpProps` says, with the sides of a box it names only
+ * some of filled from the tiers beneath it and then the element's own props. Undefined when the
+ * element has nothing for that tier.
+ */
+export function tierBagOf(props: Partial<DesignSystemProps>, tier: Exclude<Tier, 'base'>) {
+  const bag = (props as Record<string, unknown>)[TIER_PROP_KEYS[tier]] as Partial<DesignSystemProps> | undefined;
+  if (!bag || typeof bag !== 'object' || Object.keys(bag).length === 0) return undefined;
+  const beneath = (TIERS.slice(1, TIERS.indexOf(tier)) as Exclude<Tier, 'base'>[])
+    .reverse()
+    .map((t) => (props as Record<string, unknown>)[TIER_PROP_KEYS[t]] as Partial<DesignSystemProps> | undefined);
+  return withBoxSidesFilled(bag, [...beneath, props]);
+}
+
 // ────────────────────────────────────────────
 // Shared static-CSS declaration builders — single source of truth for "which DS prop
 // maps to which CSS property", consumed by both the Lit adopted-stylesheet generator
@@ -766,6 +863,7 @@ export const HOST_LAYOUT_SPECS: PropSpec[] = [
   ['min-height', 'min-height'],
   ['max-width', 'max-width'],
   ['max-height', 'max-height'],
+  ['aspect-ratio', 'aspect-ratio'],
   ['position', 'position'],
   ['top', 'top'],
   ['right', 'right'],
@@ -803,13 +901,20 @@ export const BASE_VISUAL_SPECS: PropSpec[] = [
   ['background-color', 'bg'],
   ['color', 'color'],
   ['opacity', 'opacity'],
+  /*
+    The whole border, then its colour and width for every side, then each side — most general first,
+    so a side wins. The width came last once, and `border` with `borderTop: '4px solid …'` drew the
+    top at the shorthand's 1px. A primitive's sides are written through its own width and colour
+    variables where they come from the shorthand (see `syncBorderVars` in @we/primitives), so a
+    theme's or a state's colour and width still reach them from here.
+  */
   ['border', 'border'],
   ['border-color', 'border-color'],
+  ['border-width', 'border-width'],
   ['border-top', 'border-top'],
   ['border-right', 'border-right'],
   ['border-bottom', 'border-bottom'],
   ['border-left', 'border-left'],
-  ['border-width', 'border-width'],
   ['box-shadow', 'box-shadow'],
   ['transform', 'transform'],
   ['cursor', 'cursor'],
@@ -1031,6 +1136,8 @@ export function isGradientValue(raw: string): boolean {
  * has no quoted strings, but collapsing costs nothing and removes the class of problem.
  */
 export function bgImageLayer(raw: string): string {
+  // No image at all — not even the one the theme lays on the element's surface role.
+  if (raw.trim() === 'none') return 'none';
   if (isGradientValue(raw)) return raw.trim().replace(/\s+/g, ' ');
   return `url("${resolveBgImageUrl(raw)}")`;
 }
@@ -1138,7 +1245,6 @@ export function buildLayoutStyles(props: LayoutStyleProps, direction: 'row' | 'c
       const surface = surfaceImageRoleOf(props.bg);
       if (surface && !props.bgImage) {
         style['background-image'] = `var(${surfaceImageVar(surface)}, none)`;
-        if (surfaceImageFixed(surface)) style['background-attachment'] = 'fixed';
       }
     }
   }
@@ -1229,6 +1335,7 @@ export function buildLayoutStyles(props: LayoutStyleProps, direction: 'row' | 'c
   if (props.minHeight) style['min-height'] = props.minHeight;
   if (props.maxWidth) style['max-width'] = props.maxWidth;
   if (props.maxHeight) style['max-height'] = props.maxHeight;
+  if (props.aspectRatio) style['aspect-ratio'] = props.aspectRatio;
   const { main, cross } = mapFlexAxes(props, props.reverse ? `${direction}-reverse` : direction);
   if (main !== undefined) style['justify-content'] = main;
   if (cross !== undefined) style['align-items'] = cross;
@@ -1336,6 +1443,37 @@ export const CSS_PROP_TO_VAR_SUFFIX = new Map(INTERACTIVE_SPECS.map(([cssProp, v
 // Remaps a computed style object's CSS-property keys to --we-ds-{prefix}{varSuffix}
 // custom properties, using the shared PropSpec tables' cssProp -> varSuffix mapping.
 // Keys outside the interactive-state surface (e.g. --we-bg-image-*) are left alone.
+const BORDER_SIDES = ['border-top', 'border-right', 'border-bottom', 'border-left'] as const;
+
+/**
+ * A style with each side of its border written out, from the shorthand and any colour or width beside
+ * it, before it becomes `--we-ds-*` variables.
+ *
+ * The state stylesheet declares the shorthand, then colour and width, then each side — so a side
+ * wins. A variable nobody set makes its declaration invalid, and an invalid declaration resets its
+ * property: `border-top: var(--we-ds-border-top)` with no side set drew no top, and the same for the
+ * other three, so a layout element with `hoverProps` and a `border` drew no border at all — every
+ * card that lights on hover, at rest and lit. Writing the sides here is what a primitive does for the
+ * same rules (`syncBorderVars` in @we/primitives).
+ *
+ * `beneath` is the resting style under a state's fragment: a fragment that changes only the colour
+ * keeps the resting width and style, and a side the element names itself is left to win, as written.
+ */
+export function withBorderSides(style: CSSStyleObject, beneath: CSSStyleObject = {}): CSSStyleObject {
+  const record = style as Record<string, string | undefined>;
+  const below = beneath as Record<string, string | undefined>;
+  if (!record.border && !record['border-color'] && !record['border-width']) return style;
+  const parts = borderParts(record.border ?? below.border ?? '');
+  if (!parts) return style;
+  const width = record['border-width'] ?? (record.border ? undefined : below['border-width']) ?? parts.width;
+  const color = record['border-color'] ?? (record.border ? undefined : below['border-color']) ?? parts.color;
+  const out: Record<string, string | undefined> = { ...record };
+  for (const side of BORDER_SIDES) {
+    if (out[side] === undefined && below[side] === undefined) out[side] = `${width} ${parts.style} ${color}`;
+  }
+  return out as CSSStyleObject;
+}
+
 export function toInteractiveVars(prefix: string, computed: CSSStyleObject): CSSStyleObject {
   const out: Record<string, string> = {};
   for (const [cssProp, value] of Object.entries(computed)) {

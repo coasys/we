@@ -101,6 +101,19 @@ const CSS_STYLES = css`
   }
 `;
 
+/** A timed text track: captions or subtitles, a WebVTT file. */
+export interface VideoTrack {
+  src: string;
+  /** The track's language, as a BCP 47 tag: 'en'. */
+  srclang?: string;
+  /** What a viewer picks it by in the player's menu: 'English'. */
+  label?: string;
+  /** Defaults to 'captions'. */
+  kind?: 'captions' | 'subtitles' | 'descriptions' | 'chapters' | 'metadata';
+  /** On when the video starts — at most one per kind. */
+  default?: boolean;
+}
+
 @customElement('we-video')
 export default class Video extends LayoutVisualElement {
   static styles = CSS_STYLES;
@@ -137,6 +150,17 @@ export default class Video extends LayoutVisualElement {
   /** Play inline rather than taking over the screen. Required on iOS Safari, which otherwise forces
    *  any playing video fullscreen — which would make a call tile unusable there. */
   @property({ type: Boolean }) playsinline = false;
+  /**
+   * Captions and subtitles, as data: each becomes a `<track>` inside the video, so a film's words can
+   * be read with the sound off. A template lists them; the player offers them in its own menu.
+   */
+  @property({ type: Array }) tracks: VideoTrack[] = [];
+  /**
+   * CORS mode for the media and its tracks. A track from another origin is not loaded at all without
+   * it — the browser refuses cross-origin text tracks unless the video asks with CORS and the server
+   * answers — so a film served from a different origin than the app needs `anonymous`.
+   */
+  @property({ type: String }) crossorigin?: 'anonymous' | 'use-credentials';
 
   /**
    * A live `MediaStream` to play, instead of `src`.
@@ -185,7 +209,18 @@ export default class Video extends LayoutVisualElement {
         ?loop=${this.loop}
         .muted=${this.muted}
         ?playsinline=${this.playsinline}
+        crossorigin=${ifDefined(this.crossorigin)}
       >
+        ${this.tracks.map(
+          (track) =>
+            html`<track
+              kind=${track.kind ?? 'captions'}
+              src=${track.src}
+              srclang=${ifDefined(track.srclang)}
+              label=${ifDefined(track.label)}
+              ?default=${track.default ?? false}
+            />`,
+        )}
         <slot>${nothing}</slot>
       </video>
     </div>`;

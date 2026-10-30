@@ -8,6 +8,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  holdTemplatePanels,
   onTemplatePanelsChanged,
   setTemplatePanels,
   templatePanelDockId,
@@ -134,5 +135,38 @@ describe('withdrawing an interface’s panels', () => {
 
     expect(seen).toEqual(['workshop', 'default']);
     off();
+  });
+});
+
+/*
+  A layout being replaced — the router remounts everything under it when a space's views arrive — let
+  go of the declaration and the new one took it up again, with a moment in between where nothing was
+  declared: a panel placed in a template's lane dropped out to the window's edge and came back.
+*/
+describe('a layout leaving', () => {
+  it('keeps the declaration, never empty, while a layout replacing it declares in the same breath', async () => {
+    const first = holdTemplatePanels();
+    setTemplatePanels([{ id: 'settings' }], 'coasys');
+    const seen: number[] = [];
+    const stop = onTemplatePanelsChanged(() => seen.push(templatePanels().length));
+
+    first();
+    const second = holdTemplatePanels();
+    setTemplatePanels([{ id: 'settings' }], 'coasys');
+    await Promise.resolve();
+
+    expect(templatePanels().map((panel) => panel.id)).toEqual(['settings']);
+    expect(seen).not.toContain(0);
+    stop();
+    second();
+    await Promise.resolve();
+  });
+
+  it('withdraws it once the last layout holding it has gone', async () => {
+    const only = holdTemplatePanels();
+    setTemplatePanels([{ id: 'settings' }], 'coasys');
+    only();
+    await Promise.resolve();
+    expect(templatePanels()).toEqual([]);
   });
 });

@@ -167,6 +167,27 @@ tile: {
 A placer then binds it, by placing the part where something binds `tile` or by giving it:
 `{ type: '$part', props: { id: 'call.tile', inputs: { tile: { $: '…' } } } }`.
 
+An input with a `default` is optional, which is how a part offers words a placer may change without
+opening it: a button's text, a field's label (empty for none). Declare one only for words a placer is
+likely to want different — each is public API — and read it by name like any other input:
+
+```ts
+inputs: { unlockLabel: { description: 'The text of the button that signs in', default: 'Login' } },
+```
+
+**Say when a part's module should be awake.** A part drawn from its own `$queries` needs nothing:
+its subscriptions live and die with it. A part fed by your store, whose store works only while
+somebody is looking, names two store actions the host calls as it is drawn and taken down. The Feed
+does this, so that a template placing its view starts the subscription that a panel being opened
+would otherwise start:
+
+```ts
+feedView: { node: feedView, label: 'Feed', whileShown: { show: 'watchFeed', hide: 'unwatchFeed' } },
+```
+
+Each call is once per drawing, so a part placed twice keeps your module working until both are gone.
+Count them; do not toggle.
+
 `lintModule` warns about a name a part reads that nothing inside it binds and it does not declare,
 about a `local.*` it reads without declaring the `$localState` itself, and about an input it never
 reads. A local cannot be an input: nothing outside a part can declare the state inside it, so state

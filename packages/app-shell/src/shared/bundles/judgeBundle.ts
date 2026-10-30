@@ -45,6 +45,8 @@ export interface BundleJudgement {
     app?: string;
     spaceTemplates: string[];
     sections: string[];
+    /** Its own pages — an About page, a guide. */
+    pages: string[];
     themes: string[];
     recordTypes: string[];
     /** The name it goes by, when it brings its own brand. */
@@ -121,11 +123,15 @@ export function judgeBundle(bundle: Bundle, deps: BundleJudgeDeps): BundleJudgem
   */
   if (bundle.bootScreen) {
     judge(bootScreenTemplate(bundle), CHROME_TIER, 'Its sign-in screen');
-    if (!placesNode(bundle.bootScreen, 'CredentialField'))
-      refusals.push("Its sign-in screen has no password field of the app's own (CredentialField)");
+    if (!placesCredentialField(bundle.bootScreen))
+      refusals.push(
+        "Its sign-in screen has no password field — neither the host's (CredentialField) nor WE's sign-in form (host.signIn.form)",
+      );
   }
   for (const template of [...shells, ...sections])
     judge(template, SPACE_TIER, `"${template.meta?.name ?? template.id}"`);
+  // A page is the app's own, drawn above everything as the app's chrome is: the same tier.
+  for (const page of bundle.pages ?? []) judge(page, CHROME_TIER, `Its page "${page.meta?.name ?? page.id}"`);
 
   // A record type is validated against the core vocabulary and the bundle's other record types — so
   // a sighting may point at a species the same bundle brings.
@@ -153,6 +159,7 @@ export function judgeBundle(bundle: Bundle, deps: BundleJudgeDeps): BundleJudgem
       ...(bundle.app ? { app: bundle.app.meta?.name ?? bundle.name } : {}),
       spaceTemplates: shells.map((t) => t.meta?.name ?? t.id),
       sections: sections.map((t) => t.meta?.name ?? t.id),
+      pages: (bundle.pages ?? []).map((t) => t.meta?.name ?? t.id),
       themes: bundleThemes(bundle).map((theme) => theme.name),
       recordTypes: recordNames,
       ...(bundle.brand ? { brand: bundle.brand.name } : {}),
@@ -180,6 +187,24 @@ export function bootScreenTemplate(bundle: Pick<Bundle, 'bootScreen' | 'name'>):
     ...(bundle.bootScreen as SchemaNode),
     meta: { name: `${bundle.name} sign-in`, description: 'The sign-in screen', icon: 'sign-in', role: 'app' },
   } as TemplateSchema;
+}
+
+/**
+ * Whether a sign-in screen has a way to type a password: the host's field itself, or WE's sign-in
+ * form placed as a part, which holds it. One of the two, or the screen is a sign-in nobody can use —
+ * see `docs/architecture/protected-pieces.md`.
+ */
+export function placesCredentialField(tree: unknown): boolean {
+  return placesNode(tree, 'CredentialField') || placesPart(tree, 'host.signIn.form');
+}
+
+/** Whether a `$part` placing this part appears anywhere in a tree. */
+function placesPart(tree: unknown, id: string): boolean {
+  if (Array.isArray(tree)) return tree.some((entry) => placesPart(entry, id));
+  if (!tree || typeof tree !== 'object') return false;
+  const node = tree as Record<string, unknown>;
+  if (node.type === '$part' && (node.props as { id?: unknown } | undefined)?.id === id) return true;
+  return Object.entries(node).some(([key, value]) => key !== 'meta' && placesPart(value, id));
 }
 
 /** Whether a node of this type appears anywhere in a tree — through children, slots, routes and `$if` branches. */

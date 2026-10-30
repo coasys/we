@@ -83,6 +83,7 @@ describe('judging a bundle', () => {
       app: 'Guide',
       spaceTemplates: ['Guide shell'],
       sections: ['Map'],
+      pages: [],
       themes: ['Moss'],
       recordTypes: ['Species'],
     });
@@ -104,7 +105,21 @@ describe('judging a bundle', () => {
       ...bundle(),
       bootScreen: { type: 'Column', children: [{ type: 'we-input', props: { type: 'password' } }] },
     } as Bundle;
-    expect(judgeBundle(own, deps).refusals.join(' ')).toMatch(/no password field of the app/);
+    expect(judgeBundle(own, deps).refusals.join(' ')).toMatch(/no password field/);
+  });
+
+  it('takes WE’s sign-in form, placed as a part, as the password field it holds', () => {
+    const recomposed = {
+      ...bundle(),
+      bootScreen: { type: 'Column', children: [{ type: '$part', props: { id: 'host.signIn.form' } }] },
+    } as Bundle;
+    expect(judgeBundle(recomposed, deps).refusals.join(' ')).not.toMatch(/no password field/);
+    // Another part is not one: only the form holds the field.
+    const other = {
+      ...bundle(),
+      bootScreen: { type: 'Column', children: [{ type: '$part', props: { id: 'host.signIn.accounts' } }] },
+    } as Bundle;
+    expect(judgeBundle(other, deps).refusals.join(' ')).toMatch(/no password field/);
   });
 
   it('judges the app at the chrome tier and everything else at the space tier', () => {
@@ -113,6 +128,25 @@ describe('judging a bundle', () => {
     // A section trusting an agent is past the space tier: admitted, and reported as inert.
     expect(judged.blocked).toContain('runtimeStore.trustAgent');
     expect(judged.blocked).not.toContain('templateStore.appTemplateId');
+  });
+
+  it('judges a page at the chrome tier, as the app is, and lists it', () => {
+    const { app: _app, templates: _templates, display: _display, ...rest } = bundle();
+    const page = (id: string) => ({
+      id,
+      type: 'Column',
+      meta: meta('About', 'page'),
+      children: [{ type: 'we-text', children: [{ $: 'templateStore.appTemplateId' }] }],
+    });
+    // The same read, reached by a page and by a space template: only the page is granted it.
+    const result = judgeBundle({ ...rest, pages: [page('about')] } as unknown as Bundle, deps);
+    expect(result.refusals).toEqual([]);
+    expect(result.adds.pages).toEqual(['About']);
+    expect(result.blocked).not.toContain('templateStore.appTemplateId');
+    const asShell = { ...page('shell'), meta: meta('Shell') };
+    expect(judgeBundle({ ...rest, templates: [asShell] } as unknown as Bundle, deps).blocked).toContain(
+      'templateStore.appTemplateId',
+    );
   });
 
   it('splits modules into those to turn on and those this build does not have', () => {

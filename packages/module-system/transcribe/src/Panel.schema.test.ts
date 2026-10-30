@@ -16,7 +16,6 @@ import { evaluateExpression, markReactive, namespace, parseCached, type SchemaNo
 import { describe, expect, it } from 'vitest';
 
 import { extractionActivity } from './ExtractionStatus.schema';
-import { feedPanel } from './Feed.schema';
 import { transcribeModule } from './index';
 import {
   captureMeter,
@@ -88,7 +87,7 @@ describe('the module declaration', () => {
     const panels = transcribeModule.contributes?.panels ?? [];
     const surface = storeSurface(bareStore());
 
-    expect(panels.map((p) => p.name)).toEqual(['transcript', 'extraction', 'feed']);
+    expect(panels.map((p) => p.name)).toEqual(['transcript', 'extraction']);
     for (const p of panels) {
       expect(p.icon).toBeTruthy();
       expect(surface[p.open ?? '']?.kind).toBe('state');
@@ -2219,30 +2218,16 @@ describe('the composer', () => {
 });
 
 /*
-  The transcript and the Feed draw one line, and a reply goes back to the list it was started from.
-
-  The Feed used to draw a line of its own, which drifted from the transcript's (a text badge for a
-  typed line, Reply always showing, no Edit) and kept its reply in a local the transcript knew nothing
-  of. Both now draw `messageLine` and hold the reply in the store, tagged with where it was started.
+  A reply started on the transcript is the transcript's: its composer sends it. The Feed, which drew
+  the same line and shared this reply once, is its own module with its own reply — see its tests.
 */
-describe('one line, two lists', () => {
-  const feed = JSON.stringify(feedPanel);
+describe("the transcript's reply", () => {
   const transcript = JSON.stringify(transcribeModule);
 
-  it("gives the Feed the transcript's line, Edit and the typed mark included", () => {
-    expect(feed).toContain('"$invoke":"modules.transcribe.editUtterance"');
-    expect(feed).toContain('"name":"keyboard"');
-    // The text badge the Feed's own line drew for a typed message is gone.
-    expect(feed).not.toContain("row.source == '' ? 'bot' : 'typed'");
-  });
-
-  it('starts a reply tagged with its list, and each composer sends only its own', () => {
-    expect(feed).toContain("surface: 'feed'");
+  it('starts a reply on the transcript, and the transcript composer sends it', () => {
     expect(transcript).toContain("surface: 'transcript'");
-    expect(feed).toContain(`"condition":{"$":"modules.transcribe.replyingTo.surface == 'feed'"}`);
     expect(transcript).toContain(`"condition":{"$":"modules.transcribe.replyingTo.surface == 'transcript'"}`);
-    // And no reply of the Feed's own, held where the transcript cannot see it.
-    expect(feed).not.toContain('local.replyingTo');
+    expect(transcript).toContain('"$invoke":"modules.transcribe.startReply"');
   });
 });
 

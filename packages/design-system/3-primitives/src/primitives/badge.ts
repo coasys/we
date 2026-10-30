@@ -50,12 +50,24 @@ export const BADGE_VARIANT_DEFAULTS: Record<
   },
 };
 
+/*
+  A badge is at least as wide as it is tall: square at its narrowest, wider only when its content
+  needs it. Sized by its content alone, a count of 3 came out a squat lozenge beside a 12 that was
+  wider — every count a different shape, and none of them the counter a count wants to be. The floor
+  is the height's own expression, so a theme's control-height-offset moves both together. Words are
+  wider than they are tall already, so a label badge is unchanged.
+*/
+const sized = (size: ComponentSize, fontSize: string): Partial<DesignSystemProps> => {
+  const height = `calc(var(--we-component-height-${size}) + var(--we-theme-control-height-offset, 0px))`;
+  return { fontSize, height, minWidth: height };
+};
+
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
-  xs: { fontSize: '100', height: 'calc(var(--we-component-height-xs) + var(--we-theme-control-height-offset, 0px))' },
-  sm: { fontSize: '200', height: 'calc(var(--we-component-height-sm) + var(--we-theme-control-height-offset, 0px))' },
-  md: { fontSize: '300', height: 'calc(var(--we-component-height-md) + var(--we-theme-control-height-offset, 0px))' },
-  lg: { fontSize: '500', height: 'calc(var(--we-component-height-lg) + var(--we-theme-control-height-offset, 0px))' },
-  xl: { fontSize: '500', height: 'calc(var(--we-component-height-xl) + var(--we-theme-control-height-offset, 0px))' },
+  xs: sized('xs', '100'),
+  sm: sized('sm', '200'),
+  md: sized('md', '300'),
+  lg: sized('lg', '500'),
+  xl: sized('xl', '500'),
 };
 
 /*

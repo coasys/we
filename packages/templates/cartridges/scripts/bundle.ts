@@ -7,7 +7,7 @@
  * somebody installs from a file to try the install flow. `cartridges.test.ts` fails when one has
  * drifted from its cartridge, so a change here is made by running this, not by hand.
  */
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -24,7 +24,14 @@ async function main(): Promise<void> {
     const file = resolve(dir, bundleFileName(bundle.id));
     // In the repository's own style, so the format check passes on what this writes.
     const options = (await resolveConfig(file)) ?? {};
-    writeFileSync(file, await format(JSON.stringify(bundle), { ...options, filepath: file }));
+    const formatted = await format(JSON.stringify(bundle), { ...options, filepath: file });
+    // Only when it changed: a dev server watches these files, and a rewrite of the same bytes still
+    // reaches it as a change (see `rebuildBundlesOnChange` in scripts/seed-vite.mjs).
+    if (existsSync(file) && readFileSync(file, 'utf8') === formatted) {
+      console.log(`unchanged ${file}`);
+      continue;
+    }
+    writeFileSync(file, formatted);
     console.log(`wrote ${file}`);
   }
 }

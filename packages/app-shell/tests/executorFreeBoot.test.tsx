@@ -15,7 +15,7 @@ import { createInMemoryBackendPorts, type InMemoryAgentOptions, type InMemoryLif
 import { createBlocks, registerCoreBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
 import { AgentSettings, CollectionBlock, getEntity, Policy, Space, SpaceLandmark } from '@we/entities';
-import { type FeedFind, readFeedWindow } from '@we/module-transcribe';
+import { type FeedFind, readFeedWindow } from '@we/module-feed';
 import { createEffect, createRoot, createSignal } from 'solid-js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -80,16 +80,26 @@ vi.mock('../src/frameworks/solid/stores/RouteStore', async () => {
 // file is about the boot and dataset flow. The cost is that they must carry every member SpaceStore
 // reads — a missing one is a `not a function` at provider construction, which fails every test in
 // the file at once rather than the one that cares.
-vi.mock('../src/frameworks/solid/stores/TemplateStore', () => ({
-  useTemplateStore: () => ({
-    provideSpaceLookup: () => {},
-    preloadSpaceTemplates: async () => {},
-    allTemplates: () => [],
-    currentTemplate: () => undefined,
-    defaultTemplateId: () => 'default',
-    replaceTemplate: () => {},
-  }),
-}));
+/** The app in use, as the stub hands it out: WE's own unless a test puts the agent in another. */
+type AppInUse = { id: string; source?: { bundle: string } };
+const app = vi.hoisted(() => ({ use: (_app: AppInUse) => {} }));
+
+vi.mock('../src/frameworks/solid/stores/TemplateStore', async () => {
+  const { createSignal } = await import('solid-js');
+  const [inUse, setInUse] = createSignal<AppInUse>({ id: 'we-app' });
+  app.use = setInUse;
+  return {
+    useTemplateStore: () => ({
+      appTemplate: inUse,
+      provideSpaceLookup: () => {},
+      preloadSpaceTemplates: async () => {},
+      allTemplates: () => [],
+      currentTemplate: () => undefined,
+      defaultTemplateId: () => 'default',
+      replaceTemplate: () => {},
+    }),
+  };
+});
 
 vi.mock('../src/frameworks/solid/stores/ThemeStore', () => ({
   useThemeStore: () => ({
@@ -117,6 +127,7 @@ import { type SessionStore, SessionStoreProvider, useSessionStore } from '../src
 import { type ShapeStore, ShapeStoreProvider, useShapeStore } from '../src/frameworks/solid/stores/ShapeStore';
 import { ShellStoreProvider } from '../src/frameworks/solid/stores/ShellStore';
 import { type SpaceStore, SpaceStoreProvider, useSpaceStore } from '../src/frameworks/solid/stores/SpaceStore';
+import { NO_STARTER } from '../src/shared/bundles/bundleStarter';
 import { createModuleStoreDeps } from '../src/shared/registries/moduleHostServices';
 import { provideSeed } from '../src/shared/seedRegistry';
 import { writeSpaceLandmark } from '../src/shared/spaceLandmarks';
@@ -612,6 +623,59 @@ describe('dataset lifecycle through the real stores', () => {
   }, 10000);
 
   /*
+    The app somebody is in decides what a space made there starts as: Coasys's, built into this
+    deployment's seed, carries its own starter. Its template and theme land under the bundle's id,
+    and its landmarks are written — the Coasys seed's starter named them under a key nothing read.
+  */
+  it('starts a space made in a built-in app as that app’s, and one made in WE’s own as the seed’s', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    app.use({ id: 'coasys--app', source: { bundle: 'coasys' } });
+    try {
+      const [kit, ...rest] = stores.spaces.starterChoices();
+      // In the starter's own words, with its own glyph and what it writes counted from its records.
+      expect(kit).toMatchObject({ app: 'Coasys', name: "Coasys's starter kit", icon: 'dna' });
+      expect(kit.description).toContain('Social DNA');
+      expect(kit.includes).toBe('1 reaction · 3 task states · 5 ways to be involved · a canvas · a board');
+      // A template chooses by id; the records stay in the store.
+      expect(kit).not.toHaveProperty('starter');
+      expect(rest.map((c) => c.id)).toEqual([NO_STARTER]);
+      await stores.spaces.createSpace('In Coasys', '', 'personal', 'hidden');
+      await stores.spaces.createSpace(
+        'Bare in Coasys',
+        '',
+        'personal',
+        'hidden',
+        undefined,
+        undefined,
+        null,
+        '',
+        '',
+        NO_STARTER,
+      );
+      // One no longer offered is refused before a space exists, rather than swapped for the default.
+      await expect(
+        stores.spaces.createSpace('Stale', '', 'personal', 'hidden', undefined, undefined, null, '', '', 'gone'),
+      ).rejects.toThrow('gone');
+    } finally {
+      app.use({ id: 'we-app' });
+    }
+    // The test seed has no starter of its own, so in WE's app there is nothing to choose between.
+    expect(stores.spaces.starterChoices().map((c) => c.id)).toEqual([NO_STARTER]);
+    await stores.spaces.createSpace('In WE', '', 'personal', 'hidden');
+
+    const rowOf = async (name: string) => {
+      const uuid = (await lifecycle.list()).find((d) => d.name === name)!.id;
+      await vi.waitFor(() => expect(stores.spaces.spaceList().find((r) => r.uuid === uuid)?.isWeSpace).toBe(true));
+      return stores.spaces.spaceList().find((r) => r.uuid === uuid)!;
+    };
+    expect((await rowOf('In Coasys')).defaultThemeId).toBe('coasys--glow');
+    expect((await rowOf('Bare in Coasys')).defaultThemeId).not.toBe('coasys--glow');
+    expect((await lifecycle.list()).some((d) => d.name === 'Stale')).toBe(false);
+    expect((await rowOf('In WE')).defaultThemeId).not.toBe('coasys--glow');
+  }, 10000);
+
+  /*
     `$each` keys by reference, so a row rebuilt as a new object remounts everything under it — in the
     space-settings page that was the scroll position, thrown back to the top by setting a default.
   */
@@ -628,6 +692,39 @@ describe('dataset lifecycle through the real stores', () => {
 
     expect(rowOf()?.defaultThemeId).toBe('retro');
     expect(rowOf()).toBe(before);
+  }, 10000);
+
+  /*
+    A shared space is published in the background, after it exists and usually after it is open. The
+    open space was set before the publish and nothing set it again, so everything keyed on its shared
+    address stayed dead until a reload: no way to start a call, no presence, and a URL — and so a
+    copied link — carrying the local id.
+  */
+  it('gives the open space its shared address when a background publish finishes', async () => {
+    const stores = mountShell();
+    await ready(stores);
+
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const publish = lifecycle.publish.bind(lifecycle);
+    // Held, so the space is open before its publish finishes — the order the background share has.
+    vi.spyOn(lifecycle, 'publish').mockImplementationOnce(async (...args: Parameters<typeof publish>) => {
+      await held;
+      return publish(...args);
+    });
+
+    const id = (await stores.spaces.createSpace('Shared', '', 'shared', 'hidden'))!;
+    await stores.spaces.navigateToSpace(id);
+    route.go(`/space/${id}/chat`);
+    await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(id));
+    expect(stores.datasets.currentDataset()?.sharedUri).toBeUndefined();
+
+    navigate.mockClear();
+    release();
+
+    await vi.waitFor(() => expect(stores.datasets.currentDataset()?.sharedUri).toBe(`inmemory://shared-${id}`));
+    // The address on screen moves from the local id to the shared one.
+    expect(navigate).toHaveBeenCalledWith(`/space/shared-${id}/chat`, { replace: true });
   }, 10000);
 
   it("joins a peer's published dataset and switches to it", async () => {

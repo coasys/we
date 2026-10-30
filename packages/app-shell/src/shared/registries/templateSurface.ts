@@ -207,6 +207,7 @@ const hereOnly = (group: CapabilityGroup, arity: number): MemberSpec => ({ group
 export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = {
   sessionStore: {
     bootState: state('session'),
+    signInStep: state('session'),
     bootError: state('session'),
     passwordError: state('session'),
     loginError: state('session'),
@@ -639,6 +640,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     foreignSpacePrefill: state('space-settings'),
     sharingOptions: state('space-admin'),
     defaultSharing: state('space-admin'),
+    starterChoices: state('space-admin'),
     enabledModules: state('space-admin'),
     /*
       Reading it is `space-settings`, writing it is still admin-gated below.
@@ -819,6 +821,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // container. Creating one is writing a record, which is the same act as posting — so it belongs
     // in the tier every template can reach, beside `spaceStore.createPost`.
     creatableEntities: state('content'),
+    kinds: state('content'),
     displays: state('content'),
     // SpaceStore fills this on the way past, with the lists a community owns — see `vocabulary` on
     // a property declaration. Wiring between two stores, never something a template names.
@@ -957,7 +960,13 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     */
     restorePersonalTheme: WIRING,
     clearSpaceTheme: WIRING,
-    startEditing: action('editor'),
+    // Editing a theme, and forking one, from any list of themes — a space's own included. Opening the
+    // editor writes nothing; its saves are the host's own controls. And a fork only opens the host's
+    // naming dialog: the theme is made by a press there, never by the template asking.
+    startEditing: action('appearance'),
+    themeFork: state('appearance'),
+    startThemeFork: ambient('appearance'),
+    cancelThemeFork: ambient('appearance'),
     // The editor tier, with `startEditing` — this is the second half of the same gesture: open the
     // theme editor, and say which role you came for. Nothing a template has any business setting.
     focusedRole: state('editor'),
@@ -1012,6 +1021,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // Appearance, so every template can name the app it is in — WE's own, or a bundle's brand.
     brand: state('appearance'),
     appTemplate: WIRING,
+    // The overlay opens a bundle's page through this; a template opens one with `openShellView`.
+    bundlePage: WIRING,
     operationLoading: state('appearance'),
     switchTemplate: action('appearance'),
     removeTemplate: destructive('library'),
@@ -1085,6 +1096,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // The host's own sequencing — whether a route guard may act yet — not something a template reads.
     spaceTemplatePending: WIRING,
     awaitingSpaceRecord: WIRING,
+    choosingSpaceTemplate: WIRING,
     // Safe mode — readable by chrome to say so, and left only by a person from host chrome. A space
     // template has no use for either and, in safe mode, is not what is rendering anyway.
     safeMode: state('session'),
@@ -1251,6 +1263,16 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     insertDock: action('host-layout'),
     beginDockMove: action('host-layout'),
     raiseDock: ambient('host-layout'),
+    // What a lane draws and which tab of a seat is in front — read by the lane, never by a template.
+    laneSections: WIRING,
+    // How a panel on an edge is framed — read by the frame the host draws around it.
+    panelFrames: state('host-layout'),
+    // The lanes at the window's edges — read by the host's edge lanes, never by a template.
+    edgeLanes: WIRING,
+    // What a template lane's divider writes — called by the lane, never by a template.
+    setSectionGrow: WIRING,
+    panelDeclaration: WIRING,
+    seatFront: WIRING,
     // A move's own calls are ambient, for the reason a resize's are — see `resizeDock`.
     moveDock: ambient('host-layout'),
     beginTabDrag: action('host-layout'),
@@ -1285,10 +1307,11 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     resetDockToLayout: action('host-layout'),
     // The same question and the same answer about the whole arrangement, for chrome that is not a
     // panel's own titlebar — a panel somebody closed has no titlebar left to ask from.
-    layoutDirty: state('host-layout'),
+    // This agent's own arrangement of the template on screen, as a lane's fold is: view state.
+    layoutDirty: state('view-state'),
     // Read by a module's own dock frame, to know whether the interface is supplying its contents.
     panelSupplied: state('host-layout'),
-    resetTemplateLayout: action('host-layout'),
+    resetTemplateLayout: ambient('view-state'),
     // A space template folding its own sidebar away is its own view, so the space tier has it; the
     // width is written by the lane's own handle, never by a template.
     collapsedLanes: state('view-state'),
@@ -1303,11 +1326,20 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     saveLayout: action('host-layout'),
     applyLayout: action('host-layout'),
     deleteLayout: action('host-layout'),
-    // Dismissing and restoring a panel the interface itself supplied. What the titlebar's close
-    // button calls, and reachable by the template that declared the panel — which is the only way
-    // back to one that has been closed.
-    closeTemplatePanel: action('host-layout'),
-    openTemplatePanel: action('host-layout'),
+    /*
+      Dismissing and restoring a panel the interface itself supplied. What the titlebar's close
+      button calls, and reachable by the template that declared the panel — which is the only way
+      back to one that has been closed. View state, and ambient: it opens and closes this agent's view
+      of a panel the interface declared, and nothing else — the ids are the interface's own panels,
+      so a template cannot reach a module's or the host's through it. In the space tier for that
+      reason: an inspector a space template declares has to open when something is chosen.
+    */
+    closeTemplatePanel: ambient('view-state'),
+    openTemplatePanel: ambient('view-state'),
+    // Opening a panel again for another record is the same act as opening it once.
+    openPanel: ambient('view-state'),
+    closePanel: ambient('view-state'),
+    panelInstances: state('view-state'),
   },
 
   presenceStore: {
@@ -1529,11 +1561,17 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     setContentMode: ambient('editor'),
     undo: action('editor'),
     redo: action('editor'),
-    startFork: ambient('editor'),
-    startFresh: ambient('editor'),
+    /*
+      Opening the host's naming dialog for a fork or a new template, and an editing session over one
+      the agent can edit — from the rail's picker or a space's own list of templates. Neither writes:
+      the template is made by a press in the host's dialog, and an edit is saved by the editor's own
+      controls. `appearance` rather than `editor`, so a space template can offer them.
+    */
+    startFork: ambient('appearance'),
+    startFresh: ambient('appearance'),
     confirmPicker: action('editor'),
     cancelPicker: ambient('editor'),
-    enterTemplateEditing: action('editor'),
+    enterTemplateEditing: action('appearance'),
     editApp: action('editor'),
     forkApp: action('editor'),
     exitTemplateEditing: action('editor'),
@@ -1547,7 +1585,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     openThemePanel: ambient('editor'),
     closeThemePanel: ambient('editor'),
     toggleVisualPanel: ambient('editor'),
-    enterThemeEditing: action('editor'),
+    enterThemeEditing: action('appearance'),
     exitThemeEditing: action('editor'),
     toggleThemeEditing: action('editor'),
     sendMessage: action('editor'),
