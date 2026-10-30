@@ -510,6 +510,16 @@ export interface GraphViewProps {
    */
   focus?: string;
   /**
+   * Centre what `focus` names, rather than only bringing it into view — and keep it centred while
+   * the graph settles around it, since choosing something on a map often opens it and moves it.
+   * The camera lets go once the graph has been still for a moment, or as soon as somebody pans or
+   * zooms. For a map chosen from beside it (a tree); not for a canvas whose clicks write `focus`,
+   * where every click would move the camera. `focus` may also name a node by its own id, such as a
+   * group on a map that is not a record, or a group by its key alone (`policy:<rule>` on a vocabulary
+   * map), where its address has encoded words in it that a template cannot build.
+   */
+  focusCentre?: boolean;
+  /**
    * Records whose cards are **folded**: everything hanging off each of them is hidden, and the card
    * says how much.
    *
@@ -568,6 +578,10 @@ export interface GraphViewProps {
    * comes back once the first is open again. One taken out of the list is closed.
    *
    * View state, like `folded`: WE's canvas keeps it in the address.
+   *
+   * An entry may be a record's id instead of a node's address, as `focus` takes one — for an interface
+   * that knows which record it means (a definition chosen in a tree) but cannot build the address,
+   * which has the dataset in it.
    */
   open?: string[];
   /**

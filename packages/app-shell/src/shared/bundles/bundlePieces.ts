@@ -5,8 +5,9 @@
  * records and nothing a bundle brings can take the id of a built-in or of somebody's own template;
  * every template is stamped with where it came from; and every reference a bundle makes to its own
  * pieces is rewritten to match — a template's `meta.themeId`, and the template the display policy
- * names, and the themes a template lists. One function for both routes, so a seed bundle and an installed one cannot drift apart in
- * what they put where.
+ * names, the themes a template lists, the page a brand's About opens, and the template and theme a
+ * space starter sets. One function for both routes, so a seed bundle and an installed one cannot
+ * drift apart in what they put where.
  */
 import {
   type Bundle,
@@ -16,6 +17,7 @@ import {
   type BundleTheme,
   bundleThemes,
   type SchemaNode,
+  type SpaceStarter,
   type TemplateSchema,
 } from '@we/schema-shared';
 
@@ -29,6 +31,8 @@ export interface BundlePieces {
   shells: Array<TemplateSchema & { id: string }>;
   /** Sections, which a space switches on. */
   sections: Array<TemplateSchema & { id: string }>;
+  /** Pages of the app's own, each opened above everything by its id here. */
+  pages: Array<TemplateSchema & { id: string }>;
   /** The themes it offers, its default first, each under the bundle's id. */
   themes: BundleTheme[];
   recordTypes: BundleRecordType[];
@@ -36,6 +40,8 @@ export interface BundlePieces {
   display?: { spaces: 'ours' | 'theirs'; template?: string };
   brand?: BundleBrand;
   bootScreen?: SchemaNode;
+  /** What a space made in its app starts with, with the template and theme it sets under the bundle's id. */
+  starters: SpaceStarter[];
 }
 
 export function bundlePieces(bundle: Bundle): BundlePieces {
@@ -55,6 +61,16 @@ export function bundlePieces(bundle: Bundle): BundlePieces {
     return copy;
   };
 
+  // A starter's template and theme, named by their ids in the bundle, land on the bundle's pieces.
+  const ownTemplates = new Set((bundle.templates ?? []).map((t) => t.id));
+  const landStarter = (starter: SpaceStarter): SpaceStarter => {
+    const settings = { ...starter.settings };
+    const template = settings.defaultTemplateId;
+    if (typeof template === 'string' && ownTemplates.has(template)) settings.defaultTemplateId = id(template);
+    if (typeof settings.defaultThemeId === 'string') settings.defaultThemeId = themeRef(settings.defaultThemeId);
+    return { ...starter, ...(starter.settings ? { settings } : {}) };
+  };
+
   const templates = (bundle.templates ?? []).map(land);
   return {
     bundleId: bundle.id,
@@ -64,6 +80,7 @@ export function bundlePieces(bundle: Bundle): BundlePieces {
     ...(bundle.app ? { app: land(bundle.app) } : {}),
     shells: templates.filter((t) => t.meta.role !== 'view'),
     sections: templates.filter((t) => t.meta.role === 'view'),
+    pages: (bundle.pages ?? []).map(land),
     themes: themes.map((theme) => ({ ...theme, id: id(theme.id) })),
     recordTypes: bundle.recordTypes ?? [],
     ...(bundle.display
@@ -74,7 +91,15 @@ export function bundlePieces(bundle: Bundle): BundlePieces {
           },
         }
       : {}),
-    ...(bundle.brand ? { brand: bundle.brand } : {}),
+    ...(bundle.brand
+      ? {
+          brand: {
+            ...bundle.brand,
+            ...(bundle.brand.aboutPage ? { aboutPage: id(bundle.brand.aboutPage) } : {}),
+          },
+        }
+      : {}),
     ...(bundle.bootScreen ? { bootScreen: bundle.bootScreen } : {}),
+    starters: (bundle.starters ?? []).map(landStarter),
   };
 }

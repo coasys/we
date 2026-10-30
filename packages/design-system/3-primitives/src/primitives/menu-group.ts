@@ -53,9 +53,9 @@ const styles = css`
   }
   /* An overline, as the text primitive's overline variant draws one: small, tracked, in capitals. */
   [part='title'] {
-    font-size: var(--we-font-size-100);
     ${unsafeCSS(
       typeRoleDeclarations('overline', {
+        size: 'var(--we-font-size-100)',
         letterSpacing: 'var(--we-letter-spacing-wide)',
         textTransform: 'uppercase',
         color: 'var(--we-role-text-faint)',

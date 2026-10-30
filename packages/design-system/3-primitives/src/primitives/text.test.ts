@@ -19,7 +19,13 @@ describe('margins', () => {
 
   it('consumes the variable it declares, defaulting to none', () => {
     // The whole bug: the declaration existed and nothing read it.
-    expect(sheet()).toContain('margin: var(--we-text-margin, 0)');
+    expect(sheet()).toContain('margin: var(--we-text-flow-margin, 0)');
+  });
+
+  it('leaves the margin props to the host', () => {
+    // --we-text-margin is what `mt` / `mb` write, and the host reads it. Read here as well, every
+    // margin applied twice, and the inner box (100% high) spilled out of a host of definite height.
+    expect(sheet()).not.toContain('var(--we-text-margin');
   });
 
   it('still lets prose ask for the space under it', () => {

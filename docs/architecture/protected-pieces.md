@@ -46,6 +46,11 @@ it or read it:
 What a template gets is `onEdit` and `onSubmit`, which carry nothing, and two booleans:
 `credentialEntered` and `credentialConfirmed`.
 
+An app's sign-in screen must have the field, or it is a sign-in nobody can use: `judgeBundle`
+refuses one without it, and the host keeps the screen it had. Placing WE's sign-in form
+(`host.signIn.form`) counts, since the form holds the field, and is the usual way: the form's own
+words change through its inputs, and nothing about the field is open to the screen placing it.
+
 This does not stop a screen drawing a convincing fake field of its own and collecting what is typed
 into it. It means that field cannot sign anybody in, so the person notices.
 

@@ -6,6 +6,7 @@
  * chrome outside the shell's arithmetic reads (`--we-sidebar-width`, `--we-chrome-rail-width`).
  */
 import { type AppFrame, DEFAULT_APP_FRAME, setGeometryFrame } from '@shared/dockGeometry';
+import type { PanelFrame, TemplateMeta } from '@we/schema-shared';
 import { createSignal } from 'solid-js';
 
 const [frame, setFrame] = createSignal<AppFrame>(DEFAULT_APP_FRAME);
@@ -25,4 +26,21 @@ export function declareAppFrame(declared: Partial<AppFrame> | undefined): void {
   if (now.left === next.left && now.right === next.right && now.top === next.top && now.bottom === next.bottom) return;
   setGeometryFrame(next);
   setFrame(next);
+}
+
+const [edgeFrames, setEdgeFrames] = createSignal<Partial<Record<'left' | 'right' | 'top' | 'bottom', PanelFrame>>>({});
+
+/** How a panel pushing the content aside at each edge is framed by default, as the app declares it. */
+export const appEdgeFrames = edgeFrames;
+
+/** Take the edges' default frames from an app template's `meta.edges`. */
+export function declareAppEdges(declared: TemplateMeta['edges']): void {
+  const next: Partial<Record<'left' | 'right' | 'top' | 'bottom', PanelFrame>> = {};
+  for (const [edge, setting] of Object.entries(declared ?? {}))
+    if (setting?.frame) next[edge as keyof typeof next] = setting.frame;
+  const now = edgeFrames();
+  const same = Object.keys({ ...now, ...next }).every(
+    (edge) => now[edge as keyof typeof now] === next[edge as keyof typeof next],
+  );
+  if (!same) setEdgeFrames(next);
 }

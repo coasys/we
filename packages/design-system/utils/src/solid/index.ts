@@ -10,9 +10,12 @@ import {
   getBgImageAttrs as getBgImageAttrsNeutral,
   type LayoutStyleProps,
   TIER_PROP_KEYS,
+  tierBagOf,
   tierKeys,
   toInteractiveVars,
   warnIfUnsurfaced,
+  withBorderSides,
+  withBoxSidesFilled,
   withRestingShadow,
 } from '../index';
 
@@ -129,26 +132,59 @@ export function useStateProps(
     for (const cssProp of CSS_PROP_TO_VAR_SUFFIX.keys())
       delete (withoutInteractiveProps as Record<string, unknown>)[cssProp];
 
-    const baseVars = toInteractiveVars('', base);
+    const baseVars = toInteractiveVars('', withBorderSides(base));
     // Declaration order below is the precedence order: rules declared later in the
     // stylesheet win for equal-specificity selectors, so :focus-within < :hover < :active
     // here reproduces the same active-over-hover-over-focus precedence the old
     // JS-merge order (focus, then hover, then active) produced.
     const focusVars = hasFocus()
-      ? toInteractiveVars('focus-', buildStateFragmentStyles(withRestingShadow(props.focusProps!, props), direction))
+      ? toInteractiveVars(
+          'focus-',
+          withBorderSides(
+            buildStateFragmentStyles(
+              withRestingShadow(withBoxSidesFilled(props.focusProps!, [props]), props),
+              direction,
+            ),
+            base,
+          ),
+        )
       : {};
     const hoverVars = hasHover()
-      ? toInteractiveVars('hover-', buildStateFragmentStyles(withRestingShadow(props.hoverProps!, props), direction))
+      ? toInteractiveVars(
+          'hover-',
+          withBorderSides(
+            buildStateFragmentStyles(
+              withRestingShadow(withBoxSidesFilled(props.hoverProps!, [props]), props),
+              direction,
+            ),
+            base,
+          ),
+        )
       : {};
     const activeVars = hasActive()
-      ? toInteractiveVars('active-', buildStateFragmentStyles(withRestingShadow(props.activeProps!, props), direction))
+      ? toInteractiveVars(
+          'active-',
+          withBorderSides(
+            buildStateFragmentStyles(
+              withRestingShadow(withBoxSidesFilled(props.activeProps!, [props]), props),
+              direction,
+            ),
+            base,
+          ),
+        )
       : {};
     // Layout elements have no native :disabled — the stylesheet keys the disabled
     // state off aria-disabled="true", which the consumer sets alongside disabledProps.
     const disabledVars = hasDisabled()
       ? toInteractiveVars(
           'disabled-',
-          buildStateFragmentStyles(withRestingShadow(props.disabledProps!, props), direction),
+          withBorderSides(
+            buildStateFragmentStyles(
+              withRestingShadow(withBoxSidesFilled(props.disabledProps!, [props]), props),
+              direction,
+            ),
+            base,
+          ),
         )
       : {};
 
@@ -161,9 +197,13 @@ export function useStateProps(
       element declaring only `lgUpProps` emits only that.
     */
     const tierVars: CSSStyleObject = {};
-    for (const [tier, key] of Object.entries(TIER_PROP_KEYS)) {
-      const bag = bagOf(key);
-      if (bag) Object.assign(tierVars, toInteractiveVars(`${tier}-`, buildStateFragmentStyles(bag, direction)));
+    for (const tier of Object.keys(TIER_PROP_KEYS) as (keyof typeof TIER_PROP_KEYS)[]) {
+      const bag = tierBagOf(props, tier);
+      if (bag)
+        Object.assign(
+          tierVars,
+          toInteractiveVars(`${tier}-`, withBorderSides(buildStateFragmentStyles(bag, direction), base)),
+        );
     }
 
     return {

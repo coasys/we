@@ -985,7 +985,9 @@ function waitingLine(waiting: string, as: string): SchemaNode {
     children: [
       {
         type: 'Row',
-        props: { gap: '200', ay: 'center', wrap: true, bg: 'warning-soft', r: 'control', px: '200', py: '100' },
+        // A line of status inside the card, not something to press: the surface family's corners. With
+        // the control family's it became a pill under a theme with pill buttons, and wrapped as one.
+        props: { gap: '200', ay: 'center', wrap: true, bg: 'warning-soft', r: 'surface', px: '200', py: '100' },
         children: [
           { type: 'we-icon', props: { name: 'hourglass', size: 'xs', color: 'warning-text' } },
           {

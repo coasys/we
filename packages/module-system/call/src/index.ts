@@ -36,7 +36,7 @@ import { defineModule, type ModuleHost } from '@we/module-shared';
   coupling, nothing for the host to provide, and no version for the two to agree on. That is why it
   is a devDependency here rather than a peer, unlike `@we/module-shared` and `@we/schema-shared`.
 */
-import { peopleTooltip } from '@we/schema-kit';
+import { field, formModal, peopleTooltip } from '@we/schema-kit';
 import { expr, type SchemaNode } from '@we/schema-shared';
 
 import { deviceSettings, deviceSettingsModal } from './DeviceSettings.schema';
@@ -487,6 +487,12 @@ const tile: SchemaNode = {
                     right: '0',
                     bottom: '0',
                     left: '0',
+                    /*
+                      No corners of its own: the tile clips it. A video takes the theme's surface radius by
+                      default, which in a theme rounder than the tile (Glow's 22px) cut the picture's
+                      corners deeper than the box behind it.
+                    */
+                    r: '0',
                     /**
                      * `cover` for a camera, `contain` for a desktop.
                      *
@@ -2359,6 +2365,94 @@ const continueCallButton: SchemaNode = {
   },
 };
 
+/**
+ * A call's name and description, edited: a pencil beside wherever a template draws the name, and the
+ * small dialog it opens.
+ *
+ * The call's own, because naming a meeting is something done to the call, wherever it is drawn —
+ * the workshop's title pill and a Coasys call page both had to offer it, and a template writing the
+ * dialog itself is a copy that drifts. About the call on screen by default; a placer that names
+ * another passes `subject`, as the transcript's placers do.
+ *
+ * Its own query for the record rather than one a placer hands it, so the part stands alone; the drafts
+ * are seeded on the press, not at mount, because they must hold what the record says *now*, and a
+ * local's `initial` is read once, before the query has answered.
+ */
+const renameCallButton: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: CALL_ON_SCREEN },
+    then: {
+      type: 'Row',
+      props: { ay: 'center', flexShrink: '0' },
+      $queries: {
+        namedCall: {
+          entity: 'CollectionBlock',
+          where: { id: { $: CALL_ON_SCREEN } },
+          select: ['title', 'description'],
+          limit: 1,
+        },
+      },
+      $localState: {
+        renameOpen: { type: 'boolean', initial: false },
+        titleDraft: { type: 'string', initial: '' },
+        descriptionDraft: { type: 'string', initial: '' },
+      },
+      children: [
+        {
+          type: 'we-tooltip',
+          props: { content: 'Name this call' },
+          children: [
+            {
+              type: 'we-button',
+              props: {
+                label: 'Name this call',
+                variant: 'ghost',
+                square: true,
+                color: 'text-faint',
+                onClick: [
+                  { $setLocal: 'titleDraft', value: { $: "first(local.namedCall).title ?? ''" } },
+                  { $setLocal: 'descriptionDraft', value: { $: "first(local.namedCall).description ?? ''" } },
+                  { $setLocal: 'renameOpen', value: true },
+                ],
+              },
+              children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
+            },
+          ],
+        },
+        formModal({
+          open: { $: 'local.renameOpen' },
+          close: { $setLocal: 'renameOpen', value: false },
+          title: 'Name this call',
+          size: 'sm',
+          children: [
+            field({ name: 'titleDraft', label: 'Title', placeholder: 'What was this call about?' }),
+            field({
+              name: 'descriptionDraft',
+              label: 'Description',
+              control: 'textarea',
+              placeholder: 'Anything worth remembering about it',
+            }),
+          ],
+          // Changed, not filled in: the fields arrive holding the record, so a guard testing for
+          // something typed would fire on every close.
+          discardWhen: {
+            $: "local.titleDraft != (first(local.namedCall).title ?? '') || local.descriptionDraft != (first(local.namedCall).description ?? '')",
+          },
+          submit: {
+            $invoke: 'record.update',
+            args: [
+              'CollectionBlock',
+              { $: CALL_ON_SCREEN },
+              { title: { $: 'local.titleDraft' }, description: { $: 'local.descriptionDraft' } },
+            ],
+          },
+        }),
+      ],
+    },
+  },
+};
+
 /** A bare "start a call here" trigger, for templates that want one in their own chrome. */
 const startCallButton: SchemaNode = {
   type: 'we-button',
@@ -2412,6 +2506,12 @@ export const callModule = defineModule({
         node: continueCallButton,
         label: 'Continue call',
         description: 'Picks a past call on screen back up, joining anyone already in it.',
+      },
+      renameCallButton: {
+        node: renameCallButton,
+        subject: CALL_ON_SCREEN,
+        label: 'Name this call',
+        description: "A pencil that edits the call's title and description.",
       },
       deviceSettings: {
         node: deviceSettings,

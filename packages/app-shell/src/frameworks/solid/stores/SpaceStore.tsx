@@ -1,5 +1,6 @@
 import { boardOptimism } from '@shared/boardOptimism';
 import { createBoardActions, type CreateBoardOptions } from '@shared/boards';
+import { spaceStarterChoices, type StarterChoice } from '@shared/bundles/bundleStarter';
 import { callParamToWrite } from '@shared/callOnScreen';
 import {
   CONTAINER_ACTIVITY_QUERY,
@@ -46,6 +47,7 @@ import {
   type ModuleSurface,
   moduleSurface,
 } from '@shared/registries/moduleRegistry';
+import { seedBundlePieces } from '@shared/registries/seedBundles';
 import { defaultViewOrder, viewRegistry } from '@shared/registries/viewRegistry';
 import { seedDefaultEnabledModules } from '@shared/seedModules';
 import { getSeed } from '@shared/seedRegistry';
@@ -75,14 +77,6 @@ import {
   rolesView,
   type RoleView,
 } from '@shared/spaceRoles';
-import {
-  applyStarterRecords,
-  defaultSpaceStarter,
-  linkSpaceRelations,
-  SPACE_COLLECTION_KIND,
-  type SpaceStarter,
-  starterSettings,
-} from '@shared/spaceStarter';
 import {
   isSpaceSelf,
   type LocationData,
@@ -174,6 +168,13 @@ import {
   TaskState,
 } from '@we/entities';
 import type { ResolvedView, TemplateSchema } from '@we/schema-shared';
+import {
+  applyStarterRecords,
+  linkSpaceRelations,
+  SPACE_COLLECTION_KIND,
+  type SpaceStarter,
+  starterSettings,
+} from '@we/schema-shared';
 import { hasViewsMarker, templateThemeId } from '@we/schema-shared';
 import {
   Accessor,
@@ -393,6 +394,9 @@ function moduleSettingsFrom(raw: string | undefined, installed: Set<string>, mut
       })
   );
 }
+
+/** Something a new space can start with, as a template reads it — a starter without its records. */
+export type StarterOption = Omit<StarterChoice, 'starter'>;
 
 export interface ModuleSetting {
   id: string;
@@ -735,8 +739,20 @@ export interface SpaceStore {
   /** Address of the link language template publishing uses when none is chosen. */
   defaultSharing: Accessor<string>;
 
+  /**
+   * What a space made now can start with, the default first: the app's kit when the app in use
+   * brings one, the deployment's own, and nothing. Each says what it writes (`includes`), counted
+   * from its records. Pass a choice's `id` to `createSpace`; a space is the community's, so the
+   * create dialog shows what it starts with rather than letting the app decide silently.
+   */
+  starterChoices: Accessor<StarterOption[]>;
+
   // Actions
   /**
+   * Create a space and resolve with its id once the local space exists — sharing a shared one
+   * follows on the network, reported on `spaceList`. It does not navigate: the create dialog goes
+   * to the space with `navigateToSpace`, and a caller making one as part of something else need not.
+   *
    * `server` is the http(s) address a server sharing option syncs through, '' or absent for its
    * default. One that is not an http(s) address rejects before anything is created.
    */
@@ -750,7 +766,8 @@ export interface SpaceStore {
     location?: LocationData | null,
     sharing?: string,
     server?: string,
-  ) => Promise<void>;
+    starter?: string,
+  ) => Promise<string | undefined>;
   /**
    * Share a space that is still local — what retries a share that failed. Uses the sharing option
    * and listing the failed attempt had. Watch `spaceList[].sharing` for how it is going.
@@ -1185,6 +1202,24 @@ export function SpaceStoreProvider(props: ParentProps) {
   const shellStore = useShellStore();
 
   const [mySpaces, setMySpaces] = createSignal<Space[]>([]);
+
+  /** What a space made now can start with, the default first. See `bundleStarter.ts`. */
+  const starterChoiceList = createMemo(() =>
+    spaceStarterChoices({
+      app: templateStore.appTemplate(),
+      builtIn: seedBundlePieces,
+      seed: getSeed()?.spaceStarters,
+    }),
+  );
+  // The starters themselves stay in the store: a template chooses one by id and never handles records.
+  const starterChoices = createMemo(() => starterChoiceList().map(({ starter: _starter, ...option }) => option));
+  /** The starter a choice applies — the default for none, and a refusal for one that is not offered. */
+  const chosenStarter = (id: string | undefined) => {
+    const choices = starterChoiceList();
+    const choice = id ? choices.find((c) => c.id === id) : choices[0];
+    if (!choice) throw new Error(`${id} is not something a new space can start with here.`);
+    return choice.starter;
+  };
   const [creatingSpace, setCreatingSpace] = createSignal(false);
   /**
    * Spaces being shared, or whose share failed, by dataset id — with what the share was asked for,
@@ -1896,12 +1931,16 @@ export function SpaceStoreProvider(props: ParentProps) {
     location?: LocationData | null,
     sharing?: string,
     server?: string,
-  ): Promise<void> {
+    starterId?: string,
+  ): Promise<string | undefined> {
     const lifecycle = session.lifecycle();
-    if (!lifecycle) return;
+    if (!lifecycle) return undefined;
     setCreatingSpace(true);
 
     try {
+      // Before anything exists, like the server check: a choice that is no longer offered is refused
+      // rather than quietly swapped for the default.
+      const starter = chosenStarter(starterId);
       // Sharing follows in the background, so a server it would refuse is caught here, before a
       // space exists that could then only be left unshared.
       if (access === 'shared' && server && !parseServerUrl(server)) {
@@ -1926,7 +1965,6 @@ export function SpaceStoreProvider(props: ParentProps) {
       const coverImageData = coverImageFile ? await compressImageToFileData(coverImageFile, 'space-cover') : undefined;
 
       // Assemble Space + optional location data — used for both own and parent datasets
-      const starter = defaultSpaceStarter(getSeed()?.spaceStarters);
       const spaceData = {
         uuid: spaceRef.id,
         name,
@@ -1982,6 +2020,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       } else if (listing) {
         await listInGlobal(spaceRecord, listing);
       }
+      return spaceRef.id;
     } catch (error) {
       console.error('SpaceStore: createSpace error', error);
       toastService.error('Could not create the space.');
@@ -2026,6 +2065,20 @@ export function SpaceStoreProvider(props: ParentProps) {
       // and the transport for presence and calls is opened from the handle. A fresh read carries both.
       const ref = await lifecycle.get(uuid);
       if (ref) await datasetStore.trackDataset(ref);
+      /*
+        The address on screen, where it names this space by its local id: by the one that travels.
+        The space was opened before it had a shared address, so the URL was built from the local
+        one, and a link copied from it reached nobody else. Replaced rather than pushed: it is the
+        same page, and Back should not lead to its old spelling.
+      */
+      const segments = routeStore.segments();
+      if (sharedId && segments[0] === 'space' && segments[1] === uuid) {
+        const rest = segments
+          .slice(2)
+          .map((s) => `/${s}`)
+          .join('');
+        routeStore.navigate(`/space/${sharedId}${rest}${window.location.search}`, { replace: true });
+      }
       // Only now does the space show as shared: before this, a failure leaves it retryable.
       const shared = Object.assign(Object.create(Object.getPrototypeOf(space)), space, { url: sharedId }) as Space;
       setMySpaces((prev) => prev.map((s) => (s.uuid === uuid ? shared : s)));
@@ -2076,7 +2129,8 @@ export function SpaceStoreProvider(props: ParentProps) {
       avatarData = dataURIToFileData(avatarValue, 'space-avatar');
     }
 
-    const starter = defaultSpaceStarter(getSeed()?.spaceStarters);
+    // Nobody chooses here — the dialog that turns a dataset into a space has no starter picker.
+    const starter = chosenStarter(undefined);
     const spaceData: SpaceInput = {
       uuid: ds.id,
       url: ds.sharedId,
@@ -6315,6 +6369,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     autoInterpret,
     root: spaceRoot,
     landmarks: spaceLandmarks,
+    starterChoices,
     autoExtractFor,
     setAutoExtractFor,
     canSetExtractionFor,

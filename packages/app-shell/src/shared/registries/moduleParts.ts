@@ -33,7 +33,7 @@ import {
   type SchemaProp,
 } from '@we/schema-shared';
 
-import { hostPartNode, isHostPart } from './hostParts';
+import { hostPartInputs, hostPartNode, isHostPart } from './hostParts';
 import { moduleRegistry } from './moduleRegistry';
 
 /**
@@ -41,12 +41,32 @@ import { moduleRegistry } from './moduleRegistry';
  * places (`host.*`). One lookup, so a host part is drawn, opened, copied and given back exactly as a
  * module's is.
  */
-function partOf(id: string): { node: SchemaNode; subject?: string } | undefined {
+interface Part {
+  node: SchemaNode;
+  subject?: string;
+  inputs?: Record<string, { default?: string | number | boolean }>;
+}
+
+function partOf(id: string): Part | undefined {
   if (isHostPart(id)) {
     const node = hostPartNode(id);
-    return node ? { node } : undefined;
+    return node ? { node, inputs: hostPartInputs(id) } : undefined;
   }
   return moduleRegistry.parts()[id];
+}
+
+/**
+ * The inputs a placement binds: what it gave, over the defaults the part declares for the rest. So an
+ * input with a default is optional — a placement changes the words it wants and leaves the others.
+ */
+function inputsOf(part: Part, given: unknown): Record<string, unknown> {
+  const defaults = Object.fromEntries(
+    Object.entries(part.inputs ?? {}).flatMap(([name, input]) =>
+      input.default === undefined ? [] : [[name, input.default]],
+    ),
+  );
+  const own = given && typeof given === 'object' && !Array.isArray(given) ? (given as Record<string, unknown>) : {};
+  return { ...defaults, ...own };
 }
 
 /**
@@ -142,7 +162,7 @@ function bindInputs(node: SchemaNode, inputs: unknown): SchemaNode {
  */
 const instances = new WeakMap<object, Map<string, SchemaNode>>();
 
-function instantiate(placement: SchemaNode, part: { node: SchemaNode; subject?: string }): SchemaNode {
+function instantiate(placement: SchemaNode, part: Part): SchemaNode {
   const props = (placement.props ?? {}) as { subject?: unknown; inputs?: unknown };
   const key = `${placement.id ?? ''}\u0000${JSON.stringify([props.subject ?? null, props.inputs ?? null])}`;
   let byKey = instances.get(part.node);
@@ -152,7 +172,7 @@ function instantiate(placement: SchemaNode, part: { node: SchemaNode; subject?: 
 
   const wanted = subjectExpression(props.subject);
   const resolved = part.subject && wanted ? substitute(part.node, part.subject, wanted) : part.node;
-  let tree = bindInputs(resolved, props.inputs);
+  let tree = bindInputs(resolved, inputsOf(part, props.inputs));
   if (placement.id) {
     const seed = `part:${placement.id}`;
     tree = deriveNodeIds(copyOf(tree), seed);

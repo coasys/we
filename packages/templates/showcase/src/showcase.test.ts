@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 
 import type { SchemaNode, TemplatePanel } from '@we/schema-shared';
 import { evaluateExpression, listFunctions, parseExpression } from '@we/schema-shared';
-import { STATE_FILLS, stateIcon } from '@we/template-kit';
+import { KIND_CARD_RULES, kindGlyph, STATE_FILLS, stateIcon } from '@we/template-kit';
 import { describe, expect, it } from 'vitest';
 
 import * as showcase from './index.ts';
@@ -41,8 +41,6 @@ import {
   HEAT_NONE_FILL,
   HEAT_NONE_KEY,
   HIDDEN_KINDS,
-  KIND_DEFAULTS,
-  kindFill,
   LENS_PARAM,
   LENS_QUERY,
   LINK_ENTITY,
@@ -1219,7 +1217,7 @@ describe('the workshop’s key', () => {
 
     expect(canvas).not.toContain('"typeStyles":"TypeStyle"');
     expect(canvas).toContain('"anchor":"Space","via":"typeStyles"');
-    expect(canvas).toContain('.map(s, { when: { type: s.nodeType }, style: { color: s.color } })');
+    expect(canvas).toContain((KIND_CARD_RULES as { $: string }).$);
     expect(canvas).toContain("spaceStore.taskStates.map(s, { when: { 'data.status': s.slug }");
     // The query waits for the space rather than reading every canvas's key while it settles.
     expect(canvas).toContain('"when":{"$":"spaceStore.currentSpace.id"}');
@@ -1321,8 +1319,8 @@ describe('the workshop’s key', () => {
       and the lines between. Each was a constant in the template — the colour every canvas certainly
       shows was the one nobody could change. All three are `TypeStyle` rows on the space like every
       other colour in the key, under names no model can have, so they arrive in the same
-      subscription and clear the same way; `lensNodeRules` filters them out of the per-kind rules
-      rather than emitting one that matches nothing.
+      subscription and clear the same way; the per-kind rules are built from the space's kinds, so
+      none of these becomes a rule that matches nothing.
     */
     const key = panel('key');
     const canvas = route('/canvas');
@@ -1335,9 +1333,10 @@ describe('the workshop’s key', () => {
     expect(canvas).toContain(`[{ style: { color: ${CARD_FILL} } }]`);
     expect(canvas).toContain(`"bg":{"$":"${CANVAS_FILL}"}`);
     expect(canvas).toContain(`"showLabel":true,"color":{"$":"${LINK_FILL}"}`);
-    expect(canvas).toContain(
-      `filter(s, !(s.nodeType in ['${CARD_KEY}', '${CANVAS_KEY}', '${LINK_KEY}', '${HEAT_LOW_KEY}', '${HEAT_HIGH_KEY}', '${HEAT_NONE_KEY}']))`,
-    );
+    // The per-kind rules are built from the space's kinds, never from these rows, so none becomes a
+    // rule matching a type called `@card`.
+    expect(canvas).toContain('recordStore.kinds.map(k, { when: { type: k.value }');
+    expect(canvas).not.toContain('local.typeStyles.filter(s');
   });
 
   it('shades every card by the order while the order lens is on, between the key’s two colours', () => {
@@ -1429,14 +1428,13 @@ describe('the workshop’s key', () => {
       The plain card is the deliberate exception and stays on the neutral ramp: it is the absence of
       a colour, so following the theme's polarity is the whole of what it should do.
     */
-    for (const [kind, fill] of Object.entries(KIND_DEFAULTS)) {
-      expect(fill, kind).toMatch(/^(oklch\(|#)/);
-    }
     for (const [semantic, fill] of Object.entries(STATE_FILLS)) {
       expect(fill, semantic).toMatch(/^(#|oklch\()/);
     }
     expect(PLAIN_FILL).toBe('var(--we-color-neutral-300)');
-    expect(route('/canvas')).toContain(`style: { color: '${KIND_DEFAULTS.EventBlock}' }`);
+    // Kinds are the exception now: categories, drawn in their palette hue's tint, which the theme
+    // tunes — the hex table they replaced reached no theme. See the kit's `kindColour.ts`.
+    expect(route('/canvas')).toContain((KIND_CARD_RULES as { $: string }).$);
     // Every state has one, `open` included: it shared the plain card until now, which made a to-do
     // task and a card that is not a task at all — a note, an event — the same colour under the lens
     // that exists to tell them apart.
@@ -1469,7 +1467,7 @@ describe('the workshop’s key', () => {
     // The canvas is a graph, so its three layers are `nodeStyle` rules rather than a `bg`: the
     // community's colour per kind, the vocabulary's per state, and the card's own off its placement.
     const canvas = route('/canvas');
-    expect(canvas).toContain('.map(s, { when: { type: s.nodeType }, style: { color: s.color } })');
+    expect(canvas).toContain((KIND_CARD_RULES as { $: string }).$);
     expect(canvas).toContain("spaceStore.taskStates.map(s, { when: { 'data.status': s.slug }");
     expect(canvas).toContain("{ from: 'data.canvasColor' }");
     // And it still declares the key it reads — a query hoisted to the root does not reach past a
@@ -1658,7 +1656,6 @@ describe('the workshop’s canvas', () => {
     expect(key).toContain('"onCall":{"entity":{"$":"(shapeStore.extractionCandidates)');
     expect(key).toContain('distinct(local.onCall.map(r, r.__subjectClass), local.placements.map(p, p.nodeType))');
     expect(key).toContain("'CollectionBlock' ? 'Note'");
-    expect(KIND_DEFAULTS.CollectionBlock).toBe('#ffea9f');
   });
 
   it('says so when there are no kinds yet, once it knows', () => {
@@ -1987,13 +1984,16 @@ describe('the chooser’s colours', () => {
           ?.impl(args, {} as never),
     } as never);
 
-  it('draws a card’s icon in its kind’s colour, looked up by the entry’s name — the default, or the space’s', () => {
+  it('draws a card’s icon in its kind’s colour, looked up by the entry’s name — its hue, or the space’s', () => {
     // The picker hands a whole entry; the key looks colours up by name. Passing the entry itself made
     // every lookup miss, and every icon came out the plain card's colour.
-    const fill = kindFill('kind.value');
+    const glyph = kindGlyph('kind.value');
     const kind = { value: 'ImageBlock', label: 'Image' };
-    expect(run(fill, { kind, local: { typeStyles: [] } })).toBe(KIND_DEFAULTS.ImageBlock);
-    expect(run(fill, { kind, local: { typeStyles: [{ nodeType: 'ImageBlock', color: '#123456' }] } })).toBe('#123456');
+    const recordStore = { kinds: [{ value: 'ImageBlock', hue: 'green' }] };
+    expect(run(glyph, { kind, recordStore, local: { typeStyles: [] } })).toBe('green-text');
+    const chosen = (color: string) => ({ typeStyles: [{ nodeType: 'ImageBlock', color }] });
+    expect(run(glyph, { kind, recordStore, local: chosen('#123456') })).toBe('#123456');
+    expect(run(glyph, { kind, recordStore, local: chosen('teal') })).toBe('teal-text');
   });
 });
 

@@ -57,6 +57,20 @@ describe('components', () => {
     expect(style['--we-theme-button-border-width']).toBeUndefined();
   });
 
+  it('writes a state’s colours beside the resting keys', () => {
+    const style = themeParametersToStyle({
+      components: {
+        button: {
+          variants: { outline: { hover: { fill: 'accent', text: 'on-accent' }, active: { border: 'accent' } } },
+        },
+      },
+    });
+    expect(style['--we-theme-button--outline-hover-fill']).toBe('var(--we-role-accent)');
+    expect(style['--we-theme-button--outline-hover-text']).toBe('var(--we-role-on-accent)');
+    expect(style['--we-theme-button--outline-active-border']).toBe('var(--we-role-accent)');
+    expect(style['--we-theme-button--outline-fill']).toBeUndefined();
+  });
+
   it('points a component’s type keys at another role, colour included', () => {
     const style = themeParametersToStyle({ components: { tooltip: { type: 'overline' } } });
     expect(style['--we-theme-tooltip-font-weight']).toBe('var(--we-type-overline-weight)');

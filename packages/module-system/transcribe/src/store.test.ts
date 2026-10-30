@@ -3279,34 +3279,12 @@ describe('the transcript window', () => {
 });
 
 /**
- * Writing into the space and answering a line.
+ * Answering a line of the transcript.
  *
- * Both are one record each, and the only thing that can go wrong is where it lands: a message typed
- * into the Feed belongs to the space collection, not to whichever call is running, and a reply hangs
- * off what it answers rather than being filed beside it.
+ * One record, and the only thing that can go wrong is where it lands: a reply hangs off what it
+ * answers rather than being filed beside it. Writing into the space is the Feed's, its own module.
  */
-describe('the feed and replies', () => {
-  const space = (root: string) => ({
-    find: async (entity: string) => (entity === 'Space' ? [{ id: 'space-1', root: { id: root } }] : []),
-    subscribe: () => () => {},
-  });
-
-  it('writes a message typed into the Feed into the space collection, as a typed line', async () => {
-    const h = harness([], { dataset: () => 'ds', records: space('root-1') as never });
-    await h.settle();
-    expect(h.store.feedRoot()).toBe('root-1');
-
-    await h.store.sendToFeed('see you all on Friday', '[{"start":0,"end":3,"type":"strong"}]');
-
-    expect(h.created).toEqual([
-      {
-        entity: 'TextBlock',
-        fields: { text: 'see you all on Friday', source: 'typed', marks: '[{"start":0,"end":3,"type":"strong"}]' },
-        options: { parent: { id: 'root-1', relation: 'children', entity: 'CollectionBlock' } },
-      },
-    ]);
-  });
-
+describe('replies', () => {
   it('hangs a reply off the line it answers, and puts the reply down once it is sent', async () => {
     const h = harness();
     h.store.startReply({ id: 'line-1', text: 'who has the venue?', author: 'did:ann' });
@@ -3335,21 +3313,13 @@ describe('the feed and replies', () => {
     expect(h.store.replyingTo()).toBeNull();
   });
 
-  it("keeps a reply started in the Feed when the call on screen changes, and drops the transcript's", async () => {
-    /*
-      The Feed is the whole space, whichever call is on screen; a transcript's reply belongs to the
-      conversation it was started in. Both are held in one place, so the one rule must not clear both.
-    */
+  it('puts a reply down when the call on screen changes — it belongs to the conversation it was started in', async () => {
     let onScreen: string | null = 'call-one';
     const h = harness([], { callOnScreen: () => onScreen });
 
-    h.store.startReply({ id: 'msg-1', text: 'lunch?', author: 'did:ann', surface: 'feed' });
-    onScreen = 'call-two';
-    await h.settle();
-    expect(h.store.replyingTo()).toMatchObject({ id: 'msg-1', surface: 'feed' });
-
     h.store.startReply({ id: 'line-1', text: 'who has the venue?', author: 'did:ann' });
-    onScreen = 'call-three';
+    expect(h.store.replyingTo()).toMatchObject({ id: 'line-1', surface: 'transcript' });
+    onScreen = 'call-two';
     await h.settle();
     expect(h.store.replyingTo()).toBeNull();
   });

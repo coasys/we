@@ -1,5 +1,5 @@
 import type { DesignSystemProps } from '@we/design-types';
-import { FOCUS_RING } from '@we/tokens';
+import { componentThemeVar, FOCUS_RING } from '@we/tokens';
 import { css, html, unsafeCSS } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { ifDefined } from 'lit/directives/if-defined.js';
@@ -8,91 +8,26 @@ import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
 
 /*
+  The space between rows, at every depth: between a tree's top-level items, between a row and the
+  rows under it, and between those. A theme sets it as the tree's own gap (components.tree.gap).
+  On the tree's and each item's base, as their DS gap, since a primitive's base reads its gap
+  from its own DS variable and a stylesheet rule never reaches it; and on an item's children.
+  Rows used to touch, so two rows lit at once — the one hovered and the one you are on — read as one
+  block.
+*/
+const ROW_GAP_VALUE = `var(${componentThemeVar('tree', 'gap')}, var(--we-space-100))`;
+
+/*
   Rows stack. A DesignSystemElement host is a flex container around its `base` part, which is laid
   out as a row unless the element says otherwise: a tree left at the default drew its groups side by
   side on one line, and an open row's children beside it rather than under it. `we-menu` declares
   the same for the same reason.
 */
-const STACKED: Partial<DesignSystemProps> = { direction: 'column' };
+const STACKED: Partial<DesignSystemProps> = { direction: 'column', gap: ROW_GAP_VALUE };
 
 const TREE_STYLES = css`
   :host {
     display: block;
-  }
-`;
-
-/*
-  A row's corners read its own override slot (--we-theme-tree-radius), so a theme can round rows
-  without rounding every control.
-*/
-const ITEM_STYLES = css`
-  :host {
-    display: block;
-  }
-  [part='row'] {
-    display: flex;
-    align-items: center;
-    gap: var(--we-space-200);
-    padding: var(--we-tree-row-padding, var(--we-space-100) var(--we-space-200));
-    /* A level indents by one caret and the gap after it — see the nested leaf below. */
-    padding-inline-start: calc(
-      var(--we-tree-indent, calc(16px + var(--we-space-200))) * var(--we-tree-level, 0) + var(--we-space-200)
-    );
-    border-radius: var(--we-theme-tree-radius, var(--we-radius-300));
-    color: var(--we-role-text-muted);
-    cursor: pointer;
-    outline: none;
-    min-height: var(--we-tree-row-height, 32px);
-    box-sizing: border-box;
-  }
-  [part='row']:hover {
-    background: var(--we-role-item-hover);
-    color: var(--we-role-text);
-  }
-  :host([selected]) [part='row'] {
-    background: var(--we-role-selected);
-    color: var(--we-role-on-selected);
-  }
-  [part='row']:focus-visible {
-    box-shadow: ${unsafeCSS(FOCUS_RING)};
-  }
-  [part='caret'] {
-    all: unset;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 16px;
-    height: 16px;
-    flex: 0 0 auto;
-    color: var(--we-role-text-faint);
-    transition: transform var(--we-transition-200, 150ms) ease;
-  }
-  :host([open]) [part='caret'] {
-    transform: rotate(90deg);
-  }
-  /*
-    A leaf at the top keeps the caret's space with nothing in it, so it lines up with the rows beside
-    it that have one. Not the hidden attribute: the shared sheet makes that display: none !important,
-    which takes the space away.
-  */
-  [part='caret'][data-leaf] {
-    visibility: hidden;
-    pointer-events: none;
-  }
-  /*
-    A nested leaf has no caret at all, and its level's indent is that caret's width: so its glyph
-    sits under its parent's glyph, and its label under its parent's label. A nested row with rows of
-    its own keeps its caret there instead, and its own rows line up under it the same way.
-  */
-  [part='caret'][data-nested-leaf] {
-    display: none;
-  }
-  [part='content'] {
-    display: flex;
-    align-items: center;
-    gap: var(--we-space-200);
-    flex: 1 1 auto;
-    min-width: 0;
   }
 `;
 
@@ -134,6 +69,21 @@ export class Tree extends DesignSystemElement {
   @property({ type: String }) selected = '';
   /** What the tree is, for a screen reader: "Space", "Channels". */
   @property({ type: String }) label = '';
+  /**
+   * Where a row's caret sits: before its content, as a file tree has it, or at the end of the row.
+   *
+   * At the end, nothing sits in the indent: leaf and group glyphs share one column with no empty
+   * slots, each guide drops from the centre of its row's glyph, and the carets line up down the right
+   * edge whatever their depth. It also keeps the caret apart from the row, which is what a tree whose
+   * rows go somewhere when pressed wants — the caret is the one control that folds.
+   */
+  @property({ type: String }) caret: 'start' | 'end' = 'start';
+  /**
+   * The width of what leads each row — its glyph or its face — as a length. With the caret at the
+   * end, a level indents by it and a guide falls at its centre. The kit's `treeRow` draws 24px leads
+   * (`TREE_LEAD`). Absent, the caret's width.
+   */
+  @property({ type: String }) lead = '';
 
   /*
     `querySelectorAll` rather than slotted elements: the schema renderer wraps children in
@@ -152,6 +102,9 @@ export class Tree extends DesignSystemElement {
 
   updated(changed: Map<PropertyKey, unknown>) {
     super.updated(changed);
+    // Inherited by every row's shadow, where the indent and the guides are worked out from it.
+    if (this.lead) this.style.setProperty('--we-tree-lead', this.lead);
+    else this.style.removeProperty('--we-tree-lead');
     this.syncItems();
   }
 
@@ -183,7 +136,11 @@ export class Tree extends DesignSystemElement {
     for (const item of this.items) {
       item.selected = !!this.selected && item.value === this.selected;
       item.level = item.depthInTree();
+      item.caretAt = this.caret === 'end' ? 'end' : 'start';
     }
+    // The row whose children hold the selected one: its guide draws a little stronger.
+    const holder = this.items.find((item) => item.selected)?.parentItem();
+    for (const item of this.items) item.scope = item === holder;
     const stop =
       visible.find((item) => item.value === this.focusedValue) ?? visible.find((item) => item.selected) ?? visible[0];
     for (const item of this.items) item.tabStop = item === stop;
@@ -260,6 +217,200 @@ export class Tree extends DesignSystemElement {
   }
 }
 
+/*
+  A row's corners read its own override slot (--we-theme-tree-radius), so a theme can round rows
+  without rounding every control.
+
+  The selected row reads the tree's `selected` variant, the component tier's usual vocabulary:
+  `components: { tree: { variants: { selected: { fill, text, border, borderWidth } } } }`. Fill and
+  text replace the selected role's. Border and its width draw a bar on the row's leading edge — the
+  mark a navigation tree draws on the row you are on, and what Coasys Glow asks for in mint. Unset,
+  the bar has no width, so every theme that says nothing renders as before.
+
+  Read from the variant only, not the tree's own keys: a `fill` set for every row would otherwise
+  paint the selected one too, and the selection would disappear into it.
+*/
+const SELECTED = (key: string, fallback: string) =>
+  unsafeCSS(`var(${componentThemeVar('tree', key, 'selected')}, ${fallback})`);
+
+const ROW_RADIUS = unsafeCSS('var(--we-theme-tree-radius, var(--we-radius-300))');
+const GUIDE_WIDTH = unsafeCSS(`var(${componentThemeVar('tree', 'borderWidth')}, 1px)`);
+const GUIDE_COLOR = unsafeCSS(`var(${componentThemeVar('tree', 'border')}, var(--we-role-border))`);
+const SCOPE_COLOR = unsafeCSS(`var(${componentThemeVar('tree', 'border', 'selected')}, var(--we-role-border-strong))`);
+
+/*
+  The geometry, in three values the rest is worked out from, so the indent, the guides and where a
+  lit row starts cannot drift apart:
+
+  - `--_step`: how far a level indents. With the caret first, the caret and its gap, so a child sits
+    one step in. With the caret at the end, the lead's width, so a child's glyph starts half a lead
+    to the right of its parent's guide.
+  - `--_guide`: where a row's own guide falls, from the row's start padding: the caret's centre with
+    the caret first, the lead's centre with it at the end.
+  - `--_bar`: the selected row's bar, which a lit row is placed to put on its parent's guide.
+*/
+const ITEM_STYLES = css`
+  :host {
+    display: block;
+    --_caret: 16px;
+    --_lead: var(--we-tree-lead, var(--_caret));
+    --_step: var(--we-tree-indent, calc(var(--_caret) + var(--we-space-200)));
+    --_guide: calc(var(--we-space-200) + var(--_caret) / 2);
+    --_bar: ${SELECTED('border-width', '0px')};
+  }
+  :host([caret-at='end']) {
+    --_step: var(--we-tree-indent, var(--_lead));
+    --_guide: calc(var(--we-space-200) + var(--_lead) / 2);
+  }
+  /*
+    The guide: a hairline down an open row's children, from just below the row to its last
+    descendant, at the row's own guide position (its caret's centre, or its glyph's with the caret at
+    the end). Drawn above the rows, so a lit row does not cut it. The indent already says a row is a child; the line says whose, so an
+    open group's rows and the group after it cannot be mistaken for one another. Indent guides
+    rather than branch connectors: a tick into every row would meet the rows' rounding and the
+    selected row's bar, and in a tree mostly one level deep it repeats what the indent says.
+
+    A theme draws it with the tree's own border and borderWidth (components.tree), faint by default.
+    The guide around the selected row is the active scope, a little stronger: the selected variant's
+    border colour where a theme sets one (Glow's mint), at about half strength, so it reads as the
+    same mark.
+  */
+  [part='children']::before {
+    content: '';
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: calc(var(--_step) * var(--we-tree-level, 0) + var(--_guide) - ${GUIDE_WIDTH} / 2);
+    width: ${GUIDE_WIDTH};
+    background: ${GUIDE_COLOR};
+    pointer-events: none;
+    z-index: 1;
+  }
+  :host([scope]) [part='children']::before {
+    background: color-mix(in oklab, ${SCOPE_COLOR} 55%, transparent);
+  }
+  [part='children'] {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: ${unsafeCSS(ROW_GAP_VALUE)};
+  }
+  [part='row'] {
+    display: flex;
+    align-items: center;
+    gap: var(--we-space-200);
+    /* A theme sets a tree's density as its padding (components.tree.padding); the start is the indent's. */
+    padding: var(--we-theme-tree-padding, var(--we-tree-row-padding, var(--we-space-100) var(--we-space-200)));
+    /*
+      A nested row starts on its parent's guide, less half the bar, so what lights it — the hover, the
+      selection and its bar — begins at the line it hangs from rather than at the tree's edge: the lit
+      row does not cover the guides beside it, and the bar sits on the guide, which widens into it.
+      The padding gives back the difference, so the content is exactly where the indent puts it.
+      A top-level row has no parent guide and starts at the edge.
+    */
+    --_start: max(0px, calc(var(--_step) * (var(--we-tree-level, 0) - 1) + var(--_guide) - var(--_bar) / 2));
+    margin-inline-start: var(--_start);
+    padding-inline-start: calc(var(--_step) * var(--we-tree-level, 0) + var(--we-space-200) - var(--_start));
+    border-radius: ${ROW_RADIUS};
+    color: var(--we-role-text-muted);
+    cursor: pointer;
+    outline: none;
+    min-height: var(--we-tree-row-height, 32px);
+    box-sizing: border-box;
+    position: relative;
+  }
+  [part='row']:hover {
+    background: var(--we-role-item-hover);
+    color: var(--we-role-text);
+  }
+  /*
+    Square where the bar is, so the guide, the bar and the row's edge run as one straight line. A 3px
+    bar cannot take the row's 10px rounding, and the two curves side by side did not match. Only where
+    a theme draws a bar: with none, this resolves to the row's own radius.
+
+    The hovered row takes the same shape. It is where the selection will land, and a row rounded on
+    its leading edge under the pointer and flat there once chosen read as two different shapes.
+  */
+  [part='row']:hover,
+  :host([selected]) [part='row'] {
+    border-start-start-radius: clamp(0px, calc(${ROW_RADIUS} - var(--_bar) * 1000), ${ROW_RADIUS});
+    border-end-start-radius: clamp(0px, calc(${ROW_RADIUS} - var(--_bar) * 1000), ${ROW_RADIUS});
+  }
+  :host([selected]) [part='row'] {
+    background: ${SELECTED('fill', 'var(--we-role-selected)')};
+    color: ${SELECTED('text', 'var(--we-role-on-selected)')};
+  }
+  /* The leading bar, square with the row's start. */
+  :host([selected]) [part='row']::before {
+    content: '';
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    width: var(--_bar);
+    background: ${SELECTED('border', 'transparent')};
+    border-start-start-radius: inherit;
+    border-end-start-radius: inherit;
+    pointer-events: none;
+  }
+  [part='row']:focus-visible {
+    box-shadow: ${unsafeCSS(FOCUS_RING)};
+  }
+  [part='caret'] {
+    all: unset;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+    color: var(--we-role-text-faint);
+    transition: transform var(--we-transition-200, 150ms) ease;
+    position: relative;
+    cursor: pointer;
+  }
+  /*
+    The caret is the only way to fold a row whose press goes somewhere, so it is a target worth
+    hitting: the glyph stays 16px, and this invisible box around it takes the press across the row's
+    height and 24px of its width, without moving anything.
+  */
+  [part='caret']::before {
+    content: '';
+    position: absolute;
+    inset: -8px -4px;
+  }
+  :host([open]) [part='caret'] {
+    transform: rotate(90deg);
+  }
+  /*
+    With the caret first, a leaf keeps the caret's space with nothing in it, at every depth, so its
+    glyph lines up with the glyphs of the rows beside it that have a caret, and a child sits one step
+    in from its parent rather than in line with the next row along. Not the hidden attribute: the
+    shared sheet makes that display: none !important, which takes the space away.
+  */
+  [part='caret'][data-leaf] {
+    visibility: hidden;
+    pointer-events: none;
+  }
+  /*
+    With the caret at the end there is no slot to keep: the caret follows the row's content, faint,
+    and a leaf has none at all, so its trailing marks end at the row's edge.
+  */
+  :host([caret-at='end']) [part='caret'] {
+    order: 2;
+    margin-inline-start: var(--we-space-200);
+    opacity: 0.6;
+  }
+  :host([caret-at='end']) [part='caret'][data-leaf] {
+    display: none;
+  }
+  [part='content'] {
+    display: flex;
+    align-items: center;
+    gap: var(--we-space-200);
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+`;
+
 /**
  * One row of a `we-tree`, and the rows under it.
  *
@@ -295,6 +446,10 @@ export class TreeItem extends DesignSystemElement {
   @property({ type: Boolean }) tabStop = false;
   /** Set by the tree: how deep the row is, for indentation and `aria-level`. */
   @property({ type: Number }) level = 0;
+  /** Its children hold the selected row, so its guide is the active scope. Set by the tree. */
+  @property({ type: Boolean, reflect: true }) scope = false;
+  /** Where its caret sits, as the tree says (`caret`). Set by the tree. */
+  @property({ type: String, reflect: true, attribute: 'caret-at' }) caretAt: 'start' | 'end' = 'start';
 
   /** Whether every row above this one is open, so this one is on screen. */
   isVisibleInTree(): boolean {
@@ -326,6 +481,23 @@ export class TreeItem extends DesignSystemElement {
 
   firstChildItem(): TreeItem | undefined {
     return this.childItems()[0];
+  }
+
+  /*
+    Rows under this one can arrive after it has drawn — a query answering, a channel being made — and
+    whether it has any decides its caret and whether an open row draws its group. So it draws again
+    when what is under it changes, rather than only when one of its own properties does.
+  */
+  private readonly rowsUnder = new MutationObserver(() => this.requestUpdate());
+
+  override connectedCallback() {
+    super.connectedCallback();
+    this.rowsUnder.observe(this, { childList: true, subtree: true });
+  }
+
+  override disconnectedCallback() {
+    super.disconnectedCallback();
+    this.rowsUnder.disconnect();
   }
 
   hasChildren(): boolean {
@@ -394,14 +566,7 @@ export class TreeItem extends DesignSystemElement {
           @click=${this.onRowClick}
           @focus=${this.onRowFocus}
         >
-          <button
-            part="caret"
-            tabindex="-1"
-            aria-hidden="true"
-            ?data-leaf=${!expandable}
-            ?data-nested-leaf=${!expandable && this.level > 0}
-            @click=${this.onCaretClick}
-          >
+          <button part="caret" tabindex="-1" aria-hidden="true" ?data-leaf=${!expandable} @click=${this.onCaretClick}>
             <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
               <path
                 d="M3 1.5 L7 5 L3 8.5"
@@ -415,7 +580,18 @@ export class TreeItem extends DesignSystemElement {
           </button>
           <span part="content"><slot></slot></span>
         </div>
-        ${this.open ? html`<div role="group" part="children"><slot name="children"></slot></div>` : ''}
+        ${
+          /*
+            Only while open and with something to show. Open with nothing under it drew an empty group,
+            and the row's gap above it: a press on a row with no children appeared to open it onto
+            a sliver of space.
+          */
+          this.open && expandable
+            ? html`<div role="group" part="children" style=${`--we-tree-level: ${this.level}`}>
+                <slot name="children"></slot>
+              </div>`
+            : ''
+        }
       </div>
     `;
   }

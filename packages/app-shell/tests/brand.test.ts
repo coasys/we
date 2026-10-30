@@ -3,7 +3,7 @@
  * Which app's name, mark and sign-in screen are showing — WE's, the app in use's, or before anybody
  * has signed in the app this device last ran — and what the device keeps for the next boot.
  */
-import { deviceAppOf, resolveFace, svgDataUrl } from '@shared/bundles/brand';
+import { deviceAppOf, resolveAppTheme, resolveFace, svgDataUrl } from '@shared/bundles/brand';
 import { forgetDeviceApp, readDeviceApp, writeDeviceApp } from '@shared/bundles/deviceApp';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -55,6 +55,32 @@ describe('the face the app shows', () => {
   it('is always WE’s in safe mode', () => {
     const device = { v: 1 as const, bundleId: 'coasys', brand: coasys.brand };
     expect(resolveFace({ ...base, safe: true, inUseBundle: 'coasys', device })).toEqual({ bundleId: '' });
+  });
+});
+
+/*
+  The sign-in screen wore Coasys's face from the device's memory while its theme came from the app the
+  deployment opens in, WE's, and it switched to Glow mid sign-in.
+*/
+describe('the app’s own theme', () => {
+  const glow = { id: 'coasys--glow' } as never;
+  const device = { v: 1, bundleId: 'coasys', themes: [glow] } as never;
+  const base = { safe: false, appThemeIds: ['dark'], known: () => true };
+
+  it('is the device’s last app’s default until the agent’s settings are known', () => {
+    expect(resolveAppTheme({ ...base, settled: false, device })).toBe('coasys--glow');
+  });
+
+  it('is the app in use’s once they are, and the guessed app’s on a device with no memory', () => {
+    expect(resolveAppTheme({ ...base, settled: true, device })).toBe('dark');
+    expect(resolveAppTheme({ ...base, settled: false, device: null })).toBe('dark');
+  });
+
+  it('is the first the app names that this build can draw, and nothing in safe mode', () => {
+    expect(
+      resolveAppTheme({ ...base, settled: true, device, appThemeIds: ['gone', 'dark'], known: (id) => id !== 'gone' }),
+    ).toBe('dark');
+    expect(resolveAppTheme({ ...base, safe: true, settled: false, device })).toBeUndefined();
   });
 });
 
