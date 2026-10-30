@@ -1,6 +1,7 @@
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { confirmModal, railGroup, railItem, railShell } from '@we/template-kit';
 
+import { coasysFirstRun } from './firstRun.ts';
 import { COLLAPSED, lockup } from './lockup.ts';
 
 /**
@@ -200,7 +201,7 @@ export const coasysApp: TemplateSchema & { id: string } = {
         then: {
           type: 'Column',
           props: { styles: { $: "shellStore.panelMaximised ? { display: 'none' } : null" } },
-          children: [rail],
+          children: [rail, coasysFirstRun],
         },
       },
     },

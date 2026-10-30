@@ -2366,6 +2366,22 @@ export const contextData: ContextData = {
       needsArgs: ['switchDataset', 'reorderDatasets', 'removeDataset'],
     },
     {
+      name: 'deviceStore',
+      state: {
+        devices: {
+          type: 'array',
+          properties: ['keyId', 'label', 'subtitle', 'icon', 'thisDevice', 'revoked', 'status', 'canRevoke'],
+        },
+        devicesLoaded: { type: 'boolean' },
+        validCount: { type: 'number' },
+        canManage: { type: 'boolean' },
+        error: { type: 'string' },
+      },
+      actions: ['refresh', 'addDevice', 'revoke'],
+      ambient: ['refresh'],
+      needsArgs: ['revoke'],
+    },
+    {
       name: 'editorStore',
       state: {
         messages: { type: 'array' },
@@ -2453,6 +2469,34 @@ export const contextData: ContextData = {
       ],
       destructive: ['deleteSession', 'clearHistory'],
       needsArgs: ['switchSession', 'deleteSession', 'setContentMode', 'confirmPicker', 'sendMessage'],
+    },
+    {
+      name: 'identityStore',
+      state: {
+        available: { type: 'boolean' },
+        canChange: { type: 'boolean' },
+        changeBlocked: { type: 'string' },
+        status: { type: 'object' },
+        statusLoaded: { type: 'boolean' },
+        did: { type: 'string' },
+        keyId: { type: 'string' },
+        thisDeviceRevoked: { type: 'boolean' },
+        keyLog: {
+          type: 'array',
+          properties: ['seq', 'position', 'icon', 'title', 'detail', 'hash', 'hashShort', 'thisComputer'],
+        },
+        keyLogLoaded: { type: 'boolean' },
+        forked: { type: 'boolean' },
+        fork: { type: 'object' },
+        custody: { type: 'object' },
+        needsFirstRun: { type: 'boolean' },
+        busy: { type: 'boolean' },
+        lastOutcome: { type: 'string' },
+        error: { type: 'string' },
+      },
+      actions: ['refresh', 'open', 'makeIdentity', 'startWithoutIdentity'],
+      ambient: ['refresh'],
+      needsArgs: ['open'],
     },
     {
       name: 'interpretationStore',

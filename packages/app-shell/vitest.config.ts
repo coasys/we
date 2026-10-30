@@ -16,6 +16,7 @@ const SOLID_TESTS = [
   'tests/executorFreeBoot.test.tsx',
   'tests/runtimeStore.test.tsx',
   'tests/accountStore.test.tsx',
+  'tests/identityStore.test.tsx',
   'tests/profileStore.test.tsx',
   // Counts effect re-runs through a real provider. The node project resolves solid-js to its SSR
   // build, where `createEffect` never runs again — so every count would be 1 and the test would

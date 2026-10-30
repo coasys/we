@@ -32,6 +32,14 @@ fn seed_data_path(home: &std::path::Path) -> PathBuf {
 /// No longer where accounts or the registry live — both moved into the data path's container, so
 /// that one `mv` resets everything and every host reads the same list. All that is left here is
 /// the pre-container layout, which `AccountRegistry` migrates out of on first run.
+/// One identity store setting: the run-time variable when set and not empty, else the value the
+/// build was compiled with, else none.
+fn identity_store_setting(runtime: Option<String>, built: Option<&str>) -> Option<String> {
+    runtime
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| built.map(str::to_string).filter(|s| !s.trim().is_empty()))
+}
+
 fn config_dir() -> PathBuf {
     dirs::config_dir()
         .expect("Failed to get config directory")
@@ -172,6 +180,54 @@ pub fn run() {
         .expect("Failed to initialize AD4M");
     }
 
+    // The identity store the executor's agent language uses, and the store keys whose heads it
+    // trusts: `AD4M_IDENTITY_STORE_URL` and `AD4M_IDENTITY_STORE_KEYS` (comma-separated), the
+    // names the executor's own CLI reads. A build carries them when they are set while it is
+    // compiled (DEVELOPMENT.md, "The identity store"); the same variables at run time override
+    // that. Without a URL the agent language keeps its own setting and no offer link can be made.
+    // Without a key the executor accepts no head from the store, so the custody service refuses
+    // every identity step before it starts, and the app says why rather than offering it.
+    let identity_store_url = identity_store_setting(
+        std::env::var("AD4M_IDENTITY_STORE_URL").ok(),
+        option_env!("AD4M_IDENTITY_STORE_URL"),
+    );
+    let identity_store_keys = identity_store_setting(
+        std::env::var("AD4M_IDENTITY_STORE_KEYS").ok(),
+        option_env!("AD4M_IDENTITY_STORE_KEYS"),
+    )
+    .map(|keys| {
+        keys.split(',')
+            .map(|k| k.trim().to_string())
+            .filter(|k| !k.is_empty())
+            .collect::<Vec<_>>()
+    })
+    .filter(|keys| !keys.is_empty());
+    if identity_store_keys.is_none() {
+        log.host("No identity store key: making or changing an identity is off in this build");
+    }
+
+    // The custody service: the person's master key, behind the OS unlock, in this process but never
+    // in the executor's code (it is its own crate, `custody/`, and reaches the executor over RPC with
+    // the admin credential only). The sealed file is the fallback for Linux without a Secret Service,
+    // and for a macOS build without the keychain entitlement.
+    // The same folder keeps the incept of an identity made here until its publish is confirmed.
+    let custody_dir = dirs::data_dir()
+        .unwrap_or_else(|| home.join(".local/share"))
+        .join("coasys")
+        .join("custody");
+    let custody = we_custody::spawn(
+        we_custody::DesktopVault::new(
+            we_custody::store::system_store(custody_dir.clone()),
+            we_custody::PendingIncepts::file(custody_dir),
+        ),
+        we_custody::ExecutorAddress {
+            url: format!("http://127.0.0.1:{graphql_port}"),
+            admin_credential: std::sync::Arc::from(req_credential.as_str()),
+            store_url: identity_store_url.clone(),
+            store_trusted: identity_store_keys.is_some(),
+        },
+    );
+
     let state = AppState {
         graphql_port,
         req_credential: req_credential.clone(),
@@ -183,6 +239,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(state)
+        .manage(commands::identity::IdentityState::new(custody))
         .invoke_handler(tauri::generate_handler![
             commands::state::get_port,
             commands::state::request_credential,
@@ -195,7 +252,13 @@ pub fn run() {
             commands::accounts::get_executor_settings,
             commands::accounts::set_executor_settings,
             commands::accounts::restart_executor,
-            commands::accounts::choose_file
+            commands::accounts::choose_file,
+            commands::identity::identity_open,
+            commands::identity::identity_public_state,
+            commands::identity::identity_flow_start,
+            commands::identity::identity_flow_step,
+            commands::identity::identity_flow_cancel,
+            commands::identity::identity_flow_finish
         ])
         .setup(move |app| {
             // Start embedded app HTTP servers (in production only)
@@ -224,6 +287,8 @@ pub fn run() {
                 // configuration once, at startup.
                 enable_mcp: Some(executor_settings.mcp_enabled),
                 mcp_port: Some(executor_settings.mcp_port),
+                identity_store_url: identity_store_url.clone(),
+                identity_store_keys: identity_store_keys.clone(),
                 ..Default::default()
             };
 
@@ -248,4 +313,25 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::identity_store_setting;
+
+    #[test]
+    fn the_run_time_store_setting_overrides_the_built_one_and_empty_is_none() {
+        let built = Some("https://store.built");
+        assert_eq!(
+            identity_store_setting(Some("https://store.run".into()), built).as_deref(),
+            Some("https://store.run")
+        );
+        assert_eq!(identity_store_setting(None, built).as_deref(), built);
+        assert_eq!(
+            identity_store_setting(Some(" ".into()), built).as_deref(),
+            built
+        );
+        assert_eq!(identity_store_setting(None, Some("")), None);
+        assert_eq!(identity_store_setting(None, None), None);
+    }
 }

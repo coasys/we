@@ -13,6 +13,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { createAccountRegistry, expandHome } from './accounts.js';
 import { openExecutorLog } from './executorLog.js';
 import { stopExecutorsFor, stopProcess } from './executorProcess.js';
+import { executorSpawnEnv, handleFromMainWindow, isFromMainWindow } from './ipcSender.js';
 import {
   allowMediaPermission,
   isExternallyOpenable,
@@ -343,8 +344,8 @@ async function startExecutor() {
         'run', // The 'run' subcommand
         '--port',
         ad4mPort.toString(),
-        '--admin-credential',
-        ad4mToken,
+        // The admin credential is in the environment (`executorSpawnEnv`), not here: an argument
+        // is visible to every user of the computer through `ps`.
         '--app-data-path',
         ad4mDataPath,
         '--run-dapp-server',
@@ -358,7 +359,7 @@ async function startExecutor() {
       {
         detached: true, // Create a new process group so we can kill the entire tree
         stdio: ['ignore', 'pipe', 'pipe'], // Capture stdout/stderr instead of inherit
-        env: executorEnv(executorSettings.logLevels),
+        env: executorSpawnEnv(executorEnv(executorSettings.logLevels), ad4mToken),
       },
     );
 
@@ -706,16 +707,23 @@ function appUrl() {
   return process.env.VITE_DEV_SERVER_URL || 'http://localhost:9080';
 }
 
+/**
+ * Every invoke handler answers the main window's own top frame on the app's origin, and nothing else
+ * — see `ipcSender.js`. `get-token` is the executor's admin credential, so this is not optional.
+ */
+const isAppUrl = (url) => safeOrigin(url) !== null && safeOrigin(url) === safeOrigin(appUrl());
+const handle = (channel, handler) => handleFromMainWindow(ipcMain, () => mainWindow, isAppUrl, channel, handler);
+
 // IPC handlers for AD4M connection details
-ipcMain.handle('get-port', () => {
+handle('get-port', () => {
   return ad4mPort;
 });
 
-ipcMain.handle('get-token', () => {
+handle('get-token', () => {
   return ad4mToken;
 });
 
-ipcMain.handle('get-is-development', () => {
+handle('get-is-development', () => {
   return !!process.env.VITE_DEV_SERVER_URL;
 });
 
@@ -732,7 +740,7 @@ ipcMain.handle('get-is-development', () => {
  * ever published by hand with different template parameters is therefore stuck with them. The
  * marker gives WE development its own address, the same one for everyone on the same build.
  */
-ipcMain.handle('get-dev-link-language-bundle', () => {
+handle('get-dev-link-language-bundle', () => {
   if (app.isPackaged || !process.env.VITE_DEV_SERVER_URL) return null;
   try {
     const runtime = JSON.parse(readFileSync(join(__dirname, 'seed-runtime.json'), 'utf8'));
@@ -758,11 +766,11 @@ ipcMain.handle('get-dev-link-language-bundle', () => {
 // Every mutation is registry-only; nothing takes effect until the app relaunches, because the
 // executor is configured with one data path at startup and holds it for its lifetime.
 
-ipcMain.handle('accounts-list', () => accounts.list());
-ipcMain.handle('accounts-create', () => accounts.create());
-ipcMain.handle('accounts-display', (_event, id, display) => accounts.setDisplay(id, display));
-ipcMain.handle('accounts-select', (_event, id) => accounts.select(id));
-ipcMain.handle('accounts-remove', (_event, id) => accounts.remove(id));
+handle('accounts-list', () => accounts.list());
+handle('accounts-create', () => accounts.create());
+handle('accounts-display', (_event, id, display) => accounts.setDisplay(id, display));
+handle('accounts-select', (_event, id) => accounts.select(id));
+handle('accounts-remove', (_event, id) => accounts.remove(id));
 
 /**
  * Make the newly selected account take effect.
@@ -782,10 +790,10 @@ ipcMain.handle('accounts-remove', (_event, id) => accounts.remove(id));
  * Tauri cannot do this: it runs the executor in-process, and the executor's own graceful shutdown
  * ends in `std::process::exit`, so stopping it takes the app with it. That host still relaunches.
  */
-ipcMain.handle('accounts-apply', () => restartExecutorAndReload());
+handle('accounts-apply', () => restartExecutorAndReload());
 
-ipcMain.handle('executor-settings-get', () => accounts.executorSettings());
-ipcMain.handle('executor-settings-set', (_event, settings) => accounts.setExecutorSettings(settings));
+handle('executor-settings-get', () => accounts.executorSettings());
+handle('executor-settings-set', (_event, settings) => accounts.setExecutorSettings(settings));
 /**
  * Restart the executor so changed settings take effect.
  *
@@ -794,7 +802,7 @@ ipcMain.handle('executor-settings-set', (_event, settings) => accounts.setExecut
  * a shortcut: two functions that both mean "start the executor over" would drift, and the second
  * one to be written would be the one that forgets to repaint the window.
  */
-ipcMain.handle('executor-restart', () => restartExecutorAndReload());
+handle('executor-restart', () => restartExecutorAndReload());
 
 /**
  * A path on this machine, for the backend to write to or read from.
@@ -814,7 +822,7 @@ ipcMain.handle('executor-restart', () => restartExecutorAndReload());
 
   Resolves true once written, false when the dialog was closed.
 */
-ipcMain.handle('save-file', async (_event, { name, bytes } = {}) => {
+handle('save-file', async (_event, { name, bytes } = {}) => {
   if (typeof name !== 'string' || !(bytes instanceof Uint8Array))
     throw new Error('save-file: a name and bytes are required');
   const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
@@ -835,7 +843,7 @@ ipcMain.handle('save-file', async (_event, { name, bytes } = {}) => {
   return true;
 });
 
-ipcMain.handle('executor-choose-file', async (_event, { save, defaultName } = {}) => {
+handle('executor-choose-file', async (_event, { save, defaultName } = {}) => {
   const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
   const options = { defaultPath: defaultName, filters: [{ name: 'JSON', extensions: ['json'] }] };
   const result = save
@@ -940,7 +948,7 @@ function askRendererForScreenSource(window, sources) {
     // on the first anyway. A stale answer to a request that has already timed out is dropped by
     // `settled`.
     const onPicked = (event, id) => {
-      if (event.sender !== window.webContents) return;
+      if (!isFromMainWindow(event, window, isAppUrl)) return;
       finish(typeof id === 'string' ? id : '');
     };
 
@@ -960,7 +968,7 @@ function askRendererForScreenSource(window, sources) {
   });
 }
 
-ipcMain.handle('get-desktop-sources', async () => {
+handle('get-desktop-sources', async () => {
   const sources = await desktopCapturer.getSources({
     types: ['screen', 'window'],
   });
