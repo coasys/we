@@ -6,6 +6,7 @@ export type {
   SchemaProp,
   RecordViewDraws,
   TemplateMeta,
+  PanelFrame,
   TemplatePanel,
   TemplateSchema,
   TemplateSource,
@@ -63,6 +64,7 @@ export {
   validateSchema,
   validateSemantic,
   withEntities,
+  controlShapedBoxes,
 } from './semanticValidation';
 export type { ValidationContext } from './semanticValidation';
 export { validateStructure } from './validators';
@@ -176,6 +178,25 @@ export {
 } from './bundle';
 export { isRelativePath, type PathBase, resolvePath } from './navigationPaths';
 export { isTemplatePage } from './routeMatching';
+export {
+  applyStarterRecords,
+  defaultSpaceStarter,
+  linkSpaceRelations,
+  type RelationWrites,
+  ROOT_REF,
+  SPACE_COLLECTION_KIND,
+  SPACE_REF,
+  type SpaceStarter,
+  type SpaceStarterRecord,
+  STARTER_KEYS,
+  type StarterContext,
+  starterProblems,
+  starterSettings,
+  type StarterTarget,
+  type StarterVocabulary,
+  type StarterWriter,
+  unreferencedIds,
+} from './spaceStarter';
 export {
   expandViewRoutes,
   hasViewsMarker,

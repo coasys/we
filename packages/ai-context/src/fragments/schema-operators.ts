@@ -68,7 +68,8 @@ A schema is a tree of nodes. Each node can have:
 The ROOT node carries one more, and it is required:
 
 - meta: { name, description, icon } — what the template is called and how it is listed. Optional
-  keys: role: 'view' for a section rather than a shell (absent means shell), themeId for a theme the
+  keys: role: 'view' for a section rather than a shell (absent means shell; 'page' is an app's own
+  page, which only a bundle brings and which opens with shellStore.openShellView), themeId for a theme the
   template was designed with, panels for the surfaces the interface has (see Panels), and
   chromeReserve for a band the shell pins over the content. A root node without meta is refused.
 
@@ -154,8 +155,8 @@ Supports async lifecycle callbacks — fired after the store method's Promise re
 Non-promise (synchronous) methods are unaffected — lifecycle keys are ignored.
 Example — close modal after async submission:
 { "$invoke": "spaceStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }] }
-Example — navigate to newly created item:
-{ "$invoke": "spaceStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }, { "$invoke": "routeStore.navigate", "args": [{ "$": "\`/space/\${result.uuid}\`" }] }] }
+Example — navigate to newly created item (createSpace resolves with the new space's id):
+{ "$invoke": "spaceStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }, { "$invoke": "spaceStore.navigateToSpace", "args": [{ "$": "result" }] }] }
 
 An action runs only when somebody asked for it. A press, a key, typing, a drop or a paste that reaches
 the element whose handler calls it counts as asking — and so does whatever the element does in answer,

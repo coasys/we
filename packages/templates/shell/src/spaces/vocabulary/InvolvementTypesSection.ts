@@ -1,12 +1,12 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { field, formModal, sectionCard } from '@we/template-kit';
+import { field, formModal, sectionCard, SOCIAL_DNA_LABELS } from '@we/template-kit';
 
 import { focusRow } from './focusRow';
 
 /**
  * The kinds of part people can have in this community's work — "Assigned", "Reviewing", "Going".
  *
- * The fourth of the same kind, beside Signal Types, Connection Types and Task States, and the same act
+ * The fourth of the same kind, beside Signal types, Connection types and Task states, and the same act
  * each time: a community naming what it means by something, as data, in its own space. Drawn as the
  * task states are, field for field where the two do the same job, because a reader who has learned
  * one section should not have to learn the next.
@@ -301,7 +301,7 @@ const kindRow: SchemaNode = {
 };
 
 export const involvementTypesSection: SchemaNode = sectionCard({
-  title: 'Involvement',
+  title: SOCIAL_DNA_LABELS.kinds,
   description:
     'The parts people can have in things here — assigned to a task, reviewing it, going to an event. Each says what it counts as, so a board can find who is doing the work whatever this space calls it.',
   aside: {

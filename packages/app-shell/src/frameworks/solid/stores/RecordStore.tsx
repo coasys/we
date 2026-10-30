@@ -66,6 +66,7 @@ import {
 import { bringIn as decideBringIn, type BringInItem, type BroughtIn } from '../../../shared/bringIn';
 import { routeWrite } from '../../../shared/edgeRoute';
 import { hostSlot } from '../../../shared/hostSlot';
+import { kindHue } from '../../../shared/kindHue';
 import { notifyCopiedIn } from '../../../shared/registries/moduleHostServices';
 import {
   presentationFields,
@@ -104,6 +105,8 @@ export interface CreatableEntity {
   label: string;
   value: string;
   icon: string;
+  /** The palette hue it is drawn in where the community has not chosen a colour — see `kindHue`. */
+  hue: string;
   group: string;
   /** What this kind of thing is, in a line — the manifest's `description`, or the shape's. Empty when neither says. */
   description: string;
@@ -135,8 +138,11 @@ const RELATIONSHIP = 'Relationship';
  * `Relationship` is drawn between two things rather than filled in from a picker, and it is read
  * constantly all the same: a line on a canvas is one, and clicking it is exactly the moment somebody
  * wants to read it.
+ *
+ * The space's vocabulary is made in its settings, never from a picker, and is read in an inspector
+ * and on a map of what the space has defined — each as the fields its settings form asks for.
  */
-const DISPLAY_ONLY = [RELATIONSHIP] as const;
+const DISPLAY_ONLY = [RELATIONSHIP, 'SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'] as const;
 
 /**
  * Write one placement, node reference included, inside whatever write group the caller is in.
@@ -291,6 +297,13 @@ export interface RecordStore {
    * which is the whole point — a content type that is manifest + fragments needs no component.
    */
   displays: Accessor<Record<string, RecordDisplay>>;
+  /**
+   * Every kind of record that can be shown here — what can be made, then every core block and the
+   * kinds read without being made (a drawn connection, the space's vocabulary) — each with its name,
+   * glyph and hue. The list a canvas colours its cards from: `creatableEntities` leaves out a quote
+   * dropped in from the Pocket, which is still a card.
+   */
+  kinds: Accessor<Omit<CreatableEntity, 'via' | 'description'>[]>;
   /**
    * SpaceStore supplies the lists a *community* owns, for a property whose declaration names one —
    * see `vocabulary` on a property, and `offeredTaskStates`.
@@ -782,7 +795,15 @@ export function RecordStoreProvider(props: ParentProps) {
         if (!via) return [];
         const icon = BLOCK_ICONS[name] ?? 'cube';
         return [
-          { label: modelLabel(name), value: name, icon, group: 'Built in', description: entity.description ?? '', via },
+          {
+            label: modelLabel(name),
+            value: name,
+            icon,
+            hue: kindHue(name),
+            group: 'Built in',
+            description: entity.description ?? '',
+            via,
+          },
         ];
       })
       .sort((a, b) => a.label.localeCompare(b.label)),
@@ -797,6 +818,7 @@ export function RecordStoreProvider(props: ParentProps) {
         label: shape.name,
         value: shape.name,
         icon: shape.icon || 'cube',
+        hue: kindHue(shape.name),
         group: 'This space',
         description: shape.description ?? '',
         via: 'form' as const,
@@ -902,6 +924,7 @@ export function RecordStoreProvider(props: ParentProps) {
         label: modelLabel(name),
         value: name,
         icon: BLOCK_ICONS[name] ?? 'cube',
+        hue: kindHue(name),
         group: 'Built in',
       }));
     return extra.length ? [...creatableEntities(), ...extra] : creatableEntities();
@@ -3220,6 +3243,7 @@ export function RecordStoreProvider(props: ParentProps) {
     recordDraft,
     recordDraftDirty,
     displays,
+    kinds: displayableEntities,
     provideVocabularies: vocabularies.provide,
     provideContentHomes: contentHomes.provide,
     recordErrors,

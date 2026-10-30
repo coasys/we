@@ -6,11 +6,11 @@
  * interleaved, a page that stops at the end of one call when the next holds older lines, a reply
  * shown out of the order it was said in. Each looks like a feed with less in it.
  */
+import { lineContent, threadLines } from '@we/messages';
 import type { RecordQuery } from '@we/module-shared';
 import { describe, expect, it } from 'vitest';
 
 import { groupActivity, nounFor, readFeedWindow } from './feed';
-import { lineContent, threadLines } from './thread';
 
 const ROOT = 'root';
 const t = (minute: number) => new Date(Date.UTC(2026, 9, 8, 10, minute)).toISOString();

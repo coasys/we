@@ -96,7 +96,6 @@ describe('the Feed staying live', () => {
       dataset: () => 'space-1',
       records: s.records as never,
       interpretation: undefined,
-      unconfirmedIds: () => [],
       write: async () => null,
     });
 
@@ -132,7 +131,6 @@ describe('the Feed staying live', () => {
       dataset: () => 'space-1',
       records: s.records as never,
       interpretation: undefined,
-      unconfirmedIds: () => [],
       write: async () => null,
     });
     await vi.runAllTimersAsync();

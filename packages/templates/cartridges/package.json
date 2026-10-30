@@ -18,13 +18,13 @@
   "dependencies": {
     "@we/schema-shared": "workspace:*",
     "@we/template-fixtures": "workspace:*",
-    "@we/template-kit": "workspace:*",
-    "@we/template-showcase": "workspace:*"
+    "@we/template-kit": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
+    "@we/graph-core": "workspace:*",
     "prettier": "3.9.10",
-    "vitest": "^5.0.5",
-    "tsx": "^4.23.15"
+    "tsx": "^4.23.15",
+    "vitest": "^5.0.5"
   }
 }

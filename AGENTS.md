@@ -96,7 +96,8 @@ Glossary (these terms pervade stores, models, and `$query`/`perspective` in sche
 | `@we/backend-conformance` | backend-system/conformance | One suite of the contract's behaviour every backend runs, with each backend's known gaps listed and run inverted | Agnostic |
 | `@we/module-shared` | module-system/shared | The feature-module contract — manifest, contributions, kernels, store markers, `lintModule` — what a module author installs | Agnostic |
 | `@we/module-testing` | module-system/testing | Fakes for testing a module store without a host: `fakeDeps`, `fakeRecords`, `fakePresence`, `buildStore` | Agnostic |
-| `@we/module-globe` · `-call` · `-notes` · `-pocket` · `-polls` · `-transcribe` · `-graph` | module-system/* | Bundled feature modules — each exports `createModule(host)` and the seed's `modules` list generates the registry; globe is a *family* (module · protocol · layers · widget) | Agnostic (components injected) |
+| `@we/messages` | module-system/messages | What a message is and how one is drawn — the line, threads, how a line arrived — shared by the transcript and the Feed, which may not depend on each other | Agnostic |
+| `@we/module-globe` · `-call` · `-feed` · `-notes` · `-pocket` · `-polls` · `-transcribe` · `-graph` | module-system/* | Bundled feature modules — each exports `createModule(host)` and the seed's `modules` list generates the registry; globe is a *family* (module · protocol · layers · widget) | Agnostic (components injected) |
 | `@we/graph-protocol` · `-core` · `-expanders` · `-layouts` · `-solid` | graph-system/* | The graph engine: expander/layout/renderer contracts, the neutral engine, first-party plugins, and the Solid adapter | **Agnostic** (Solid only in the adapter) |
 | `@we/block-shared` | block-system/shared | Block content types + serialization | Agnostic |
 | `@we/optimism` | packages/optimism | A write drawn before it has been seen come back — hold, baseline, settle, and when to stop believing it | Agnostic (signal injected) |
@@ -195,7 +196,8 @@ docs/architecture/template-fragments.md.
 **A template is one of three things.** A *shell* owns a space's chrome, arrangement and route table;
 a *view* renders one section inside one; an *app* is WE's own chrome around every space — the
 sidebar and the module rail placed as host parts (`{ type: '$part', props: { id: 'host.sidebar' } }`)
-beside nodes of its own, with the bands that chrome holds declared in `meta.frame`. An app is
+beside nodes of its own, with the bands that chrome holds declared in `meta.frame` (and how its
+window edges frame the panels docked there in `meta.edges`). An app is
 chosen by the agent, never applied as a space's template, and only an app may place a host part.
 `meta.role` says which, and absent means shell. A shell
 marks where its sections go with `{ path: '$views' }` and the host expands that per space, from
@@ -373,7 +375,8 @@ A schema is a tree of nodes. Each node can have:
 The ROOT node carries one more, and it is required:
 
 - meta: { name, description, icon } — what the template is called and how it is listed. Optional
-  keys: role: 'view' for a section rather than a shell (absent means shell), themeId for a theme the
+  keys: role: 'view' for a section rather than a shell (absent means shell; 'page' is an app's own
+  page, which only a bundle brings and which opens with shellStore.openShellView), themeId for a theme the
   template was designed with, panels for the surfaces the interface has (see Panels), and
   chromeReserve for a band the shell pins over the content. A root node without meta is refused.
 
@@ -459,8 +462,8 @@ Supports async lifecycle callbacks — fired after the store method's Promise re
 Non-promise (synchronous) methods are unaffected — lifecycle keys are ignored.
 Example — close modal after async submission:
 { "$invoke": "spaceStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }] }
-Example — navigate to newly created item:
-{ "$invoke": "spaceStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }, { "$invoke": "routeStore.navigate", "args": [{ "$": "`/space/${result.uuid}`" }] }] }
+Example — navigate to newly created item (createSpace resolves with the new space's id):
+{ "$invoke": "spaceStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }, { "$invoke": "spaceStore.navigateToSpace", "args": [{ "$": "result" }] }] }
 
 An action runs only when somebody asked for it. A press, a key, typing, a drop or a paste that reaches
 the element whose handler calls it counts as asking — and so does whatever the element does in answer,
@@ -1309,7 +1312,7 @@ Most @we/primitives also accept Design System Props (see next section for detail
 
 @we/primitives:
 - we-alert (DesignSystemElement)
-  Props: variant: 'soft' | 'edge' = 'soft', dismissible: boolean = false
+  Props: variant: 'soft' | 'edge' = 'soft', dismissible: boolean = false, icon: string = ''
 - we-audio (LayoutVisualElement)
   Props: src: string = '', controls: boolean = false, preload: 'none' | 'metadata' | 'auto' = 'metadata', autoplay: boolean = false, loop: boolean = false, muted: boolean = false, stream?: MediaStream | null | undefined
 - we-avatar (LayoutVisualElement)
@@ -1444,7 +1447,7 @@ development only.
 - we-input (DesignSystemElement)
   Props: value: string = '', max: string = '', min: string = '', maxlength: unknown = Infinity, minlength: number = 0, pattern: string = '', name: string = '', label: string = '', step: string = '', placeholder: string = '', autocomplete: string = '', autofocus: boolean = false, disabled: boolean = false, required: boolean = false, readonly: boolean = false, type: string = 'text', revealable: boolean = false, size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-link (DesignSystemElement)
-  Props: href: string = '', target: string = '', rel: string = '', download: string = '', disabled: boolean = false
+  Props: href: string = '', target: string = '', rel: string = '', download: string = '', label: string = '', disabled: boolean = false
 - we-live-cursor (DesignSystemElement)
   Props: name: string = '', hash: string = '', image: string = '', color: string = ''
 - we-location-picker (DesignSystemElement)
@@ -1599,7 +1602,7 @@ item is considered.
 - we-tag (DesignSystemElement)
   Props: variant: 'soft' | 'solid' = 'soft', dismissible: boolean = false
 - we-text (DesignSystemElement)
-  Props: text?: string | undefined, variant: '' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading-md' | 'heading-lg' | 'heading-xl' | 'overline' = '', tag: 'p' | 'span' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'small' | 'b' | 'i' | 'label' | 'div' = 'span', inline: boolean = false, uppercase: boolean = false, italic: boolean = false, truncate: boolean = false, gradient: string = '', loading: boolean = false, loadingWidth: string = '100%'
+  Props: text?: string | undefined, variant: '' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading-md' | 'heading-lg' | 'heading-xl' | 'overline' = '', tag: 'p' | 'span' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'small' | 'b' | 'i' | 'label' | 'div' = 'span', inline: boolean = false, uppercase: boolean = false, italic: boolean = false, truncate: boolean = false, lines?: number | undefined, gradient: string = '', loading: boolean = false, loadingWidth: string = '100%'
 - we-textarea (DesignSystemElement)
   Props: value: string = '', name: string = '', label: string = '', placeholder: string = '', rows: number = 3, maxlength: unknown = Infinity, minlength: number = 0, disabled: boolean = false, required: boolean = false, readonly: boolean = false, resize: 'none' | 'vertical' | 'horizontal' | 'both' = 'vertical', autoGrow: boolean = false, maxRows: number = 6, submitOnEnter: boolean = false, size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-timestamp (DesignSystemElement) — Displays a formatted or relative timestamp that self-updates each minute
@@ -1631,7 +1634,7 @@ template has to write it.
 `select` — `{ value }` — when a row is chosen, by click or key. What choosing means (navigating,
 filtering) is the template's business. Which row is selected is the template's too: pass
 `selected` and the matching item marks itself, so a selection driven by the address stays in step.
-  Props: selected: string = '', label: string = ''
+  Props: selected: string = '', label: string = '', caret: 'start' | 'end' = 'start', lead: string = ''
 - we-tree-item (DesignSystemElement) — One row of a `we-tree`, and the rows under it.
 
 The row's own content goes in the default slot — an icon, a label, a badge, a count, whatever the
@@ -1642,9 +1645,24 @@ inside an `$if` on the same open state, so nothing is read for a row nobody has 
 `open` is the template's to hold, as `selected` is the tree's: the row asks (`openchange`, `{ open }`,
 bound as `onOpenChange`) and the template answers by setting it, so a row's open state can live in the address, in local
 state or anywhere else.
-  Props: value: string = '', open: boolean = false, expandable: boolean = false, selected: boolean = false, tabStop: boolean = false, level: number = 0
+  Props: value: string = '', open: boolean = false, expandable: boolean = false, selected: boolean = false, tabStop: boolean = false, level: number = 0, scope: boolean = false, caretAt: 'start' | 'end' = 'start'
+- we-typewriter (DesignSystemElement) — A line whose last part types itself, holds, deletes and types the next phrase — "We are building
+a global brain", then "We are building intelligence no one owns".
+
+A primitive because it is behaviour: timers, the reader's motion setting, and what a screen reader
+hears are code's to own, and a template has no timers. It takes its type from where it sits, so a
+heading's size and weight reach it; put it inside the `we-text` that sets them.
+
+- **Still for anyone who asked for less motion** — the system's setting or the app's. It shows the
+  first phrase in full, with no caret, and nothing moves.
+- **One sentence to a screen reader.** The fixed part and every phrase, read once; the typing is
+  hidden from it, since a sentence rewriting itself a letter at a time is noise.
+- **The page under it does not jump.** A hidden copy of the longest phrase holds the line's size.
+
+The first phrase is drawn in full before anything types, so the line reads right at once.
+  Props: text: string = '', phrases: string[] = [], phraseColor: string = '', typeMs: number = 65, deleteMs: number = 32, holdMs: number = 2600
 - we-video (LayoutVisualElement)
-  Props: src: string = '', poster?: string | undefined, controls: boolean = false, preload: 'none' | 'metadata' | 'auto' = 'metadata', fit: '' | 'cover' | 'contain' | 'fill' | 'none' | 'scale-down' = '', autoplay: boolean = false, loop: boolean = false, muted: boolean = false, playsinline: boolean = false, stream?: MediaStream | null | undefined
+  Props: src: string = '', poster?: string | undefined, controls: boolean = false, preload: 'none' | 'metadata' | 'auto' = 'metadata', fit: '' | 'cover' | 'contain' | 'fill' | 'none' | 'scale-down' = '', autoplay: boolean = false, loop: boolean = false, muted: boolean = false, playsinline: boolean = false, tracks: VideoTrack[] = [], crossorigin?: 'anonymous' | 'use-credentials' | undefined, stream?: MediaStream | null | undefined
 
 @we/components:
 - AudioDisplay
@@ -1727,7 +1745,7 @@ the relations between them. Picks up model types added later with no template ch
 - **Static diagram** — `seeds: { literal: true, nodes: [...], edges: [...] }` and no expansion at all.
 - **A canvas with a grid** — `backdrop: { pattern: 'dots', gap: 24 }`, or `'lines'`; it pans and
 zooms with the canvas and is coloured from a role (`border` unless `color` says otherwise).
-  Props: seeds?: SeedSpec | SeedSpec[], expansion?: ExpansionSpec, revision?: string | number | boolean, live?: boolean, layout?: LayoutSpec, nodeStyle?: NodeStyleRules, edgeStyle?: EdgeStyleRules, behaviours?: BehaviourSpec[], reified?: Record<string, { source: string; target: string; type?: string; sourceType?: string; targetType?: string; }>, width?: string, height?: string, bg?: string, backdrop?: GraphBackdrop, showStatus?: boolean, empty?: string, emptyIcon?: string, emptyGradient?: string, emptyAction?: JSX.Element, showControls?: boolean, controls?: string[], onNodeClick?: ((node: GraphNode & { recordId?: string; recordType?: string; fields: { name: string; value: string; }[]; }) => void), expandRequest?: { id: string; expanders?: string[]; direction?: "in" | "out" | "both"; } | null, onNodeDoubleClick?: ((node: GraphNode & { recordId?: string; recordType?: string; }) => void), onEdgeClick?: ((edge: GraphEdge & { recordId?: string; recordType?: string; }) => void), onEdgeRetarget?: ((payload: { id: string; end: "source" | "target"; nodeId: string; nodeType: string; recordId?: string; recordType?: string; }) => void), onEdgeReroute?: ((payload: { id: string; points: EdgeWaypoint[]; recordId?: string; recordType?: string; }) => void), onEdgeAnchor?: ((payload: { id: string; end: "source" | "target"; side: "" | "n" | "e" | "s" | "w"; recordId?: string; recordType?: string; }) => void), onEdgeCreate?: ((payload: { source: GraphNode; target: GraphNode; sourceId: string; sourceType: string; targetId: string; targetType: string; sourceLabel: string; targetLabel: string; }) => void), onCanvasDoubleClick?: ((payload: { x: number; y: number; }) => void), onSelectionChange?: ((ids: string[]) => void), onNodeDragEnd?: ((payload: { id: string; x: number; y: number; recordId?: string; recordType?: string; opened?: boolean; carried?: { recordId: string; recordType: string; x: number; y: number; }[]; }) => void), onSeedSummary?: ((payload: { source: string; } & Record<string, unknown>) => void), onNodeArrange?: ((payload: { id: string; into: "child" | "sibling" | "loose"; recordId: string; recordType: string; targetId?: string; targetType?: string; before?: boolean; order?: string[]; x: number; y: number; }) => void), resizable?: boolean, onNodeResize?: ((payload: { id: string; x: number; y: number; width: number; height: number; recordId?: string; recordType?: string; }) => void), onDrop?: ((payload: { entity: string; id: string; dataset?: string; label: string; x: number; y: number; within?: { entity: string; id: string; }; preview?: { thumbnail?: string; author?: string; source?: string; }; }) => void), nodeActions?: NodeAction[], onNodeAction?: ((payload: { action: string; id: string; recordId?: string; recordType?: string; value?: unknown; preview?: boolean; x: number; y: number; }) => void), focus?: string, folded?: string[], onNodeFold?: ((payload: { id: string; recordId?: string; recordType?: string; folded: boolean; count: number; }) => void), open?: string[], onNodeOpen?: ((payload: { id: string; recordId?: string; recordType?: string; open: boolean; }) => void), onDeleteSelection?: ((payload: { recordId?: string; recordType?: string; kind?: "node" | "edge"; count: number; records?: { recordId: string; recordType: string; }[]; }) => void), carry?: boolean, selectionActions?: NodeAction[], onSelectionAction?: ((payload: { action: string; records: { recordId: string; recordType: string; }[]; count: number; value?: unknown; preview?: boolean; }) => void), onUndo?: (() => void), onRedo?: (() => void), onPointerAt?: ((at: { x: number; y: number; } | null) => void), onViewport?: ((region: GraphRegion) => void), region?: GraphRegion | null, reframeOn?: string | number | boolean | null, host?: GraphHostBindings
+  Props: seeds?: SeedSpec | SeedSpec[], expansion?: ExpansionSpec, revision?: string | number | boolean, live?: boolean, layout?: LayoutSpec, nodeStyle?: NodeStyleRules, edgeStyle?: EdgeStyleRules, behaviours?: BehaviourSpec[], reified?: Record<string, { source: string; target: string; type?: string; sourceType?: string; targetType?: string; }>, width?: string, height?: string, bg?: string, backdrop?: GraphBackdrop, showStatus?: boolean, empty?: string, emptyIcon?: string, emptyGradient?: string, emptyAction?: JSX.Element, showControls?: boolean, controls?: string[], onNodeClick?: ((node: GraphNode & { recordId?: string; recordType?: string; fields: { name: string; value: string; }[]; }) => void), expandRequest?: { id: string; expanders?: string[]; direction?: "in" | "out" | "both"; } | null, onNodeDoubleClick?: ((node: GraphNode & { recordId?: string; recordType?: string; }) => void), onEdgeClick?: ((edge: GraphEdge & { recordId?: string; recordType?: string; }) => void), onEdgeRetarget?: ((payload: { id: string; end: "source" | "target"; nodeId: string; nodeType: string; recordId?: string; recordType?: string; }) => void), onEdgeReroute?: ((payload: { id: string; points: EdgeWaypoint[]; recordId?: string; recordType?: string; }) => void), onEdgeAnchor?: ((payload: { id: string; end: "source" | "target"; side: "" | "n" | "e" | "s" | "w"; recordId?: string; recordType?: string; }) => void), onEdgeCreate?: ((payload: { source: GraphNode; target: GraphNode; sourceId: string; sourceType: string; targetId: string; targetType: string; sourceLabel: string; targetLabel: string; }) => void), onCanvasDoubleClick?: ((payload: { x: number; y: number; }) => void), onSelectionChange?: ((ids: string[]) => void), onNodeDragEnd?: ((payload: { id: string; x: number; y: number; recordId?: string; recordType?: string; opened?: boolean; carried?: { recordId: string; recordType: string; x: number; y: number; }[]; }) => void), onSeedSummary?: ((payload: { source: string; } & Record<string, unknown>) => void), onNodeArrange?: ((payload: { id: string; into: "child" | "sibling" | "loose"; recordId: string; recordType: string; targetId?: string; targetType?: string; before?: boolean; order?: string[]; x: number; y: number; }) => void), resizable?: boolean, onNodeResize?: ((payload: { id: string; x: number; y: number; width: number; height: number; recordId?: string; recordType?: string; }) => void), onDrop?: ((payload: { entity: string; id: string; dataset?: string; label: string; x: number; y: number; within?: { entity: string; id: string; }; preview?: { thumbnail?: string; author?: string; source?: string; }; }) => void), nodeActions?: NodeAction[], onNodeAction?: ((payload: { action: string; id: string; recordId?: string; recordType?: string; value?: unknown; preview?: boolean; x: number; y: number; }) => void), focus?: string, focusCentre?: boolean, folded?: string[], onNodeFold?: ((payload: { id: string; recordId?: string; recordType?: string; folded: boolean; count: number; }) => void), open?: string[], onNodeOpen?: ((payload: { id: string; recordId?: string; recordType?: string; open: boolean; }) => void), onDeleteSelection?: ((payload: { recordId?: string; recordType?: string; kind?: "node" | "edge"; count: number; records?: { recordId: string; recordType: string; }[]; }) => void), carry?: boolean, selectionActions?: NodeAction[], onSelectionAction?: ((payload: { action: string; records: { recordId: string; recordType: string; }[]; count: number; value?: unknown; preview?: boolean; }) => void), onUndo?: (() => void), onRedo?: (() => void), onPointerAt?: ((at: { x: number; y: number; } | null) => void), onViewport?: ((region: GraphRegion) => void), region?: GraphRegion | null, reframeOn?: string | number | boolean | null, host?: GraphHostBindings
 
 ---
 
@@ -2222,6 +2240,7 @@ we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
 | minHeight | string | Minimum height |
 | maxWidth | string | Maximum width |
 | maxHeight | string | Maximum height |
+| aspectRatio | string | Width to height, as CSS writes it ('16 / 9', '1'): the box keeps that shape at any width, before what is inside has loaded |
 | position | "relative" \| "absolute" \| "fixed" \| "sticky" | CSS position |
 | top | SpaceValue | Top offset — space token or CSS length |
 | right | SpaceValue | Right offset — space token or CSS length |
@@ -3168,10 +3187,11 @@ ProfileStore:
 
 RecordStore:
 - State:
-  - creatableEntities: { label, value, icon, group, description, via }[] — the content a person can create here, each with the one-line `description` from its manifest (or the shape's), ready for a we-select: this space's own models first, then WE's built-in blocks. A built-in entity is here when it is a block there is a way to make — `authoring` fields (via 'form') or `composed` (via 'composer': a CollectionBlock, which is a note or a post, written in BlockComposer). Not blocks — spaces, templates, vocabulary entries, drawn Relationships — are never here. Filter by `via` for what a surface can host: a record form's type selector lists `recordStore.creatableEntities.filter(k, k.via == 'form')`; a canvas's 'add' chooser lists them all and opens the composer for 'composer'
+  - creatableEntities: { label, value, icon, hue, group, description, via }[] — the content a person can create here, each with the one-line `description` from its manifest (or the shape's), ready for a we-select: this space's own models first, then WE's built-in blocks. A built-in entity is here when it is a block there is a way to make — `authoring` fields (via 'form') or `composed` (via 'composer': a CollectionBlock, which is a note or a post, written in BlockComposer). Not blocks — spaces, templates, vocabulary entries, drawn Relationships — are never here. Filter by `via` for what a surface can host: a record form's type selector lists `recordStore.creatableEntities.filter(k, k.via == 'form')`; a canvas's 'add' chooser lists them all and opens the composer for 'composer'
   - recordDraft: the open form's draft ({ entity, label, icon, fields[] }) or null while closed — its non-nullness is what mounts the modal. Each field is { name, label, control, required, options, placeholder, value, accept, target, targetLabel, many, canCreate, canPick, entries }, derived from the model's own declaration, so a form exists for a model nobody wrote a form for. control 'file' is a we-file-upload (accept names the types); control 'relation' points at another record: entries are the chips ({ key, label }), canCreate offers openRelationForm, canPick offers a picker over existing target records, and inline ('location' | 'image' | '') names the in-place control a target is made with instead — see setRelationLocation and addRelationImage; an image entry carries preview, a data URI
   - recordDraftDirty: boolean — the open form holds something worth keeping. What a discard guard reads: the fields come from the model, so a shape this community defined has properties no schema was written against and there is no set of local names an expression could test. Pass it to discardGuard's `dirty`
   - displays: Record<entity, RecordDisplay> — how to show an instance of each creatable model, every core block (a divider or a quote card included) and Relationship, keyed by entity name and derived from its declaration: { entity, label, icon, title, summary, media, mediaRelation, fields[] }, where title/summary/media name the properties playing those roles ('' when none does) and mediaRelation names a relation to an ImageBlock that pictures the record when no property does — look the image up by the ids it holds ({ entity: 'ImageBlock', where: { id: row[display.mediaRelation] } }) rather than drawing them and each field is { name, label, kind, role, options, vocabulary }. kind is one of text, longText, number, boolean, date, datetime, color, url, image, file, json, relation (with target, the model it points at); role is title, summary, media or detail. `options` is the values a field is allowed to hold where the model closes the set (a task's status), empty otherwise — count() it to tell a state worth drawing as a we-badge from free text, and map it into a we-select rather than offering a text box that accepts a word the model does not know. `vocabulary` names the community list a value is a slug of ('taskState' for a task's status, looked up in spaceStore.taskStates for its name and colour), empty otherwise. Index it by a row's type — { $: 'recordStore.displays[row.type]' } — and render the fields with $each; see "A record of any type" in the patterns
+  - kinds: { label, value, icon, hue, group }[] — every kind of record that can be shown here: what can be made, then every core block and the kinds read without being made (a drawn connection, the space's vocabulary). hue is the palette hue the kind is drawn in where the community has chosen no colour — WE's own kinds have one chosen for what they are, and any other takes one from its name, the same everywhere. For colouring cards by kind: the kit's kindColour reads the community's choice first
   - recordErrors: string[] — validation errors from the last save attempt, plus any backend failure
   - savingRecord: boolean — a create is in flight
   - lastCreatedId: string — the id of the last record created, empty before the first. Read it to act on what was just made; kept in the store because an $invoke's onSuccess can read a store and cannot hold a value
@@ -3318,6 +3338,7 @@ RuntimeStore:
 SessionStore:
 - State:
   - bootState: string — 'initialising' | 'login' | 'createAgent' | 'finishing' | 'ready' | 'error'
+  - signInStep: string — which step of signing in the screen is on: 'switching' | 'settingUp' | 'starting' | 'preparing' | 'unlock' | 'create' | 'failed' | 'ready'. One answer, in that order of precedence — a sign-in screen draws the step this names rather than working it out from bootState and the account flags
   - bootError: string — why the boot failed, when bootState is 'error'. Empty otherwise
   - passwordError: boolean — true after an unlock the backend refused. Not set when it merely timed out; see loginError
   - loginError: string — why the last sign-in failed when the password was not the problem (the backend took too long to finish), ready to display. Empty otherwise, and never set together with passwordError. Show it where passwordError’s message goes: { $: "sessionStore.passwordError ? 'Incorrect password' : sessionStore.loginError" }
@@ -3413,6 +3434,7 @@ ShellStore:
   - dockResizing: boolean — a panel is being dragged or resized right now. Suspend transitions while it is true so the edge tracks the cursor
   - panelMaximised: boolean — some panel covers the whole window. The app's own chrome — sidebar, module rail — hides while it is true; a template's fixed chrome should too
   - dockPlacement: Record<dockId, { snap, displace, canDisplace, … }> — where each panel is parked, for its frame to read: which of the eight snaps it is at, whether it displaces content, and whether it may. The state a position menu ticks; dockGeometry is the resulting box
+  - panelFrames: Record<dockId, 'window' | 'flush' | 'none'> — how each panel is framed where it is not a window: its own declared frame, else — pushing the content aside at an edge — that edge's frame as the app template declares it (meta.edges); absent, a window's frame
   - movingDock: string | null — the id of the panel being dragged, or null. What mounts the snap-target overlay
   - activeSnap: SnapPoint | null — the snap the moving panel would take if dropped now ('top-left' | 'top' | … | 'left'), so that target can light up
   - snapTargets: { id, top, left, width, height }[] — every snap target’s box while a panel is being dragged, measured against the room left for it. A place a card is already parked at is left out: the question there has stopped being whether and started being where among what is there, which the insert slots answer. Empty otherwise
@@ -3422,6 +3444,7 @@ ShellStore:
   - layoutPinned: Record<string, boolean> keyed by panel id — whether that panel has been dragged away from where meta.panels declared it. False for a panel no layout mentions, since there is nothing to go back to. Gate a "reset to layout" affordance on it rather than on a placement merely existing
   - layoutDirty: boolean — the interface on screen has been rearranged: one of its panels moved, resized or closed. What a whole-arrangement "reset layout" control is gated on, and not the same question as any layoutPinned entry — a closed panel has no placement, and a panel declared for another route is not among the docks at all. False for an interface declaring no panels
   - panelSupplied: Record<moduleId, boolean> — modules whose panel this interface supplies itself, by declaring a `meta.panels` entry that names the module and carries a `node`. What a module's dock frame asks before drawing its own contents; the module still owns whether the panel is open and how big it is
+  - panelInstances: { id, panel, inputs, title? }[] — the instances open in the interface on screen: which declared panel each is of, and what it was opened with. To list them, or to tell a control whether its record already has one
   - collapsedLanes: string[] — the home lanes the reader has folded away on the interface on screen, by name. Read it to draw a collapse button in the right state: { $: "'tree' in shellStore.collapsedLanes" }
   - customisingLayout: boolean — every section's grip is showing, so the reader can see what can be moved. Off, a grip shows only on hover or focus
   - layoutNames: string[] — the arrangements saved for the interface on screen, by name, sorted. The three-rung chain has one user slot; these are how to keep more than one — a “recording” and a “reviewing” for the same template. Empty for an interface with none
@@ -3455,6 +3478,8 @@ ShellStore:
   - resetDockToLayout(panelId: string): puts a panel back where meta.panels asked for it, forgetting where it was dragged. Forgets rather than rewrites, so the panel keeps following the layout afterwards — including when the template changes it. Pair with layoutPinned
   - closeTemplatePanel(panelId: string): dismisses a panel the interface declared in meta.panels, by that panel's id. What its titlebar's close button calls
   - openTemplatePanel(panelId: string): puts a closed one back. The only way back to a panel that has been closed — it has no titlebar left to ask from — so a template offering a close should offer this too
+  - openPanel(panelId: string, inputs?: object, options?: { key?, title? }): opens a panel the interface supplies in meta.panels (one with a `node`) once more, with these inputs — an inspector per record, a view per call. Its node reads them as panel.inputs, and which instance it is as panel.id. It opens where the declared panel would, as a tab beside it where the declaration names an `order`. The same inputs open the same instance, brought to the front, so opening the record already open makes no second; `key` names the instance outright where the inputs should not decide, `title` is what its tab says. Kept per agent and per template across reloads
+  - closePanel(instanceId: string): closes an instance openPanel opened — what its close button calls. Where it was dragged is forgotten with it
   - resetTemplateLayout(): puts every panel of the interface on screen back the way meta.panels declared them, and reopens the ones that were closed. The whole-arrangement counterpart of resetDockToLayout, and the only way back for a closed panel, which has no titlebar to reset itself from. Scoped to the template rather than the route, so a declaration that varies by route is reset once. Pair with layoutDirty
   - toggleLane(lane: string): folds a home lane (a `$panels` outlet) away, or brings it back — what a sidebar's collapse button calls. Its sections stay mounted and hidden, so a feed keeps its place. Kept per agent and per template, and undone by resetTemplateLayout
   - setLaneCollapsed(lane: string, collapsed: boolean): folds a lane away or brings it back, as said rather than flipped
@@ -3525,6 +3550,7 @@ SpaceStore:
   - viewNav: { id, segment, label, icon, path }[] — the sections as a nav strip reads them: enabled by the community, minus those this agent hid, in order. One source with the routes, so nav and routes cannot disagree
   - sharingOptions: { label, value, icon, description, servers }[] — how a shared space can sync, for a we-select, default first; value is what createSpace takes. Labelled by how it syncs ("Peer-to-peer", "Server") rather than by the backend’s own name for it, and `description` is one sentence on what choosing it means — bind a we-form-field’s description to the selected entry’s. `servers` is, for a server option, a second we-select’s { label, value }[]: the servers it can sync through, default first and named by host, then "Custom…" (value 'custom') for typing an http(s) address in; empty for a peer-to-peer option. Only options this deployment can fill in are listed. Empty until the backend answers, and on a backend with no choice to offer
   - defaultSharing: string — the option publishing uses when none is chosen: the backend’s default, empty until it answers. Show it as the picker’s value while nothing is chosen — { $: "local.sharing ? local.sharing : spaceStore.defaultSharing" } — and pass the bare choice to createSpace, rather than copying it into local state, which freezes whatever it was at that moment
+  - starterChoices: { id, name, description, icon, includes, app? }[] — what a space made now can start with, the default first: the app's kit when the app in use came built in and brings one (app is its name), otherwise the deployment's own starter, then id '$none' (an empty space: no task states, reactions, canvas or board, drawn with the agent's own default template and theme). includes is what it writes, counted from its records ("3 task states · a canvas · a board"), empty for an empty space. Pass an id to createSpace; show the default as chosen while nothing is — { $: "local.starter ? find(spaceStore.starterChoices, { id: local.starter }) : first(spaceStore.starterChoices)" }. Installed apps' starters are never listed
   - mutedDids: string[] — DIDs this agent has muted, everywhere. Private, held in the root dataset. A feed filters on it before rendering: { $: '!(post.author in spaceStore.mutedDids)' }. Hides on this screen only — a neighbourhood is writable by every member, so nothing here removes anything for anyone else
   - mutedAgents: MutedAgent[] — the full mute records (did, description), for a settings list that wants the note as well as the DID
   - readMarkers: { nodeId, lastReadAt }[] — when this agent last read each node. No row means never read, so everything is unread. Read with find(spaceStore.readMarkers, { nodeId: item.id }); a keyed map would not be indexable by a row
@@ -3543,7 +3569,7 @@ SpaceStore:
   - canAdministerCurrentSpace: boolean — whether this agent may change what every member of the space on screen sees. The readable form of canAdministerSpace, which an expression cannot call. Gate an admin-only control on this rather than on `x.author == me.did`, which asks who made the row and not who runs the space
   - policy: { loaded, preset, permissions, frozen, me, roles, sentences } — the space's policy in force: who may do what to its records. Pass it whole to can() to decide whether to offer a control: { $: "can({ policy: spaceStore.policy, action: 'CollectionBlock.delete', record: post })" }. `preset` is 'open', 'community', or null for rules the community wrote itself; `sentences` is each permission in words, for a page that explains the rules; `roles` are the viewer's, admin included while they administer the space. A write the policy does not allow is refused when it is made whatever a template offered — its handler's onError receives the reason as result.message
 - Actions:
-  - createSpace(name, description, access: 'personal' | 'shared', discovery: 'hidden' | 'listed', avatarFile?, coverImageFile?, location?, sharing?, server?): creates a new space with full setup. sharing is a value from sharingOptions and only matters for a shared space; empty uses the backend's default. server is the http(s) address a server option syncs through — one of its `servers` values or a typed one — and empty uses the option's first; one that is not an http(s) address rejects before anything is created. Resolves once the local space exists; sharing a shared one follows in the background, reported on `spaceList[].sharing`, and the space stays local if it fails
+  - createSpace(name, description, access: 'personal' | 'shared', discovery: 'hidden' | 'listed', avatarFile?, coverImageFile?, location?, sharing?, server?, starter?): creates a new space with full setup. starter is an id from starterChoices; absent gives the first, and one not offered rejects before anything is created. sharing is a value from sharingOptions and only matters for a shared space; empty uses the backend's default. server is the http(s) address a server option syncs through — one of its `servers` values or a typed one — and empty uses the option's first; one that is not an http(s) address rejects before anything is created. Resolves once the local space exists; sharing a shared one follows in the background, reported on `spaceList[].sharing`, and the space stays local if it fails
   - shareSpace(uuid: string): shares a space that is still local — what retries a share that failed, with the sharing option and listing it was asked for. Watch `spaceList[].sharing`
   - joinSpace(id: string, focus = true): joins a shared space by share link, neighbourhood URL or CID, or focuses it if already joined. Pass focus: false to join without navigating there — for a caller that needs the dataset present rather than open, which is how the marketplace reads its own dataset without moving you out of the space you are in. Rejects when the join could not be completed, so onSuccess means what it says; watch joiningSpace/joinSlow/joinError for what to show while it runs. A join whose network call times out keeps going: the backend usually finishes anyway, and this waits for that before believing the failure
   - initializeAsWeSpace(name: string, description: string, avatarValue?: File | string | null): installs WE's Space SDNA into the current, already-joined, foreign-native dataset (e.g. one synced in from Flux) and creates a Space entity in place — access is always 'shared' since the dataset is already a published neighbourhood
@@ -3695,6 +3721,7 @@ ThemeStore:
   - templateThemePending: boolean — the template's suggested theme cannot be resolved yet and might still arrive. Hold what is on screen rather than painting a fallback while it is true
   - useTemplateTheme: boolean — whether a template may bring the theme it was designed for (meta.themeId). Defaults on; one condition in the resolver rather than a setting to unwind, so turning it off restores whatever would otherwise apply immediately
   - activeTemplateTheme: ThemeData | null — the theme the scoped template wrapper renders: the theme being edited if there is one, else the space's. Null in global mode, where the template inherits the document's theme
+  - themeFork: { source, name, icon } | null — the theme-naming dialog while it is open (see startThemeFork): the theme being forked, empty for a new one
 - Actions:
   - setCurrentTheme(themeId: string): sets and persists the active theme
   - setDefaultTheme(themeId: string): sets the preferred default theme (persists to AgentSettings.defaultThemeId)
@@ -3713,6 +3740,8 @@ ThemeStore:
   - updateEditingMeta(fields: { name?, icon? }): while editing, renames or re-icons the draft
   - cancelEditing(): ends the editing session and discards the draft, restoring what was applied before. Note the theme *panel* autosaves on unmount, so closing the panel keeps the draft — this is the explicit throw-away, and the only path that does
   - createAndStartEditing(name: string, icon: string, sourceId?: string, destination?: 'personal' | 'space'): creates a new theme — copied from sourceId when given — and opens an editing session on it. Resolves true on success
+  - startThemeFork(sourceId?: string): opens the host's dialog for naming a fork of that theme, or a new theme without one. Writes nothing — the theme is made by a press in that dialog — so any list of themes may offer it
+  - cancelThemeFork(): closes that dialog without making anything
   - saveEditingTheme(): writes the draft over the theme being edited and keeps editing. Resolves to the saved theme, or null when nothing was being edited
   - saveEditingThemeAs(name: string, icon: string): writes the draft as a new theme under that name, leaving the original untouched
   - deleteTheme(themeId: string): permanently deletes a custom theme
@@ -3854,7 +3883,7 @@ Needs: kernels records, presence, ephemeral, media, peerConnection, call; permis
   - toggleScreenShare — Start or stop sharing this agent’s screen; sharing replaces the camera until it stops.
   - toggleSolo — Hide everyone but the spotlight, or bring them back; does nothing while nobody is focused.
   - toggleVideo — Turn this agent’s camera on or off, reporting through problem when it is refused.
-- Parts: `call.anchoredCallButton` (needs node — the record the call is about — anything with an id), `call.continueCallButton`, `call.deviceSettings`, `call.startCallButton`, `call.tile` (needs tile — the participant to show — one of modules.call.tiles)
+- Parts: `call.anchoredCallButton` (needs node — the record the call is about — anything with an id), `call.continueCallButton`, `call.renameCallButton` (subject: routeStore.params.call ? routeStore.params.call : modules.call.callRecordId), `call.deviceSettings`, `call.startCallButton`, `call.tile` (needs tile — the participant to show — one of modules.call.tiles)
 - Panels (`meta.panels[].dock`): `stage` "Call" (module-owned openness)
 - Settings: `iceServers` (string; deployment, space, agent) — ICE servers
 - Presence activities: `call` { id: string, anchor: object, media: object, record: string, continued: boolean, topology: object }
@@ -3885,12 +3914,6 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - extractionOpen — Whether the extraction panel is open.
   - extractStatus — How the last one-shot extraction pass went — idle, running, done or error.
   - extractTurns — How many transcript turns the last pass read.
-  - feedFromStart — Whether the Feed is read from the beginning rather than the live end.
-  - feedHasMore — Whether there is more of the space beyond the Feed’s window.
-  - feedLoaded — Whether the Feed has answered for this space yet.
-  - feedOpen — Whether the Feed panel is open.
-  - feedRoot — The space collection the Feed reads, and writes typed messages into.
-  - feedRows — The Feed's window: every message in the space and a row per group of things extracted or made, merged by time — newest first while following the live end, oldest first from the start. A row is { kind: 'line', id, at, author, text, marks, source, call, callTitle, replyTo } or { kind: 'activity', id, at, author, origin, originTitle, summary, items, suggested }.
   - heard — Something has been said that the record does not hold yet — buffered, being written or still with the model.
   - inCall — Whether this agent is in a call right now.
   - installError — Why the last model install failed; empty otherwise.
@@ -3916,7 +3939,7 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - proposalsFor — Suggestions staged on one conversation, by record id — read as proposalsFor[id].
   - reconnecting — The link to the speech model dropped and is being re-established; what is said meanwhile is held.
   - recordingCall — This agent’s recording of the call it is in, wherever the call is — { enabled, listening, available }. For the call bar; the other members answer for the space on screen.
-  - replyingTo — The line a reply is being written to — { id, text, author, surface } — or null. `surface` is 'transcript' or 'feed': the list it was started from, whose composer sends it.
+  - replyingTo — The line a reply is being written to — { id, text, author, surface } — or null. `surface` is always 'transcript'.
   - speaking — Whether the microphone level currently counts as speech.
   - status — What the session is doing — idle, no-backend, no-model, no-audio, downloading, starting, listening or error.
   - thresholdPercent — The speech-onset threshold as a CSS width, to mark on the same meter.
@@ -3937,7 +3960,6 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - cancelReply — Puts a reply down without sending it.
   - cancelTiedDecision — Puts the decision waiting in tiedDecision down without making it.
   - closeExtractionPanel — Closes the extraction panel.
-  - closeFeed — Closes the Feed panel.
   - closePanel — Closes the transcript panel.
   - confirmTiedDecision — Carries out the decision waiting in tiedDecision, with everything tied to it.
   - dismissChange — Dismisses one suggested change, leaving the record as it was.
@@ -3948,29 +3970,53 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - flushNow — Writes what has been heard so far without waiting for the buffer to fill.
   - installModel — Installs the model the backend offers and resumes recording that was waiting on one.
   - openExtractionPanel — Opens the extraction panel.
-  - openFeed — Opens the Feed panel.
   - openPanel — Opens the transcript panel.
-  - readFeedFromStart — Re-anchors the Feed at the beginning of the space.
-  - readFeedLive — Re-anchors the Feed at the newest message.
   - readTranscriptFromStart — Shows the beginning of the transcript, to be read forwards.
   - readTranscriptLive — Goes back to following the end of the transcript.
   - refreshProposals — Re-reads what is staged on a call, or on the live one.
   - rejectProposal — Drops a suggestion.
   - reply — Answers one line with a typed line of its own, linked from it as a reply.
-  - sendToFeed — Writes a message straight into the space, outside any call — with its marks, when the composer gave any.
   - setProposalField — Sets one field of the open draft, by property name.
-  - showMoreFeed — Grows the Feed’s window by a page.
   - showMoreTranscript — Loads one more page of the transcript, in whichever direction it is being read.
-  - startReply — Starts a reply to one line — pass { id, text, author, surface } — which that surface's composer then sends as a reply. `surface` is 'transcript' (the default) or 'feed'.
+  - startReply — Starts a reply to one line of the transcript — pass { id, text, author } — which the transcript's composer then sends as a reply.
   - toggle — Starts or stops recording this agent’s microphone into the call, and opens the transcript when starting.
   - toggleAutoExtract — Turns automatic extraction on or off for one collection, for everyone in it; defaults to the live call.
   - toggleExtractionTarget — Includes or excludes one model from what a call extracts, for everyone in it; defaults to the live call.
 - Parts: `transcribe.transcriptFeed` (subject: routeStore.params.call ? routeStore.params.call : modules.transcribe.collectionId), `transcribe.transcriptLines` (subject: modules.transcribe.collectionId), `transcribe.transcriptComposer`, `transcribe.captureMeter`, `transcribe.captureStatus`, `transcribe.coverage`, `transcribe.extractionTargets`, `transcribe.pendingUtterance`
-- Panels (`meta.panels[].dock`): `transcript` "Transcript" (module-owned openness), `extraction` "Extraction" (module-owned openness), `feed` "Feed" (module-owned openness)
+- Panels (`meta.panels[].dock`): `transcript` "Transcript" (module-owned openness), `extraction` "Extraction" (module-owned openness)
 - Settings: `recordCalls` (boolean; deployment, agent, space, agent-in-space) — Record calls automatically; `timelineOrder` (enum; agent) — Newest messages
 - Presence activities: `transcribe` { id: string, recording: boolean, anchor: object, collection: string }
 - Functions:
   - threadLines(options) — A page of a conversation’s lines with every reply to them, each once, in time order — newest first when `newestFirst` is true. A reply is a child of nothing: it is in the `thread` of the line it answers, so read the page with `include: { thread: true }` and this flattens each line’s thread in beside it, leaving out any call held about a line. Each reply carries `replyTo: { id, author, text }`, its direct parent, for the quote drawn above it, and a line with marks carries `content` — the one block a BlockRenderer draws it from. Options: rows (the page), newestFirst (boolean).  e.g. threadLines({ rows: local.utterances, newestFirst: !modules.transcribe.transcriptFromStart })
+
+### Feed (`feed`)
+Everything said and written in a space, and what was found in it, in one stream.
+Needs: kernels records, interpretation.
+- State (read in an expression as `modules.feed.<name>`):
+  - feedFromStart — Whether the Feed is read from the beginning rather than the live end.
+  - feedHasMore — Whether there is more of the space beyond the Feed’s window.
+  - feedLoaded — Whether the Feed has answered for this space yet.
+  - feedOpen — Whether the Feed panel is open.
+  - feedRoot — The space collection the Feed reads, and writes typed messages into.
+  - feedRows — The Feed's window: every message in the space and a row per group of things extracted or made, merged by time — newest first while following the live end, oldest first from the start. A row is { kind: 'line', id, at, author, text, marks, source, call, callTitle, replyTo } or { kind: 'activity', id, at, author, origin, originTitle, summary, items, suggested }.
+  - replyingTo — The line a reply is being written to — { id, text, author } — or null.
+  - timelineOrientation — Which way round this reader draws the Feed — 'newestBottom' or 'newestTop'. Their own setting.
+- Actions (`{ "$invoke": "modules.feed.<name>" }`):
+  - cancelReply — Puts a reply down without sending it.
+  - closeFeed — Closes the Feed panel.
+  - editUtterance — Corrects the words on a line, marking a heard line as corrected.
+  - openFeed — Opens the Feed panel.
+  - readFeedFromStart — Re-anchors the Feed at the beginning of the space.
+  - readFeedLive — Re-anchors the Feed at the newest message.
+  - reply — Answers one line with a typed line of its own, linked from it as a reply.
+  - sendToFeed — Writes a message straight into the space, outside any call — with its marks, when the composer gave any.
+  - showMoreFeed — Grows the Feed’s window by a page.
+  - startReply — Starts a reply to one line — pass { id, text, author } — which the Feed’s composer then sends as a reply.
+  - unwatchFeed — One drawing of the Feed was taken down.
+  - watchFeed — The Feed is drawn somewhere: keep it live.
+- Parts: `feed.feedView`
+- Panels (`meta.panels[].dock`): `feed` "Feed" (module-owned openness)
+- Settings: `timelineOrder` (enum; agent) — Newest messages
 
 ### Live presence (`live`)
 See each other’s cursors, and follow one person’s screen.
@@ -5377,6 +5423,38 @@ ordinary panel: it can be docked, folded, stacked, saved in a layout — and its
 - **`$panels` is a layout node.** It takes `lane` (required), `direction` (`column` by default, or
   `row`), `accepts` (section ids it will take, comma-separated; empty means any), and the ordinary
   layout props — `width`, `flex`, `minWidth` — which is how a template holds room for an empty lane.
+  `resize: 'start'` or `'end'` puts a drag handle on that edge — dragged as wide as the reader likes,
+  short of leaving the rest of the row less than 360px; give `maxWidth` only where a lane must stay
+  narrow — and `foldEmpty: true` folds the lane
+  away while nothing in it is open — a lane that is only there while something is chosen.
+  `bg` (a colour role) and `borderLeft` / `borderRight` paint the lane itself, behind whatever is in
+  it — a sidebar as `bg: 'chrome'` with `borderRight: '1px solid border'`. Paint the lane rather
+  than a section: a lane can hold panels the template does not draw, and a flush one paints nothing.
+- **Any panel can live in a lane, not only one the template draws.** A `module` entry with `home`
+  puts that module's panel there, and the host's own panels are named the same way —
+  `{ "id": "settings", "module": "shell", "home": "right" }` places the space's settings, which the
+  gear then opens beside the page rather than as a window on the edge. In a lane a panel is flush by
+  default: no titlebar, no frame. One that does not draw its own heading gets a slim header with its
+  name and its close; a template's own section draws its own.
+- **How a panel is framed is a choice, wherever it is.** `frame` on an entry — `'window'` (a
+  titlebar with its grip, menu and close), `'flush'` (part of the page, a grip and close in its corner
+  on hover), or `'none'` — holds in a lane, on an edge and floating alike. `frame` on a `$panels`
+  outlet sets that lane's default. An app template sets its window edges' default with
+  `meta.edges`: `{ "right": { "frame": "flush" } }` makes the panels pushing the content aside on
+  the right part of the app, as a sidebar is; it does not reach a card floating over the content.
+- **A panel can be opened more than once.** `shellStore.openPanel('inspector', { recordId: … })`
+  opens another instance of a panel the template supplies, with its own inputs — an inspector per
+  record, side by side or as tabs. Inside the node, `panel.inputs` is what it was opened with and
+  `panel.id` which instance it is (for the declared panel itself the inputs are empty). It starts
+  where the declaration says, so with an `order` it joins that place as a tab; opening the same
+  inputs again brings that instance forward, and its close is `shellStore.closePanel(panel.id)`.
+- **Two sections with the same explicit `order` share one place, as tabs** — as panels in an edge's
+  seat do. One shows, the one most recently opened or chosen, with a strip naming them all; `tab`
+  orders the strip, else the order they are declared in. An inspector and the space's settings taking
+  turns in one column is the case.
+- **A section the template draws can start closed.** `open: false` on a `node` entry leaves it closed
+  until `shellStore.openTemplatePanel(id)` opens it — an inspector, opened when something is chosen
+  and closed again with `closeTemplatePanel`. With `foldEmpty`, its lane folds while it is closed.
 - **Reordering within a lane is arrangement, not editing.** Dragging one section above another
   rewrites `order` on the reader's placement; nothing touches the tree, and "Reset layout" restores
   the author's order. Dragging a section to another lane changes `home`; to an edge, `snap`.
@@ -5611,7 +5689,7 @@ are corrected when the theme is applied — but only where they are left unset.
 ### Type roles
 
 `typeStyles` sets how each kind of text looks: `heading`, `body`, `label`, `control`, `badge`, `overline`. Each role takes
-`family`, `weight`, `letterSpacing`, `lineHeight`, `textTransform`, `color` — `color` is a role name. A role holds no defaults:
+`family`, `size`, `weight`, `letterSpacing`, `lineHeight`, `textTransform`, `color` — `color` is a role name. A role holds no defaults:
 each component keeps the value it had for any key the theme leaves unset.
 
 ### Components
@@ -5621,6 +5699,10 @@ each component keeps the value it had for any key the theme leaves unset.
 a component's own name (`card`). `type` names a type role; `fill`, `text` and `border` name colour
 roles. An explicit prop on an element still wins; then the variant, the component, the family, and
 the default.
+
+Either may also take `hover` and `active`, each with `fill`, `text` and `border`:
+the colours under the pointer and while pressed — `button: { variants: { outline: { hover: { fill: 'accent', text: 'on-accent' } } } }`.
+They replace the colours the component already changes in that state and add no change of their own.
 
 ### Surfaces and elevation
 
@@ -5834,6 +5916,33 @@ committing. Nothing in `.gitignore` catches one, whatever it is called.
 respect, add a record to `docs/architecture/decisions/` in the same PR — the bar and the format are
 in that folder's README. Most PRs make no such decision; a few a month is the expected rate.
 
+**Fix a problem in the layer that causes it.** When a template, a module or a feature runs into
+something awkward — a primitive that ignores a prop, a theme that cannot express a look, a component
+that wraps what it was given, a generated file nothing regenerates — trace it to where it comes from
+and fix it there, in the same PR when it is in reach. A workaround in the layer above solves one
+caller and teaches the next one to work around it too; the fix upstream improves every caller,
+including the ones nobody has written yet. This is not speculative extraction: "three real uses
+before abstracting" is about inventing a shared shape, and a defect has a cause whether one caller
+has met it or ten.
+
+**Put a styling change at the level it belongs to.** Before adjusting how something looks, decide
+which of three it is:
+
+| Level | When | Where |
+|---|---|---|
+| Template | It is about this content or this arrangement — what sits beside what, how a header is laid out | DS props on the template's nodes |
+| Theme | It is a look another theme might choose differently — density, a selected row's mark, how strong a label is | colour roles, type roles, `components.<name>` (and `.variants`) |
+| Design system or kit | The default is wrong or missing everywhere — rows that touch, a count narrower than it is tall | the primitive, component or fragment |
+
+Signs a template change is really a patch: the same adjustment in a second place, a value that
+overrides something a theme already controls, reaching for `styles`, or fighting a primitive's own
+behaviour. When the vocabulary cannot say it — a theme setting that does not exist, a prop a
+primitive does not take — that missing piece is the fix, not the local value.
+
+**Say what you worked around.** When a problem in the architecture cannot be fixed in the PR that met
+it, a workaround is fine — but name it, in the PR description or an issue, with where the real fix
+belongs, so it is resolved rather than walked around again.
+
 ---
 
 ### The executor must match the pin (CRITICAL)
@@ -5948,8 +6057,16 @@ touched and what depends on it:
 
 ```sh
 pnpm --filter @we/tokens --filter @we/themes build     # a design-token change
-pnpm --filter @we/primitives build                      # a Lit primitive
 ```
+
+**Some packages are read from source while developing.** `@we/primitives`, `@we/components` and
+`@we/backend-inmemory` declare a `development` export condition pointing at `src`, which Vite's dev
+server, app-shell's component tests and the browser harness resolve — so an edit there shows up
+without a build. A production build still takes `dist`. Every other package with a `dist` still needs
+rebuilding, as below. After changing which file a package's exports point at, clear the test caches
+(`node_modules/.vitest-cache`, `packages/app-shell/node_modules/.vite`): a cached transform keeps the
+import paths it resolved, so an untouched test file goes on running the old copy while an edited one
+picks up the new.
 
 **Do rebuild, though — a stale `dist` is invisible and wastes more time than the build saves.** Three
 symptoms worth recognising, all of which have happened here:

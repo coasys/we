@@ -39,8 +39,9 @@ const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
 */
 const styles = css`
   [part='label'] {
-    font-size: var(--we-font-size-200);
-    ${unsafeCSS(typeRoleDeclarations('label', { weight: '500', color: 'var(--we-role-text)' }))}
+    ${unsafeCSS(
+      typeRoleDeclarations('label', { size: 'var(--we-font-size-200)', weight: '500', color: 'var(--we-role-text)' }),
+    )}
     cursor: default;
   }
 

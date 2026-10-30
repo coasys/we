@@ -140,10 +140,11 @@ describe('a lane collapsed to its edge', () => {
     const geometry = shell.dockGeometry();
     expect(shell.contentInset().left).toBe(STRIP_PX);
     expect(geometry[A].hidden && geometry[B].hidden).toBe(true);
-    const strip = geometry[A].strip ?? geometry[B].strip;
-    expect(strip?.tabs.map((tab) => tab.id).sort()).toEqual([A, B].sort());
-    // Beneath both panels, which shrink onto it over the top.
-    expect(strip?.layer).toBeLessThan(Math.min(geometry[A].layer ?? 0, geometry[B].layer ?? 0));
+    // One lane, put away, holding both — the strip its lane draws names each (see `EdgeLanes`).
+    const [lane] = shell.edgeLanes().lanes.left;
+    expect(lane.stowed).toBe(true);
+    expect(lane.thickness).toBe(STRIP_PX);
+    expect(lane.seats.flatMap((seat) => seat.ids).sort()).toEqual([A, B].sort());
   });
 
   it('opens again as a whole, with each seat showing the tab it showed before', () => {

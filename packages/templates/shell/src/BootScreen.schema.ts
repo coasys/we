@@ -166,7 +166,7 @@ const logoCorner: SchemaNode = {
     // many. `activeAccount` is also absent on a genuine first run, before anything is cached, which
     // is exactly when the splash wants the centre to itself.
     condition: {
-      $: "accountStore.activeAccount && !(accountStore.isFirstRun && sessionStore.bootState == 'initialising')",
+      $: "accountStore.activeAccount && !(accountStore.isFirstRun && sessionStore.signInStep == 'starting')",
     },
     then: {
       type: 'Column',
@@ -450,6 +450,9 @@ const unlockForm: SchemaNode = {
     {
       type: 'we-form-field',
       props: {
+        // `passwordLabel` and `unlockLabel` are the part's inputs (`host.signIn.form`): WE's words
+        // unless the screen placing it gives its own. An empty label draws none.
+        label: { $: 'passwordLabel' },
         error: { $: "sessionStore.passwordError ? 'Incorrect password' : sessionStore.loginError" },
       },
       children: [
@@ -491,7 +494,7 @@ const unlockForm: SchemaNode = {
                 loading: { $: 'sessionStore.loginLoading' },
                 onClick: { $invoke: 'sessionStore.unlock' },
               },
-              children: ['Login'],
+              children: [{ $: 'unlockLabel' }],
             },
           ],
         },
@@ -507,14 +510,13 @@ const unlockForm: SchemaNode = {
  * picture are published. That seam is where the agent starts existing, which is meaningful to the
  * code and meaningless to whoever clicked.
  *
- * The condition covers the span without a gap — `createAgentLoading` goes false in a `finally`, by
- * which point `bootState` is already `finishing`. On failure both go false with the state back on
- * `createAgent`, so the form returns carrying its error. Hoisted per rule 1.
+ * The step covers the span without a gap (see `settingUp` in `signInStep.ts`): on failure it goes
+ * back to `create`, so the form returns carrying its error. Hoisted per rule 1.
  */
 const settingUpState: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $: "sessionStore.createAgentLoading || sessionStore.bootState == 'finishing'" },
+    condition: { $: "sessionStore.signInStep == 'settingUp'" },
     then: {
       type: 'Row',
       props: { gap: '300', ay: 'center' },
@@ -540,7 +542,7 @@ const settingUpState: SchemaNode = {
 const switchingState: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $: 'accountStore.switchingTo' },
+    condition: { $: "sessionStore.signInStep == 'switching'" },
     then: startingState('accountStore.activeAccount'),
   },
 };
@@ -557,7 +559,7 @@ const switchingState: SchemaNode = {
 const bootFailure: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $: "sessionStore.bootState == 'error'" },
+    condition: { $: "sessionStore.signInStep == 'failed'" },
     then: {
       type: 'Column',
       props: { gap: '400', ax: 'center', maxWidth: '420px' },
@@ -601,10 +603,264 @@ const bootFailure: SchemaNode = {
   },
 };
 
+/**
+ * The centre of the sign-in screen: whoever is signing in and the step they are on — switching,
+ * setting up, starting, preparing, unlocking, creating, or why it failed. Published as
+ * `host.signIn.form`, so an app's sign-in screen places this rather than redrawing it, and every step
+ * and every fix to one arrives in WE's screen and the app's alike.
+ *
+ * Reads two names its placement binds — `unlockLabel` and `passwordLabel`, the part's inputs, whose
+ * defaults are WE's words — so a screen can change what the button says, or label the field, without
+ * opening the part. Anything more is opening it a level, in the editor or by hand.
+ */
+export const signInForm: SchemaNode = {
+  type: 'Column',
+  // The gap only bites on a first run, where the welcome and the form are both present:
+  // every other state renders one branch, and a `$if` rendering nothing is not a flex item.
+  props: { width: '100%', ax: 'center', ay: 'start', gap: '800' },
+  children: [
+    switchingState,
+    settingUpState,
+    // Hoisted per rule 1: it must survive `initialising` becoming `createAgent`, so the
+    // form materialises underneath it rather than replacing it with a second copy.
+    {
+      type: '$if',
+      props: {
+        condition: {
+          $: "accountStore.isFirstRun && sessionStore.signInStep == 'create'",
+        },
+        // Matched to the form's own fade below, so the heading and the fields it belongs to
+        // arrive as one thing rather than in sequence.
+        enterTransition: { type: 'fade', duration: 300 },
+        // Arriving fades; leaving does not. An omitted exit mirrors the enter, which keeps
+        // this mounted for 300ms after the state that justified it has gone — and the states
+        // that replace it (`switchingState`, `settingUpState`) carry no transition, so they
+        // paint immediately, above this one, while it fades. See the form below.
+        exitTransition: { type: 'fade', duration: 0 },
+        then: welcomeHeading,
+      },
+    },
+    {
+      type: '$if',
+      props: {
+        condition: { $: "sessionStore.signInStep == 'starting'" },
+        then: startingState('accountStore.activeAccount'),
+      },
+    },
+    // Sign-in: unlock, switch, or create. Modes of one screen rather than separate boot
+    // states, because they answer one question and only unlocking touches the session.
+    {
+      type: '$if',
+      props: {
+        condition: { $: "sessionStore.signInStep in ['unlock', 'preparing']" },
+        then: {
+          type: 'Column',
+          props: { gap: '400', ax: 'center' },
+          // No local state at all: the password is the host field's, and signing in is a
+          // lock to try rather than a form to check.
+          children: [
+            {
+              type: '$if',
+              props: {
+                condition: { $: "sessionStore.signInStep == 'preparing'" },
+                then: creatingAccountState,
+                else: unlockForm,
+              },
+            },
+          ],
+        },
+      },
+    },
+    // Setup — this account has no identity yet. Reached on a first run and on the first
+    // boot into a created account, and identical either way: name, then password. The name
+    // commits by renaming the account, which is why it chains through accountStore.
+    {
+      type: '$if',
+      props: {
+        condition: {
+          $: "sessionStore.signInStep == 'create'",
+        },
+        enterTransition: { type: 'fade', duration: 300 },
+        /*
+          Leaving is instant, arriving fades.
+
+          Both ways out of this form hand over to a node that paints immediately —
+          `switchingState` when another account is clicked, `settingUpState` when this one
+          is submitted. An omitted `exitTransition` mirrors the enter, so the form stayed
+          mounted and fading for 300ms after either, and both are siblings *above* it in
+          this column: the account you just clicked appeared over the form you had just
+          left, for long enough to read as a glitch rather than a transition.
+
+          Fading out only works against something that is also fading in. Where the
+          replacement is instant, so is the departure.
+        */
+        exitTransition: { type: 'fade', duration: 0 },
+        then: {
+          type: 'Column',
+          props: { gap: '700', ax: 'center', width: '100%', maxWidth: '300px' },
+          $localState: {
+            name: {
+              type: 'string',
+              // Blank, not seeded from the account: this is the name people will see, so
+              // offering "Main" or "New account" as a starting point invites accepting a
+              // placeholder as an identity.
+              initial: '',
+              validate: [{ rule: 'required', message: 'A name is required' }],
+            },
+            // No password here: it is typed into the host's own field below, which checks
+            // the confirmation itself — "required" and "the same twice", deliberately no
+            // length or composition rules, which would block testing with throwaway ones.
+          },
+          children: [
+            {
+              type: 'Column',
+              props: { gap: '700', ax: 'center', width: '100%' },
+              children: [
+                // Absent on a first run: the welcome hoisted above the boot-state branches
+                // is already the heading for this form, and it says the same thing without
+                // being torn down and rebuilt when the state changes underneath it. What is
+                // left here is the case it is actually for — adding an account to a machine
+                // that already has one, where "New account" answers a real question rather
+                // than "new compared to what?".
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: '!accountStore.isFirstRun' },
+                    then: {
+                      type: 'Row',
+                      props: { gap: '300', ay: 'center' },
+                      children: [
+                        { type: 'we-icon', props: { name: 'user-plus', color: 'accent-text' } },
+                        {
+                          type: 'we-text',
+                          props: { variant: 'heading-md', fontWeight: 'regular' },
+                          children: ['New account'],
+                        },
+                      ],
+                    },
+                  },
+                },
+                // Form
+                {
+                  type: 'Column',
+                  props: { gap: '400', width: '100%' },
+                  children: [
+                    // Picture — optional, and held until an agent exists to upload to.
+                    {
+                      type: 'EditableImage',
+                      props: {
+                        src: { $: 'profileStore.pendingAvatar' },
+                        alt: 'Profile picture',
+                        aspect: 1,
+                        placeholderIcon: 'user',
+                        uploadLabel: 'Add image',
+                        editLabel: 'Change image',
+                        fontSize: '200',
+                        width: '120px',
+                        height: '120px',
+                        r: 'avatar',
+                        alignSelf: 'center',
+                        // mb: '100',
+                        onImageChange: { $invoke: 'profileStore.setPendingAvatar', args: [{ $: 'arg' }] },
+                      },
+                    },
+                    // The profile's name, not a separate local label. One DID, one
+                    // identity, one thing to type.
+                    field({ name: 'name', label: 'Name', placeholder: 'Name...', validated: true }),
+                    // Password + confirm, in the host's field. It sets `type: 'password'`
+                    // and the reveal toggle on both, and keeps what is typed out of
+                    // template state — see `CredentialField`.
+                    { type: 'CredentialField', props: { purpose: 'new' } },
+                  ],
+                },
+                {
+                  type: 'we-button',
+                  props: {
+                    text: 'Create account',
+                    mt: '300',
+                    // Clickable whatever the fields say: the click is what asks the
+                    // question, so it touches every field and the errors arrive together.
+                    // Disabled only while the request is in flight.
+                    loading: { $: 'sessionStore.createAgentLoading' },
+                    // One action rather than a chain: the ordering is load-bearing
+                    // (the profile cannot be published until the agent exists) and the
+                    // failure handling differs per step. See completeAccountSetup.
+                    onClick: [
+                      { $touch: '$all' },
+                      // The password field's errors, which `$touch` cannot reach.
+                      { $invoke: 'sessionStore.touchCredential' },
+                      {
+                        $if: {
+                          condition: { $: 'formValid() && sessionStore.credentialConfirmed' },
+                          then: {
+                            $invoke: 'profileStore.completeAccountSetup',
+                            args: [{ $: 'local.name' }],
+                          },
+                        },
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      },
+    },
+    bootFailure,
+    // Finishing state — non-interactive. The agent exists and the session is loaded; the name
+    // and picture collected on the setup screen are being published. Everything was asked for
+    // already, so this is a progress indicator rather than a step.
+  ],
+};
+
+/**
+ * The other accounts on this device, and a way to add one — on the steps where somebody might want a
+ * different account, and faded out as they leave. Published as `host.signIn.accounts`.
+ *
+ * Carries no position, and must not: a transitioning `$if` renders its content inside a wrapper div
+ * that copies `position` from the content but not the offsets that go with it, so anchoring in here
+ * put the list a screen-height below the window. The screen placing it anchors a box around it,
+ * out of flow, and the fade only ever lays out inside a box that is already where it should be.
+ * Create is offered on signing in only — beside a setup form it would offer to start over on the
+ * thing being started.
+ */
+export const signInAccounts: SchemaNode = {
+  type: '$if',
+  props: {
+    // One node across all three states rather than one per state, so that moving
+    // between them is not an unmount and a remount of the same list — and so the
+    // exit below describes the list leaving rather than a boot state changing.
+    //
+    // Including `initialising` is the whole point of rendering this at the root.
+    // Gated on `login` alone it was absent for the first phase of every boot — so
+    // on a switch it vanished and returned even though its data was there the whole
+    // time, which read as the data being late rather than the node being unmounted.
+    //
+    // Not while `settingUp`, which begins the moment the setup form is submitted
+    // rather than one boot state later: gating on the boot state alone kept the list
+    // up through the first half of "Setting up your account..." and dropped it
+    // mid-message — two disappearances for one act. It is also a live escape hatch,
+    // and switching accounts restarts the app: leaving it clickable while the agent
+    // is being created and the profile published is offering to abandon a half-made
+    // identity.
+    condition: {
+      $: "sessionStore.signInStep in ['switching', 'starting', 'preparing', 'unlock', 'create', 'failed'] && accountStore.canManageAccounts && accountStore.activeAccount && !accountStore.isFirstRun",
+    },
+    // Faded out rather than cut, because this leaves at the same moment the form it
+    // sits beside does, and the form is replaced by a spinner rather than removed —
+    // one thing dissolving beside another arriving reads as a single change. No
+    // enter transition: on a switch it is meant to already be there, and fading it
+    // in would reintroduce the "data arriving late" impression the gate avoids.
+    exitTransition: { type: 'fade', duration: 300 },
+    then: accountSwitcher(),
+  },
+};
+
 export const bootScreen: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $: "sessionStore.bootState != 'ready'" },
+    condition: { $: "sessionStore.signInStep != 'ready'" },
     exitTransition: { type: 'fade', duration: 500, easing: 'ease-out' },
     then: {
       type: 'Column',
@@ -614,271 +870,47 @@ export const bootScreen: SchemaNode = {
         ax: 'center',
         ay: 'center',
         gap: '400',
-        // Colour beneath, fields above: `bg` emits the `background` shorthand but is assigned
-        // before `background-image`, so the two compose. Swap `blobBackground` for
-        // `hueSweepBackground` for the concentric version.
+        // The surface the theme paints, its own image included; WE's fields are a layer above it.
         bg: 'surface-sunken',
-        bgImage: blobBackground,
-        // Not `opacity`, which would take the heading and the form down with the background.
-        bgImageOpacity: 0.3,
         position: 'absolute',
         zIndex: 9999,
       },
       children: [
-        // Cornered rather than centred, so the middle of the screen is whoever is signing in.
-        logoCorner,
+        /*
+          WE's fields, as decoration of this screen's own rather than its background.
+
+          They were the frame's `bgImage`, which takes the place of whatever the theme lays on the
+          surface — so a theme with an image of its own lost it on this one screen. A layer of their
+          own leaves the surface the theme's, as on every other screen, and an app's sign-in, whose
+          frame is its own, simply has none. Under everything (`zIndex: -1` inside the frame's
+          stacking context), so nothing above it is washed or blocked. Swap `blobBackground` for
+          `hueSweepBackground` for the concentric version.
+        */
         {
           type: 'Column',
-          // The gap only bites on a first run, where the welcome and the form are both present:
-          // every other state renders one branch, and a `$if` rendering nothing is not a flex item.
-          props: { width: '100%', ax: 'center', ay: 'start', gap: '800' },
-          children: [
-            switchingState,
-            settingUpState,
-            // Hoisted per rule 1: it must survive `initialising` becoming `createAgent`, so the
-            // form materialises underneath it rather than replacing it with a second copy.
-            {
-              type: '$if',
-              props: {
-                condition: {
-                  $: "accountStore.isFirstRun && sessionStore.bootState == 'createAgent' && !sessionStore.createAgentLoading && !accountStore.switchingTo",
-                },
-                // Matched to the form's own fade below, so the heading and the fields it belongs to
-                // arrive as one thing rather than in sequence.
-                enterTransition: { type: 'fade', duration: 300 },
-                // Arriving fades; leaving does not. An omitted exit mirrors the enter, which keeps
-                // this mounted for 300ms after the state that justified it has gone — and the states
-                // that replace it (`switchingState`, `settingUpState`) carry no transition, so they
-                // paint immediately, above this one, while it fades. See the form below.
-                exitTransition: { type: 'fade', duration: 0 },
-                then: welcomeHeading,
-              },
-            },
-            {
-              type: '$if',
-              props: {
-                condition: { $: "sessionStore.bootState == 'initialising'" },
-                then: startingState('accountStore.activeAccount'),
-              },
-            },
-            // Sign-in: unlock, switch, or create. Modes of one screen rather than separate boot
-            // states, because they answer one question and only unlocking touches the session.
-            {
-              type: '$if',
-              props: {
-                condition: { $: "sessionStore.bootState == 'login' && !accountStore.switchingTo" },
-                then: {
-                  type: 'Column',
-                  props: { gap: '400', ax: 'center' },
-                  // No local state at all: the password is the host field's, and signing in is a
-                  // lock to try rather than a form to check.
-                  children: [
-                    {
-                      type: '$if',
-                      props: {
-                        condition: { $: 'accountStore.creating' },
-                        then: creatingAccountState,
-                        else: unlockForm,
-                      },
-                    },
-                  ],
-                },
-              },
-            },
-            // Setup — this account has no identity yet. Reached on a first run and on the first
-            // boot into a created account, and identical either way: name, then password. The name
-            // commits by renaming the account, which is why it chains through accountStore.
-            {
-              type: '$if',
-              props: {
-                condition: {
-                  $: "sessionStore.bootState == 'createAgent' && !sessionStore.createAgentLoading && !accountStore.switchingTo",
-                },
-                enterTransition: { type: 'fade', duration: 300 },
-                /*
-                  Leaving is instant, arriving fades.
-
-                  Both ways out of this form hand over to a node that paints immediately —
-                  `switchingState` when another account is clicked, `settingUpState` when this one
-                  is submitted. An omitted `exitTransition` mirrors the enter, so the form stayed
-                  mounted and fading for 300ms after either, and both are siblings *above* it in
-                  this column: the account you just clicked appeared over the form you had just
-                  left, for long enough to read as a glitch rather than a transition.
-
-                  Fading out only works against something that is also fading in. Where the
-                  replacement is instant, so is the departure.
-                */
-                exitTransition: { type: 'fade', duration: 0 },
-                then: {
-                  type: 'Column',
-                  props: { gap: '700', ax: 'center', width: '100%', maxWidth: '300px' },
-                  $localState: {
-                    name: {
-                      type: 'string',
-                      // Blank, not seeded from the account: this is the name people will see, so
-                      // offering "Main" or "New account" as a starting point invites accepting a
-                      // placeholder as an identity.
-                      initial: '',
-                      validate: [{ rule: 'required', message: 'A name is required' }],
-                    },
-                    // No password here: it is typed into the host's own field below, which checks
-                    // the confirmation itself — "required" and "the same twice", deliberately no
-                    // length or composition rules, which would block testing with throwaway ones.
-                  },
-                  children: [
-                    {
-                      type: 'Column',
-                      props: { gap: '700', ax: 'center', width: '100%' },
-                      children: [
-                        // Absent on a first run: the welcome hoisted above the boot-state branches
-                        // is already the heading for this form, and it says the same thing without
-                        // being torn down and rebuilt when the state changes underneath it. What is
-                        // left here is the case it is actually for — adding an account to a machine
-                        // that already has one, where "New account" answers a real question rather
-                        // than "new compared to what?".
-                        {
-                          type: '$if',
-                          props: {
-                            condition: { $: '!accountStore.isFirstRun' },
-                            then: {
-                              type: 'Row',
-                              props: { gap: '300', ay: 'center' },
-                              children: [
-                                { type: 'we-icon', props: { name: 'user-plus', color: 'accent-text' } },
-                                {
-                                  type: 'we-text',
-                                  props: { variant: 'heading-md', fontWeight: 'regular' },
-                                  children: ['New account'],
-                                },
-                              ],
-                            },
-                          },
-                        },
-                        // Form
-                        {
-                          type: 'Column',
-                          props: { gap: '400', width: '100%' },
-                          children: [
-                            // Picture — optional, and held until an agent exists to upload to.
-                            {
-                              type: 'EditableImage',
-                              props: {
-                                src: { $: 'profileStore.pendingAvatar' },
-                                alt: 'Profile picture',
-                                aspect: 1,
-                                placeholderIcon: 'user',
-                                uploadLabel: 'Add image',
-                                editLabel: 'Change image',
-                                fontSize: '200',
-                                width: '120px',
-                                height: '120px',
-                                r: 'avatar',
-                                alignSelf: 'center',
-                                // mb: '100',
-                                onImageChange: { $invoke: 'profileStore.setPendingAvatar', args: [{ $: 'arg' }] },
-                              },
-                            },
-                            // The profile's name, not a separate local label. One DID, one
-                            // identity, one thing to type.
-                            field({ name: 'name', label: 'Name', placeholder: 'Name...', validated: true }),
-                            // Password + confirm, in the host's field. It sets `type: 'password'`
-                            // and the reveal toggle on both, and keeps what is typed out of
-                            // template state — see `CredentialField`.
-                            { type: 'CredentialField', props: { purpose: 'new' } },
-                          ],
-                        },
-                        {
-                          type: 'we-button',
-                          props: {
-                            text: 'Create account',
-                            mt: '300',
-                            // Clickable whatever the fields say: the click is what asks the
-                            // question, so it touches every field and the errors arrive together.
-                            // Disabled only while the request is in flight.
-                            loading: { $: 'sessionStore.createAgentLoading' },
-                            // One action rather than a chain: the ordering is load-bearing
-                            // (the profile cannot be published until the agent exists) and the
-                            // failure handling differs per step. See completeAccountSetup.
-                            onClick: [
-                              { $touch: '$all' },
-                              // The password field's errors, which `$touch` cannot reach.
-                              { $invoke: 'sessionStore.touchCredential' },
-                              {
-                                $if: {
-                                  condition: { $: 'formValid() && sessionStore.credentialConfirmed' },
-                                  then: {
-                                    $invoke: 'profileStore.completeAccountSetup',
-                                    args: [{ $: 'local.name' }],
-                                  },
-                                },
-                              },
-                            ],
-                          },
-                        },
-                      ],
-                    },
-                  ],
-                },
-              },
-            },
-            bootFailure,
-            // The other accounts, anchored to the window rather than to the centre column. Shown on
-            // the states where a user might want a different account: signing in, and setting one
-            // up. Not while loading or finishing, where the outcome is already decided.
-            //
-            // Create is offered on sign-in only — beside a setup form it would offer to start
-            // over on the thing being started.
-            //
-            // The corner is this node, and the fade is the `$if` inside it. That split is what
-            // keeps both correct. A transitioning `$if` renders its content inside a wrapper div,
-            // and that wrapper copies `position` from the content but not the offsets that go with
-            // it — so anchoring inside the transition put the list a screen-height below the
-            // window, and not anchoring at all left the wrapper in the centre column's flow, where
-            // a zero-height flex item still contributes the column's 48px `gap` and the whole
-            // screen re-centred the moment the fade ended. Anchored here, out of flow, neither
-            // applies: the wrapper only ever lays out inside a box that is already in the corner.
-            {
-              type: 'Column',
-              props: { position: 'absolute', bottom: '300', left: '300', zIndex: 1 },
-              children: [
-                {
-                  type: '$if',
-                  props: {
-                    // One node across all three states rather than one per state, so that moving
-                    // between them is not an unmount and a remount of the same list — and so the
-                    // exit below describes the list leaving rather than a boot state changing.
-                    //
-                    // Including `initialising` is the whole point of rendering this at the root.
-                    // Gated on `login` alone it was absent for the first phase of every boot — so
-                    // on a switch it vanished and returned even though its data was there the whole
-                    // time, which read as the data being late rather than the node being unmounted.
-                    //
-                    // `createAgentLoading` closes it the moment the setup form is submitted, not
-                    // one state later: that flag turns on while the state is still `createAgent`
-                    // and only then becomes `finishing`, so gating on the state alone kept the list
-                    // up through the first half of "Setting up your account..." and dropped it
-                    // mid-message — two disappearances for one act. It is also a live escape hatch,
-                    // and switching accounts restarts the app: leaving it clickable while the agent
-                    // is being created and the profile published is offering to abandon a half-made
-                    // identity.
-                    condition: {
-                      $: "sessionStore.bootState in ['initialising', 'login', 'createAgent', 'error'] && !sessionStore.createAgentLoading && accountStore.canManageAccounts && accountStore.activeAccount && !accountStore.isFirstRun",
-                    },
-                    // Faded out rather than cut, because this leaves at the same moment the form it
-                    // sits beside does, and the form is replaced by a spinner rather than removed —
-                    // one thing dissolving beside another arriving reads as a single change. No
-                    // enter transition: on a switch it is meant to already be there, and fading it
-                    // in would reintroduce the "data arriving late" impression the gate avoids.
-                    exitTransition: { type: 'fade', duration: 300 },
-                    then: accountSwitcher(),
-                  },
-                },
-              ],
-            },
-            // Finishing state — non-interactive. The agent exists and the session is loaded; the name
-            // and picture collected on the setup screen are being published. Everything was asked for
-            // already, so this is a progress indicator rather than a step.
-          ],
+          props: {
+            position: 'absolute',
+            top: '0',
+            left: '0',
+            width: '100%',
+            height: '100%',
+            zIndex: -1,
+            bgImage: blobBackground,
+            // Not `opacity`, which a layer could take — but faded the way it always was: the image
+            // washed toward the surface under it, so it draws exactly as it did.
+            bgImageOpacity: 0.3,
+            bgImageTint: 'surface-sunken',
+          },
+        },
+        // Cornered rather than centred, so the middle of the screen is whoever is signing in.
+        logoCorner,
+        // WE's own sign-in is built from the parts an app's places, so the two cannot drift.
+        { type: '$part', props: { id: 'host.signIn.form' } },
+        // Anchored to the window, out of flow — see `signInAccounts` for why outside it.
+        {
+          type: 'Column',
+          props: { position: 'absolute', bottom: '300', left: '300', zIndex: 1 },
+          children: [{ type: '$part', props: { id: 'host.signIn.accounts' } }],
         },
       ],
     },

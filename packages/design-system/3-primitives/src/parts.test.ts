@@ -25,14 +25,33 @@ function drawnParts(): Map<string, Set<string>> {
     if (!file.endsWith('.ts') || file.endsWith('.test.ts')) continue;
     const source = readFileSync(join(PRIMITIVES, file), 'utf8');
     // A file can hold more than one element (`we-tree` and `we-tree-item`); each owns the source from
-    // its decorator to the next one. Styles above the first decorator belong to the first element.
+    // its decorator to the next one, and the first also owns everything above it. A stylesheet is the
+    // exception: it is declared before the class that uses it, so it sits in the slice of whichever
+    // element comes before, and belongs instead to the element whose `static styles` names it.
     const tags = [...source.matchAll(/@customElement\('([a-z-]+)'\)/g)];
-    tags.forEach((match, i) => {
-      const start = i === 0 ? 0 : match.index;
-      const end = tags[i + 1]?.index ?? source.length;
-      const parts = new Set([...source.slice(start, end).matchAll(/part=["']([a-z-]+)["']/g)].map((m) => m[1]));
-      drawn.set(match[1], parts);
-    });
+    const sheets = [...source.matchAll(/const ([A-Z_]+) = css`/g)].map((m) => ({
+      name: m[1],
+      start: m.index,
+      end: source.indexOf('`;', m.index),
+    }));
+    const slices = tags.map((match, i) => ({
+      tag: match[1],
+      start: i === 0 ? 0 : match.index,
+      end: tags[i + 1]?.index ?? source.length,
+    }));
+    const owner = (sheet: string) =>
+      slices.find((s) => new RegExp(`static styles = \\[[^\\]]*\\b${sheet}\\b`).test(source.slice(s.start, s.end)))
+        ?.tag;
+    for (const slice of slices) {
+      let text = source.slice(slice.start, slice.end);
+      for (const sheet of sheets) {
+        const own = owner(sheet.name) === slice.tag;
+        const inside = sheet.start >= slice.start && sheet.start < slice.end;
+        if (inside && !own) text = text.replace(source.slice(sheet.start, sheet.end), '');
+        if (own && !inside) text += source.slice(sheet.start, sheet.end);
+      }
+      drawn.set(slice.tag, new Set([...text.matchAll(/part=["']([a-z-]+)["']/g)].map((m) => m[1])));
+    }
   }
   return drawn;
 }

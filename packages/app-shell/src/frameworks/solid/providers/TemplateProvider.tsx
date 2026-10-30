@@ -3,7 +3,7 @@ import { datasetAddressedBy } from '@shared/datasetIdentity';
 import { collectionFacts } from '@shared/destructiveFacts';
 import { involvementOptimism } from '@shared/involvementOptimism';
 import { linkNewMentions, type MentionWriter, prepareMentionUpdate } from '@shared/lineMentions';
-import { appFrame, declareAppFrame } from '@shared/registries/appFrame';
+import { appFrame, declareAppEdges, declareAppFrame } from '@shared/registries/appFrame';
 import { HOST_PART_SLOTS } from '@shared/registries/hostParts';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { resolveParts, resolvePartsInRoutes } from '@shared/registries/moduleParts';
@@ -76,7 +76,9 @@ import { RECORD_ROUTE_PATH, recordPage } from '@we/template-views';
 import { createEffect, createMemo, createSignal, getOwner, onCleanup, onMount, Show, untrack } from 'solid-js';
 
 import { createCollabSession } from '../collab/collabSession';
+import { EdgeLanes } from '../components/EdgeLanes';
 import { moduleBlockDisplays } from '../components/moduleBlockDisplays';
+import { PanelHost } from '../components/PanelHost';
 import { registerRecordGhost } from '../drag/recordGhost';
 import { PersistentAppFrames } from '../layouts/PersistentAppFrames';
 import { TemplateLayout } from '../layouts/TemplateLayout';
@@ -119,6 +121,8 @@ export default function TemplateProvider() {
   // publishes no rail width, so nothing keeps clear of a rail that is not there.
   // The bands the app's chrome holds, as it declares them — what panels dock against.
   createEffect(() => declareAppFrame(templateStore.appTemplate().meta?.frame));
+  // And how its edges frame the panels pushing the content aside there (`meta.edges`).
+  createEffect(() => declareAppEdges(templateStore.appTemplate().meta?.edges));
 
   createEffect(() => {
     const frame = appFrame();
@@ -1212,6 +1216,20 @@ export default function TemplateProvider() {
     ],
   };
 
+  /*
+    What the space's content area shows while its template is still being chosen — on a cold start,
+    before its templates (or the app's own one for spaces) have been read. The template on screen then
+    is the one before, from another space or the landing page, and drawing the space's address in it
+    flashed that page's content (the spaces, as cards) before the space's own arrived. Quiet, because
+    it is usually a moment: no words to read before they are gone.
+  */
+  const choosingSpaceTemplateNode = {
+    type: 'Column',
+    props: { flex: '1', height: '100%', ax: 'center', ay: 'center', p: '600', bg: 'page' },
+    children: [{ type: 'we-spinner', props: { size: 'md' } }],
+  };
+  const CHOOSING_SPACE_TEMPLATE = 'choosing-space-template';
+
   /** The space on screen is waiting for its own record. */
   const loadingSpaceData = () => {
     const id = datasetStore.currentDataset()?.id;
@@ -1323,6 +1341,7 @@ export default function TemplateProvider() {
     // Its own key, so the router remounts against the real routes once the data is here — reading
     // the address as it stands, which is the link that brought somebody in.
     if (loadingSpaceData()) return LOADING_SPACE_DATA;
+    if (templateStore.choosingSpaceTemplate()) return CHOOSING_SPACE_TEMPLATE;
     const id = templateSchema.id || 'empty';
     if (!hasViewsMarker(templateSchema.routes ?? [])) return id;
     const table = spaceStore
@@ -1470,7 +1489,7 @@ export default function TemplateProvider() {
   */
   let landedTemplate: string | undefined;
   createEffect(() => {
-    if (routeKey() === LOADING_SPACE_DATA) return;
+    if (routeKey() === LOADING_SPACE_DATA || routeKey() === CHOOSING_SPACE_TEMPLATE) return;
     const id = templateSchema.id || 'empty';
     const previous = landedTemplate;
     landedTemplate = id;
@@ -1669,6 +1688,10 @@ export default function TemplateProvider() {
               <RenderSchema node={appSchema} stores={chromeBag} registry={registry} />
             </div>
             <RenderSchema node={shellSchema} stores={chromeBag} registry={registry} />
+            {/* The lanes pushing the content aside at the window's edges. */}
+            <EdgeLanes />
+            {/* Every panel, drawn once here, inside these providers, and moved to its place. */}
+            <PanelHost />
 
             {/* Router — keyed on the template ID *and* the resolved section list, since both decide what
            `buildRoutes` produces. Adding, removing or reordering a section remounts the space's
@@ -1681,6 +1704,11 @@ export default function TemplateProvider() {
                     <Route
                       path="*"
                       component={() => RenderSchema({ node: loadingSpaceDataNode, stores: templateBag, registry })}
+                    />
+                  ) : key === CHOOSING_SPACE_TEMPLATE ? (
+                    <Route
+                      path="*"
+                      component={() => RenderSchema({ node: choosingSpaceTemplateNode, stores: templateBag, registry })}
                     />
                   ) : (
                     [

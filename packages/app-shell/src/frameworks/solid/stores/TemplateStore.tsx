@@ -2,6 +2,7 @@ import { forgetBootSnapshot, readBootSnapshot } from '@shared/bundles/bootSnapsh
 import {
   type AppFace,
   deviceAppOf,
+  resolveAppTheme,
   resolveFace,
   setCurrentProductName,
   svgDataUrl,
@@ -10,12 +11,12 @@ import {
 import { readDeviceApp, writeDeviceApp } from '@shared/bundles/deviceApp';
 import { appSpaceTemplate, followedTemplateId } from '@shared/bundles/display';
 import { displaySourceOf, readInstalledBundles } from '@shared/bundles/installedBundles';
-import { bootScreenTemplate, placesNode } from '@shared/bundles/judgeBundle';
+import { bootScreenTemplate, placesCredentialField } from '@shared/bundles/judgeBundle';
 import { offeredInPickers } from '@shared/devOnlyOffers';
 import { appTemplateRegistry, DEFAULT_APP_ID, resolveAppTemplate } from '@shared/registries/appTemplates';
 import { withDerivedIds } from '@shared/registries/derivedIds';
 import { reservedTemplateIds } from '@shared/registries/reservedTemplateIds';
-import { seedBundleAppId, seedBundlePieces } from '@shared/registries/seedBundles';
+import { seedBundleAppId, seedBundlePages, seedBundlePieces } from '@shared/registries/seedBundles';
 import { slotRegistry } from '@shared/registries/slotRegistry';
 import { devOnlyTemplateIds, templateRegistry } from '@shared/registries/templateRegistry';
 import { profileTemplate, settingsTemplate } from '@shared/schemas';
@@ -74,12 +75,12 @@ import { type AppDataset, canonicalSpaceId, useDatasetStore } from './DatasetSto
 import { useRouteStore } from './RouteStore';
 import { useSessionStore } from './SessionStore';
 import { createSpaceRecordWait } from './spaceRecordWait';
+import { createSpaceTemplateChoosing } from './spaceTemplateChoosing';
 import { createTemplateDrafts } from './templateDrafts';
 import { useThemeStore } from './ThemeStore';
 
 const emptyMeta: TemplateMeta = { name: '', description: '', icon: '' };
 const emptyTemplate: TemplateSchema = { id: '', meta: emptyMeta, type: '', children: [], slots: {}, routes: [] };
-
 export type TemplateManagementItem = {
   id: string;
   name: string;
@@ -169,6 +170,8 @@ export interface AppBrand {
   wordmark: string;
   /** The About page, as Markdown; empty for WE's. */
   about: string;
+  /** The bundle's own page that "About" opens, by the id it is opened at; empty when it has none. */
+  aboutPage: string;
 }
 
 export interface TemplateStore {
@@ -229,6 +232,12 @@ export interface TemplateStore {
    * brings its own. Before anybody has signed in, the app this device last ran. See `bundles/brand.ts`.
    */
   brand: Accessor<AppBrand>;
+  /**
+   * A bundle's page by the id it is opened at (`coasys--about`), or undefined — for an id no bundle
+   * here brings, and for every id in safe mode, since a page is the app's own chrome. A seed bundle's
+   * pages are built in; an installed bundle's are in the library, accepted at the chrome tier.
+   */
+  bundlePage: (id: string) => TemplateSchema | undefined;
   saveTemplate: (name: string) => Promise<void>;
   /**
    * Save a schema as a template of its own, in the agent's library or the current space. By default it
@@ -317,6 +326,14 @@ export interface TemplateStore {
    * rather than a template the space may not use. See `spaceRecordWait.ts`.
    */
   awaitingSpaceRecord: Accessor<string | null>;
+  /**
+   * True while the space on screen has arrived and no template has been put up for it yet — on a cold
+   * start, its templates (or the app's own one for spaces) still being read. The template on screen
+   * then is the one before, from another space or the landing page, and the host shows that it is
+   * loading rather than drawing the space's address in it. Lowered the moment a template is applied,
+   * or when choosing ends.
+   */
+  choosingSpaceTemplate: Accessor<boolean>;
 
   /**
    * Whether this tab is in safe mode — WE's own templates and themes in place of what was chosen —
@@ -524,10 +541,12 @@ export function TemplateStoreProvider(props: ParentProps) {
     It is stored like any template, so every list a space's template is chosen from leaves it out.
   */
   const isApp = (t: TemplateSchema) => t.meta?.role === 'app';
+  // A bundle's page is the app's own as well: opened by the host, never chosen for a space.
+  const isPage = (t: TemplateSchema) => t.meta?.role === 'page';
   // A showcase template only while developer tools are showing — see `offeredInPickers`.
   const spaceChoosable = () =>
     offeredInPickers(
-      allTemplates().filter((t) => !isApp(t)),
+      allTemplates().filter((t) => !isApp(t) && !isPage(t)),
       session.devTools(),
       devOnlyTemplateIds,
     );
@@ -648,21 +667,36 @@ export function TemplateStoreProvider(props: ParentProps) {
       mark: svgDataUrl(own?.mark),
       wordmark: svgDataUrl(own?.wordmark),
       about: own?.about ?? '',
+      aboutPage: own?.aboutPage ?? '',
     };
   });
+  const bundlePage = (id: string): TemplateSchema | undefined => {
+    if (safe.on) return undefined;
+    return (
+      seedBundlePages[id] ?? allTemplates().find((t) => t.id === id && isPage(t) && !t._fromSpace && !!t.source?.bundle)
+    );
+  };
 
-  // The app's first theme stands in for the agent's default until they choose one.
+  // The app's first theme stands in for the agent's default until they choose one — see `resolveAppTheme`.
   themeStore.provideAppTheme(() =>
-    safe.on
-      ? undefined
-      : templateThemeIds(appTemplate().meta).find((id) => themeStore.allThemes().some((t) => t.id === id)),
+    resolveAppTheme({
+      safe: safe.on,
+      settled: settled(),
+      appThemeIds: templateThemeIds(appTemplate().meta),
+      known: (id) => themeStore.allThemes().some((t) => t.id === id),
+      device: rememberedApp,
+    }),
   );
 
   // Kept for the next boot's sign-in screen, once the app in use is known rather than guessed.
   createEffect(() => {
     if (!settled() || safe.on) return;
-    const offered = new Set(templateThemeIds(appTemplate().meta));
-    writeDeviceApp(deviceAppOf(face(), offered.size ? themeStore.allThemes().filter((t) => offered.has(t.id)) : []));
+    // In the app's order, its default first: that is what the next sign-in screen wears.
+    const themes = templateThemeIds(appTemplate().meta).flatMap((id) => {
+      const theme = themeStore.allThemes().find((t) => t.id === id);
+      return theme ? [theme] : [];
+    });
+    writeDeviceApp(deviceAppOf(face(), themes));
   });
 
   // The window's name and icon, and the name code that is not a template reads.
@@ -689,7 +723,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     const own = face().bootScreen;
     baseBootScreen ??= slotRegistry.get('core:bootScreen')?.node;
     let node = baseBootScreen;
-    if (own && placesNode(own, 'CredentialField')) {
+    if (own && placesCredentialField(own)) {
       const accepted = acceptTemplate(bootScreenTemplate({ bootScreen: own, name: brand().name }), {
         origin: `the app “${brand().name}”`,
         grants: CHROME_TIER,
@@ -964,6 +998,9 @@ export function TemplateStoreProvider(props: ParentProps) {
     return !!dataset && templateResolvedFor() !== dataset.id;
   };
 
+  // A space arrived in with nothing put up for it yet — see `spaceTemplateChoosing.ts`.
+  const choosing = createSpaceTemplateChoosing({ currentId: () => datasetStore.currentDataset()?.id ?? null });
+
   // A space joined a moment ago may not have its own record yet — see `spaceRecordWait.ts`.
   const spaceRecord = createSpaceRecordWait({
     currentId: () => datasetStore.currentDataset()?.id ?? null,
@@ -1002,6 +1039,9 @@ export function TemplateStoreProvider(props: ParentProps) {
           allTemplates().find((t) => t.id === followed && t._fromSpace) ||
           allTemplates().find((t) => t.id === followed);
         if (template) replaceTemplate(template);
+        // Named and not loaded yet — the app's own template, early on a cold start. The follow below
+        // puts it up when it arrives; until then the one on screen is not this space's.
+        else choosing.start(perspective.id);
       }
       /*
         Settled only once the space's own record is here. The cache says the templates were read,
@@ -1021,12 +1061,15 @@ export function TemplateStoreProvider(props: ParentProps) {
       const policy = untrack(appSpaceTemplateId);
       const early = policy ? untrack(allTemplates).find((t) => t.id === policy) : undefined;
       if (early) replaceTemplate(early);
+      else choosing.start(perspective.id);
       // Deep link or first boot — async path. Settled on every way out, a failure included: the
       // template on screen is then the answer, and anything waiting on one should stop waiting. Only
       // while still in that space: a slow answer for one already left must not overwrite the
       // answer for the space now open, which would leave it pending for good.
       void applySpaceTemplate(perspective, undefined, { shownEarly: !!early }).finally(() => {
         if (lastSpacePerspectiveUuid !== perspective.id) return;
+        // Choosing is over, whatever it decided — including "leave what is there".
+        choosing.done(perspective.id);
         // A space joined a moment ago may not have its own record yet, so nothing above could say
         // which template it shows. Not settled: see `spaceRecordWait.ts`.
         if (!resolveSpaceFromPerspective(perspective)) spaceRecord.wait(perspective.id);
@@ -1273,6 +1316,8 @@ export function TemplateStoreProvider(props: ParentProps) {
    *  Preferred for AI updates where large structural changes (new routes, etc.) need
    *  reliable reactivity. Caller is responsible for pre-validating the schema. */
   function replaceTemplate(newTemplate: TemplateSchema) {
+    // A template put up is the answer to "which, for this space" — see `choosingSpaceTemplate`.
+    choosing.done();
     commitTemplate(newTemplate);
   }
 
@@ -2506,6 +2551,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     appTemplateOptions,
     setAppTemplate,
     brand,
+    bundlePage,
     openDraft,
     updateDraft,
     closeDraft,
@@ -2515,6 +2561,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     clearSpaceTemplates,
     spaceTemplatePending,
     awaitingSpaceRecord: spaceRecord.waiting,
+    choosingSpaceTemplate: choosing.choosing,
     safeMode: () => safe,
     leaveSafeMode,
     leaveSafeModeInto,

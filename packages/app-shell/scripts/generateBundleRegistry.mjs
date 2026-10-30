@@ -64,5 +64,12 @@ export const seedBundles: Bundle[] = ${JSON.stringify(bundles)} as unknown as Bu
 `;
 
 const prettierConfig = await resolveConfig(outPath);
-await writeFile(outPath, await format(output, { ...prettierConfig, filepath: outPath }), 'utf8');
+const formatted = await format(output, { ...prettierConfig, filepath: outPath });
+/*
+  Only when it changed. A dev server regenerates this as it starts, and a write is a change to Vite
+  whatever it holds: the stores importing it were hot-swapped while the app was still booting, and the
+  new TemplateStore looked for a ThemeStore context the old provider never made.
+*/
+const current = await readFile(outPath, 'utf8').catch(() => '');
+if (current !== formatted) await writeFile(outPath, formatted, 'utf8');
 console.log(`seedBundles.generated.ts — ${bundles.length} bundle(s)${bundles.length ? `: ${ids.join(', ')}` : ''}`);

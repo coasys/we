@@ -128,6 +128,11 @@ export interface DesignSystemProps {
    */
   tone?: ToneName;
   bg?: ColorValue;
+  /**
+   * A picture or a gradient over the fill. It replaces the image a theme lays on the fill's surface
+   * role (`surfaceImages`), so `'none'` is the way to have a surface's colour without its image —
+   * a page drawing light of its own over part of itself, and plain page below.
+   */
   bgImage?: string;
   bgFit?: 'cover' | 'contain';
   bgPosition?: string;
@@ -218,6 +223,11 @@ export interface DesignSystemProps {
   minWidth?: string;
   minHeight?: string;
   maxWidth?: string;
+  /**
+   * Width to height, as CSS writes it — `'16 / 9'`, `'1'`. The box keeps that shape at whatever width
+   * it is given, before anything inside it has loaded: a film's frame, a square tile.
+   */
+  aspectRatio?: string;
   maxHeight?: string;
   display?: Display;
   direction?: FlexDirection;

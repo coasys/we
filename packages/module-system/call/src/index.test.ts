@@ -10,7 +10,7 @@
  * silent. Structural rather than behavioural, because the failure is structural — every piece
  * rendered exactly as written, in the wrong dependency.
  */
-import { moduleCapabilities } from '@we/module-shared';
+import { moduleCapabilities, type ModulePart } from '@we/module-shared';
 import type { SchemaNode } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
@@ -67,6 +67,16 @@ describe('audio', () => {
 
     expect(videos).not.toHaveLength(0);
     for (const video of videos) expect((video.props as Record<string, unknown>).muted).toBe(true);
+  });
+
+  it('rounds a picture only by the tile it sits in', () => {
+    // A video takes the theme's surface radius by default; inside a tile that clips, that cut the
+    // picture's corners deeper than the tile's own wherever a theme is rounder than the tile.
+    const tile = walk(part('tile')).find((node) => (node.props as Record<string, unknown>)?.overflow === 'hidden');
+    expect(tile).toBeDefined();
+    const videos = walk(tile!).filter((node) => node.type === 'we-video');
+    expect(videos).not.toHaveLength(0);
+    for (const video of videos) expect((video.props as Record<string, unknown>).r).toBe('0');
   });
 });
 
@@ -625,5 +635,35 @@ describe('props the design system reads', () => {
       }
     }
     expect(raw).toEqual([]);
+  });
+});
+
+/**
+ * Naming a call: the pencil and its dialog, published so every interface that draws a call's name
+ * renames it the same way. The workshop's title pill wrote its own, and a Coasys call page needed one.
+ */
+describe('naming a call', () => {
+  const json = () => JSON.stringify(part('renameCallButton'));
+
+  it('is about the call on screen, and says so for a placer to substitute', () => {
+    const subject = 'routeStore.params.call ? routeStore.params.call : modules.call.callRecordId';
+    expect((callModule.contributes?.parts?.renameCallButton as ModulePart).subject).toBe(subject);
+    // Every place the call is named is the whole subject token, so a placer's subject replaces them all.
+    expect(json().split(`{"$":"${subject}"}`).length - 1).toBe(3);
+  });
+
+  it("writes the call's title and description to its record", () => {
+    expect(json()).toContain('"$invoke":"record.update"');
+    expect(json()).toContain('"title":{"$":"local.titleDraft"}');
+    expect(json()).toContain('"description":{"$":"local.descriptionDraft"}');
+  });
+
+  it('seeds the drafts from the record when opened, not at mount', () => {
+    // A local's `initial` is read once, before the record's query has answered.
+    expect(json()).toContain('{"$setLocal":"titleDraft","value":{"$":"first(local.namedCall).title ?? \'\'"}}');
+  });
+
+  it('names itself for a screen reader', () => {
+    expect(json()).toContain('"label":"Name this call"');
   });
 });

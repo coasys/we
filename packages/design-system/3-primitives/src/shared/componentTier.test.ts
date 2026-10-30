@@ -49,6 +49,67 @@ describe('a primitive’s own defaults', () => {
   });
 });
 
+describe('a border', () => {
+  /*
+    The sides are declared after `border-color` and `border-width`. While each restated the
+    shorthand's text, a theme's border colour and width lost to them, and Glow's outline buttons
+    drew 1px in the plain border colour rather than the 1.5px muted outline the theme sets.
+  */
+  it('draws every side through the width and colour a theme can reach', async () => {
+    const el = await mount('we-button', { variant: 'outline' });
+    expect(el.style.getPropertyValue('--we-button-border-top')).toBe(
+      'var(--we-button-border-width) solid var(--we-button-border-color)',
+    );
+    expect(el.style.getPropertyValue('--we-button-border-color')).toBe(
+      'var(--we-theme-button--outline-border, var(--we-theme-button-border, var(--we-role-border)))',
+    );
+    expect(el.style.getPropertyValue('--we-button-border-width')).toBe(
+      'var(--we-theme-button--outline-border-width, var(--we-theme-button-border-width, var(--we-border-width, 1px)))',
+    );
+  });
+
+  it('keeps a themed width under the pointer', async () => {
+    const el = await mount('we-button', { variant: 'outline' });
+    expect(el.style.getPropertyValue('--we-button-hover-border-width')).toBe(
+      'var(--we-theme-button--outline-border-width, var(--we-theme-button-border-width, var(--we-border-width, 1px)))',
+    );
+  });
+});
+
+describe('a state that recolours a border', () => {
+  it('reaches every side, keeping a side written on its own at its own width', async () => {
+    const el = await mount('we-button', {
+      variant: 'solid',
+      border: '1px solid border',
+      borderTop: '4px solid accent',
+      hoverProps: { borderColor: 'accent' },
+    });
+    expect(el.style.getPropertyValue('--we-button-hover-border-right')).toBe(
+      'var(--we-button-border-width) solid var(--we-button-hover-border-color)',
+    );
+    expect(el.style.getPropertyValue('--we-button-hover-border-top')).toBe(
+      '4px solid var(--we-button-hover-border-color)',
+    );
+  });
+});
+
+describe('a state’s colours', () => {
+  it('read the theme’s colour for that state ahead of the component’s own', async () => {
+    const el = await mount('we-button', { variant: 'outline' });
+    expect(el.style.getPropertyValue('--we-button-hover-bg')).toBe(
+      'var(--we-theme-button--outline-hover-fill, var(--we-theme-button-hover-fill, var(--we-role-surface-hover)))',
+    );
+    expect(el.style.getPropertyValue('--we-button-active-border-color')).toBe(
+      'var(--we-theme-button--outline-active-border, var(--we-theme-button-active-border, var(--we-role-border-hover)))',
+    );
+  });
+
+  it('leave a state the author wrote alone', async () => {
+    const el = await mount('we-button', { variant: 'outline', hoverProps: { bg: 'surface' } });
+    expect(el.style.getPropertyValue('--we-button-hover-bg')).toBe('var(--we-role-surface)');
+  });
+});
+
 describe('the static sheet', () => {
   it('falls back to the component’s value and then its role', () => {
     const css = getStaticDSStyles('badge');

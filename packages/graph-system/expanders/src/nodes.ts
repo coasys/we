@@ -76,7 +76,11 @@ function trim(value: unknown): string | undefined {
  * than in any shape's properties, so it never reached a node, so "order these oldest first" had nothing
  * to order by and every layout asked for it fell silently back to sorting by address.
  */
-const RECORD_FIELDS = new Set(['createdAt']);
+/**
+ * Fields every record has, carried whatever its shape declares: when it was made, and who made it — so
+ * a style rule can dim everything one person did not make.
+ */
+const RECORD_FIELDS = new Set(['createdAt', 'author']);
 
 /** Only scalars travel into `data` — anything else belongs behind a node template. */
 function scalars(row: Record<string, unknown>, shape?: EntityShape): Record<string, GraphValue> {
@@ -106,7 +110,9 @@ export function rowToNode(
     kind: 'entity',
     type: entity,
     label: (labelKey ? trim(row[labelKey]) : undefined) ?? trim(row.name) ?? entity,
-    data: scalars(row, shape),
+    // The record's own id, beside its fields: a style rule matches on data, and a record's node id is
+    // an address with the dataset in it, which an interface cannot build.
+    data: { ...scalars(row, shape), recordId: id },
     source,
   };
 }

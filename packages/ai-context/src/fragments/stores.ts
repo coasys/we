@@ -13,6 +13,7 @@ export const storeEntries: StoreEntry[] = [
     state: {
       me: { type: 'object', properties: ['did', 'perspective', 'directMessageLanguage'] },
       bootState: { type: 'string' },
+      signInStep: { type: 'string' },
       bootError: { type: 'string' },
       passwordError: { type: 'boolean' },
       loginError: { type: 'string' },
@@ -419,6 +420,7 @@ export const storeEntries: StoreEntry[] = [
       taskStatesLoaded: { type: 'boolean' },
       root: { type: 'string' },
       landmarks: { type: 'object' },
+      starterChoices: { type: 'array' },
       taskWorkflowEnabled: { type: 'boolean' },
       archivedWorkflows: { type: 'array' },
       taskWorkflowRule: { type: 'string' },
@@ -736,6 +738,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       client: 'the backend client handle | undefined',
       me: 'Agent | undefined — the authenticated identity; prefer the $me token in schemas',
       bootState: "string — 'initialising' | 'login' | 'createAgent' | 'finishing' | 'ready' | 'error'",
+      signInStep:
+        "string — which step of signing in the screen is on: 'switching' | 'settingUp' | 'starting' | 'preparing' | 'unlock' | 'create' | 'failed' | 'ready'. One answer, in that order of precedence — a sign-in screen draws the step this names rather than working it out from bootState and the account flags",
       bootError: "string — why the boot failed, when bootState is 'error'. Empty otherwise",
       passwordError:
         'boolean — true after an unlock the backend refused. Not set when it merely timed out; see loginError',
@@ -1023,6 +1027,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       allThemes:
         'array of ThemeData objects — union of builtInThemes + visible installedThemes + spaceThemes (hidden themes filtered out)',
       currentThemeId: 'string — id of the currently active theme',
+      themeFork:
+        '{ source, name, icon } | null — the theme-naming dialog while it is open (see startThemeFork): the theme being forked, empty for a new one',
       currentTheme: 'ThemeData — the currently active theme object (id, name, icon, origin)',
       defaultThemeId:
         "string — id of the user's preferred default theme (used for bootscreen, shell, and future space-override). Persisted to AgentSettings.defaultThemeId",
@@ -1082,6 +1088,9 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '(): ends the editing session and discards the draft, restoring what was applied before. Note the theme *panel* autosaves on unmount, so closing the panel keeps the draft — this is the explicit throw-away, and the only path that does',
       createAndStartEditing:
         "(name: string, icon: string, sourceId?: string, destination?: 'personal' | 'space'): creates a new theme — copied from sourceId when given — and opens an editing session on it. Resolves true on success",
+      startThemeFork:
+        "(sourceId?: string): opens the host's dialog for naming a fork of that theme, or a new theme without one. Writes nothing — the theme is made by a press in that dialog — so any list of themes may offer it",
+      cancelThemeFork: '(): closes that dialog without making anything',
       saveEditingTheme:
         '(): writes the draft over the theme being edited and keeps editing. Resolves to the saved theme, or null when nothing was being edited',
       saveEditingThemeAs:
@@ -1210,6 +1219,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       root: "string — the id of this space's collection: the one CollectionBlock (kind 'space') everything top-level hangs off — calls, loose messages, posts, channels, extracted items, the canvas. Scope a top-level read through it: { anchor: 'CollectionBlock', via: 'children', anchorId: spaceStore.root }. Empty outside a space, and in a space made before spaces had one",
       landmarks:
         "Record<name, id> — the records this space names as its landmarks, e.g. spaceStore.landmarks.canvas is the space's canvas. Written by the space's starter at creation. A landmark can be absent — a space can switch template and a template must never assume what another set up — so guard every read",
+      starterChoices:
+        "{ id, name, description, icon, includes, app? }[] — what a space made now can start with, the default first: the app's kit when the app in use came built in and brings one (app is its name), otherwise the deployment's own starter, then id '$none' (an empty space: no task states, reactions, canvas or board, drawn with the agent's own default template and theme). includes is what it writes, counted from its records (\"3 task states · a canvas · a board\"), empty for an empty space. Pass an id to createSpace; show the default as chosen while nothing is — { $: \"local.starter ? find(spaceStore.starterChoices, { id: local.starter }) : first(spaceStore.starterChoices)\" }. Installed apps' starters are never listed",
       autoInterpret:
         'boolean — whether a NEW collection here (a call, a channel) starts out extracted into records as it grows. A community default, copied onto each collection when it is made — a conversation already under way keeps its own answer, read with autoExtractFor. Readable by every member; writing it is space-settings',
       spaceModuleSettings:
@@ -1338,7 +1349,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       removeSpaceFromGlobal:
         "(spaceUuid: string): withdraws a space's listing from the global discovery space, leaving the space itself alone. Only its author may; removeSpace does this for you",
       createSpace:
-        "(name, description, access: 'personal' | 'shared', discovery: 'hidden' | 'listed', avatarFile?, coverImageFile?, location?, sharing?, server?): creates a new space with full setup. sharing is a value from sharingOptions and only matters for a shared space; empty uses the backend's default. server is the http(s) address a server option syncs through — one of its `servers` values or a typed one — and empty uses the option's first; one that is not an http(s) address rejects before anything is created. Resolves once the local space exists; sharing a shared one follows in the background, reported on `spaceList[].sharing`, and the space stays local if it fails",
+        "(name, description, access: 'personal' | 'shared', discovery: 'hidden' | 'listed', avatarFile?, coverImageFile?, location?, sharing?, server?, starter?): creates a new space with full setup. starter is an id from starterChoices; absent gives the first, and one not offered rejects before anything is created. sharing is a value from sharingOptions and only matters for a shared space; empty uses the backend's default. server is the http(s) address a server option syncs through — one of its `servers` values or a typed one — and empty uses the option's first; one that is not an http(s) address rejects before anything is created. Resolves once the local space exists; sharing a shared one follows in the background, reported on `spaceList[].sharing`, and the space stays local if it fails",
       shareSpace:
         '(uuid: string): shares a space that is still local — what retries a share that failed, with the sharing option and listing it was asked for. Watch `spaceList[].sharing`',
       joinSpace:
@@ -1466,7 +1477,9 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
   recordStore: {
     state: {
       creatableEntities:
-        "{ label, value, icon, group, description, via }[] — the content a person can create here, each with the one-line `description` from its manifest (or the shape's), ready for a we-select: this space's own models first, then WE's built-in blocks. A built-in entity is here when it is a block there is a way to make — `authoring` fields (via 'form') or `composed` (via 'composer': a CollectionBlock, which is a note or a post, written in BlockComposer). Not blocks — spaces, templates, vocabulary entries, drawn Relationships — are never here. Filter by `via` for what a surface can host: a record form's type selector lists `recordStore.creatableEntities.filter(k, k.via == 'form')`; a canvas's 'add' chooser lists them all and opens the composer for 'composer'",
+        "{ label, value, icon, hue, group, description, via }[] — the content a person can create here, each with the one-line `description` from its manifest (or the shape's), ready for a we-select: this space's own models first, then WE's built-in blocks. A built-in entity is here when it is a block there is a way to make — `authoring` fields (via 'form') or `composed` (via 'composer': a CollectionBlock, which is a note or a post, written in BlockComposer). Not blocks — spaces, templates, vocabulary entries, drawn Relationships — are never here. Filter by `via` for what a surface can host: a record form's type selector lists `recordStore.creatableEntities.filter(k, k.via == 'form')`; a canvas's 'add' chooser lists them all and opens the composer for 'composer'",
+      kinds:
+        "{ label, value, icon, hue, group }[] — every kind of record that can be shown here: what can be made, then every core block and the kinds read without being made (a drawn connection, the space's vocabulary). hue is the palette hue the kind is drawn in where the community has chosen no colour — WE's own kinds have one chosen for what they are, and any other takes one from its name, the same everywhere. For colouring cards by kind: the kit's kindColour reads the community's choice first",
       displays:
         "Record<entity, RecordDisplay> — how to show an instance of each creatable model, every core block (a divider or a quote card included) and Relationship, keyed by entity name and derived from its declaration: { entity, label, icon, title, summary, media, mediaRelation, fields[] }, where title/summary/media name the properties playing those roles ('' when none does) and mediaRelation names a relation to an ImageBlock that pictures the record when no property does — look the image up by the ids it holds ({ entity: 'ImageBlock', where: { id: row[display.mediaRelation] } }) rather than drawing them and each field is { name, label, kind, role, options, vocabulary }. kind is one of text, longText, number, boolean, date, datetime, color, url, image, file, json, relation (with target, the model it points at); role is title, summary, media or detail. `options` is the values a field is allowed to hold where the model closes the set (a task's status), empty otherwise — count() it to tell a state worth drawing as a we-badge from free text, and map it into a we-select rather than offering a text box that accepts a word the model does not know. `vocabulary` names the community list a value is a slug of ('taskState' for a task's status, looked up in spaceStore.taskStates for its name and colour), empty otherwise. Index it by a row's type — { $: 'recordStore.displays[row.type]' } — and render the fields with $each; see \"A record of any type\" in the patterns",
       recordDraft:
@@ -1768,6 +1781,10 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         'boolean — a panel is being dragged or resized right now. Suspend transitions while it is true so the edge tracks the cursor',
       panelMaximised:
         "boolean — some panel covers the whole window. The app's own chrome — sidebar, module rail — hides while it is true; a template's fixed chrome should too",
+      panelInstances:
+        '{ id, panel, inputs, title? }[] — the instances open in the interface on screen: which declared panel each is of, and what it was opened with. To list them, or to tell a control whether its record already has one',
+      panelFrames:
+        "Record<dockId, 'window' | 'flush' | 'none'> — how each panel is framed where it is not a window: its own declared frame, else — pushing the content aside at an edge — that edge's frame as the app template declares it (meta.edges); absent, a window's frame",
       dockPlacement:
         'Record<dockId, { snap, displace, canDisplace, … }> — where each panel is parked, for its frame to read: which of the eight snaps it is at, whether it displaces content, and whether it may. The state a position menu ticks; dockGeometry is the resulting box',
       movingDock: 'string | null — the id of the panel being dragged, or null. What mounts the snap-target overlay',
@@ -1872,6 +1889,10 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         "(panelId: string): dismisses a panel the interface declared in meta.panels, by that panel's id. What its titlebar's close button calls",
       openTemplatePanel:
         '(panelId: string): puts a closed one back. The only way back to a panel that has been closed — it has no titlebar left to ask from — so a template offering a close should offer this too',
+      openPanel:
+        '(panelId: string, inputs?: object, options?: { key?, title? }): opens a panel the interface supplies in meta.panels (one with a `node`) once more, with these inputs — an inspector per record, a view per call. Its node reads them as panel.inputs, and which instance it is as panel.id. It opens where the declared panel would, as a tab beside it where the declaration names an `order`. The same inputs open the same instance, brought to the front, so opening the record already open makes no second; `key` names the instance outright where the inputs should not decide, `title` is what its tab says. Kept per agent and per template across reloads',
+      closePanel:
+        '(instanceId: string): closes an instance openPanel opened — what its close button calls. Where it was dragged is forgotten with it',
       toggleLane:
         "(lane: string): folds a home lane (a `$panels` outlet) away, or brings it back — what a sidebar's collapse button calls. Its sections stay mounted and hidden, so a feed keeps its place. Kept per agent and per template, and undone by resetTemplateLayout",
       setLaneCollapsed:

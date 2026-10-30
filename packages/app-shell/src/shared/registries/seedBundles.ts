@@ -1,8 +1,8 @@
 /**
  * The bundles this deployment builds in, as the pieces the built-in registries take.
  *
- * A seed bundle is built in, the way WE's own templates are: its app, space templates, sections and
- * theme join the registries — read-only, forkable, and updated by every deploy, with nothing written
+ * A seed bundle is built in, the way WE's own templates are: its app, space templates, sections,
+ * pages and theme join the registries — read-only, forkable, and updated by every deploy, with nothing written
  * for any agent. The deployment chose to ship it, so nobody is asked; a bundle someone installs from a
  * file goes through the install screen instead, and lands in their library.
  *
@@ -20,6 +20,7 @@ const byId = <T extends { id: string }>(items: T[]): Record<string, T> =>
 export const seedBundleApps = byId(seedBundlePieces.flatMap((pieces) => (pieces.app ? [pieces.app] : [])));
 export const seedBundleShells = byId(seedBundlePieces.flatMap((pieces) => pieces.shells));
 export const seedBundleSections = byId(seedBundlePieces.flatMap((pieces) => pieces.sections));
+export const seedBundlePages = byId(seedBundlePieces.flatMap((pieces) => pieces.pages));
 export const seedBundleThemes = byId(seedBundlePieces.flatMap((pieces) => pieces.themes));
 
 /**

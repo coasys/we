@@ -168,19 +168,7 @@ function foldingCount(opts: FoldingSectionLabelOptions): SchemaNode {
                 size: 'xs',
                 variant: 'solid',
                 ...(opts.tone && opts.tone !== 'neutral' && { tone: opts.tone }),
-                /*
-                  Square at its narrowest, and wider only when the number needs it.
-
-                  A badge is sized by its content, so `3` came out as a squat lozenge and `12` as a
-                  wider one — every section's chip a different shape, and none of them the round-ish
-                  counter a count wants to be. The floor is the badge's own height, written as the
-                  same expression `SIZE_DEFAULTS` gives it so a theme's `control-height-offset` moves
-                  both together and it cannot go oblong the moment a theme changes density.
-
-                  Only a floor: two digits are wider than 24px with the padding an `xs` badge carries,
-                  so they grow, which is the half a fixed width would have lost.
-                */
-                minWidth: 'calc(var(--we-component-height-xs) + var(--we-theme-control-height-offset, 0px))',
+                // Square at its narrowest, wider only for more digits: `we-badge` holds that for every count.
               },
               children: [{ $: opts.count }],
             } as SchemaNode,

@@ -22,6 +22,7 @@
  * | ----------------- | ------- | ------------------------- | ----------------------------- |
  * | `expanded`        | boolean | `railShell` (hover)       | `railItem`, `railGroup`       |
  * | `collapsedGroups` | array   | `railGroup` (its header)  | `railGroup` (its items)       |
+ * | `railInset`       | string  | `railShell` (its width)   | `railItem`, `railGroup`       |
  *
  * So `railItem` and `railGroup` are only valid inside a `railShell`. That is the same contract
  * `cardShell` has with `displayMode`, and it fails the same way if broken: `$local` warns to the
@@ -51,10 +52,15 @@ const DURATION_MS = 250;
 /** The fade is shorter than the movement so the label is legible before the rail stops. */
 const FADE_MS = 150;
 
-const revealInline = [
+/**
+ * How a rail's labels arrive as it opens: sideways from nothing, in step with the rail. Exported so
+ * anything else a rail shows only while open (an app's name beside its mark) arrives with them.
+ */
+export const RAIL_REVEAL = [
   { type: 'reveal' as const, axis: 'inline' as const, duration: DURATION_MS },
   { type: 'fade' as const, duration: FADE_MS },
 ];
+const revealInline = RAIL_REVEAL;
 
 /**
  * A group's own open/close (its caret, not the rail's hover-expand) has no width transition to
@@ -70,6 +76,35 @@ const revealBlock = [
   { type: 'reveal' as const, duration: GROUP_DURATION_MS, easing: 'ease-in-out' },
   { type: 'fade' as const, duration: GROUP_FADE_MS, easing: 'ease-in-out' },
 ];
+
+/**
+ * The square every row's face sits in: an avatar fills it, an icon is centred in it.
+ *
+ * The `sm` avatar's size. One slot for both is what makes every label on the rail start at the same
+ * x, whether its row leads with a face or a glyph, and what the collapsed rail centres.
+ */
+const FACE = '2rem';
+
+/** Between the rail's edge and its rows — what keeps a lit row's background off the border. */
+const EDGE = '200';
+
+/**
+ * How far in from its row's edge a face sits: whatever puts its centre on the collapsed rail's
+ * centre.
+ *
+ * Fixed padding could only centre the face at one rail width, and only by luck. The kit's 12px row
+ * and list padding happened to suit its own 80px default (12 + 12 + 32 + 12 + 12 = 80) and nothing
+ * else: at Coasys's 72px a 56px row overflowed the 47px it had, all of it to the right, and every
+ * face sat four and a half pixels off centre. Derived from the width instead, so any width centres.
+ *
+ * The same inset holds while the rail opens, so a face never moves; only its label arrives. Centring
+ * by alignment instead would have slid each face sideways as the rail widened and then snapped it
+ * back to the start when the label mounted.
+ */
+function railInset(collapsedWidth: string, border: string): string {
+  const borderPx = border === '0' ? 0 : Number(/^(\d+(?:\.\d+)?)px\b/.exec(border.trim())?.[1] ?? 0);
+  return `calc((${collapsedWidth} - ${borderPx}px - ${FACE}) / 2 - var(--we-space-${EDGE}))`;
+}
 
 interface RailShellBase {
   /** The rail's contents — `railItem`s and `railGroup`s, usually. */
@@ -165,11 +200,12 @@ export function railShell(opts: RailShellOptions): SchemaNode {
   // fragment from untyped JSON.
   const persistKey = hoverExpand ? undefined : opts.persistKey;
   const border = opts.border ?? '1px solid neutral-200';
+  const collapsedWidth = opts.collapsedWidth ?? '80px';
 
   return {
     type: 'Column',
     props: {
-      width: expr`local.expanded ? ${opts.expandedWidth ?? '240px'} : ${opts.collapsedWidth ?? '80px'}`,
+      width: expr`local.expanded ? ${opts.expandedWidth ?? '240px'} : ${collapsedWidth}`,
       // The token, not a number of ms — this is the one duration here that can be a token, and a
       // theme's animationSpeed preset overrides it. See DURATION_MS.
       transition: 'width 300 ease-in-out',
@@ -196,6 +232,8 @@ export function railShell(opts: RailShellOptions): SchemaNode {
         ...(persistKey && { persist: persistKey }),
       },
       collapsedGroups: { type: 'array', initial: opts.initialCollapsedGroups ?? [] },
+      // A constant rather than state, held here because this is the one node every row is under.
+      railInset: { type: 'string', initial: railInset(collapsedWidth, border) },
       // Last, so a caller's field cannot shadow the two the rail runs on.
       ...(opts.localState ?? {}),
     },
@@ -207,7 +245,8 @@ export function railShell(opts: RailShellOptions): SchemaNode {
           flex: '1',
           width: '100%',
           gap: '200',
-          p: '300',
+          px: EDGE,
+          py: '300',
           ay: 'center',
           overflowY: 'auto',
           overflowX: 'hidden',
@@ -215,7 +254,7 @@ export function railShell(opts: RailShellOptions): SchemaNode {
         children: opts.children,
       },
       ...(opts.footer
-        ? [{ type: 'Column', props: { width: '100%', gap: '200', p: '300' }, children: [opts.footer] }]
+        ? [{ type: 'Column', props: { width: '100%', gap: '200', px: EDGE, py: '300' }, children: [opts.footer] }]
         : []),
     ],
   };
@@ -346,6 +385,10 @@ export interface RailItemOptions {
   live?: { when: SchemaProp; icon: string; tone?: AvatarTone };
 }
 
+/** Whether a label can also be an accessible name: a string, or an expression that reads one. */
+const isName = (label: Content): label is string | { $: string } =>
+  typeof label === 'string' || (typeof label === 'object' && label !== null && '$' in label && !('type' in label));
+
 export function railItem(opts: RailItemOptions): SchemaNode {
   const active = opts.active ?? false;
 
@@ -363,10 +406,23 @@ export function railItem(opts: RailItemOptions): SchemaNode {
   const unshrinking = (node: SchemaNode): SchemaNode => ({ ...node, props: { ...node.props, flexShrink: '0' } });
 
   const avatar = opts.avatar;
+  /*
+    A glyph is centred in the face's square at 24px rather than filling it.
+
+    It took the `lg` button's own icon size, which is the whole 32px — a glyph that large beside 16px
+    type made every icon row loose. And Phosphor draws inside a margin of its box, so the visible
+    glyph started a little in from the padding and stopped a little short of the gap: more room to
+    its left than the text had to its right, and a gap that looked wider than the padding around it.
+    In the square, both sides of the glyph have the same room, and its label lines up with a face's.
+  */
   const face: SchemaNode = unshrinking(
     avatar
       ? badgedAvatar({ avatar: { src: avatar.src, name: avatar.name, hash: avatar.hash }, size: 'sm' })
-      : { type: 'we-icon', props: { name: opts.icon ?? '' } },
+      : {
+          type: 'Row',
+          props: { width: FACE, height: FACE, ax: 'center', ay: 'center' },
+          children: [{ type: 'we-icon', props: { name: opts.icon ?? '', size: 'sm' } }],
+        },
   );
 
   /*
@@ -408,8 +464,16 @@ export function railItem(opts: RailItemOptions): SchemaNode {
       height: 'auto',
       ax: 'start',
       ay: 'center',
-      gap: '300',
-      p: '300',
+      gap: '200',
+      py: '300',
+      // From the rail's width, so the face is centred when the rail is closed — see `railInset`.
+      px: { $: 'local.railInset' },
+      /*
+        The row's name, whether or not its label is showing. Closed, the label is unmounted and the
+        row was a bare glyph that a screen reader announced as "button". Text only: a label written
+        as nodes has no string to give.
+      */
+      ...(isName(opts.label) && { label: opts.label }),
       ...(opts.disabled !== undefined && { disabled: opts.disabled }),
       ...(opts.onClick !== undefined && { onClick: opts.onClick }),
       /*
@@ -560,6 +624,22 @@ export interface RailGroupOptions {
   reorderable?: boolean;
   /** Receives the reordered ids. Pass `$arg.detail`, which is where `we-sortable` puts them. */
   onReorder?: SchemaProp;
+  /**
+   * Rows below the group's own, folded away with them but never part of a `reorderable` set — an
+   * "Add a space" row at the foot of the spaces. Placed in `children` it could be dragged in among
+   * the spaces and would be reported as one; placed after the group it would stay put when the
+   * group is folded.
+   */
+  after?: SchemaNode[];
+  /**
+   * Whether the heading folds the group away. Defaults to true.
+   *
+   * False for a rail's only group: folding the one group there is empties the rail, and with the
+   * rail closed nothing on it then says anything is there at all. The heading is a plain label, and
+   * the group cannot be left folded. Folding earns its place beside other groups — putting away the
+   * ones not in use — and a long list is the rail's scrolling to handle, not a fold's.
+   */
+  foldable?: boolean;
 }
 
 /**
@@ -591,8 +671,29 @@ function actionNode(action: NonNullable<RailGroupOptions['action']>): SchemaNode
 }
 
 export function railGroup(opts: RailGroupOptions): SchemaNode {
+  const foldable = opts.foldable ?? true;
   const isCollapsed = expr`${opts.id} in local.collapsedGroups`;
   const isExpanded = { $: 'local.expanded' };
+
+  const words: SchemaNode[] = [
+    ...(foldable
+      ? [{ type: 'we-icon', props: { name: expr`${isCollapsed} ? 'caret-right' : 'caret-down'`, size: 'xs' } }]
+      : []),
+    { type: 'we-text', props: { fontSize: '200', fontWeight: '600', truncate: true }, children: [opts.label] },
+    ...(opts.badge !== undefined
+      ? [{ type: 'we-badge', props: { size: 'sm', bg: 'surface-active', color: 'text-muted' }, children: [opts.badge] }]
+      : []),
+  ];
+  const headingBox = {
+    flex: '1',
+    minWidth: '0',
+    ax: 'start',
+    ay: 'center',
+    gap: '200',
+    py: '200',
+    px: { $: 'local.railInset' },
+    color: 'text-faint',
+  };
 
   const items: SchemaNode = opts.reorderable
     ? {
@@ -606,6 +707,9 @@ export function railGroup(opts: RailGroupOptions): SchemaNode {
         children: opts.children,
       }
     : { type: 'Column', props: { width: '100%', gap: '200' }, children: opts.children };
+  const body: SchemaNode = opts.after?.length
+    ? { type: 'Column', props: { width: '100%', gap: '200' }, children: [items, ...opts.after] }
+    : items;
 
   return {
     type: 'Column',
@@ -631,46 +735,28 @@ export function railGroup(opts: RailGroupOptions): SchemaNode {
           transition: 'opacity 300 ease-in-out',
         },
         children: [
-          {
-            type: 'we-button',
-            props: {
-              variant: 'ghost',
-              size: 'sm',
-              flex: '1',
-              minWidth: '0',
-              ax: 'start',
-              ay: 'center',
-              gap: '200',
-              py: '200',
-              px: '300',
-              height: 'auto',
-              onClick: { $toggleLocalIn: 'collapsedGroups', value: opts.id },
-            },
-            children: [
-              {
-                type: 'we-icon',
+          /*
+            A label that folds its group, not a button among the rows: `bare`, so it has no surface
+            to light up, and it answers the pointer by brightening instead. The colour is the
+            button's and the caret and the text inherit it — set on each of them, as it was, a hover
+            on the button could not reach either. Its caret starts where the faces do. A group that
+            does not fold has the same label, standing still.
+          */
+          foldable
+            ? {
+                type: 'we-button',
                 props: {
-                  name: expr`${isCollapsed} ? 'caret-right' : 'caret-down'`,
-                  size: 'xs',
-                  color: 'text-faint',
+                  ...headingBox,
+                  variant: 'bare',
+                  size: 'sm',
+                  height: 'auto',
+                  hoverProps: { color: 'text-muted' },
+                  expanded: expr`!${isCollapsed}`,
+                  onClick: { $toggleLocalIn: 'collapsedGroups', value: opts.id },
                 },
-              },
-              {
-                type: 'we-text',
-                props: { fontSize: '200', fontWeight: '600', color: 'text-faint', truncate: true },
-                children: [opts.label],
-              },
-              ...(opts.badge !== undefined
-                ? [
-                    {
-                      type: 'we-badge',
-                      props: { size: 'sm', bg: 'surface-active', color: 'text-muted' },
-                      children: [opts.badge],
-                    },
-                  ]
-                : []),
-            ],
-          },
+                children: words,
+              }
+            : { type: 'Row', props: headingBox, children: words },
           /*
             Beside the heading, never inside it: the heading is a button, and a button nested in
             a button is invalid markup that would also collapse the group on the way past.
@@ -696,15 +782,17 @@ export function railGroup(opts: RailGroupOptions): SchemaNode {
         remounting the whole row list synchronously the instant a group reopened, right before the
         reveal could even start — a small but real hitch this avoids by never unmounting at all.
       */
-      {
-        type: '$animate',
-        props: {
-          condition: expr`!${isCollapsed}`,
-          enterTransition: revealBlock,
-          exitTransition: revealBlock,
-        },
-        children: [items],
-      },
+      foldable
+        ? {
+            type: '$animate',
+            props: {
+              condition: expr`!${isCollapsed}`,
+              enterTransition: revealBlock,
+              exitTransition: revealBlock,
+            },
+            children: [body],
+          }
+        : body,
     ],
   };
 }

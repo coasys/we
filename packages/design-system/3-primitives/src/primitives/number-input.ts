@@ -27,17 +27,17 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   ay: 'center',
   r: '400',
   border: '1px solid border',
-  bg: 'surface-sunken',
+  bg: 'field',
   fontSize: '300',
   color: 'text',
-  hoverProps: { bg: 'surface-sunken-hover', border: '1px solid border-hover' },
+  hoverProps: { bg: 'field-hover', border: '1px solid border-hover' },
   // No pressed state, deliberately — a field is clicked INTO, not pushed, so a distinct pressed step
   // is a flash that snaps back on release. States compose, so a press shows whatever hover and focus
   // already say; this once had to repeat hover's values, when a pressed state reset the rest.
   // Focus sets the fill itself, so a focused field stays lifted once the pointer has left it — see
   // the long note on `we-input`'s own `focusProps`.
   focusProps: {
-    bg: 'surface-sunken-hover',
+    bg: 'field-hover',
     border: '1px solid var(--we-ring-color)',
     ring: FOCUS_RING_BEYOND_BORDER,
   },

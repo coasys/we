@@ -63,6 +63,8 @@ export const InvolvementType: CoreEntityDef = {
   },
   entity: {
     flag: { predicate: 'we://flag', value: 'we://involvement_type' },
+    // What a kind of involvement is, as its settings form asks it — the fields an inspector and a map's card show.
+    display: { fields: ['name', 'description', 'semantic', 'reflexive', 'appliesTo', 'retired'] },
     properties: {
       name: { type: 'string', predicate: 'we://name', required: true, default: '' },
       /** What `Involvement.kind` holds. Stable — rename the `name` instead; see `TaskState.slug`. */

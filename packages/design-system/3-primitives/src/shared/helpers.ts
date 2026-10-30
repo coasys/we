@@ -6,6 +6,7 @@ import {
   BASE_TYPOGRAPHY_SPECS as BASE_TYPOGRAPHY,
   BASE_VISUAL_SPECS as BASE_VISUAL,
   bgImageLayer,
+  borderParts,
   composeTransform,
   computeBgImageComposite,
   focusSelector,
@@ -25,14 +26,18 @@ import {
   resolveFontWeight,
   resolveLineHeight,
   TIER_PROP_KEYS,
+  tierBagOf,
   tierQuery,
   tokenVar,
   warnIfUnsurfaced,
+  withBoxSidesFilled,
   zIndexVar,
 } from '@we/design-utils';
 import {
+  COMPONENT_THEME_STATE_KEYS,
+  COMPONENT_THEME_STATES,
   componentChain,
-  surfaceImageFixed,
+  roleTakes,
   type SurfaceImageRole,
   surfaceImageRoleOf,
   surfaceImageVar,
@@ -249,10 +254,15 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
   'progress-bar': { radiusGroup: '--we-theme-control-radius' },
   // A strip of page controls: the space between them is the control group's, like a button's.
   pagination: { gapGroup: '--we-theme-control-gap' },
-  // Inputs
-  input: { radiusGroup: '--we-theme-input-radius', paddingGroup: '--we-theme-input-padding', typeRole: 'control' },
+  /*
+    Inputs. Their words are set as body text, not in the control role a button's label takes: what a
+    field holds is what somebody wrote or chose, and its placeholder stands in for that. In the
+    control role a theme that sets buttons strong (Coasys Glow, at 600) set every field's text and
+    placeholder bold. A field's label is the label role's, on the form field.
+  */
+  input: { radiusGroup: '--we-theme-input-radius', paddingGroup: '--we-theme-input-padding', typeRole: 'body' },
   textarea: {
-    typeRole: 'control',
+    typeRole: 'body',
     radiusGroup: '--we-theme-input-radius',
     radiusCapGroup: '--we-theme-surface-radius',
     // As button and badge — `nativePadding` says who writes the rule, not which family this belongs
@@ -264,21 +274,21 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
     nativePadding: true,
   },
   select: {
-    typeRole: 'control',
+    typeRole: 'body',
     radiusGroup: '--we-theme-input-radius',
     radiusDefault: 'var(--we-radius-300)', // Explicit: wrapper — no r in DEFAULT_PROPS
     paddingGroup: '--we-theme-input-padding',
     paddingDefault: '0', // Explicit: wrapper div — inner parts own their own padding
   },
   'number-input': {
-    typeRole: 'control',
+    typeRole: 'body',
     radiusGroup: '--we-theme-input-radius',
     radiusDefault: 'var(--we-radius-300)', // Explicit: intentionally matches input theme, not DEFAULT_PROPS r:'400'
     paddingGroup: '--we-theme-input-padding',
     paddingDefault: '0 var(--we-space-300)', // Explicit: no px in DEFAULT_PROPS
   },
   'date-picker': {
-    typeRole: 'control',
+    typeRole: 'body',
     radiusGroup: '--we-theme-input-radius',
     radiusDefault: 'var(--we-radius-300)', // Explicit: wrapper — no r in DEFAULT_PROPS
     paddingGroup: '--we-theme-input-padding',
@@ -614,18 +624,29 @@ function syncBorderVars(el: HTMLElement, prefix: string, props: Partial<DesignSy
   setProperty(el, `${prefix}border`, props.border ? parseBorder(props.border) : undefined);
 
   if (props.border) {
-    const parsed = parseBorder(props.border);
-    const parts = parsed.split(' ');
-    if (parts.length >= 3) {
-      const [width, , ...colorParts] = parts;
-      const color = colorParts.join(' ');
-      if (!props.borderColor) setProperty(el, `${prefix}border-color`, color);
-      if (!props.borderWidth) setProperty(el, `${prefix}border-width`, width);
+    const parts = borderParts(props.border);
+    if (parts) {
+      if (!props.borderColor) setProperty(el, `${prefix}border-color`, parts.color);
+      if (!props.borderWidth) setProperty(el, `${prefix}border-width`, parts.width);
     }
-    if (!props.borderTop) setProperty(el, `${prefix}border-top`, parsed);
-    if (!props.borderRight) setProperty(el, `${prefix}border-right`, parsed);
-    if (!props.borderBottom) setProperty(el, `${prefix}border-bottom`, parsed);
-    if (!props.borderLeft) setProperty(el, `${prefix}border-left`, parsed);
+    /*
+      Each side restates the shorthand, so a `border` in a state resets a side the resting element
+      set on its own. It restates it through this element's width and colour variables rather than
+      as the shorthand's text: the sides are declared after `border-color` and `border-width`, so a
+      side carrying its own colour beat both, and a theme's `components.<name>.border` (which lands
+      in the colour variable) never reached a component whose default border is a shorthand —
+      Glow's outline buttons drew 1px in the plain border colour, not its 1.5px muted outline.
+    */
+    const side = parts
+      ? `var(${prefix}border-width) ${parts.style} var(${prefix}border-color)`
+      : parseBorder(props.border);
+    // A side written on its own is that side, beside the shorthand as well as without it. It used to
+    // be skipped here and written only when there was no shorthand, so `border` with `borderTop`
+    // drew no top at all: a layer card lost its 4px coloured edge, and gained 1px on hover.
+    setProperty(el, `${prefix}border-top`, props.borderTop ? parseBorder(props.borderTop) : side);
+    setProperty(el, `${prefix}border-right`, props.borderRight ? parseBorder(props.borderRight) : side);
+    setProperty(el, `${prefix}border-bottom`, props.borderBottom ? parseBorder(props.borderBottom) : side);
+    setProperty(el, `${prefix}border-left`, props.borderLeft ? parseBorder(props.borderLeft) : side);
   } else {
     setProperty(el, `${prefix}border-color`, props.borderColor ? tokenVar('color', props.borderColor, '') : undefined);
     setProperty(el, `${prefix}border-top`, props.borderTop ? parseBorder(props.borderTop) : undefined);
@@ -658,6 +679,7 @@ function updateCustomVars(
   setProperty(el, `${prefix}min-height`, props.minHeight);
   setProperty(el, `${prefix}max-width`, props.maxWidth);
   setProperty(el, `${prefix}max-height`, props.maxHeight);
+  setProperty(el, `${prefix}aspect-ratio`, props.aspectRatio);
   setProperty(el, `${prefix}position`, props.position);
   /*
     Offsets resolve space tokens, exactly as margin, padding and gap do.
@@ -729,7 +751,6 @@ function updateCustomVars(
           ? `var(${surfaceImageVar(surface)}, none)`
           : undefined,
     );
-    setProperty(el, `${prefix}bg-attachment`, surface && surfaceImageFixed(surface) ? 'fixed' : undefined);
     setProperty(el, `${prefix}bg-image-fit`, props.bgImage ? (props.bgFit ?? 'cover') : undefined);
     setProperty(el, `${prefix}bg-image-position`, props.bgImage ? (props.bgPosition ?? 'center') : undefined);
   }
@@ -862,12 +883,8 @@ interface ThemedKey {
 }
 
 /** The parts of a `border` shorthand, as `syncBorderVars` reads them. */
-const borderPart = (props: Partial<DesignSystemProps>, part: 'width' | 'color'): string | undefined => {
-  if (!props.border) return undefined;
-  const parts = parseBorder(props.border).split(' ');
-  if (parts.length < 3) return undefined;
-  return part === 'width' ? parts[0] : parts.slice(2).join(' ');
-};
+const borderPart = (props: Partial<DesignSystemProps>, part: 'width' | 'color'): string | undefined =>
+  props.border ? borderParts(props.border)?.[part] : undefined;
 
 const THEMED_KEYS: ThemedKey[] = [
   {
@@ -916,6 +933,14 @@ const THEMED_KEYS: ThemedKey[] = [
     explicit: (raw) => raw.fontFamily !== undefined,
   },
   {
+    prop: 'fontSize',
+    suffix: 'font-size',
+    key: 'fontSize',
+    roleKey: 'size',
+    value: (p) => (p.fontSize ? tokenVar('font-size', p.fontSize) : undefined),
+    explicit: (raw) => raw.fontSize !== undefined,
+  },
+  {
     prop: 'fontWeight',
     suffix: 'font-weight',
     key: 'fontWeight',
@@ -958,7 +983,9 @@ function roleFor(componentName: string, variant: string | null): TypeRole | unde
 
 /** The type role's variable for one key, ahead of `fallback`, or `fallback` alone without a role. */
 const roleChain = (role: TypeRole | undefined, key: ThemedKey, fallback: string | undefined) =>
-  role && key.roleKey ? `var(${typeRoleVar(role, key.roleKey)}${fallback ? `, ${fallback}` : ''})` : fallback;
+  role && key.roleKey && roleTakes(role, key.roleKey)
+    ? `var(${typeRoleVar(role, key.roleKey)}${fallback ? `, ${fallback}` : ''})`
+    : fallback;
 
 /**
  * The static sheet's fallback for one themable key: the component's theme value, then its type role.
@@ -1006,6 +1033,99 @@ function applyComponentTheme(
   }
 }
 
+/** The keys a theme can set per state: the colours that change under the pointer and when pressed. */
+const STATE_THEMED_KEYS = THEMED_KEYS.filter((key) =>
+  (COMPONENT_THEME_STATE_KEYS as readonly string[]).includes(key.key),
+);
+const BORDER_WIDTH_KEY = THEMED_KEYS.find((key) => key.key === 'borderWidth')!;
+
+/**
+ * Put the component tier in front of the colours a component's own state defaults chose.
+ *
+ * `components.button.variants.outline.hover.fill` is read ahead of the fill an outline button takes
+ * under the pointer, as `…outline.fill` is read ahead of its resting one. Only where the component
+ * already changes that colour in that state: the theme says what the change is, not whether there
+ * is one. A state the author wrote on the node is left alone, as the resting props are.
+ *
+ * The resting width follows into every state. A width is the component's shape, and a state that
+ * restates its border (an outline button does, to recolour it) would otherwise put it back to the
+ * default width under the pointer.
+ */
+const BORDER_SIDES = ['Top', 'Right', 'Bottom', 'Left'] as const;
+
+/**
+ * A state that recolours or rethickens the border, and says nothing about its sides, reaches them.
+ *
+ * The sides are declared after `border-color` and `border-width`, and at rest each one is drawn from
+ * the element's own width and colour variables (see `syncBorderVars`) — the resting ones. A state's
+ * `borderColor` lands in the state's colour variable, which no side read, so `hoverProps:
+ * { borderColor }` on anything with a border did nothing at all: a card meant to ring in its colour
+ * under the pointer stayed grey. Here each side the element has a border on is restated for the
+ * state, from its resting width and style, with the state's colour or width in place.
+ */
+function syncStateBorderSides(
+  el: HTMLElement,
+  componentName: string,
+  state: ElementState,
+  stateProps: Partial<DesignSystemProps>,
+  props: Partial<DesignSystemProps>,
+): void {
+  const recolours = stateProps.borderColor !== undefined || stateProps.borderWidth !== undefined;
+  const ownSides = stateProps.border !== undefined || BORDER_SIDES.some((s) => stateProps[`border${s}`] !== undefined);
+  if (!recolours || ownSides) return;
+  const base = `--we-${componentName}-`;
+  const prefix = `--we-${componentName}-${state}-`;
+  for (const side of BORDER_SIDES) {
+    const own = props[`border${side}`];
+    const parts = borderParts(own ?? props.border ?? '');
+    if (!parts) continue;
+    // A side of the shorthand reads the resting variables, as at rest; a side written on its own
+    // has its own width and colour.
+    const width = stateProps.borderWidth
+      ? `var(${prefix}border-width)`
+      : own
+        ? parts.width
+        : `var(${base}border-width)`;
+    const color = stateProps.borderColor
+      ? `var(${prefix}border-color)`
+      : own
+        ? parts.color
+        : `var(${base}border-color)`;
+    setProperty(el, `${prefix}border-${side.toLowerCase()}`, `${width} ${parts.style} ${color}`);
+  }
+}
+
+function applyComponentStateTheme(
+  el: HTMLElement,
+  componentName: string,
+  state: ElementState,
+  stateProps: Partial<DesignSystemProps>,
+  raw: Partial<DesignSystemProps> | undefined,
+): void {
+  if (!raw) return; // Everything was passed as explicit.
+  const authored = (raw[`${state}Props`] ?? {}) as Partial<DesignSystemProps>;
+  const own = (el as { variant?: unknown }).variant;
+  const variant = typeof own === 'string' && own !== '' ? own : null;
+  if ((COMPONENT_THEME_STATES as readonly string[]).includes(state)) {
+    for (const key of STATE_THEMED_KEYS) {
+      const value = key.value(stateProps);
+      if (value === undefined || key.explicit(authored)) continue;
+      setProperty(
+        el,
+        `--we-${componentName}-${state}-${key.suffix}`,
+        componentChain(componentName, `${state}-${key.key}`, variant, value),
+      );
+    }
+  }
+  const width = BORDER_WIDTH_KEY.value(stateProps);
+  if (width !== undefined && !BORDER_WIDTH_KEY.explicit(authored) && !BORDER_WIDTH_KEY.explicit(raw))
+    setProperty(
+      el,
+      `--we-${componentName}-${state}-${BORDER_WIDTH_KEY.suffix}`,
+      componentChain(componentName, BORDER_WIDTH_KEY.key, variant, width),
+    );
+}
+
 export function updateAllCustomVars(
   el: HTMLElement,
   componentName: string,
@@ -1022,7 +1142,9 @@ export function updateAllCustomVars(
     // State props are always treated as explicit — no DEFAULT_PROPS fill state blocks.
     if (stateProps && typeof stateProps === 'object') {
       hasState = true;
-      updateCustomVars(el, componentName, stateProps, undefined, state);
+      updateCustomVars(el, componentName, withBoxSidesFilled(stateProps, [props]), undefined, state);
+      syncStateBorderSides(el, componentName, state, stateProps, props);
+      applyComponentStateTheme(el, componentName, state, stateProps, rawExplicitProps);
     }
   });
   /*
@@ -1033,11 +1155,11 @@ export function updateAllCustomVars(
     cascading through from the tier below.
   */
   let hasTier = false;
-  for (const [tier, key] of Object.entries(TIER_PROP_KEYS)) {
-    const tierProps = (props as Record<string, unknown>)[key];
-    if (tierProps && typeof tierProps === 'object') {
+  for (const tier of Object.keys(TIER_PROP_KEYS) as (keyof typeof TIER_PROP_KEYS)[]) {
+    const tierProps = tierBagOf(props, tier);
+    if (tierProps) {
       hasTier = true;
-      updateCustomVars(el, componentName, tierProps as Partial<DesignSystemProps>, undefined, tier as never);
+      updateCustomVars(el, componentName, tierProps, undefined, tier as never);
     }
   }
   // The one failure this design cannot make unreachable: a query with no container is silently
@@ -1156,7 +1278,9 @@ export function getStaticDSStyles(
   layers?: readonly DSLayer[],
   defaultProps?: Partial<DesignSystemProps>,
 ): string {
-  const l = new Set<DSLayer>(layers ?? ['layout', 'visual', 'flex', 'typography', 'state']);
+  // `state` always: a state is a condition every element can be under, not a kind of prop an element
+  // opts into — see `getKeysForLayers`. What it may change is still bounded by the other layers.
+  const l = new Set<DSLayer>([...(layers ?? ['layout', 'visual', 'flex', 'typography']), 'state']);
   const p = `--we-${componentName}-`;
   const cascade = COMPONENT_CASCADE[componentName];
 
@@ -1276,8 +1400,7 @@ export function getStaticDSStyles(
   if (l.has('visual')) {
     base.push(
       `[part='base'] { background-image: var(${p}bg-image, none); background-size: var(${p}bg-image-fit, cover); ` +
-        `background-position: var(${p}bg-image-position, center); background-repeat: no-repeat; ` +
-        `background-attachment: var(${p}bg-attachment, scroll); }\n` +
+        `background-position: var(${p}bg-image-position, center); background-repeat: no-repeat; }\n` +
         `:host([bgimage]) [part='base'] { position: relative; isolation: isolate; }\n` +
         `:host([bgimage]) [part='base']::before { content: ''; position: absolute; inset: 0; z-index: -1; ` +
         `border-radius: inherit; pointer-events: none; ` +

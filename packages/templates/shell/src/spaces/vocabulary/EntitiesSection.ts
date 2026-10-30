@@ -1,5 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { confirmModal, discardGuard, sectionCard } from '@we/template-kit';
+import { confirmModal, discardGuard, sectionCard, SOCIAL_DNA_LABELS } from '@we/template-kit';
 
 /**
  * The Models section of space settings: the content models this space defines, the wizard that
@@ -1367,7 +1367,7 @@ const replaceFieldsConfirmModal: SchemaNode = confirmModal({
 
 export const modelsSection: SchemaNode = {
   ...sectionCard({
-    title: 'Models',
+    title: SOCIAL_DNA_LABELS.models,
     description: 'The kinds of content this space defines — its own record types, and how AI interprets them.',
     aside: {
       type: 'we-button',

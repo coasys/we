@@ -83,13 +83,13 @@ describe('the heading is one control, not a glyph at the end of a row', () => {
 });
 
 describe('a count is a chip, and only where there is one', () => {
-  it('holds a square at its narrowest so every section has the same shape of chip', () => {
-    // A badge is sized by its content, so `3` came out a squat lozenge and `12` a wider one. The
-    // floor is the badge's own height, written so a theme's density moves both together.
+  it('is a solid badge, which holds itself square at its narrowest', () => {
+    // The square floor was this chip's own `minWidth`; every badge holds it now (see we-badge), so a
+    // count anywhere has the same shape as this one.
     const badge = walk(foldingSectionLabel({ label: 'Logs', count: '3', open: { field: 'x' } })).find(
       (n) => n.type === 'we-badge',
     );
-    expect(badge?.props?.minWidth).toContain('var(--we-component-height-xs)');
+    expect(badge?.props?.minWidth).toBeUndefined();
     expect(badge?.props?.variant).toBe('solid');
     expect(badge?.props?.tone).toBeUndefined();
   });
