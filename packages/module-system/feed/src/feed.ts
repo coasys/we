@@ -26,9 +26,8 @@
  * event (its `createdAt`, its author), and `extractedFrom` is where it came from; nothing extra is
  * written. Records nobody extracted are grouped by author the same way: "Ann added a task".
  */
+import { lineContent, repliesInclude, threadLines } from '@we/messages';
 import type { RecordQuery } from '@we/module-shared';
-
-import { lineContent, repliesInclude, threadLines } from './thread';
 
 type Row = Record<string, unknown>;
 

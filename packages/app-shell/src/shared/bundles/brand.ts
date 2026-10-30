@@ -69,6 +69,30 @@ export function resolveFace(input: FaceInput): AppFace {
   };
 }
 
+/**
+ * The app's own theme — what stands in for the agent's default until they choose one — by the same
+ * rule as its face.
+ *
+ * Before the agent's settings are known, the app in use is a guess: the deployment's own. The sign-in
+ * screen wore the device's app (Coasys's, after somebody switched to it) while its theme came from
+ * the guess (WE's), and switched to the app's own mid sign-in. So until then the device's memory
+ * answers: the first theme of the app it last ran, which is that app's default.
+ */
+export function resolveAppTheme(input: {
+  safe: boolean;
+  settled: boolean;
+  /** The themes the app in use names (`meta.themeIds`), its default first. */
+  appThemeIds: readonly string[];
+  /** Whether a theme id is one this build can draw. */
+  known: (id: string) => boolean;
+  device: DeviceApp | null;
+}): string | undefined {
+  if (input.safe) return undefined;
+  const remembered = input.device?.themes?.[0]?.id;
+  if (!input.settled && remembered) return remembered;
+  return input.appThemeIds.find(input.known);
+}
+
 /** What the device keeps of a face, for the next boot. */
 export function deviceAppOf(face: AppFace, themes: readonly ThemeData[]): Omit<DeviceApp, 'v'> {
   return {

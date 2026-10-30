@@ -247,18 +247,6 @@ describe('putting a lane away to its edge', () => {
     expect(text.indexOf('shellStore.toggleStowLane')).toBeLessThan(text.indexOf('"label":"Move panel"'));
     expect(text.indexOf('shellStore.toggleStowLane')).toBeLessThan(text.indexOf('shellStore.beginTabDrag'));
   });
-
-  it('draws the strip from outside the frame, as one button that opens the lane', () => {
-    const strip = gatedOn(frame, geo('strip'));
-    const text = JSON.stringify(strip);
-
-    expect(strip).toBeDefined();
-    // The whole strip is the way back — the lane's titlebars are all hidden — and there is no way to
-    // pull one panel out of it on its own.
-    expect(text.match(/"type":"we-button"/g)).toHaveLength(1);
-    expect(text).toContain('shellStore.toggleStowLane');
-    expect(text).not.toContain('peekDock');
-  });
 });
 
 describe('the displace control, by where the panel is', () => {
@@ -304,14 +292,5 @@ describe('a panel easing in or out of its strip', () => {
 
   it('fades the whole frame when every panel is put away', () => {
     expect(text).toContain(JSON.stringify(`|| ${geo('awayFaded')} ? 0 :`).slice(1, -1));
-  });
-
-  it('lays a top or bottom strip out as a row, not a column', () => {
-    const strip = gatedOn(dockFrame(entry as unknown as DockEntry, { type: 'Column' }), geo('strip'));
-    const layout = gatedOn(strip, geo('strip.vertical'));
-    const props = layout?.props as { then: { type: string }; else: { type: string } };
-
-    expect(props.then.type).toBe('Column');
-    expect(props.else.type).toBe('Row');
   });
 });

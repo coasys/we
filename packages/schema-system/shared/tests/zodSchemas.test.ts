@@ -9,6 +9,17 @@ describe('zodSchemas', () => {
     expect(() => zSchemaNode.parse(node)).not.toThrow();
   });
 
+  it('takes a node theme with every key a theme has — a sized type role, a button’s hover', () => {
+    const node = {
+      type: 'Column',
+      theme: {
+        typeStyles: { overline: { size: '200', weight: 700 } },
+        components: { button: { variants: { outline: { hover: { fill: 'accent', text: 'on-accent' } } } } },
+      },
+    };
+    expect(() => zSchemaNode.parse(node)).not.toThrow();
+  });
+
   it('parses a schema node with no type (fragment)', () => {
     const node = { children: [{ type: 'div' }] };
     expect(() => zSchemaNode.parse(node)).not.toThrow();
@@ -69,6 +80,13 @@ describe('zodSchemas', () => {
 
   it('rejects TemplateMeta with extra fields (strict)', () => {
     expect(() => zTemplateMeta.parse({ name: 'T', description: 'd', icon: 'i', extra: true })).toThrow();
+  });
+
+  it('accepts how an app frames the panels at its edges, and only a frame it knows', () => {
+    const meta = { name: 'T', description: 'd', icon: 'i' };
+    expect(() => zTemplateMeta.parse({ ...meta, edges: { right: { frame: 'flush' } } })).not.toThrow();
+    expect(() => zTemplateMeta.parse({ ...meta, edges: { right: { frame: 'glass' } } })).toThrow();
+    expect(() => zTemplateMeta.parse({ ...meta, edges: { middle: { frame: 'flush' } } })).toThrow();
   });
 
   // --- TemplateSchema ---

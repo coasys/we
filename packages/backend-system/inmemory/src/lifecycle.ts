@@ -102,10 +102,16 @@ export function createInMemoryLifecycle(initial: InMemoryDatasetSeed[] = []): In
     async publish(id) {
       const e = datasets.get(id);
       if (!e) throw new Error(`publish: no dataset with id ${id}`);
-      e.sharedUri = `inmemory://${e.id}`;
+      /*
+        A shared id of its own, never the local one, as a real network mints one (AD4M's is the
+        neighbourhood's). Reusing the local id made the two indistinguishable here, so a test could
+        not see code that used one where it meant the other — the bug behind a share link that
+        carried a space's local id.
+      */
+      e.sharedUri ??= `inmemory://shared-${e.id}`;
       joinable.set(e.sharedUri, e);
       emit((h) => h.onUpdated?.(toRef(e)));
-      return { uri: e.sharedUri, sharedId: e.id };
+      return { uri: e.sharedUri, sharedId: e.sharedUri.replace('inmemory://', '') };
     },
 
     async join(idOrUri) {

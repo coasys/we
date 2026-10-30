@@ -32,6 +32,7 @@ export {
   type VocabularyWorkflow,
   vocabularyPlugins,
   type VocabularySeedOptions,
+  type VocabularyUses,
 } from './vocabulary';
 export type { SchemaExpanderOptions } from './schema';
 export {

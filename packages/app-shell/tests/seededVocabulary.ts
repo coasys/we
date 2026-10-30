@@ -2,9 +2,10 @@
  * The vocabulary a new space starts with, read from the deployment's own starter — the one place
  * the defaults live — as a space store would hold it once the records were written.
  */
+import { defaultSpaceStarter } from '@we/schema-shared';
+
 import weSeed from '../../../we-seed.json';
 import { type InvolvementTypeView, parseAppliesTo, resolveInvolvementTypes } from '../src/shared/involvements';
-import { defaultSpaceStarter } from '../src/shared/spaceStarter';
 import type { WeSeedFile } from '../src/types/seed';
 
 const records = defaultSpaceStarter((weSeed as unknown as WeSeedFile).spaceStarters)?.records ?? [];

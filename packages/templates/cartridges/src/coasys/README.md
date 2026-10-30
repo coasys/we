@@ -10,13 +10,16 @@ file in Settings.
 | `brand.ts`                              | The name, the mark and the About page                                                                |
 | `assets/mark.svg`                       | The Coasys logo as the app draws it — the bundle reads it                                            |
 | `assets/icon.svg`                       | The desktop icon: the logo on Glow's indigo tile — the seed names it, `@we/brand` renders every size |
-| `boot.ts`                               | The sign-in screen, around the host's `CredentialField`                                              |
+| `boot.ts`                               | The sign-in screen: WE's sign-in form and accounts as parts, in Coasys's frame                       |
 | `themes.ts`                             | Coasys, Josh's theme, with a light and a dark side; Coasys Glow, Nico's, dark only                   |
 | `assets/BricolageGrotesque-latin.woff2` | Glow's typeface (SIL OFL 1.1), carried in its `fontFaces` as a `data:` URL                           |
 | `app.ts`                                | The chrome around every space: one rail, no module rail                                              |
 | `space/shell.ts`                        | A space as one tree and one view, on a home lane                                                     |
 | `space/tree.ts`                         | The tree: channels, calls, workflows, people, Social DNA                                             |
-| `space/views.ts`                        | A channel as chat or canvas, the workflows, and a call's own page                                    |
+| `space/views.ts`                        | The pages: the Feed, the workflows, and a call's own page                                            |
+| `space/canvas.ts`                       | Canvas mode: the space's canvas, dimmed to what the tree has chosen, and the vocabulary map          |
+| `space/bar.ts`                          | The bar over every view, with the Page / Canvas switch at its end                                    |
+| `space/lockup.ts`                       | The mark and name, where the rail and the sign-in screen both draw them                              |
 | `space/paths.ts`                        | The addresses the tree and the views share                                                           |
 | `space/marks.ts`                        | The live dot and the count pill the tree and the views share                                         |
 
@@ -42,12 +45,27 @@ theme decides how strong they are, so the same templates read quietly under Josh
 - a dot grid on the canvas;
 - page titles in the heading role, with no weight of their own.
 
-Some of Nico's design is not reachable yet: the mint bar on the selected tree row (the tree's own
-styling), and the d12 flow diagrams and proposal cards, which are features of their own rather than a
-look.
+The mint bar on the selected tree row is the tree's `selected` variant, which Glow sets
+(`components.tree.variants.selected`). Not reachable yet: the d12 flow diagrams and proposal cards,
+which are features of their own rather than a look.
+
+## Page and Canvas
+
+The tree chooses what is in focus; the switch at the end of every bar says where to see it. Page opens
+the chosen thing's page. Canvas shows the space's canvas with that focus applied — a call dims what
+was not extracted from it, a person what they did not make, a workflow what is not going through it —
+or, for anything of Social DNA, the vocabulary map with that lit. The two maps stay apart: the canvas
+is what the space holds, arranged by people; the vocabulary is what it has defined, laid out by itself.
+
+The mode is `?view=canvas`, which every navigation the space makes carries (`withView` in
+`space/paths.ts`), so it stays on while somebody moves around the tree. The canvas is drawn beside the
+pages rather than as a route, so a change of focus restyles it rather than drawing it again. The focus
+rules and the vocabulary map are the kit's (`focusDim`, `focusDimWhere`, `vocabularyMap`), shared with the
+workshop.
 
 ## What is drawn and what waits
 
 The identity pages in Settings (security, devices, bots, plan) are WE's own, drawn as "Coming soon"
 until a backend reports it can do them. The Coasys way in — passkeys, a master key, linking a
-device — waits on the same backend and will arrive as more states of `boot.ts`.
+device — waits on the same backend and will arrive as more steps of WE's sign-in form, which `boot.ts`
+places.

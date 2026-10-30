@@ -71,6 +71,18 @@ describe('the pieces a bundle lands as', () => {
     expect(offering.app?.meta.themeIds).toEqual(['field-guide--flat', 'field-guide--glow', 'dark']);
   });
 
+  it('lands its pages under the bundle’s id, and points the brand’s About at the landed one', () => {
+    const paged = bundlePieces({
+      ...bundle,
+      pages: [{ id: 'about', type: 'Column', meta: meta('About', 'page') }],
+      brand: { name: 'Field Guide', aboutPage: 'about' },
+    } as unknown as Bundle);
+    expect(paged.pages.map((t) => t.id)).toEqual(['field-guide--about']);
+    expect(paged.pages[0].source).toEqual({ bundle: 'field-guide', version: '1.2.0', piece: 'about' });
+    expect(paged.brand?.aboutPage).toBe('field-guide--about');
+    expect(paged.shells.map((t) => t.id)).not.toContain('field-guide--about');
+  });
+
   it('carries the brand and the sign-in screen as they are', () => {
     const branded = bundlePieces({
       ...bundle,
@@ -80,6 +92,21 @@ describe('the pieces a bundle lands as', () => {
     expect(branded.brand).toEqual({ name: 'Field Guide', mark: '<svg/>' });
     expect(branded.bootScreen).toEqual({ type: 'Column' });
     expect(pieces.brand).toBeUndefined();
+  });
+
+  it('points a starter’s template and theme at the landed pieces, and leaves a built-in’s name alone', () => {
+    const started = bundlePieces({
+      ...bundle,
+      starters: [
+        { id: 'own', settings: { defaultTemplateId: 'shell', defaultThemeId: 'moss', autoInterpret: true } },
+        { id: 'builtIn', settings: { defaultTemplateId: 'workshop', defaultThemeId: 'dark' } },
+      ],
+    } as unknown as Bundle);
+    expect(started.starters.map((s) => s.settings)).toEqual([
+      { defaultTemplateId: 'field-guide--shell', defaultThemeId: 'field-guide--moss', autoInterpret: true },
+      { defaultTemplateId: 'workshop', defaultThemeId: 'dark' },
+    ]);
+    expect(pieces.starters).toEqual([]);
   });
 });
 

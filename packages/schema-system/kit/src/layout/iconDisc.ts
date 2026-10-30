@@ -7,9 +7,10 @@ export interface IconDiscOptions {
   color?: SchemaProp;
   /**
    * The disc's ground, as a role. Pick the one a step off whatever it sits on: a card on a sunken
-   * ground takes `surface-raised`, a modal's header on `surface` takes `surface-sunken`.
+   * ground takes `surface-raised`, a modal's header on `surface` takes `surface-sunken`. Or a kind's
+   * own tint, as an expression, where the glyph is in its colour.
    */
-  bg?: string;
+  bg?: SchemaProp;
   /** Diameter. Defaults to 48px: room around a glyph at its ordinary size, so it reads as a mark. */
   size?: string;
 }

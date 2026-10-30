@@ -36,6 +36,7 @@ const NEEDS_A_BOX = [
   'maxWidth',
   'minHeight',
   'maxHeight',
+  'aspectRatio',
   'flex',
   'flexShrink',
   'alignSelf',

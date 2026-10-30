@@ -87,7 +87,7 @@ const CSS_STYLES = css`
     white-space: normal;
     overflow-wrap: anywhere;
     font-size: var(--we-font-size-200, 14px);
-    ${unsafeCSS(typeRoleDeclarations('label', { weight: '500' }, ['color']))}
+    ${unsafeCSS(typeRoleDeclarations('label', { weight: '500' }, ['color', 'size']))}
     padding: var(--we-space-300, 8px) var(--we-space-300, 8px);
     /* The inverse pair. Not text/onInverse: those are scale positions, so they flip with the
        theme and a dark tooltip in light mode became a white one in dark. This pair is measured

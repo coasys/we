@@ -1,11 +1,13 @@
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { confirmModal, railGroup, railItem, railShell } from '@we/template-kit';
 
+import { COLLAPSED, lockup } from './lockup.ts';
+
 /**
  * The Coasys app: the chrome around every space.
  *
  * One rail down the left, as Josh's design draws it: the Coasys mark, the spaces this device holds
- * with a + to create or join one, Settings, and at its foot the person — a menu for their profile,
+ * with a row beneath them to create or join one, Settings, and at its foot the person — a menu for their profile,
  * About Coasys and logging out. Settings is on the rail rather than in the menu, being one click
  * either way and always in sight there. Collapsed it is icons only at 72px, and it opens over the
  * page while the pointer is on it, so nothing beside it reflows.
@@ -14,8 +16,6 @@ import { confirmModal, railGroup, railItem, railShell } from '@we/template-kit';
  * space draws in its own tree and views, so a second way to reach them would be two ways to the same
  * place. The frame says so, which is what moves docked panels over.
  */
-
-const COLLAPSED = '72px';
 
 /** Lit while one of the host's own pages is open. */
 const viewing = (view: string) => ({ $: `shellStore.activeShellView == '${view}'` });
@@ -74,6 +74,32 @@ const accountMenu: SchemaNode = {
   ],
 };
 
+/*
+  The ways to a new space: two rows at the foot of the spaces, creating one and joining one, each
+  opening its dialog directly.
+
+  Rows rather than a + beside the "Spaces" heading, because the heading is only there while the rail
+  is open. Closed, the rail had no way to add a space at all — and on a first run, with no spaces yet,
+  nothing on it said spaces existed. A row is drawn either way, icon-only when closed.
+
+  Two rows rather than one row opening a menu of the two: the menu cost every new space a second
+  click to choose between options there is room to show. Joining is the one that most needs showing —
+  a desktop build has no address bar, so an address somebody was sent needs a visible place to go.
+  WE's sidebar keeps its menu, for the reason its narrow heading gives.
+*/
+const addSpace: SchemaNode[] = [
+  railItem({
+    icon: 'plus',
+    label: 'Create a space',
+    onClick: { $invoke: 'shellStore.setCreateSpaceOpen', args: [true] },
+  }),
+  railItem({
+    icon: 'link',
+    label: 'Join a space',
+    onClick: { $invoke: 'shellStore.setJoinSpaceOpen', args: [true] },
+  }),
+];
+
 const rail: SchemaNode = railShell({
   collapsedWidth: COLLAPSED,
   expandedWidth: '256px',
@@ -82,24 +108,16 @@ const rail: SchemaNode = railShell({
   bg: 'chrome',
   border: '1px solid border',
   localState: { confirmGuestLogout: { type: 'boolean', initial: false } },
-  header: {
-    type: 'Row',
+  // The mark where the sign-in screen draws it, and the name beside it while the rail is open.
+  header: lockup({
+    alt: 'Coasys',
+    name: { while: { $: 'local.expanded' } },
     props: {
-      width: COLLAPSED,
-      height: '72px',
-      flex: '0 0 auto',
-      ax: 'center',
-      ay: 'center',
+      width: '100%',
       cursor: 'pointer',
       onClick: { $invoke: 'shellStore.openShellView', args: ['landing-page'] },
     },
-    children: [
-      {
-        type: 'we-image',
-        props: { src: { $: 'templateStore.brand.mark' }, alt: 'Coasys', width: '28px', height: '28px' },
-      },
-    ],
-  },
+  }),
   footer: {
     type: 'Column',
     props: { width: '100%', gap: '200' },
@@ -127,37 +145,11 @@ const rail: SchemaNode = railShell({
     railGroup({
       id: 'spaces',
       label: 'Spaces',
+      // The rail's only group: folded, it would leave the rail empty. See `railGroup`'s `foldable`.
+      foldable: false,
       reorderable: true,
       onReorder: { $invoke: 'datasetStore.reorderDatasets', args: [{ $: 'arg.detail' }] },
-      action: {
-        type: 'DropdownMenu',
-        props: {
-          triggerIcon: 'plus',
-          triggerVariant: 'ghost',
-          triggerTitle: 'Add a space',
-          size: 'sm',
-          itemSize: 'sm',
-          placement: 'right-start',
-          items: [
-            { id: 'create', label: 'Create a space', icon: 'plus' },
-            { id: 'join', label: 'Join a space', icon: 'link' },
-          ],
-          onSelect: [
-            {
-              $if: {
-                condition: { $: "arg.id == 'create'" },
-                then: { $invoke: 'shellStore.setCreateSpaceOpen', args: [true] },
-              },
-            },
-            {
-              $if: {
-                condition: { $: "arg.id == 'join'" },
-                then: { $invoke: 'shellStore.setJoinSpaceOpen', args: [true] },
-              },
-            },
-          ],
-        },
-      },
+      after: addSpace,
       children: [
         {
           type: '$each',
@@ -168,10 +160,13 @@ const rail: SchemaNode = railShell({
               avatar: { src: { $: 'space.avatar' }, name: { $: 'space.name' }, hash: { $: 'space.uuid' } },
               label: { $: 'space.name' },
               active: { $: 'space.spaceId == routeStore.segments[1] && !shellStore.activeShellView' },
-              onClick: [
-                { $invoke: 'shellStore.closeShellView' },
-                { $invoke: 'spaceStore.navigateToSpace', args: [{ $: 'space.spaceId' }] },
-              ],
+              /*
+                Only the navigation: it closes whatever overlay is up itself, once the space has
+                switched under it. Closing it first exposed the page behind the landing overlay — the
+                spaces, as cards — for as long as the switch took, which on the first space after a
+                boot is long enough to see.
+              */
+              onClick: { $invoke: 'spaceStore.navigateToSpace', args: [{ $: 'space.spaceId' }] },
               // The space a call is running in, so the way back to it is on the rail.
               live: {
                 when: { $: 'modules.call.active && `neighbourhood://${space.spaceId}` == modules.call.callSpace.uri' },

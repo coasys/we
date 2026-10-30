@@ -1,0 +1,43 @@
+{
+  "name": "@we/module-feed",
+  "version": "0.1.0",
+  "description": "The Feed — everything said and written in a space, and what was found in it, in one stream",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build:steps": "tsup",
+    "build": "we-build",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "test:watch": "vitest"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@we/messages": "workspace:*",
+    "@we/schema-kit": "workspace:*"
+  },
+  "peerDependencies": {
+    "@we/schema-shared": "workspace:*",
+    "@we/module-shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@we/cli": "workspace:*",
+    "@we/module-shared": "workspace:*",
+    "@we/schema-shared": "workspace:*",
+    "tsup": "^9.0.0",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.5"
+  }
+}

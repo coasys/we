@@ -72,7 +72,7 @@ export type {
 } from './font.js';
 export type { ShadowToken, ShadowValue } from './shadow.js';
 export { GLOW_SHADOW } from './shadow.js';
-export { SURFACE_IMAGE_ROLES, surfaceImageFixed, surfaceImageRoleOf, surfaceImageVar } from './surfaceImages.js';
+export { SURFACE_IMAGE_ROLES, surfaceImageRoleOf, surfaceImageVar } from './surfaceImages.js';
 export type { SurfaceImageRole } from './surfaceImages.js';
 export type { SizeToken, SizeValue, RadiusToken, RadiusValue, ComponentSize } from './size.js';
 export type { GapValue, PaddingValue, SpaceToken, SpaceValue } from './space.js';
@@ -106,14 +106,23 @@ export {
 } from './states.js';
 export {
   COMPONENT_THEME_KEYS,
+  COMPONENT_THEME_STATE_KEYS,
+  COMPONENT_THEME_STATES,
   componentChain,
   componentThemeVar,
+  roleTakes,
   TYPE_ROLE_KEYS,
   TYPE_ROLES,
   typeRoleDeclarations,
   typeRoleVar,
 } from './componentTheme.js';
-export type { ComponentThemeKey, TypeRole, TypeRoleKey } from './componentTheme.js';
+export type {
+  ComponentThemeKey,
+  ComponentThemeState,
+  ComponentThemeStateKey,
+  TypeRole,
+  TypeRoleKey,
+} from './componentTheme.js';
 export type { FamilyRole } from './familyRoles.js';
 export type { Polarity } from './color.js';
 export { AVATAR_TONE_ROLES, AVATAR_TONES, avatarToneColor, avatarToneLabel } from './color.js';

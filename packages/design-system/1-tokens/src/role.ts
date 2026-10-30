@@ -334,6 +334,20 @@ export const role = {
   surfaceSunkenHover: 'color-mix(in oklab, var(--we-role-surface-sunken) 65%, var(--we-role-surface))',
 
   /**
+   * A field — an input, a select, a picker: somewhere you put something.
+   *
+   * Its own role, though it is the sunken well by default, because "sunken" was doing two jobs. It
+   * is a trough — a board's column, a drop area, a code block — and it was also "type here", so a
+   * note drawn in it in a form read as a third field (the create-space dialog's, under Coasys Glow).
+   * Separated, a theme can draw its fields as anything — an outlined surface, as many design systems
+   * do — without repainting every trough, and the role audit can keep `field` to fields. The same
+   * split Carbon draws with its `field` tokens and Atlassian with `background.input`.
+   */
+  field: 'var(--we-role-surface-sunken)',
+  /** A field under the pointer — see `surfaceSunkenHover`, which it follows by default. */
+  fieldHover: 'var(--we-role-surface-sunken-hover)',
+
+  /**
    * The filled neutral of a *control* — a slider track, a switch track, a progress trough, a
    * scrollbar thumb, a secondary button, a count chip.
    *

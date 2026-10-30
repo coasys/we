@@ -24,7 +24,7 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
     `page` also made the fill wrong on its own terms: an input is somewhere you put something, and
     the elevation stack has a role for that. The role is `surfaceSunken`.
   */
-  bg: 'surface-sunken',
+  bg: 'field',
   border: '1px solid border',
   r: '300',
   color: 'text',
@@ -44,7 +44,7 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
     variant does — and that variant is what a `Select` trigger is, so an input sitting in a row of
     them was the one control whose edge did not answer the pointer.
   */
-  hoverProps: { bg: 'surface-sunken-hover', border: '1px solid border-hover' },
+  hoverProps: { bg: 'field-hover', border: '1px solid border-hover' },
   // No pressed state, deliberately — a field is clicked INTO, not pushed, so a distinct pressed step
   // is a flash that snaps back on release. States compose, so a press shows whatever hover and focus
   // already say; this once had to repeat hover's values, when a pressed state reset the rest.
@@ -75,7 +75,7 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
     `ANIMATABLE_STATE_PROPS` list on one duration and easing.
   */
   focusProps: {
-    bg: 'surface-sunken-hover',
+    bg: 'field-hover',
     border: '1px solid var(--we-ring-color)',
     ring: FOCUS_RING_BEYOND_BORDER,
   },

@@ -47,6 +47,8 @@ export const TaskState: CoreEntityDef = {
   },
   entity: {
     flag: { predicate: 'we://flag', value: 'we://task_state' },
+    // What a task state is, as its settings form asks it — the fields an inspector and a map's card show.
+    display: { fields: ['name', 'description', 'semantic', 'approvals', 'retired'] },
     properties: {
       name: { type: 'string', predicate: 'we://name', required: true, default: '' },
       /**

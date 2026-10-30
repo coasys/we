@@ -5,11 +5,30 @@
  * than restated — plus the rows a seeded backend should answer with. Nothing here describes layout;
  * the assertions live beside the cases, so one scenario can be measured several ways.
  */
+import { resolveParts } from '@shared/registries/moduleParts';
+import { feedView } from '@we/module-feed';
 import { transcriptLines } from '@we/module-transcribe';
-import { cardShell, lineComposer, panelScroll, timeline, timelineMoreAt, timelineOrder } from '@we/schema-kit';
+import {
+  cardShell,
+  lineComposer,
+  panelScroll,
+  railGroup,
+  railItem,
+  railShell,
+  timeline,
+  timelineMoreAt,
+  timelineOrder,
+} from '@we/schema-kit';
 import type { SchemaNode } from '@we/schema-shared';
-import { discussionSection, foldingSectionLabel, signalDisplay } from '@we/template-kit';
-import { bundlePrompt, createSpaceModal, safeModeBanner } from '@we/template-shell';
+import {
+  discussionSection,
+  foldingSectionLabel,
+  profilePage,
+  signalDisplay,
+  TREE_LEAD,
+  treeRow,
+} from '@we/template-kit';
+import { bootScreen, bundlePrompt, createSpaceModal, safeModeBanner } from '@we/template-shell';
 import { CALL_CHROME_BAND, themeLabTemplate, TREE_LOCALS, TREE_QUERIES, treeStrip } from '@we/template-showcase';
 import {
   SHOWCASE_THEME_PRESETS,
@@ -22,6 +41,7 @@ import {
 import coasysBundle from '../../../../bundles/coasys.bundle.json';
 import fieldGuideBundle from '../../../../bundles/field-guide.bundle.json';
 import toolLibraryBundle from '../../../../bundles/tool-library.bundle.json';
+import { viewBar } from '../../../templates/cartridges/src/coasys/space/bar.ts';
 import { sharingPickerOptions } from '../../src/shared/sharingOptions';
 
 export interface Scenario {
@@ -1729,8 +1749,27 @@ const createSpaceShared = (): Scenario => ({
         },
       ]),
       defaultSharing: 'Qm-p2p',
-      createSpace: async (...args: unknown[]) =>
-        document.body.setAttribute('data-created', JSON.stringify(args.slice(7))),
+      starterChoices: [
+        {
+          id: 'coasys-default',
+          name: "Coasys's starter kit",
+          description: 'Social DNA, a canvas and a task board. You can change any of it later.',
+          icon: 'dna',
+          includes: '1 reaction · 3 task states · 5 ways to be involved · a canvas · a board',
+          app: 'Coasys',
+        },
+        {
+          id: '$none',
+          name: 'Empty space',
+          description: 'No task states, reactions, canvas or board. Set up your own in Social DNA.',
+          icon: 'circle-dashed',
+          includes: '',
+        },
+      ],
+      createSpace: async (...args: unknown[]) => {
+        document.body.setAttribute('data-created', JSON.stringify(args.slice(7, 9)));
+        document.body.setAttribute('data-starter', String(args[9]));
+      },
     },
     shellStore: { setCreateSpaceOpen: () => {} },
     datasetStore: { globalDataset: null, globalSpaceConfigured: false },
@@ -1753,7 +1792,594 @@ const safeModeLeaving = (): Scenario => ({
   },
 });
 
+/**
+ * A rail shaped like the Coasys app's: 72px closed with a border, a reorderable group of spaces with
+ * a row at its foot that opens a menu, and a footer holding an icon row and a person behind a menu.
+ * Every kind of row the rail draws, in each of the two places a row can sit.
+ */
+const appRail = (): Scenario => {
+  const space = (id: string, name: string) =>
+    railItem({ id, avatar: { src: '', name, hash: id }, label: name, onClick: { $setLocal: 'picked', value: id } });
+  const menu = (label: string, row: SchemaNode): SchemaNode => ({
+    type: 'DropdownMenu',
+    props: { placement: 'right-start', items: [{ id: 'one', label }] },
+    children: [row],
+  });
+  return {
+    node: {
+      type: 'Column',
+      props: { id: 'rail-host', height: '640px' },
+      children: [
+        railShell({
+          collapsedWidth: '72px',
+          expandedWidth: '256px',
+          position: 'static',
+          border: '1px solid border',
+          localState: { picked: { type: 'string', initial: '' } },
+          footer: {
+            type: 'Column',
+            props: { width: '100%', gap: '200' },
+            children: [
+              railItem({ icon: 'gear-six', label: 'Settings' }),
+              menu(
+                'Profile',
+                railItem({ avatar: { src: '', name: 'Ada Lovelace', hash: 'did:ada' }, label: 'Ada Lovelace' }),
+              ),
+            ],
+          },
+          children: [
+            railGroup({
+              id: 'spaces',
+              label: 'Spaces',
+              reorderable: true,
+              children: [space('s1', 'Garden'), space('s2', 'A space with a name long enough to truncate')],
+              after: [menu('Create a space', railItem({ icon: 'plus', label: 'Add a space' }))],
+            }),
+          ],
+        }),
+      ],
+    },
+    tables: {},
+  };
+};
+
+/**
+ * The top of the Coasys tree under Glow: a rounded-square space face, a two-line description, and a
+ * tree with one row selected — the pieces whose look is the theme's or the primitive's to get right.
+ */
+const coasysTreeTop = (): Scenario => {
+  const glow = BUNDLE_LAB_THEMES.find((t) => t.label === 'coasys-glow')?.theme ?? {};
+  const item = (value: string, label: string): SchemaNode => ({
+    type: 'we-tree-item',
+    props: { value },
+    children: [{ type: 'we-text', children: [label] }],
+  });
+  return {
+    node: {
+      type: 'Column',
+      theme: glow,
+      props: { width: '280px', gap: '300', p: '300', bg: 'chrome' },
+      children: [
+        { type: 'we-avatar', props: { id: 'space-face', size: 'xl', r: '600', initials: 'Coasys', hash: 'c1' } },
+        { type: 'we-avatar', props: { id: 'person-face', size: 'xl', initials: 'Ada', hash: 'p1' } },
+        {
+          type: 'we-text',
+          props: { id: 'purpose', variant: 'footnote', lines: 2 },
+          children: [
+            'A space for the people building Coasys: its calls, the channels where the work is talked through, and the flows that carry it from a proposal to a release.',
+          ],
+        },
+        {
+          type: 'we-tree',
+          props: { label: 'This space', selected: 'b' },
+          children: [
+            item('a', 'General'),
+            item('b', 'Design'),
+            // A group row with its count, as the tree draws it.
+            treeRow({
+              value: 'people',
+              label: 'People',
+              icon: 'users',
+              badge: { type: 'we-badge', props: { id: 'row-count', variant: 'soft', size: 'xs' }, children: ['1'] },
+            }),
+            // A group with nothing in it yet: no caret, nothing to open.
+            { type: 'we-tree-item', props: { value: 'empty', expandable: false }, children: ['Social DNA'] },
+            // An open group with a child, whose content must sit a step in from a top-level leaf's.
+            {
+              type: 'we-tree-item',
+              props: { value: 'group', open: true },
+              children: [
+                'Calls',
+                { type: 'we-tree-item', slot: 'children', props: { value: 'kid' }, children: ['Standup'] },
+              ],
+            },
+          ],
+        },
+        { type: 'Search', props: { placeholder: 'Find or ask' } },
+        // An eyebrow with no size of its own: Glow's overline role sizes it.
+        { type: 'we-text', props: { id: 'eyebrow', variant: 'overline' }, children: ['Space'] },
+      ],
+    },
+    tables: {},
+  };
+};
+
+/**
+ * A tree with its caret at the end, four levels deep under Glow, with a deep row selected: the layout
+ * the Coasys tree uses. Its guides drop from each row's glyph, and a lit row starts on its parent's
+ * guide with Glow's mint bar on the line.
+ */
+const treeCaretEnd = (): Scenario => {
+  const glow = BUNDLE_LAB_THEMES.find((t) => t.label === 'coasys-glow')?.theme ?? {};
+  const count = (n: number): SchemaNode => ({
+    type: 'we-badge',
+    props: { variant: 'soft', size: 'xs' },
+    children: [String(n)],
+  });
+  const row = (value: string, label: string, icon: string, children?: SchemaNode[], nested = true): SchemaNode =>
+    treeRow({
+      value,
+      label,
+      icon,
+      nested,
+      ...(children ? { open: true, children, badge: count(children.length) } : {}),
+    });
+  return {
+    node: {
+      type: 'Column',
+      theme: glow,
+      props: { width: '280px', p: '300', bg: 'chrome' },
+      children: [
+        {
+          type: 'we-tree',
+          props: { label: 'This space', selected: 'icons', caret: 'end', lead: TREE_LEAD },
+          children: [
+            row(
+              'channels',
+              'Channels',
+              'chats-circle',
+              [
+                row('general', 'General', 'hash'),
+                row('product', 'Product', 'hash', [
+                  row('design', 'Design', 'hash', [row('icons', 'Icons', 'hash'), row('type', 'Type', 'hash')]),
+                  row('roadmap', 'Roadmap', 'hash'),
+                ]),
+                row('random', 'Random', 'hash'),
+              ],
+              false,
+            ),
+            row('calls', 'Calls', 'phone', undefined, false),
+            row('people', 'People', 'users', [row('ada', 'Ada', 'user'), row('lin', 'Lin', 'user')], false),
+          ],
+        },
+      ],
+    },
+    tables: {},
+  };
+};
+
+/**
+ * The Coasys bundle's About page under Glow, as the bundle carries it: the site's first screen, with
+ * the typing headline and the film's frame. The film's addresses are taken out: the harness serves
+ * the default seed's policy, which does not allow coasys.org, and it is offline anyway — so the frame
+ * is measured with nothing in it, which is the case it must hold its shape in.
+ */
+const coasysAbout = (): Scenario => {
+  const glow = BUNDLE_LAB_THEMES.find((t) => t.label === 'coasys-glow')?.theme ?? {};
+  const [page] = JSON.parse(
+    JSON.stringify((coasysBundle as unknown as { pages: SchemaNode[] }).pages).replace(
+      /https:\/\/coasys\.org\/[^"]*/g,
+      '',
+    ),
+  ) as SchemaNode[];
+  return {
+    // A surface of its own, as the overlay that opens it is one, so its `mdUpProps` answer to the width.
+    node: {
+      type: 'Column',
+      theme: glow,
+      props: { width: '100%', bg: 'page' },
+      children: [{ type: '$surface', children: [page] }],
+    },
+    tables: {},
+  };
+};
+
+/**
+ * One person's profile beside your own: the same page, read-only for them and editable for you.
+ * Each in its own half, bound by `$agent` as a space's person view binds it.
+ */
+const profilePages = (): Scenario => {
+  const side = (did: string): SchemaNode => ({
+    type: 'Column',
+    props: { flex: '1', minWidth: '0', 'data-profile': did },
+    children: [
+      {
+        type: '$agent',
+        props: { did, as: 'person' },
+        children: [profilePage({ as: 'person', editable: 'person.did == me.did' })],
+      },
+    ],
+  });
+  return {
+    node: {
+      type: 'Row',
+      props: { width: '100%', gap: '400', ay: 'start' },
+      children: [side('did:them'), side('did:me')],
+    },
+    tables: {},
+    stores: {
+      profileStore: {
+        profiles: [
+          { did: 'did:them', name: 'Theodora Fairweather', handle: 'theo', bio: 'Keeps the bees.', avatar: '' },
+          { did: 'did:me', name: 'Alexandra Whitfield', handle: 'alex', bio: '', avatar: '' },
+        ],
+        ownProfile: { did: 'did:me', name: 'Alexandra Whitfield', handle: 'alex', bio: '', avatar: '' },
+      },
+    },
+  };
+};
+
+/**
+ * WE's sign-in screen on its unlock step, with two other accounts — drawn the way the app draws it,
+ * its `$part`s resolved by the host's own `resolveParts`. Each part's frame is unwrapped to what it
+ * holds: a frame draws nothing of its own (`display: contents`), and needs stores the harness does
+ * not mount.
+ */
+/** A part's frame unwrapped to what it holds: it draws nothing of its own, and needs stores the harness does not mount. */
+const unframe = (node: unknown): unknown => {
+  if (Array.isArray(node)) return node.map(unframe);
+  if (!node || typeof node !== 'object') return node;
+  const n = node as SchemaNode;
+  if (n.type === 'PartFrame') return unframe((n.children as SchemaNode[])[0]);
+  return Object.fromEntries(Object.entries(n).map(([k, v]) => [k, unframe(v)]));
+};
+
+/** A sign-in screen on its unlock step, with two other accounts, its parts resolved as the host does. */
+const signInScenario = (
+  screen: SchemaNode,
+  brand: Record<string, unknown>,
+  theme?: Record<string, unknown>,
+): Scenario => {
+  const resolved = resolveParts(screen);
+  const node = unframe(Array.isArray(resolved) ? resolved[0] : resolved) as SchemaNode;
+  const account = (id: string, name: string, active = false) => ({ id, name, avatar: '', active, hasAgent: true });
+  return {
+    node: theme ? { type: 'Column', theme, props: { width: '100%', height: '100%' }, children: [node] } : node,
+    tables: {},
+    stores: {
+      sessionStore: {
+        signInStep: 'unlock',
+        bootState: 'login',
+        credentialEntered: false,
+        loginLoading: false,
+        passwordError: false,
+        loginError: '',
+        clearPasswordError: () => {},
+        unlock: () => {},
+      },
+      accountStore: {
+        activeAccount: account('a', 'Ada Lovelace', true),
+        accounts: [account('a', 'Ada Lovelace', true), account('b', 'Grace Hopper'), account('c', 'Alan Kay')],
+        canManageAccounts: true,
+        isFirstRun: false,
+        creating: false,
+        switchingTo: null,
+        error: '',
+        switchAccount: () => {},
+        createAccount: () => {},
+      },
+      templateStore: { brand },
+    },
+  };
+};
+
+/** WE's sign-in screen — see `signInScenario`. */
+const signInScreen = (): Scenario => signInScenario(bootScreen, { active: false, name: 'WE', mark: '' });
+
+/** The Coasys sign-in screen as its bundle carries it, in Glow, with Coasys's own mark. */
+const coasysSignIn = (): Scenario => {
+  const glow = BUNDLE_LAB_THEMES.find((t) => t.label === 'coasys-glow')?.theme ?? {};
+  const bundle = coasysBundle as unknown as { bootScreen: SchemaNode; brand: { name: string; mark: string } };
+  return signInScenario(
+    bundle.bootScreen,
+    { active: true, name: bundle.brand.name, mark: `data:image/svg+xml,${encodeURIComponent(bundle.brand.mark)}` },
+    glow,
+  );
+};
+
+/**
+ * A card that lights on hover, with a border at rest: the state stylesheet once reset each side its
+ * element had not named, so it drew no border at all, lit or not.
+ */
+const borderWithHover = (): Scenario => ({
+  node: {
+    type: 'Column',
+    props: { width: '400px', p: '400', gap: '400', bg: 'page' },
+    children: [
+      {
+        type: 'Card',
+        props: {
+          'data-probe': 'resting',
+          border: '2px solid danger',
+          hoverProps: { shadow: 'glow' },
+        },
+        children: ['A border at rest'],
+      },
+      {
+        type: 'Card',
+        props: {
+          'data-probe': 'lit',
+          border: '2px solid transparent',
+          hoverProps: { border: '2px solid danger' },
+        },
+        children: ['A border when lit'],
+      },
+    ],
+  },
+  tables: {},
+});
+
+/**
+ * A Coasys view's bar, with the Page / Canvas switch at its end, in Glow — on the Canvas side — and a
+ * trail three steps long, the first two ways back up.
+ */
+const coasysBar = (): Scenario => {
+  const glow = BUNDLE_LAB_THEMES.find((t) => t.label === 'coasys-glow')?.theme ?? {};
+  return {
+    node: {
+      type: 'Column',
+      theme: glow,
+      props: { width: '900px', bg: 'page' },
+      children: [
+        viewBar(
+          [
+            { label: 'Social DNA', onClick: { $invoke: 'routeStore.navigate', args: ['/dna'] } },
+            { label: 'Signal types', onClick: { $invoke: 'routeStore.navigate', args: ['/dna?dna=signal'] } },
+            { label: 'Like' },
+          ],
+          'dna',
+        ),
+      ],
+    },
+    tables: {},
+    stores: {
+      routeStore: {
+        params: { view: 'canvas' },
+        templateSegments: [],
+        setParam: () => {},
+        navigate: (to: string) => ((globalThis as { __navigated?: string }).__navigated = to),
+      },
+      shellStore: { collapsedLanes: [] },
+    },
+  };
+};
+
+/**
+ * The Coasys mark and name as the sign-in screen draws them and as the open rail does, each from the
+ * bundle itself, in boxes of the same size: signing in fades the one away over the other, so their
+ * marks and names must sit on the same pixels.
+ */
+const coasysLockup = (): Scenario => {
+  const glow = BUNDLE_LAB_THEMES.find((t) => t.label === 'coasys-glow')?.theme ?? {};
+  const bundle = coasysBundle as unknown as { app: SchemaNode; bootScreen: SchemaNode };
+  const isMark = (n: unknown) =>
+    !!n &&
+    typeof n === 'object' &&
+    (n as SchemaNode).type === 'we-image' &&
+    JSON.stringify((n as SchemaNode).props?.src) === JSON.stringify({ $: 'templateStore.brand.mark' });
+  // The band holding the mark: the node with the mark among its own children.
+  const band = (node: unknown): SchemaNode | undefined => {
+    if (!node || typeof node !== 'object') return undefined;
+    const n = node as Record<string, unknown>;
+    if (Array.isArray(n.children) && n.children.some(isMark)) return structuredClone(n) as SchemaNode;
+    for (const v of Object.values(n)) {
+      const found = Array.isArray(v) ? v.map(band).find(Boolean) : band(v);
+      if (found) return found;
+    }
+    return undefined;
+  };
+  // Tags the mark and the name, wherever each sits in the band, so the case can measure both.
+  const tag = (node: SchemaNode, which: string): SchemaNode => {
+    const walk = (n: unknown) => {
+      if (!n || typeof n !== 'object') return;
+      const m = n as SchemaNode;
+      if (isMark(m)) m.props = { ...m.props, id: `${which}-mark` };
+      if (m.type === 'we-text' && JSON.stringify(m.children) === JSON.stringify([{ $: 'templateStore.brand.name' }]))
+        m.props = { ...m.props, id: `${which}-name` };
+      for (const v of Object.values(m)) (Array.isArray(v) ? v : [v]).forEach(walk);
+    };
+    walk(node);
+    return node;
+  };
+  const box = (which: string, child: SchemaNode, localState?: SchemaNode['$localState']): SchemaNode => ({
+    type: 'Column',
+    ...(localState ? { $localState: localState } : {}),
+    props: { id: `${which}-box`, width: '320px', height: '120px', bg: 'chrome', position: 'relative' },
+    children: [child],
+  });
+  return {
+    node: {
+      type: 'Row',
+      theme: glow,
+      props: { gap: '400', p: '400', ay: 'start' },
+      children: [
+        box('boot', tag(band(bundle.bootScreen)!, 'boot')),
+        // The rail open, as it is under the pointer: the name beside the mark.
+        box('rail', tag(band(bundle.app)!, 'rail'), { expanded: { type: 'boolean', initial: true } }),
+      ],
+    },
+    tables: {},
+    stores: {
+      templateStore: {
+        brand: {
+          name: 'Coasys',
+          mark: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"%3E%3Crect width="1" height="1"/%3E%3C/svg%3E',
+        },
+      },
+    },
+  };
+};
+
+/**
+ * The Coasys tree's Social DNA, from the bundle itself: the space's definitions in four levels, with a
+ * few of each kind so every level has something to draw.
+ */
+const coasysTreeDna = (): Scenario => {
+  const glow = BUNDLE_LAB_THEMES.find((t) => t.label === 'coasys-glow')?.theme ?? {};
+  // The tree section, found in the bundle by the open-rows state it keeps on the device.
+  const find = (node: unknown): SchemaNode | undefined => {
+    if (!node || typeof node !== 'object') return undefined;
+    const n = node as Record<string, unknown>;
+    const open = (n.$localState as Record<string, { persist?: string }> | undefined)?.openRows;
+    if (open?.persist === 'coasys.tree.open') return n as SchemaNode;
+    for (const value of Object.values(n)) {
+      const found = Array.isArray(value) ? value.map(find).find(Boolean) : find(value);
+      if (found) return found;
+    }
+    return undefined;
+  };
+  const tree = find(coasysBundle) as SchemaNode;
+  return {
+    node: { type: 'Column', theme: glow, props: { width: '320px', height: '900px', bg: 'chrome' }, children: [tree] },
+    tables: {
+      SignalType: [
+        { id: 'sig-like', name: 'Like', icon: 'heart', mode: 'toggle', rangeMin: 0, rangeMax: 1, retired: false },
+        { id: 'sig-rate', name: 'Rating', icon: 'star', mode: 'rating', rangeMin: 0, rangeMax: 5, retired: false },
+      ],
+      RelationshipType: [{ id: 'rel-led', name: 'led to', inverseName: 'came from', description: '' }],
+      Topic: [{ id: 'topic-bees', name: 'Bees', description: 'Hives, honey and swarms' }],
+    },
+    stores: {
+      spaceStore: {
+        root: 'root',
+        members: [],
+        taskStates: [
+          {
+            id: 'st-todo',
+            name: 'To do',
+            slug: 'todo',
+            semantic: 'open',
+            icon: 'circle',
+            approvals: 0,
+            retired: false,
+          },
+          {
+            id: 'st-review',
+            name: 'In review',
+            slug: 'review',
+            semantic: 'active',
+            icon: 'eye',
+            approvals: 2,
+            retired: false,
+          },
+        ],
+        involvementTypes: [
+          {
+            id: 'inv-doing',
+            name: 'Doing it',
+            slug: 'doing',
+            semantic: 'responsible',
+            appliesTo: ['TaskBlock'],
+            icon: 'user',
+            retired: false,
+          },
+        ],
+        policy: {
+          loaded: true,
+          sentences: ['Members can make anything.', 'People can change and delete what they made.'],
+        },
+      },
+      shapeStore: { spaceShapes: [{ id: 'shape-hive', name: 'Hive', icon: 'hexagon' }] },
+      recordStore: {
+        // What the tree's Models lists, as the vocabulary map's Models does: every kind of record.
+        creatableEntities: [
+          { value: 'Hive', label: 'Hive', icon: 'hexagon', hue: 'yellow', group: '', description: '', via: 'form' },
+        ],
+        displays: {
+          Hive: {
+            fields: [
+              { name: 'name', label: 'Name', kind: 'text' },
+              { name: 'frames', label: 'Frames', kind: 'number' },
+            ],
+          },
+        },
+      },
+    },
+  };
+};
+
+/**
+ * The Feed as a page: a few lines, one of them from a call, and what extraction found — in a box the
+ * height of a view, so its stream scrolls and its box sits at the foot.
+ */
+const feedViewPage = (): Scenario => {
+  const line = (id: string, author: string, text: string, at: string, call = '', callTitle = '') => ({
+    kind: 'line',
+    id,
+    at,
+    createdAt: at,
+    updatedAt: at,
+    author,
+    text,
+    marks: '',
+    source: 'typed',
+    call,
+    callTitle,
+    replyTo: null,
+    content: null,
+  });
+  return {
+    node: { type: 'Column', props: { width: '100%', height: '600px' }, children: [feedView] },
+    tables: {},
+    stores: {
+      modules: {
+        feed: {
+          feedRows: [
+            line('m3', 'did:them', 'See you all on Friday', '2026-10-27T10:03:00Z'),
+            {
+              kind: 'activity',
+              id: 'a1',
+              at: '2026-10-27T10:02:00Z',
+              author: 'did:me',
+              origin: 'call-1',
+              originTitle: 'Monday sync',
+              summary: '2 tasks',
+              items: [],
+              suggested: 1,
+            },
+            line('m2', 'did:me', 'Who has the venue?', '2026-10-27T10:01:00Z', 'call-1', 'Monday sync'),
+            line('m1', 'did:them', 'Morning all', '2026-10-27T10:00:00Z'),
+          ],
+          feedLoaded: true,
+          feedHasMore: false,
+          feedFromStart: false,
+          timelineOrientation: 'newestBottom',
+          replyingTo: null,
+        },
+      },
+      profileStore: {
+        profiles: [
+          { did: 'did:them', name: 'Theodora Fairweather', avatar: '' },
+          { did: 'did:me', name: 'Alexandra Whitfield', avatar: '' },
+        ],
+      },
+    },
+  };
+};
+
 export const scenarios: Record<string, (scale?: number) => Scenario> = {
+  'coasys:about': coasysAbout,
+  'feed:view': feedViewPage,
+  'coasys:bar': coasysBar,
+  'border:with-hover': borderWithHover,
+  'coasys:lockup': coasysLockup,
+  'signIn:coasys': coasysSignIn,
+  'signIn:we': signInScreen,
+  'coasys:tree-dna': coasysTreeDna,
+  'profile:pages': profilePages,
+  'tree:caret-end': treeCaretEnd,
+  'rail:app': appRail,
+  'coasys:tree-top': coasysTreeTop,
   'bundle:prompt': bundleInstallPrompt,
   'safe-mode:leaving': safeModeLeaving,
   'space:create-shared': createSpaceShared,

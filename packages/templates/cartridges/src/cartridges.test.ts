@@ -9,9 +9,34 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { buildValidationContext, bundleThemes, readBundle, validateSemantic, withEntities } from '@we/schema-shared';
+import { resolveStyle } from '@we/graph-core';
+import {
+  buildValidationContext,
+  bundleThemes,
+  evaluateExpression,
+  listFunctions,
+  parseExpression,
+  readBundle,
+  type SchemaNode,
+  validateSemantic,
+  withEntities,
+} from '@we/schema-shared';
+import {
+  chooseTemplate,
+  chooseTheme,
+  FOCUS_DIM,
+  SPACE_TEMPLATE_CHOICES,
+  templateChoice,
+  themeChoice,
+  VOCABULARY_BUCKETS,
+} from '@we/template-kit';
 import { describe, expect, it } from 'vitest';
 
+import { canvasPane } from './coasys/space/canvas.ts';
+import { DNA_LISTS } from './coasys/space/dna.ts';
+import { callPath, groupPath, personPath, SELECTED_EXPR } from './coasys/space/paths.ts';
+import { treeSection } from './coasys/space/tree.ts';
+import { callPage, spaceRoutes } from './coasys/space/views.ts';
 import { bundleFileName, type Cartridge, cartridgeBundles, coasys, fieldGuide, toolLibrary } from './index.ts';
 
 const contextData = JSON.parse(readFileSync(resolve(import.meta.dirname, '../../../ai-context/context.json'), 'utf-8'));
@@ -45,12 +70,48 @@ describe.each([fieldGuide, toolLibrary])('the $name cartridge', (cartridge) => {
 
 describe('the Coasys cartridge', () => {
   /*
+    The landing page is an overlay over whatever template is behind it, at the root address — for a
+    space, the spaces as cards. A rail button that closed the overlay and then navigated exposed that
+    page for as long as the switch took, which on the first space after a boot was long enough to see.
+    `navigateToSpace` closes the overlay itself, once the space has switched.
+  */
+  it('never closes an overlay ahead of going to a space, which shows what is behind it', () => {
+    const offenders: string[] = [];
+    (function walk(node: unknown, path: string) {
+      if (Array.isArray(node)) {
+        const invoked = node.map((step) => (step as { $invoke?: string } | null)?.$invoke);
+        const close = invoked.indexOf('shellStore.closeShellView');
+        if (close >= 0 && invoked.indexOf('spaceStore.navigateToSpace') > close) offenders.push(path);
+        node.forEach((item, i) => walk(item, `${path}[${i}]`));
+      } else if (node && typeof node === 'object')
+        for (const [key, value] of Object.entries(node)) walk(value, `${path}.${key}`);
+    })(coasys.app, 'app');
+    expect(offenders).toEqual([]);
+  });
+
+  // Each a row of its own, opened in one press: a menu choosing between the two cost every new space
+  // a second click, and kept joining — which a desktop build has nowhere else to start — out of sight.
+  it('offers creating and joining a space as rows of the rail, each opening its dialog', () => {
+    const rail = JSON.stringify(coasys.app);
+    for (const [label, opens] of [
+      ['Create a space', 'shellStore.setCreateSpaceOpen'],
+      ['Join a space', 'shellStore.setJoinSpaceOpen'],
+    ]) {
+      const row = findNode(coasys.app!, (n) => (n.props as { label?: unknown } | undefined)?.label === label);
+      expect(row, label).toBeDefined();
+      expect(JSON.stringify(row)).toContain(opens);
+    }
+    expect(rail).not.toContain('Add a space');
+  });
+
+  /*
     It defines no kinds of record of its own, so there is no gap to record: every template it brings
-    must validate as it stands — the app around every space and the space template with its pages.
+    must validate as it stands — the app around every space, the space template with its pages, and
+    the pages of the app's own.
   */
   it('is valid as it stands', () => {
     const context = buildValidationContext(contextData);
-    const errors = [coasys.app!, coasys.shell].flatMap((template) =>
+    const errors = [coasys.app!, coasys.shell, ...(coasys.pages ?? [])].flatMap((template) =>
       validateSemantic(template, context)
         .errors.filter((e) => e.severity === 'error')
         .map((e) => `${template.id}: ${e.path}: ${e.message}`),
@@ -62,7 +123,13 @@ describe('the Coasys cartridge', () => {
     const bundle = cartridgeBundles().find((b) => b.id === 'coasys')!;
     expect(bundle.brand?.name).toBe('Coasys');
     expect(bundle.brand?.mark).toMatch(/^<svg/);
-    expect(JSON.stringify(bundle.bootScreen)).toContain('CredentialField');
+    // WE's sign-in form, placed with Coasys's words, rather than a copy of it: the form holds the
+    // host's password field, and every step of signing in arrives with it.
+    expect(JSON.stringify(bundle.bootScreen)).toContain('"id":"host.signIn.form"');
+    expect(JSON.stringify(bundle.bootScreen)).toContain('"unlockLabel":"Unlock"');
+    // Its About is a page of its own, which the bundle carries; the Markdown stays as the fallback.
+    expect(bundle.pages?.map((page) => page.id)).toEqual([bundle.brand?.aboutPage]);
+    expect(bundle.brand?.about).toBeTruthy();
     const [glowTheme, coasysTheme] = bundleThemes(bundle);
     expect(bundle.app?.meta.themeId).toBe(glowTheme.id);
     expect(Object.keys(coasysTheme.overrides)).toEqual(expect.arrayContaining(['light', 'dark']));
@@ -80,7 +147,482 @@ describe('the Coasys cartridge', () => {
     // Nothing in it reaches out: no stylesheet carrying a url(), and no face that is not data.
     expect(glow.css ?? '').not.toMatch(/url\(/);
   });
+
+  /*
+    The canvas is the workshop's, from the kit: it was drawn once more by hand and had no suggestions,
+    no card toolbar and no lines, and a double-click wrote an empty audio block where it should have
+    asked what to make.
+  */
+  it('draws the workshop’s canvas, on the space’s canvas landmark', () => {
+    const graph = findNode(coasys.shell, (n) => n.type === 'GraphView')!;
+    const props = graph.props as Record<string, unknown>;
+    const options = (props.seeds as { options: Record<string, unknown> }).options;
+    expect(JSON.stringify(options.canvas)).toContain('spaceStore.landmarks.canvas');
+    expect(options.contains).toEqual({ $: 'shapeStore.extractionCandidates' });
+    expect(options.connections).toBe('Relationship');
+    expect(options.pending).toBeTruthy();
+    expect((props.nodeActions as { id: string }[]).map((a) => a.id)).toEqual(
+      expect.arrayContaining(['accept', 'reject', 'review', 'color', 'delete']),
+    );
+    expect(props.onEdgeCreate).toBeTruthy();
+    expect(JSON.stringify(props.onCanvasDoubleClick)).toContain('chooserOpen');
+    expect(JSON.stringify(props)).not.toContain('createOnCanvas');
+    // Reviewing a suggested change opens the record in the inspector beside the canvas.
+    expect(JSON.stringify(props.onNodeAction)).toContain('"cardType"');
+    expect(JSON.stringify(canvasPane)).toContain('Add to the canvas');
+  });
+
+  /*
+    Page or Canvas. The tree chooses what is in focus and the mode says where to see it, so the canvas
+    is drawn beside the pages rather than as one of them — mounted while the tree's choice changes —
+    and dimmed to whatever is chosen. Evaluated by the expression engine the renderer uses, against
+    the address each choice leaves.
+  */
+  /*
+    Templates and themes in the tree: what a row is comes from the template kit, as the rail's pickers
+    have it, so the two lists offer the same things; the tree's list is the ones somebody would switch
+    between in this space, not every built-in the deployment carries.
+  */
+  describe('templates and themes in the tree', () => {
+    const evaluate = (source: string, roots: Record<string, unknown>) =>
+      evaluateExpression(parseExpression(source), {
+        root: (name) => ({ bound: name in roots, value: roots[name] }),
+        call: (name, args) =>
+          listFunctions()
+            .find((f) => f.name === name)
+            ?.impl(args, { context: {}, stores: {} }),
+      });
+
+    it("offers the space's built-in, its own templates and the agent's, and not every built-in", () => {
+      const row = (id: string) => ({ id, name: id });
+      const roots = {
+        templateStore: {
+          currentSwitcherId: 'coasys-space',
+          switcherGroups: [
+            { label: 'Space templates', items: [row('space::ours')] },
+            { label: 'My templates', items: [row('mine')] },
+            { label: 'Built-in', items: [row('coasys-space'), row('workshop'), row('default')] },
+          ],
+        },
+        spaceStore: { spaceDefaultTemplateId: 'coasys-space' },
+      };
+      const ids = (evaluate(SPACE_TEMPLATE_CHOICES, roots) as { id: string }[]).map((t) => t.id);
+      expect(ids).toEqual(['coasys-space', 'space::ours', 'mine']);
+    });
+
+    it("draws each row with the rail picker's own actions, and wears what is chosen", () => {
+      const tree = JSON.stringify(treeSection);
+      for (const action of [...templateChoice().actions, ...themeChoice().actions]) {
+        expect(tree).toContain(JSON.stringify(action.onClick));
+      }
+      expect(tree).toContain(JSON.stringify(chooseTemplate("split(event.detail.value, '|')[1]")));
+      expect(tree).toContain(JSON.stringify(chooseTheme("split(event.detail.value, '|')[1]")));
+      // Reset layout is the template row's own, offered once the layout has been moved.
+      expect(tree).toContain('shellStore.resetTemplateLayout');
+    });
+  });
+
+  describe('in Canvas mode', () => {
+    const at = (path: string[], params: Record<string, string>, extra: Record<string, unknown> = {}) => {
+      const roots: Record<string, unknown> = {
+        routeStore: { templateSegments: path, params },
+        spaceStore: { spacePath: '/space/s1', landmarks: { canvas: 'c1' }, policy: { sentences: [] } },
+        workflowStore: { open: null },
+        shapeStore: { spaceShapes: [] },
+        ...extra,
+      };
+      return (prop: unknown) =>
+        evaluateExpression(parseExpression((prop as { $: string }).$), {
+          root: (name) => ({ bound: name in roots, value: roots[name] }),
+          call: (name, args) =>
+            listFunctions()
+              .find((f) => f.name === name)
+              ?.impl(args, { context: {}, stores: {} }),
+        });
+    };
+    const graph = findNode(canvasPane, (n) => n.type === 'GraphView')!;
+    const focusRules = ((graph.props as { nodeStyle: unknown[] }).nodeStyle as unknown[]).slice(-3);
+    const dims = (evaluate: (p: unknown) => unknown) => focusRules.flatMap((rule) => evaluate(rule) as unknown[]);
+
+    it('says what to do on an empty canvas, rather than the canvas’s address', () => {
+      const empty = (graph.props as { empty: unknown }).empty;
+      expect(at([], { view: 'canvas' })(empty)).toMatch(/^Nothing on this canvas yet\. Double-click/);
+      const noCanvas = at([], { view: 'canvas' }, { spaceStore: { landmarks: {}, policy: { sentences: [] } } });
+      expect(noCanvas(empty)).toMatch(/^This space has no canvas/);
+    });
+
+    it('is drawn beside the pages, by the mode in the address', () => {
+      const view = (coasys.shell.children as SchemaNode[])[1];
+      expect(JSON.stringify(view)).toContain("routeStore.params.view == 'canvas'");
+      expect(JSON.stringify(view)).toContain('"type":"$routes"');
+    });
+
+    it('dims to what was extracted from the call chosen, what a person made, or what is in a workflow', () => {
+      expect(dims(at(['record'], { kind: 'call', id: 'call-1', view: 'canvas' }))).toEqual([
+        { when: { 'data.origin': { not: 'call-1' } }, style: { opacity: FOCUS_DIM } },
+      ]);
+      expect(dims(at(['person'], { did: 'did:ada', view: 'canvas' }))).toEqual([
+        { when: { 'data.author': { not: 'did:ada' } }, style: { opacity: FOCUS_DIM } },
+      ]);
+      const open = { name: 'review', label: 'Review', records: [{ record: 't1' }, { record: 't2' }] };
+      expect(dims(at(['workflows'], { view: 'canvas' }, { workflowStore: { open } }))).toEqual([
+        { when: { 'data.recordId': { not: ['t1', 't2'] } }, style: { opacity: FOCUS_DIM } },
+      ]);
+      // The Feed, and a record that is not a call, dim nothing.
+      expect(dims(at([], { view: 'canvas' }))).toEqual([]);
+      expect(dims(at(['record'], { kind: 'task', id: 't1', view: 'canvas' }))).toEqual([]);
+    });
+
+    it('is carried by every navigation the tree makes, so choosing another thing stays on the canvas', () => {
+      const evaluate = at([], { view: 'canvas' });
+      expect(evaluate({ $: callPath("'c9'") })).toBe('/space/s1/record/CollectionBlock?kind=call&id=c9&view=canvas');
+      expect(evaluate({ $: personPath("'did:ada'") })).toBe('/space/s1/person?did=did:ada&view=canvas');
+      expect(evaluate({ $: groupPath('calls') })).toBe('/space/s1/calls?view=canvas');
+      expect(at([], {})({ $: groupPath('calls') })).toBe('/space/s1/calls');
+    });
+
+    /*
+      Resolved by the graph's own style resolver, over a few nodes of the map, rather than only
+      evaluated: rules of a shape the graph could not read once passed a check of their shape, and the
+      space's template failed the moment a definition was chosen.
+    */
+    it('shows Social DNA on the vocabulary map: its kind and the chosen definition open, the rest dimmed', () => {
+      const map = findNode(canvasPane, (n) => n.type === '$if' && JSON.stringify(n).includes('source":"vocabulary'));
+      const vocab = findNode(map, (n) => n.type === 'GraphView')!;
+      const props = vocab.props as { nodeStyle: unknown[]; open: unknown };
+      const node = (id: string, data: Record<string, string>, kind = 'entity', type = 'SignalType') => ({
+        id,
+        kind,
+        type,
+        data,
+      });
+      const nodes = [
+        node('signals', { bucket: 'signals' }, 'cluster', 'vocabulary'),
+        node('like', { bucket: 'signals', recordId: 'like' }),
+        node('rating', { bucket: 'signals', recordId: 'rating' }),
+        node('like-mode', {}, 'property', 'mode'),
+        node('states', { bucket: 'states' }, 'cluster', 'vocabulary'),
+        node('rule', { bucket: 'policy', item: 'Members can make anything.' }, 'cluster', 'vocabulary-item'),
+      ];
+      const dimmed = (params: Record<string, string>) => {
+        const evaluate = at([], { view: 'canvas', ...params });
+        const rules = props.nodeStyle.map((rule) =>
+          rule && typeof rule === 'object' && '$' in rule ? evaluate(rule) : rule,
+        );
+        return nodes
+          .filter((n) => (resolveStyle(n as never, rules as never) as { opacity?: number }).opacity === FOCUS_DIM)
+          .map((n) => n.id);
+      };
+      // A kind: the others dimmed, and nothing of its own.
+      expect(dimmed({ dna: 'signal' })).toEqual(['states', 'rule']);
+      // A definition: its siblings as well, while what it opened into stays whole.
+      expect(dimmed({ dna: 'signal|like' })).toEqual(['rating', 'states', 'rule']);
+      // The policy is Social DNA too: one rule, by its words.
+      expect(dimmed({ dna: 'policy|Members can make anything.' })).toEqual(['signals', 'like', 'rating', 'states']);
+      // All of it, nothing dimmed.
+      expect(dimmed({ dna: 'all' })).toEqual([]);
+
+      // What the tree chose is centred: a definition, or a kind's bucket; all of it, nothing.
+      const focus = (vocab.props as { focus: unknown; focusCentre: boolean }).focus;
+      expect((vocab.props as { focusCentre: boolean }).focusCentre).toBe(true);
+      expect(at([], { view: 'canvas', dna: 'signal|like' })(focus)).toBe('like');
+      expect(at([], { view: 'canvas', dna: 'signal' })(focus)).toBe('we-graph://cluster/vocabulary/signals');
+      expect(at([], { view: 'canvas', dna: 'policy|Members can make anything.' })(focus)).toBe(
+        'policy:Members can make anything.',
+      );
+      expect(at([], { view: 'canvas', dna: 'all' })(focus)).toBe('');
+
+      // The chosen definition is opened into what it is, beside its kind.
+      expect(at([], { view: 'canvas', dna: 'signal|like' })(props.open)).toEqual([
+        'we-graph://cluster/vocabulary/signals',
+        'like',
+      ]);
+    });
+
+    /*
+      A definition opens in the inspector beside the view, in either mode, and lights its row there;
+      on the canvas, a press on a definition or on one of its uses opens it too, while a model — a
+      type, not a record — does not.
+    */
+    it('opens a definition in the inspector, from the tree or the map', () => {
+      const map = findNode(canvasPane, (n) => n.type === '$if' && JSON.stringify(n).includes('source":"vocabulary'));
+      const vocab = findNode(map, (n) => n.type === 'GraphView')!;
+      const onNodeClick = (vocab.props as { onNodeClick: { $if: { condition: unknown; then: unknown } }[] })
+        .onNodeClick[1];
+      expect(onNodeClick.$if.then).toEqual([
+        { $invoke: 'routeStore.setParam', args: ['cardType', { $: 'event.recordType' }] },
+        { $invoke: 'routeStore.setParam', args: ['card', { $: 'event.recordId' }] },
+        { $invoke: 'shellStore.openTemplatePanel', args: ['inspector'] },
+      ]);
+      const pressed = (recordId: string, recordType: string) =>
+        at([], { view: 'canvas' }, { event: { recordId, recordType } })(onNodeClick.$if.condition);
+      expect(pressed('like', 'SignalType')).toBe(true);
+      expect(pressed('Recipe', '$schema')).toBe(false);
+
+      // Read beside a page, a definition lights its own row.
+      expect(at(['feed'], { card: 'like', cardType: 'SignalType' })({ $: SELECTED_EXPR })).toBe('dna|signal|like');
+      expect(at(['feed'], { card: 't1', cardType: 'TaskBlock' })({ $: SELECTED_EXPR })).not.toContain('dna|');
+      // The policy is still lit by its words on the canvas.
+      expect(at([], { view: 'canvas', dna: 'policy|Members can make anything.' })({ $: SELECTED_EXPR })).toBe(
+        'dnaprop|policy|Members can make anything.',
+      );
+    });
+
+    /*
+      Pressing a node of the map only opened the inspector, so the map stayed lit for whatever the tree
+      had chosen and the tree lit nothing new. It moves the focus now, as the tree does, and the tree
+      opens its rows around what is lit.
+    */
+    it('moves the focus to what is pressed on the map, and opens the tree around it', () => {
+      const map = findNode(canvasPane, (n) => n.type === '$if' && JSON.stringify(n).includes('source":"vocabulary'));
+      const vocab = findNode(map, (n) => n.type === 'GraphView')!;
+      const press = (vocab.props as { onNodeClick: { $if: { condition: unknown; then: { args: unknown[] } } }[] })
+        .onNodeClick[0].$if;
+      const focusOf = (event: Record<string, unknown>) => {
+        const evaluate = at([], { view: 'canvas', dna: 'state' }, { event });
+        return evaluate(press.condition) ? [press.then.args[0], evaluate(press.then.args[1])] : null;
+      };
+      expect(focusOf({ type: 'vocabulary', kind: 'cluster', data: { bucket: 'signals' } })).toEqual(['dna', 'signal']);
+      expect(focusOf({ type: 'SignalType', recordId: 'like', data: { bucket: 'signals' } })).toEqual([
+        'dna',
+        'signal|like',
+      ]);
+      expect(focusOf({ type: '$schema', data: { bucket: 'models', entity: 'TaskBlock' } })).toEqual([
+        'dna',
+        'model|TaskBlock',
+      ]);
+      expect(focusOf({ type: 'vocabulary-item', data: { bucket: 'policy', item: 'A rule.' } })).toEqual([
+        'dna',
+        'policy|A rule.',
+      ]);
+      // What a definition is used for leaves the focus where it was.
+      expect(focusOf({ type: 'TaskBlock', recordId: 't1', data: {} })).toBeNull();
+
+      // The tree opens Social DNA and the kind around a definition in focus, and nothing else.
+      const row = (value: string) =>
+        findNode(treeSection, (n) =>
+          String(JSON.stringify((n.props as { open?: unknown } | undefined)?.open)).includes(
+            `((${value}) in local.openRows)`,
+          ),
+        )!;
+      const open = (value: string, params: Record<string, string>) =>
+        at([], params, { local: { openRows: [] } })((row(value).props as { open: unknown }).open);
+      const onCanvas = { view: 'canvas', dna: 'signal|like' };
+      expect(open("'group|dna'", onCanvas)).toBe(true);
+      expect(open("'dnakind|signal'", onCanvas)).toBe(true);
+      expect(open("'dnakind|state'", onCanvas)).toBe(false);
+      expect(open("'dnakind|signal'", { view: 'canvas', dna: 'all' })).toBe(false);
+    });
+
+    it('lists every model the map does under Models, by name', () => {
+      const models = DNA_LISTS.find((list) => list.kind === 'model')!;
+      const evaluate = at(
+        [],
+        {},
+        {
+          recordStore: {
+            creatableEntities: [{ value: 'TaskBlock', label: 'Task', icon: 'check', description: 'Work' }],
+          },
+        },
+      );
+      expect(evaluate({ $: models.items })).toEqual([
+        { id: 'TaskBlock', name: 'Task', icon: 'check', description: 'Work' },
+      ]);
+      expect(JSON.stringify(VOCABULARY_BUCKETS)).toContain(
+        "key: 'models', label: 'Models', models: recordStore.creatableEntities",
+      );
+    });
+
+    /*
+      Every group row opens a page in Page mode, and Social DNA's used to open the space's settings
+      instead: an edit surface off to the side, for somebody who only wanted to look. It is a page of
+      its own now — the vocabulary map the canvas draws — lit in the tree as the canvas's focus is.
+    */
+    it('shows Social DNA as a page of its own in Page mode, never the settings', () => {
+      expect(JSON.stringify(treeSection)).not.toContain('"shellStore.openSpaceSettings","args":["vocabulary"');
+      expect(spaceRoutes.map((route) => route.path)).toContain('/dna');
+      expect(at(['dna'], { dna: 'all' })({ $: SELECTED_EXPR })).toBe('group|dna');
+      expect(at(['dna'], { dna: 'signal' })({ $: SELECTED_EXPR })).toBe('dnakind|signal');
+      // Anywhere else in Page mode, a leftover focus lights nothing.
+      expect(at(['people'], { dna: 'signal' })({ $: SELECTED_EXPR })).toBe('group|people');
+    });
+
+    /*
+      Page and Canvas showed Social DNA identically, the map in both. The canvas keeps the map — how
+      the definitions connect — and the page lists them to read: a section of cards a kind, narrowed
+      to the kind in focus, the chosen definition outlined.
+    */
+    it('lists Social DNA on its page, where the canvas draws the map', () => {
+      const page = spaceRoutes.find((route) => route.path === '/dna')!;
+      expect(findNode(page, (n) => n.type === 'GraphView')).toBeUndefined();
+      const sections = findAll(page, (n) => n.type === '$if' && JSON.stringify(n.props).includes("== 'all' && count("))
+        .map((n) => (n.props as { condition: unknown }).condition)
+        .filter((condition) => !JSON.stringify(condition).includes('== 0'));
+      const data = {
+        local: { signalTypes: [{ id: 'like', name: 'Like' }], relationshipTypes: [], topics: [{ id: 'x', name: 'X' }] },
+        spaceStore: {
+          spacePath: '/space/s1',
+          taskStates: [],
+          involvementTypes: [],
+          policy: { sentences: ['A rule.'] },
+        },
+      };
+      const shown = (dna?: string) => sections.map((condition) => at(['dna'], dna ? { dna } : {}, data)(condition));
+      // Every kind with something in it; one kind alone, even an empty one; a definition, its kind.
+      expect(shown()).toEqual([true, false, false, false, true, false, true]);
+      expect(shown('state')).toEqual([false, false, true, false, false, false, false]);
+      expect(shown('signal|like')).toEqual([true, false, false, false, false, false, false]);
+      // The chosen card is outlined.
+      const card = findNode(page, (n) => n.type === 'Card' && JSON.stringify(n.props).includes("== 'signal'"))!;
+      const border = (card.props as { border: unknown }).border;
+      expect(at(['dna'], { dna: 'signal|like' }, { def: { id: 'like' } })(border)).toBe('1px solid accent');
+      expect(at(['dna'], { dna: 'signal|like' }, { def: { id: 'love' } })(border)).toBe('1px solid transparent');
+    });
+
+    /*
+      Every bar says where the view is as a trail: Calls › the call, People › a person, Social DNA ›
+      Signal types › Like — each step but the last a way back to it, in the mode it was in.
+    */
+    describe('the bar’s trail', () => {
+      const bar = (node: SchemaNode) =>
+        findNode(node, (n) => (n.props as { minHeight?: string } | undefined)?.minHeight === '56px')!;
+      type Step = { label: unknown; to?: unknown };
+      const whereTo = (handler: unknown, evaluate: (p: unknown) => unknown): unknown => {
+        if (Array.isArray(handler)) return whereTo(handler[handler.length - 1], evaluate);
+        const h = handler as {
+          $if?: { condition: unknown; then: unknown; else: unknown };
+          $invoke?: string;
+          args?: unknown[];
+        };
+        if (h.$if) return whereTo(evaluate(h.$if.condition) ? h.$if.then : h.$if.else, evaluate);
+        const [first, second] = (h.args ?? []).map((arg) =>
+          arg && typeof arg === 'object' && '$' in arg ? evaluate(arg) : arg,
+        );
+        if (h.$invoke === 'routeStore.setParam') return `?${first}=${second}`;
+        const query = (second as { query?: Record<string, string> } | undefined)?.query;
+        return query ? `${first}?${new URLSearchParams(query)}` : first;
+      };
+      const trail = (node: unknown, evaluate: (p: unknown) => unknown, to?: unknown): Step[] => {
+        if (!node || typeof node !== 'object') return [];
+        const n = node as SchemaNode;
+        const props = (n.props ?? {}) as Record<string, unknown>;
+        if (n.type === '$if') return trail(evaluate(props.condition) ? props.then : props.else, evaluate, to);
+        if (n.type === 'we-button')
+          return (n.children ?? []).flatMap((c) => trail(c, evaluate, whereTo(props.onClick, evaluate)));
+        if (n.type === 'we-text' && props.variant === 'heading-sm') {
+          const label = n.children![0];
+          return [{ label: typeof label === 'object' ? evaluate(label) : label, ...(to ? { to } : {}) }];
+        }
+        return (n.children ?? []).flatMap((c) => trail(c, evaluate, to));
+      };
+      const trailAt = (node: SchemaNode, path: string[], params: Record<string, string>, extra = {}) =>
+        trail(bar(node), at(path, params, { shellStore: { collapsedLanes: [] }, ...extra }));
+      const route = (path: string) => spaceRoutes.find((r) => r.path === path)! as SchemaNode;
+      const dnaData = {
+        local: { signalTypes: [{ id: 'like', name: 'Like' }], relationshipTypes: [], topics: [] },
+        spaceStore: { spacePath: '/space/s1', taskStates: [], involvementTypes: [], policy: { sentences: [] } },
+      };
+
+      it('goes back up from a call, a person, a workflow and a channel', () => {
+        expect(
+          trailAt(callPage, ['record'], { kind: 'call', id: 'c1' }, { local: { callRecord: [{ title: 'Standup' }] } }),
+        ).toEqual([{ label: 'Calls', to: '/space/s1/calls' }, { label: 'Standup' }]);
+        expect(trailAt(route('/person'), ['person'], { did: 'did:ada' }, { person: { name: 'Ada' } })).toEqual([
+          { label: 'People', to: '/space/s1/people' },
+          { label: 'Ada' },
+        ]);
+        const open = { name: 'review', label: 'Review' };
+        expect(trailAt(route('/workflows'), ['workflows'], {}, { workflowStore: { open } })).toEqual([
+          { label: 'Workflows', to: '/space/s1/workflows' },
+          { label: 'Review' },
+        ]);
+        expect(trailAt(route('/workflows'), ['workflows'], {})).toEqual([{ label: 'Workflows' }]);
+        expect(trailAt(route('/calls'), ['calls'], {})).toEqual([{ label: 'Calls' }]);
+      });
+
+      it('goes back up through Social DNA, a kind of it and a definition, on its page or the canvas', () => {
+        expect(trailAt(route('/dna'), ['dna'], { dna: 'signal|like' }, dnaData)).toEqual([
+          { label: 'Social DNA', to: '/space/s1/dna?dna=all' },
+          { label: 'Signal types', to: '/space/s1/dna?dna=signal' },
+          { label: 'Like' },
+        ]);
+        expect(trailAt(route('/dna'), ['dna'], { dna: 'all' }, dnaData)).toEqual([{ label: 'Social DNA' }]);
+        // On the canvas the same steps, which stay on it.
+        expect(trailAt(canvasPane, [], { view: 'canvas', dna: 'signal|like' }, dnaData)).toEqual([
+          { label: 'Social DNA', to: '?dna=all' },
+          { label: 'Signal types', to: '?dna=signal' },
+          { label: 'Like' },
+        ]);
+        expect(
+          trailAt(
+            canvasPane,
+            ['record'],
+            { view: 'canvas', kind: 'call', id: 'c1' },
+            { local: { focusCall: [{ title: 'Standup' }] } },
+          ),
+        ).toEqual([{ label: 'Calls', to: '/space/s1/calls?view=canvas' }, { label: 'Standup' }]);
+        expect(trailAt(canvasPane, [], { view: 'canvas' })).toEqual([{ label: 'Canvas' }]);
+      });
+    });
+
+    /*
+      The lane on the right holds the inspector and the space's settings in one place, as tabs, both
+      closed until opened, and folds while neither is.
+    */
+    it('shares the right lane between the inspector and the space settings, folded while neither is open', () => {
+      const lane = findNode(
+        coasys.shell,
+        (n) => n.type === '$panels' && (n.props as { lane?: string }).lane === 'inspector',
+      )!;
+      expect((lane.props as { foldEmpty?: boolean }).foldEmpty).toBe(true);
+      const panels = (
+        coasys.shell.meta as {
+          panels: { id: string; module?: string; home?: string; order?: number; open?: boolean }[];
+        }
+      ).panels;
+      const right = panels.filter((panel) => panel.home === 'inspector');
+      expect(right.map((panel) => [panel.id, panel.module, panel.order, panel.open])).toEqual([
+        ['inspector', undefined, 0, false],
+        ['settings', 'shell', 0, false],
+      ]);
+    });
+  });
 });
+
+/** The first node under `root`, depth first, that `match` accepts — through children, slots and routes. */
+function findNode(root: unknown, match: (node: { type?: string; props?: unknown }) => boolean) {
+  const walk = (node: unknown): { type?: string; props?: unknown } | undefined => {
+    if (!node || typeof node !== 'object') return undefined;
+    if (Array.isArray(node)) {
+      for (const child of node) {
+        const found = walk(child);
+        if (found) return found;
+      }
+      return undefined;
+    }
+    const n = node as { type?: string; props?: unknown };
+    if (match(n)) return n;
+    for (const value of Object.values(node)) {
+      const found = walk(value);
+      if (found) return found;
+    }
+    return undefined;
+  };
+  return walk(root);
+}
+
+/** Every node under `root` that `match` accepts, depth first, including those inside one that matched. */
+function findAll(root: unknown, match: (node: { type?: string; props?: unknown }) => boolean) {
+  const found: { type?: string; props?: unknown }[] = [];
+  const walk = (node: unknown): void => {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) return node.forEach(walk);
+    if (match(node as { type?: string })) found.push(node as { type?: string });
+    Object.values(node).forEach(walk);
+  };
+  walk(root);
+  return found;
+}
 
 describe('the lookup that read every tool as available', () => {
   /*

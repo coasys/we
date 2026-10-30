@@ -166,6 +166,16 @@ const WEIGHT_OPTIONS = [
   { value: '800', label: 'Heavy' },
 ];
 
+/** A type role's size, as the font-size scale's steps. Not offered for headings, which are a scale. */
+const SIZE_OPTIONS = [
+  { value: '', label: 'Default' },
+  { value: '100', label: '12' },
+  { value: '200', label: '14' },
+  { value: '300', label: '16' },
+  { value: '400', label: '18' },
+  { value: '500', label: '20' },
+];
+
 const TRACKING_OPTIONS = [
   { value: '', label: 'Default' },
   { value: 'tight', label: 'Tight' },
@@ -2320,6 +2330,15 @@ export function ThemePanel() {
                 {(role) => (
                   <Column gap="200">
                     <Subheading>{TYPE_ROLE_LABELS[role]}</Subheading>
+                    <Show when={role !== 'heading'}>
+                      {choiceRow(
+                        'Size',
+                        () => overrides().typeStyles?.[role]?.size ?? '',
+                        SIZE_OPTIONS,
+                        (v) => setTypeStyle(role, 'size', v),
+                        () => setTypeStyle(role, 'size', undefined),
+                      )}
+                    </Show>
                     {choiceRow(
                       'Weight',
                       () => String(overrides().typeStyles?.[role]?.weight ?? ''),

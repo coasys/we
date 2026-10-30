@@ -69,6 +69,44 @@ export type { AgentBylineOptions } from './we/agentByline.ts';
 export { installedList } from './we/installedList.ts';
 export type { InstalledListOptions } from './we/installedList.ts';
 export { RECORD_ROUTE_PATH, recordLink } from './we/recordLink.ts';
+export { profileEditor, profilePage } from './we/profile.ts';
+export { FLOWS_LOCALS, workflowsPage, workflowsSection } from './we/workflows.ts';
+export {
+  canvasEditing,
+  canvasSeedOptions,
+  EXTRACTABLE,
+  FOCUS_DIM,
+  focusDim,
+  focusDimWhere,
+  PLACED_CARD_STYLE,
+  SUGGESTION_STYLES,
+} from './we/canvas.ts';
+export type { CanvasEditingOptions, CanvasSeedOptions } from './we/canvas.ts';
+export { fieldEditor, inspectorPanel, kindIcon, kindLabel, openRecord, vocabularyEditLink } from './we/inspector.ts';
+export type { InspectorPanelOptions } from './we/inspector.ts';
+export {
+  chooseTemplate,
+  chooseTheme,
+  SPACE_TEMPLATE_CHOICES,
+  SPACE_THEME_CHOICES,
+  templateChoice,
+  themeChoice,
+} from './we/designChoices.ts';
+export type { Choice } from './we/designChoices.ts';
+export { SOCIAL_DNA_LABELS, VOCABULARY_BUCKETS, vocabularyMap } from './we/vocabularyMap.ts';
+export type { VocabularyMapOptions } from './we/vocabularyMap.ts';
+export { askWhatGoesHere, BACK_TO_CHOOSER, CARD_LOCALS, newNoteModal, newThingChooser } from './we/canvasCards.ts';
+export {
+  KIND_CARD_RULES,
+  KIND_STYLES_QUERY,
+  kindCardFill,
+  kindChosen,
+  kindColour,
+  kindDisc,
+  kindGlyph,
+  withKindStyles,
+} from './we/kindColour.ts';
+export type { ProfilePageOptions } from './we/profile.ts';
 export { marketplaceList } from './we/marketplaceList.ts';
 export type { MarketplaceListOptions } from './we/marketplaceList.ts';
 export { peopleFilter } from './we/peopleFilter.ts';

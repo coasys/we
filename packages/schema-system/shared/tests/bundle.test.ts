@@ -120,10 +120,49 @@ describe('a brand', () => {
   });
 });
 
+describe('pages of the app’s own', () => {
+  const about = { id: 'about', type: 'Column', meta: meta('page') };
+
+  it('reads a page, and a brand whose About is one', () => {
+    expect(paths({ ...minimal(), pages: [about], brand: { name: 'X', aboutPage: 'about' } })).toEqual([]);
+  });
+
+  it('keeps pages and templates apart', () => {
+    expect(paths({ ...minimal(), pages: [{ ...about, meta: meta() }] })).toContain('pages.0.meta.role');
+    expect(paths({ ...minimal(), templates: [about], display: undefined })).toContain('templates.0.meta.role');
+  });
+
+  it('refuses an About page the bundle does not have', () => {
+    expect(paths({ ...minimal(), brand: { name: 'X', aboutPage: 'about' } })).toContain('brand.aboutPage');
+    expect(paths({ ...minimal(), pages: [about, about] })).toContain('pages.1.id');
+  });
+
+  it('counts a page as something to install', () => {
+    const { app: _app, templates: _templates, theme: _theme, display: _display, ...empty } = minimal();
+    expect(paths({ ...empty, pages: [about] })).toEqual([]);
+  });
+});
+
 describe('a sign-in screen', () => {
   it('is a node, and nothing else', () => {
     expect(paths({ ...minimal(), bootScreen: { type: 'Column' } })).toEqual([]);
     expect(paths({ ...minimal(), bootScreen: 'Column' })).toContain('bootScreen');
+  });
+});
+
+describe('space starters', () => {
+  const starter = { id: 'default', settings: { defaultTemplateId: 'shell' }, records: [], landmarks: {} };
+
+  it('reads a list of starters in the shape a seed’s take', () => {
+    expect(paths({ ...minimal(), starters: [starter] })).toEqual([]);
+  });
+
+  it('refuses a starter that is not one, an id used twice, and a key nothing reads', () => {
+    expect(paths({ ...minimal(), starters: starter })).toEqual(['starters']);
+    expect(paths({ ...minimal(), starters: [starter, starter] })).toEqual(['starters.1.id']);
+    // `roles` became `landmarks`; a starter still saying it named nothing, silently.
+    expect(paths({ ...minimal(), starters: [{ ...starter, roles: {} }] })).toEqual(['starters.0.roles']);
+    expect(paths({ ...minimal(), starters: [{ ...starter, records: {} }] })).toEqual(['starters.0.records']);
   });
 });
 

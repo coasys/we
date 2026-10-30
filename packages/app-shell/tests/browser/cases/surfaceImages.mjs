@@ -1,6 +1,6 @@
 /**
  * A theme's surface images are worn by every surface of their kind, and only where nothing says
- * otherwise; the page's holds still. And the theme's surface opacity reaches a card, which it had
+ * otherwise; each holds still against its own box. And the theme's surface opacity reaches a card, which it had
  * not since the card's style moved to background longhands.
  */
 export const name = 'surface images';
@@ -15,8 +15,13 @@ export async function check({ partStyle }) {
   };
 
   expect('the page wears the page image', await image('#page'), 'rgb(255, 0, 0)');
-  if ((await partStyle('#page', 'background-attachment', 'nothing')) !== 'fixed') {
-    problems.push('the page image scrolls with the content');
+  /*
+    Against its own box, never fixed to the window: fixed could not be handed to the GPU, so anything
+    moving over the page repainted it whole on every frame, and it misdrew under a moving layer. The
+    default attachment already holds the image still while the box's own content scrolls.
+  */
+  if ((await partStyle('#page', 'background-attachment', 'nothing')) === 'fixed') {
+    problems.push('the page image is fixed to the window');
   }
   expect('a surface wears the surface image', await image('#surface'), 'rgb(0, 255, 0)');
   expect('a card wears the surface image', await image('#card'), 'rgb(0, 255, 0)');

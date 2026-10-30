@@ -1,19 +1,13 @@
 /**
- * A grip that straddles a panel has to be told which layer to paint at.
+ * The grips a panel's frame draws, and where the ones it does not draw went.
  *
- * Both grips drawn from *outside* a panel's frame — the seam between two lane-mates, and the lane's
- * own outer edge — overlap the panels they belong to, because a displacing lane has no gap and the
- * line is centred on the boundary. So half of each lies over a panel, and panels carry their own
- * z-index steps above `PANEL_LAYER_BASE` so that clicking one brings it forward.
- *
- * A layer *name* therefore cannot work, and the failure is silent and visual: `sticky` is `200`,
- * which is `PANEL_LAYER_BASE` exactly, so the grip falls under every panel that has ever been
- * raised, its inboard half is painted over, and the line comes out at about half the thickness of
- * every other grip in the app. That is how it was noticed — as "is this one 2px?" — rather than as
- * anything failing.
- *
- * `seamLayer` documents the rule and the lane grip repeated the mistake anyway, so it is pinned here
- * for both rather than left to the docblock.
+ * A boundary several panels share — the seam between two lane-mates, a lane's inner edge — is no one
+ * frame's to draw: two grips for one line, each resizing only its own panel, felt like neither. Those
+ * are the lane's now (`EdgeLanes`), inside it, over its frames. What made that hard over the window
+ * was layering — panels carry their own z-index steps above `PANEL_LAYER_BASE`, a grip bound to a
+ * layer *name* fell under every panel ever raised, and its inboard half was painted over. In a lane
+ * the frames stand down from layering altogether, and the lane's grips sit over them in its own
+ * stacking context.
  *
  * Asserted against the schema, like the titlebar and layering tests: what is being protected is what
  * each grip is *bound to*, not how it draws.
@@ -47,9 +41,9 @@ const path = (value: unknown): string =>
 
 describe('the grips a panel frame draws', () => {
   it('finds all of them, so nothing below is vacuous', () => {
-    // One per side of the panel, plus the two drawn from outside it: the seam to its lane-mate and
-    // the lane's own outer edge. The corner grips are `we-move-handle` and are not counted.
-    expect(all.length).toBe(6);
+    // One per side of the panel. The corner grips are `we-move-handle` and are not counted, and the
+    // boundaries a lane's panels share are drawn by the lane.
+    expect(all.length).toBe(4);
   });
 
   it('draws every one at the same thickness', () => {
@@ -65,15 +59,19 @@ describe('the grips a panel frame draws', () => {
     expect([...thicknesses]).toEqual(['3px']);
   });
 
-  it('paints a grip drawn from outside a panel above the panels it crosses', () => {
-    // Bound to a published layer rather than a name. See the file docblock for what a name does.
-    const straddling = all.filter((props) => props.position === 'fixed');
+  it('stands a frame in a lane down from layering, so the lane’s grips paint over it', () => {
+    const box = (function find(node: unknown): Record<string, unknown> | undefined {
+      if (Array.isArray(node)) return node.map(find).find(Boolean);
+      if (!node || typeof node !== 'object') return undefined;
+      const record = node as Record<string, unknown>;
+      const props = record.props as Record<string, unknown> | undefined;
+      if (props && 'data-we-dock-frame' in props) return props;
+      return Object.values(record).map(find).find(Boolean);
+    })(frame);
 
-    expect(straddling.length).toBe(2);
-    for (const props of straddling) {
-      expect(path(props.zIndex)).toMatch(/Layer$/);
-      expect(props.zIndex).not.toBe('sticky');
-    }
+    expect(path(box?.zIndex)).toBe(
+      "shellStore.dockGeometry['transcribe:transcript'].inLane || shellStore.dockGeometry['transcribe:transcript'].home ? null : shellStore.dockGeometry['transcribe:transcript'].layer",
+    );
   });
 
   it('leaves the panel’s own edge grips inside its frame, where a name is right', () => {
