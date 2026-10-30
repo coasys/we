@@ -16,8 +16,10 @@
  * Listed, and shown read-only: the board's task states write it, and tasks move on the board. "Edit in
  * Task states" goes where it is edited.
  */
+import { foldingBody, foldingSectionLabel, formModal } from '@we/schema-kit';
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
-import { evidenceModal, foldingBody, foldingSectionLabel, formModal, stepRequirementFields } from '@we/template-kit';
+
+import { evidenceModal, stepRequirementFields } from './stepRequirements.ts';
 
 const OPEN = 'workflowStore.open';
 const DRAFT = 'workflowStore.draft';

@@ -10,6 +10,8 @@
  * own change channel rather than `createRegistry`'s, because nothing reactive hangs off *which*
  * outlets exist: they are only ever read during a drag, when the store measures whatever is there.
  */
+import type { PanelFrame } from '@we/schema-shared';
+import { createSignal } from 'solid-js';
 
 export interface HomeLane {
   /** Its name, as `meta.panels` entries name it in `home`. */
@@ -44,3 +46,24 @@ export function homeLanes(): HomeLane[] {
 
 /** The attribute the outlet puts on each section's box, so its seams can be measured. */
 export const HOME_SECTION_ATTR = 'data-we-section';
+
+/*
+  How each lane frames its sections where a section's declaration does not say — the outlet's
+  `frame`. A signal, so a frame follows a lane that changes its mind; read through
+  `shellStore.panelFrames`, which is what every frame draws from.
+*/
+const [frames, setFrames] = createSignal<Record<string, PanelFrame>>({});
+
+/** Declare a lane's default frame, while it is mounted. */
+export function declareLaneFrame(lane: string, frame: PanelFrame): () => void {
+  setFrames((all) => ({ ...all, [lane]: frame }));
+  return () =>
+    setFrames((all) => {
+      if (all[lane] !== frame) return all;
+      const { [lane]: _gone, ...rest } = all;
+      return rest;
+    });
+}
+
+/** Every mounted lane's default frame, by lane. */
+export const laneFrames = frames;

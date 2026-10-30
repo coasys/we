@@ -27,6 +27,7 @@
     "@types/node": "^26.6.5",
     "@we/cli": "workspace:*",
     "@we/module-call": "workspace:*",
+    "@we/module-feed": "workspace:*",
     "@we/module-globe": "workspace:*",
     "@we/module-flux": "workspace:*",
     "@we/module-graph": "workspace:*",

@@ -7,7 +7,7 @@
  * schema system stays honest because WE's own UI is its heaviest consumer.
  */
 export { accountSettings, removeAccountModal } from './AccountSettings.schema';
-export { bootScreen } from './BootScreen.schema';
+export { bootScreen, signInAccounts, signInForm } from './BootScreen.schema';
 export { consentPrompt, consentSecret } from './ConsentPrompt.schema';
 export { destructivePrompt } from './DestructivePrompt.schema';
 export { bundlePrompt } from './BundlePrompt.schema';
@@ -17,7 +17,7 @@ export { landingPageTemplate } from './about';
 export { marketplaceTemplate } from './marketplace';
 export { CHROME_RAIL_WIDTH, chromeRail } from './ChromeRail.schema';
 export { weApp } from './WeApp.schema';
-export { templateNameDialog, templatePicker, themePicker } from './DesignControls';
+export { templateNameDialog, templatePicker, themeNameDialog, themePicker } from './DesignControls';
 export { profileTemplate } from './Profile.schema';
 export { aiSection } from './AiSettings.schema';
 export { languagesLocalState, languagesSection } from './LanguageSettings.schema';

@@ -98,7 +98,8 @@ Glossary (these terms pervade stores, models, and \`$query\`/\`perspective\` in 
 | \`@we/backend-conformance\` | backend-system/conformance | One suite of the contract's behaviour every backend runs, with each backend's known gaps listed and run inverted | Agnostic |
 | \`@we/module-shared\` | module-system/shared | The feature-module contract — manifest, contributions, kernels, store markers, \`lintModule\` — what a module author installs | Agnostic |
 | \`@we/module-testing\` | module-system/testing | Fakes for testing a module store without a host: \`fakeDeps\`, \`fakeRecords\`, \`fakePresence\`, \`buildStore\` | Agnostic |
-| \`@we/module-globe\` · \`-call\` · \`-notes\` · \`-pocket\` · \`-polls\` · \`-transcribe\` · \`-graph\` | module-system/* | Bundled feature modules — each exports \`createModule(host)\` and the seed's \`modules\` list generates the registry; globe is a *family* (module · protocol · layers · widget) | Agnostic (components injected) |
+| \`@we/messages\` | module-system/messages | What a message is and how one is drawn — the line, threads, how a line arrived — shared by the transcript and the Feed, which may not depend on each other | Agnostic |
+| \`@we/module-globe\` · \`-call\` · \`-feed\` · \`-notes\` · \`-pocket\` · \`-polls\` · \`-transcribe\` · \`-graph\` | module-system/* | Bundled feature modules — each exports \`createModule(host)\` and the seed's \`modules\` list generates the registry; globe is a *family* (module · protocol · layers · widget) | Agnostic (components injected) |
 | \`@we/graph-protocol\` · \`-core\` · \`-expanders\` · \`-layouts\` · \`-solid\` | graph-system/* | The graph engine: expander/layout/renderer contracts, the neutral engine, first-party plugins, and the Solid adapter | **Agnostic** (Solid only in the adapter) |
 | \`@we/block-shared\` | block-system/shared | Block content types + serialization | Agnostic |
 | \`@we/optimism\` | packages/optimism | A write drawn before it has been seen come back — hold, baseline, settle, and when to stop believing it | Agnostic (signal injected) |
@@ -197,7 +198,8 @@ docs/architecture/template-fragments.md.
 **A template is one of three things.** A *shell* owns a space's chrome, arrangement and route table;
 a *view* renders one section inside one; an *app* is WE's own chrome around every space — the
 sidebar and the module rail placed as host parts (\`{ type: '$part', props: { id: 'host.sidebar' } }\`)
-beside nodes of its own, with the bands that chrome holds declared in \`meta.frame\`. An app is
+beside nodes of its own, with the bands that chrome holds declared in \`meta.frame\` (and how its
+window edges frame the panels docked there in \`meta.edges\`). An app is
 chosen by the agent, never applied as a space's template, and only an app may place a host part.
 \`meta.role\` says which, and absent means shell. A shell
 marks where its sections go with \`{ path: '$views' }\` and the host expands that per space, from

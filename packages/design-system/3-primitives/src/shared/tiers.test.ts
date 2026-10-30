@@ -59,12 +59,15 @@ describe('getStaticDSStyles — tier queries', () => {
     expect(icon).not.toContain("[part='base'] { background");
   });
 
-  it('gives a stateless element tiers anyway', () => {
-    // Tiers are not gated on the `state` layer — an element with no hover behaviour can still be
-    // laid out differently at a different width.
+  it('gives every element tiers and states, whatever its layers', () => {
+    // Neither is a kind of prop an element opts into: both are conditions under which its own kinds
+    // apply. An image that listed no `state` layer dropped `hoverProps`, so a poster meant to brighten
+    // under the pointer never did. Both stay gated on the element carrying a bag, so costing nothing.
     const layoutOnly = getStaticDSStyles('divider', ['layout']);
     expect(layoutOnly).toContain('@container we-surface');
-    expect(layoutOnly).not.toContain('@layer we-state-');
+    expect(layoutOnly).toContain('@layer we-state-hover');
+    const image = getStaticDSStyles('image', ['layout', 'visual']);
+    expect(image).toContain('var(--we-image-hover-opacity');
   });
 });
 

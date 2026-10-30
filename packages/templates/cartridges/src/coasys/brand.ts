@@ -26,5 +26,8 @@ and [AD4M](https://github.com/coasys/ad4m), the agent-centric data layer beneath
 export const coasysBrand: BundleBrand = {
   name: 'Coasys',
   mark: COASYS_MARK,
+  // The site's first screen, as a page of the app's own (`about.ts`); the Markdown stays for a build
+  // that cannot open pages.
+  aboutPage: 'about',
   about: ABOUT,
 };

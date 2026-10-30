@@ -220,17 +220,25 @@ in Settings. The format and the rest are in `docs/architecture/apps-as-data.md`;
 A space starter may name a bundle's space template as its `defaultTemplateId`, by the id an install
 gives it: `<bundle>--<template>`, so `coasys--space` for the Coasys bundle's.
 
+A bundle can bring starters of its own. While its app is in use, a new space gets the bundle's first
+starter rather than the seed's, so the Coasys seed has none: its app is Coasys, and every space made in
+it is a Coasys space. A deployment that builds an app in beside WE's own (WE's seed builds Coasys in)
+names `host.ui.app: "we-app"`, or everyone who has not chosen an app would open in the bundle's.
+
 ```json
 "bundles": ["field-guide"]
 ```
 
 ### `spaceStarters`
 
-What a new space begins with, beyond the structure every space gets. It's a list: a new space gets
-the first entry, and the others are there for a create dialog to offer. The format is in
-`packages/app-shell/src/shared/spaceStarter.ts`, and `pnpm validate:seed` checks every starter.
+What a new space begins with, beyond the structure every space gets. It's a list, and the create
+dialog offers every entry, then an empty space, unless the app in use came in a built-in bundle that
+brings starters of its own (see `bundles` above), whose starters are offered instead. The first one offered is chosen until
+somebody changes it. `name`, `description` and `icon` are what the dialog shows; what a starter
+includes is counted from its records. The format is in
+`packages/schema-system/shared/src/spaceStarter.ts`, and `pnpm validate:seed` checks every starter.
 
-A starter has four parts:
+What it writes:
 
 - **`settings`:** the `Space` record's own fields (template, theme, `extractionTargets`, …).
 - **`records`:** written in order, each `{ "$id", "entity", "fields", "in" }`:
@@ -257,12 +265,14 @@ Two further rules:
 Everything a space starts with is records: its vocabulary, its canvas, its board and columns, and
 its first posts. A post is a `CollectionBlock` with `"type": "root"` and the blocks inside it; the
 stored document it renders from is derived from those blocks. Templates must find starter records
-by role and cope with a role being absent, since a space can switch template.
+by landmark and cope with one being absent, since a space can switch template. A key a starter does
+not have (an old `roles`, say) fails `validate:seed` rather than being ignored.
 
 ### `host`
 
-Optional shell white-labeling: `host.theme` (color/font overrides) and
-`host.ui.bootScreen` (a schema node replacing the default boot screen).
+Optional shell white-labeling: `host.theme` (color/font overrides),
+`host.ui.bootScreen` (a schema node replacing the default boot screen) and `host.ui.app` (the app the
+deployment opens in, `we-app` for WE's own; without it, the first built-in bundle bringing an app).
 
 A replacement boot screen draws everything except the password field. It places
 the host's own field, `CredentialField`, which keeps what is typed out of

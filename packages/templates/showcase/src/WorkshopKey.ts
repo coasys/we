@@ -47,6 +47,12 @@
 import type { ExpressionToken, SchemaNode, SchemaProp } from '@we/schema-shared';
 import {
   anchorScope,
+  KIND_CARD_RULES,
+  KIND_STYLES_QUERY,
+  kindChosen,
+  kindColour,
+  kindIcon,
+  kindLabel,
   panelHeader,
   panelScroll,
   sectionLabel,
@@ -188,18 +194,11 @@ export function toggleLens(lens: 'kind' | 'state' | 'order'): SchemaProp {
 }
 
 /**
- * The community's key, as a query. Declare it on whatever reads it — each route, and each panel —
- * since local scope resets at a `$routes` outlet and a panel cannot see a route's locals at all.
- *
- * `when`, because an unresolved anchor is pruned rather than refused and pruning widens: without it
- * the first frame would ask for every `TypeStyle` in the dataset, each canvas's own included.
+ * The community's key, as a query — the kit's, since the canvas's colours by kind read the same
+ * rows. Declare it on whatever reads it — each route, and each panel — since local scope resets at a
+ * `$routes` outlet and a panel cannot see a route's locals at all.
  */
-export const TYPE_STYLES_QUERY = {
-  entity: 'TypeStyle',
-  scope: { anchor: 'Space', via: 'typeStyles', anchorId: { $: 'spaceStore.currentSpace.id' } },
-  limit: 50,
-  when: { $: 'spaceStore.currentSpace.id' },
-};
+export const TYPE_STYLES_QUERY = KIND_STYLES_QUERY;
 
 /**
  * Where the cards of one call sit, and what colour each was given — for the pages that are not the
@@ -219,58 +218,12 @@ export function placementsQuery(call: Record<string, unknown>) {
  * them.
  */
 
-/**
- * What a kind is drawn in before the community says otherwise — the template's own opinion, and the
- * fallback the key shows beside a kind nobody has coloured.
- *
- * Absolute colours, not roles, for the reason `STATE_FILLS` sets out at length in the kit: these
- * were `accent-soft` and `warning-soft`, which are tinted panels defined *relative to the page*
- * and so invert with it — in a dark theme an event card came out darker than an uncoloured one and
- * four points off the canvas's own ground. A card is an object rather than a panel, and the post-it
- * below already said so in a hex. These are the same claim for the other two, in the same spelling.
- *
- * Chosen rather than derived, like the states', and readable together: blue, pink and yellow are
- * three hues apart at a glance, which is the whole job of a colour that means "kind of thing".
+/*
+ * What a kind is drawn in before the community says otherwise is the kind's own palette hue —
+ * `recordStore.kinds[].hue`, drawn through the theme's roles by the kit (`kindColour.ts`). It was a
+ * table of hexes here, which the canvas shared with nothing and no theme could reach: a pastel chosen
+ * against one theme sat pasted onto the next. The Coasys canvas draws kinds by the same rule.
  */
-export const KIND_DEFAULTS: Record<string, string> = {
-  TaskBlock: '#86c2ff',
-  EventBlock: '#ff94f7',
-  /*
-    The blocks that stand on a canvas by themselves — dropped from a post or the Pocket, or put down
-    from the chooser. Pale and distinct from the three above, so a picture is not mistaken for a task.
-    A quote (`EmbedBlock`) is somebody else's thing brought in, and reads as its own kind.
-  */
-  TextBlock: '#ffd0a6',
-  ImageBlock: '#a9ecc6',
-  VideoBlock: '#cdbcff',
-  AudioBlock: '#f7b9c4',
-  FileBlock: '#d9d3c4',
-  LinkBlock: '#a3e4ea',
-  EmbedBlock: '#c8d7ec',
-  LocationBlock: '#d4ef9a',
-  CodeBlock: '#cdb89c',
-  TagBlock: '#ff9f8f',
-  CalloutBlock: '#ffc75f',
-  // The post-it. A literal rather than a role on purpose: a note is yellow in a dark theme too, and
-  // the card's ink follows the fill's lightness rather than the theme's, so it stays readable.
-  CollectionBlock: '#ffea9f',
-};
-
-/**
- * What a kind is called and drawn with, here and in the inspector — one answer, so the two panels
- * on the same edge cannot call one card two different things.
- *
- * `CollectionBlock` is overridden because its display says "Collection", which is the class read
- * back rather than the word anybody uses: on this canvas one of them is a note. The fallback past
- * it is the model's own name, for a kind nothing has a display for at all.
- */
-export function kindLabel(kind: string): string {
-  return `(${kind} == 'CollectionBlock' ? 'Note' : recordStore.displays[${kind}].label ? recordStore.displays[${kind}].label : ${kind})`;
-}
-
-export function kindIcon(kind: string): string {
-  return `(${kind} == 'CollectionBlock' ? 'note' : recordStore.displays[${kind}].icon)`;
-}
 
 /**
  * The colour every card starts from — and the whole of a card's colour when no lens is on.
@@ -307,8 +260,8 @@ export const LINK_DEFAULT = 'var(--we-color-accent-300)';
  * need no field on `Space`, no store action and no migration for three more colours.
  *
  * The `@` is what keeps them out of everything that reads the key *as* a key. A model name is a bare
- * identifier, so nothing can collide with these; `KEY_RESERVED` below is how the graph's per-kind
- * rules leave them alone rather than emitting a rule matching a type called `@card`.
+ * identifier, so nothing can collide with these. The graph's per-kind rules are built from the
+ * space's kinds rather than from these rows, so they never emit a rule matching a type called `@card`.
  */
 export const CARD_KEY = '@card';
 export const CANVAS_KEY = '@canvas';
@@ -372,31 +325,6 @@ export const HEAT_HIGH_FILL = `(${heatHighChosen} ? ${heatHighChosen} : '${HEAT_
  */
 export const HEAT_NONE_FILL = `(${heatNoneChosen} ? ${heatNoneChosen} : ${CARD_FILL})`;
 
-/** The key's rows that are not kinds, for the per-kind rules to skip. */
-const KEY_RESERVED = `['${CARD_KEY}', '${CANVAS_KEY}', '${LINK_KEY}', '${HEAT_LOW_KEY}', '${HEAT_HIGH_KEY}', '${HEAT_NONE_KEY}']`;
-
-/**
- * `KIND_DEFAULTS` as an object literal the expression grammar can index.
- *
- * A lookup rather than a chain of `kind == 'X' ? … :` — the chain nested one level per kind, and the
- * parser's depth limit refused it once the blocks that stand on a canvas by themselves joined.
- */
-const KIND_DEFAULTS_LOOKUP = `{ ${Object.entries(KIND_DEFAULTS)
-  .map(([name, color]) => `${name}: '${color}'`)
-  .join(', ')} }`;
-
-/** The default fill for a kind, as an expression over `kind`. */
-export function kindDefaultFill(kind: string): string {
-  const hit = `${KIND_DEFAULTS_LOOKUP}[${kind}]`;
-  return `(${hit} ? ${hit} : ${CARD_FILL})`;
-}
-
-/** The community's colour for a kind, else the template's default. Reads `local.typeStyles`. */
-export function kindFill(kind: string): string {
-  const chosen = `find(local.typeStyles, { nodeType: ${kind} }).color`;
-  return `(${chosen} ? ${chosen} : ${kindDefaultFill(kind)})`;
-}
-
 /*
  * `stateFill` and `stateIcon` were here, each a chain over `semantic` written out by hand — and each
  * disagreeing with the one Settings → Vocabulary drew the same states with. They are
@@ -410,7 +338,7 @@ export function kindFill(kind: string): string {
  * calendar's colours; see the board's card for why those went.
  *
  * Worth knowing that the canvas never used either. It is a graph, so all three layers reach it as
- * `nodeStyle` rules (below) — `kindFill`, `stateFill`, and the card's own colour as
+ * `nodeStyle` rules (below) — the kind colours, `stateFill`, and the card's own colour as
  * `data.canvasColor`, which the `canvas` seed stamps onto each node from its `Placement`. So the
  * key still has three layers and a reader can still colour a card; only the second spelling is
  * gone, along with the `placements` query it needed to read a placement the seed hands the canvas
@@ -425,9 +353,6 @@ export function kindFill(kind: string): string {
  * nothing, and the base rule's plain fill is what shows through. Reads `local.typeStyles`.
  */
 export function lensNodeRules(): SchemaProp[] {
-  const defaults = Object.entries(KIND_DEFAULTS)
-    .map(([name, color]) => `{ when: { type: '${name}' }, style: { color: '${color}' } }`)
-    .join(', ');
   return [
     /*
       The plain card, as the community set it — before any lens, since this is what a lens colours
@@ -435,18 +360,8 @@ export function lensNodeRules(): SchemaProp[] {
       has chosen nothing is exactly what it was.
     */
     { $: `[{ style: { color: ${CARD_FILL} } }]` },
-    // By kind: the template's defaults, then the community's key in front of them.
-    { $: `${BY_KIND} ? [${defaults}] : []` },
-    /*
-      The community's key. Filtered, because the same subscription carries the two rows that are not
-      kinds — a rule matching a type called `@card` would match nothing, and be one more thing a
-      reader of the style list has to work out is inert.
-    */
-    {
-      $:
-        `${BY_KIND} ? local.typeStyles.filter(s, !(s.nodeType in ${KEY_RESERVED}))` +
-        `.map(s, { when: { type: s.nodeType }, style: { color: s.color } }) : []`,
-    },
+    // By kind: each kind's colour — the community's from the key, else the kind's own hue.
+    { $: `${BY_KIND} ? ${(KIND_CARD_RULES as ExpressionToken).$} : []` },
     // By state: one rule per state the community has, matched on the record's own field.
     {
       $: `${BY_STATE} ? spaceStore.taskStates.map(s, { when: { 'data.status': s.slug }, style: { color: ${stateFill('s')} } }) : []`,
@@ -835,7 +750,7 @@ const heatBody: SchemaNode = {
 function kindRow(kind: string): SchemaNode {
   return keyRow({
     mark: picker(
-      { $: kindFill(kind) },
+      { $: kindColour(kind) },
       {
         $invoke: 'recordStore.setSpaceTypeColor',
         args: [{ $: 'spaceStore.currentSpace.id' }, { $: kind }, { $: 'event.detail' }],
@@ -849,11 +764,8 @@ function kindRow(kind: string): SchemaNode {
       props: { gap: '100', ay: 'center' },
       children: [
         resetButton(
-          /*
-            Only for a kind with a default to go back to. A community's own type has none, so "back to
-            the default" turned its colour off — a reset that removed the thing it was resetting.
-          */
-          { $: `find(local.typeStyles, { nodeType: ${kind} }).color && ${KIND_DEFAULTS_LOOKUP}[${kind}]` },
+          // Only once the community has chosen one: every kind has a hue of its own to go back to.
+          { $: kindChosen(kind) },
           {
             $invoke: 'recordStore.setSpaceTypeColor',
             args: [{ $: 'spaceStore.currentSpace.id' }, { $: kind }, ''],

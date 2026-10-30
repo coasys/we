@@ -84,6 +84,7 @@ import {
 import { createStore, reconcile, type SetStoreFunction } from 'solid-js/store';
 import { Dynamic } from 'solid-js/web';
 
+import { createFocusFollow } from './focusFollow';
 import type { GraphBackdrop, GraphViewProps, NodeBadge, NodeContent } from './GraphView.types';
 import { isSettled, patched } from './pending';
 import { isRecordAddress } from './recordAddress';
@@ -773,6 +774,21 @@ export function GraphView(props: GraphViewProps) {
     },
   });
 
+  /** A focus held in the middle while the graph settles around it — see `focusCentre`. */
+  const follow = createFocusFollow({
+    // From where the card is drawn this frame, so a layout moving it moves the camera with it — see `focusFollow`.
+    offset: (id) => {
+      const at = engine.getPositions().get(id);
+      const clear = engine.viewport.visibleRect();
+      if (!at || !clear.width || !clear.height) return undefined;
+      const screen = engine.viewport.toScreen({ x: at.x, y: at.y });
+      return { dx: clear.x + clear.width / 2 - screen.x, dy: clear.y + clear.height / 2 - screen.y };
+    },
+    pan: (dx, dy) => engine.behaviourContext().pan(dx, dy),
+    // The fold's and the layout's question: somebody who asked for less movement gets the jump.
+    reduced: () => foldTravel() === 0,
+  });
+
   engine.subscribe((reason) => {
     batch(() => {
       if (reason === 'viewport') {
@@ -792,6 +808,7 @@ export function GraphView(props: GraphViewProps) {
       else if (reason === 'marquee') setMarqueeVersion((n) => n + 1);
       else setVersion((n) => n + 1);
     });
+    if (reason === 'positions' || reason === 'graph') follow.moved();
   });
 
   /**
@@ -1040,9 +1057,22 @@ export function GraphView(props: GraphViewProps) {
     recordId: string,
   ): { kind: 'node' | 'edge'; id: string; at: Point } | { kind: 'folded'; id: string; owner: string } | null {
     const positions = engine.getPositions();
-    for (const node of engine.store.nodes()) {
-      const address = parseAddress(node.id);
-      if (address?.kind !== 'entity' || address.id !== recordId) continue;
+    /*
+      A record by its id, or any node by its own id. Failing both, a group by its key — a rule on a
+      map of a policy, whose address has its words in it, encoded, which a template cannot build.
+      Tried last, so a record whose id happens to equal some group's key is still the record.
+    */
+    const named = (id: string) => {
+      const address = parseAddress(id);
+      return id === recordId || (address?.kind === 'entity' && address.id === recordId);
+    };
+    const keyed = (id: string) => {
+      const address = parseAddress(id);
+      return address?.kind === 'cluster' && address.id === recordId;
+    };
+    const nodes = [...engine.store.nodes()];
+    const matched = nodes.filter((node) => named(node.id));
+    for (const node of matched.length ? matched : nodes.filter((node) => keyed(node.id))) {
       /*
         Asked before the position, not after it — which is the difference between this working and
         working except when it matters. A card is *held by a fold* from the moment the fold is made,
@@ -1092,7 +1122,7 @@ export function GraphView(props: GraphViewProps) {
    * point is outside it, and centring against a zero-sized box would throw the camera somewhere
    * arbitrary for the fit that follows to correct.
    */
-  function revealPoint(world: Point): void {
+  function revealPoint(world: Point, centre = false): void {
     const clear = engine.viewport.visibleRect();
     if (!clear.width || !clear.height) return;
     const screen = engine.viewport.toScreen(world);
@@ -1101,8 +1131,11 @@ export function GraphView(props: GraphViewProps) {
       screen.x <= clear.x + clear.width - REVEAL_MARGIN &&
       screen.y >= clear.y + REVEAL_MARGIN &&
       screen.y <= clear.y + clear.height - REVEAL_MARGIN;
-    if (inside) return;
-    engine.behaviourContext().pan(clear.x + clear.width / 2 - screen.x, clear.y + clear.height / 2 - screen.y);
+    if (inside && !centre) return;
+    const dx = clear.x + clear.width / 2 - screen.x;
+    const dy = clear.y + clear.height / 2 - screen.y;
+    if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
+    engine.behaviourContext().pan(dx, dy);
   }
 
   /**
@@ -1164,9 +1197,20 @@ export function GraphView(props: GraphViewProps) {
   let clearedFor: string | undefined;
   /** The fold last asked to open for this focus, so an interface that ignores it is asked once. */
   let revealedFor: string | undefined;
+  /** The focus value the camera last heard about, so a new one lets go of the card it was following. */
+  let focusHeard: string | undefined;
   createEffect(() => {
     version();
     const recordId = props.focus;
+    /*
+      A new focus lets go of the old card at once, braking rather than stopping — see `release`.
+      Waiting for the new card to be there kept the camera on the old one meanwhile, and a card whose
+      kind was closing went up into its parent, taking the camera up with it.
+    */
+    if (recordId !== focusHeard) {
+      focusHeard = recordId;
+      untrack(() => follow.release());
+    }
     if (!recordId) {
       applied = undefined;
       clearedFor = undefined;
@@ -1252,7 +1296,10 @@ export function GraphView(props: GraphViewProps) {
     } finally {
       applyingFocus = false;
     }
-    untrack(() => revealPoint(target.at));
+    untrack(() => {
+      if (props.focusCentre && target.kind === 'node') follow.start(target.id);
+      else revealPoint(target.at, !!props.focusCentre);
+    });
   });
 
   /**
@@ -2303,9 +2350,24 @@ export function GraphView(props: GraphViewProps) {
     expansion is the reader's, not the address's.
   */
   const openedFromProp = new Set<string>();
+  /*
+    An entry may also be a record's id, as `focus` takes one: an interface that knows the record —
+    a definition chosen in a tree — cannot build its node's address, which has the dataset in it,
+    encoded. Read as the address of the record's node, once that node is on the graph.
+  */
+  const nodeFor = (entry: string): string => {
+    if (engine.store.node(entry)) return entry;
+    for (const node of engine.store.nodes()) {
+      const address = parseAddress(node.id);
+      if (address?.kind === 'entity' && address.id === entry) return node.id;
+    }
+    return entry;
+  };
   createEffect(() => {
     version();
-    const wanted = new Set(props.open ?? []);
+    // The list followed; the graph read as it stands — `version` above re-runs this as nodes arrive.
+    const entries = props.open ?? [];
+    const wanted = new Set(untrack(() => entries.map(nodeFor)));
     untrack(() => {
       for (const id of wanted) {
         if (openedFromProp.has(id) || !engine.store.node(id) || engine.expansion.isExpanded(id)) continue;
@@ -3420,6 +3482,8 @@ export function GraphView(props: GraphViewProps) {
             would otherwise jump the page.
           */
           setPointerFocused(true);
+          // Somebody is moving the canvas themselves: a focus being followed lets go.
+          follow.stop();
           (event.currentTarget as HTMLElement).focus?.({ preventScroll: true });
           armCarry(event);
           dispatch('onPointerDown', event);
@@ -3456,6 +3520,7 @@ export function GraphView(props: GraphViewProps) {
         }}
         onWheel={(event) => {
           event.preventDefault();
+          follow.stop();
           dispatch('onWheel', event);
         }}
       />

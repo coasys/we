@@ -469,6 +469,18 @@ export class GraphEngine {
     return this.positions;
   }
 
+  /**
+   * Where a node will come to rest: where it is going while the layout is moving it, else where it
+   * is. For a camera that should arrive where a card will be rather than chase it there — chasing a
+   * card the travel is still moving, on another clock, reads as a shudder.
+   */
+  restingPosition(id: string): Point | undefined {
+    const going = this.travel.destination(id);
+    if (going) return { x: going.x, y: going.y };
+    const at = this.positions.get(id);
+    return at ? { x: at.x, y: at.y } : undefined;
+  }
+
   getSelection(): string[] {
     return [...this.selected];
   }

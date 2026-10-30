@@ -27,7 +27,9 @@ import {
   type ContentInset,
   contentInset,
   coveredInset,
+  coveringLanes,
   displaces,
+  displacingLanes,
   DOCK_GAP_PX,
   type DockGeometry,
   type DockRequest,
@@ -45,7 +47,6 @@ import {
   grown,
   homeLaneMembers,
   insertionSlots,
-  laneEdgeBox,
   type LaneMember,
   laneShrunk,
   laneThickness,
@@ -67,8 +68,6 @@ import {
   rectOf,
   resolveDock,
   roomElsewhere,
-  SEAM_PX,
-  seamBetween,
   seatOrder,
   seatSize,
   seedPlacement,
@@ -394,11 +393,13 @@ describe('what a module’s bid becomes', () => {
     expect(seeded.h).toBeLessThan(desktop.height / 2);
   });
 
-  it('opens a panel that asked to float as a card in the bottom-right', () => {
-    const seeded = seedPlacement(dock({ float: true, size: 'sm' }), desktop);
+  it('opens a panel that asked to float as a card at the middle of the edge it asked for', () => {
+    const seeded = seedPlacement(dock({ edge: 'bottom', float: true, size: 'sm' }), desktop);
 
-    expect(seeded.snap).toBe('bottom-right');
+    expect(seeded.snap).toBe('bottom');
     expect(seeded.displace).toBe(false);
+    // Naming no edge, it goes where picture-in-picture is looked for.
+    expect(seedPlacement(dock({ edge: undefined, float: true, size: 'sm' }), desktop).snap).toBe('bottom-right');
     // 16:9, because the first thing to float is a video stage.
     expect(seeded.h).toBe(Math.round((seeded.w * 9) / 16));
   });
@@ -1024,6 +1025,16 @@ describe('the inset when the panels do not fit', () => {
     // left edge of the screen, and `--we-chrome-center-x` — derived from the same number — took the
     // call bar with it.
     expect(contentInset(strip([700, 700, 700]), desktop).right).toBe(region);
+  });
+
+  it('gives each lane, outboard first, the share of it the inset counted', () => {
+    // The lanes the host draws are as thick as these, so the content and the lanes beside it agree.
+    const lanes = displacingLanes(strip([700, 700, 700]), desktop);
+    expect(lanes.map((lane) => [lane.key, lane.thickness])).toEqual([
+      ['solo:p0', 700],
+      ['solo:p1', 700],
+      ['solo:p2', region - 1400],
+    ]);
   });
 
   it('is not pushed past it by the minimum size either', () => {
@@ -1858,87 +1869,6 @@ describe('stacking panels', () => {
 
     expect(Math.min(...Object.values(layers))).toBe(PANEL_LAYER_BASE);
     expect(Math.max(...Object.values(layers))).toBe(PANEL_LAYER_BASE + 1);
-  });
-});
-
-/**
- * The divider between two lane-mates.
- *
- * It used to be a grip inside the earlier panel's frame, straddling the frame's edge — and the frame
- * clips, so the half outside it and the whole of its line were never drawn. The seam is a box the
- * geometry publishes and the frame's wrapper draws from outside both panels.
- */
-/**
- * A displacing lane has one thickness that every member shares, so dragging any member's inboard
- * edge moves all of them. The grip was a per-panel one, so it lit the height of the panel under the
- * pointer while resizing the whole column — the feedback said "this one", the effect was "all of
- * them". Drawn from outside every frame, like the seam and for the same reason.
- */
-describe('the grip for a whole lane', () => {
-  const stacked = [
-    { x: 1200, y: 0, w: 320, h: 400 },
-    { x: 1200, y: 400, w: 320, h: 400 },
-  ];
-
-  it('spans every member of the lane, not the one that owns it', () => {
-    const grip = laneEdgeBox(stacked, 'right');
-
-    expect(grip.y).toBe(0);
-    expect(grip.h).toBe(800);
-  });
-
-  it('sits on the side facing the content — the inboard one', () => {
-    // A lane on the right is dragged by its left, and the reverse on the left.
-    expect(laneEdgeBox(stacked, 'right').x + SEAM_PX / 2).toBe(1200);
-    expect(laneEdgeBox([{ x: 0, y: 0, w: 320, h: 800 }], 'left').x + SEAM_PX / 2).toBe(320);
-  });
-
-  it('runs the other way for a lane along the top or the bottom', () => {
-    const sideBySide = [
-      { x: 0, y: 0, w: 400, h: 240 },
-      { x: 400, y: 0, w: 400, h: 240 },
-    ];
-
-    const grip = laneEdgeBox(sideBySide, 'top');
-
-    expect(grip.x).toBe(0);
-    expect(grip.w).toBe(800);
-    expect(grip.y + grip.h / 2).toBe(240);
-    expect(grip.h).toBe(SEAM_PX);
-  });
-});
-
-describe('the seam between two lane-mates', () => {
-  it('is centred on the boundary and spans the pair, for a vertical lane', () => {
-    const seam = seamBetween({ x: 88, y: 0, w: 320, h: 400 }, { x: 88, y: 408, w: 320, h: 400 }, 'vertical');
-
-    expect(seam.y + seam.h / 2).toBe(404);
-    expect(seam.h).toBe(SEAM_PX);
-    expect(seam.x).toBe(88);
-    expect(seam.w).toBe(320);
-  });
-
-  it('stands on the shared edge of two displacing panels, which have no gap', () => {
-    const seam = seamBetween({ x: 80, y: 0, w: 300, h: 450 }, { x: 80, y: 450, w: 300, h: 450 }, 'vertical');
-
-    expect(seam.y + seam.h / 2).toBe(450);
-  });
-
-  it('runs the other way for a horizontal lane', () => {
-    const seam = seamBetween({ x: 0, y: 0, w: 400, h: 200 }, { x: 408, y: 0, w: 400, h: 200 }, 'horizontal');
-
-    expect(seam.x + seam.w / 2).toBe(404);
-    expect(seam.w).toBe(SEAM_PX);
-    expect(seam.y).toBe(0);
-    expect(seam.h).toBe(200);
-  });
-
-  it('spans the wider of two members that do not share a width', () => {
-    // Floating lane-mates keep their own widths; the divider covers both so it is under the pointer
-    // wherever along the boundary somebody reaches for it.
-    const seam = seamBetween({ x: 88, y: 0, w: 320, h: 400 }, { x: 88, y: 408, w: 440, h: 400 }, 'vertical');
-
-    expect(seam.w).toBe(440);
   });
 });
 
@@ -3045,5 +2975,31 @@ describe('every member of a seat resolves to one box', () => {
     expect(px(box.height)).toBe(0);
     expect(px(box.top)).toBe(0);
     expect(px(box.width)).toBe(MIN_DOCK_PX);
+  });
+});
+
+describe('cards snapped to an edge, as a lane over the content', () => {
+  const card = (id: string, order: number, w = 300): DockRequest =>
+    dock({ id, float: true, placement: placement({ displace: false, order, w }) });
+
+  it('is a lane once there are two seats, standing in the room the chrome leaves', () => {
+    const [lane] = coveringLanes([card('a', 0), card('b', 1, 240)], desktop, { left: 0, right: 0, top: 0, bottom: 74 });
+    expect(lane.edge).toBe('right');
+    expect(lane.seats.map((seat) => seat.map((member) => member.index))).toEqual([[0], [1]]);
+    expect(lane.box).toEqual({ top: 0, right: 0, bottom: 74, left: SIDEBAR_PX });
+  });
+
+  it('is not one for a single card, which stays at its snap', () => {
+    expect(coveringLanes([card('a', 0)], desktop)).toEqual([]);
+  });
+
+  it('is not one on a narrow window, where the cards are one seat of tabs', () => {
+    expect(coveringLanes([card('a', 0), card('b', 1)], laptop)).toEqual([]);
+  });
+
+  it('stands clear of a lane pushing the content aside on the same edge', () => {
+    const sidebar: DockRequest = { id: 's', edge: 'right', size: 'md', float: false, placement: placement({ w: 400 }) };
+    const [lane] = coveringLanes([sidebar, card('a', 0), card('b', 1)], desktop);
+    expect(lane.box.right).toBe(400);
   });
 });

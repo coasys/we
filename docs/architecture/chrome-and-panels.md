@@ -7,17 +7,18 @@ the app — a panel that floats and a panel that displaces look identical until 
 
 ## The vocabulary
 
-| Term               | What it is                                                                                                                                                                                          |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Sidebar**        | The strip on the **left** — spaces, profile, settings, logout. 80px collapsed, widens on hover to show labels. `SIDEBAR_PX`, `SHELL_SIDEBAR_WIDTH`, `Sidebar.schema.ts`.                            |
-| **Module rail**    | The strip on the **right** — module launchers, space settings, the template and theme pickers. 56px, icon-only, never widens. `CHROME_RAIL_PX`, `CHROME_RAIL_WIDTH`, `ChromeRail.schema.ts`.        |
-| **Call bar**       | The bar centred at the **top**, contributed by `@we/module-call`, present only during a call or when one is running to join.                                                                        |
-| **Chrome**         | All of the above, plus the editor's editing bar: app furniture that persists across spaces and templates and positions itself. The sidebar and rail are drawn from the **app template**; see below. |
-| **Panel**          | A surface a module opens — the call's video stage, notes, the transcript, the editor's four panels. Also called a **dock** in the code, which is the registry's word for the same thing.            |
-| **Lane**           | A band across one edge, at a given distance inboard. The panels sharing one divide it along the edge's length. `band` says which, `order` says where in it — see below.                             |
-| **Content region** | The window, minus the bands the app's chrome holds (`meta.frame`), minus every **displacing** panel. What a template is laid out inside.                                                            |
-| **Inset**          | How much one edge of the content region has given up, in pixels. Published as `--we-chrome-<edge>`.                                                                                                 |
-| **Band**           | How far the module rail has dropped to clear something. Published as `--we-panel-chrome-top`.                                                                                                       |
+| Term               | What it is                                                                                                                                                                                               |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Sidebar**        | The strip on the **left** — spaces, profile, settings, logout. 80px collapsed, widens on hover to show labels. `SIDEBAR_PX`, `SHELL_SIDEBAR_WIDTH`, `Sidebar.schema.ts`.                                 |
+| **Module rail**    | The strip on the **right** — module launchers, space settings, the template and theme pickers. 56px, icon-only, never widens. `CHROME_RAIL_PX`, `CHROME_RAIL_WIDTH`, `ChromeRail.schema.ts`.             |
+| **Call bar**       | The bar centred at the **top**, contributed by `@we/module-call`, present only during a call or when one is running to join.                                                                             |
+| **Chrome**         | All of the above, plus the editor's editing bar: app furniture that persists across spaces and templates and positions itself. The sidebar and rail are drawn from the **app template**; see below.      |
+| **Panel**          | A surface a module opens — the call's video stage, notes, the transcript, the editor's four panels. Also called a **dock** in the code, which is the registry's word for the same thing.                 |
+| **Lane**           | Panels along an axis. At a window edge, a band at a given distance inboard, divided along the edge's length: `band` says which, `order` says where in it — see below. In a template, a `$panels` outlet. |
+| **Group / seat**   | Panels sharing one place in a lane, as tabs — one showing.                                                                                                                                               |
+| **Content region** | The window, minus the bands the app's chrome holds (`meta.frame`), minus every **displacing** panel. What a template is laid out inside.                                                                 |
+| **Inset**          | How much one edge of the content region has given up, in pixels. Published as `--we-chrome-<edge>`.                                                                                                      |
+| **Band**           | How far the module rail has dropped to clear something. Published as `--we-panel-chrome-top`.                                                                                                            |
 
 Both strips are built from the same `railShell` fragment, which is why "rail" alone is ambiguous.
 Reserve **rail** for the right-hand one and **sidebar** for the left, as the code does.
@@ -34,8 +35,18 @@ in — is forked from the bar the inspector shows while it is the target. An app
 deleted in Settings → Apps & templates, which puts you back in WE's if it was the one you were in. An app
 can also arrive in a bundle — built in by the seed, or installed from a file — with templates, a
 theme and record types of its own; see `apps-as-data.md`. Safe
-mode always draws WE's. Everything else here — the editor's panels and bar, the boot screen and its
-modals, module chrome, the safety prompts — the host draws whatever the app says.
+mode always draws WE's. The sign-in screen is the app's to take whole, recompose from WE's parts
+(`host.signIn.form`, `host.signIn.accounts`) or redraw, as its chrome is; see `apps-as-data.md`.
+Everything else here — the editor's panels and bar, the modals, module chrome, the safety prompts —
+the host draws whatever the app says.
+
+**The pattern for any host surface an app may change.** Three depths, as a module's panel has: take it
+whole and re-theme it; place its parts in an arrangement of your own, changing their words through
+inputs; or redraw it. Two rules make the middle one cheap and safe: what the surface _does_ lives in a
+store or inside its parts, never in the arrangement around them (the sign-in step is
+`sessionStore.signInStep`), and WE's own version is built from the same parts, so a fix to one
+reaches every app that placed it. A surface that is the host asking somebody a question (the safety
+prompts) is never offered this — see `protected-pieces.md`.
 
 The geometry does not assume a sidebar. The app declares how much of each edge its chrome holds,
 `meta.frame: { left, right, top, bottom }`, and that is the frame (`AppFrame` in `dockGeometry.ts`,
@@ -44,6 +55,64 @@ docking, floating clearance, the rail's band, and `--we-sidebar-width` / `--we-c
 WE's app declares `{ left: 80, right: 56 }`, which is what `SIDEBAR_PX` and `CHROME_RAIL_PX` were. An
 app with a top bar declares `top`, and the content and the panels clear it; an app with no rail
 declares no `right`, and nothing keeps clear of a rail that is not there.
+
+## Where a panel is drawn
+
+Five ideas, each answered in one place:
+
+- **A panel is drawn once.** `PanelHost` draws every panel's content, inside the app's providers,
+  into a wrapper of its own; a place holds a `PanelSlot` naming the panel, and the wrapper is moved
+  into whichever slot shows it — with `moveBefore` where the browser has it, which keeps an embedded
+  page, focus and a WebGL context across the move. So a panel dragged from a template's lane to an
+  edge to a card is the same element throughout, and nothing about a place owns a panel's lifetime.
+- **A panel has one frame** (`frameBox`), wherever it is: over the window, filling its seat in an
+  edge's lane, or in the page's flow at home in a template. Its titlebar, tabs, fold, menu and grips
+  are the same in each, with what means nothing somewhere left out there (a section in the page has
+  no resize grips, and does not fit, push the content aside or fill the window).
+- **A group** is one or more panels sharing a place — tabs when there are several, one showing, the
+  rest hidden and still mounted. One component wherever a group is (`PanelGroup`): it arranges its
+  members' frames, and the front one's frame names them all.
+- **A lane** is groups along an axis: their order, their share of its length (flex, `grow 1 base`,
+  never below a floor), the grip between two of them (`LaneDivider`), a fold or a strip to put it
+  away. A template's `$panels` outlet is one (`PanelLane`), whose sections that `grow` have a
+  boundary to drag (written as each one's `grow`, per reader); each window edge has its own
+  (`EdgeLanes`).
+- **A place** only positions a box: a lane in the page's flow; a lane at a window edge pushing the
+  content aside; a lane at an edge over the content, for cards snapped there; or the free layer — a
+  card anywhere, a corner, full screen.
+
+How a panel is **framed** is its own option, wherever it is (`PanelFrame`): `window` (a titlebar
+with its grip, menu and close), `flush` (part of the page around it, as a sidebar is — a grip and a
+close in its corner, shown on hover or focus), or `none`. A panel's declaration chooses; else its
+lane's default — `frame` on a `$panels` outlet, flush when unsaid; an app's `meta.edges` for the
+panels pushing the content aside at an edge, a window when unsaid. A card over the content is a
+window unless its own declaration says otherwise.
+
+**One drop model.** Where a dragged panel could land — a new lane, a seat between two, a tab in a
+seat, a place in a template's lane, a snap — is offered from one question, `boxOnScreen`: a panel in
+a lane is where its frame is drawn, measured; anywhere else it is where the engine placed it. So a
+lane offers what it actually shows, and a drag's origin and a divider's starting sizes read the same.
+A template's lane is offered only to a panel the interface declared for a lane, since a lane keeps
+nothing else.
+
+The geometry engine (`dockGeometry.ts`) answers how thick each lane at an edge is
+(`displacingLanes`, which the content inset sums, so the two cannot disagree) and where a card on the
+free layer goes. It still divides a lane into boxes as well — the division the flex draws, from the
+same numbers (`laneBase`) — as the fallback where nothing is laid out: a test without a layout, a dock
+drawn by something other than its frame.
+
+**Motion.** A frame over the window eases between boxes with its own transition. One in a lane is
+laid out by the lane, and one moving between places is a new frame where it lands, so `PanelMotion`
+remembers where each panel's frame was drawn and plays it from there to its new box (FLIP) — a card
+dropped into a lane, a section broken out, lane-mates making room. Not during a drag, a resize or a
+change of the window's size, for a lane easing into or out of its strip, or for a reader who asked
+for less motion.
+
+**Instances.** A panel an interface supplies can be opened more than once —
+`shellStore.openPanel(panel, inputs)` — each instance a panel of its own (`template:<panel>~<key>`),
+declared as the panel it is of, so it opens where that one would (a tab beside it, where the
+declaration names an `order`). Its node reads its inputs as `panel.inputs`. The same inputs open the
+same instance; instances are kept per agent and per interface. See `panelInstances.ts`.
 
 ## A panel has one position and four states
 
@@ -172,17 +241,15 @@ opening one panel on its own. That was tried as a peek, a card sliding out besid
 was easy to trigger by accident on a strip this thin, and a panel floating out of a collapsed column
 read as the arrangement having come apart.
 
-Opening and closing ease the frame between the strip's width and the lane's, and contents re-laid out
-at every step of that arrive crushed and unfold, or fold up on the way out. For the length of the move
-a panel's titlebar and contents are held at the lane's open size (`layoutWidth` / `layoutHeight`,
-through `laidOutAt`), so the frame uncovers or covers them like a drawer, and they fade in or out
-(`contentsFaded`); a closing lane stays on screen until it has shrunk onto its strip, fading whole —
-borders included — and anchored to the same sides as when open, since a right-hand or bottom lane
-placed from the left or top cannot be transitioned to and shut on the press. While stowed,
-each seat keeps its place along the edge at the strip's thickness, so only the thickness ever moves —
-a lane of two used to open its lower panel sliding down from the top of the edge. The strip is layered
-beneath every panel in its lane, which shrink onto it over the top. At rest a panel's
-contents fill its frame as they always have.
+Opening and closing ease the lane's thickness between the strip's and its own, on the same clock as
+the content beside it (`--we-chrome-transition`), and contents re-laid out at every step of that would
+arrive crushed and unfold, or fold up on the way out. For the length of the move a panel's titlebar
+and contents are held at the lane's open size (`layoutWidth` / `layoutHeight`, through `laidOutAt`),
+so the lane uncovers or covers them like a drawer, and they fade in or out (`contentsFaded`); a
+closing lane's frames stay on screen until it has shrunk onto its strip, fading whole — borders
+included. While stowed, each seat keeps its place along the edge at the strip's thickness, so only the
+thickness ever moves. The strip is the lane's own (`StowStrip`), drawn beneath its frames, which
+shrink onto it over the top. At rest a panel's contents fill its frame as they always have.
 
 ### Bringing a panel into sight
 
@@ -222,9 +289,10 @@ A `$panels` outlet is a lane in the template's own flow. A `meta.panels` entry w
 out is a change of snap, putting it back is snapping to `home`, and reordering the sections in a
 lane is `order`. None of it touches the tree, so "Reset layout" restores the author's picture, and
 `saveArrangementAsTemplate` writes the reader's placements into a copy's `meta.panels` and nothing
-else. A section is rendered by the outlet when home and by the dock layer when not — two mount
-points, one remount at the gesture, never on a move. The grip is the host's, on a wrapper that
-outlives the section and becomes its placeholder.
+else. A section is placed by the outlet when home and by an edge or the free layer when not; its
+content is drawn once and moves between them (see "Where a panel is drawn"). The grip is the host's,
+and a drag that takes a section out of its lane carries on from the window once the lane's grip has
+gone with it (`carryPastTheGrip`).
 
 **A lane can be a sidebar.** `resize: 'end'` (or `'start'`) on the outlet puts a drag handle on that
 edge alone; the width somebody leaves it at is kept per agent and per template
@@ -364,6 +432,13 @@ keep a card's heading.
   viewport and a list of panels. Tested without a browser; that is the point of it being pure.
 - `packages/app-shell/src/frameworks/solid/stores/ShellStore.tsx` — the state, the drag handling,
   and the custom properties.
-- `packages/app-shell/src/shared/registries/dockRegistry.ts` — the frame a panel is wrapped in.
+- `packages/app-shell/src/shared/registries/dockRegistry.ts` — the frame a panel is wrapped in
+  (`frameBox`), over the window or filling its seat in an edge lane.
+- `packages/app-shell/src/frameworks/solid/components/PanelHost.tsx` — every panel's content, drawn
+  once and moved to its slot.
+- `packages/app-shell/src/frameworks/solid/components/EdgeLanes.tsx` — the lanes at the window's
+  edges, their grips and strips; `PanelLane.tsx` and `PanelGroup.tsx` — a template's lane and a group;
+  `LaneDivider.tsx` — the grip between two groups; `PanelMotion.tsx` — panels easing between boxes.
+- `packages/app-shell/src/shared/registries/panelInstances.ts` — a panel opened more than once.
 - `packages/schema-system/kit/src/layout/panelShell.ts` — the header every panel body opens with.
 - `packages/templates/shell/src/ChromeRail.schema.ts`, `Sidebar.schema.ts` — the two strips.

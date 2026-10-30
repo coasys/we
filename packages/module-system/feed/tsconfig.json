@@ -1,0 +1,12 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    // `@we/schema-kit` and `@we/messages` are exported as source, so typechecking this module also
+    // typechecks their own `./x.ts` imports.
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+  },
+  "include": ["src/**/*", "*.config.ts"]
+}

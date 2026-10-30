@@ -55,7 +55,7 @@ export type { AnchorId, Content } from './types.ts';
 // States — what a surface shows when it has nothing to show.
 export { lineComposer } from './input/lineComposer.ts';
 export type { LineComposerOptions } from './input/lineComposer.ts';
-export { treeRow } from './lists/treeRow.ts';
+export { TREE_LEAD, treeRow } from './lists/treeRow.ts';
 export type { TreeRowOptions } from './lists/treeRow.ts';
 export { comingSoon } from './states/comingSoon.ts';
 export type { ComingSoonOptions } from './states/comingSoon.ts';
@@ -72,8 +72,8 @@ export type { CardListOptions, CardShellOptions } from './lists/cards.ts';
 
 export { loadMore } from './lists/loadMore.ts';
 export type { LoadMoreOptions } from './lists/loadMore.ts';
-export { pickerRow } from './lists/pickerRow.ts';
-export type { PickerRowOptions } from './lists/pickerRow.ts';
+export { defaultMark, pickerRow, rowActions } from './lists/pickerRow.ts';
+export type { PickerRowOptions, RowAction } from './lists/pickerRow.ts';
 
 // Layout — the boxes a page is made of.
 export { attributeRow } from './layout/attributeRow.ts';
@@ -103,7 +103,7 @@ export { timeline, timelineMoreAt, timelineOrder } from './layout/timeline.ts';
 export type { TimelineOptions, TimelineOrientation } from './layout/timeline.ts';
 export { recordCard } from './layout/recordCard.ts';
 export type { RecordCardOptions } from './layout/recordCard.ts';
-export { railButton, railGroup, railItem, railShell } from './layout/rail.ts';
+export { RAIL_REVEAL, railButton, railGroup, railItem, railShell } from './layout/rail.ts';
 export type { RailButtonOptions, RailGroupOptions, RailItemOptions, RailShellOptions } from './layout/rail.ts';
 export { iconDisc } from './layout/iconDisc.ts';
 export type { IconDiscOptions } from './layout/iconDisc.ts';

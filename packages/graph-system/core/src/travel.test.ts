@@ -109,6 +109,20 @@ describe('layout travel', () => {
     expect(engine.isTravelling()).toBe(true);
   });
 
+  // A camera that should arrive where a card will be, rather than chase it there on another clock.
+  it('says where a travelling card will come to rest, and where a still one is', async () => {
+    const engine = await started({ seeds: { source: 'test' }, layout: { type: 'left' } });
+    expect(engine.restingPosition('a')).toEqual({ x: 0, y: 0 });
+
+    engine.setSpec({ seeds: { source: 'test' }, layout: { type: 'right' } });
+    engine.relayout({ travel: 400 });
+    await vi.advanceTimersByTimeAsync(200);
+
+    expect(xOf(engine, 'a')).toBeLessThan(1000);
+    expect(engine.restingPosition('a')).toEqual({ x: 1000, y: 0 });
+    expect(engine.restingPosition('nobody')).toBeUndefined();
+  });
+
   it('walks to the new arrangement and lands exactly on it', async () => {
     const engine = await started({ seeds: { source: 'test' }, layout: { type: 'left' } });
 

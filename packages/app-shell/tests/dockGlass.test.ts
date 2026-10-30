@@ -77,11 +77,12 @@ describe('a floating panel is glass', () => {
     expect(styles?.condition).toEqual(bg?.condition);
   });
 
-  it('reads floating AND not maximised, off paths the geometry actually publishes', () => {
+  it('reads floating AND not maximised AND not in the page, off paths the geometry actually publishes', () => {
     const condition = gateOf(surface!.bg)?.condition;
 
+    // A section at home in a template is `floating` — it takes no room — and is part of the page.
     expect(condition).toBe(
-      "shellStore.dockGeometry['call:0'].floating && !shellStore.dockGeometry['call:0'].maximised",
+      "shellStore.dockGeometry['call:0'].floating && !shellStore.dockGeometry['call:0'].maximised && !shellStore.dockGeometry['call:0'].home",
     );
   });
 
@@ -143,7 +144,11 @@ describe('a tab in the background', () => {
 
   it('is hidden without its backdrop layer being torn down', () => {
     expect(String(styles?.visibility?.$ ?? '')).toContain("'hidden' : 'visible'");
-    expect(styles?.display).toBeUndefined();
+    // Taken out of the layout only in the page's flow, where a hidden tab would hold its room — and
+    // where a frame is never glass, so there is no backdrop layer to lose.
+    expect(styles?.display?.$).toBe(
+      "shellStore.dockGeometry['call:0'].home && shellStore.dockGeometry['call:0'].hidden ? 'none' : 'flex'",
+    );
   });
 });
 

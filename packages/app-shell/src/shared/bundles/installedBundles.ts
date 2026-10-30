@@ -22,7 +22,7 @@ export interface InstalledBundle {
   /** ISO time of the install. */
   at: string;
   app?: string;
-  /** Every space template and section it wrote, by id. */
+  /** Every space template, section and page it wrote, by id. */
   templates: string[];
   /** The themes it wrote, by the ids they were written under, its default first. */
   themes?: string[];
@@ -82,7 +82,7 @@ export function installedEntry(
     from: 'file',
     at: meta.at,
     ...(pieces.app ? { app: pieces.app.id } : {}),
-    templates: [...pieces.shells, ...pieces.sections].map((template) => template.id),
+    templates: [...pieces.shells, ...pieces.sections, ...pieces.pages].map((template) => template.id),
     ...(pieces.themes.length ? { themes: pieces.themes.map((theme) => theme.id) } : {}),
     sections: pieces.sections.map((section) => section.id),
     recordTypes: pieces.recordTypes,

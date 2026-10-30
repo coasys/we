@@ -22,6 +22,7 @@
  */
 import type { EntityManifest } from '@we/backend-shared';
 
+import { type SpaceStarter, STARTER_KEYS } from './spaceStarter';
 import type { SchemaNode, TemplateSchema } from './types';
 
 export const BUNDLE_FORMAT = 'we-bundle';
@@ -55,8 +56,13 @@ export interface BundleBrand {
   mark?: string;
   /** The name drawn as type, where there is room. SVG source. */
   wordmark?: string;
-  /** What the About page says, as Markdown. */
+  /** What the About page says, as Markdown. The host draws it on a page of its own. */
   about?: string;
+  /**
+   * The bundle's own page to open wherever the host offers "About" — by its id in `pages`. Wins
+   * over `about` when both are given; `about` is then what a build that cannot open pages shows.
+   */
+  aboutPage?: string;
 }
 
 /** A kind of record the app is about, as the model wizard would save it: one entity, by name. */
@@ -94,6 +100,13 @@ export interface Bundle {
   app?: TemplateSchema & { id: string };
   /** Space templates (no role) and sections (`meta.role: 'view'`). */
   templates?: Array<TemplateSchema & { id: string }>;
+  /**
+   * Pages of the app's own (`meta.role: 'page'`): its About page, a guide, anything it wants to say
+   * that is not about a space. Each opens above everything, as the host's settings do, at
+   * `shellStore.openShellView('<bundle id>--<page id>')`, and routes inside itself like any template.
+   * Judged at the chrome tier, as the app is, and never drawn in safe mode.
+   */
+  pages?: Array<TemplateSchema & { id: string }>;
   /** One theme. A bundle offering several lists them in `themes` instead. */
   theme?: BundleTheme;
   /**
@@ -111,6 +124,13 @@ export interface Bundle {
    * the chrome tier, as the app is. See `docs/architecture/protected-pieces.md`.
    */
   bootScreen?: SchemaNode;
+  /**
+   * What a space made while in this app can start with, its first chosen unless somebody changes it —
+   * in the shape a seed's `spaceStarters` take. `defaultTemplateId` and `defaultThemeId` may name the
+   * bundle's own pieces by their ids here. Only a bundle the seed builds in has its starters offered;
+   * see `spaceStarter.ts`.
+   */
+  starters?: SpaceStarter[];
 }
 
 /** Every theme a bundle brings, whichever of `theme` and `themes` it used. */
@@ -195,7 +215,7 @@ export function readBundle(
   if (input.author !== undefined && !isObject(input.author)) problem('author', 'author must be an object');
 
   const ids = new Set<string>();
-  const checkTemplate = (value: unknown, path: string, role: 'app' | 'space' | 'any') => {
+  const checkTemplate = (value: unknown, path: string, role: 'app' | 'page' | 'any') => {
     if (!isObject(value)) return problem(path, 'Not a template');
     const id = value.id;
     if (typeof id !== 'string' || !ID.test(id))
@@ -205,14 +225,26 @@ export function readBundle(
     const meta = value.meta;
     if (!isObject(meta)) return problem(`${path}.meta`, 'A template needs meta');
     if (role === 'app' && meta.role !== 'app') problem(`${path}.meta.role`, 'The app must have role "app"');
+    if (role === 'page' && meta.role !== 'page') problem(`${path}.meta.role`, 'A page must have role "page"');
     if (role === 'any' && meta.role === 'app')
       problem(`${path}.meta.role`, 'An app goes in "app", not among the templates');
+    if (role === 'any' && meta.role === 'page')
+      problem(`${path}.meta.role`, 'A page goes in "pages", not among the templates');
   };
 
   if (input.app !== undefined) checkTemplate(input.app, 'app', 'app');
   if (input.templates !== undefined) {
     if (!Array.isArray(input.templates)) problem('templates', 'templates must be a list');
     else input.templates.forEach((template, index) => checkTemplate(template, `templates.${index}`, 'any'));
+  }
+  const pageIds = new Set<string>();
+  if (input.pages !== undefined) {
+    if (!Array.isArray(input.pages)) problem('pages', 'pages must be a list');
+    else
+      input.pages.forEach((page, index) => {
+        checkTemplate(page, `pages.${index}`, 'page');
+        if (isObject(page) && typeof page.id === 'string') pageIds.add(page.id);
+      });
   }
 
   const themeIds = new Set<string>();
@@ -248,11 +280,38 @@ export function readBundle(
         }
       }
       if (brand.about !== undefined && typeof brand.about !== 'string') problem('brand.about', 'about must be text');
+      if (brand.aboutPage !== undefined && !(typeof brand.aboutPage === 'string' && pageIds.has(brand.aboutPage)))
+        problem('brand.aboutPage', `Names "${String(brand.aboutPage)}", which is not one of this bundle's pages`);
     }
   }
 
   if (input.bootScreen !== undefined && (!isObject(input.bootScreen) || typeof input.bootScreen.type !== 'string'))
     problem('bootScreen', 'The sign-in screen must be a template node');
+
+  if (input.starters !== undefined) {
+    if (!Array.isArray(input.starters))
+      problem('starters', 'starters must be a list, the first being the one that applies');
+    else {
+      const starterIds = new Set<string>();
+      input.starters.forEach((starter, index) => {
+        const path = `starters.${index}`;
+        if (!isObject(starter)) return problem(path, 'Not a space starter');
+        if (typeof starter.id !== 'string' || !starter.id) problem(`${path}.id`, 'Needs an id');
+        else if (starterIds.has(starter.id)) problem(`${path}.id`, `"${starter.id}" is used twice`);
+        else starterIds.add(starter.id);
+        for (const key of Object.keys(starter)) {
+          if (!STARTER_KEYS.has(key))
+            problem(`${path}.${key}`, `Not part of a starter (${[...STARTER_KEYS].join(', ')})`);
+        }
+        for (const key of ['settings', 'landmarks'] as const) {
+          if (starter[key] !== undefined && !isObject(starter[key]))
+            problem(`${path}.${key}`, `${key} must be an object`);
+        }
+        if (starter.records !== undefined && !Array.isArray(starter.records))
+          problem(`${path}.records`, 'records must be a list');
+      });
+    }
+  }
 
   if (input.recordTypes !== undefined) {
     if (!Array.isArray(input.recordTypes)) problem('recordTypes', 'recordTypes must be a list');
@@ -300,10 +359,11 @@ export function readBundle(
   if (
     input.app === undefined &&
     !(Array.isArray(input.templates) && input.templates.length) &&
+    !(Array.isArray(input.pages) && input.pages.length) &&
     input.theme === undefined &&
     !(Array.isArray(input.themes) && input.themes.length)
   )
-    problem('', 'A bundle with no app, no templates and no theme has nothing to install');
+    problem('', 'A bundle with no app, no templates, no pages and no theme has nothing to install');
 
   return problems.length ? { bundle: null, problems } : { bundle: input as unknown as Bundle, problems: [] };
 }
