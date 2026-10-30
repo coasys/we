@@ -279,6 +279,12 @@ export interface WeSeedFile {
      */
     appId?: string;
     /**
+     * The identifier of the Tauri app, when it is not `<appId>.tauri`. The Coasys app sets
+     * `org.coasys.app`, which is also the service name of its keychain items. An install made with
+     * `<appId>.tauri` moves the webview's data folder to the new identifier once, at its first start.
+     */
+    tauriId?: string;
+    /**
      * The icon, as an SVG file relative to the repository root, drawn as it is with a margin around
      * it. Default WE's own mark, composed onto its themed tile by `@we/brand`.
      */

@@ -1,11 +1,11 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
-  "identifier": "default",
-  "description": "Capability for the main window: the chrome. It may open the identity window and read public custody state, and run no identity flow.",
+  "identifier": "main",
+  "description": "Capability for the main window: the chrome. Its own commands, and the two event calls with which it hears how an identity step ended. It may open the identity window and read public custody state, and run no identity flow. It has no other part of the core API (no window, webview, app, path, menu or tray call) and no plugin.",
   "windows": ["main"],
   "permissions": [
-    "core:default",
-    "opener:default",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
     "allow-get-port",
     "allow-request-credential",
     "allow-list-accounts",
