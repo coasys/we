@@ -104,19 +104,24 @@ const styles = css`
     Zero rather than a reset to something: spacing in this design system belongs to the layout that
     owns it — the gap on the Column or Row around this — and a margin here would add to that gap
     rather than replace it, which is the arithmetic DS props exist to avoid.
+
+    Its own variable, not --we-text-margin. That one is the margin props' (mt, mb and the rest), which
+    every primitive writes as --we-NAME-margin and puts on its host; this box read it too, so every
+    margin a we-text was given applied twice. And this box is 100% of the host's height, so wherever
+    the host's height was definite (a flex column with one) the second margin pushed it out of the
+    host: a status pill with an 8px top margin in a card drew 28px tall with its words in the top 20.
   */
   [part='base'] {
-    margin: var(--we-text-margin, 0);
+    margin: var(--we-text-flow-margin, 0);
   }
 
   /*
     Prose keeps the space under it, for the reader that wants stacked paragraphs rather than a
-    gapped column. Inert today: nothing in the app sets tag=p, so this rule has never applied and
-    does not change anything now — it becomes live the first time somebody writes one, which is
-    worth knowing in a layout that also carries a gap.
+    gapped column — a margin on the paragraph itself, apart from any the margin props give the host,
+    and so on top of them.
   */
   :host([tag='p']) {
-    --we-text-margin: 0 0 1em 0;
+    --we-text-flow-margin: 0 0 1em 0;
   }
 
   /*
@@ -152,6 +157,22 @@ const styles = css`
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /*
+    Clamped to a number of lines, the last ending in an ellipsis: 'truncate' for text worth more
+    than one line and less than all of it — a description under a name, a preview of a message.
+  */
+  :host([lines]) {
+    overflow: hidden;
+  }
+  :host([lines]) [part='base'] {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: var(--we-text-lines);
+    line-clamp: var(--we-text-lines);
+    overflow: hidden;
+    overflow-wrap: anywhere;
   }
 
   :host([gradient]:not([gradient=''])) [part='base'] {
@@ -191,6 +212,8 @@ export default class Text extends DesignSystemElement {
   @property({ type: Boolean, reflect: true }) uppercase = false;
   @property({ type: Boolean, reflect: true }) italic = false;
   @property({ type: Boolean, reflect: true }) truncate = false;
+  /** At most this many lines, the last ending in an ellipsis. `truncate` is the one-line case. */
+  @property({ type: Number, reflect: true }) lines?: number;
   @property({ type: String, reflect: true }) gradient = '';
   /**
    * Show a placeholder at this text's own size instead of its content.
@@ -230,7 +253,7 @@ export default class Text extends DesignSystemElement {
   }
 
   render() {
-    const inline = this.styles || {};
+    const inline = this.lines ? { ...this.styles, '--we-text-lines': String(this.lines) } : this.styles || {};
     const renderFn = tagTemplates[this.tag] ?? tagTemplates['span'];
     // The real `we-skeleton` rather than a shimmer of our own, so a placeholder standing in for
     // text is the same object as one standing in for anything else. Sized to `1lh` — the line this

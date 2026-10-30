@@ -55,6 +55,12 @@ const SOLID_TESTS = [
   // hidden panel — reactive derivations, which the node project's SSR build of solid-js never runs.
   'tests/dockStowAndReveal.test.tsx',
   'tests/homeLaneState.test.tsx',
+  // A lane holding any panel: renders the shell store's real reactivity, so the node build would not do.
+  'tests/laneSections.test.tsx',
+  'tests/edgeLanes.test.tsx',
+  'tests/panelInstances.test.tsx',
+  // A panel drawn once and moved between places: needs the browser build's reactivity, as the lanes do.
+  'tests/panelHost.test.tsx',
   // Mounts the real RecordStore over a stand-in data layer to drive a canvas's undo round trip.
   'tests/canvasHistory.test.tsx',
   // Mounts the workflow store, whose memos run as they are made — a boot crash the pure tests cannot see.

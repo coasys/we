@@ -35,8 +35,14 @@ export async function check({ measureText, note }) {
   }
   if (at.Calls.x !== at.Channels.x || at.People.x !== at.Channels.x)
     problems.push('the top-level groups do not start at the same x');
-  // A nested leaf has no caret and its level indents by one, so its label sits under its parent's.
-  if (at.General.x !== at.Channels.x || at.Design.x !== at.Channels.x)
-    problems.push('a group’s rows do not line up under it');
+  /*
+    A group's rows sit one step in from it — a caret's slot and its gap, 24px — and line up with each
+    other. They used to line up under the group's own label, which with a glyph put a child in the
+    same column as the next top-level row, and an open group's rows could not be told from the group
+    after it.
+  */
+  if (at.General.x !== at.Design.x) problems.push('a group’s rows do not line up with each other');
+  if (at.General.x - at.Channels.x !== 24)
+    problems.push(`a group’s rows sit ${at.General.x - at.Channels.x}px in from it, not one 24px step`);
   return problems;
 }

@@ -6,6 +6,7 @@
  * the panel is opened from and outlives the call, so the glance moved here — and it is asserted on
  * the expansion because the failure mode is silent: a button with no busy state simply never spins.
  */
+import type { SchemaNode } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
 import { railButton, railGroup } from './rail.ts';
@@ -80,5 +81,64 @@ describe('a rail group’s heading action', () => {
     expect(json).toContain('"Join a space"');
     // And it is not wrapped in the icon-button treatment, which would put a button inside a button.
     expect(json).not.toContain('"we-tooltip"');
+  });
+});
+
+/**
+ * Rows at the foot of a group — the spaces group's "Add a space".
+ *
+ * The two ways to place such a row both went wrong: inside `children` it sits in the `we-sortable`,
+ * where it can be dragged among the spaces and is reported as one; after the group it stays on
+ * screen when the group is folded. `after` is the place between.
+ */
+describe('rows after a rail group’s own', () => {
+  const add: SchemaNode = { type: 'we-button', props: { label: 'Add a space' } };
+  const row: SchemaNode = { type: 'div', props: { 'data-we-id': 's1' } };
+  /** What the group folds: the single child of its `$animate`. */
+  const folded = (group: Node) => (group.children?.[1] as Node).children?.[0] as Node;
+
+  it('follows the reorderable rows, outside the sortable', () => {
+    const body = folded(
+      railGroup({ id: 'spaces', label: 'Spaces', reorderable: true, children: [row], after: [add] }) as Node,
+    );
+
+    expect(body.children?.map((c) => c.type)).toEqual(['we-sortable', 'we-button']);
+    expect(body.children?.[0].children).toEqual([row]);
+  });
+
+  it('leaves a group without them as it was', () => {
+    expect(folded(railGroup({ id: 'spaces', label: 'Spaces', reorderable: true, children: [row] }) as Node).type).toBe(
+      'we-sortable',
+    );
+  });
+});
+
+/**
+ * A group that does not fold — a rail's only group, which folded would leave the rail empty, and
+ * with the rail closed nothing on it would say anything was there.
+ */
+describe('a rail group that does not fold', () => {
+  const row: SchemaNode = { type: 'div', props: { 'data-we-id': 's1' } };
+
+  it('has a label for a heading, with nothing to press and no caret', () => {
+    const group = railGroup({ id: 'spaces', label: 'Spaces', foldable: false, children: [row] }) as Node;
+    const heading = (group.children?.[0] as Node).children?.[0] as Node;
+
+    expect(heading.type).toBe('Row');
+    expect(JSON.stringify(heading)).not.toContain('caret');
+    expect(JSON.stringify(heading)).toContain('Spaces');
+  });
+
+  it('draws its rows outright, so nothing can leave them folded', () => {
+    const group = railGroup({ id: 'spaces', label: 'Spaces', foldable: false, children: [row] }) as Node;
+
+    expect((group.children?.[1] as Node).type).toBe('Column');
+    expect(JSON.stringify(group)).not.toContain('collapsedGroups');
+  });
+
+  it('still folds by default', () => {
+    const group = railGroup({ id: 'spaces', label: 'Spaces', children: [row] }) as Node;
+    expect(((group.children?.[0] as Node).children?.[0] as Node).type).toBe('we-button');
+    expect((group.children?.[1] as Node).type).toBe('$animate');
   });
 });

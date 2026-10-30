@@ -247,6 +247,17 @@ export interface ThemeStore {
     sourceId?: string,
     destination?: 'personal' | 'space',
   ) => Promise<boolean>;
+  /**
+   * The naming dialog for a new theme or a fork of one, while it is open: the theme forked (empty for
+   * a new one) and what the copy starts as. The host draws the dialog, as it draws the template one,
+   * so asking for it — from the rail's picker or a space's own list — writes nothing: the theme is
+   * made by a press in the host's dialog.
+   */
+  themeFork: Accessor<{ source: string; name: string; icon: string } | null>;
+  /** Open that dialog for a fork of `sourceId`, or for a new theme without one. */
+  startThemeFork: (sourceId?: string) => void;
+  /** Close it without making anything. */
+  cancelThemeFork: () => void;
   saveEditingTheme: () => Promise<ThemeData | null>;
   saveEditingThemeAs: (name: string, icon: string) => Promise<ThemeData | null>;
   deleteTheme: (themeId: string) => Promise<void>;
@@ -1347,6 +1358,13 @@ export function ThemeStoreProvider(props: ParentProps) {
     });
   }
 
+  const [themeFork, setThemeFork] = createSignal<{ source: string; name: string; icon: string } | null>(null);
+  function startThemeFork(sourceId?: string) {
+    // Only a name is a theme: a button wired without `args` hands an action its click.
+    const source = typeof sourceId === 'string' && sourceId ? allThemes().find((t) => t.id === sourceId) : undefined;
+    setThemeFork({ source: source?.id ?? '', name: source?.name ?? '', icon: source?.icon || 'paint-bucket' });
+  }
+
   async function createAndStartEditing(
     name: string,
     icon: string,
@@ -1966,6 +1984,9 @@ export function ThemeStoreProvider(props: ParentProps) {
     updateEditingMeta,
     cancelEditing,
     createAndStartEditing,
+    themeFork,
+    startThemeFork,
+    cancelThemeFork: () => setThemeFork(null),
     saveEditingTheme,
     saveEditingThemeAs,
     deleteTheme,

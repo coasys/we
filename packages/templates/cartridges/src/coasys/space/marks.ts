@@ -1,4 +1,4 @@
-import type { SchemaNode } from '@we/schema-shared';
+import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
 /**
  * Small marks the tree and the views share.
@@ -13,8 +13,11 @@ export const liveDot: SchemaNode = {
   props: { width: '7px', height: '7px', r: 'full', bg: 'success', tone: 'success', shadow: 'glow', flex: '0 0 auto' },
 };
 
-/** A count at the end of a row, as a pill. Shown only while there is something to count. */
-export const countPill = (expr: string, tone?: string): SchemaNode => ({
+/**
+ * A count at the end of a row, as a pill. Shown only while there is something to count. `tone` may
+ * be an expression, for a count whose colour says something — calls, green while one is running.
+ */
+export const countPill = (expr: string, tone?: SchemaProp): SchemaNode => ({
   type: '$if',
   props: {
     condition: { $: expr },

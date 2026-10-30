@@ -5,9 +5,20 @@
     "description": "Pure WE application built with design system and schema renderer",
     "author": "James Weir"
   },
+  "bundles": ["coasys"],
+  "contentSecurity": {
+    "images": ["https://coasys.org"],
+    "media": ["https://coasys.org"]
+  },
+  "host": {
+    "ui": {
+      "app": "we-app"
+    }
+  },
   "modules": [
     "call",
     "transcribe",
+    "feed",
     "live",
     "pocket",
     "notes",
@@ -37,6 +48,7 @@
       "id": "we-default",
       "name": "Workshop",
       "description": "A shared canvas, a board and a calendar for what the community's calls and messages produce.",
+      "icon": "squares-four",
       "settings": {
         "defaultTemplateId": "workshop",
         "defaultThemeId": "dark",

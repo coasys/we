@@ -18,6 +18,30 @@ const MESH =
   'radial-gradient(55% 45% at 18% 22%, red, transparent 70%), radial-gradient(45% 40% at 82% 12%, blue, transparent)';
 
 describe('bgImageLayer', () => {
+  it('reads none as no image, not as a file called none', () => {
+    expect(bgImageLayer('none')).toBe('none');
+  });
+
+  /*
+    Fixed attachment placed the page's and the chrome's images against the window, which the browser
+    cannot hand to the GPU: everything moving over them — a call window dragged across a space under
+    Coasys Glow — repainted both whole on every frame, and they misdrew where a moving layer crossed
+    them. The default attachment already holds an image still behind a box's own scrolling content.
+  */
+  it('paints a surface’s image against its own box, never fixed to the window', () => {
+    for (const bg of ['page', 'chrome', 'surface']) {
+      const style = buildLayoutStyles({ bg }, 'column');
+      expect(style['background-image']).toContain('--we-surface-image-');
+      expect(style['background-attachment']).toBeUndefined();
+    }
+  });
+
+  it('lets none take the surface’s image away and keep its colour', () => {
+    const style = buildLayoutStyles({ bg: 'page', bgImage: 'none' }, 'column');
+    expect(style['background-image']).toBe('none');
+    expect(style['background-color']).toBe('var(--we-role-page)');
+  });
+
   it('passes a gradient through verbatim rather than wrapping it as a URL', () => {
     // The old path produced url("radial-gradient(55%45%at18%22%,red,transparent70%)…") — mangled
     // by whitespace stripping *and* invalid as a URL, so nothing rendered.

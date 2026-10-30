@@ -19,54 +19,67 @@
       "types": "./dist/types.ts"
     },
     ".": {
+      "development": "./src/index.ts",
       "import": "./dist/index.js",
       "types": "./dist/types/global/index.d.ts"
     },
     "./top-layer": {
+      "development": "./src/shared/top-layer.ts",
       "import": "./dist/top-layer.js",
       "types": "./src/shared/top-layer.ts"
     },
     "./*": {
+      "development": "./src/primitives/*.ts",
       "import": "./dist/primitives/*.js",
       "types": "./dist/types/global/primitives/*.d.ts"
     },
     "./react": {
+      "development": "./src/index.ts",
       "import": "./dist/index.js",
       "types": "./dist/types/react/index.d.ts"
     },
     "./react/*": {
+      "development": "./src/primitives/*.ts",
       "import": "./dist/primitives/*.js",
       "types": "./dist/types/react/primitives/*.d.ts"
     },
     "./react-jsx": {
+      "development": "./src/index.ts",
       "import": "./dist/index.js",
       "types": "./dist/types/react-jsx/index.d.ts"
     },
     "./react-jsx/*": {
+      "development": "./src/primitives/*.ts",
       "import": "./dist/primitives/*.js",
       "types": "./dist/types/react-jsx/primitives/*.d.ts"
     },
     "./react-jsxdev": {
+      "development": "./src/index.ts",
       "import": "./dist/index.js",
       "types": "./dist/types/react-jsxdev/index.d.ts"
     },
     "./react-jsxdev/*": {
+      "development": "./src/primitives/*.ts",
       "import": "./dist/primitives/*.js",
       "types": "./dist/types/react-jsxdev/primitives/*.d.ts"
     },
     "./svelte": {
+      "development": "./src/index.ts",
       "import": "./dist/index.js",
       "types": "./dist/types/svelte/index.d.ts"
     },
     "./svelte/*": {
+      "development": "./src/primitives/*.ts",
       "import": "./dist/primitives/*.js",
       "types": "./dist/types/svelte/primitives/*.d.ts"
     },
     "./solid": {
+      "development": "./src/index.ts",
       "import": "./dist/index.js",
       "types": "./dist/types/solid/index.d.ts"
     },
     "./solid/*": {
+      "development": "./src/primitives/*.ts",
       "import": "./dist/primitives/*.js",
       "types": "./dist/types/solid/primitives/*.d.ts"
     },

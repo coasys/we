@@ -1,9 +1,8 @@
 /**
- * The Feed's half of the transcribe store: the window, kept fresh while the panel is open.
+ * The Feed's window onto the space, kept fresh while somebody is looking.
  *
- * Its own file because it shares nothing with recording but the records it reads. The window is the
- * transcript's shape — a size and an anchor, grown by a page as the reader nears an edge, re-anchored
- * by a jump — so the panel can draw both with one `timeline`.
+ * The window is the transcript's shape — a size and an anchor, grown by a page as the reader nears an
+ * edge, re-anchored by a jump — so the Feed draws with the same `timeline` a transcript does.
  *
  * ## Staying live, cheaply
  *
@@ -11,7 +10,15 @@
  * changed: the newest line written anywhere in the space (a message, a call's line or a reply), the newest
  * call started, an edit to any line it is showing, and the suggestions settling. Each of those is a one-row subscription
  * rather than a subscription over everything, and a burst of them is one re-read, not one each. Only
- * while the panel is open: nobody looking, nothing read.
+ * while somebody is looking — the panel open, or the Feed placed on screen as a part (a space's main
+ * view): nobody looking, nothing read.
+ *
+ * ## What is still a suggestion
+ *
+ * An activity row says how many of what it groups nobody has kept yet: the interpretation kernel's
+ * staged `create` proposals, asked of the whole space and asked again when the kernel says the set
+ * moved. The same answer the transcript's cards are marked from, read from the host rather than from
+ * another module, which this one may not depend on.
  */
 import type { InterpretationKernel, ModuleStoreDeps, RecordsKernel } from '@we/module-shared';
 
@@ -29,8 +36,6 @@ export interface FeedDeps {
   dataset: ModuleStoreDeps['dataset'];
   records: RecordsKernel | undefined;
   interpretation: InterpretationKernel | undefined;
-  /** Records a pass made that nobody has kept yet. */
-  unconfirmedIds: () => string[];
   /** Write a message — the store's own, so typed lines and feed messages are written one way. */
   write: (collection: string, text: string, marks?: string) => Promise<string | null>;
 }
@@ -38,6 +43,12 @@ export interface FeedDeps {
 export function createFeed(deps: FeedDeps) {
   const { signal, effect, state, action, records } = deps;
   const [open, setOpen] = signal(false);
+  /** How many of the Feed's parts are on screen — see `watchFeed`. */
+  const [viewers, setViewers] = signal(0);
+  /** Somebody is looking: the panel is open, or a part of it is drawn. */
+  const looking = () => open() || viewers() > 0;
+  /** Records a pass made in this space that nobody has kept yet, by id. */
+  const [unconfirmed, setUnconfirmed] = signal<string[]>([]);
   const [root, setRoot] = signal('');
   const [shown, setShown] = signal(FEED_FIRST_PAGE);
   const [fromStart, setFromStart] = signal(false);
@@ -80,14 +91,14 @@ export function createFeed(deps: FeedDeps) {
         shown: shown(),
         fromStart: fromStart(),
         activityTypes,
-        pending: new Set(deps.unconfirmedIds()),
+        pending: new Set(unconfirmed()),
       });
       if (at !== generation) return;
       setRows(result.rows);
       setHasMore(result.hasMore);
       setLoaded(true);
     } catch (error) {
-      console.warn('[transcribe] could not read the feed', error);
+      console.warn('[feed] could not read the feed', error);
       if (at === generation) setLoaded(true);
     }
   }
@@ -101,9 +112,27 @@ export function createFeed(deps: FeedDeps) {
     }, SETTLE_MS);
   }
 
+  /*
+    The space's suggestions, while somebody is looking: asked once, and again whenever the kernel says
+    the set moved — a pass staged more, or somebody kept or discarded one.
+  */
+  effect?.(() => {
+    const interpretation = deps.interpretation;
+    if (!looking() || !root() || typeof interpretation?.proposals !== 'function') return;
+    void interpretation.proposalsRevision?.();
+    const space = root();
+    void interpretation
+      .proposals(undefined, undefined)
+      .then((staged) => {
+        if (root() === space) setUnconfirmed(staged.filter((p) => p.kind === 'create').map((p) => p.id));
+      })
+      .catch(() => {});
+  });
+
   // Read whenever the window or what it is about changes, while somebody is looking.
   effect?.(() => {
-    if (!open() || !root()) return;
+    if (!looking() || !root()) return;
+    void unconfirmed();
     void shown();
     void fromStart();
     // A suggestion kept or discarded changes an activity row's count.
@@ -133,7 +162,7 @@ export function createFeed(deps: FeedDeps) {
   effect?.(() => {
     unsubscribe();
     const space = root();
-    if (!open() || !space || typeof records?.subscribe !== 'function') return;
+    if (!looking() || !space || typeof records?.subscribe !== 'function') return;
     const newest = { order: { createdAt: 'desc' as const }, limit: 1 };
     stops.push(records.subscribe('TextBlock', newest, soon));
     stops.push(records.subscribe('CollectionBlock', { within: space, where: { kind: 'call' }, ...newest }, soon));
@@ -150,7 +179,7 @@ export function createFeed(deps: FeedDeps) {
   let shownStop: (() => void) | null = null;
   let shownKey = '';
   effect?.(() => {
-    const ids = open()
+    const ids = looking()
       ? rows()
           .filter((row) => row.kind === 'line')
           .map((row) => row.id)
@@ -174,6 +203,15 @@ export function createFeed(deps: FeedDeps) {
     feedOpen: state(open, 'Whether the Feed panel is open.'),
     openFeed: action(() => setOpen(true), 'Opens the Feed panel.', { ambient: true }),
     closeFeed: action(() => setOpen(false), 'Closes the Feed panel.', { ambient: true }),
+    /*
+      The host's to call, as a part is drawn and taken down — see `whileShown` on the part. A count
+      rather than a flag, because the Feed can be drawn twice at once (the panel's body and a view),
+      and taking one down must not stop the other.
+    */
+    watchFeed: action(() => setViewers(viewers() + 1), 'The Feed is drawn somewhere: keep it live.', { ambient: true }),
+    unwatchFeed: action(() => setViewers(Math.max(0, viewers() - 1)), 'One drawing of the Feed was taken down.', {
+      ambient: true,
+    }),
     feedRows: state(
       rows,
       "The Feed's window: every message in the space and a row per group of things extracted or made, merged by time — newest first while following the live end, oldest first from the start. A row is { kind: 'line', id, at, author, text, marks, source, call, callTitle, replyTo } or { kind: 'activity', id, at, author, origin, originTitle, summary, items, suggested }.",

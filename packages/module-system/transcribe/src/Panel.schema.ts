@@ -16,6 +16,7 @@
  * rendering. The other three modules still declare their fragments inline; this is the shape they
  * should move to.
  */
+import { messageLine, repliesInclude } from '@we/messages';
 import {
   emptyState,
   foldingBody,
@@ -31,9 +32,7 @@ import { type SchemaNode, type SchemaProp } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
 
 import { CARET_SIZE, codePane, extractionActivity } from './ExtractionStatus.schema';
-import { messageLine } from './messageLine';
 import { SUBJECT_EXPR as SHARED_SUBJECT_EXPR, VIEWING_LIVE_EXPR } from './subject';
-import { repliesInclude } from './thread';
 
 /**
  * Which call this panel is about — the one named in the address, or the one being recorded.
@@ -105,11 +104,10 @@ const TRANSCRIPT_FROM_START = 'modules.transcribe.transcriptFromStart';
 export const TIMELINE_ORIENTATION = 'modules.transcribe.timelineOrientation';
 
 /**
- * Newest at the top or the bottom — the reader's own setting, which both lists read.
+ * Newest at the top or the bottom — the reader's own setting for transcripts.
  *
- * In the header of the Feed and of the transcript alike: it is one setting, so pressing it in either
- * turns both round, and a list that is drawn the reader's chosen way round should be where the
- * choice is made.
+ * In the transcript's header, because a list drawn the reader's chosen way round should be where the
+ * choice is made. The Feed, its own module now, keeps its own.
  */
 export const timelineOrderButton: SchemaNode = {
   type: 'we-tooltip',
@@ -3246,7 +3244,12 @@ export const transcriptLines: SchemaNode = {
                   rather than a generated blob — and it reaches anyone, not only this space's
                   members.
                 */
-            messageLine({ as: 'utterance', surface: 'transcript', relative: VIEWING_LIVE }),
+            messageLine({
+              as: 'utterance',
+              actions: 'modules.transcribe',
+              surface: 'transcript',
+              relative: VIEWING_LIVE,
+            }),
           ],
         },
         /*

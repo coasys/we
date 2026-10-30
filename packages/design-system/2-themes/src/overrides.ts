@@ -7,7 +7,7 @@
  * mapping (`themeParametersToStyle`) that turns it into CSS; schema-shared re-exports it unchanged.
  */
 
-import type { PaletteHue, RoleToken, SurfaceImageRole, TypeRole } from '@we/tokens';
+import type { ComponentThemeStateKey, PaletteHue, RoleToken, SurfaceImageRole, TypeRole } from '@we/tokens';
 
 import type { FontFaceSetting } from './fontFaces';
 
@@ -53,6 +53,11 @@ export interface PaletteSettings {
 export interface TypeStyle {
   /** A font stack: `'Bricolage Grotesque', var(--we-font-family)`. */
   family?: string;
+  /**
+   * A font-size token (`'200'`) or a length: `'13.5px'`. Not for `heading`, which is a scale of
+   * sizes rather than one — it is ignored there.
+   */
+  size?: string;
   /** `400`, `600`, or a token name: `'semibold'`. */
   weight?: string | number;
   /** `'-0.01em'`, or a token name: `'wide'`. */
@@ -89,11 +94,22 @@ export interface ComponentOverride {
   /** A colour role for the component's border. */
   border?: string;
   /**
+   * The colours under the pointer — `button: { variants: { outline: { hover: { fill: 'accent' } } } }`.
+   * They replace the colours the component already changes there, and add no change of their own:
+   * a component that keeps its border on hover keeps it whatever this says.
+   */
+  hover?: ComponentStateOverride;
+  /** The colours while pressed, the same way. */
+  active?: ComponentStateOverride;
+  /**
    * The same keys for one variant — `button: { variants: { soft: { borderWidth: '1.5px' } } }` —
    * read ahead of the component's own.
    */
   variants?: Record<string, Omit<ComponentOverride, 'variants'>>;
 }
+
+/** What a component override can say about one state: colour roles, as for the resting keys. */
+export type ComponentStateOverride = Partial<Record<ComponentThemeStateKey, string>>;
 
 export type ThemeOverrides = {
   /**

@@ -10,10 +10,13 @@
  * pass through as CSS, so `'600'` and `'0.02em'` work without a token.
  */
 import {
+  COMPONENT_THEME_STATE_KEYS,
+  COMPONENT_THEME_STATES,
   componentThemeVar,
   font,
   GLOW_SHADOW,
   radius,
+  roleTakes,
   shadow,
   space,
   TYPE_ROLE_KEYS,
@@ -56,6 +59,7 @@ const resolveSpace = (value: string): string =>
 
 const TYPE_VALUE: Record<TypeRoleKey, (value: string) => string> = {
   family: (v) => v,
+  size: (v) => (has(font.size, v) ? `var(--we-font-size-${v})` : v),
   weight: (v) => (has(font.weight, v) ? `var(--we-font-weight-${v})` : v),
   letterSpacing: (v) => (has(font.letterSpacing, v) ? `var(--we-letter-spacing-${v})` : v),
   lineHeight: (v) => (has(font.lineHeight, v) ? `var(--we-line-height-${v})` : v),
@@ -67,6 +71,7 @@ const TYPE_VALUE: Record<TypeRoleKey, (value: string) => string> = {
 export function writeTypeStyles(theme: ThemeOverrides, into: Record<string, string>): void {
   for (const [role, style] of Object.entries(theme.typeStyles ?? {}) as [TypeRole, TypeStyle][]) {
     for (const key of Object.keys(TYPE_ROLE_KEYS) as TypeRoleKey[]) {
+      if (!roleTakes(role, key)) continue;
       const value = style?.[key];
       if (value === undefined || value === '') continue;
       into[typeRoleVar(role, key)] = TYPE_VALUE[key](String(value));
@@ -80,6 +85,7 @@ export function writeTypeStyles(theme: ThemeOverrides, into: Record<string, stri
  */
 export const COMPONENT_TYPE_PROPERTIES: Record<string, TypeRoleKey> = {
   fontFamily: 'family',
+  fontSize: 'size',
   fontWeight: 'weight',
   letterSpacing: 'letterSpacing',
   lineHeight: 'lineHeight',
@@ -112,6 +118,13 @@ function writeOverride(
     'text',
     override.text ? roleColor(override.text) : override.type && `var(${typeRoleVar(override.type, 'color')})`,
   );
+  // `hover: { fill }` → `--we-theme-button--outline-hover-fill`.
+  for (const state of COMPONENT_THEME_STATES) {
+    for (const key of COMPONENT_THEME_STATE_KEYS) {
+      const value = override[state]?.[key];
+      set(`${state}-${key}`, value && roleColor(value));
+    }
+  }
 }
 
 /** Write each component override: `--we-theme-button-radius`, `--we-theme-button--soft-border-width`. */

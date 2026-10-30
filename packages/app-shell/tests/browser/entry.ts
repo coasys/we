@@ -17,11 +17,24 @@ import '@we/primitives';
 // renderer measured without it is measured without its padding, its placeholder and its field.
 import '@we/block-solid/styles';
 
-import { buildTemplateBag, SPACE_TIER } from '@shared/registries/templateSurface';
+import { edgeOfSnap } from '@shared/dockGeometry';
+import {
+  dockFrame,
+  dockRegistry,
+  registerHostDockStore,
+  unregisterHostDockStore,
+} from '@shared/registries/dockRegistry';
+import { provideChromeBag } from '@shared/registries/templateBag';
+import { setTemplatePanels } from '@shared/registries/templatePanels';
+import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/templateSurface';
 import { hostSourceBag } from '@shared/sources';
+import { EdgeLanes } from '@solid/components/EdgeLanes';
+import { PanelHost } from '@solid/components/PanelHost';
+import PanelLane from '@solid/components/PanelLane';
 import { MissingMarker, PresentPart } from '@solid/components/PartFrame';
 import { injectDSInteropStyles } from '@solid/dsInterop';
 import { componentRegistry } from '@solid/registries/componentRegistry';
+import { ShellStoreProvider, useShellStore } from '@solid/stores/ShellStore';
 import { createInMemoryBackend } from '@we/backend-inmemory';
 import { BlockHostProvider } from '@we/block-solid';
 import { ToastContainer, toastService } from '@we/components/solid';
@@ -55,7 +68,7 @@ import { VisualEditorProvider } from '@we/schema-solid';
 import { THEME_PRESETS } from '@we/themes/presets';
 import { createComponent, createEffect, createSignal } from 'solid-js';
 import { createStore } from 'solid-js/store';
-import { render } from 'solid-js/web';
+import { insert, render } from 'solid-js/web';
 
 import { installLayoutCounter, profile } from './instrument';
 import { type Scenario, scenarios } from './scenarios';
@@ -385,9 +398,23 @@ function pageColor(): string {
 function partStyle(selector: string, property: string, part = 'base', nth = 0): string | null {
   const host = document.querySelectorAll(selector)[nth];
   // A part name, or a selector of its own when one part is not specific enough ("[aria-current]").
-  const inner = part.includes('[') ? part : `[part='${part}']`;
+  // `row::before` reads the part's pseudo-element — a mark drawn without an element of its own.
+  const [name, pseudo] = part.split('::');
+  const inner = name.includes('[') ? name : `[part='${name}']`;
   const el = host?.shadowRoot?.querySelector(inner) ?? host;
-  return el ? getComputedStyle(el).getPropertyValue(property) : null;
+  return el ? getComputedStyle(el, pseudo ? `::${pseudo}` : null).getPropertyValue(property) : null;
+}
+
+/**
+ * The colour a point on the page shows: the first painted background found walking out from what is
+ * there. For a box whose colour is its container's — a flush section in a painted lane.
+ */
+function paintAt(x: number, y: number): string {
+  for (let el = document.elementFromPoint(x, y); el; el = el.parentElement) {
+    const color = getComputedStyle(el).backgroundColor;
+    if (color && color !== 'rgba(0, 0, 0, 0)' && color !== 'transparent') return color;
+  }
+  return pageColor();
 }
 
 /** What a role resolves to at the document root, through a probe painted with it. */
@@ -1045,6 +1072,247 @@ function sampleTop(selector: string, key: string, ms: number): void {
 
 const probeDisposers: (() => void)[] = [];
 
+/*
+  Docked panels, as the app draws them: the real shell store, panels registered and declared as a
+  template declares them, their frames, and a box standing for the space, inset exactly as
+  `TemplateLayout` insets it. Cases read every panel's box (`dockProbeBoxes`) — by the attribute a
+  panel's frame carries, so they hold whatever draws the panel.
+*/
+interface DockProbePanel {
+  id: string;
+  snap: 'left' | 'right' | 'top' | 'bottom' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+  displace?: boolean;
+  band?: number;
+  order?: number;
+  grow?: number;
+  width?: number;
+  frame?: 'window' | 'flush' | 'none';
+  /** At home in the probe's template lane (`probe`), drawn on the left in the page's flow. */
+  home?: boolean;
+  /** Closed until `dockProbeOpen` opens it, as a gear opens space settings. */
+  closed?: boolean;
+}
+
+/** Which probe panels that started closed have been opened. */
+const [probeOpen, setProbeOpen] = createSignal<Record<string, boolean>>({});
+
+/** Open a probe panel that started closed. */
+function dockProbeOpen(id: string): void {
+  setProbeOpen((open) => ({ ...open, [id]: true }));
+}
+let dockProbeShell: ReturnType<typeof useShellStore> | undefined;
+function dockProbe(panels: DockProbePanel[]): void {
+  // A clean arrangement: what an earlier probe left stored (a stowed lane, a dragged card) is not this one's.
+  for (const key of Object.keys(localStorage)) if (key.startsWith('we-local:shell.')) localStorage.removeItem(key);
+  // In a space: at the root address the shell opens its landing page, and panels stand aside for it.
+  const address = window.location.pathname;
+  window.history.replaceState({}, '', '/space/probe');
+  setProbeOpen({});
+  const keys: Record<string, unknown> = {};
+  for (const panel of panels) {
+    keys[`edge:${panel.id}`] = () =>
+      panel.closed && !probeOpen()[panel.id] ? null : (edgeOfSnap(panel.snap) ?? 'right');
+    keys[`size:${panel.id}`] = () => 'md';
+    keys[`float:${panel.id}`] = () => !panel.displace;
+  }
+  registerHostDockStore('probe', keys);
+  const entries = panels.map((panel) => {
+    const entry = {
+      id: `probe:${panel.id}`,
+      moduleId: 'probe',
+      name: panel.id,
+      title: panel.id,
+      edge: `edge:${panel.id}`,
+      size: `size:${panel.id}`,
+      float: `float:${panel.id}`,
+      node: { type: 'Column' },
+    };
+    dockRegistry.register(entry as never);
+    return entry;
+  });
+  setTemplatePanels(
+    panels.map((panel) => ({
+      id: panel.id,
+      module: 'probe',
+      dock: panel.id,
+      snap: panel.snap,
+      ...(panel.displace ? { displace: true } : {}),
+      ...(panel.band !== undefined ? { band: panel.band } : {}),
+      ...(panel.order !== undefined ? { order: panel.order } : {}),
+      ...(panel.grow !== undefined ? { grow: panel.grow } : {}),
+      ...(panel.width ? { box: { width: panel.width } } : {}),
+      ...(panel.frame ? { frame: panel.frame } : {}),
+      ...(panel.home ? { home: 'probe' } : {}),
+    })),
+    'dock-probe',
+  );
+  const root = document.createElement('div');
+  document.body.append(root);
+  probeDisposers.push(() => {
+    root.remove();
+    window.history.replaceState({}, '', address);
+    setTemplatePanels(undefined);
+    for (const entry of entries) dockRegistry.remove(entry.id);
+    unregisterHostDockStore('probe');
+    dockProbeShell = undefined;
+  });
+  const Chrome = () => {
+    const shellStore = useShellStore();
+    dockProbeShell = shellStore;
+    // Wrapped as the app wraps chrome's stores, so an expression reads a member's value, not its accessor.
+    const bag = buildTemplateBag({ shellStore } as never, { grants: CHROME_TIER }) as never;
+    provideChromeBag(bag);
+    const frames = entries.map((entry) =>
+      RenderSchema({
+        node: dockFrame(entry as never, {
+          type: 'Column',
+          props: { id: `content-${entry.name}`, height: '100%' },
+          children: [entry.name],
+        }),
+        stores: bag,
+        registry: componentRegistry,
+      }),
+    );
+    const space = document.createElement('div');
+    space.id = 'probe-space';
+    space.style.position = 'fixed';
+    createEffect(() => {
+      const inset = shellStore.contentInset();
+      Object.assign(space.style, {
+        left: `${inset.left}px`,
+        right: `${inset.right}px`,
+        top: `${inset.top}px`,
+        bottom: `${inset.bottom}px`,
+      });
+    });
+    // A template's lane, for panels at home: a column down the left of the window, as a sidebar is.
+    const lane = document.createElement('div');
+    lane.id = 'probe-lane';
+    Object.assign(lane.style, { position: 'fixed', left: '0', top: '0', bottom: '0', width: '300px', display: 'flex' });
+    const laneChildren = panels.some((panel) => panel.home)
+      ? // Folded while nothing in it is open, and painted, as the Coasys inspector lane is.
+        [
+          createComponent(PanelLane, {
+            lane: 'probe',
+            width: '300px',
+            direction: 'column',
+            foldEmpty: true,
+            bg: 'accent-soft',
+            borderRight: '1px solid border',
+          }),
+        ]
+      : [];
+    insert(lane, () => laneChildren);
+    return [space, lane, ...frames, createComponent(EdgeLanes, {}), createComponent(PanelHost, {})];
+  };
+  const dispose = render(
+    () =>
+      createComponent(ShellStoreProvider, {
+        get children() {
+          return createComponent(Chrome, {});
+        },
+      }),
+    root,
+  );
+  probeDisposers.unshift(dispose);
+}
+
+/** A shell store action, by name — `toggleStowLane`, `toggleCollapseDock`, … — on a probe panel. */
+function dockProbeAct(action: string, id: string): void {
+  const fn = (dockProbeShell as unknown as Record<string, (id: string) => void> | undefined)?.[action];
+  fn?.(`probe:${id}`);
+}
+
+/** Where a panel being dragged could land now — the store's insert slots and snap targets, as boxes. */
+function dockProbeTargets(): {
+  slots: { key: string; mode: string; edge: string; lane: string; x: number; y: number }[];
+  snaps: { id: string; left: number; top: number; width: number; height: number }[];
+} {
+  const n = (value: string | number | undefined) => parseFloat(String(value ?? '0'));
+  const shell = dockProbeShell as unknown as {
+    insertSlots: () => (Record<string, string | number> & { hit: { x: number; y: number; w: number; h: number } })[];
+    snapTargets: () => Record<string, string>[];
+  };
+  return {
+    slots: (shell?.insertSlots() ?? []).map((slot) => ({
+      key: String(slot.key),
+      mode: String(slot.mode),
+      edge: String(slot.edge ?? ''),
+      lane: String(slot.lane ?? ''),
+      // The middle of where it answers the pointer — where a hand aims.
+      x: slot.hit.x + slot.hit.w / 2,
+      y: slot.hit.y + slot.hit.h / 2,
+    })),
+    snaps: (shell?.snapTargets() ?? []).map((snap) => ({
+      id: snap.id,
+      left: n(snap.left),
+      top: n(snap.top),
+      width: n(snap.width),
+      height: n(snap.height),
+    })),
+  };
+}
+
+/** Make a probe panel's content this tall, as content arriving late makes a panel taller. */
+function dockProbeGrow(id: string, height: number): void {
+  const content = document.getElementById(`content-${id}`);
+  if (content) content.style.height = `${height}px`;
+}
+
+/** Which probe panels' frames are moving by animation right now — see `PanelMotion`. */
+function dockProbeMoving(): string[] {
+  return (
+    [...document.querySelectorAll('[data-we-dock-frame]')]
+      // Played by script — not the frame's own CSS transitions and fade-in, which run whenever one fades or mounts.
+      .filter((el) =>
+        el
+          .getAnimations()
+          .some(
+            (animation) =>
+              animation.playState === 'running' &&
+              !(animation instanceof CSSTransition) &&
+              !(animation instanceof CSSAnimation),
+          ),
+      )
+      .map((el) => String(el.getAttribute('data-we-dock-frame')).replace(/^probe:/, ''))
+  );
+}
+
+/** Every probe panel's box on screen and whether it shows, by id, and the space's box. */
+function dockProbeBoxes(): Record<
+  string,
+  { left: number; top: number; right: number; bottom: number; visible: boolean }
+> {
+  const out: Record<string, { left: number; top: number; right: number; bottom: number; visible: boolean }> = {};
+  const read = (el: Element) => {
+    const r = el.getBoundingClientRect();
+    const style = getComputedStyle(el);
+    const visible =
+      r.width > 0 &&
+      r.height > 0 &&
+      style.visibility !== 'hidden' &&
+      style.display !== 'none' &&
+      Number(style.opacity) > 0;
+    return {
+      left: Math.round(r.left),
+      top: Math.round(r.top),
+      right: Math.round(r.right),
+      bottom: Math.round(r.bottom),
+      visible,
+    };
+  };
+  for (const el of document.querySelectorAll('[data-we-dock-frame]')) {
+    const id = (el.getAttribute('data-we-dock-frame') ?? '').replace(/^probe:/, '');
+    const box = read(el);
+    // A panel drawn in more than one place keeps the one that shows.
+    if (!out[id] || (!out[id].visible && box.visible)) out[id] = box;
+  }
+  const space = document.getElementById('probe-space');
+  if (space) out.$space = read(space);
+  out.$window = { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight, visible: true };
+  return out;
+}
+
 /**
  * A placed part that draws nothing right now — a microphone meter outside a call — mounted in the
  * real frame, with whether the template is being edited and whether the part draws anything driven
@@ -1124,6 +1392,48 @@ function editorProbeEnterApp(): void {
 function editorProbeSelect(id: string | null): void {
   probeSelect(id);
 }
+/**
+ * A row as a template lays one out — a resizable lane on each side of a view — 1200px wide, for
+ * reading how far a lane can be dragged. Disposed by `editorProbeDispose`.
+ */
+function laneRoomProbe(): void {
+  for (const key of Object.keys(localStorage)) if (key.startsWith('we-local:shell.')) localStorage.removeItem(key);
+  const root = document.createElement('div');
+  root.id = 'room-row';
+  Object.assign(root.style, {
+    position: 'fixed',
+    left: '0',
+    top: '0',
+    width: '1200px',
+    height: '400px',
+    display: 'flex',
+  });
+  document.body.append(root);
+  const view = () => {
+    const div = document.createElement('div');
+    div.id = 'room-view';
+    Object.assign(div.style, { flex: '1', minWidth: '0' });
+    return div;
+  };
+  const dispose = render(
+    () =>
+      createComponent(ShellStoreProvider, {
+        get children() {
+          return [
+            createComponent(PanelLane, { lane: 'room-a', width: '280px', minWidth: '220px', resize: 'end' }),
+            view(),
+            createComponent(PanelLane, { lane: 'room-b', width: '300px', minWidth: '220px', resize: 'start' }),
+          ];
+        },
+      }),
+    root,
+  );
+  probeDisposers.push(() => {
+    dispose();
+    root.remove();
+  });
+}
+
 function editorProbeDispose(): void {
   for (const dispose of probeDisposers.splice(0)) dispose();
 }
@@ -1224,6 +1534,14 @@ function toastProbe(message: string, actionLabel = ''): string {
 
 (window as unknown as Record<string, unknown>).__harness = {
   toastProbe,
+  dockProbe,
+  laneRoomProbe,
+  dockProbeAct,
+  dockProbeBoxes,
+  dockProbeTargets,
+  dockProbeMoving,
+  dockProbeGrow,
+  dockProbeOpen,
   // The theme pipeline itself, for a probe of how an apply behaves.
   themeApi: { applyThemeVars, clearThemeVars, setDisplayPreferences, setThemeLive },
   themeDrag,
@@ -1260,6 +1578,7 @@ function toastProbe(message: string, actionLabel = ''): string {
   pageColor,
   partStyle,
   roleColor,
+  paintAt,
   probeColor,
   focused,
   html,

@@ -47,6 +47,18 @@ const DEV_ONLY = [
 const out = mkdtempSync(join(tmpdir(), 'we-dev-only-'));
 afterAll(() => rmSync(out, { recursive: true, force: true }));
 
+/*
+  The themes registry carries the bundles the seed builds in, and those are the deployment's own
+  content rather than the showcase: Coasys's About page links Coasys's real Discord. Left out here, so
+  a product name in the build can only have come from a showcase template or theme.
+*/
+const withoutSeedBundles = {
+  name: 'without-seed-bundles',
+  enforce: 'pre' as const,
+  resolveId: (source: string) => (source.endsWith('seedBundles.generated') ? '\0no-seed-bundles' : null),
+  load: (id: string) => (id === '\0no-seed-bundles' ? 'export const seedBundles = [];' : null),
+};
+
 /** The registry as a production build of an app would emit it, with or without developer features. */
 async function built(devFeatures: boolean): Promise<string> {
   const dir = join(out, String(devFeatures));
@@ -56,7 +68,7 @@ async function built(devFeatures: boolean): Promise<string> {
     await build({
       configFile: false,
       logLevel: 'silent',
-      plugins: [weSeed()],
+      plugins: [weSeed(), withoutSeedBundles],
       build: {
         outDir: dir,
         minify: true,

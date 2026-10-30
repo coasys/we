@@ -31,6 +31,10 @@ const definition: ModuleDefinition = {
     parts: {
       feed: { node: feed, subject: 'modules.demo.collectionId' },
       plain: { type: 'we-badge' },
+      labelled: {
+        node: { type: 'we-button', children: [{ $: 'label' }] },
+        inputs: { label: { description: 'What the button says', default: 'Login' } },
+      },
     },
   },
 };
@@ -95,6 +99,25 @@ describe('placing a module part', () => {
       expect(bound.type).toBe('$each');
       expect(bound.props).toEqual({ items: { $: '[local.chosen]' }, as: 'tile' });
       expect((bound.children as SchemaNode[])[0].type).toBe('we-badge');
+    });
+  });
+
+  /*
+    An input with a default is optional: the part reads WE's words unless the placement gives its own,
+    so a sign-in screen can say "Unlock" without opening the form.
+  */
+  it('binds an input’s default where the placement gives none, and the placement’s where it does', () => {
+    withModule(() => {
+      const bound = (props: Record<string, SchemaProp>) =>
+        ((resolveParts(place(props)) as SchemaNode).children as SchemaNode[])[0].children as SchemaNode[];
+
+      expect(bound({ id: 'demo.labelled' })[0].props).toEqual({ items: ['Login'], as: 'label' });
+      expect(bound({ id: 'demo.labelled', inputs: { label: 'Unlock' } })[0].props).toEqual({
+        items: ['Unlock'],
+        as: 'label',
+      });
+      // Opened, the copy keeps the words it was drawn with.
+      expect(JSON.stringify(openPart({ type: '$part', props: { id: 'demo.labelled' } }, 'one'))).toContain('"Login"');
     });
   });
 

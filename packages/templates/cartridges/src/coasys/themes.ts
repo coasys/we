@@ -123,8 +123,10 @@ const TINTS = Object.fromEntries(
  * The colours are settings, not pins, so the corrections reach them: mint for the accent and
  * success, the site's orange for warnings. The palette is the site's pastels — its purple, its blue
  * (WE's cyan, at 220), its orange and its mint — and every other hue lifted to sit beside them.
- * The site has no red; danger is a pastel a little redder than the warning orange, so the two can
- * still be told apart.
+ * The site has no red, so danger is the theme's own: a clear crimson, darker than the pastels so it
+ * reads as red rather than salmon — and well apart from the warning orange. Danger *text* stays
+ * derived: to be read on this indigo it must be light, and a light red is the lightest, reddest the
+ * correction allows; a pinned darker red failed the contrast bar on the tint and on a card.
  *
  * Headings are light (300), controls 600, badges and eyebrows 700 with the site's tracking. Shadows
  * are flat, as the site's cards are, and a glow is strong: a highlighted card is ringed and lit in
@@ -146,9 +148,9 @@ export const glowTheme: BundleTheme = {
     warningHue: 50,
     warningSaturation: 97,
     warningLightness: 84,
-    dangerHue: 28,
-    dangerSaturation: 90,
-    dangerLightness: 78,
+    dangerHue: 20,
+    dangerSaturation: 100,
+    dangerLightness: 62,
     saturation: 70,
     neutralHue: 277,
     neutralSaturation: 35,
@@ -177,11 +179,19 @@ export const glowTheme: BundleTheme = {
       heading: { weight: 300, letterSpacing: '-0.01em' },
       control: { weight: 600, letterSpacing: '0.01em' },
       badge: { weight: 700, letterSpacing: '0.02em' },
-      overline: { weight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'text-faint' },
+      // Eyebrows a step up from the default 12px, so the tree's "Space" and the first steps read at a glance.
+      overline: { size: '200', weight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'text-faint' },
     },
     surfaceImages: { page: ORBS, chrome: CHROME_HAZE },
     components: {
       button: { variants: { outline: { borderWidth: '1.5px', border: 'text-muted' } } },
+      // d12's tree: rows rounded at 10px with the sidebar's 8px/10px padding (style.css `.nav-item`),
+      // and the one you are on lifted to --surface-2 with a 3px mint bar on its leading edge.
+      tree: {
+        radius: '10px',
+        padding: '200 10px',
+        variants: { selected: { fill: 'surfaceRaised', text: 'text', border: 'accent', borderWidth: '3px' } },
+      },
     },
     roles: {
       page: '#131533',
@@ -195,6 +205,14 @@ export const glowTheme: BundleTheme = {
       textMuted: '#c7c9dc',
       textFaint: '#9497ba',
       onAccent: '#0f1230',
+      // The site's mint text is its button mint, at full strength. Derived, accent text came out a
+      // paler, greyer step of the same hue, which read as faded beside the buttons. Pinned to the
+      // fill rather than to a colour, so it still follows the accent when somebody moves it.
+      accentText: 'var(--we-role-accent)',
+      // The site's hover mint (its --color-green-light, #c1ffdf): lighter and paler than the accent.
+      // Derived, the hover step landed at the accent's own lightness on a mint this light, and a
+      // button barely answered the pointer. Said from the accent, so it moves when the accent does.
+      accentHover: 'oklch(from var(--we-role-accent) calc(l + 0.067) calc(c * 0.57) calc(h + 5.6))',
       ...TINTS,
     },
   },

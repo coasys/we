@@ -16,6 +16,12 @@
           "type": "boolean",
           "optional": false,
           "default": "false"
+        },
+        {
+          "name": "icon",
+          "type": "string",
+          "optional": false,
+          "default": "''"
         }
       ]
     },
@@ -908,6 +914,12 @@
         },
         {
           "name": "download",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "label",
           "type": "string",
           "optional": false,
           "default": "''"
@@ -1828,6 +1840,11 @@
           "default": "false"
         },
         {
+          "name": "lines",
+          "type": "number | undefined",
+          "optional": true
+        },
+        {
           "name": "gradient",
           "type": "string",
           "optional": false,
@@ -2099,6 +2116,18 @@
           "type": "string",
           "optional": false,
           "default": "''"
+        },
+        {
+          "name": "caret",
+          "type": "'start' | 'end'",
+          "optional": false,
+          "default": "'start'"
+        },
+        {
+          "name": "lead",
+          "type": "string",
+          "optional": false,
+          "default": "''"
         }
       ]
     },
@@ -2143,6 +2172,62 @@
           "type": "number",
           "optional": false,
           "default": "0"
+        },
+        {
+          "name": "scope",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
+        },
+        {
+          "name": "caretAt",
+          "type": "'start' | 'end'",
+          "optional": false,
+          "default": "'start'"
+        }
+      ]
+    },
+    {
+      "tagName": "we-typewriter",
+      "className": "Typewriter",
+      "description": "A line whose last part types itself, holds, deletes and types the next phrase — \"We are building\na global brain\", then \"We are building intelligence no one owns\".\n\nA primitive because it is behaviour: timers, the reader's motion setting, and what a screen reader\nhears are code's to own, and a template has no timers. It takes its type from where it sits, so a\nheading's size and weight reach it; put it inside the `we-text` that sets them.\n\n- **Still for anyone who asked for less motion** — the system's setting or the app's. It shows the\n  first phrase in full, with no caret, and nothing moves.\n- **One sentence to a screen reader.** The fixed part and every phrase, read once; the typing is\n  hidden from it, since a sentence rewriting itself a letter at a time is noise.\n- **The page under it does not jump.** A hidden copy of the longest phrase holds the line's size.\n\nThe first phrase is drawn in full before anything types, so the line reads right at once.",
+      "superclass": "DesignSystemElement",
+      "ownProps": [
+        {
+          "name": "text",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "phrases",
+          "type": "string[]",
+          "optional": false,
+          "default": "[]"
+        },
+        {
+          "name": "phraseColor",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "typeMs",
+          "type": "number",
+          "optional": false,
+          "default": "65"
+        },
+        {
+          "name": "deleteMs",
+          "type": "number",
+          "optional": false,
+          "default": "32"
+        },
+        {
+          "name": "holdMs",
+          "type": "number",
+          "optional": false,
+          "default": "2600"
         }
       ]
     },
@@ -2203,6 +2288,17 @@
           "type": "boolean",
           "optional": false,
           "default": "false"
+        },
+        {
+          "name": "tracks",
+          "type": "VideoTrack[]",
+          "optional": false,
+          "default": "[]"
+        },
+        {
+          "name": "crossorigin",
+          "type": "'anonymous' | 'use-credentials' | undefined",
+          "optional": true
         },
         {
           "name": "stream",
@@ -3562,6 +3658,11 @@
         {
           "name": "focus",
           "type": "string",
+          "optional": true
+        },
+        {
+          "name": "focusCentre",
+          "type": "boolean",
           "optional": true
         },
         {
@@ -6676,6 +6777,9 @@
         "displays": {
           "type": "object"
         },
+        "kinds": {
+          "type": "array"
+        },
         "recordErrors": {
           "type": "array"
         },
@@ -7084,6 +7188,9 @@
         "bootState": {
           "type": "string"
         },
+        "signInStep": {
+          "type": "string"
+        },
         "bootError": {
           "type": "string"
         },
@@ -7378,6 +7485,9 @@
         "dockPlacement": {
           "type": "object"
         },
+        "panelFrames": {
+          "type": "object"
+        },
         "movingDock": {
           "type": "string"
         },
@@ -7404,6 +7514,9 @@
         },
         "panelSupplied": {
           "type": "object"
+        },
+        "panelInstances": {
+          "type": "array"
         },
         "collapsedLanes": {
           "type": "array"
@@ -7451,6 +7564,8 @@
         "resetDockToLayout",
         "closeTemplatePanel",
         "openTemplatePanel",
+        "openPanel",
+        "closePanel",
         "resetTemplateLayout",
         "toggleLane",
         "setLaneCollapsed",
@@ -7492,6 +7607,11 @@
         "moveTab",
         "endTabDrag",
         "endDockMove",
+        "closeTemplatePanel",
+        "openTemplatePanel",
+        "openPanel",
+        "closePanel",
+        "resetTemplateLayout",
         "toggleLane",
         "setLaneCollapsed",
         "toggleCustomiseLayout",
@@ -7521,6 +7641,8 @@
         "resetDockToLayout",
         "closeTemplatePanel",
         "openTemplatePanel",
+        "openPanel",
+        "closePanel",
         "toggleLane",
         "setLaneCollapsed",
         "saveLayout",
@@ -7711,6 +7833,9 @@
         },
         "defaultSharing": {
           "type": "string"
+        },
+        "starterChoices": {
+          "type": "array"
         },
         "mutedDids": {
           "type": "array"
@@ -8131,6 +8256,9 @@
         },
         "activeTemplateTheme": {
           "type": "object"
+        },
+        "themeFork": {
+          "type": "object"
         }
       },
       "actions": [
@@ -8151,6 +8279,8 @@
         "updateEditingMeta",
         "cancelEditing",
         "createAndStartEditing",
+        "startThemeFork",
+        "cancelThemeFork",
         "saveEditingTheme",
         "saveEditingThemeAs",
         "deleteTheme",
@@ -8162,7 +8292,7 @@
         "publishToSpace",
         "refreshSpaceThemes"
       ],
-      "ambient": ["focusRole", "previewThemeScope", "refreshSpaceThemes"],
+      "ambient": ["focusRole", "previewThemeScope", "startThemeFork", "cancelThemeFork", "refreshSpaceThemes"],
       "destructive": ["deleteTheme", "uninstallTheme", "deleteMarketplaceTheme"],
       "needsArgs": [
         "setCurrentTheme",
@@ -8330,6 +8460,7 @@
     "EditorInspectorPanel",
     "EditorThemePanel",
     "PanelLane",
+    "PanelSlot",
     "PartFrame",
     "TemplateCard",
     "TemplatePanelBody",
@@ -8782,6 +8913,10 @@
           "name": "continueCallButton"
         },
         {
+          "name": "renameCallButton",
+          "subject": "routeStore.params.call ? routeStore.params.call : modules.call.callRecordId"
+        },
+        {
           "name": "deviceSettings"
         },
         {
@@ -8942,12 +9077,6 @@
           "ambient": true
         },
         {
-          "name": "closeFeed",
-          "kind": "action",
-          "doc": "Closes the Feed panel.",
-          "ambient": true
-        },
-        {
           "name": "closePanel",
           "kind": "action",
           "doc": "Closes the transcript panel.",
@@ -9050,36 +9179,6 @@
           "doc": "How many transcript turns the last pass read."
         },
         {
-          "name": "feedFromStart",
-          "kind": "state",
-          "doc": "Whether the Feed is read from the beginning rather than the live end."
-        },
-        {
-          "name": "feedHasMore",
-          "kind": "state",
-          "doc": "Whether there is more of the space beyond the Feed’s window."
-        },
-        {
-          "name": "feedLoaded",
-          "kind": "state",
-          "doc": "Whether the Feed has answered for this space yet."
-        },
-        {
-          "name": "feedOpen",
-          "kind": "state",
-          "doc": "Whether the Feed panel is open."
-        },
-        {
-          "name": "feedRoot",
-          "kind": "state",
-          "doc": "The space collection the Feed reads, and writes typed messages into."
-        },
-        {
-          "name": "feedRows",
-          "kind": "state",
-          "doc": "The Feed's window: every message in the space and a row per group of things extracted or made, merged by time — newest first while following the live end, oldest first from the start. A row is { kind: 'line', id, at, author, text, marks, source, call, callTitle, replyTo } or { kind: 'activity', id, at, author, origin, originTitle, summary, items, suggested }."
-        },
-        {
           "name": "flushNow",
           "kind": "action",
           "doc": "Writes what has been heard so far without waiting for the buffer to fill."
@@ -9171,12 +9270,6 @@
           "ambient": true
         },
         {
-          "name": "openFeed",
-          "kind": "action",
-          "doc": "Opens the Feed panel.",
-          "ambient": true
-        },
-        {
           "name": "openPanel",
           "kind": "action",
           "doc": "Opens the transcript panel.",
@@ -9223,18 +9316,6 @@
           "doc": "Suggestions staged on one conversation, by record id — read as proposalsFor[id]."
         },
         {
-          "name": "readFeedFromStart",
-          "kind": "action",
-          "doc": "Re-anchors the Feed at the beginning of the space.",
-          "ambient": true
-        },
-        {
-          "name": "readFeedLive",
-          "kind": "action",
-          "doc": "Re-anchors the Feed at the newest message.",
-          "ambient": true
-        },
-        {
           "name": "readTranscriptFromStart",
           "kind": "action",
           "doc": "Shows the beginning of the transcript, to be read forwards.",
@@ -9275,23 +9356,12 @@
         {
           "name": "replyingTo",
           "kind": "state",
-          "doc": "The line a reply is being written to — { id, text, author, surface } — or null. `surface` is 'transcript' or 'feed': the list it was started from, whose composer sends it."
-        },
-        {
-          "name": "sendToFeed",
-          "kind": "action",
-          "doc": "Writes a message straight into the space, outside any call — with its marks, when the composer gave any."
+          "doc": "The line a reply is being written to — { id, text, author, surface } — or null. `surface` is always 'transcript'."
         },
         {
           "name": "setProposalField",
           "kind": "action",
           "doc": "Sets one field of the open draft, by property name.",
-          "ambient": true
-        },
-        {
-          "name": "showMoreFeed",
-          "kind": "action",
-          "doc": "Grows the Feed’s window by a page.",
           "ambient": true
         },
         {
@@ -9308,7 +9378,7 @@
         {
           "name": "startReply",
           "kind": "action",
-          "doc": "Starts a reply to one line — pass { id, text, author, surface } — which that surface's composer then sends as a reply. `surface` is 'transcript' (the default) or 'feed'.",
+          "doc": "Starts a reply to one line of the transcript — pass { id, text, author } — which the transcript's composer then sends as a reply.",
           "ambient": true
         },
         {
@@ -9422,12 +9492,6 @@
           "title": "Extraction",
           "icon": "sparkle",
           "hostOwned": false
-        },
-        {
-          "name": "feed",
-          "title": "Feed",
-          "icon": "chats-circle",
-          "hostOwned": false
         }
       ],
       "launchers": [],
@@ -9442,7 +9506,7 @@
         {
           "key": "timelineOrder",
           "label": "Newest messages",
-          "description": "Where the newest line of a transcript or the feed is drawn.",
+          "description": "Where the newest line of a transcript is drawn.",
           "type": "enum",
           "levels": ["agent"]
         }
@@ -9464,6 +9528,157 @@
           "example": "threadLines({ rows: local.utterances, newestFirst: !modules.transcribe.transcriptFromStart })"
         }
       ],
+      "views": [],
+      "blocks": [],
+      "entities": []
+    },
+    {
+      "id": "feed",
+      "name": "Feed",
+      "description": "Everything said and written in a space, and what was found in it, in one stream.",
+      "icon": "chats-circle",
+      "scope": "space",
+      "requires": {
+        "kernels": ["records", "interpretation"]
+      },
+      "capabilities": ["kernel:records", "kernel:interpretation", "dock"],
+      "members": [
+        {
+          "name": "cancelReply",
+          "kind": "action",
+          "doc": "Puts a reply down without sending it.",
+          "ambient": true
+        },
+        {
+          "name": "closeFeed",
+          "kind": "action",
+          "doc": "Closes the Feed panel.",
+          "ambient": true
+        },
+        {
+          "name": "editUtterance",
+          "kind": "action",
+          "doc": "Corrects the words on a line, marking a heard line as corrected."
+        },
+        {
+          "name": "feedFromStart",
+          "kind": "state",
+          "doc": "Whether the Feed is read from the beginning rather than the live end."
+        },
+        {
+          "name": "feedHasMore",
+          "kind": "state",
+          "doc": "Whether there is more of the space beyond the Feed’s window."
+        },
+        {
+          "name": "feedLoaded",
+          "kind": "state",
+          "doc": "Whether the Feed has answered for this space yet."
+        },
+        {
+          "name": "feedOpen",
+          "kind": "state",
+          "doc": "Whether the Feed panel is open."
+        },
+        {
+          "name": "feedRoot",
+          "kind": "state",
+          "doc": "The space collection the Feed reads, and writes typed messages into."
+        },
+        {
+          "name": "feedRows",
+          "kind": "state",
+          "doc": "The Feed's window: every message in the space and a row per group of things extracted or made, merged by time — newest first while following the live end, oldest first from the start. A row is { kind: 'line', id, at, author, text, marks, source, call, callTitle, replyTo } or { kind: 'activity', id, at, author, origin, originTitle, summary, items, suggested }."
+        },
+        {
+          "name": "openFeed",
+          "kind": "action",
+          "doc": "Opens the Feed panel.",
+          "ambient": true
+        },
+        {
+          "name": "readFeedFromStart",
+          "kind": "action",
+          "doc": "Re-anchors the Feed at the beginning of the space.",
+          "ambient": true
+        },
+        {
+          "name": "readFeedLive",
+          "kind": "action",
+          "doc": "Re-anchors the Feed at the newest message.",
+          "ambient": true
+        },
+        {
+          "name": "reply",
+          "kind": "action",
+          "doc": "Answers one line with a typed line of its own, linked from it as a reply."
+        },
+        {
+          "name": "replyingTo",
+          "kind": "state",
+          "doc": "The line a reply is being written to — { id, text, author } — or null."
+        },
+        {
+          "name": "sendToFeed",
+          "kind": "action",
+          "doc": "Writes a message straight into the space, outside any call — with its marks, when the composer gave any."
+        },
+        {
+          "name": "showMoreFeed",
+          "kind": "action",
+          "doc": "Grows the Feed’s window by a page.",
+          "ambient": true
+        },
+        {
+          "name": "startReply",
+          "kind": "action",
+          "doc": "Starts a reply to one line — pass { id, text, author } — which the Feed’s composer then sends as a reply.",
+          "ambient": true
+        },
+        {
+          "name": "timelineOrientation",
+          "kind": "state",
+          "doc": "Which way round this reader draws the Feed — 'newestBottom' or 'newestTop'. Their own setting."
+        },
+        {
+          "name": "unwatchFeed",
+          "kind": "action",
+          "doc": "One drawing of the Feed was taken down.",
+          "ambient": true
+        },
+        {
+          "name": "watchFeed",
+          "kind": "action",
+          "doc": "The Feed is drawn somewhere: keep it live.",
+          "ambient": true
+        }
+      ],
+      "parts": [
+        {
+          "name": "feedView"
+        }
+      ],
+      "panels": [
+        {
+          "name": "feed",
+          "title": "Feed",
+          "icon": "chats-circle",
+          "hostOwned": false
+        }
+      ],
+      "launchers": [],
+      "settings": [
+        {
+          "key": "timelineOrder",
+          "label": "Newest messages",
+          "description": "Where the newest line of the Feed is drawn.",
+          "type": "enum",
+          "levels": ["agent"]
+        }
+      ],
+      "activities": {},
+      "components": [],
+      "functions": [],
       "views": [],
       "blocks": [],
       "entities": []
