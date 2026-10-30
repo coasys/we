@@ -13,11 +13,20 @@ import { type DatasetProxy, Space, SpaceLandmark } from '@we/entities';
 
 /** The space's landmarks, by name → the id of the record that is it. The newest wins a name. */
 export async function readSpaceLandmarks(dataset: DatasetProxy): Promise<Record<string, string>> {
-  const landmarks = await SpaceLandmark.findAll(dataset);
+  return landmarksByName(await SpaceLandmark.findAll(dataset));
+}
+
+/**
+ * The landmark records as names → ids — what `readSpaceLandmarks` makes of a read, and what a live
+ * query's pushed rows are made into without reading them again.
+ */
+export function landmarksByName(
+  landmarks: readonly { name?: string; node?: unknown; createdAt?: unknown }[],
+): Record<string, string> {
   const byName: Record<string, { id: string; at: string }> = {};
   for (const landmark of landmarks) {
     const node = Array.isArray(landmark.node) ? landmark.node[0] : landmark.node;
-    const at = String((landmark as { createdAt?: unknown }).createdAt ?? '');
+    const at = String(landmark.createdAt ?? '');
     if (!landmark.name || !node) continue;
     if (!byName[landmark.name] || at > byName[landmark.name].at) byName[landmark.name] = { id: String(node), at };
   }
