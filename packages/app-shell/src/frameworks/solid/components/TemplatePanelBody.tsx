@@ -11,8 +11,13 @@
  * resolve — and it would freeze the declaration at the moment the frame was registered, where a
  * template being edited re-declares on every keystroke. The id is stable; the declaration is looked
  * up when it renders.
+ *
+ * The node reads which panel it is, and the inputs it was opened with, as `panel` — `{ id, inputs }`,
+ * the inputs empty for the declared panel itself and whatever `shellStore.openPanel` was given for an
+ * instance of it (`instance`). See `panelInstances.ts`.
  */
 import { resolveParts } from '@shared/registries/moduleParts';
+import { panelInstances } from '@shared/registries/panelInstances';
 import { templateBag } from '@shared/registries/templateBag';
 import { onTemplatePanelsChanged, templatePanels } from '@shared/registries/templatePanels';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
@@ -20,7 +25,7 @@ import { EDIT_SURFACE_ATTR, type SchemaNode } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import { createMemo, createSignal, onCleanup } from 'solid-js';
 
-export function TemplatePanelBody(props: { panelId?: string; moduleId?: string; dock?: string }) {
+export function TemplatePanelBody(props: { panelId?: string; moduleId?: string; dock?: string; instance?: string }) {
   // The declaration is a plain array behind a change channel, so a signal is what makes reading it
   // reactive — the same shape `ShellStore` uses to follow the same registry.
   const [version, setVersion] = createSignal(0);
@@ -62,7 +67,11 @@ export function TemplatePanelBody(props: { panelId?: string; moduleId?: string; 
     const declared = node();
     const bag = templateBag();
     if (!declared || !bag) return null;
-    return RenderSchema({ node: declared, stores: bag, registry });
+    // Read here, so an instance opened again with new inputs draws them — the renderer takes its
+    // context once.
+    const instance = props.instance ? panelInstances()[props.instance] : undefined;
+    const context = { panel: { id: props.instance ?? props.panelId ?? '', inputs: instance?.inputs ?? {} } };
+    return RenderSchema({ node: declared, stores: bag, registry, context });
   });
 
   /*

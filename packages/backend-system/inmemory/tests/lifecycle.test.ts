@@ -42,10 +42,13 @@ describe('createInMemoryLifecycle', () => {
     const created = await lifecycle.create('Shared');
     const { uri, sharedId } = await lifecycle.publish(created.id);
     expect(uri).toMatch(/^inmemory:\/\//);
-    expect(sharedId).toBe(created.id);
+    // Its own shared id, as a network mints one — never the local id, or the two cannot be told apart.
+    expect(sharedId).not.toBe(created.id);
     const republished = await lifecycle.get(created.id);
     expect(republished?.sharedUri).toBe(uri);
-    expect(republished?.sharedId).toBe(created.id);
+    expect(republished?.sharedId).toBe(sharedId);
+    // Publishing again keeps the address it has.
+    expect((await lifecycle.publish(created.id)).sharedId).toBe(sharedId);
 
     // A "peer's" published dataset becomes joinable without existing locally.
     lifecycle.seedShared({ id: 'peer-ds', name: 'Peer Space', sharedUri: 'inmemory://peer-ds' });

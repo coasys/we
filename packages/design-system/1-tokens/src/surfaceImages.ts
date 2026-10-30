@@ -9,8 +9,12 @@
  * Gradients only. A theme arrives from other people, and an image fetched from a URL reports who
  * opened the space, from where and when; the theme writer drops anything that is not a gradient.
  *
- * `page` and `chrome` hold still while the content scrolls over them, as a wallpaper does; the rest
- * move with the box they paint.
+ * Every one holds still while the content inside its box scrolls over it, as a wallpaper does — the
+ * default attachment, which places the image against the box rather than the content. Not `fixed`:
+ * that places it against the window, which the browser cannot hand to the GPU, so the whole surface
+ * was repainted on every frame anything moved over it — a call window dragged across a page with the
+ * theme's orbs ran at a crawl — and it misdrew where a moving layer crossed it, the rail and the tree
+ * flickering to the page's image behind them.
  */
 export const SURFACE_IMAGE_ROLES = ['chrome', 'page', 'surface', 'surfaceRaised', 'surfaceSunken'] as const;
 export type SurfaceImageRole = (typeof SURFACE_IMAGE_ROLES)[number];
@@ -24,6 +28,3 @@ export const surfaceImageVar = (role: SurfaceImageRole): string => `--we-surface
 export function surfaceImageRoleOf(bg: string | undefined): SurfaceImageRole | undefined {
   return SURFACE_IMAGE_ROLES.find((role) => kebab(role) === bg);
 }
-
-/** Whether a surface image holds still behind scrolling content. */
-export const surfaceImageFixed = (role: SurfaceImageRole): boolean => role === 'page' || role === 'chrome';

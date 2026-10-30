@@ -30,6 +30,7 @@ const bundle = (version: string) =>
       { id: 'shell', type: 'Column', meta: meta('Shell') },
       { id: 'species', type: 'Column', meta: meta('Species', 'view') },
     ],
+    pages: [{ id: 'about', type: 'Column', meta: meta('About', 'page') }],
     theme: { id: 'moss', name: 'Moss', overrides: {} },
     recordTypes: [{ name: 'Species', manifest: { version: '1', entities: { Species: {} } } }],
     display: { spaces: 'ours', template: 'shell' },
@@ -47,7 +48,8 @@ describe('the record of an install', () => {
     expect(entry('1.0.0')).toMatchObject({
       id: 'field-guide',
       app: 'field-guide--app',
-      templates: ['field-guide--shell', 'field-guide--species'],
+      // Its pages too, so removing the app removes them with it.
+      templates: ['field-guide--shell', 'field-guide--species', 'field-guide--about'],
       sections: ['field-guide--species'],
       themes: ['field-guide--moss'],
       recordTypes: [{ name: 'Species' }],

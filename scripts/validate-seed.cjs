@@ -327,7 +327,7 @@ function main() {
 /*
   The space starter: what every new space begins with.
 
-  The same checks `starterProblems` makes in the app (packages/app-shell/src/shared/spaceStarter.ts),
+  The same checks `starterProblems` makes in the app (packages/schema-system/shared/src/spaceStarter.ts),
   reading the manifest from its source files rather than importing it, so this script keeps running
   under plain node. A starter that would half-apply at a create press fails here instead.
 */
@@ -367,7 +367,7 @@ function validateSpaceStarter(seed) {
   // reported by the bundle check; here it simply brings nothing.
   const templates = new Set([...(seed.templates || []), ...bundleSpaceTemplates(seed.bundles)]);
   const modules = new Set((seed.modules || []).map((m) => (typeof m === 'string' ? m : m.id)));
-  // A string that is exactly `$<name>` is a reference; see packages/app-shell/src/shared/spaceStarter.ts.
+  // A string that is exactly `$<name>` is a reference; see packages/schema-system/shared/src/spaceStarter.ts.
   const refOf = (v) => (typeof v === 'string' ? (/^\$([A-Za-z_][\w-]*)$/.exec(v) || [])[1] || null : null);
   const refsIn = (v) => (Array.isArray(v) ? v : [v]).map(refOf).filter(Boolean);
   const isRefValue = (v) => refOf(v) !== null || (Array.isArray(v) && v.length > 0 && v.every((x) => refOf(x)));
@@ -381,6 +381,19 @@ function validateSpaceStarter(seed) {
           : [];
   const knownPlaceholders = new Set(['space.name', 'space.description']);
   const ids = new Set();
+  // STARTER_KEYS in @we/schema-shared's spaceStarter.ts, copied because this runs before any build;
+  // app-shell's spaceStarter test fails when the two differ.
+  const starterKeys = new Set([
+    'id',
+    'name',
+    'description',
+    'icon',
+    'settings',
+    'records',
+    'landmarks',
+    'policy',
+    'input',
+  ]);
 
   starters.forEach((starter, n) => {
     const p = `spaceStarters[${n}]`;
@@ -388,6 +401,10 @@ function validateSpaceStarter(seed) {
     if (!starter.id) error(`${p}: needs an id`);
     else if (ids.has(starter.id)) error(`${p}.id is used twice: ${starter.id}`);
     ids.add(starter.id);
+    // A key nothing reads is a starter that silently does less than it says.
+    for (const key of Object.keys(starter)) {
+      if (!starterKeys.has(key)) error(`${p}.${key} is not part of a starter (${[...starterKeys].join(', ')})`);
+    }
 
     for (const key of Object.keys(starter.settings || {})) {
       if (identity.has(key)) error(`${p}.settings.${key} is the space's identity, not a setting`);

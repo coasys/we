@@ -53,6 +53,35 @@ export function setTemplatePanels(panels: readonly TemplatePanel[] | undefined, 
   for (const listener of listeners) listener();
 }
 
+/**
+ * The layouts holding the declaration — what decides when it is withdrawn.
+ *
+ * A layout that leaves used to clear the declaration outright, and a layout leaving is very often a
+ * layout being *replaced*: the router remounts everything under it when a space's views arrive, a few
+ * seconds after a boot. Clearing in between left a moment with nothing declared, in which a panel
+ * placed in a template's lane stopped being declared there — space settings dropped out of the
+ * Coasys inspector lane to the window's edge, the lane folded, and both came back a moment later,
+ * reading as the panel vanishing and sliding in again.
+ *
+ * So a layout holds the declaration while it is mounted and lets go when it leaves, and it is cleared
+ * only if nobody has taken it up again once the current update has finished.
+ */
+let holders = 0;
+
+/** Hold the declaration while mounted. The returned release lets go of it — see {@link holders}. */
+export function holdTemplatePanels(): () => void {
+  holders++;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    holders--;
+    queueMicrotask(() => {
+      if (holders === 0) setTemplatePanels([], '');
+    });
+  };
+}
+
 /** The interface the declaration came from. See {@link scope}. */
 export function templatePanelScope(): string {
   return scope;

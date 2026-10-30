@@ -10,9 +10,11 @@ export interface TypePickerOptions {
   lead?: string[];
   /**
    * The colour a kind is drawn in, as an expression over `kind` — its icon's colour. Omit for the
-   * ordinary text colour. A canvas passes the colour its key gives the kind, so the two agree.
+   * ordinary text colour. A canvas passes its kinds' colours (`kindGlyph`), so the two agree.
    */
   fill?: (kind: string) => string;
+  /** The disc behind the icon, as an expression over `kind` (`kindDisc`). Omit for the raised surface. */
+  disc?: (kind: string) => string;
   /**
    * What a composed kind is called here — "Note" on a canvas, where a collection is a sticky note.
    * Defaults to the kind's own label ("Collection"), which is the class rather than the word.
@@ -113,8 +115,8 @@ export function typePicker(opts: TypePickerOptions): SchemaNode {
               $: `${kind}.via == 'composer' ? '${opts.composedIcon ?? 'note'}' : ${kind}.icon ? ${kind}.icon : 'cube'`,
             },
             ...(opts.fill && { color: { $: opts.fill(kind) } }),
-            // A step off the sunken card it sits on.
-            bg: 'surface-raised',
+            // A step off the sunken card it sits on, unless the kind has a tint of its own.
+            bg: opts.disc ? { $: opts.disc(kind) } : 'surface-raised',
           }),
           {
             type: 'Column',

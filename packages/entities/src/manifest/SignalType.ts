@@ -9,6 +9,8 @@ export const SignalType: CoreEntityDef = {
   },
   entity: {
     flag: { predicate: 'we://flag', value: 'we://signal_type' },
+    // What a signal type is, as its settings form asks it — the fields an inspector and a map's card show.
+    display: { fields: ['name', 'description', 'mode', 'rangeMin', 'rangeMax', 'aggregate', 'semantic', 'retired'] },
     properties: {
       name: { type: 'string', predicate: 'we://name', default: '' },
       slug: { type: 'string', predicate: 'we://slug', default: '' },

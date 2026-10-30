@@ -39,7 +39,7 @@
  */
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
-import { field, pickerPopover, pickerRow } from '@we/template-kit';
+import { field, pickerPopover, pickerRow, templateChoice, themeChoice } from '@we/template-kit';
 
 /** Rows whose name contains what is typed in the picker's search box. */
 const matching = (items: SchemaProp) => expr`filter(${items}, { name: { contains: local.pickerSearch } })`;
@@ -95,6 +95,10 @@ function section(label: SchemaProp, rows: SchemaProp, body: SchemaNode): SchemaN
   };
 }
 
+// ── Naming ──────────────────────────────────────────────────────────────────────────────────────
+
+// ── Naming ──────────────────────────────────────────────────────────────────────────────────────
+
 /** "My …" or "This space" — where a new template or theme is saved. */
 function destinationToggle(): SchemaNode {
   const option = (value: string, label: string): SchemaNode => ({
@@ -122,7 +126,7 @@ function destinationToggle(): SchemaNode {
 }
 
 /**
- * The name-and-icon dialog both "New" and "Fork" open.
+ * The name-and-icon dialog both "New" and "Fork" open, for a template or a theme.
  *
  * `$localState` sits on the modal rather than above it so the fields are seeded *each time it
  * opens* — `initial` is read at mount, and the modal only exists while open. Declared above, they
@@ -183,8 +187,7 @@ function nameDialog(opts: {
                 props: {
                   size: 'sm',
                   // Gated on the value itself rather than a `required` rule: nothing about a name is
-                  // locally judgeable beyond "is there one", and a rule here would exist only to
-                  // drive this prop while offering to tell somebody their empty field is empty.
+                  // locally judgeable beyond "is there one".
                   disabled: { $: '!local.name' },
                   loading: { $: 'local.saving' },
                   onClick: [
@@ -441,82 +444,7 @@ export function templatePicker(): SchemaNode {
                 section({ $: 'group.label' }, templateRows, {
                   type: '$each',
                   props: { items: templateRows, as: 'template' },
-                  children: [
-                    pickerRow({
-                      icon: { $: 'template.icon' },
-                      label: { $: 'template.name' },
-                      selected: { $: 'template.id == templateStore.currentSwitcherId' },
-                      isDefault: { $: 'template.id == spaceStore.spaceDefaultTemplateId' },
-                      select: [
-                        { $invoke: 'templateStore.switchTemplate', args: [{ $: 'template.id' }] },
-                        closeTemplatePicker,
-                      ],
-                      actions: [
-                        /*
-                      The way back to the arrangement this template designed — its panels where it
-                      put them, and the ones somebody closed open again.
-
-                      On the row for the template you are looking at, and only while there is
-                      something to undo, which is what `layoutDirty` answers. That is the same shape
-                      the theme pin below follows: a control attached to the row it is about, costing
-                      nothing in the ordinary case because it renders nothing.
-
-                      Here rather than in a panel's own position menu, which already carries a
-                      per-panel "Reset to layout". Three panels dragged out of place is one decision,
-                      not three — and a panel somebody *closed* has no titlebar left to open a menu
-                      from, so the per-panel control cannot be the only way back.
-                    */
-                        {
-                          icon: 'arrow-counter-clockwise',
-                          tooltip: "Reset panels to this template's layout",
-                          when: { $: 'template.id == templateStore.currentSwitcherId && shellStore.layoutDirty' },
-                          // Deliberately does not close the picker: the panels move behind it, which is
-                          // the confirmation that the click landed, and the row's control disappearing
-                          // is the other half of that. Same argument as the theme rows below.
-                          onClick: { $invoke: 'shellStore.resetTemplateLayout' },
-                        },
-                        {
-                          icon: 'pencil-simple',
-                          tooltip: 'Edit this template',
-                          /*
-                        Any row that can be edited, not just the one already on screen.
-
-                        This used to also require `$template.id` to be the current one, which made
-                        editing anything else a three-step gesture: pick it, watch the menu close,
-                        open the menu again, edit. The row's own pencil was right there on the first
-                        pass and did nothing, which reads as the control being broken rather than as
-                        a step being missing.
-
-                        `editable` rather than `editorStore.isReadOnly`, because that answers for
-                        whatever is currently rendered and every row would have got the same answer.
-                        The guard is still needed — `enterTemplateEditing` has none of its own, so
-                        offering this on a built-in opens a session over something that cannot be
-                        saved.
-                      */
-                          when: { $: 'template.editable' },
-                          // Switch first, exactly as forking does below: an editing session is opened
-                          // over whatever is current, so editing a row you are not on has to make it
-                          // current before entering.
-                          onClick: [
-                            { $invoke: 'templateStore.switchTemplate', args: [{ $: 'template.id' }] },
-                            { $invoke: 'editorStore.enterTemplateEditing', args: ['edit'] },
-                            closeTemplatePicker,
-                          ],
-                        },
-                        {
-                          icon: 'git-fork',
-                          tooltip: 'Fork this template',
-                          // Switch first: a fork is seeded from whatever is current, so forking a row you
-                          // are not on has to make it current before asking for a name.
-                          onClick: [
-                            { $invoke: 'templateStore.switchTemplate', args: [{ $: 'template.id' }] },
-                            { $invoke: 'editorStore.startFork' },
-                            closeTemplatePicker,
-                          ],
-                        },
-                      ],
-                    }),
-                  ],
+                  children: [pickerRow(templateChoice([closeTemplatePicker]))],
                 }),
               ],
             },
@@ -576,69 +504,7 @@ function themeSection(label: string, storePath: string): SchemaNode {
   return section(label, rows, {
     type: '$each',
     props: { items: rows, as: 'theme' },
-    children: [
-      pickerRow({
-        icon: iconOr('theme.icon', 'paint-bucket'),
-        label: { $: 'theme.name' },
-        selected: { $: 'theme.id == themeStore.currentThemeId' },
-        isDefault: { $: 'theme.id == spaceStore.spaceDefaultThemeId' },
-        // `applyTheme` rather than `themeStore.setCurrentTheme`: the choice is persisted where it was
-        // made — pinned to this space, or set as the agent's default when there is no space — so it
-        // survives everything that recomputes the space theme. Which of the two it is has to be
-        // decided at click time, in the store; `$if` here would resolve once, at paint.
-        //
-        // Deliberately does *not* close the picker, unlike every other row in this file. The kit's
-        // advice to close on select guards against a change hidden behind the surface that made it;
-        // a theme repaints the whole window, this popover included, so the click is self-evidently
-        // landed — and choosing a theme is the one thing here people do by comparison, trying three
-        // in a row. Closing after each turned that into three round trips through the rail button.
-        select: { $invoke: 'spaceStore.applyTheme', args: [{ $: 'theme.id' }] },
-        actions: [
-          /*
-            The pin — a state, not an offer, which is why it is filled and why it appears on exactly
-            one row: the theme this agent pinned *here*, when that pin actually diverges from what
-            the space would otherwise show. Clicking it releases the pin.
-
-            It replaces a "Pinned for this space · Reset" line in the footer. Same information, but
-            attached to the row it is about rather than floating below a list where nothing said
-            *which* theme was pinned — and it costs no vertical space in the common case, since it
-            renders nothing when there is no pin to undo.
-          */
-          {
-            icon: 'push-pin',
-            weight: 'fill',
-            tooltip: "Pinned to this space — unpin to follow the space's theme",
-            when: { $: 'spaceStore.spaceThemePinned && theme.id == themeStore.currentThemeId' },
-            onClick: { $invoke: 'spaceStore.clearSpaceThemePin' },
-          },
-          {
-            icon: 'pencil-simple',
-            tooltip: 'Edit this theme',
-            // A built-in has no stored overrides to edit — forking is the way in, as it always was.
-            when: { $: "theme.origin != 'built-in'" },
-            onClick: [
-              { $invoke: 'themeStore.setCurrentTheme', args: [{ $: 'theme.id' }] },
-              { $invoke: 'themeStore.startEditing', args: [{ $: 'theme.id' }] },
-              { $invoke: 'editorStore.enterThemeEditing' },
-              closeThemePicker,
-            ],
-          },
-          {
-            icon: 'git-fork',
-            tooltip: 'Fork this theme',
-            // `from` rather than `value`: only `from` resolves a context ref, so this is how the row
-            // being clicked reaches the dialog above. `value` would store the literal "$theme.id".
-            onClick: [
-              { $setLocal: 'forkSource', value: { $: 'theme.id' } },
-              { $setLocal: 'forkName', value: { $: 'theme.name' } },
-              { $setLocal: 'forkIcon', value: { $: 'theme.icon' } },
-              { $setLocal: 'forkOpen', value: true },
-              closeThemePicker,
-            ],
-          },
-        ],
-      }),
-    ],
+    children: [pickerRow(themeChoice([closeThemePicker]))],
   });
 }
 
@@ -654,12 +520,6 @@ function themeSection(label: string, storePath: string): SchemaNode {
 export function themePicker(): SchemaNode {
   return {
     type: 'Column',
-    $localState: {
-      forkOpen: { type: 'boolean', initial: false },
-      forkSource: { type: 'string', initial: '' },
-      forkName: { type: 'string', initial: '' },
-      forkIcon: { type: 'string', initial: 'paint-bucket' },
-    },
     children: [
       pickerPopover({
         openLocal: THEME_PICKER_OPEN,
@@ -742,13 +602,7 @@ export function themePicker(): SchemaNode {
                 width: '100%',
                 ax: 'start',
                 gap: '200',
-                onClick: [
-                  { $setLocal: 'forkSource', value: '' },
-                  { $setLocal: 'forkName', value: '' },
-                  { $setLocal: 'forkIcon', value: 'paint-bucket' },
-                  { $setLocal: 'forkOpen', value: true },
-                  closeThemePicker,
-                ],
+                onClick: [{ $invoke: 'themeStore.startThemeFork' }, closeThemePicker],
               },
               children: [
                 { type: 'we-icon', props: { name: 'plus' } },
@@ -786,45 +640,43 @@ export function themePicker(): SchemaNode {
           ],
         },
       }),
-
-      nameDialog({
-        open: { $: 'local.forkOpen' },
-        close: { $setLocal: 'forkOpen', value: false },
-        title: { $: "local.forkSource ? 'Fork theme' : 'New theme'" },
-        initialName: { $: 'local.forkName' },
-        initialIcon: { $: 'local.forkIcon' },
-        showDestination: true,
-        confirmLabel: { $: "local.forkSource ? 'Fork' : 'Create'" },
-        confirm: ({ name, icon, destination }) => ({
-          $invoke: 'themeStore.createAndStartEditing',
-          args: [name, icon, { $: 'local.forkSource' }, destination],
-          // Resolves `false` when the create failed rather than rejecting, so the close and the mode
-          // switch are guarded on the result — otherwise a failed create closes over its own error.
-          onSuccess: [
-            /*
-              In a space, the new theme becomes this agent's choice there, as picking it would make
-              it. The fork already wears it, but wearing writes nothing: the space kept the theme
-              chosen before, so the screen and the stored choice disagreed — a space default set next
-              was explained against the old theme, and leaving the space put that theme back. The new
-              id is already current, so this records it without ending the editing session.
-            */
-            {
-              $if: {
-                condition: { $: 'result && datasetStore.currentDataset' },
-                then: { $invoke: 'spaceStore.applyTheme', args: [{ $: 'themeStore.currentThemeId' }] },
-              },
-            },
-            {
-              $if: {
-                condition: { $: 'result' },
-                then: { $invoke: 'editorStore.enterThemeEditing' },
-              },
-            },
-            { $if: { condition: { $: 'result' }, then: { $setLocal: 'forkOpen', value: false } } },
-          ],
-          onFinally: [{ $setLocal: 'saving', value: false }],
-        }),
-      }),
     ],
   };
 }
+
+/**
+ * Naming a new theme or a fork of one: the dialog `themeStore.startThemeFork` opens, from the rail's
+ * picker or from a space's own list of themes. The host's, as {@link templateNameDialog} is — so a
+ * template can offer a fork without being able to make a theme: it is made by a press here.
+ */
+export const themeNameDialog: SchemaNode = nameDialog({
+  open: { $: 'themeStore.themeFork' },
+  close: { $invoke: 'themeStore.cancelThemeFork' },
+  title: { $: "themeStore.themeFork.source ? 'Fork theme' : 'New theme'" },
+  initialName: { $: 'themeStore.themeFork.name' },
+  initialIcon: { $: 'themeStore.themeFork.icon' },
+  showDestination: true,
+  confirmLabel: { $: "themeStore.themeFork.source ? 'Fork' : 'Create'" },
+  confirm: ({ name, icon, destination }) => ({
+    $invoke: 'themeStore.createAndStartEditing',
+    args: [name, icon, { $: 'themeStore.themeFork.source' }, destination],
+    // Resolves `false` when the create failed rather than rejecting, so the close and the mode
+    // switch are guarded on the result — otherwise a failed create closes over its own error.
+    onSuccess: [
+      /*
+        In a space, the new theme becomes this agent's choice there, as picking it would make it.
+        The fork already wears it, but wearing writes nothing: the space kept the theme chosen
+        before, so the screen and the stored choice disagreed.
+      */
+      {
+        $if: {
+          condition: { $: 'result && datasetStore.currentDataset' },
+          then: { $invoke: 'spaceStore.applyTheme', args: [{ $: 'themeStore.currentThemeId' }] },
+        },
+      },
+      { $if: { condition: { $: 'result' }, then: { $invoke: 'editorStore.enterThemeEditing' } } },
+      { $if: { condition: { $: 'result' }, then: { $invoke: 'themeStore.cancelThemeFork' } } },
+    ],
+    onFinally: [{ $setLocal: 'saving', value: false }],
+  }),
+});

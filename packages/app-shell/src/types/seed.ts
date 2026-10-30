@@ -6,8 +6,7 @@
  */
 
 import type { SchemaNode } from '@we/schema-shared';
-
-import type { SpaceStarter } from '../shared/spaceStarter';
+import type { SpaceStarter } from '@we/schema-shared';
 
 /**
  * One module a deployment ships, when a bare id is not enough to say.
@@ -310,8 +309,9 @@ export interface WeSeedFile {
   /**
    * What a new space can start with, beyond the structure the host always makes — settings defaults,
    * the records it begins with, the landmarks templates find them by, and the opinionated switches. See
-   * `shared/spaceStarter.ts`. A new space gets the first; the others are there for a create dialog
-   * to offer. Absent, a space starts with its structure and nothing else.
+   * `spaceStarter.ts` in `@we/schema-shared`. A new space gets the first, unless the app in use came in
+   * a bundle the seed builds in and that bundle brings a starter of its own; the others are there for a
+   * create dialog to offer. Absent, a space starts with its structure and nothing else.
    */
   spaceStarters?: SpaceStarter[];
 

@@ -56,6 +56,7 @@ const SAMPLE: Record<string, unknown> = {
   minHeight: '0',
   maxWidth: '100px',
   maxHeight: '100px',
+  aspectRatio: '16 / 9',
   position: 'absolute',
   top: '400',
   right: '400',

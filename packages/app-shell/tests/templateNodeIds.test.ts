@@ -87,9 +87,10 @@ describe('the starter template', () => {
  * over the real registries, since the property that matters is about the templates this build ships.
  */
 describe('the templates this build ships', () => {
+  // Below the root: a bundle's template keeps its own id there, which is the template's, not a node's.
   const idsOf = (node: SchemaNode): string[] => {
     const out: string[] = [];
-    forEachNode(node, (n) => n.id && out.push(n.id));
+    forEachNode(node, (n) => n !== node && n.id && out.push(n.id));
     return out;
   };
   const registries = { ...templateRegistry, ...viewRegistry };

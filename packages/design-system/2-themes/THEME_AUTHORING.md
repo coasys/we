@@ -66,9 +66,14 @@ numbers, and held within 20° of the colour the hue is named for. Text on a pale
 ## 4. Type roles
 
 `typeStyles` sets how each kind of text looks — `heading`, `body`, `label`, `control`, `badge`,
-`overline` — with `family`, `weight`, `letterSpacing`, `lineHeight`, `textTransform` and `color` (a
-role name). A role has no defaults: each component keeps what it had for any key left unset, so
+`overline` — with `family`, `size`, `weight`, `letterSpacing`, `lineHeight`, `textTransform` and
+`color` (a role name). `size` is a font-size token (`'200'`) or a length, and is not taken by
+`heading`: headings are a scale of sizes, not one. A role has no defaults: each component keeps what it had for any key left unset, so
 setting `heading.weight` changes heading weights and nothing else.
+
+`control` is a control's own words — a button's label, a tab, a menu item. What a field holds, and
+its placeholder, is `body`: it is what somebody wrote or chose, so a strong `control` weight makes
+buttons emphatic without setting every field in bold. A field's label is `label`.
 
 `fontFamily`, `headingFontFamily`, `letterSpacing` and `lineHeight` at the top level are the broad
 settings the roles fall back to. A face nobody has installed goes in `fontFaces`, as a `data:` URL —
@@ -130,6 +135,9 @@ leave them unset:
 - **Fills** move if no label can sit on them at all.
 - **Hover and pressed states** are steps from their fill, away from its label.
 - **The elevation stack** (`surface`, `surfaceRaised`, `surfaceSunken`) is measured from `page`.
+- **Fields** (`field`, `fieldHover`) follow `surfaceSunken` and its hover unless pinned. Pin them to
+  draw inputs differently from troughs, wells and code blocks, which keep `surfaceSunken`: for
+  example, `field: surface` gives outlined fields on the sheet, as many design systems draw them.
 
 Pin one of these and you own it, including in the polarity you were not looking at.
 

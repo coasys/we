@@ -372,6 +372,8 @@ export function BundleStoreProvider(props: ParentProps) {
       );
     if (judged.adds.sections.length)
       adds.push(`${plural(judged.adds.sections.length, 'section', 'sections')}: ${named(judged.adds.sections)}`);
+    if (judged.adds.pages.length)
+      adds.push(`${plural(judged.adds.pages.length, 'page', 'pages')} of its own: ${named(judged.adds.pages)}`);
     if (judged.adds.themes.length)
       adds.push(
         judged.adds.themes.length === 1
@@ -451,7 +453,7 @@ export function BundleStoreProvider(props: ParentProps) {
             }
           : template;
       await templateStore.writeLibraryTemplates(
-        [...(pieces.app ? [pieces.app] : []), ...pieces.shells, ...pieces.sections].map(pointAtTheme),
+        [...(pieces.app ? [pieces.app] : []), ...pieces.shells, ...pieces.sections, ...pieces.pages].map(pointAtTheme),
         'bundle',
       );
 

@@ -123,6 +123,42 @@ describe('GraphView focus', () => {
     expect(selectedLabels(host)).toEqual(['t2']);
   });
 
+  // A group on a map is not a record, so it has no id but its address — which is what a map's interface holds.
+  it('selects a node named by its own id, such as a group that is not a record', async () => {
+    const group = {
+      id: 'we-graph://cluster/vocabulary/signals',
+      kind: 'cluster' as const,
+      type: 'vocabulary',
+      label: 'Signal types',
+      data: { x: 0, y: 200 },
+    };
+    const host = mount({
+      seeds: { ...literal, nodes: [...literal.nodes, group] },
+      layout: { type: 'manual' },
+      focus: group.id,
+      focusCentre: true,
+    });
+    await until(() => selectedLabels(host).length > 0);
+    expect(selectedLabels(host)).toEqual(['Signal types']);
+  });
+
+  it('selects a group by its key alone, where its address would have to be encoded', async () => {
+    const rule = {
+      id: 'we-graph://cluster/vocabulary-item/policy%3AMembers%20can%20post.',
+      kind: 'cluster' as const,
+      type: 'vocabulary-item',
+      label: 'Members can post.',
+      data: { x: 0, y: 200 },
+    };
+    const host = mount({
+      seeds: { ...literal, nodes: [...literal.nodes, rule] },
+      layout: { type: 'manual' },
+      focus: 'policy:Members can post.',
+    });
+    await until(() => selectedLabels(host).length > 0);
+    expect(selectedLabels(host)).toEqual(['Members can post.']);
+  });
+
   it('does not report the selection it made back to the interface', async () => {
     /*
       The interface asked for this selection, so hearing it back is an echo — and the harmful kind:
@@ -473,6 +509,20 @@ describe('GraphView folding', () => {
 
     expect(opens).toEqual([false]);
     expect(folds).toEqual([true]);
+  });
+
+  // A definition chosen in a tree is a record id; the address has the dataset in it, encoded.
+  it('opens a record named by its id, as by its address', async () => {
+    const host = mount({
+      seeds: literal,
+      layout: { type: 'manual' },
+      focus: 'parent',
+      open: ['parent'],
+      onNodeOpen: () => undefined,
+      onNodeFold: () => undefined,
+    });
+    await until(() => propOf(host, '.we-graph__actions we-button', 'label') === 'Close');
+    expect(propOf(host, '.we-graph__actions we-button', 'label')).toBe('Close');
   });
 
   it('says what a fold will leave behind, rather than half working in silence', async () => {

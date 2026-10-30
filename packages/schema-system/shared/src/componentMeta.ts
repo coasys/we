@@ -176,6 +176,7 @@ const EDITOR_LAYER_FOR_KEY: Record<string, PropLayer> = {
   minHeight: 'size',
   maxWidth: 'size',
   maxHeight: 'size',
+  aspectRatio: 'size',
   display: 'size',
   flex: 'size',
   // Present in `layoutKeys` and computed by @we/design-utils, so it has always worked in a schema —

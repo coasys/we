@@ -24,8 +24,8 @@ import { css, type CSSResult, unsafeCSS } from 'lit';
  *
  * ## The three rules
  *
- * **Resting** is a recessed well with an outline. `surface-sunken` because an input is somewhere you
- * put something and the elevation stack has a role for that; the radius reads `--we-theme-input-radius`
+ * **Resting** is a recessed well with an outline — the `field` role, the sunken well unless a theme
+ * says otherwise, because an input is somewhere you put something; the radius reads `--we-theme-input-radius`
  * so a theme reshapes every field together, rather than the ones that remembered to ask.
  *
  * **Hover** lifts the fill *and* the edge. An edge alone is the quieter half, and it left these
@@ -61,11 +61,11 @@ export function fieldSurface(
       border: var(--we-border-width, 1px) solid var(--we-role-border);
       /* The input family's radius, falling back to the input's own default — the same one we-input has. */
       border-radius: var(--we-theme-input-radius, var(--we-radius-300));
-      background: var(--we-role-surface-sunken);
+      background: var(--we-role-field);
     }
 
     ${box}:hover:not([disabled]) {
-      background: var(--we-role-surface-sunken-hover);
+      background: var(--we-role-field-hover);
       border-color: var(--we-role-border-hover);
       transition:
         background-color ${stateTransition},
@@ -77,7 +77,7 @@ export function fieldSurface(
       into and then left would otherwise drop to its resting fill with the ring still on it.
     */
     ${focus} {
-      background: var(--we-role-surface-sunken-hover);
+      background: var(--we-role-field-hover);
       border-color: var(--we-ring-color);
       box-shadow: ${unsafeCSS(FOCUS_RING_BEYOND_BORDER)};
       /* Both properties travel together or the ring pops in over an edge that is still moving. */

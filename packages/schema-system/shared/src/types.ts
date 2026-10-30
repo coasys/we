@@ -3,6 +3,9 @@ import type { RendererStores } from '@we/backend-shared';
 // Pure framework-agnostic schema types
 export type SchemaProp = string | number | boolean | Record<string, unknown> | SchemaProp[] | undefined;
 export type StoreDeclaration = Record<string, true | { actions?: string[]; state?: string[] }>;
+/** How a panel is framed — see `TemplatePanel.frame`. */
+export type PanelFrame = 'window' | 'flush' | 'none';
+
 /**
  * A panel this interface has, and where it starts.
  *
@@ -29,7 +32,10 @@ export type TemplatePanel = {
    * exactly that failure.
    */
   id: string;
-  /** The module whose panel this places. Mutually exclusive with `node`. */
+  /**
+   * The module whose panel this places. Mutually exclusive with `node`. The host's own panels are
+   * named the same way — `shell` is the space's settings — so a template can place those too.
+   */
   module?: string;
   /**
    * Which of that module's panels, where it contributes more than one — its declared `name`.
@@ -91,6 +97,14 @@ export type TemplatePanel = {
    * panel, and a corner button on it is noise.
    */
   fixed?: boolean;
+  /**
+   * How the panel is framed, wherever it is: `window` — a titlebar to move it by, its name and its
+   * controls; `flush` — no titlebar, as a sidebar is part of the page around it, with a grip and its
+   * close shown on hover (and a slim header naming it, in a lane, where it draws no heading of its
+   * own); `none` — its content and nothing else. Absent, the place decides: a panel on an edge or
+   * floating has a window's frame, one in a lane the lane's `frame`, or flush.
+   */
+  frame?: PanelFrame;
   /** How much room it asks for. Resolved against the viewport by the host. */
   size?: 'sm' | 'md' | 'lg' | 'full';
   /**
@@ -149,6 +163,9 @@ export type TemplatePanel = {
   route?: string | string[];
   /**
    * Whether to open the panel as well as place it. Absent means yes.
+   *
+   * For a panel the template supplies (`node`), `false` starts it closed: it opens when the template
+   * calls `shellStore.openTemplatePanel(id)` — an inspector, opened when something is chosen.
    *
    * Opening a module's panel means invoking the action its launcher declares, and that action is not
    * always "open a panel": the call module's is `goToCall`, which **joins a call** when there is not
@@ -228,8 +245,12 @@ export type TemplateMeta = {
    *
    * Optional and defaulted rather than required, so every template that predates this keeps working
    * unchanged and unannotated: absent means shell, which is what they all are.
+   *
+   * A `'page'` is a page of an app's own — its About page, a guide — opened above everything as the
+   * host's settings and profile are, never as a space's template. Only a bundle brings one, in its
+   * `pages`; see `Bundle.pages`.
    */
-  role?: 'shell' | 'view' | 'app';
+  role?: 'shell' | 'view' | 'app' | 'page';
   /**
    * For a `'view'`: the URL segment it renders at, and the identity a space enables or disables it
    * by. Ignored on a shell.
@@ -275,6 +296,13 @@ export type TemplateMeta = {
    * own furniture. Ignored on a shell or a view.
    */
   frame?: { left?: number; right?: number; top?: number; bottom?: number };
+  /**
+   * For an `'app'`: how a panel pushing the content aside at each window edge is framed, when the
+   * panel declares no frame of its own — `'flush'` makes that edge's lanes part of the app around
+   * them, as a sidebar is, rather than a stack of windows. An edge left out frames its panels as
+   * windows. See {@link PanelFrame}. Ignored on a shell or a view.
+   */
+  edges?: Partial<Record<'left' | 'right' | 'top' | 'bottom', { frame?: PanelFrame }>>;
   /**
    * The panels this interface has, and where each one starts. See {@link TemplatePanel}.
    *

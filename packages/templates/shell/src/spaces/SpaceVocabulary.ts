@@ -1,5 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { createSignalTypeModal, sectionCard } from '@we/template-kit';
+import { createSignalTypeModal, sectionCard, SOCIAL_DNA_LABELS } from '@we/template-kit';
 
 import { modelsSection } from './vocabulary/EntitiesSection.ts';
 import { focusRow } from './vocabulary/focusRow';
@@ -64,7 +64,7 @@ const openSpaceFirst: SchemaNode = {
 };
 
 const signalTypesSection: SchemaNode = sectionCard({
-  title: 'Signal types',
+  title: SOCIAL_DNA_LABELS.signals,
   description: 'What a reaction means here — a like, a vote, a rating, whatever this community counts.',
   aside: {
     type: '$if',

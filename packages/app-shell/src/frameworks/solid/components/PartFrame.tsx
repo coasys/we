@@ -95,6 +95,22 @@ export function PresentPart(props: { part: string; at?: string; editing: boolean
   const [empty, setEmpty] = createSignal(false);
   const label = () => moduleRegistry.parts()[props.part]?.label ?? humanise(props.part.split('.')[1] ?? props.part);
 
+  /*
+    A part fed by its module's store says it is on screen — see `ModulePart.whileShown`. Once as it is
+    drawn and once as it is taken down, so a part drawn twice keeps its module working until both go.
+  */
+  const whileShown = moduleRegistry.parts()[props.part]?.whileShown;
+  if (whileShown) {
+    const store = moduleRegistry.get(props.part.split('.')[0] ?? '')?.store as Record<string, unknown> | undefined;
+    const call = (key: string) => {
+      const member = store?.[key];
+      if (typeof member === 'function') (member as () => void)();
+      else console.warn(`part ${props.part}: whileShown names "${key}", which its store does not have`);
+    };
+    call(whileShown.show);
+    onCleanup(() => call(whileShown.hide));
+  }
+
   createEffect(() => {
     if (!props.editing || !frame) {
       setEmpty(false);

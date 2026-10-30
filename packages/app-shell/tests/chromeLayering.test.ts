@@ -59,8 +59,11 @@ describe('the shell sidebar and a docked panel', () => {
     // The panel's own box — identified by its shadow, which nothing else in the frame has. The drag
     // guides also carry a `zIndex` and a `bg`, and they sit a layer higher on purpose (see below).
     // Its z-index is a step on the sticky band the geometry hands it, not the band's name: see the
-    // next test for the band, and `layerOrder` for the step.
-    expect(propsWithAll(dock, 'zIndex', 'shadow')?.zIndex).toEqual({ $: "shellStore.dockGeometry['call:0'].layer" });
+    // next test for the band, and `layerOrder` for the step. In a lane it has none: an edge's lane is
+    // layered, just under the panel band (see `EdgeLanes`), and a template's is the page.
+    expect(propsWithAll(dock, 'zIndex', 'shadow')?.zIndex).toEqual({
+      $: "shellStore.dockGeometry['call:0'].inLane || shellStore.dockGeometry['call:0'].home ? null : shellStore.dockGeometry['call:0'].layer",
+    });
     expect(propsWithAll(sidebar, 'zIndex')?.zIndex).toBe('chrome');
   });
 
