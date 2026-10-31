@@ -45,8 +45,19 @@ const LEADER_TIMEOUT = 15_000;
 const CLAIM_TIMEOUT = 300;
 
 type Message =
-  /** "I have focus and want to publish." */
-  | { type: 'claim'; tabId: string }
+  /**
+   * "I have focus and want to publish." `pinned` says the claimant holds something that must be
+   * published (a call), so a pinned leader that refuses it knows whom to hand over to later.
+   */
+  | { type: 'claim'; tabId: string; pinned?: boolean }
+  /**
+   * "Take over now" — sent to one tab, by a leader that stopped being pinned while that tab is pinned.
+   * Unlike `resign`, it promotes only the named tab, so no other tab publishes in between.
+   *
+   * `waiting` is every other pinned tab the old leader turned away, oldest first. Only a leader
+   * records them, so the new leader takes them over and can hand on when it unpins in turn.
+   */
+  | { type: 'handover'; tabId: string; to: string; waiting?: string[] }
   /**
    * "Is anyone leading?" — a claim's polite cousin, for a tab that must not displace an incumbent.
    *
@@ -206,6 +217,17 @@ export function createTabCoordinator(deps: TabCoordinatorDeps = {}): TabCoordina
 
   const post = (type: Message['type']) => channel.post({ type, tabId } as Message);
 
+  /**
+   * Pinned tabs this pinned leader turned away, newest last.
+   *
+   * Two tabs can each hold a call — and one of them can stop, as a tab does when the same device
+   * joins its call from another tab. If the one that stops is the leader, it went on publishing,
+   * now without the call, while the tab that still holds one stayed a follower until it next gained
+   * focus: so the agent's call left every peer's roster although it was still running. Remembering
+   * who asked is what lets the leader hand over the moment it unpins, before it publishes anything.
+   */
+  const waiting = new Set<string>();
+
   function becomeLeader(): void {
     if (leader || disposed) return;
     leader = true;
@@ -240,6 +262,12 @@ export function createTabCoordinator(deps: TabCoordinatorDeps = {}): TabCoordina
     timeoutTimer = setTimeout(becomeLeader, delay);
   }
 
+  /** Ask for leadership because this tab holds a call. A pinned leader records the asker. */
+  const claimPinned = (): void => {
+    watchLeader(CLAIM_TIMEOUT);
+    channel.post({ type: 'claim', tabId, pinned: true } satisfies Message);
+  };
+
   function stopWatchingLeader(): void {
     if (timeoutTimer) {
       clearTimeout(timeoutTimer);
@@ -254,9 +282,12 @@ export function createTabCoordinator(deps: TabCoordinatorDeps = {}): TabCoordina
       case 'claim':
         // Focus is preference: yield to a focused tab unless pinned, and if pinned say so, so the
         // claimant stops asking rather than retrying into a wall.
+        if (raw.pinned) waiting.delete(raw.tabId);
         if (leader) {
-          if (pinned) post('pinned');
-          else {
+          if (pinned) {
+            post('pinned');
+            if (raw.pinned) waiting.add(raw.tabId);
+          } else {
             stepDown();
             // Say so. A silent step-down is indistinguishable from a leader that simply went quiet,
             // so the claimant had to wait out the full crash timeout before daring to take over —
@@ -285,6 +316,8 @@ export function createTabCoordinator(deps: TabCoordinatorDeps = {}): TabCoordina
         break;
 
       case 'probe':
+        // A probe is also what a follower sends when it stops being pinned — see `setPinned`.
+        waiting.delete(raw.tabId);
         // Answer without yielding. A heartbeat is exactly the right reply: the prober's own handler
         // for it resets the short fuse back to the full crash timeout, so an incumbent's existence
         // is all that needs to be communicated.
@@ -309,7 +342,29 @@ export function createTabCoordinator(deps: TabCoordinatorDeps = {}): TabCoordina
         }
         break;
 
+      case 'handover': {
+        const passedOn = Array.isArray(raw.waiting)
+          ? raw.waiting.filter((id): id is string => typeof id === 'string' && id !== tabId)
+          : [];
+        if (raw.to === tabId) {
+          // Take over the pinned tabs the old leader turned away, so this tab can hand on in turn.
+          // A tab on the list that has since unpinned sends `probe`, which reaches this tab as
+          // leader and takes it off again.
+          waiting.clear();
+          passedOn.forEach((id) => waiting.add(id));
+          becomeLeader();
+        } else if (pinned) {
+          // Every other pinned tab asks the new leader again, named on the list or not. A claim that
+          // reached the old leader after it stepped down is on no list; and if the new leader is
+          // gone (closed with no word), the claim times out after CLAIM_TIMEOUT and a pinned tab
+          // takes over, rather than every tab waiting out the crash timeout.
+          claimPinned();
+        }
+        break;
+      }
+
       case 'resign':
+        waiting.delete(raw.tabId);
         // Take over at once rather than waiting out the timeout. Several followers may do this
         // together; `becomeLeader` heartbeats immediately, so the tie-break above settles it on the
         // next tick rather than leaving a gap.
@@ -344,12 +399,28 @@ export function createTabCoordinator(deps: TabCoordinatorDeps = {}): TabCoordina
     isLeader: () => leader,
 
     setPinned(next) {
+      const was = pinned;
       pinned = next;
       // Becoming pinned while not leader means this tab holds the thing that must not be interrupted
       // — claim so publishing follows it.
       if (pinned && !leader) {
-        watchLeader(CLAIM_TIMEOUT);
-        post('claim');
+        claimPinned();
+        return;
+      }
+      if (pinned || !was) return;
+      if (leader) {
+        // Hand publishing to the newest pinned tab this one turned away, if any is still waiting.
+        // The rest go with it, so the new leader can hand on when it unpins too.
+        const rest = [...waiting];
+        const to = rest.pop();
+        waiting.clear();
+        if (!to) return;
+        stepDown();
+        channel.post({ type: 'handover', tabId, to, waiting: rest } satisfies Message);
+        watchLeader();
+      } else {
+        // No longer waiting for leadership: say so, so the leader does not hand over to this tab.
+        post('probe');
       }
     },
 
@@ -365,7 +436,10 @@ export function createTabCoordinator(deps: TabCoordinatorDeps = {}): TabCoordina
     },
 
     dispose() {
+      // A pinned follower is in a leader's `waiting`: say it is no longer waiting, as on unpinning,
+      // so a handover never goes to a closed tab.
       if (leader) post('resign');
+      else if (pinned && !disposed) post('probe');
       stepDown();
       stopWatchingLeader();
       disposed = true;
