@@ -5,24 +5,22 @@ import { namespace } from '@we/schema-shared';
 
 import { WORKLET_NAME, WORKLET_SOURCE } from './workletSource';
 
-/**
- * How eagerly the backend closes an utterance.
- *
- * This is the transcript of record, so it would rather wait and be right. On AD4M it is currently
- * inert — the executor applies its own fixed voice-activity gate and ignores what it is sent — and
- * the segmenting that actually decides an utterance is the worklet's, tuned by `VAD` below. Kept so
- * the intent survives into a backend that honours it.
- *
- * There is no second, faster preview stream beside this one, and that is a decision rather than a
- * gap. Flux runs one, but since utterances are cut on the client both streams receive the same
- * finished utterance, so a preview arrives only a moment before the real line — at the cost of a
- * second model competing for the same CPU and no way to match a preview to the line that replaces
- * it. `transcribing` says "heard, working on it" instead, for nothing.
- */
-const TUNING = { startThreshold: 0.8 };
+/*
+  The segmenting that decides an utterance is the worklet's, tuned by `VAD` below: the backend
+  transcribes each utterance it is handed, whole.
+
+  There is no second faster preview stream beside this one, and that is a decision rather than a
+  gap. Flux runs one, but since utterances are cut on the client both streams receive the same
+  finished utterance, so a preview arrives only a moment before the real line — at the cost of a
+  second model competing for the same server and no way to match a preview to the line that
+  replaces it. `transcribing` says "heard, working on it" instead, for nothing.
+*/
 
 /** How often the model list is re-read while a download runs, or while recording waits for one. */
 const MODEL_POLL_MS = 3_000;
+
+/** How often a panel with no model asks the backend again for a speech server to connect. */
+const SETUP_REASK_MS = 30_000;
 
 /**
  * How long an utterance may be in the backend before `transcribing` stops claiming it is coming.
@@ -72,12 +70,6 @@ const MAX_HELD_SAMPLES = 16_000 * 60;
  * Two, because one refusal is not evidence and the second one is.
  */
 const REFUSALS_BEFORE_DROPPING = 2;
-
-/** A download size as a person reads it — "970 MB", "1.5 GB". */
-function formatBytes(bytes: number): string {
-  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`;
-  return `${Math.max(10, Math.round(bytes / 1e7) * 10)} MB`;
-}
 
 /**
  * Characters of transcript held before writing a block.
@@ -359,20 +351,21 @@ const METER_SCALE = 400;
 const asPercent = (value: number) => `${Math.min(100, Math.round(value * METER_SCALE))}%`;
 
 /**
- * What the session is doing. `downloading` is recording that wants to run and is waiting for a
- * model's weights to arrive — distinct from `starting`, which is seconds, where this can be minutes.
+ * What the session is doing. `model-unready` is recording that wants to run and is waiting for a
+ * model that cannot run yet — still downloading, or on a server that is not answering. Distinct from
+ * `starting`, which is seconds, where this can be minutes.
  */
 export type TranscribeStatus =
-  'idle' | 'no-backend' | 'no-model' | 'no-audio' | 'downloading' | 'starting' | 'listening' | 'error';
+  'idle' | 'no-backend' | 'no-model' | 'no-audio' | 'model-unready' | 'starting' | 'listening' | 'error';
 
 /**
  * What is known about the models this node has, independent of whether anything is recording.
  *
  * Separate from the status because the panel needs it when nothing is: an auto-join that found no
  * model gives up silently and lands on `idle`, and a panel opened outside a call has never asked —
- * yet both are exactly where somebody would want the one-click install.
+ * yet both are exactly where somebody would want the one-click setup.
  */
-type ModelState = 'unknown' | 'none' | 'downloading' | 'ready';
+type ModelState = 'unknown' | 'none' | 'unready' | 'ready';
 
 /** What the worklet posts. Tagged, because it reports both what it heard and how loud things are. */
 type WorkletMessage = { kind: 'utterance'; audio: Float32Array } | { kind: 'level'; rms: number; speaking: boolean };
@@ -695,9 +688,15 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   const [modelState, setModelState] = signal<ModelState>('unknown');
   /** The most advanced download's progress, 0–100, or null when the backend reports none. */
   const [modelProgress, setModelProgress] = signal<number | null>(null);
-  /** A one-click install is registering its model — seconds, before the download itself begins. */
-  const [installingModel, setInstallingModel] = signal(false);
-  const [installError, setInstallError] = signal('');
+  /** Why no model can run, in the backend's words, while the state is `unready`. */
+  const [modelDetail, setModelDetail] = signal('');
+  /** What setting transcription up from here would use — asked while there is no model. */
+  const [setupOffer, setSetupOffer] = signal<{ found: string; installUrl: string } | null>(null);
+  /** A one-click setup is registering a server and its model. */
+  const [connectingServer, setConnectingServer] = signal(false);
+  const [connectError, setConnectError] = signal('');
+  /** When the backend was last asked for a server to connect, so a waiting panel does not ask on every read. */
+  let setupAskedAt = -Infinity;
   /**
    * Utterances handed to the backend that have not produced text yet, as far as anyone can tell.
    *
@@ -1714,10 +1713,18 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     if (!transcription || transcription.available?.() === false) return null;
     try {
       const models = await transcription.models();
-      const downloading = models.filter((m) => !m.ready);
-      setModelState(models.length === 0 ? 'none' : models.some((m) => m.ready) ? 'ready' : 'downloading');
-      const known = downloading.map((m) => m.progress).filter((p): p is number => typeof p === 'number');
+      const unready = models.filter((m) => !m.ready);
+      setModelState(models.length === 0 ? 'none' : models.some((m) => m.ready) ? 'ready' : 'unready');
+      const known = unready.map((m) => m.progress).filter((p): p is number => typeof p === 'number');
       setModelProgress(known.length ? Math.max(...known) : null);
+      setModelDetail((unready.find((m) => m.isDefault) ?? unready[0])?.detail ?? '');
+      // Only worth looking for a server while there is no model: it is the offer that replaces one.
+      // Looking probes ports on the node's machine, so a panel left open asks now and then rather
+      // than on every read — often enough that a server started meanwhile is found.
+      if (models.length === 0 && transcription.setup && Date.now() - setupAskedAt >= SETUP_REASK_MS) {
+        setupAskedAt = Date.now();
+        setSetupOffer((await transcription.setup().catch(() => null)) ?? null);
+      }
       return models;
     } catch (cause) {
       console.warn('transcribe: could not read the model list', cause);
@@ -1741,7 +1748,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     modelPoll = setTimeout(async () => {
       const models = await readModels();
       modelPoll = null;
-      const waiting = () => enabled() && !context && (status() === 'no-model' || status() === 'downloading');
+      const waiting = () => enabled() && !context && (status() === 'no-model' || status() === 'model-unready');
       if (waiting() && models?.some((m) => m.ready)) {
         const audio = audioInput?.() ?? null;
         if (audio) {
@@ -1750,33 +1757,33 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         }
       }
       // A panel showing "no model" keeps asking too, so a model added in settings clears the note —
-      // and hides the install button — without the panel being closed and opened again.
-      if (modelState() === 'downloading' || waiting() || (open() && modelState() === 'none')) pollModels();
+      // and hides the connect button — without the panel being closed and opened again.
+      if (modelState() === 'unready' || waiting() || (open() && modelState() === 'none')) pollModels();
     }, MODEL_POLL_MS);
   }
 
   /**
-   * Install the model the backend offers, from the panel, and carry on as though it had always been
-   * there.
+   * Connect the speech server the backend found, from the panel, and carry on as though it had
+   * always been there.
    *
    * Recording that gave up for want of a model is re-armed: an auto-join that failed silently is
    * allowed to try again — the call is still on, and the reason it stopped is gone — and a press
-   * that found no model is already polling and picks the download up from there.
+   * that found no model is already polling and picks the new one up from there.
    */
-  async function installModel(): Promise<void> {
-    if (installingModel() || !transcription?.offeredModel?.()) return;
-    setInstallingModel(true);
-    setInstallError('');
+  async function connectServer(): Promise<void> {
+    if (connectingServer() || !setupOffer()?.found || !transcription?.connectFound) return;
+    setConnectingServer(true);
+    setConnectError('');
     try {
-      await transcription.installOfferedModel?.();
+      await transcription.connectFound();
       await readModels();
       if (autoJoinFailed()) setAutoJoinFailed(false);
       pollModels();
     } catch (cause) {
-      console.error('transcribe: could not install the offered model', cause);
-      setInstallError(cause instanceof Error ? cause.message : String(cause));
+      console.error('transcribe: could not connect the speech server', cause);
+      setConnectError(cause instanceof Error ? cause.message : String(cause));
     } finally {
-      setInstallingModel(false);
+      setConnectingServer(false);
     }
   }
 
@@ -1867,24 +1874,20 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       }
 
       /*
-        Wait for a model that is still downloading rather than opening it.
-
-        This used to open it anyway, on the reasoning that the executor loads on demand and a model
-        that cannot run makes `open` fail and say why. Neither half survives contact with the
-        executor: opening a stream on weights it does not have downloads them *inside that call*,
-        holding a lock every other open waits on and reporting no progress, so the call times out at
-        thirty seconds while the download carries on — an error that names nothing, for a model that
-        is working. Waiting costs a poll, and says what is happening.
+        Wait for a model that cannot run rather than opening it — one still downloading, or on a
+        server that is not answering. Opening it would accept the stream and then produce nothing,
+        which reads as silence; waiting costs a poll, says what is happening, and starts on its own
+        when the server comes back.
       */
       const ready = models.filter((m) => m.ready);
       if (ready.length === 0) {
-        setStatus('downloading');
+        setStatus('model-unready');
         pollModels();
         return;
       }
       const model = ready.find((m) => m.isDefault) ?? ready[0];
 
-      newStream = await transcription.open(model.id, onText, TUNING);
+      newStream = await transcription.open(model.id, onText);
       if (mine !== generation) return await unwind();
 
       newContext = new AudioContext();
@@ -1964,7 +1967,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
             await new Promise((resolve) => setTimeout(resolve, delay));
             if (mine !== generation) return;
             try {
-              const fresh = await transcription.open(model.id, onText, TUNING);
+              const fresh = await transcription.open(model.id, onText);
               if (mine !== generation) {
                 await fresh.close().catch(() => {});
                 return;
@@ -2678,7 +2681,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   effect?.(() => {
     if (open() && modelState() === 'unknown') {
       void readModels().then(() => {
-        if (modelState() === 'downloading' || modelState() === 'none') pollModels();
+        if (modelState() === 'unready' || modelState() === 'none') pollModels();
       });
     }
   });
@@ -2769,7 +2772,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     // ── State ────────────────────────────────────────────────────────────────
     status: state(
       onScreen(status, 'idle'),
-      'What the session is doing — idle, no-backend, no-model, no-audio, downloading, starting, listening or error.',
+      'What the session is doing — idle, no-backend, no-model, no-audio, model-unready, starting, listening or error.',
     ),
     error: state(onScreen(error, ''), 'Why the session stopped, when status is error; empty otherwise.'),
     /**
@@ -2835,31 +2838,37 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       () => modelState() === 'none',
       'No transcription model is installed on this node, as last read.',
     ),
-    /** A model is installed and its weights are still arriving. */
-    modelDownloading: state(
-      () => modelState() === 'downloading',
-      'A transcription model is installed and its weights are still arriving.',
+    /** A model is installed and none can run yet — still downloading, or its server is not answering. */
+    modelUnready: state(
+      () => modelState() === 'unready',
+      'A transcription model is installed and cannot run yet — still downloading, or its server is not answering.',
     ),
-    /** The download line, ready to show: "Downloading the speech model — 45%". */
-    modelDownloadText: state(() => {
+    /** Why, ready to show: "Downloading the speech model — 45%", or the backend's reason. */
+    modelUnreadyText: state(() => {
       const progress = modelProgress();
-      return progress === null ? 'Downloading the speech model…' : `Downloading the speech model — ${progress}%`;
-    }, 'The download line, ready to show — "Downloading the speech model — 45%".'),
-    /** Whether this connection may install the backend's offered model. */
-    canInstallModel: state(
-      () => Boolean(transcription?.offeredModel?.()),
-      'Whether this connection may install the model the backend offers.',
+      if (progress !== null) return `Downloading the speech model — ${progress}%`;
+      return modelDetail() || 'The speech model is not ready yet';
+    }, 'Why the model cannot run yet, ready to show — "Downloading the speech model — 45%", "The speech server is not answering".'),
+    /** A speech server was found on the node's machine and this connection may connect it. */
+    canConnectServer: state(
+      () => Boolean(setupOffer()?.found),
+      'Whether a speech server was found on the node’s machine that this connection may connect in one step.',
     ),
-    /** The install button's words, naming the size before anybody agrees to it. */
-    installModelLabel: state(() => {
-      const offer = transcription?.offeredModel?.();
-      return offer ? `Download ${offer.name} (${formatBytes(offer.downloadBytes)})` : '';
-    }, 'The install button’s words, naming the offered model and its size; empty when none is offered.'),
-    installingModel: state(installingModel, 'A one-click model install is registering its model.'),
-    installError: state(installError, 'Why the last model install failed; empty otherwise.'),
-    installModel: action(
-      () => installModel(),
-      'Installs the model the backend offers and resumes recording that was waiting on one.',
+    /** The connect button's words, naming where the server is. */
+    connectServerLabel: state(
+      () => setupOffer()?.found ?? '',
+      'The connect button’s words, naming the server found — "Use the speech server at localhost:8000"; empty when none was found.',
+    ),
+    /** Where to get a speech server, for when none was found. */
+    serverInstallUrl: state(
+      () => setupOffer()?.installUrl ?? '',
+      'Where to get a speech server, for when none was found on the node’s machine; empty where this connection may not set one up.',
+    ),
+    connectingServer: state(connectingServer, 'A one-click setup is registering the speech server and its model.'),
+    connectError: state(connectError, 'Why the last one-click setup failed; empty otherwise.'),
+    connectServer: action(
+      () => connectServer(),
+      'Connects the speech server found on the node’s machine, makes its transcription model the default, and resumes recording that was waiting on one.',
     ),
     /**
      * Whether the transcript panel is up — and this module's to say, not the host's.

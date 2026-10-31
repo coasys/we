@@ -3420,15 +3420,14 @@ export const captureStatus: SchemaNode = {
                 {
                   type: 'we-text',
                   props: { variant: 'footnote', color: 'text-muted' },
-                  children: ['No transcription model is installed. Once one is, transcription starts on its own.'],
+                  children: ['No transcription model is set up. Once one is, transcription starts on its own.'],
                 },
               ],
             },
             {
               /*
-                One click where this connection may install one — the backend picks the model and
-                the button names its size, since most of a gigabyte is something to say before the
-                press rather than after.
+                One click where a speech server is already running on the node's machine and this
+                connection may connect it — the button names where it is.
 
                 Otherwise settings where there are settings to open, and a sentence where there are
                 not: AI administration is node-scoped, so a guest on somebody else's executor has no
@@ -3436,19 +3435,19 @@ export const captureStatus: SchemaNode = {
               */
               type: '$if',
               props: {
-                condition: { $: 'modules.transcribe.canInstallModel' },
+                condition: { $: 'modules.transcribe.canConnectServer' },
                 then: {
                   type: 'we-button',
                   props: {
                     size: 'sm',
                     variant: 'solid',
-                    loading: { $: 'modules.transcribe.installingModel' },
-                    disabled: { $: 'modules.transcribe.installingModel' },
-                    onClick: { $invoke: 'modules.transcribe.installModel' },
+                    loading: { $: 'modules.transcribe.connectingServer' },
+                    disabled: { $: 'modules.transcribe.connectingServer' },
+                    onClick: { $invoke: 'modules.transcribe.connectServer' },
                   },
                   children: [
-                    { type: 'we-icon', props: { name: 'download-simple' } },
-                    { $: 'modules.transcribe.installModelLabel' },
+                    { type: 'we-icon', props: { name: 'plugs-connected' } },
+                    { $: 'modules.transcribe.connectServerLabel' },
                   ],
                 },
                 else: {
@@ -3456,13 +3455,32 @@ export const captureStatus: SchemaNode = {
                   props: {
                     condition: { $: 'runtimeStore.canManageAi' },
                     then: {
-                      type: 'we-button',
-                      props: {
-                        size: 'sm',
-                        variant: 'soft',
-                        onClick: { $invoke: 'shellStore.openShellView', args: ['settings', '/ai'] },
-                      },
-                      children: ['Open AI settings'],
+                      type: 'Row',
+                      props: { gap: '200', ay: 'center', wrap: true },
+                      children: [
+                        {
+                          type: 'we-button',
+                          props: {
+                            size: 'sm',
+                            variant: 'soft',
+                            onClick: { $invoke: 'shellStore.openShellView', args: ['settings', '/ai'] },
+                          },
+                          children: ['Open AI settings'],
+                        },
+                        // A speech server is what makes transcription work at all; with none running,
+                        // where to get one is the next thing somebody needs.
+                        {
+                          type: '$if',
+                          props: {
+                            condition: { $: 'modules.transcribe.serverInstallUrl' },
+                            then: {
+                              type: 'we-link',
+                              props: { href: { $: 'modules.transcribe.serverInstallUrl' }, target: '_blank' },
+                              children: ['Get a speech server'],
+                            },
+                          },
+                        },
+                      ],
                     },
                     else: {
                       type: 'we-text',
@@ -3480,7 +3498,7 @@ export const captureStatus: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $: 'modules.transcribe.modelDownloading' },
+        condition: { $: 'modules.transcribe.modelUnready' },
         then: {
           type: 'Column',
           props: { gap: '200' },
@@ -3489,20 +3507,20 @@ export const captureStatus: SchemaNode = {
               type: 'Row',
               props: { gap: '200', ay: 'center' },
               children: [
-                // A glyph rather than a spinner: this part keeps a stable height, and the percentage
-                // beside it is what says the download is moving.
-                { type: 'we-icon', props: { name: 'download-simple', color: 'text-faint' } },
+                // A glyph rather than a spinner: this part keeps a stable height, and the line beside
+                // it says what is being waited for.
+                { type: 'we-icon', props: { name: 'hourglass-medium', color: 'text-faint' } },
                 {
                   type: 'we-text',
                   props: { variant: 'footnote', color: 'text-muted' },
-                  children: [{ $: 'modules.transcribe.modelDownloadText' }],
+                  children: [{ $: 'modules.transcribe.modelUnreadyText' }],
                 },
               ],
             },
             {
               type: 'we-text',
               props: { variant: 'footnote', color: 'text-faint' },
-              children: ['Transcription starts on its own once it has arrived.'],
+              children: ['Transcription starts on its own once it can run.'],
             },
           ],
         },
@@ -3511,11 +3529,11 @@ export const captureStatus: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $: 'modules.transcribe.installError' },
+        condition: { $: 'modules.transcribe.connectError' },
         then: {
           type: 'we-alert',
           props: { tone: 'warning' },
-          children: [{ $: '`The model could not be installed: ${modules.transcribe.installError}`' }],
+          children: [{ $: '`The speech server could not be connected: ${modules.transcribe.connectError}`' }],
         },
       },
     },

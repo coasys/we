@@ -13,8 +13,10 @@
 import { render } from '@solidjs/testing-library';
 import type { ExecutorHost, ExecutorSettings } from '@we/app-shell/shared';
 import type {
+  AiEndpoint,
+  AiEndpointHealth,
   AiModel,
-  AiModelDraft,
+  AiModelStatusEvent,
   BackendPorts,
   ConsentRequest,
   ModelAdminPort,
@@ -306,273 +308,335 @@ describe('degrading when the backend administers nothing', () => {
   });
 });
 
-describe('AI models', () => {
-  const gpt: AiModel = {
-    id: 'm1',
-    name: 'GPT',
-    kind: 'llm',
-    isDefault: true,
-    source: { kind: 'api', protocol: 'openai', baseUrl: 'https://api.openai.com/v1', hasApiKey: true, model: 'gpt-4o' },
+describe('AI models and the servers they run on', () => {
+  const ollama: AiEndpoint = {
+    id: 'e1',
+    name: 'Ollama 11434',
+    kind: 'ollama',
+    baseUrl: 'http://127.0.0.1:11434',
+    hasApiKey: false,
+    capabilities: ['chat', 'embeddings'],
+    health: { state: 'reachable', detail: '', models: ['nomic-embed-text:latest'] },
   };
-  const local: AiModel = {
-    id: 'm2',
-    name: 'Llama',
+  const remote: AiEndpoint = {
+    id: 'e2',
+    name: 'Remote',
+    kind: 'anthropic',
+    baseUrl: 'https://api.example.test',
+    hasApiKey: true,
+    capabilities: ['chat'],
+    health: { state: 'unauthorized', detail: '', models: [] },
+  };
+  const qwen: AiModel = {
+    id: 'm1',
+    name: 'Qwen',
     kind: 'llm',
-    isDefault: false,
-    source: { kind: 'preset', name: 'llama_8b' },
+    endpointId: 'e1',
+    remoteModel: 'qwen3:8b',
+    status: { state: 'pulling', progress: 30 },
+    isDefault: true,
   };
 
-  /** A model admin port, recording what it was asked. */
   function aiPort(overrides: Partial<ModelAdminPort> = {}) {
     const calls: string[] = [];
+    let emitStatus: ((event: AiModelStatusEvent) => void) | null = null;
+    let emitHealth: ((endpointId: string, health: AiEndpointHealth) => void) | null = null;
+    let listed = 0;
     const port: ModelAdminPort = {
       async list() {
-        calls.push('list');
-        return [gpt, local];
+        listed += 1;
+        return [qwen];
       },
-      async presets() {
-        calls.push('presets');
-        return ['llama_8b', 'mistral_7b'];
+      async endpoints() {
+        return [ollama, remote];
+      },
+      async detectEndpoints() {
+        return [
+          // Already added, under another spelling of the address — not offered again.
+          { kind: 'ollama', baseUrl: 'http://127.0.0.1:11434/', capabilities: ['chat'], models: [] },
+          { kind: 'openai-audio', baseUrl: 'http://127.0.0.1:8000', capabilities: ['transcription'], models: ['w'] },
+        ];
+      },
+      async discover(query) {
+        calls.push(`discover:${'endpointId' in query ? query.endpointId : query.baseUrl}`);
+        return [
+          { id: 'nomic-embed-text:latest', capabilities: ['embeddings'] },
+          { id: 'llama3.2:3b', capabilities: ['chat'] },
+        ];
       },
       async add(draft) {
-        calls.push(`add:${draft.name}`);
+        calls.push(`add:${draft.name}:${draft.endpointId}:${draft.remoteModel}`);
       },
       async update(id, draft) {
         calls.push(`update:${id}:${draft.name}`);
       },
-      async status() {
-        calls.push('status');
-        return { downloaded: false, loaded: false, progress: 30, status: 'fetching' };
+      async addEndpoint(draft) {
+        calls.push(`addEndpoint:${draft.name}:${draft.kind}:${draft.baseUrl}:${draft.apiKey ?? '-'}`);
+        return { ...ollama, ...draft, id: 'e9' };
       },
+      async updateEndpoint(id, draft) {
+        calls.push(`updateEndpoint:${id}:${draft.apiKey ?? 'kept'}`);
+        return { ...remote, ...draft };
+      },
+      async pullModel(endpointId, model) {
+        calls.push(`pull:${endpointId}:${model}`);
+      },
+      onModelStatus(listener) {
+        emitStatus = listener;
+        return () => (emitStatus = null);
+      },
+      onEndpointHealth(listener) {
+        emitHealth = listener;
+        return () => (emitHealth = null);
+      },
+      recommended: () => ({
+        models: [{ kind: 'llm', endpointKind: 'ollama', model: 'qwen3:8b', description: '' }],
+        installLinks: [{ label: 'Ollama', url: 'https://ollama.example.test' }],
+      }),
       ...overrides,
     };
-    return { port, calls };
+    return {
+      port,
+      calls,
+      listed: () => listed,
+      status: (event: AiModelStatusEvent) => emitStatus?.(event),
+      health: (endpointId: string, health: AiEndpointHealth) => emitHealth?.(endpointId, health),
+    };
   }
 
-  it('sets protocol and URL from a named service, and keeps them as a starting point for a custom one', () => {
+  it('describes each model by its server, and each server by its health', async () => {
     ports = { models: aiPort().port };
-    const store = mount();
-
-    store.newAiModel();
-    store.setAiFormField('sourceKind', 'api');
-    store.setAiService('anthropic');
-    expect(store.aiForm()).toMatchObject({
-      apiService: 'anthropic',
-      apiProtocol: 'anthropic',
-      apiBaseUrl: 'https://api.anthropic.com',
-    });
-
-    // Custom must stay custom while the fields still hold a preset's values, or choosing it would
-    // hide the very fields it exists to show.
-    store.setAiService('custom');
-    expect(store.aiForm()).toMatchObject({ apiService: 'custom', apiProtocol: 'anthropic' });
-    expect(store.aiServiceOptions().at(-1)).toEqual({ label: 'Custom endpoint', value: 'custom' });
-  });
-
-  it('saves an Ollama model with its context limit, and says why a limit it cannot read holds Save', async () => {
-    const saved: AiModelDraft[] = [];
-    const { port } = aiPort({
-      async add(draft) {
-        saved.push(draft);
-      },
-    });
-    ports = { models: port };
-    const store = mount();
-
-    store.newAiModel();
-    store.setAiFormField('name', 'Qwen');
-    store.setAiFormField('sourceKind', 'api');
-    store.setAiService('ollama');
-    store.setAiFormField('apiModel', 'qwen3:4b');
-    expect(store.aiForm()).toMatchObject({ apiProtocol: 'ollama', apiBaseUrl: 'http://localhost:11434' });
-
-    store.setAiFormField('apiMaxContext', '40k');
-    expect(store.aiFormComplete()).toBe(false);
-    expect(store.aiMaxContextError()).not.toBe('');
-
-    store.setAiFormField('apiMaxContext', '40960');
-    expect(store.aiMaxContextError()).toBe('');
-    await store.saveAiModel();
-    expect(saved[0].source).toMatchObject({ kind: 'api', protocol: 'ollama', maxContext: 40960 });
-  });
-
-  it('offers no model listing where the backend cannot ask', () => {
-    ports = { models: aiPort().port };
-    expect(mount().canDiscoverAiModels()).toBe(false);
-  });
-
-  it('lists the models an endpoint serves, and forgets them when the endpoint changes', async () => {
-    const asked: unknown[] = [];
-    const { port } = aiPort({
-      async discover(query) {
-        asked.push(query);
-        return ['claude-sonnet-5', 'claude-haiku-4-5'];
-      },
-    });
-    ports = { models: port };
-    const store = mount();
-
-    store.newAiModel();
-    store.setAiFormField('sourceKind', 'api');
-    store.setAiService('anthropic');
-    store.setAiFormField('apiKey', 'sk-ant');
-    await store.discoverAiModels();
-
-    expect(asked).toEqual([{ protocol: 'anthropic', baseUrl: 'https://api.anthropic.com', apiKey: 'sk-ant' }]);
-    expect(store.aiDiscoveredModelOptions().map((o) => o.value)).toEqual(['claude-haiku-4-5', 'claude-sonnet-5']);
-    // An empty model field takes the first answer, so a working endpoint is one click from saveable.
-    expect(store.aiForm()?.apiModel).toBe('claude-haiku-4-5');
-
-    // The list answered for that key; a different key may see different models, or none.
-    store.setAiFormField('apiKey', 'sk-other');
-    expect(store.aiDiscoveredModelOptions()).toEqual([]);
-  });
-
-  it('edits a keyed model without seeing its key, and asks for it again only where it must', async () => {
-    // The backend answers whether a key is set and never the key. So the form opens empty, a save
-    // that touched nothing keeps the key, a move of the address needs it again, and listing models
-    // needs it typed — discovery is asked with what it is sent.
-    const saved: AiModelDraft[] = [];
-    const asked: unknown[] = [];
-    const { port } = aiPort({
-      async update(_id, draft) {
-        saved.push(draft);
-      },
-      async discover(query) {
-        asked.push(query);
-        return ['gpt-4o'];
-      },
-    });
-    ports = { models: port };
     const store = mount();
     await store.loadAiModels();
 
-    store.editAiModel('m1');
-    expect(store.aiForm()).toMatchObject({ apiKey: '', apiKeyStored: true });
-    expect(store.aiDiscoverNeedsKey()).toBe(true);
-    await store.discoverAiModels();
-    expect(asked).toEqual([]);
-
-    store.setAiFormField('apiBaseUrl', 'https://openrouter.ai/api/v1');
-    expect(store.aiApiKeyError()).not.toBe('');
-    expect(store.aiFormComplete()).toBe(false);
-    store.setAiFormField('apiBaseUrl', 'https://api.openai.com/v1');
-    expect(store.aiApiKeyError()).toBe('');
-
-    await store.saveAiModel();
-    expect(saved[0].source).not.toHaveProperty('apiKey');
-
-    store.editAiModel('m1');
-    store.setAiFormField('apiKey', 'sk-new');
-    expect(store.aiDiscoverNeedsKey()).toBe(false);
-    await store.discoverAiModels();
-    expect(asked).toEqual([{ protocol: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-new' }]);
-  });
-
-  it('says why a listing failed, and offers nothing to pick', async () => {
-    const { port } = aiPort({
-      async discover() {
-        throw new Error('Anthropic API error 401: invalid x-api-key');
-      },
+    expect(store.aiModels()[0]).toMatchObject({
+      endpointName: 'Ollama 11434',
+      kindLabel: 'Language model',
+      statusText: 'Downloading 30%',
+      ready: false,
     });
-    ports = { models: port };
-    const store = mount();
-
-    store.newAiModel();
-    store.setAiFormField('sourceKind', 'api');
-    await store.discoverAiModels();
-
-    expect(store.error()).toContain('invalid x-api-key');
-    expect(store.aiDiscoveredModelOptions()).toEqual([]);
+    expect(store.aiEndpoints().map((e) => [e.name, e.healthText, e.healthy, e.modelCount])).toEqual([
+      ['Ollama 11434', 'Answering · 1 model', true, 1],
+      ['Remote', 'The key was refused', false, 0],
+    ]);
   });
 
-  it('polls status only for models the backend hosts', async () => {
+  it('offers servers found on the node’s machine, but not one already added', async () => {
     const { port, calls } = aiPort();
     ports = { models: port };
     const store = mount();
-
     await store.loadAiModels();
-    await vi.waitFor(() => expect(store.aiModels().find((m) => m.id === 'm2')?.statusText).toBe('Downloading 30%'));
+    await store.detectAiEndpoints();
 
-    // One status call, for the local model. The remote one has nothing to download, and asking
-    // about it would be a round trip whose answer is already known.
-    expect(calls.filter((c) => c === 'status')).toEqual(['status']);
-    expect(store.aiModels().find((m) => m.id === 'm1')?.statusText).toBe('');
+    expect(store.aiDetectedEndpoints().map((e) => e.label)).toEqual(['Speech server at localhost:8000']);
+
+    await store.addDetectedEndpoint('http://127.0.0.1:8000');
+    expect(calls).toContain('addEndpoint:Speech server 8000:openai-audio:http://127.0.0.1:8000:-');
   });
 
-  it('saves a new model as an add, and an edited one as an update', async () => {
+  it('says where to get a server', () => {
+    ports = { models: aiPort().port };
+    expect(mount().aiInstallLinks()).toEqual([{ label: 'Ollama', url: 'https://ollama.example.test' }]);
+  });
+
+  it('starts a new model on a server that fits, and fills in the recommended model', async () => {
     const { port, calls } = aiPort();
     ports = { models: port };
     const store = mount();
     await store.loadAiModels();
 
     store.newAiModel();
-    store.setAiFormField('name', 'Fresh');
-    store.setAiFormField('presetName', 'mistral_7b');
+    expect(store.aiForm()?.endpointId).toBe('e1');
+    await vi.waitFor(() => expect(store.aiForm()?.remoteModel).toBe('qwen3:8b'));
+    expect(calls).toContain('discover:e1');
+
+    // The server lists what it has, of the kind asked for; the recommended model is not among them,
+    // so it is offered as a download onto the server.
+    expect(store.aiDiscoveredModelOptions().map((o) => o.value)).toEqual(['llama3.2:3b']);
+    expect(store.aiRecommendedModel()).toBe('qwen3:8b');
+    expect(store.aiCanPull()).toBe(true);
+  });
+
+  it('moves the form to a server that can serve the kind chosen', async () => {
+    ports = { models: aiPort().port };
+    const store = mount();
+    await store.loadAiModels();
+
+    store.newAiModel();
+    store.setAiFormField('endpointId', 'e2');
+    expect(store.aiEndpointOptions().map((o) => o.value)).toEqual(['e1', 'e2']);
+
+    store.setAiFormField('kind', 'embedding');
+    expect(store.aiForm()?.endpointId).toBe('e1');
+    expect(store.aiEndpointOptions().map((o) => o.value)).toEqual(['e1']);
+  });
+
+  it('lets go of a model of the wrong kind when the form changes what it is for', async () => {
+    // The form opened on a language model and filled in the recommended one; switching it to
+    // embeddings kept that, and saved an embedding model pointed at a chat model.
+    ports = { models: aiPort().port };
+    const store = mount();
+    await store.loadAiModels();
+    store.newAiModel();
+    await vi.waitFor(() => expect(store.aiForm()?.remoteModel).toBe('qwen3:8b'));
+
+    store.setAiFormField('kind', 'embedding');
+    expect(store.aiForm()?.remoteModel).toBe('nomic-embed-text:latest');
+  });
+
+  it('pulls a model, showing the progress the backend reports', async () => {
+    let finish!: () => void;
+    const ai = aiPort({ pullModel: () => new Promise<void>((resolve) => (finish = resolve)) });
+    ports = { models: ai.port };
+    activeShellView = 'settings';
+    const store = mount();
+    await store.loadAiModels();
+    store.newAiModel();
+    await vi.waitFor(() => expect(store.aiForm()?.remoteModel).toBe('qwen3:8b'));
+
+    const pulling = store.pullAiModel();
+    expect(store.aiPullText()).toBe('Downloading qwen3:8b — 0%');
+    expect(store.aiCanPull()).toBe(false);
+
+    ai.status({ endpointId: 'e1', remoteModel: 'qwen3:8b', status: { state: 'pulling', progress: 45 } });
+    expect(store.aiPullText()).toBe('Downloading qwen3:8b — 45%');
+    // The model row on that server follows the same event.
+    expect(store.aiModels()[0].statusText).toBe('Downloading 45%');
+
+    finish();
+    await pulling;
+    expect(store.aiPullText()).toBe('');
+  });
+
+  it('re-reads the models when a server’s health changes', async () => {
+    const ai = aiPort();
+    ports = { models: ai.port };
+    activeShellView = 'settings';
+    const store = mount();
+    await vi.waitFor(() => expect(store.aiEndpoints()).toHaveLength(2));
+    const before = ai.listed();
+
+    ai.health('e2', { state: 'reachable', detail: '', models: ['m'] });
+
+    expect(store.aiEndpoints()[1].healthText).toBe('Answering · 1 model');
+    await vi.waitFor(() => expect(ai.listed()).toBe(before + 1));
+  });
+
+  it('saves a new model as an add, named after its id when no name was typed, and an edit as an update', async () => {
+    const { port, calls } = aiPort();
+    ports = { models: port };
+    const store = mount();
+    await store.loadAiModels();
+
+    store.newAiModel();
+    await vi.waitFor(() => expect(store.aiForm()?.remoteModel).toBe('qwen3:8b'));
+    store.setAiFormField('remoteModel', 'llama3.2:3b');
     await store.saveAiModel();
 
-    store.editAiModel('m2');
+    store.editAiModel('m1');
     store.setAiFormField('name', 'Renamed');
     await store.saveAiModel();
 
     expect(calls.filter((c) => c.startsWith('add') || c.startsWith('update'))).toEqual([
-      'add:Fresh',
-      'update:m2:Renamed',
+      'add:llama3.2:3b:e1:llama3.2:3b',
+      'update:m1:Renamed',
     ]);
   });
 
-  it('refuses to save a form that is missing what its source needs', async () => {
-    const { port, calls } = aiPort();
+  it('refuses to save a model with no server to run on', async () => {
+    const { port, calls } = aiPort({ endpoints: async () => [] });
     ports = { models: port };
     const store = mount();
+    await store.loadAiModels();
 
     store.newAiModel();
-    store.setAiFormField('name', 'Nameless source');
-    // Source is 'preset' by default and no preset has been chosen.
+    store.setAiFormField('remoteModel', 'qwen3:8b');
     expect(store.aiFormComplete()).toBe(false);
     await store.saveAiModel();
-
     expect(calls.filter((c) => c.startsWith('add'))).toEqual([]);
-    expect(store.aiForm()).not.toBeNull();
   });
 
   it('keeps the form open when the save fails, so the typing is not lost', async () => {
     const { port } = aiPort({
       async add() {
-        throw new Error('model type not supported');
+        throw new Error('the endpoint cannot serve that type');
       },
     });
     ports = { models: port };
     const store = mount();
+    await store.loadAiModels();
 
     store.newAiModel();
     store.setAiFormField('name', 'Fresh');
-    store.setAiFormField('presetName', 'llama_8b');
+    store.setAiFormField('remoteModel', 'llama3.2:3b');
     await store.saveAiModel();
 
     expect(store.aiForm()?.name).toBe('Fresh');
-    expect(store.error()).toBe('model type not supported');
+    expect(store.error()).toBe('the endpoint cannot serve that type');
   });
 
-  it('offers presets for the kind the form is on, and refetches when it changes', async () => {
-    const asked: string[] = [];
-    const { port } = aiPort({
-      async presets(kind) {
-        asked.push(kind);
-        return kind === 'llm' ? ['llama_8b'] : ['whisper_small'];
-      },
-    });
+  it('sets kind and address from a named service, and saves a server under a name made from them', async () => {
+    const { port, calls } = aiPort();
     ports = { models: port };
     const store = mount();
+    await store.loadAiModels();
 
-    store.newAiModel();
-    await vi.waitFor(() => expect(store.aiPresetOptions()).toEqual([{ label: 'llama_8b', value: 'llama_8b' }]));
+    store.newAiEndpoint();
+    store.setAiService('llama-server');
+    expect(store.aiEndpointForm()).toMatchObject({ kind: 'llama-server', baseUrl: 'http://127.0.0.1:9931' });
+    store.setAiService('custom');
+    expect(store.aiEndpointForm()).toMatchObject({ kind: 'openai-compatible', baseUrl: 'http://127.0.0.1:9931' });
+    expect(store.aiServiceOptions().at(-1)?.value).toBe('custom');
 
-    store.setAiFormField('kind', 'transcription');
-    await vi.waitFor(() =>
-      expect(store.aiPresetOptions()).toEqual([{ label: 'whisper_small', value: 'whisper_small' }]),
-    );
-    expect(asked).toEqual(['llm', 'transcription']);
+    await store.saveAiEndpoint();
+    expect(calls).toContain('addEndpoint:OpenAI-compatible 9931:openai-compatible:http://127.0.0.1:9931:-');
+    expect(store.aiEndpointForm()).toBeNull();
+  });
+
+  it('says why a context limit it cannot read holds Save', () => {
+    ports = { models: aiPort().port };
+    const store = mount();
+
+    store.newAiEndpoint();
+    store.setAiEndpointField('maxContext', '40k');
+    expect(store.aiEndpointFormComplete()).toBe(false);
+    expect(store.aiMaxContextError()).not.toBe('');
+    store.setAiEndpointField('maxContext', '40960');
+    expect(store.aiMaxContextError()).toBe('');
+  });
+
+  it('edits a keyed server without seeing its key, and asks for it again only where it must', async () => {
+    const { port, calls } = aiPort();
+    ports = { models: port };
+    const store = mount();
+    await store.loadAiModels();
+
+    store.editAiEndpoint('e2');
+    expect(store.aiEndpointForm()).toMatchObject({ apiKey: '', apiKeyStored: true, service: 'anthropic' });
+    expect(store.aiEndpointFormDirty()).toBe(false);
+
+    store.setAiEndpointField('baseUrl', 'https://other.example.test');
+    expect(store.aiApiKeyError()).not.toBe('');
+    expect(store.aiEndpointFormComplete()).toBe(false);
+    store.setAiEndpointField('baseUrl', 'https://api.example.test');
+    expect(store.aiApiKeyError()).toBe('');
+    await store.saveAiEndpoint();
+
+    store.editAiEndpoint('e2');
+    store.setAiEndpointField('apiKeyRemoved', true);
+    await store.saveAiEndpoint();
+
+    expect(calls.filter((c) => c.startsWith('updateEndpoint'))).toEqual([
+      'updateEndpoint:e2:kept',
+      'updateEndpoint:e2:',
+    ]);
+  });
+
+  it('hides the servers from a connection the backend does not show them to', () => {
+    ports = { models: aiPort({ endpoints: undefined, detectEndpoints: undefined }).port };
+    const store = mount();
+    expect(store.canManageAiEndpoints()).toBe(false);
+    expect(store.canManageAi()).toBe(true);
   });
 });
 

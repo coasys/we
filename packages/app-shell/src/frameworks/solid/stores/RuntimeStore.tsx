@@ -24,24 +24,41 @@ import type { ExecutorSettings } from '@shared/platform/types';
 import { copyText } from '@shared/utils';
 import { usePlatform } from '@solid/providers/PlatformProvider';
 import {
-  AI_API_PRESETS,
+  AI_SERVICES,
+  type AiDetectedView,
+  type AiEndpointForm,
+  type AiEndpointView,
   type AiModelForm,
   type AiModelView,
   apiKeyProblem,
+  CAPABILITY_OF,
   CUSTOM_SERVICE,
+  describeDetected,
+  describeEndpoint,
   describeModel,
-  draftFrom,
-  EMPTY_FORM,
-  formComplete,
-  keepsStoredKey,
+  EMPTY_ENDPOINT_FORM,
+  EMPTY_MODEL_FORM,
+  endpointFormComplete,
+  endpointFormFrom,
+  endpointName,
   maxContextProblem,
-  toDraft,
+  modelFormComplete,
+  modelFormFrom,
+  sameServer,
+  serves,
+  toEndpointDraft,
+  toModelDraft,
+  withService,
 } from '@solid/stores/aiModelDraft';
 import { useSessionStore } from '@solid/stores/SessionStore';
 import { useShellStore } from '@solid/stores/ShellStore';
 import type {
+  AiDetectedEndpoint,
+  AiDiscoveredModel,
+  AiEndpoint,
+  AiModel,
   AiModelKind,
-  AiModelStatus,
+  AiServerInstallLink,
   AiTask,
   AuthorizedApp,
   ConsentRequest,
@@ -104,42 +121,53 @@ export interface RuntimeStore {
   aiTasks: Accessor<AiTask[]>;
   /** The model form, or null when it is closed. Schemas render the modal on this. */
   aiForm: Accessor<AiModelForm | null>;
-  /** Model names the backend can fetch itself, for the kind the open form is on. */
-  aiPresetOptions: Accessor<{ label: string; value: string }[]>;
-  /** True when the open form has every field its chosen source needs. */
+  /** True when the open model form names an endpoint and a model on it. */
   aiFormComplete: Accessor<boolean>;
-  /** Why the open form's context limit cannot be saved, or empty — the words for a disabled Save. */
-  aiMaxContextError: Accessor<string>;
-  /**
-   * Why the open form's key holds the save, or empty: the base URL moved away from the address the
-   * stored key was set for, and no new key was typed. The backend sends a key only there.
-   */
-  aiApiKeyError: Accessor<string>;
-  /**
-   * The open form keeps a key the backend holds, so listing models needs it typed again: the
-   * backend never hands a stored key back, and discovery asks with what it is sent.
-   */
-  aiDiscoverNeedsKey: Accessor<boolean>;
-  /**
-   * The remote services a model can be reached through, plus "Custom endpoint", for a we-select on
-   * `aiForm.apiService`. A named service sets the protocol and base URL itself.
-   */
-  aiServiceOptions: Accessor<{ label: string; value: string }[]>;
-  /** The backend can ask a remote endpoint which models it serves. */
-  canDiscoverAiModels: Accessor<boolean>;
-  /**
-   * The models the open form's endpoint said it serves, for a we-select — empty until asked, and
-   * empty again once the protocol, URL or key changes, since the list answered for those.
-   */
-  aiDiscoveredModelOptions: Accessor<{ label: string; value: string }[]>;
   /**
    * The open model form has been edited since it opened — what a discard guard reads.
    *
    * Compared against a snapshot taken when the form opened, so opening a model to look at its
-   * settings and closing again asks nothing, while a pasted API key is not thrown away by a click
-   * on the backdrop.
+   * settings and closing again asks nothing.
    */
   aiFormDirty: Accessor<boolean>;
+  /** The endpoints that can serve the open model form's kind, for a we-select on `aiForm.endpointId`. */
+  aiEndpointOptions: Accessor<{ label: string; value: string }[]>;
+  /** The backend can ask an endpoint which models it serves. */
+  canDiscoverAiModels: Accessor<boolean>;
+  /**
+   * The models the open form's endpoint said it serves, for its kind, for a we-select — empty until
+   * asked, and for any endpoint other than the one asked.
+   */
+  aiDiscoveredModelOptions: Accessor<{ label: string; value: string }[]>;
+  /** The model the backend recommends for the open form's kind on its endpoint's kind, or empty. */
+  aiRecommendedModel: Accessor<string>;
+  /** The open form's model can be downloaded onto its endpoint: an Ollama that does not have it. */
+  aiCanPull: Accessor<boolean>;
+  /** A download onto a server in progress, in words — "Downloading qwen3:8b — 45%" — or empty. */
+  aiPullText: Accessor<string>;
+  /** The backend shows its model servers to this connection. */
+  canManageAiEndpoints: Accessor<boolean>;
+  /** The model servers, each carrying the strings its row displays. */
+  aiEndpoints: Accessor<AiEndpointView[]>;
+  /** Model servers running on the node's machine that are not added yet. */
+  aiDetectedEndpoints: Accessor<AiDetectedView[]>;
+  /** Where to get a model server, for when none runs on the node's machine. */
+  aiInstallLinks: Accessor<AiServerInstallLink[]>;
+  /** The endpoint form, or null when it is closed. */
+  aiEndpointForm: Accessor<AiEndpointForm | null>;
+  /** True when the open endpoint form can be saved. */
+  aiEndpointFormComplete: Accessor<boolean>;
+  /** The open endpoint form has been edited since it opened, so a pasted key is not thrown away. */
+  aiEndpointFormDirty: Accessor<boolean>;
+  /** Why the open endpoint form's context limit cannot be saved, or empty — the words for a disabled Save. */
+  aiMaxContextError: Accessor<string>;
+  /**
+   * Why the open endpoint form's key holds the save, or empty: the base URL moved away from the
+   * address the stored key was set for, and no new key was typed. The backend sends a key only there.
+   */
+  aiApiKeyError: Accessor<string>;
+  /** The kinds of server an endpoint can be, for a we-select on `aiEndpointForm.service`. */
+  aiServiceOptions: Accessor<{ label: string; value: string }[]>;
   languages: Accessor<InstalledLanguage[]>;
   trustedAgents: Accessor<string[]>;
   authorizedApps: Accessor<AuthorizedApp[]>;
@@ -175,23 +203,39 @@ export interface RuntimeStore {
   consentSecret: Accessor<string>;
 
   // ── Actions ──────────────────────────────────────────────────────────────────
+  /** Fetch the models and the endpoints they run on. */
   loadAiModels: () => Promise<void>;
   loadAiTasks: () => Promise<void>;
-  /** Open the form empty, for a new model. */
+  /** Open the model form empty, for a new model. */
   newAiModel: () => void;
-  /** Open the form on an existing model. */
+  /** Open the model form on an existing model. */
   editAiModel: (id: string) => void;
-  /** Set one form field. Takes the field name so one action serves every input. */
-  setAiFormField: (field: string, value: string | boolean) => void;
-  /** Choose the open form's service — a preset, which sets protocol and base URL, or `custom`. */
-  setAiService: (id: string) => void;
-  /** Ask the open form's endpoint which models it serves. Doubles as the check that the key works. */
+  /** Set one model-form field. Choosing an endpoint asks it which models it serves. */
+  setAiFormField: (field: string, value: string) => void;
+  /** Ask the open form's endpoint which models it serves. */
   discoverAiModels: () => Promise<void>;
+  /** Download the open form's model onto its endpoint. */
+  pullAiModel: () => Promise<void>;
   closeAiForm: () => void;
   saveAiModel: () => Promise<void>;
   removeAiModel: (id: string) => Promise<void>;
   setDefaultAiModel: (id: string) => Promise<void>;
   removeAiTask: (id: string) => Promise<void>;
+  /** Look for model servers on the node's machine. */
+  detectAiEndpoints: () => Promise<void>;
+  /** Add a server found on the node's machine, as it was found. */
+  addDetectedEndpoint: (baseUrl: string) => Promise<void>;
+  /** Open the endpoint form empty, for a new server. */
+  newAiEndpoint: () => void;
+  editAiEndpoint: (id: string) => void;
+  /** Set one endpoint-form field. */
+  setAiEndpointField: (field: string, value: string | boolean) => void;
+  /** Choose the open endpoint form's service, which sets its kind and a starting address. */
+  setAiService: (id: string) => void;
+  closeAiEndpointForm: () => void;
+  saveAiEndpoint: () => Promise<void>;
+  /** Remove an endpoint. Refused while models run on it. */
+  removeAiEndpoint: (id: string) => Promise<void>;
   loadLanguages: () => Promise<void>;
   installLanguage: (address: string) => Promise<void>;
   removeLanguage: (address: string) => Promise<void>;
@@ -235,10 +279,16 @@ export function RuntimeStoreProvider(props: ParentProps) {
   const shell = useShellStore();
   const platform = usePlatform();
 
-  const [aiModels, setAiModels] = createSignal<AiModelView[]>([]);
+  // The port's records, kept raw: the views below are derived, so an event that changes one record
+  // re-describes it without another round trip.
+  const [aiModelRecords, setAiModelRecords] = createSignal<AiModel[]>([]);
+  const [aiEndpointRecords, setAiEndpointRecords] = createSignal<AiEndpoint[]>([]);
+  const [aiDetected, setAiDetected] = createSignal<AiDetectedEndpoint[]>([]);
   const [aiTasks, setAiTasks] = createSignal<AiTask[]>([]);
   const [aiForm, setAiForm] = createSignal<AiModelForm | null>(null);
-  const [aiPresets, setAiPresets] = createSignal<Record<string, string[]>>({});
+  const [aiEndpointForm, setAiEndpointForm] = createSignal<AiEndpointForm | null>(null);
+  /** A download onto a server, while one runs: which model on which endpoint, and how far. */
+  const [aiPull, setAiPull] = createSignal<{ endpointId: string; model: string; progress: number } | null>(null);
   const [languages, setLanguages] = createSignal<InstalledLanguage[]>([]);
   const [trustedAgents, setTrustedAgents] = createSignal<string[]>([]);
   const [authorizedApps, setAuthorizedApps] = createSignal<AuthorizedApp[]>([]);
@@ -279,6 +329,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
    */
   const canConfigureAi = createMemo(() => !!modelAdmin()?.add);
   const canDiscoverAiModels = createMemo(() => !!modelAdmin()?.discover);
+  const canManageAiEndpoints = createMemo(() => !!modelAdmin()?.endpoints);
 
   const executorHost = () => platform.executor;
   const canConfigureExecutor = createMemo(() => !!executorHost());
@@ -314,62 +365,107 @@ export function RuntimeStoreProvider(props: ParentProps) {
       .sort((a, b) => a.crate.localeCompare(b.crate)),
   );
 
-  const aiPresetOptions = createMemo(() => {
-    const kind = aiForm()?.kind;
-    if (!kind) return [];
-    return (aiPresets()[kind] ?? []).map((name) => ({ label: name, value: name }));
-  });
+  const aiModels = createMemo(() => aiModelRecords().map((model) => describeModel(model, aiEndpointRecords())));
+  const aiEndpoints = createMemo(() =>
+    aiEndpointRecords().map((endpoint) => describeEndpoint(endpoint, aiModelRecords())),
+  );
+  // A server already added is not offered again, whichever address spelling found it.
+  const aiDetectedEndpoints = createMemo(() =>
+    aiDetected()
+      .filter((found) => !aiEndpointRecords().some((e) => sameServer(e.baseUrl, found.baseUrl)))
+      .map(describeDetected),
+  );
+  const recommendations = () => modelAdmin()?.recommended?.() ?? { models: [], installLinks: [] };
+  const aiInstallLinks = () => recommendations().installLinks;
 
-  const aiFormComplete = createMemo(() => {
+  const formEndpoint = () => aiEndpointRecords().find((e) => e.id === aiForm()?.endpointId);
+
+  const aiEndpointOptions = createMemo(() => {
     const form = aiForm();
-    return !!form && formComplete(form);
+    if (!form) return [];
+    const needs = CAPABILITY_OF[form.kind];
+    // The endpoint the form already names stays listed, so editing a model never hides its own server.
+    return aiEndpointRecords()
+      .filter((e) => e.capabilities.includes(needs) || e.id === form.endpointId)
+      .map((e) => ({ label: e.name, value: e.id }));
   });
 
-  const aiMaxContextError = createMemo(() => {
+  const aiRecommendedModel = createMemo(() => {
     const form = aiForm();
-    return form ? maxContextProblem(form) : '';
+    const kind = formEndpoint()?.kind;
+    if (!form || !kind) return '';
+    return recommendations().models.find((m) => m.kind === form.kind && m.endpointKind === kind)?.model ?? '';
   });
-
-  const aiApiKeyError = createMemo(() => {
-    const form = aiForm();
-    return form ? apiKeyProblem(form) : '';
-  });
-
-  const aiDiscoverNeedsKey = createMemo(() => {
-    const form = aiForm();
-    return !!form && keepsStoredKey(form);
-  });
-
-  const aiServiceOptions = () => [
-    ...AI_API_PRESETS.map((preset) => ({ label: preset.label, value: preset.id })),
-    { label: 'Custom endpoint', value: CUSTOM_SERVICE },
-  ];
 
   /**
    * A discovered list, with the endpoint it was asked of.
    *
    * Keyed rather than cleared by each field setter, so the list cannot outlive the endpoint it
-   * describes whichever way the form changes — a preset, a pasted URL, a new key.
+   * describes whichever way the form changes.
    */
-  const [aiDiscovered, setAiDiscovered] = createSignal<{ endpoint: string; models: string[] } | null>(null);
-  const endpointOf = (form: AiModelForm) => JSON.stringify([form.apiProtocol, form.apiBaseUrl.trim(), form.apiKey]);
-  const aiDiscoveredModelOptions = createMemo(() => {
+  const [aiDiscovered, setAiDiscovered] = createSignal<{ endpointId: string; models: AiDiscoveredModel[] } | null>(
+    null,
+  );
+  const discoveredForForm = createMemo(() => {
     const form = aiForm();
     const found = aiDiscovered();
-    if (!form || !found || found.endpoint !== endpointOf(form)) return [];
-    return found.models.map((model) => ({ label: model, value: model }));
+    return form && found && found.endpointId === form.endpointId ? found.models : null;
+  });
+  const aiDiscoveredModelOptions = createMemo(() => {
+    const form = aiForm();
+    const models = discoveredForForm();
+    if (!form || !models) return [];
+    // A server's capabilities are partly a guess from the model's id: where the guess finds none of
+    // the kind asked for, every model is listed rather than none.
+    const fitting = models.filter((m) => m.capabilities.includes(CAPABILITY_OF[form.kind]));
+    return (fitting.length ? fitting : models).map((m) => ({ label: m.id, value: m.id }));
   });
 
+  const aiCanPull = createMemo(() => {
+    const form = aiForm();
+    const endpoint = formEndpoint();
+    const model = form?.remoteModel.trim() ?? '';
+    if (!model || endpoint?.kind !== 'ollama' || !modelAdmin()?.pullModel || aiPull()) return false;
+    const served = discoveredForForm()?.map((m) => m.id) ?? endpoint.health.models;
+    return !serves(served, model);
+  });
+
+  const aiPullText = createMemo(() => {
+    const pull = aiPull();
+    return pull ? `Downloading ${pull.model} — ${pull.progress}%` : '';
+  });
+
+  const aiFormComplete = createMemo(() => {
+    const form = aiForm();
+    return !!form && modelFormComplete(form);
+  });
+
+  const aiEndpointFormComplete = createMemo(() => {
+    const form = aiEndpointForm();
+    return !!form && endpointFormComplete(form);
+  });
+
+  const aiMaxContextError = createMemo(() => {
+    const form = aiEndpointForm();
+    return form ? maxContextProblem(form) : '';
+  });
+
+  const aiApiKeyError = createMemo(() => {
+    const form = aiEndpointForm();
+    return form ? apiKeyProblem(form) : '';
+  });
+
+  const aiServiceOptions = () => [
+    ...AI_SERVICES.map((service) => ({ label: service.label, value: service.id })),
+    { label: 'Another OpenAI-compatible server', value: CUSTOM_SERVICE },
+  ];
+
   /**
-   * What the form held when it opened, so "has this been edited" can be answered by comparison.
-   *
-   * A snapshot rather than the "an edit always counts as dirty" rule `shapeStore.draftHasWork` uses.
-   * That rule is right for the model wizard, where opening an existing model reconstructs a draft
-   * from the space and there is nothing to compare against — here the form is a flat object with a
-   * known shape, so the accurate answer is cheap, and it means opening a model to look at its
-   * settings and closing again asks nothing.
+   * What each form held when it opened, so "has this been edited" can be answered by comparison —
+   * opening a model or a server to look at its settings and closing again asks nothing.
    */
   const [aiFormOpenedAs, setAiFormOpenedAs] = createSignal('');
+  const [aiEndpointFormOpenedAs, setAiEndpointFormOpenedAs] = createSignal('');
 
   function openAiForm(form: AiModelForm): void {
     batch(() => {
@@ -378,9 +474,21 @@ export function RuntimeStoreProvider(props: ParentProps) {
     });
   }
 
+  function openAiEndpointForm(form: AiEndpointForm): void {
+    batch(() => {
+      setAiEndpointForm(form);
+      setAiEndpointFormOpenedAs(JSON.stringify(form));
+    });
+  }
+
   const aiFormDirty = createMemo(() => {
     const form = aiForm();
     return !!form && JSON.stringify(form) !== aiFormOpenedAs();
+  });
+
+  const aiEndpointFormDirty = createMemo(() => {
+    const form = aiEndpointForm();
+    return !!form && JSON.stringify(form) !== aiEndpointFormOpenedAs();
   });
 
   /**
@@ -459,26 +567,40 @@ export function RuntimeStoreProvider(props: ParentProps) {
       void loadAiModels();
       void loadAiTasks();
     }
+    if (canManageAiEndpoints()) void detectAiEndpoints();
     if (canConfigureExecutor()) void loadExecutorSettings();
   });
 
-  // Presets are per kind and the form's kind can change while it is open, so this follows the form
-  // rather than being fetched once. Each kind is fetched at most once and cached.
-  createEffect(() => {
-    const kind = aiForm()?.kind;
-    if (kind) void loadAiPresets(kind);
-  });
-
-  // A model the backend hosts has to be downloaded before it answers anything, and that takes long
-  // enough that a static "Checking…" would be the whole experience. The interval exists only while
-  // something is actually pending and the page showing it is open.
+  /*
+    Where a model stands is its server's answer, and the backend says when it changes: a pull's
+    progress, a server going down or coming back. Listened to while the page that shows it is open,
+    which replaces polling every model's status on a timer.
+  */
   createEffect(() => {
     if (shell.activeShellView() !== 'settings') return;
-    if (!canManageAi()) return;
-    if (aiModels().every((model) => model.ready || model.source.kind === 'api')) return;
-
-    const timer = setInterval(() => void refreshAiStatuses(), 2000);
-    onCleanup(() => clearInterval(timer));
+    const port = modelAdmin();
+    const stopModels = port?.onModelStatus?.((event) => {
+      const pull = aiPull();
+      if (pull && pull.endpointId === event.endpointId && serves([event.remoteModel], pull.model)) {
+        setAiPull({ ...pull, progress: event.status.progress ?? pull.progress });
+      }
+      setAiModelRecords((models) =>
+        models.map((model) =>
+          model.endpointId === event.endpointId && serves([event.remoteModel], model.remoteModel)
+            ? { ...model, status: event.status }
+            : model,
+        ),
+      );
+    });
+    // A server's health decides its models' statuses, so a change re-reads them rather than guessing.
+    const stopHealth = port?.onEndpointHealth?.((endpointId, health) => {
+      setAiEndpointRecords((endpoints) => endpoints.map((e) => (e.id === endpointId ? { ...e, health } : e)));
+      void refreshAiModels();
+    });
+    onCleanup(() => {
+      stopModels?.();
+      stopHealth?.();
+    });
   });
 
   function dropHead() {
@@ -597,47 +719,33 @@ export function RuntimeStoreProvider(props: ParentProps) {
 
   // ── AI models ────────────────────────────────────────────────────────────────
 
+  /** The models and the endpoints they run on, read together so a row never names an endpoint the list lacks. */
   async function loadAiModels(): Promise<void> {
-    const models = await run('loadAiModels', () => modelAdmin()?.list?.());
-    if (!models.ok || !models.value) return;
-    // Statuses arrive separately and asynchronously; describe with what is known now, and let the
-    // poll below fill them in. Rendering the list only once every status has landed would hide the
-    // download progress that is the whole reason a status exists.
-    setAiModels(models.value.map((model) => describeModel(model)));
-    void refreshAiStatuses();
+    const port = modelAdmin();
+    const loaded = await run('loadAiModels', () =>
+      Promise.all([port?.list?.(), port?.endpoints?.() ?? Promise.resolve(undefined)]),
+    );
+    if (!loaded.ok || !loaded.value) return;
+    const [models, endpoints] = loaded.value;
+    batch(() => {
+      if (models) setAiModelRecords(models);
+      if (endpoints) setAiEndpointRecords(endpoints);
+    });
   }
 
   /**
-   * Re-reads download/load progress for the models that are still working on it.
+   * Re-reads the models' statuses after a server's health changed.
    *
-   * Deliberately outside `run`: this fires on a timer, and routing it through the shared loading
-   * flag would strobe every spinner on the page and wipe any error the user is reading. A failed
-   * status read is also not worth reporting — the model row already says what it knows.
+   * Deliberately outside `run`: it follows an event rather than a press, and routing it through the
+   * shared flags would strobe every spinner on the page and wipe any error the user is reading.
    */
-  async function refreshAiStatuses(): Promise<void> {
-    const port = modelAdmin();
-    if (!port?.status) return;
-
-    const pending = aiModels().filter((model) => model.source.kind !== 'api' && !model.ready);
-    if (!pending.length) return;
-
-    const statuses = await Promise.all(
-      pending.map(async (model) => {
-        try {
-          return [model.id, await port.status?.(model.id)] as const;
-        } catch {
-          // A model the backend does not recognise yet — it stays on 'Checking…'.
-          return [model.id, undefined] as const;
-        }
-      }),
-    );
-    const byId = new Map(statuses);
-    setAiModels((models) =>
-      models.map((model) => {
-        const status = byId.get(model.id) as AiModelStatus | undefined;
-        return status ? describeModel(model, status) : model;
-      }),
-    );
+  async function refreshAiModels(): Promise<void> {
+    try {
+      const models = await modelAdmin()?.list?.();
+      if (models) setAiModelRecords(models);
+    } catch {
+      // The rows keep what they last said; the next event or reload tries again.
+    }
   }
 
   async function loadAiTasks(): Promise<void> {
@@ -645,56 +753,94 @@ export function RuntimeStoreProvider(props: ParentProps) {
     if (tasks.ok && tasks.value) setAiTasks(tasks.value);
   }
 
-  async function loadAiPresets(kind: AiModelKind): Promise<void> {
-    if (aiPresets()[kind]) return;
-    const names = await run('loadAiPresets', () => modelAdmin()?.presets?.(kind));
-    if (names.ok && names.value) setAiPresets((cache) => ({ ...cache, [kind]: names.value as string[] }));
+  /** The first endpoint that can serve `kind`, so a new model's form starts on one that fits. */
+  function endpointFor(kind: AiModelKind): string {
+    return aiEndpointRecords().find((e) => e.capabilities.includes(CAPABILITY_OF[kind]))?.id ?? '';
   }
 
   function newAiModel(): void {
-    openAiForm({ ...EMPTY_FORM });
+    openAiForm({ ...EMPTY_MODEL_FORM, endpointId: endpointFor(EMPTY_MODEL_FORM.kind) });
+    void discoverAiModels();
   }
 
   function editAiModel(id: string): void {
-    const model = aiModels().find((candidate) => candidate.id === id);
-    if (model) openAiForm(draftFrom(model));
+    const model = aiModelRecords().find((candidate) => candidate.id === id);
+    if (!model) return;
+    openAiForm(modelFormFrom(model));
+    void discoverAiModels();
   }
 
-  function setAiFormField(field: string, value: string | boolean): void {
-    setAiForm((form) => (form ? { ...form, [field]: value } : form));
-  }
-
-  function setAiService(id: string): void {
-    const preset = AI_API_PRESETS.find((candidate) => candidate.id === id);
-    setAiForm((form) => {
-      if (!form) return form;
-      // Custom keeps whatever protocol and URL the form holds, as a starting point to edit.
-      if (!preset) return { ...form, apiService: CUSTOM_SERVICE };
-      return { ...form, apiService: preset.id, apiProtocol: preset.protocol, apiBaseUrl: preset.baseUrl };
-    });
-  }
-
-  async function discoverAiModels(): Promise<void> {
-    const form = aiForm();
-    // Without the stored key the endpoint would answer for an anonymous caller — a refusal, or a
-    // list that is not this account's. The control is disabled then; this keeps the action honest.
-    if (!form?.apiBaseUrl.trim() || keepsStoredKey(form)) return;
-    const endpoint = endpointOf(form);
-    const found = await run('discoverAiModels', () =>
-      modelAdmin()?.discover?.({
-        protocol: form.apiProtocol,
-        baseUrl: form.apiBaseUrl.trim(),
-        apiKey: form.apiKey,
-      }),
-    );
-    if (!found.ok) {
-      setAiDiscovered(null);
+  /**
+   * Choosing what a model is for moves the form to an endpoint that can serve it, and choosing an
+   * endpoint asks it what it has — so the model list beside it is never one for somewhere else.
+   *
+   * Either change also lets go of a model that no longer fits: a model of another server, or a
+   * language model left in the field once the form is for embeddings. Kept, it saved an embedding
+   * model pointed at a chat model.
+   */
+  function setAiFormField(field: string, value: string): void {
+    const before = aiForm();
+    if (!before) return;
+    const form = { ...before, [field]: value } as AiModelForm;
+    if (field === 'kind') {
+      const fits = aiEndpointRecords()
+        .find((e) => e.id === form.endpointId)
+        ?.capabilities.includes(CAPABILITY_OF[form.kind]);
+      if (!fits) form.endpointId = endpointFor(form.kind);
+    }
+    if (form.endpointId !== before.endpointId) {
+      setAiForm({ ...form, remoteModel: '' });
+      void discoverAiModels();
       return;
     }
-    const models = [...(found.value ?? [])].sort((a, b) => a.localeCompare(b));
-    setAiDiscovered({ endpoint, models });
-    // An empty model field takes the first answer, so a working endpoint is one click from saveable.
-    if (models.length && !aiForm()?.apiModel.trim()) setAiFormField('apiModel', models[0]);
+    setAiForm(form);
+    if (field === 'kind' && form.kind !== before.kind) {
+      const model = form.remoteModel.trim();
+      const listed = aiDiscoveredModelOptions().map((option) => option.value);
+      if (model && discoveredForForm() && !serves(listed, model)) setAiForm({ ...form, remoteModel: '' });
+      fillModel();
+    }
+  }
+
+  /** Asks the open form's endpoint which models it serves, then fills an empty model field. */
+  async function discoverAiModels(): Promise<void> {
+    const endpointId = aiForm()?.endpointId;
+    const port = modelAdmin();
+    if (!endpointId || !port?.discover) return;
+    const found = await run('discoverAiModels', () => port.discover?.({ endpointId }));
+    if (!found.ok || !found.value) return;
+    const models = [...found.value].sort((a, b) => a.id.localeCompare(b.id));
+    setAiDiscovered({ endpointId, models });
+    fillModel();
+  }
+
+  /**
+   * An empty model field takes the one the backend recommends where the server has it — or can
+   * fetch it, an Ollama — else the first that fits, so a working server is one click from saveable.
+   */
+  function fillModel(): void {
+    const form = aiForm();
+    if (!form || form.remoteModel.trim() || !discoveredForForm()) return;
+    const recommended = aiRecommendedModel();
+    const ids = aiDiscoveredModelOptions().map((option) => option.value);
+    const pick = recommended && (serves(ids, recommended) || formEndpoint()?.kind === 'ollama') ? recommended : ids[0];
+    if (pick) setAiForm({ ...form, remoteModel: pick });
+  }
+
+  /**
+   * Downloads the open form's model onto its Ollama. Resolves when the server has all of it, which
+   * for gigabytes is minutes; `onModelStatus` moves the percentage meanwhile.
+   */
+  async function pullAiModel(): Promise<void> {
+    const form = aiForm();
+    const port = modelAdmin();
+    const model = form?.remoteModel.trim();
+    if (!form?.endpointId || !model || !port?.pullModel || aiPull()) return;
+    setAiPull({ endpointId: form.endpointId, model, progress: 0 });
+    const pulled = await run('pullAiModel', () => port.pullModel?.(form.endpointId, model));
+    setAiPull(null);
+    if (!pulled.ok) return;
+    await Promise.all([discoverAiModels(), loadAiModels()]);
   }
 
   function closeAiForm(): void {
@@ -704,14 +850,14 @@ export function RuntimeStoreProvider(props: ParentProps) {
 
   async function saveAiModel(): Promise<void> {
     const form = aiForm();
-    if (!form || !formComplete(form)) return;
-    const draft = toDraft(form);
+    if (!form || !modelFormComplete(form)) return;
+    const draft = toModelDraft(form);
     const saved = await run('saveAiModel', () =>
       form.id ? modelAdmin()?.update?.(form.id, draft) : modelAdmin()?.add?.(draft),
     );
     // The form stays open on failure, holding what was typed — the error slot above it says why.
     if (!saved.ok) return;
-    setAiForm(null);
+    closeAiForm();
     await loadAiModels();
   }
 
@@ -725,6 +871,66 @@ export function RuntimeStoreProvider(props: ParentProps) {
 
   async function removeAiTask(id: string): Promise<void> {
     if ((await run('removeAiTask', () => modelAdmin()?.removeTask?.(id))).ok) await loadAiTasks();
+  }
+
+  // ── AI endpoints ───────────────────────────────────────────────────────────────
+
+  async function detectAiEndpoints(): Promise<void> {
+    const found = await run('detectAiEndpoints', () => modelAdmin()?.detectEndpoints?.());
+    if (found.ok && found.value) setAiDetected(found.value);
+  }
+
+  async function addDetectedEndpoint(baseUrl: string): Promise<void> {
+    const found = aiDetected().find((candidate) => sameServer(candidate.baseUrl, baseUrl));
+    if (!found) return;
+    const name = endpointName(
+      { name: '', kind: found.kind, baseUrl: found.baseUrl },
+      aiEndpointRecords().map((e) => e.name),
+    );
+    const added = await run('addDetectedEndpoint', () =>
+      modelAdmin()?.addEndpoint?.({ name, kind: found.kind, baseUrl: found.baseUrl }),
+    );
+    if (added.ok) await loadAiModels();
+  }
+
+  function newAiEndpoint(): void {
+    openAiEndpointForm({ ...EMPTY_ENDPOINT_FORM });
+  }
+
+  function editAiEndpoint(id: string): void {
+    const endpoint = aiEndpointRecords().find((candidate) => candidate.id === id);
+    if (endpoint) openAiEndpointForm(endpointFormFrom(endpoint));
+  }
+
+  function setAiEndpointField(field: string, value: string | boolean): void {
+    setAiEndpointForm((form) => (form ? { ...form, [field]: value } : form));
+  }
+
+  function setAiService(id: string): void {
+    setAiEndpointForm((form) => (form ? withService(form, id) : form));
+  }
+
+  function closeAiEndpointForm(): void {
+    setAiEndpointForm(null);
+  }
+
+  async function saveAiEndpoint(): Promise<void> {
+    const form = aiEndpointForm();
+    if (!form || !endpointFormComplete(form)) return;
+    const others = aiEndpointRecords()
+      .filter((e) => e.id !== form.id)
+      .map((e) => e.name);
+    const draft = toEndpointDraft(form, endpointName(form, others));
+    const saved = await run('saveAiEndpoint', () =>
+      form.id ? modelAdmin()?.updateEndpoint?.(form.id, draft) : modelAdmin()?.addEndpoint?.(draft),
+    );
+    if (!saved.ok) return;
+    setAiEndpointForm(null);
+    await loadAiModels();
+  }
+
+  async function removeAiEndpoint(id: string): Promise<void> {
+    if ((await run('removeAiEndpoint', () => modelAdmin()?.removeEndpoint?.(id))).ok) await loadAiModels();
   }
 
   // ── Settings ─────────────────────────────────────────────────────────────────
@@ -867,15 +1073,24 @@ export function RuntimeStoreProvider(props: ParentProps) {
     aiModels,
     aiTasks,
     aiForm,
-    aiPresetOptions,
     aiFormComplete,
-    aiMaxContextError,
-    aiApiKeyError,
-    aiDiscoverNeedsKey,
     aiFormDirty,
-    aiServiceOptions,
+    aiEndpointOptions,
     canDiscoverAiModels,
     aiDiscoveredModelOptions,
+    aiRecommendedModel,
+    aiCanPull,
+    aiPullText,
+    canManageAiEndpoints,
+    aiEndpoints,
+    aiDetectedEndpoints,
+    aiInstallLinks,
+    aiEndpointForm,
+    aiEndpointFormComplete,
+    aiEndpointFormDirty,
+    aiMaxContextError,
+    aiApiKeyError,
+    aiServiceOptions,
     languages,
     trustedAgents,
     authorizedApps,
@@ -893,13 +1108,22 @@ export function RuntimeStoreProvider(props: ParentProps) {
     newAiModel,
     editAiModel,
     setAiFormField,
-    setAiService,
     discoverAiModels,
+    pullAiModel,
     closeAiForm,
     saveAiModel,
     removeAiModel,
     setDefaultAiModel,
     removeAiTask,
+    detectAiEndpoints,
+    addDetectedEndpoint,
+    newAiEndpoint,
+    editAiEndpoint,
+    setAiEndpointField,
+    setAiService,
+    closeAiEndpointForm,
+    saveAiEndpoint,
+    removeAiEndpoint,
     loadLanguages,
     installLanguage,
     removeLanguage,
