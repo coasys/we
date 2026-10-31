@@ -24,6 +24,43 @@ export async function readSpaceLandmarks(dataset: DatasetProxy): Promise<Record<
   return Object.fromEntries(Object.entries(byName).map(([name, { id }]) => [name, id]));
 }
 
+/** A space's record and its collection (`Space.root`), by id. `root` is empty for a space without one. */
+export interface SpaceRoot {
+  id: string;
+  root: string;
+}
+
+/*
+  Read once per dataset and kept. The space record and its collection are written at the create press
+  and never change, and opening a space asks for them from several places at once — the space store,
+  the module host, the board actions, extraction's filing — so one read is shared while it is in
+  flight and kept once it has found the collection.
+
+  Not kept: a failure, no space, or a space with no collection yet. The create press writes the space
+  a moment before its root, so a read in that moment must be asked again; and a space made before
+  spaces had a collection pays a read per caller, as it always did.
+*/
+const spaceRoots = new WeakMap<object, Promise<SpaceRoot | null>>();
+
+/** The space's record id and its collection's id — one read per dataset, shared and kept. */
+export function readSpaceRoot(dataset: DatasetProxy): Promise<SpaceRoot | null> {
+  // A dataset handle is an object whatever the backend; `DatasetProxy` is opaque to say no more.
+  const key = dataset as object;
+  const known = spaceRoots.get(key);
+  if (known) return known;
+  const read = (async (): Promise<SpaceRoot | null> => {
+    const space = await Space.findOne(dataset, { include: { root: true } });
+    if (!space) return null;
+    return { id: space.id, root: (space.root as unknown as { id?: string } | undefined)?.id ?? '' };
+  })();
+  spaceRoots.set(key, read);
+  const forget = () => {
+    if (spaceRoots.get(key) === read) spaceRoots.delete(key);
+  };
+  read.then((found) => !found?.root && forget(), forget);
+  return read;
+}
+
 /** Record that `nodeId` is the landmark `name` of the space whose record is `spaceId`. */
 export async function writeSpaceLandmark(
   dataset: DatasetProxy,
