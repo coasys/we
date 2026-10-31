@@ -1,0 +1,132 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 640" width="940" height="640" role="img" aria-labelledby="t d">
+  <title id="t">The acceptance world: what one scenario starts and checks</title>
+  <desc id="d">Each scenario builds one world inside its own D-Bus session: an identity store on a temporary database, ad4m executors from the ad4m checkout, and the desktop app's harness build on its own Xvfb display, with its main window, identity window and custody service. The scenario acts only through the windows, over a loopback harness link with a token. It records every secret it sees in a ledger. After the scenario, a scan searches logs, data folders, screenshots and window text for those secrets. The runner writes a redacted summary and report, and the nightly workflow opens an issue when a run fails.</desc>
+  <defs>
+    <linearGradient id="grad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#6366F1"/>
+      <stop offset="100%" stop-color="#10B981"/>
+    </linearGradient>
+    <clipPath id="frame"><rect width="940" height="640" rx="16"/></clipPath>
+  </defs>
+
+  <g clip-path="url(#frame)">
+    <rect width="940" height="640" fill="#FFFFFF"/>
+    <rect width="940" height="5" fill="url(#grad)"/>
+  </g>
+  <rect x="0.5" y="0.5" width="939" height="639" rx="16" fill="none" stroke="#E2E8F0"/>
+
+  <text x="470" y="40" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700" fill="#1E293B">One scenario, one world</text>
+  <text x="470" y="62" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#64748B">Real services, the real app, and a scan for every secret the scenario saw</text>
+
+  <!-- ============ SCENARIO ============ -->
+  <rect x="30" y="96" width="320" height="514" rx="16" fill="#EEF2FF" stroke="#C7D2FE" stroke-width="1.5"/>
+  <rect x="130" y="82" width="120" height="28" rx="14" fill="#6366F1"/>
+  <text x="190" y="101" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700" fill="#FFFFFF">THE SCENARIO</text>
+
+  <!-- spine -->
+  <line x1="72" y1="156" x2="72" y2="530" stroke="#C7D2FE" stroke-width="2" stroke-dasharray="4 4"/>
+
+  <circle cx="72" cy="140" r="16" fill="#6366F1"/>
+  <text x="72" y="145" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700" fill="#FFFFFF">1</text>
+  <text x="100" y="136" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="600" fill="#1E293B">Build the world</text>
+  <text x="100" y="154" font-family="Arial, Helvetica, sans-serif" font-size="11" fill="#64748B">ends with</text>
+  <text x="152" y="154" font-family="Courier New, Courier, monospace" font-size="11" fill="#64748B">ctx.worldBuilt()</text>
+
+  <circle cx="72" cy="226" r="16" fill="#6366F1"/>
+  <text x="72" y="231" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700" fill="#FFFFFF">2</text>
+  <text x="100" y="222" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="600" fill="#1E293B">Act only through windows</text>
+  <text x="100" y="240" font-family="Arial, Helvetica, sans-serif" font-size="11" fill="#64748B">read the text · press by words</text>
+  <text x="100" y="255" font-family="Arial, Helvetica, sans-serif" font-size="11" fill="#64748B">type into a field by its label</text>
+
+  <circle cx="72" cy="312" r="16" fill="#6366F1"/>
+  <text x="72" y="317" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700" fill="#FFFFFF">3</text>
+  <text x="100" y="308" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="600" fill="#1E293B">Record every secret</text>
+  <text x="100" y="326" font-family="Arial, Helvetica, sans-serif" font-size="11" fill="#64748B">the 12 words, passphrase, password</text>
+  <text x="100" y="341" font-family="Arial, Helvetica, sans-serif" font-size="11" fill="#64748B">go into the ledger before any file</text>
+
+  <circle cx="72" cy="398" r="16" fill="#6366F1"/>
+  <text x="72" y="403" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700" fill="#FFFFFF">4</text>
+  <text x="100" y="394" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="600" fill="#1E293B">Scan after the scenario</text>
+  <text x="100" y="412" font-family="Arial, Helvetica, sans-serif" font-size="11" fill="#64748B">a ledger secret in any file kept</text>
+  <text x="100" y="427" font-family="Arial, Helvetica, sans-serif" font-size="11" fill="#64748B">fails the scenario</text>
+
+  <circle cx="72" cy="484" r="16" fill="#6366F1"/>
+  <text x="72" y="489" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700" fill="#FFFFFF">5</text>
+  <text x="100" y="480" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="600" fill="#1E293B">Report</text>
+  <text x="100" y="498" font-family="Courier New, Courier, monospace" font-size="11" fill="#64748B">summary.md · report.json</text>
+  <text x="100" y="513" font-family="Arial, Helvetica, sans-serif" font-size="11" fill="#64748B">every recorded secret redacted</text>
+
+  <circle cx="72" cy="560" r="12" fill="#FFFFFF" stroke="#6366F1" stroke-width="2"/>
+  <text x="100" y="556" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="600" fill="#1E293B">Nightly</text>
+  <text x="100" y="574" font-family="Arial, Helvetica, sans-serif" font-size="11" fill="#64748B">a failed run comments on or opens</text>
+  <text x="100" y="589" font-family="Arial, Helvetica, sans-serif" font-size="11" fill="#64748B">one issue · not a required check</text>
+
+  <!-- ============ WORLD ============ -->
+  <rect x="400" y="96" width="510" height="514" rx="16" fill="#ECFDF5" stroke="#A7F3D0" stroke-width="1.5"/>
+  <rect x="595" y="82" width="120" height="28" rx="14" fill="#10B981"/>
+  <text x="655" y="101" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700" fill="#FFFFFF">THE WORLD</text>
+
+  <!-- dbus session -->
+  <rect x="418" y="124" width="474" height="404" rx="12" fill="none" stroke="#10B981" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <rect x="430" y="116" width="290" height="18" rx="9" fill="#ECFDF5"/>
+  <text x="438" y="129" font-family="Courier New, Courier, monospace" font-size="11" font-weight="700" fill="#047857">dbus-run-session · own XDG_RUNTIME_DIR</text>
+
+  <!-- services -->
+  <rect x="436" y="146" width="210" height="60" rx="10" fill="#FFFFFF" stroke="#A7F3D0"/>
+  <text x="452" y="170" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="600" fill="#1E293B">identity-store</text>
+  <text x="452" y="188" font-family="Arial, Helvetica, sans-serif" font-size="11" fill="#64748B">on a temporary database</text>
+
+  <rect x="664" y="146" width="210" height="60" rx="10" fill="#FFFFFF" stroke="#A7F3D0"/>
+  <text x="680" y="170" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="600" fill="#1E293B">ad4m executors</text>
+  <text x="680" y="188" font-family="Arial, Helvetica, sans-serif" font-size="11" fill="#64748B">from AD4M_REPO · own data folders</text>
+
+  <!-- X display -->
+  <rect x="436" y="222" width="438" height="230" rx="10" fill="#FFFFFF" stroke="#A7F3D0"/>
+  <text x="452" y="244" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="600" fill="#1E293B">Xvfb display</text>
+  <text x="560" y="244" font-family="Arial, Helvetica, sans-serif" font-size="11" fill="#64748B">its framebuffer is the screenshot</text>
+
+  <rect x="452" y="258" width="406" height="180" rx="10" fill="#ECFDF5" stroke="#10B981" stroke-width="2"/>
+  <text x="468" y="282" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="600" fill="#1E293B">Desktop app, harness build</text>
+  <text x="468" y="299" font-family="Arial, Helvetica, sans-serif" font-size="11" fill="#64748B">release build + a loopback link · no new command or capability</text>
+
+  <rect x="468" y="312" width="118" height="56" rx="8" fill="#FFFFFF" stroke="#A7F3D0"/>
+  <text x="527" y="336" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="600" fill="#1E293B">Main window</text>
+  <text x="527" y="353" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" fill="#64748B">WE</text>
+
+  <rect x="596" y="312" width="118" height="56" rx="8" fill="#FFFFFF" stroke="#A7F3D0"/>
+  <text x="655" y="336" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="600" fill="#1E293B">Identity window</text>
+  <text x="655" y="353" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" fill="#64748B">words, passphrase</text>
+
+  <rect x="724" y="312" width="118" height="56" rx="8" fill="#FFFFFF" stroke="#A7F3D0"/>
+  <text x="783" y="336" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="600" fill="#1E293B">Custody service</text>
+  <text x="783" y="353" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" fill="#64748B">master key</text>
+
+  <text x="468" y="392" font-family="Arial, Helvetica, sans-serif" font-size="11" fill="#64748B">vault: memory (default), or a gnome-keyring-daemon</text>
+  <text x="468" y="407" font-family="Arial, Helvetica, sans-serif" font-size="11" fill="#64748B">the driver starts and unlocks inside this session</text>
+  <text x="468" y="425" font-family="Arial, Helvetica, sans-serif" font-size="11" fill="#64748B">fresh home and data folder for each scenario</text>
+
+  <!-- process groups -->
+  <rect x="436" y="466" width="438" height="48" rx="10" fill="#FFFFFF" stroke="#A7F3D0"/>
+  <text x="452" y="487" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="600" fill="#1E293B">Every process in its own process group</text>
+  <text x="452" y="504" font-family="Arial, Helvetica, sans-serif" font-size="11" fill="#64748B">stop() fails the scenario if a group is still alive</text>
+
+  <!-- what the scan reads -->
+  <rect x="418" y="542" width="474" height="52" rx="10" fill="#FFFFFF" stroke="#A7F3D0"/>
+  <text x="434" y="563" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="600" fill="#1E293B">What the scan reads</text>
+  <text x="434" y="581" font-family="Arial, Helvetica, sans-serif" font-size="11" fill="#64748B">logs · data folders · window text kept · screenshots: none of a secret screen</text>
+
+  <!-- arrows -->
+  <!-- 1: build -->
+  <line x1="300" y1="140" x2="420" y2="176" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <polygon points="428,178 418,171 416,181" fill="#94A3B8"/>
+  <!-- 2: act through the harness link -->
+  <line x1="250" y1="280" x2="444" y2="280" stroke="#94A3B8" stroke-width="1.5"/>
+  <polygon points="452,280 443,275 443,285" fill="#94A3B8"/>
+  <line x1="250" y1="262" x2="250" y2="280" stroke="#94A3B8" stroke-width="1.5"/>
+  <rect x="305" y="261" width="130" height="38" rx="12" fill="#FFFFFF" stroke="#CBD5E1"/>
+  <text x="370" y="276" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700" fill="#475569">harness link</text>
+  <text x="370" y="291" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" fill="#64748B">loopback TCP + token</text>
+  <!-- 4: scan reads the world -->
+  <line x1="418" y1="568" x2="320" y2="420" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <polygon points="315,412 324,418 317,424" fill="#94A3B8"/>
+</svg>
