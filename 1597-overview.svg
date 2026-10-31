@@ -1,0 +1,210 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 960" width="940" height="960">
+  <defs>
+    <linearGradient id="grad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#6366F1"/>
+      <stop offset="100%" stop-color="#10B981"/>
+    </linearGradient>
+    <clipPath id="frame">
+      <rect width="940" height="960" rx="16"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#frame)">
+    <rect width="940" height="960" fill="#FFFFFF"/>
+    <rect width="940" height="5" fill="url(#grad)"/>
+  </g>
+  <rect x="0.5" y="0.5" width="939" height="959" rx="16" fill="none" stroke="#E2E8F0" stroke-width="1"/>
+
+  <text x="470" y="42" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700" fill="#1E293B">A link's life: anchor, verdict, re-check</text>
+  <text x="470" y="64" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#64748B">The executor judges each link against its signer's key log and stores the verdict</text>
+
+  <!-- ===== Left: the life of a link ===== -->
+  <rect x="40" y="100" width="420" height="500" rx="16" fill="#ECFDF5" stroke="#A7F3D0" stroke-width="1.5"/>
+  <rect x="180" y="86" width="140" height="28" rx="14" fill="#10B981"/>
+  <text x="250" y="105" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700" fill="#FFFFFF">ONE LINK</text>
+
+  <g font-family="Arial, Helvetica, sans-serif">
+    <!-- 1 -->
+    <circle cx="80" cy="150" r="16" fill="#10B981"/>
+    <text x="80" y="155" text-anchor="middle" font-size="13" font-weight="700" fill="#FFFFFF">1</text>
+    <text x="108" y="146" font-size="15" font-weight="600" fill="#1E293B">Sign with an anchor</text>
+    <text x="108" y="164" font-family="Courier New, Courier, monospace" font-size="11" fill="#1E293B">coasys:link {data, timestamp, anchor}</text>
+    <text x="108" y="180" font-size="11" fill="#475569">anchor = the signer's trusted seq (anchor_for, no I/O)</text>
+    <text x="108" y="195" font-size="11" fill="#475569">author stays the device did:key</text>
+
+    <line x1="80" y1="168" x2="80" y2="224" stroke="#A7F3D0" stroke-width="2" stroke-dasharray="4 4"/>
+
+    <!-- 2 -->
+    <circle cx="80" cy="242" r="16" fill="#10B981"/>
+    <text x="80" y="247" text-anchor="middle" font-size="13" font-weight="700" fill="#FFFFFF">2</text>
+    <text x="108" y="238" font-size="15" font-weight="600" fill="#1E293B">Fill the key map</text>
+    <text x="108" y="256" font-family="Courier New, Courier, monospace" font-size="11" fill="#1E293B">prepare_link_signers</text>
+    <text x="108" y="272" font-size="11" fill="#475569">the key map, then the store's key index; each log</text>
+    <text x="108" y="287" font-size="11" fill="#475569">read up to its store-signed head (the trusted seq)</text>
+
+    <line x1="80" y1="260" x2="80" y2="316" stroke="#A7F3D0" stroke-width="2" stroke-dasharray="4 4"/>
+
+    <!-- 3 -->
+    <circle cx="80" cy="334" r="16" fill="#10B981"/>
+    <text x="80" y="339" text-anchor="middle" font-size="13" font-weight="700" fill="#FFFFFF">3</text>
+    <text x="108" y="330" font-size="15" font-weight="600" fill="#1E293B">Judge</text>
+    <text x="108" y="348" font-family="Courier New, Courier, monospace" font-size="11" fill="#1E293B">check_signed → judge (pure, no I/O)</text>
+    <text x="108" y="364" font-size="11" fill="#475569">a verdict; on a valid link also the person</text>
+    <text x="108" y="379" font-size="11" fill="#475569">(the did:scid), derived, never on the wire</text>
+
+    <line x1="80" y1="352" x2="80" y2="408" stroke="#A7F3D0" stroke-width="2" stroke-dasharray="4 4"/>
+
+    <!-- 4 -->
+    <circle cx="80" cy="426" r="16" fill="#10B981"/>
+    <text x="80" y="431" text-anchor="middle" font-size="13" font-weight="700" fill="#FFFFFF">4</text>
+    <text x="108" y="422" font-size="15" font-weight="600" fill="#1E293B">Store it with the link</text>
+    <text x="108" y="440" font-family="Courier New, Courier, monospace" font-size="11" fill="#1E293B">proofAnchor · linkVerdict · person</text>
+    <text x="108" y="456" font-size="11" fill="#475569">a remote diff drops only invalid links; cantCheck</text>
+    <text x="108" y="471" font-size="11" fill="#475569">and flagged links are stored with their verdict</text>
+
+    <line x1="80" y1="444" x2="80" y2="500" stroke="#A7F3D0" stroke-width="2" stroke-dasharray="4 4"/>
+
+    <!-- 5 -->
+    <circle cx="80" cy="518" r="16" fill="#6366F1"/>
+    <text x="80" y="523" text-anchor="middle" font-size="13" font-weight="700" fill="#FFFFFF">5</text>
+    <text x="108" y="514" font-size="15" font-weight="600" fill="#1E293B">Judge again</text>
+    <text x="108" y="532" font-family="Courier New, Courier, monospace" font-size="11" fill="#1E293B">VerdictChange(key)</text>
+    <text x="232" y="532" font-size="11" fill="#475569">→ that signer's links</text>
+    <text x="108" y="548" font-size="11" fill="#475569">every 60 s → the cantCheck links</text>
+    <text x="108" y="564" font-size="11" fill="#475569">rewrites a row only when its verdict or person changed</text>
+    <text x="108" y="580" font-size="11" fill="#475569">(at most 10,000 links per perspective per pass)</text>
+
+    <!-- loop back from 5 to 3 -->
+    <path d="M 64 518 C 46 518, 46 518, 46 500 L 46 352 C 46 334, 46 334, 62 334" fill="none" stroke="#6366F1" stroke-width="1.5" stroke-dasharray="4 4"/>
+    <polygon points="64,334 57,329 57,339" fill="#6366F1"/>
+  </g>
+
+  <!-- ===== Right: judge, rule by rule ===== -->
+  <rect x="480" y="100" width="420" height="500" rx="16" fill="#EEF2FF" stroke="#C7D2FE" stroke-width="1.5"/>
+  <rect x="595" y="86" width="190" height="28" rx="14" fill="#6366F1"/>
+  <text x="690" y="105" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700" fill="#FFFFFF">JUDGE: FIRST RULE WINS</text>
+
+  <g font-family="Arial, Helvetica, sans-serif">
+    <text x="719" y="136" text-anchor="middle" font-size="10" font-weight="700" fill="#64748B">NO ANCHOR</text>
+    <text x="828" y="136" text-anchor="middle" font-size="10" font-weight="700" fill="#64748B">ANCHORED</text>
+
+    <!-- row helper: label at x=500, pills 1-col (685..775) / 2-col (784..896) / span (685..896) -->
+    <!-- r1 y=146 -->
+    <text x="500" y="163" font-size="11" fill="#1E293B">Signature does not hold</text>
+    <rect x="679" y="148" width="211" height="22" rx="11" fill="#6366F1"/>
+    <text x="784" y="163" text-anchor="middle" font-family="Courier New, Courier, monospace" font-size="10" font-weight="700" fill="#FFFFFF">invalid:badSignature</text>
+
+    <!-- r2 -->
+    <text x="500" y="199" font-size="11" fill="#1E293B">No log lists the key</text>
+    <rect x="679" y="184" width="80" height="22" rx="11" fill="#10B981"/>
+    <text x="719" y="199" text-anchor="middle" font-family="Courier New, Courier, monospace" font-size="10" font-weight="700" fill="#FFFFFF">valid</text>
+    <rect x="766" y="184" width="124" height="22" rx="11" fill="#6366F1"/>
+    <text x="828" y="199" text-anchor="middle" font-family="Courier New, Courier, monospace" font-size="10" font-weight="700" fill="#FFFFFF">invalid:notListed</text>
+
+    <!-- r3 -->
+    <text x="500" y="235" font-size="11" fill="#1E293B">The log cannot be read now</text>
+    <rect x="679" y="220" width="80" height="22" rx="11" fill="#10B981"/>
+    <text x="719" y="235" text-anchor="middle" font-family="Courier New, Courier, monospace" font-size="10" font-weight="700" fill="#FFFFFF">valid</text>
+    <rect x="766" y="220" width="124" height="22" rx="11" fill="#FFFFFF" stroke="#6366F1" stroke-width="1.5"/>
+    <text x="828" y="235" text-anchor="middle" font-family="Courier New, Courier, monospace" font-size="10" font-weight="700" fill="#4338CA">cantCheck</text>
+
+    <!-- r4 -->
+    <text x="500" y="271" font-size="11" fill="#1E293B">The key is the log's master key</text>
+    <rect x="679" y="256" width="211" height="22" rx="11" fill="#6366F1"/>
+    <text x="784" y="271" text-anchor="middle" font-family="Courier New, Courier, monospace" font-size="10" font-weight="700" fill="#FFFFFF">invalid:masterKey</text>
+
+    <!-- r5 -->
+    <text x="500" y="307" font-size="11" fill="#1E293B">Key listed past the trusted seq</text>
+    <rect x="679" y="292" width="80" height="22" rx="11" fill="#10B981"/>
+    <text x="719" y="307" text-anchor="middle" font-family="Courier New, Courier, monospace" font-size="10" font-weight="700" fill="#FFFFFF">valid</text>
+    <rect x="766" y="292" width="124" height="22" rx="11" fill="#FFFFFF" stroke="#6366F1" stroke-width="1.5"/>
+    <text x="828" y="307" text-anchor="middle" font-family="Courier New, Courier, monospace" font-size="10" font-weight="700" fill="#4338CA">cantCheck</text>
+
+    <!-- r6 -->
+    <text x="500" y="343" font-size="11" fill="#1E293B"><tspan font-style="italic">at</tspan> is past the trusted seq</text>
+    <rect x="679" y="328" width="211" height="22" rx="11" fill="#FFFFFF" stroke="#6366F1" stroke-width="1.5"/>
+    <text x="784" y="343" text-anchor="middle" font-family="Courier New, Courier, monospace" font-size="10" font-weight="700" fill="#4338CA">cantCheck</text>
+
+    <!-- r7 -->
+    <text x="500" y="379" font-size="11" fill="#1E293B"><tspan font-style="italic">at</tspan> is before the key was added</text>
+    <rect x="679" y="364" width="211" height="22" rx="11" fill="#6366F1"/>
+    <text x="784" y="379" text-anchor="middle" font-family="Courier New, Courier, monospace" font-size="10" font-weight="700" fill="#FFFFFF">invalid:notYetValid</text>
+
+    <!-- r8 -->
+    <text x="500" y="415" font-size="11" fill="#1E293B">Revoked at or before <tspan font-style="italic">at</tspan></text>
+    <rect x="679" y="400" width="211" height="22" rx="11" fill="#6366F1"/>
+    <text x="784" y="415" text-anchor="middle" font-family="Courier New, Courier, monospace" font-size="10" font-weight="700" fill="#FFFFFF">invalid:revoked</text>
+
+    <!-- r9 -->
+    <text x="500" y="451" font-size="11" fill="#1E293B">Bot key past its expiry</text>
+    <rect x="679" y="436" width="211" height="22" rx="11" fill="#6366F1"/>
+    <text x="784" y="451" text-anchor="middle" font-family="Courier New, Courier, monospace" font-size="10" font-weight="700" fill="#FFFFFF">invalid:expired</text>
+
+    <!-- r10 -->
+    <text x="500" y="481" font-size="11" fill="#1E293B">Revoked after <tspan font-style="italic">at</tspan>, and the link</text>
+    <text x="500" y="495" font-size="11" fill="#1E293B">entered the space after it</text>
+    <rect x="679" y="474" width="211" height="22" rx="11" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="3 2"/>
+    <text x="784" y="489" text-anchor="middle" font-family="Courier New, Courier, monospace" font-size="10" font-weight="700" fill="#475569">flagged (no space order yet)</text>
+
+    <!-- r11 -->
+    <text x="500" y="529" font-size="11" font-weight="700" fill="#1E293B">Otherwise</text>
+    <rect x="679" y="514" width="211" height="22" rx="11" fill="#10B981"/>
+    <text x="784" y="529" text-anchor="middle" font-family="Courier New, Courier, monospace" font-size="10" font-weight="700" fill="#FFFFFF">valid + person</text>
+
+    <line x1="500" y1="550" x2="880" y2="550" stroke="#C7D2FE" stroke-width="1"/>
+    <text x="500" y="568" font-size="11" fill="#475569"><tspan font-style="italic">at</tspan> = the anchor; without one, the seq that added the key.</text>
+    <text x="500" y="584" font-size="11" fill="#475569">Trusted seq = the head the configured store signed.</text>
+  </g>
+
+  <!-- ===== Reads ===== -->
+  <text x="40" y="646" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="600" fill="#1E293B">What each verdict means for reads</text>
+
+  <g font-family="Arial, Helvetica, sans-serif">
+    <!-- header pills: columns at 300, 450, 600, 750 (width 140) -->
+    <rect x="305" y="662" width="130" height="24" rx="12" fill="#10B981"/>
+    <text x="370" y="678" text-anchor="middle" font-family="Courier New, Courier, monospace" font-size="11" font-weight="700" fill="#FFFFFF">valid</text>
+    <rect x="455" y="662" width="130" height="24" rx="12" fill="#6366F1"/>
+    <text x="520" y="678" text-anchor="middle" font-family="Courier New, Courier, monospace" font-size="11" font-weight="700" fill="#FFFFFF">invalid(reason)</text>
+    <rect x="605" y="662" width="130" height="24" rx="12" fill="#FFFFFF" stroke="#6366F1" stroke-width="1.5"/>
+    <text x="670" y="678" text-anchor="middle" font-family="Courier New, Courier, monospace" font-size="11" font-weight="700" fill="#4338CA">cantCheck</text>
+    <rect x="755" y="662" width="130" height="24" rx="12" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="3 2"/>
+    <text x="820" y="678" text-anchor="middle" font-family="Courier New, Courier, monospace" font-size="11" font-weight="700" fill="#475569">flagged</text>
+
+    <!-- row: logic reads -->
+    <rect x="40" y="698" width="860" height="46" rx="10" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+    <text x="56" y="717" font-size="13" font-weight="700" fill="#1E293B">Logic reads</text>
+    <text x="56" y="734" font-size="11" fill="#64748B">model queries, flows, SHACL, Prolog</text>
+    <text x="370" y="726" text-anchor="middle" font-size="12" font-weight="700" fill="#047857">counted</text>
+    <text x="520" y="726" text-anchor="middle" font-size="12" fill="#64748B">not counted</text>
+    <text x="670" y="726" text-anchor="middle" font-size="12" fill="#64748B">not counted</text>
+    <text x="820" y="726" text-anchor="middle" font-size="12" fill="#64748B">not counted</text>
+
+    <!-- row: display reads -->
+    <rect x="40" y="752" width="860" height="46" rx="10" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+    <text x="56" y="771" font-size="13" font-weight="700" fill="#1E293B">Display reads</text>
+    <text x="56" y="788" font-family="Courier New, Courier, monospace" font-size="11" fill="#64748B">queryLinks, snapshot</text>
+    <text x="370" y="780" text-anchor="middle" font-size="12" font-weight="700" fill="#047857">shown</text>
+    <text x="520" y="768" text-anchor="middle" font-size="12" font-weight="700" fill="#4338CA">hidden</text>
+    <text x="520" y="781" text-anchor="middle" font-family="Courier New, Courier, monospace" font-size="10" fill="#64748B">queryLinks with</text>
+    <text x="520" y="793" text-anchor="middle" font-family="Courier New, Courier, monospace" font-size="10" fill="#64748B">includeUnverified: shown</text>
+    <text x="670" y="780" text-anchor="middle" font-size="12" fill="#1E293B">shown, with verdict</text>
+    <text x="820" y="780" text-anchor="middle" font-size="12" fill="#1E293B">shown, with verdict</text>
+
+    <!-- row: re-checked -->
+    <rect x="40" y="806" width="860" height="46" rx="10" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+    <text x="56" y="825" font-size="13" font-weight="700" fill="#1E293B">Judged again</text>
+    <text x="56" y="842" font-size="11" fill="#64748B">idempotent, from the key map</text>
+    <text x="370" y="834" text-anchor="middle" font-size="12" fill="#1E293B">on a key change</text>
+    <text x="520" y="834" text-anchor="middle" font-size="12" fill="#1E293B">on a key change</text>
+    <text x="670" y="828" text-anchor="middle" font-size="12" font-weight="700" fill="#4338CA">every 60 s,</text>
+    <text x="670" y="843" text-anchor="middle" font-size="12" fill="#1E293B">and on a key change</text>
+    <text x="820" y="834" text-anchor="middle" font-size="12" fill="#1E293B">on a key change</text>
+  </g>
+
+  <!-- ===== Holochain strip ===== -->
+  <rect x="40" y="874" width="860" height="62" rx="12" fill="#EEF2FF" stroke="#C7D2FE" stroke-width="1.5"/>
+  <rect x="56" y="891" width="92" height="28" rx="14" fill="#6366F1"/>
+  <text x="102" y="910" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700" fill="#FFFFFF">HOLOCHAIN</text>
+  <text x="166" y="900" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#1E293B">The p-diff-sync and agent-language link proof gains <tspan font-family="Courier New, Courier, monospace" font-weight="700">anchor: Option&lt;u64&gt;</tspan>.</text>
+  <text x="166" y="920" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#475569">Both DNA hashes change. An unanchored link encodes to the same bytes as before.</text>
+</svg>
