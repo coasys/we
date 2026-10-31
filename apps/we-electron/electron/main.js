@@ -12,7 +12,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 import { createAccountRegistry, expandHome } from './accounts.js';
 import { openExecutorLog } from './executorLog.js';
-import { stopExecutorsFor, stopProcess } from './executorProcess.js';
+import { respawnGuard, stopExecutorsFor, stopProcess } from './executorProcess.js';
 import {
   allowMediaPermission,
   isExternallyOpenable,
@@ -42,6 +42,8 @@ let ad4mToken = null;
 let executorProcess = null;
 /** Set while an account switch is tearing the executor down on purpose. */
 let switchingAccount = false;
+/** Whether an executor that exited on its own may be started again now. See `respawnGuard`. */
+const mayRespawnExecutor = respawnGuard();
 /** The current run's log in the account's data directory (see `executorLog.js`), or null. */
 let executorLog = null;
 
@@ -387,12 +389,26 @@ async function startExecutor() {
       console.error('Failed to start executor:', err);
     });
 
+    const proc = executorProcess;
     executorProcess.on('exit', (code, signal) => {
       // Expected during an account switch — we killed it on purpose and are about to respawn.
       if (switchingAccount) return;
 
       const msg = `[main] Executor exited — code: ${code}, signal: ${signal}`;
       console.log(msg);
+      // `stopExecutor` clears `executorProcess` before it signals, so an executor this app stopped
+      // (quit, account switch, settings) is no longer the current one. The current one exiting
+      // is a crash or an outside kill: start it again and reload, which hands the renderer the new
+      // port and credential and takes it through unlock, as an account switch does.
+      if (executorProcess === proc && !executorStoppedForQuit) {
+        executorProcess = null;
+        if (mayRespawnExecutor()) {
+          console.log('[main] Starting the executor again');
+          void restartExecutorAndReload();
+          return;
+        }
+        console.error('[main] The executor keeps exiting; not starting it again');
+      }
       // Notify the renderer so it shows in DevTools even in packaged builds.
       //
       // `mainWindow?.` only guards against null, not against a *destroyed* window: on quit the

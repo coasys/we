@@ -108,3 +108,23 @@ export async function stopExecutorsFor(dataPath, log = console.log) {
     log(`[main] Previous executor stopped (${how})`);
   }
 }
+
+/**
+ * Whether an executor that exited on its own may be started again, `limit` times per `windowMs`.
+ *
+ * The executor is the app's whole backend: when it dies on its own the window stays up, every
+ * call fails, and the client redials a port nothing listens on, every 30 s, until the user quits.
+ * Starting it again ends that. The limit stops an executor that fails at startup (a corrupt store,
+ * a port it cannot bind) from being restarted in a loop; past it, the exit is left to the user.
+ * Returns a function that answers for the exit happening now and counts it when it allows one.
+ */
+export function respawnGuard({ limit = 3, windowMs = 60_000, now = Date.now } = {}) {
+  const respawns = [];
+  return () => {
+    const at = now();
+    while (respawns.length && at - respawns[0] >= windowMs) respawns.shift();
+    if (respawns.length >= limit) return false;
+    respawns.push(at);
+    return true;
+  };
+}

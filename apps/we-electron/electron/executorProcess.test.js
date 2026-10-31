@@ -11,7 +11,31 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { describe, expect, it } from 'vitest';
 
-import { executorPidsFor, stopExecutorsFor, stopProcess } from './executorProcess.js';
+import { executorPidsFor, respawnGuard, stopExecutorsFor, stopProcess } from './executorProcess.js';
+
+describe('respawnGuard', () => {
+  it('allows `limit` respawns within the window, then refuses until the oldest leaves it', () => {
+    let t = 0;
+    const mayRespawn = respawnGuard({ limit: 3, windowMs: 60_000, now: () => t });
+    const allowed = [];
+    for (const at of [0, 10_000, 20_000]) {
+      t = at;
+      allowed.push(mayRespawn());
+    }
+    expect(allowed).toEqual([true, true, true]);
+    t = 59_999;
+    expect(mayRespawn()).toBe(false);
+    t = 60_000;
+    expect(mayRespawn()).toBe(true);
+    expect(mayRespawn()).toBe(false);
+  });
+
+  it('allows an executor that crashes now and then to be restarted every time', () => {
+    let t = 0;
+    const mayRespawn = respawnGuard({ limit: 3, windowMs: 60_000, now: () => t });
+    for (let i = 0; i < 10; i++, t += 30 * 60_000) expect(mayRespawn()).toBe(true);
+  });
+});
 
 const ps = (...lines) => lines.join('\n');
 const exe = '/Applications/WE.app/Contents/Resources/ad4m-executor';
