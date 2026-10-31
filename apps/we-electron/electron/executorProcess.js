@@ -44,6 +44,33 @@ export function executorPidsFor(psOutput, dataPath) {
   return pids;
 }
 
+/**
+ * The environment the executor is started with.
+ *
+ * `AD4M_EXIT_WITH_PARENT`: the executor shuts down once this app's process is gone, however it
+ * ended. It runs detached, in its own session, so a terminal's Ctrl+C or hangup never reaches it,
+ * and an app that crashes, is killed, or dies of a second signal while `before-quit` still waits on
+ * `stopExecutor` sends it nothing: it used to run on, holding the data path's locks, until the next
+ * launch stopped it. An executor too old to know the variable ignores it.
+ *
+ * Log levels reach it as `RUST_LOG`, which is the only lever there is: the executor's own logging
+ * setup reads that variable and, finding it set, leaves it alone. Written as overrides — anything
+ * not named keeps the executor's default, which is why this builds a string only from what the user
+ * actually chose.
+ *
+ * An inherited `RUST_LOG` always wins. Someone who exported one before launching is debugging
+ * something specific, and having a settings screen quietly override that would be the opposite of
+ * helpful.
+ */
+export function executorEnv(logLevels, env = process.env) {
+  const overrides = Object.entries(logLevels ?? {});
+  const rustLog =
+    overrides.length && !env.RUST_LOG
+      ? { RUST_LOG: overrides.map(([crate, level]) => `${crate}=${level}`).join(',') }
+      : {};
+  return { ...env, AD4M_EXIT_WITH_PARENT: 'true', ...rustLog };
+}
+
 const isAlive = (pid) => {
   try {
     process.kill(pid, 0);
