@@ -1,10 +1,15 @@
 /**
- * The models a backend runs — which there are, which is the default for each kind, and adding,
- * changing and removing them.
+ * The models a backend uses — which there are, which is the default for each kind, the servers they
+ * run on, and adding, changing and removing both.
  *
  * Split out of runtime administration because it is the neutral half: every backend that answers
  * prompts or transcribes has models, a default per kind, and somebody who may change them, where
  * trust, peer networking and app credentials are one backend's mechanism.
+ *
+ * A model is a reference to a model an **endpoint** serves: an upstream server (Ollama, a
+ * llama-server, vLLM, a speech server, OpenAI, Anthropic) with an address, a key and a health. The
+ * endpoint owns the address and the key, so two models on one server share them, and a key is
+ * never repeated per model.
  *
  * Every member is optional and callers feature-detect, the way runtime administration does: a
  * connection that may read the models but not change them — a guest on a shared node — offers
@@ -12,105 +17,124 @@
  */
 
 /** What a model is for. The backend picks a default per kind, and apps ask by kind. */
-export type AiModelKind = 'llm' | 'embedding' | 'transcription';
+export type AiModelKind = 'llm' | 'embedding' | 'transcription' | 'speech';
+
+/** What an endpoint, or one model it lists, can do. */
+export type AiCapability = 'chat' | 'embeddings' | 'transcription' | 'speech';
 
 /**
- * Where a model's weights come from — the one thing that genuinely differs between models.
- *
- * A tagged union rather than the backend's shape (an optional `api` object beside an optional
- * `local` one, where `local` means three different things depending on which of its fields are
- * set). Which fields a form must show follows from `kind` here; with the original shape it follows
- * from inspecting which fields happen to be populated, which is how the launcher's edit form ends
- * up guessing.
+ * What kind of server an endpoint is — which decides how its models are listed and which wire format
+ * it speaks. `openai-audio` is an OpenAI-shaped speech server such as speaches; `openai-compatible`
+ * is any other server speaking OpenAI's format (OpenRouter, Groq, a gateway).
  */
-export type AiModelSource =
-  /**
-   * A remote endpoint, spoken to in the wire format `protocol` names.
-   *
-   * `hasApiKey` says whether the backend holds a key for it — never the key. A key goes in and
-   * stays with the backend, which sends it to the provider and to nobody else, so a settings page
-   * can say "a key is set" and offer to replace or remove it, and cannot show it or reuse it.
-   *
-   * `maxContext` is a ceiling on the context window the backend asks the provider for, in tokens —
-   * an upper bound, never a request. It matters where the provider sizes memory from the window at
-   * load: a local model advertising a long window otherwise reserves all of it for a short prompt.
-   */
-  | { kind: 'api'; protocol: AiApiProtocol; baseUrl: string; hasApiKey: boolean; model: string; maxContext?: number }
-  | AiLocalModelSource;
+export type AiEndpointKind =
+  'ollama' | 'llama-server' | 'vllm' | 'openai' | 'anthropic' | 'openai-audio' | 'openai-compatible';
 
-/** The sources whose weights the backend runs itself. Read and written alike: nothing in them is secret. */
-export type AiLocalModelSource =
-  /** A build the backend knows by name and fetches itself — see `aiModelPresets`. */
-  | { kind: 'preset'; name: string }
-  | { kind: 'huggingface'; repo: string; revision: string; fileName: string; tokenizer?: TokenizerSource }
-  /** A file already on the machine running the backend. */
-  | { kind: 'file'; fileName: string; tokenizer?: TokenizerSource };
+/** An endpoint's last health check. */
+export interface AiEndpointHealth {
+  state: 'unknown' | 'reachable' | 'unauthorized' | 'unreachable';
+  /** The server's reason when it is not reachable, in its own words. Empty otherwise. */
+  detail: string;
+  /** The model ids the last check listed. */
+  models: string[];
+}
+
+export interface AiEndpoint {
+  id: string;
+  name: string;
+  kind: AiEndpointKind;
+  baseUrl: string;
+  /**
+   * Whether the backend holds a key for it — never the key. A key goes in and stays with the
+   * backend, which sends it to the server and to nobody else, so a settings page can say "a key is
+   * set" and offer to replace or remove it, and cannot show it or reuse it.
+   */
+  hasApiKey: boolean;
+  capabilities: AiCapability[];
+  /**
+   * A ceiling on the context window the backend asks the server for, in tokens — an upper bound,
+   * never a request. It matters where the server sizes memory from the window at load: a local
+   * model advertising a long window otherwise reserves all of it for a short prompt.
+   */
+  maxContext?: number;
+  /** How long one request may take, in seconds. Carried so an edit does not drop it. */
+  requestTimeoutSecs?: number;
+  /** At most this many requests at once. Carried so an edit does not drop it. */
+  maxConcurrent?: number;
+  health: AiEndpointHealth;
+}
 
 /**
- * A source as it is written: the same as `AiModelSource`, except that a remote endpoint carries the
- * key being sent rather than whether one is held.
+ * An endpoint as it is written: the same as `AiEndpoint`, except that it carries the key being sent
+ * rather than whether one is held, and no health — which is the backend's answer, not a setting.
  *
  * `apiKey` absent keeps the key the backend holds, `''` removes it, and a value replaces it. A key
  * goes only to the address it was set for, so an update that moves `baseUrl` while a key is held and
  * sends none is refused: a form asks for the key again before it saves such a change.
  */
-export type AiModelSourceDraft =
-  | { kind: 'api'; protocol: AiApiProtocol; baseUrl: string; apiKey?: string; model: string; maxContext?: number }
-  | AiLocalModelSource;
-
-/**
- * The wire format a remote model is reached through.
- *
- * Not the vendor: OpenRouter, Groq, Gemini's compatibility surface and a local vLLM all speak
- * `openai`. `anthropic` exists because Claude's own format carries things the OpenAI one cannot —
- * prompt-cache breakpoints and native tool calls among them. `ollama` is Ollama's own API rather
- * than its OpenAI-compatible surface, which is the one through which the window it loads a model
- * with can be chosen at all — see `maxContext`.
- */
-export type AiApiProtocol = 'openai' | 'anthropic' | 'ollama';
-
-/**
- * The endpoint details a model list is asked for, before any model exists to hold them.
- *
- * `apiKey` is the key as typed. A key the backend already holds for a model cannot stand in: the
- * backend never hands one back, and asks the endpoint with exactly what it is given.
- */
-export interface AiModelDiscoveryQuery {
-  protocol: AiApiProtocol;
+export interface AiEndpointDraft {
+  name: string;
+  kind: AiEndpointKind;
   baseUrl: string;
-  apiKey: string;
+  apiKey?: string;
+  maxContext?: number;
+  requestTimeoutSecs?: number;
+  maxConcurrent?: number;
 }
 
-/** An explicit tokenizer, for the local sources whose weights do not carry one. */
-export interface TokenizerSource {
-  repo: string;
-  revision: string;
-  fileName: string;
+/** A model server running on the machine the backend runs on, found by looking. Nothing is saved. */
+export interface AiDetectedEndpoint {
+  kind: AiEndpointKind;
+  baseUrl: string;
+  capabilities: AiCapability[];
+  /** The model ids it serves. */
+  models: string[];
+}
+
+/** One model a server lists. */
+export interface AiDiscoveredModel {
+  id: string;
+  /** What the server says the model does, or the backend's guess from its id. */
+  capabilities: AiCapability[];
+}
+
+/** Where a model stands, by its server's last answer. */
+export interface AiModelStatus {
+  /**
+   * `missing`: the server does not list it. `pulling`: the server is downloading it.
+   * `endpoint-down`: the server does not answer. `unknown`: nothing has been checked yet.
+   */
+  state: 'unknown' | 'ready' | 'missing' | 'pulling' | 'endpoint-down';
+  /** Percentage, 0–100, while `pulling`. */
+  progress?: number;
 }
 
 export interface AiModel {
   id: string;
   name: string;
   kind: AiModelKind;
-  source: AiModelSource;
+  /** The endpoint that serves it. */
+  endpointId: string;
+  /** The id the endpoint knows it by. */
+  remoteModel: string;
+  /**
+   * Whether prompts with tools send them as tool definitions; absent leaves it to the backend.
+   * Carried so an edit that does not show it does not reset it.
+   */
+  nativeTools?: boolean;
+  status: AiModelStatus;
   /** True for the model the backend uses when an app asks for this kind without naming one. */
   isDefault: boolean;
 }
 
-/**
- * What `AiModel` needs to be created or edited — everything but the identity the backend assigns,
- * with the source as it is written (see `AiModelSourceDraft`).
- */
-export type AiModelDraft = Omit<AiModel, 'id' | 'isDefault' | 'source'> & { source: AiModelSourceDraft };
+/** What `AiModel` needs to be created or edited — everything but what the backend assigns or reports. */
+export type AiModelDraft = Omit<AiModel, 'id' | 'isDefault' | 'status'>;
 
-/** Progress for a model the backend has to fetch before it can answer anything. */
-export interface AiModelStatus {
-  downloaded: boolean;
-  loaded: boolean;
-  /** Percentage, 0–100. */
-  progress: number;
-  /** The backend's own wording, displayed verbatim. */
-  status: string;
+/** A model a server is downloading, as the backend reports it while a pull runs. */
+export interface AiModelStatusEvent {
+  endpointId: string;
+  remoteModel: string;
+  status: AiModelStatus;
 }
 
 /** A named prompt an app registered against a model. */
@@ -121,24 +145,60 @@ export interface AiTask {
   systemPrompt: string;
 }
 
+/** A model the backend recommends for a kind, by the id its kind of server knows it by. */
+export interface AiRecommendedModel {
+  kind: AiModelKind;
+  /** The kind of server it is fetched onto or served by. */
+  endpointKind: AiEndpointKind;
+  model: string;
+  description: string;
+}
+
+/** Where to get a model server, for when none runs on the backend's machine. */
+export interface AiServerInstallLink {
+  label: string;
+  url: string;
+}
+
 export interface ModelAdminPort {
   list?(): Promise<AiModel[]>;
-  /** Model names this backend can fetch on its own, for the kind asked about. */
-  presets?(kind: AiModelKind): Promise<string[]>;
   /**
-   * The models a remote endpoint serves, asked of the endpoint itself. Rejects when it cannot be
-   * reached or refuses the key, with the endpoint's own reason — which makes this the credential
-   * check too. Omitted where the backend cannot ask.
+   * The models a server lists: a saved endpoint by its id, or one not saved yet by its kind, address
+   * and key. Rejects when it cannot be reached or refuses the key, with the server's own reason —
+   * which makes this the credential check too.
    */
-  discover?(query: AiModelDiscoveryQuery): Promise<string[]>;
+  discover?(
+    query: { endpointId: string } | { kind: AiEndpointKind; baseUrl: string; apiKey?: string },
+  ): Promise<AiDiscoveredModel[]>;
   add?(draft: AiModelDraft): Promise<void>;
   update?(id: string, draft: AiModelDraft): Promise<void>;
   remove?(id: string): Promise<void>;
   /** Make this the model apps get when they ask for its kind. */
   setDefault?(id: string): Promise<void>;
-  /** Download/load progress. Only meaningful for models the backend hosts itself. */
+  /** Where one model stands now. */
   status?(id: string): Promise<AiModelStatus>;
   /** Named prompts apps registered against a model. */
   tasks?(): Promise<AiTask[]>;
   removeTask?(id: string): Promise<void>;
+
+  /** The servers the models run on, with their health. */
+  endpoints?(): Promise<AiEndpoint[]>;
+  /** Register a server. Saved whatever its health: one that does not answer yet is still kept. */
+  addEndpoint?(draft: AiEndpointDraft): Promise<AiEndpoint>;
+  updateEndpoint?(id: string, draft: AiEndpointDraft): Promise<AiEndpoint>;
+  /** Refused while models run on it. */
+  removeEndpoint?(id: string): Promise<void>;
+  /** Model servers running on the backend's own machine. Nothing is saved. */
+  detectEndpoints?(): Promise<AiDetectedEndpoint[]>;
+  /**
+   * Download a model onto a server that can fetch its own (Ollama). Resolves when it is done;
+   * progress arrives through `onModelStatus`. Absent where the backend cannot ask.
+   */
+  pullModel?(endpointId: string, remoteModel: string): Promise<void>;
+  /** Hear where a server's model stands while it changes — a pull's progress. Returns the unsubscribe. */
+  onModelStatus?(listener: (event: AiModelStatusEvent) => void): () => void;
+  /** Hear an endpoint's health change. Returns the unsubscribe. */
+  onEndpointHealth?(listener: (endpointId: string, health: AiEndpointHealth) => void): () => void;
+  /** The models the backend recommends, and where to get a server for them. */
+  recommended?(): { models: AiRecommendedModel[]; installLinks: AiServerInstallLink[] };
 }

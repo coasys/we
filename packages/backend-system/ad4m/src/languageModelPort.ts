@@ -103,60 +103,45 @@ export function createAd4mLanguageModelPort(
 /**
  * The default LLM, and whether it can answer — without prompting it.
  *
- * A local model reports its own download and load progress. A remote one that needs no key is
- * checked by asking its endpoint which models it serves, through the node, which costs no tokens and
- * fails the ways a completion would: an unreachable host, a model id the service does not offer. One
- * the node holds a key for is `unchecked`: the node never hands the key back, and discovery is asked
- * with what the caller sends. So is a remote model where the client predates model discovery.
+ * The executor knows: a model is a reference to one an endpoint serves, and `ai.modelStatus` answers
+ * from the endpoint's last health check — whether the server answers, and whether it lists the model.
+ * That costs no tokens and fails the ways a completion would. `UNKNOWN` (not checked yet) is
+ * `unchecked`, not ready: saying so would be a guess dressed as a check.
  */
 async function defaultModelStatus(client: Ad4mClient): Promise<LanguageModelStatus> {
-  let model: AIModel | undefined;
+  let model: AIModel | null = null;
   try {
     model = await client.ai.getDefaultModel('LLM');
   } catch {
-    // No default set reads as an error from the executor; to a status line it is simply none.
+    // An executor without the AI service has no default either; to a status line it is simply none.
   }
   if (!model) return { state: 'none', name: '', model: '', detail: '' };
 
-  const name = model.name;
-  if (!model.api) {
-    const build = model.local?.fileName ?? '';
-    try {
-      const loading = await client.ai.modelLoadingStatus(model.id);
-      if (loading.loaded) return { state: 'ready', name, model: build, detail: '' };
-      const detail = loading.downloaded
-        ? loading.status || 'Loading'
-        : `Downloading ${Math.round(loading.progress ?? 0)}%`;
-      return { state: 'loading', name, model: build, detail };
-    } catch (err) {
-      return { state: 'error', name, model: build, detail: messageOf(err) };
-    }
+  const { name, remoteModel } = model;
+  let status = model.status;
+  try {
+    status = await client.ai.modelStatus(model.id);
+  } catch (err) {
+    // A session refused the call outright (403) learns nothing about the model from it.
+    if (rpcStatus(err) !== 403) return { state: 'error', name, model: remoteModel, detail: messageOf(err) };
   }
 
-  const { baseUrl, hasApiKey, model: id, apiType } = model.api;
-  const ai = client.ai as unknown as {
-    discoverModels?: (baseUrl: string, apiKey?: string, apiType?: string) => Promise<string[]>;
-  };
-  if (typeof ai.discoverModels !== 'function') return { state: 'unchecked', name, model: id, detail: '' };
-  // The executor holds the key and never returns it, and discovery asks the endpoint with only what
-  // it is sent. Asking without the key would read a refusal of the missing key as a broken model.
-  if (hasApiKey) return { state: 'unchecked', name, model: id, detail: '' };
-
-  try {
-    const offered = await ai.discoverModels(baseUrl, undefined, String(apiType));
-    // A listing names dated versions (`claude-x-20250929`) that an alias (`claude-x`) resolves to.
-    const listed = offered.some((candidate) => candidate === id || candidate.startsWith(`${id}-`));
-    if (offered.length && !listed) {
-      return { state: 'error', name, model: id, detail: `The service does not list a model called ${id}` };
-    }
-    return { state: 'ready', name, model: id, detail: '' };
-  } catch (err) {
-    // The executor refused the call itself (403): a guest without the AI CREATE grant, or a user
-    // session on a multi-user node, which may never call `ai.discoverModels`. That says nothing
-    // about the model — so it is unchecked, not broken. Read from the status, not the wording: the
-    // two refusals word themselves differently, and an endpoint's own "Unauthorized" is an error.
-    if (rpcStatus(err) === 403) return { state: 'unchecked', name, model: id, detail: '' };
-    return { state: 'error', name, model: id, detail: messageOf(err) };
+  switch (status?.state) {
+    case 'READY':
+      return { state: 'ready', name, model: remoteModel, detail: '' };
+    case 'PULLING':
+      return { state: 'loading', name, model: remoteModel, detail: `Downloading ${Math.round(status.progress ?? 0)}%` };
+    case 'MISSING':
+      return {
+        state: 'error',
+        name,
+        model: remoteModel,
+        detail: `The server does not list a model called ${remoteModel}`,
+      };
+    case 'ENDPOINT_DOWN':
+      return { state: 'error', name, model: remoteModel, detail: 'The server this model runs on is not answering' };
+    default:
+      return { state: 'unchecked', name, model: remoteModel, detail: '' };
   }
 }
 

@@ -2721,12 +2721,11 @@ describe('mending a line somebody misheard', () => {
 });
 
 /**
- * Getting a model onto a node that has none, and waiting for one that is still arriving.
+ * Getting a model onto a node that has none, and waiting for one that cannot run yet.
  *
  * Both used to fail in ways that looked like something else. A node with no model gave up silently
- * when recording started on its own, so the panel never offered anything; and a model still
- * downloading was opened anyway, which on AD4M blocks inside the call and times out with an error
- * naming nothing.
+ * when recording started on its own, so the panel never offered anything; and a model that could not
+ * run was opened anyway, which accepts the stream and then produces nothing — silence, to a reader.
  */
 describe('models', () => {
   const IN_CALL = [peer(ME, { type: 'call', id: CALL, record: RECORD })];
@@ -2738,16 +2737,22 @@ describe('models', () => {
     ready: boolean;
     isDefault: boolean;
     progress?: number;
+    detail?: string;
   }
 
-  /** A transcription port whose model list a test can change, and which records what it was asked. */
-  function port(initial: FakeModel[], { offer = true, refuse = false } = {}) {
+  /**
+   * A transcription port whose model list a test can change, and which records what it was asked.
+   * `found` is the speech server its setup reports — empty for none.
+   */
+  function port(initial: FakeModel[], { found = 'Use the speech server at localhost:8000', refuse = false } = {}) {
     let models = initial;
     const opened: string[] = [];
-    let installs = 0;
+    let connects = 0;
+    let setups = 0;
     return {
       opened,
-      installs: () => installs,
+      connects: () => connects,
+      setups: () => setups,
       setModels: (next: FakeModel[]) => (models = next),
       transcription: {
         available: () => true,
@@ -2756,11 +2761,14 @@ describe('models', () => {
           opened.push(id);
           return { feed: async () => {}, close: async () => {} };
         },
-        offeredModel: () => (offer ? { name: 'Whisper small', downloadBytes: 967_000_000 } : null),
-        installOfferedModel: async () => {
-          installs += 1;
+        setup: async () => {
+          setups += 1;
+          return { found, installUrl: 'https://speech.example.test/install' };
+        },
+        connectFound: async () => {
+          connects += 1;
           if (refuse) throw new Error('not permitted');
-          models = [{ id: 'small', name: 'Whisper small', ready: false, isDefault: false, progress: 0 }];
+          models = [{ id: 'small', name: 'faster-whisper small', ready: false, isDefault: true, detail: 'Checking' }];
         },
       },
     };
@@ -2799,65 +2807,110 @@ describe('models', () => {
     expect(h.store.modelMissing()).toBe(false);
   });
 
-  it('names the offered model and its size on the button', () => {
+  it('names the speech server found on the button, once the panel has asked', async () => {
     const h = harness([], { transcription: port([]).transcription });
 
-    expect(h.store.canInstallModel()).toBe(true);
-    expect(h.store.installModelLabel()).toBe('Download Whisper small (970 MB)');
+    h.store.openPanel();
+    await h.settle();
+
+    expect(h.store.canConnectServer()).toBe(true);
+    expect(h.store.connectServerLabel()).toBe('Use the speech server at localhost:8000');
+    expect(h.store.serverInstallUrl()).toBe('https://speech.example.test/install');
   });
 
-  it('offers no install where the backend offers no model', () => {
-    // A guest on somebody else's node: the adapter withholds the offer, and the panel falls back to
-    // settings or a sentence rather than a button that would be refused.
-    const h = harness([], { transcription: port([], { offer: false }).transcription });
+  it('offers no connect where no server was found, and still says where to get one', async () => {
+    const h = harness([], { transcription: port([], { found: '' }).transcription });
 
-    expect(h.store.canInstallModel()).toBe(false);
-    expect(h.store.installModelLabel()).toBe('');
+    h.store.openPanel();
+    await h.settle();
+
+    expect(h.store.canConnectServer()).toBe(false);
+    expect(h.store.connectServerLabel()).toBe('');
+    expect(h.store.serverInstallUrl()).toBe('https://speech.example.test/install');
   });
 
-  it('installs, and reports the download that follows', async () => {
+  it('does not look for a server on every read while a panel waits', async () => {
+    // Looking probes ports on the node's machine; the model list is re-read every few seconds.
+    vi.useFakeTimers();
     const p = port([]);
     const h = harness([], { transcription: p.transcription });
 
-    await h.store.installModel();
+    h.store.openPanel();
+    h.setPeers([]);
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(9_000);
 
-    expect(p.installs()).toBe(1);
-    expect(h.store.modelMissing()).toBe(false);
-    expect(h.store.modelDownloading()).toBe(true);
-    expect(h.store.modelDownloadText()).toBe('Downloading the speech model — 0%');
+    expect(p.setups()).toBe(1);
+    // …and asks again once the interval has passed, so a server started meanwhile is found.
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(p.setups()).toBe(2);
   });
 
-  it('says why an install failed, rather than leaving the button to do nothing', async () => {
+  it('connects the server, and reports why the model that follows cannot run yet', async () => {
+    const p = port([]);
+    const h = harness([], { transcription: p.transcription });
+    h.store.openPanel();
+    await h.settle();
+
+    await h.store.connectServer();
+
+    expect(p.connects()).toBe(1);
+    expect(h.store.modelMissing()).toBe(false);
+    expect(h.store.modelUnready()).toBe(true);
+    expect(h.store.modelUnreadyText()).toBe('Checking');
+  });
+
+  it('says why a connect failed, rather than leaving the button to do nothing', async () => {
     const p = port([], { refuse: true });
     const h = harness([], { transcription: p.transcription });
+    h.store.openPanel();
+    await h.settle();
 
-    await h.store.installModel();
+    await h.store.connectServer();
 
-    expect(h.store.installError()).toBe('not permitted');
-    expect(h.store.installingModel()).toBe(false);
+    expect(h.store.connectError()).toBe('not permitted');
+    expect(h.store.connectingServer()).toBe(false);
   });
 
-  it('waits for a model that is still downloading instead of opening it', async () => {
-    const p = port([{ id: 'small', name: 'Whisper small', ready: false, isDefault: true, progress: 42 }]);
+  it('waits for a model that cannot run instead of opening it, and says why', async () => {
+    const p = port([
+      {
+        id: 'small',
+        name: 'faster-whisper small',
+        ready: false,
+        isDefault: true,
+        detail: 'The speech server is not answering',
+      },
+    ]);
     const h = harness([], { transcription: p.transcription });
 
     h.store.toggle();
     await h.settle();
 
-    expect(h.store.status()).toBe('downloading');
-    expect(h.store.modelDownloadText()).toBe('Downloading the speech model — 42%');
+    expect(h.store.status()).toBe('model-unready');
+    expect(h.store.modelUnreadyText()).toBe('The speech server is not answering');
     expect(p.opened).toEqual([]);
   });
 
-  it('starts recording on its own once the download finishes', async () => {
+  it('reports how far a download has got', async () => {
+    const p = port([{ id: 'small', name: 'faster-whisper small', ready: false, isDefault: true, progress: 42 }]);
+    const h = harness([], { transcription: p.transcription });
+
+    h.store.toggle();
+    await h.settle();
+
+    expect(h.store.modelUnreadyText()).toBe('Downloading the speech model — 42%');
+  });
+
+  it('starts recording on its own once the model can run', async () => {
     vi.useFakeTimers();
-    const p = port([{ id: 'small', name: 'Whisper small', ready: false, isDefault: true, progress: 10 }]);
+    const p = port([{ id: 'small', name: 'faster-whisper small', ready: false, isDefault: true }]);
     // In a call, in a space: recording that is waiting has to have somewhere it is waiting to write.
     const h = harness(IN_CALL, { dataset: () => ({}), transcription: p.transcription });
     await vi.advanceTimersByTimeAsync(0);
-    expect(h.store.status()).toBe('downloading');
+    expect(h.store.status()).toBe('model-unready');
 
-    p.setModels([{ id: 'small', name: 'Whisper small', ready: true, isDefault: true }]);
+    p.setModels([{ id: 'small', name: 'faster-whisper small', ready: true, isDefault: true }]);
     await vi.advanceTimersByTimeAsync(3_000);
 
     expect(p.opened).toEqual(['small']);
@@ -2865,7 +2918,7 @@ describe('models', () => {
 
   it('picks up a model added while `no-model` was showing, without another press', async () => {
     // "Once one is, transcription starts on its own" — true of a model added in settings as well as
-    // one installed from the panel.
+    // one connected from the panel.
     vi.useFakeTimers();
     const p = port([]);
     const h = harness(IN_CALL, { dataset: () => ({}), transcription: p.transcription });
@@ -2884,17 +2937,17 @@ describe('models', () => {
     expect(p.opened).toEqual(['base']);
   });
 
-  it('lets an auto-join that gave up for want of a model try again after an install', async () => {
+  it('lets an auto-join that gave up for want of a model try again after a connect', async () => {
     const p = port([]);
     const h = harness(IN_CALL, { dataset: () => ({}), transcription: p.transcription });
     await settle();
     expect(h.store.enabled()).toBe(false);
 
-    await h.store.installModel();
+    await h.store.connectServer();
     await h.settle();
 
     expect(h.store.enabled()).toBe(true);
-    expect(h.store.status()).toBe('downloading');
+    expect(h.store.status()).toBe('model-unready');
   });
 });
 
