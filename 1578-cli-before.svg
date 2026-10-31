@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 540" width="940" height="540">
+  <defs>
+    <clipPath id="frame">
+      <rect width="940" height="540" rx="12"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#frame)">
+    <rect width="940" height="540" fill="#0F172A"/>
+    <rect width="940" height="36" fill="#1E293B"/>
+  </g>
+  <rect x="0.5" y="0.5" width="939" height="539" rx="12" fill="none" stroke="#334155" stroke-width="1"/>
+  <circle cx="22" cy="18" r="6" fill="#475569"/>
+  <circle cx="42" cy="18" r="6" fill="#475569"/>
+  <circle cx="62" cy="18" r="6" fill="#475569"/>
+  <text x="470" y="23" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700" fill="#CBD5E1">Before: ad4m-executor on origin/dev</text>
+
+  <!-- Indents: 2 sp = x 38, 4 sp = x 53, 6 sp = x 67, 10 sp = x 96 (Courier 12px = 7.2px a char) -->
+  <g font-family="Courier New, Courier, monospace" font-size="12" fill="#E2E8F0">
+    <text x="24" y="64"><tspan fill="#10B981">$</tspan> ad4m-executor run --help</text>
+    <text x="38" y="81" fill="#64748B">…</text>
+    <text x="67" y="98">--pid-file &lt;PID_FILE&gt;</text>
+    <text x="96" y="115">Write the executor PID to this file on startup (removed on clean shutdown). Useful for</text>
+    <text x="96" y="132">test harnesses that need targeted process cleanup [env: AD4M_PID_FILE=]</text>
+    <text x="67" y="149">--sfu-local-did &lt;SFU_LOCAL_DID&gt;</text>
+    <text x="38" y="166" fill="#64748B">…</text>
+
+    <text x="24" y="200"><tspan fill="#10B981">$</tspan> ad4m-executor rekey</text>
+    <text x="24" y="217">error: unrecognized subcommand 'rekey'</text>
+
+    <text x="24" y="251"><tspan fill="#10B981">$</tspan> AD4M_APP_DATA_PATH= ad4m-executor run; echo "exit $?"</text>
+    <text x="24" y="268">error: AD4M_APP_DATA_PATH is set but empty or only whitespace: unset it or give it a value</text>
+    <text x="24" y="285" fill="#94A3B8">exit <tspan fill="#A5B4FC" font-weight="700">2</tspan></text>
+    <text x="139" y="285" fill="#64748B"># clap's own code: a supervisor cannot tell it from a crash</text>
+
+    <text x="24" y="319"><tspan fill="#10B981">$</tspan> ad4m-executor run --port 12000 …; echo "exit $?"</text>
+    <text x="499" y="319" fill="#64748B"># port 12000 is taken</text>
+    <text x="24" y="336">[… ERROR rust_executor] REST API server failed: Address already in use (os error 98)</text>
+    <text x="24" y="353">[… ERROR rust_executor] REST API server failed, exiting: Address already in use (os error 98)</text>
+    <text x="24" y="370" fill="#94A3B8">exit <tspan fill="#A5B4FC" font-weight="700">1</tspan></text>
+
+    <text x="24" y="404"><tspan fill="#10B981">$</tspan> ad4m-executor run --app-data-path /var/lib/ad4m …</text>
+    <text x="499" y="404" fill="#64748B"># a second executor, same folder</text>
+    <text x="24" y="421" fill="#64748B"># nothing refuses it: two executors start on one data folder</text>
+
+    <text x="24" y="455" fill="#64748B"># the supervisor exits: the executor keeps running</text>
+    <text x="24" y="472" fill="#64748B"># the log goes to stdout only; there is no --log-dir</text>
+
+    <text x="24" y="506" fill="#64748B"># a refused config file also exits 1: a supervisor cannot tell why it stopped</text>
+  </g>
+</svg>
