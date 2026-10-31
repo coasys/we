@@ -39,6 +39,9 @@ export interface SpaceRoot {
   Not kept: a failure, no space, or a space with no collection yet. The create press writes the space
   a moment before its root, so a read in that moment must be asked again; and a space made before
   spaces had a collection pays a read per caller, as it always did.
+
+  It assumes one Space record per dataset: if a dataset held two, the first read that finds a
+  collection is the answer for as long as the handle lives.
 */
 const spaceRoots = new WeakMap<object, Promise<SpaceRoot | null>>();
 
