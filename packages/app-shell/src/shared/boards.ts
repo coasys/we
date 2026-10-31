@@ -21,10 +21,10 @@
  * the community's states are, and how a failure reaches a person — arrive as `BoardDeps` rather than
  * as imports.
  */
-import { CollectionBlock, type DatasetProxy, getEntityForDataset, runEntityTransaction, Space } from '@we/entities';
+import { CollectionBlock, type DatasetProxy, getEntityForDataset, runEntityTransaction } from '@we/entities';
 
 import { spliceSubsetOrder } from './shapes/subsetOrder';
-import { readSpaceLandmarks, writeSpaceLandmark } from './spaceLandmarks';
+import { readSpaceLandmarks, readSpaceRoot, writeSpaceLandmark } from './spaceLandmarks';
 import type { TaskMoveOutcome } from './taskWorkflow';
 
 /** What the board actions need from the app around them. */
@@ -291,7 +291,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
       */
       const existing = (await readSpaceLandmarks(p)).board;
       if (existing) return existing;
-      const space = await Space.findOne(p, { include: { root: true } });
+      const space = await readSpaceRoot(p);
       if (!space) return '';
       /*
         Gathering from the space collection, where everything top-level in the space lives — every
@@ -299,7 +299,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
         before spaces had a collection gathers from the space record, which a board reads as the
         whole space, as it always did.
       */
-      const root = (space.root as unknown as { id?: string } | undefined)?.id;
+      const root = space.root;
       const made = await createBoard(title?.trim() || 'Everything', root || undefined, {
         dataset: datasetUri,
         gathers: root || space.id,
