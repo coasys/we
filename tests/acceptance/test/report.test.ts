@@ -20,6 +20,19 @@ vi.mock('../src/drivers/display.ts', () => ({
   Display: { start: async () => ({ screenshot: () => Buffer.from('png'), stop: async () => {} }) },
 }));
 
+// An app whose identity window shows the words screen, as the window text gives it.
+let screenText = '';
+vi.mock('../src/drivers/desktop.ts', () => ({
+  DesktopApp: {
+    launch: async () => ({
+      name: 'a',
+      state: async () => ({ windows: [{ label: 'identity' }] }),
+      text: async () => screenText,
+      stop: async () => {},
+    }),
+  },
+}));
+
 const { runScenarios } = await import('../src/runner.ts');
 
 const WORDS = 'member tenant urban tray rebel arrive hill review forest rifle close pear'.split(' ');
@@ -69,6 +82,34 @@ describe('what the runner publishes', () => {
     );
     expect(result.outcome).toBe('failed');
     expect(result.steps[0].error).toContain('the screen showed the 12 words');
+    for (const word of WORDS) expect(published).not.toMatch(new RegExp(`\\b${word}\\b`));
+  });
+
+  it('keeps no screenshot and no window text of a passing step that shows a secret', async () => {
+    screenText = `Your 12 words\n${WORDS.map((w, i) => `${i + 1}\n${w}`).join('\n')}`;
+    const { out, result, published } = await runOne(
+      scenario('passing-words', async (ctx) => {
+        await ctx.launchDesktop({ name: 'a' });
+        ctx.worldBuilt();
+        // The words reach the screen before the scenario reads them into the ledger.
+        await ctx.step('opens on the words', [], async () => {}, { shows: 'the 12 words' });
+        ctx.secrets.addWords('the 12 words', WORDS);
+        screenText = 'Check two words';
+        await ctx.step('checks two words', [], async () => {});
+      }),
+    );
+    expect(result.outcome).toBe('passed');
+    const [shown, kept] = result.steps;
+    expect(shown).toMatchObject({ passed: true, withheld: 'the screen showed the 12 words' });
+    expect(shown.screenshot).toBeUndefined();
+    expect(shown.text).toBeUndefined();
+    expect(readdirSync(join(out, 'passing-words')).sort()).toEqual([
+      '02-checks-two-words.png',
+      '02-checks-two-words.txt',
+      'notes.txt',
+      'scan.json',
+    ]);
+    expect(kept).toMatchObject({ screenshot: '02-checks-two-words.png', text: '02-checks-two-words.txt' });
     for (const word of WORDS) expect(published).not.toMatch(new RegExp(`\\b${word}\\b`));
   });
 

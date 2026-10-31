@@ -18,7 +18,7 @@ cli ─ runner ─┬─ local world: identity-store (temp database), executors,
               │                                                         ├─ main window
               │                                                         ├─ identity window
               │                                                         └─ custody service
-              └─ secret ledger ── scan of logs, data folders, screenshots and window text
+              └─ secret ledger ── scan of logs, data folders and window text
 ```
 
 - **The local world** (`src/world/`): an `identity-store` on a temporary database, and the
@@ -50,11 +50,16 @@ cli ─ runner ─┬─ local world: identity-store (temp database), executors,
 - **The secret ledger** (`src/secrets.ts`): every secret a scenario sees — the words, the
   passphrase, the account password, the offer link — goes into the ledger. After the scenario, the
   scanner looks for each in every form a file could hold it (as typed, base64, hex, JSON) in the
-  world's logs and data folders, the screenshots and the window text kept for each step. A finding
-  fails the scenario. A step that shows a secret on purpose (the words screen) keeps no screenshot
-  and no text, and the report says why.
+  world's logs and data folders and the window text kept for each step. The 12 words are found as
+  any run of four of them in the phrase's order with anything but letters between them (spaces,
+  newlines, the numbers a screen puts beside them); a single word is not a finding. A finding fails
+  the scenario. The scan reads bytes, not pixels, so it cannot read a screenshot: a step that ends on
+  or passes through a screen with a secret on it (the words, the offer link) declares `shows`, and
+  then keeps no screenshot and no window text, whether it passes or fails; the report says why.
+  `test/rules.test.ts` fails a step that reaches such a screen without `shows`.
 - **The report** (`results/<time>/`, or `--out`): `summary.md` and `report.json`, and per scenario
-  a screenshot and the window text after each step, its notes and its scan.
+  a screenshot and the window text after each step that does not declare `shows`, its notes and its
+  scan.
   The report is what a run publishes, so every secret in the ledger is redacted from a failure
   before the report, the console or an issue holds it. A step that shows a secret keeps only the
   first line of its failure, not the window text after it. A kept file in which the scan finds a
@@ -120,7 +125,10 @@ identity`, `shot screen.png`, `quit`).
   calls a scenario makes are reads for its assertions (`identity.status`, `identity.log`).
   `test/rules.test.ts` fails on any other.
 - Record every secret the scenario sees in `ctx.secrets`, before it can reach a file.
-- A step that shows a secret on purpose says so (`{ shows: 'the 12 words' }`).
+- A step that shows a secret on purpose says so (`{ shows: 'the 12 words' }`), and so does a step
+  that ends on such a screen without meaning to (the first-run step, which opens on the words). A
+  screenshot is pixels, which the scan cannot read, so nothing else stops one from being published.
+- A wrong answer a scenario types on purpose is never part of a secret (not one of the 12 words).
 - No scenario runs on Windows or touches production.
 - A scenario does not rerun after a failure.
 

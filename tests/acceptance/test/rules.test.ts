@@ -72,6 +72,72 @@ describe('what a scenario may do', () => {
   }
 });
 
+/**
+ * Screens that show a secret, by their title, and the secret. A step that waits for one of them
+ * ends on it or passes through it, so it declares `shows`: the runner then keeps no screenshot of
+ * it, which the scan could not read, and no window text.
+ */
+const SECRET_SCREENS = new Map([
+  ['Your 12 words', 'the 12 words'],
+  ['Send this link to your device', 'the offer link'],
+]);
+
+/** Each step a source runs (`step(` or `ctx.step(`), as the text of its whole call. */
+function stepCalls(text: string): string[] {
+  const calls: string[] = [];
+  for (const m of text.matchAll(/(?<![\w.])(?:ctx\.)?step\(/g)) {
+    let depth = 0;
+    let quote = '';
+    for (let i = m.index + m[0].length - 1; i < text.length; i += 1) {
+      const c = text[i];
+      if (quote) {
+        if (c === '\\') i += 1;
+        else if (c === quote) quote = '';
+        continue;
+      }
+      if (c === '/' && text[i + 1] === '/') i = text.indexOf('\n', i);
+      else if (c === '/' && text[i + 1] === '*') i = text.indexOf('*/', i) + 1;
+      else if (c === "'" || c === '"' || c === '`') quote = c;
+      else if (c === '(') depth += 1;
+      else if (c === ')' && --depth === 0) {
+        calls.push(text.slice(m.index, i + 1));
+        break;
+      }
+    }
+  }
+  return calls;
+}
+
+describe('what a step keeps', () => {
+  const flows = join(import.meta.dirname, '../src/flows');
+  const all = [
+    ...sources.map((s) => ({ file: `scenarios/${s.file}`, text: s.text })),
+    ...readdirSync(flows)
+      .filter((f) => f.endsWith('.ts'))
+      .map((f) => ({ file: `flows/${f}`, text: readFileSync(join(flows, f), 'utf8') })),
+  ];
+
+  it('finds the steps that reach a secret screen', () => {
+    const reaching = all.flatMap(({ text }) =>
+      stepCalls(text).filter((call) => [...SECRET_SCREENS.keys()].some((title) => call.includes(`'${title}'`))),
+    );
+    // The first-run step that opens on the words, the words step, and the offer link step.
+    expect(reaching.length).toBeGreaterThanOrEqual(3);
+  });
+
+  for (const { file, text } of all) {
+    it(`${file}: every step that reaches a screen with a secret on it declares shows`, () => {
+      for (const call of stepCalls(text)) {
+        for (const [title, secret] of SECRET_SCREENS) {
+          if (!call.includes(`'${title}'`)) continue;
+          const name = /step\(\s*(['"`])(.*?)\1/s.exec(call)?.[2];
+          expect(call, `the step "${name}" reaches "${title}"`).toContain(`shows: '${secret}'`);
+        }
+      }
+    });
+  }
+});
+
 describe('the runner', () => {
   it('reports a pending scenario as pending, with its reason, without starting a world', async () => {
     const out = mkdtempSync(join(tmpdir(), 'acceptance-report-'));

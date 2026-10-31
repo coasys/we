@@ -11,8 +11,17 @@
  *
  * - The SPARQL store directories of an executor (`perspectives/<uuid>/sparql_store/`) keep links
  *   plain by design. A secret found there is listed under `apart` and does not fail the scenario.
- * - A screen that shows a secret on purpose (the words screen) is not kept as an artefact: the
- *   runner withholds its screenshot and text. Every other screen is kept and scanned.
+ * - A screen that shows a secret on purpose (the words screen, the offer link) is not kept as an
+ *   artefact: the runner withholds the screenshot and the text of a step that declares `shows`.
+ *   Every other screen is kept and scanned.
+ *
+ * What the scan reads is bytes: logs, data folders and window text. It cannot read a screenshot,
+ * which is pixels. A screenshot is kept only for a step that does not declare `shows`, so a step
+ * that ends on a screen with a secret on it must declare `shows` (`test/rules.test.ts` checks this
+ * for the screens it knows).
+ *
+ * The 12 words are found as a run of words in a text, whatever separates them: a screen lists them
+ * with their numbers between them, a log with spaces, a file one per line. See `wordRun`.
  */
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join, sep } from 'node:path';
@@ -23,7 +32,7 @@ interface Entry {
   kind: SecretKind;
   label: string;
   forms: Buffer[];
-  /** For the 12 words: each word, which `redact` replaces on its own. */
+  /** For the 12 words: each word, which `redact` replaces on its own and `wordRun` looks for in order. */
   words?: string[];
 }
 
@@ -49,6 +58,49 @@ export interface ScanResult {
 
 /** The shortest secret the ledger takes: a shorter one would match by chance. */
 const MIN_LENGTH = 8;
+
+/**
+ * How many words of the phrase, next to each other and in the phrase's order, a text must hold for
+ * the scan to call it a leak of the words. A single word stays allowed: it is an ordinary English
+ * word, and the check-words screen asks for two by number. Four is past anything chance writes:
+ * between the four a match allows only characters that are not letters (numbers, spaces,
+ * punctuation, newlines), so English prose, which has other words between any four of these,
+ * never matches; and the four must be the phrase's own, in its order — one of 2048^4 (about
+ * 1.8 × 10^13) sequences of list words. Four words are also already a leak worth failing on: 44 of
+ * the phrase's 128 bits.
+ */
+export const WORD_RUN = 4;
+
+/**
+ * Where a text holds `WORD_RUN` or more of the phrase's words in a row, in the phrase's order, with
+ * nothing but characters that are not letters between them; or -1. The whole phrase joined by any
+ * whitespace, numbers or punctuation is such a run. The text is read one byte to a character
+ * (latin1), so the answer is a byte offset and a binary file reads without error. A word is a run
+ * of ASCII letters, as every word of the English list is: a byte of a character outside ASCII (the
+ * `·` or `—` a screen puts between things) separates words rather than joining them. Case is
+ * ignored, since a screen may show them in capitals.
+ */
+export function wordRun(content: Buffer, words: string[]): number {
+  const phrase = words.map((w) => w.toLowerCase());
+  // The places in the phrase the run so far could end at: more than one when a word repeats.
+  let ends: number[] = [];
+  let length = 0;
+  let start = -1;
+  for (const token of content.toString('latin1').matchAll(/[A-Za-z]+/g)) {
+    const word = token[0].toLowerCase();
+    const next = ends.map((i) => i + 1).filter((i) => phrase[i] === word);
+    if (next.length) {
+      ends = next;
+      length += 1;
+    } else {
+      ends = phrase.flatMap((w, i) => (w === word ? [i] : []));
+      length = ends.length ? 1 : 0;
+      start = token.index;
+    }
+    if (length >= WORD_RUN) return start;
+  }
+  return -1;
+}
 
 /** Every form a string can be written in that a careless log line or file would use. */
 function formsOf(value: string): Buffer[] {
@@ -80,8 +132,10 @@ export class SecretLedger {
   }
 
   /**
-   * Records the 12 words: as one phrase, one per line, and as a JSON list. A single word is not
-   * searched for: it is an ordinary English word and would match by chance.
+   * Records the 12 words: as one phrase, one per line, and as a JSON list, and as a run of
+   * `WORD_RUN` of them in order with anything but letters between them (`wordRun`), which is how a
+   * screen's text lists them. A single word is not searched for: it is an ordinary English word and
+   * would match by chance.
    */
   addWords(label: string, words: string[]): void {
     const phrase = words.join(' ');
@@ -135,7 +189,7 @@ export class SecretLedger {
         result.files += 1;
         result.bytes += content.length;
         for (const entry of this.entries) {
-          const offset = firstMatch(content, entry.forms);
+          const offset = earliest(firstMatch(content, entry.forms), entry.words ? wordRun(content, entry.words) : -1);
           if (offset < 0) continue;
           const finding: ScanFinding = { label: entry.label, kind: entry.kind, where: file, offset };
           const allowance = allow.find((a) => a.label === entry.label && a.where.test(file));
@@ -147,6 +201,13 @@ export class SecretLedger {
     }
     return result;
   }
+}
+
+/** The earlier of two offsets, either of which may be -1 for none. */
+function earliest(a: number, b: number): number {
+  if (a < 0) return b;
+  if (b < 0) return a;
+  return Math.min(a, b);
 }
 
 function firstMatch(content: Buffer, forms: Buffer[]): number {

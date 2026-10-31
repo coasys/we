@@ -31,6 +31,23 @@ export interface MadeIdentity {
   passphrase: string;
 }
 
+/** Words of the BIP-39 English list, for a wrong answer: at least one is never among the 12 words. */
+const NOT_THE_WORDS = [
+  'zebra',
+  'zone',
+  'zoo',
+  'youth',
+  'yellow',
+  'year',
+  'wrist',
+  'wreck',
+  'wrap',
+  'worry',
+  'world',
+  'wool',
+  'wolf',
+];
+
 /**
  * "Make my identity here", from the first-run screen, through the identity window: the 12 words, a
  * wrong answer and then the right two, a passphrase too short and then a good one, and the ready
@@ -58,7 +75,10 @@ export async function makeIdentity(
       await app.waitForText('main', 'Welcome to Coasys', 180_000);
       await app.press('main', 'Make my identity here');
       await app.waitForWindow('identity', true);
+      // The window opens on the words: this step ends on them, so it keeps no screen.
+      await identityScreen(app, 'Your 12 words');
     },
+    { shows: 'the 12 words' },
   );
 
   await step(
@@ -94,7 +114,10 @@ export async function makeIdentity(
         `the screen asks for words ${positions.join(', ')}`,
       );
       const [a, b] = positions;
-      const wrong = words[a % 12] === words[a - 1] ? 'zebra' : words[a % 12];
+      // A wrong answer that is no word of the phrase, so the screen after this step shows none of
+      // them. Thirteen candidates, so one of them is always outside the 12 words.
+      const wrong = NOT_THE_WORDS.find((w) => !words.includes(w)) ?? '';
+      check(wrong && !words.includes(wrong), 'no wrong answer outside the phrase');
       await app.type('identity', `Type word ${a}`, wrong);
       await app.type('identity', `Type word ${b}`, words[b - 1]);
       await app.press('identity', 'Confirm');
@@ -105,6 +128,8 @@ export async function makeIdentity(
       await app.type('identity', `Type word ${a}`, words[a - 1]);
       await app.type('identity', `Type word ${b}`, words[b - 1]);
       await app.press('identity', 'Confirm');
+      // The step ends once the right answers have left the screen, so its screenshot shows none.
+      await identityScreen(app, 'Protect your master key with a passphrase');
     },
   );
 

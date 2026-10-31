@@ -4,8 +4,8 @@
  * portal) starts in that folder, so none of them finds the person's own keyring and serves it to
  * the app under test.
  */
-import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -29,7 +29,28 @@ export async function inSession(): Promise<boolean> {
       resolve(2);
     });
   });
+  unmountUnder(runtime);
   rmSync(runtime, { recursive: true, force: true });
   process.exitCode = status;
   return false;
+}
+
+/**
+ * Services the bus started mount FUSE file systems in the runtime folder (the desktop portal's
+ * `doc`, gvfs). They outlive the bus as stale mounts, and a removal through one fails, so this
+ * detaches each mount under `dir` first.
+ */
+function unmountUnder(dir: string): void {
+  let mounts: string[];
+  try {
+    mounts = readFileSync('/proc/self/mounts', 'utf8')
+      .split('\n')
+      .map((line) => (line.split(' ')[1] ?? '').replace(/\\040/g, ' '))
+      .filter((point) => point.startsWith(`${dir}/`));
+  } catch {
+    return;
+  }
+  for (const point of mounts) {
+    spawnSync('fusermount3', ['-u', '-z', point], { stdio: 'ignore' });
+  }
 }

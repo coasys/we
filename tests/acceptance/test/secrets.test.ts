@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { SecretLedger } from '../src/secrets.ts';
+import { SecretLedger, WORD_RUN, wordRun } from '../src/secrets.ts';
 
 const WORDS = [
   'member',
@@ -68,6 +68,49 @@ describe('the secret ledger and its scanner', () => {
       'list.json',
       'phrase.log',
     ]);
+  });
+
+  it('finds the 12 words in window text that lists them with their numbers between them', async () => {
+    // The words screen as the window text gives it: each number on its line, then its word.
+    const screen = `Your 12 words\n${WORDS.map((w, i) => `${i + 1}\n${w}`).join('\n')}\nI understand`;
+    const dir = folder({
+      'step.txt': `── a · identity ──\n${screen}`,
+      'spaced.log': `words: 1. ${WORDS.slice(0, 6).join(' 2) ')}`,
+      'caps.txt': WORDS.slice(3, 7).join(' · ').toUpperCase(),
+    });
+    const ledger = new SecretLedger();
+    ledger.addWords('the 12 words', WORDS);
+    const scan = await ledger.scan([dir]);
+    expect(scan.findings.map((f) => f.where.slice(dir.length + 1)).sort()).toEqual([
+      'caps.txt',
+      'spaced.log',
+      'step.txt',
+    ]);
+    const step = scan.findings.find((f) => f.where.endsWith('step.txt'));
+    expect(step?.offset).toBe(Buffer.byteLength(`── a · identity ──\nYour 12 words\n1\n`));
+  });
+
+  it(`finds ${WORD_RUN} words of the phrase in order, and not fewer, other orders or parts of words`, async () => {
+    const dir = folder({
+      'four.txt': `x ${WORDS.slice(5, 5 + WORD_RUN).join('\n')} y`,
+      'three.txt': WORDS.slice(5, 5 + WORD_RUN - 1).join(' '),
+      'two-asked.txt': `Word 3\n${WORDS[2]}\nWord 9\n${WORDS[8]}`,
+      'reordered.txt': [WORDS[0], WORDS[2], WORDS[1], WORDS[3], WORDS[5]].join(' '),
+      'prose.txt': `the ${WORDS[0]} and ${WORDS[1]} of the ${WORDS[2]} ${WORDS[3]}`,
+      'longer.txt': ['remember', ...WORDS.slice(1, 4)].join(' '),
+    });
+    const ledger = new SecretLedger();
+    ledger.addWords('the 12 words', WORDS);
+    const scan = await ledger.scan([dir]);
+    expect(scan.findings.map((f) => f.where.slice(dir.length + 1))).toEqual(['four.txt']);
+    expect(scan.findings[0].offset).toBe(2);
+  });
+
+  it('follows a run through a word the phrase holds twice', () => {
+    const words = ['tray', 'rebel', 'tray', 'arrive', 'hill', 'review', ...WORDS.slice(6)];
+    expect(wordRun(Buffer.from('tray rebel tray arrive'), words)).toBe(0);
+    expect(wordRun(Buffer.from('rebel tray arrive hill'), words)).toBe(0);
+    expect(wordRun(Buffer.from('tray arrive hill review'), words)).toBe(0);
   });
 
   it('lists a secret in a SPARQL store apart, where links are plain by design, without failing', async () => {
