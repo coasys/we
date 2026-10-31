@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 900" width="940" height="900">
+  <defs>
+    <clipPath id="frame">
+      <rect width="940" height="900" rx="12"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#frame)">
+    <rect width="940" height="900" fill="#0F172A"/>
+    <rect width="940" height="36" fill="#1E293B"/>
+    <!-- added flags in the run help -->
+    <rect x="0" y="137" width="940" height="187" fill="#064E3B" fill-opacity="0.55"/>
+    <!-- added rekey row -->
+    <rect x="0" y="375" width="940" height="35" fill="#064E3B" fill-opacity="0.55"/>
+  </g>
+  <rect x="0.5" y="0.5" width="939" height="899" rx="12" fill="none" stroke="#334155" stroke-width="1"/>
+  <circle cx="22" cy="18" r="6" fill="#475569"/>
+  <circle cx="42" cy="18" r="6" fill="#475569"/>
+  <circle cx="62" cy="18" r="6" fill="#475569"/>
+  <text x="470" y="23" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700" fill="#CBD5E1">After: ad4m-executor with this PR</text>
+
+  <!-- Indents: 2 sp = x 38, 4 sp = x 53, 6 sp = x 67, 10 sp = x 96 (Courier 12px = 7.2px a char) -->
+  <g font-family="Courier New, Courier, monospace" font-size="12" fill="#E2E8F0">
+    <text x="24" y="64"><tspan fill="#10B981">$</tspan> ad4m-executor run --help</text>
+    <text x="38" y="81" fill="#64748B">…</text>
+    <text x="67" y="98">--pid-file &lt;PID_FILE&gt;</text>
+    <text x="96" y="115">Write the executor PID to this file on startup (removed on clean shutdown). Useful for</text>
+    <text x="96" y="132">test harnesses that need targeted process cleanup [env: AD4M_PID_FILE=]</text>
+
+    <g fill="#A7F3D0">
+      <text x="10" y="149" fill="#10B981" font-weight="700">+</text>
+      <text x="67" y="149" fill="#FFFFFF" font-weight="700">--watch-stdin &lt;WATCH_STDIN&gt;</text>
+      <text x="96" y="166">Stop gracefully (exit 0) when stdin reaches its end. A supervisor holds the pipe open and</text>
+      <text x="96" y="183">never writes; when the supervisor ends, the pipe closes and the executor stops [env:</text>
+      <text x="96" y="200">AD4M_WATCH_STDIN=]</text>
+      <text x="10" y="217" fill="#10B981" font-weight="700">+</text>
+      <text x="67" y="217" fill="#FFFFFF" font-weight="700">--custody-channel [&lt;CUSTODY_CHANNEL&gt;]</text>
+      <text x="96" y="234">Serve the custody channel: the desktop app's custody service takes a master key that</text>
+      <text x="96" y="251">arrived sealed to this computer, with the admin credential on a loopback listener. Refused</text>
+      <text x="96" y="268">together with multi-user mode (exit 78) [env: AD4M_CUSTODY_CHANNEL=]</text>
+      <text x="10" y="285" fill="#10B981" font-weight="700">+</text>
+      <text x="67" y="285" fill="#FFFFFF" font-weight="700">--log-dir &lt;LOG_DIR&gt;</text>
+      <text x="96" y="302">Write the executor's log to rotated files in this folder (`executor-0.log` is this run;</text>
+      <text x="96" y="319">five runs kept). Default: stdout [env: AD4M_LOG_DIR=]</text>
+    </g>
+    <text x="67" y="336">--sfu-local-did &lt;SFU_LOCAL_DID&gt;</text>
+
+    <text x="24" y="370"><tspan fill="#10B981">$</tspan> ad4m-executor --help</text>
+    <g fill="#A7F3D0">
+      <text x="10" y="387" fill="#10B981" font-weight="700">+</text>
+      <text x="38" y="387" fill="#FFFFFF" font-weight="700">rekey</text>
+      <text x="96" y="387">Give this executor a new main wallet key (a revoked server links again with it). Runs only</text>
+      <text x="96" y="404">on the executor's own machine: it reaches the executor on a loopback address with the …</text>
+    </g>
+
+    <text x="24" y="438"><tspan fill="#10B981">$</tspan> AD4M_APP_DATA_PATH= ad4m-executor run; echo "exit $?"</text>
+    <text x="24" y="455">error: AD4M_APP_DATA_PATH is set but empty or only whitespace: unset it or give it a value</text>
+    <text x="24" y="472" fill="#94A3B8">exit <tspan fill="#A5B4FC" font-weight="700">78</tspan></text>
+    <text x="139" y="472" fill="#64748B"># config refused: do not retry</text>
+
+    <text x="24" y="506"><tspan fill="#10B981">$</tspan> ad4m-executor run --port 12000 …; echo "exit $?"</text>
+    <text x="499" y="506" fill="#64748B"># port 12000 is taken</text>
+    <text x="24" y="523">[… ERROR rust_executor] REST API server failed: The API cannot listen on port 12000: Address</text>
+    <text x="53" y="540">already in use (os error 98)</text>
+    <text x="24" y="557">[… ERROR rust_executor] REST API server failed, exiting with 80: The API cannot listen on …</text>
+    <text x="24" y="574" fill="#94A3B8">exit <tspan fill="#A5B4FC" font-weight="700">80</tspan></text>
+    <text x="139" y="574" fill="#64748B"># port taken: pick another port</text>
+
+    <text x="24" y="608"><tspan fill="#10B981">$</tspan> ad4m-executor run --app-data-path /var/lib/ad4m …</text>
+    <text x="499" y="608" fill="#64748B"># a second executor, same folder</text>
+    <text x="24" y="625">[… ERROR rust_executor] Refusing to start: another executor uses the data folder /var/lib/ad4m</text>
+    <text x="53" y="642">(it holds /var/lib/ad4m/executor.lock). Stop it, or start this one with another --app-data-path.</text>
+    <text x="24" y="659" fill="#94A3B8">exit <tspan fill="#A5B4FC" font-weight="700">79</tspan></text>
+    <text x="139" y="659" fill="#64748B"># the first executor keeps running</text>
+
+    <text x="24" y="693"><tspan fill="#10B981">$</tspan> ad4m-executor run … --watch-stdin true --log-dir /var/log/ad4m</text>
+    <text x="24" y="710" fill="#64748B"># the supervisor exits, so stdin closes. In /var/log/ad4m/executor-0.log:</text>
+    <text x="24" y="727">[… INFO rust_executor] stdin closed (--watch-stdin): stopping</text>
+    <text x="24" y="744">[… INFO rust_executor] Shutdown signal received (Stopped), cleaning up...</text>
+    <text x="24" y="761">[… INFO rust_executor] Graceful shutdown complete, exiting with 0.</text>
+    <text x="24" y="778" fill="#94A3B8">exit <tspan fill="#A5B4FC" font-weight="700">0</tspan></text>
+
+    <text x="24" y="812"><tspan fill="#10B981">$</tspan> ad4m-executor rekey</text>
+    <text x="499" y="812" fill="#64748B"># on the executor's own machine</text>
+    <text x="24" y="829" fill="#64748B"># calls identity.rekey on a loopback address with the admin credential from the environment</text>
+
+    <text x="24" y="866" fill="#64748B"># runtime.restart (an RPC call) answers, then exits 75: the supervisor starts it again</text>
+  </g>
+</svg>
