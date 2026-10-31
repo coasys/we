@@ -52,7 +52,7 @@ import { defaultViewOrder, viewRegistry } from '@shared/registries/viewRegistry'
 import { seedDefaultEnabledModules } from '@shared/seedModules';
 import { getSeed } from '@shared/seedRegistry';
 import { type SharingPickerOption, sharingPickerOptions } from '@shared/sharingOptions';
-import { readSpaceLandmarks, writeSpaceLandmark } from '@shared/spaceLandmarks';
+import { readSpaceLandmarks, readSpaceRoot, writeSpaceLandmark } from '@shared/spaceLandmarks';
 import {
   createPolicyCheck,
   type GovernedSpace,
@@ -3235,13 +3235,13 @@ export function SpaceStoreProvider(props: ParentProps) {
     const uuid = datasetStore.currentDataset()?.id;
     if (!dataset || !datasetStore.isWeSpace()) return;
     try {
-      const space = await Space.findOne(dataset, { include: { root: true } });
+      const space = await readSpaceRoot(dataset);
       const landmarks = await readSpaceLandmarks(dataset);
       if (datasetStore.currentDataset()?.id !== uuid) return; // navigated away while loading
       // Landmarks first: `root` is what says the read has answered, so a template asking "is there a
       // board?" never hears "no" in the frame between the two.
       setSpaceLandmarks(landmarks);
-      setSpaceRoot(space?.root?.id ?? '');
+      setSpaceRoot(space?.root ?? '');
     } catch (error) {
       console.warn('SpaceStore: could not read the space’s collection and landmarks', error);
     }
