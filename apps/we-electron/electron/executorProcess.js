@@ -110,21 +110,44 @@ export async function stopExecutorsFor(dataPath, log = console.log) {
 }
 
 /**
- * Whether an executor that exited on its own may be started again, `limit` times per `windowMs`.
+ * Whether an executor that exited on its own may be started again: up to `limit` restarts in a row,
+ * the count ending only when an executor has stayed up for `healthyMs`.
  *
  * The executor is the app's whole backend: when it dies on its own the window stays up, every
  * call fails, and the client redials a port nothing listens on, every 30 s, until the user quits.
- * Starting it again ends that. The limit stops an executor that fails at startup (a corrupt store,
- * a port it cannot bind) from being restarted in a loop; past it, the exit is left to the user.
- * Returns a function that answers for the exit happening now and counts it when it allows one.
+ * Starting it again ends that. The limit stops an executor that keeps failing (a corrupt store, a
+ * port it cannot bind) from being restarted in a loop; past it, the exit is left to the user.
+ *
+ * Counted in a row rather than per time window: a window only catches failures faster than itself,
+ * so an executor dying 30 s after each start never filled a 3-per-minute window and was restarted
+ * forever. A run that lasted `healthyMs` shows the restart worked, so the next crash starts afresh.
+ *
+ * Returns a function taking when the exited executor started; it answers for this exit and counts
+ * the restart when it allows one.
  */
-export function respawnGuard({ limit = 3, windowMs = 60_000, now = Date.now } = {}) {
-  const respawns = [];
-  return () => {
-    const at = now();
-    while (respawns.length && at - respawns[0] >= windowMs) respawns.shift();
-    if (respawns.length >= limit) return false;
-    respawns.push(at);
+export function restartBudget({ limit = 3, healthyMs = 5 * 60_000, now = Date.now } = {}) {
+  let restarts = 0;
+  return (startedAt) => {
+    if (now() - startedAt >= healthyMs) restarts = 0;
+    if (restarts >= limit) return false;
+    restarts += 1;
     return true;
   };
+}
+
+/**
+ * What to do about an executor that exited:
+ *
+ * - 'stopped' — it was not the current executor, or the app is quitting: this app stopped it.
+ * - 'leave' — the current one, before the window exists. The first start is still waiting on it
+ *   and fails on its own; a restart now would start a second executor that wait knows nothing of.
+ * - 'restart' — the current one crashed or was killed from outside, and `mayRestart` allows it.
+ * - 'give-up' — the same, past the budget.
+ *
+ * `mayRestart` is a `restartBudget` and is only consulted, and so only spent, for a restart.
+ */
+export function afterExecutorExit({ current, quitting, appUp, startedAt }, mayRestart) {
+  if (!current || quitting) return 'stopped';
+  if (!appUp) return 'leave';
+  return mayRestart(startedAt) ? 'restart' : 'give-up';
 }

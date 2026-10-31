@@ -12,7 +12,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 import { createAccountRegistry, expandHome } from './accounts.js';
 import { openExecutorLog } from './executorLog.js';
-import { respawnGuard, stopExecutorsFor, stopProcess } from './executorProcess.js';
+import { afterExecutorExit, restartBudget, stopExecutorsFor, stopProcess } from './executorProcess.js';
 import {
   allowMediaPermission,
   isExternallyOpenable,
@@ -42,8 +42,8 @@ let ad4mToken = null;
 let executorProcess = null;
 /** Set while an account switch is tearing the executor down on purpose. */
 let switchingAccount = false;
-/** Whether an executor that exited on its own may be started again now. See `respawnGuard`. */
-const mayRespawnExecutor = respawnGuard();
+/** Whether an executor that exited on its own may be started again now. See `restartBudget`. */
+const mayRestartExecutor = restartBudget();
 /** The current run's log in the account's data directory (see `executorLog.js`), or null. */
 let executorLog = null;
 
@@ -118,6 +118,25 @@ const seedProductName = (() => {
   }
 })();
 if (seedProductName && !app.isPackaged) app.setName(seedProductName);
+
+/*
+  One instance per app. A second launch would start its own executor on the same data path, which
+  stops the first one's (`stopExecutorsFor`) and deletes the locks under it; the first then starts
+  its executor again and stops the second's, and so on. The lock is per `userData` directory, and a
+  seed product runs under its own name (above) and so its own directory: different products still
+  run side by side. Taken before the registry and any executor work, so a refused launch does nothing.
+*/
+const singleInstance = app.requestSingleInstanceLock();
+if (!singleInstance) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  });
+}
 
 // The registry needs the app's config directory, which is available before `ready`.
 const accounts = createAccountRegistry({
@@ -367,6 +386,7 @@ async function startExecutor() {
     // Detach from the parent — lets Node.js exit without waiting for the child,
     // and is required for process.kill(-pid) group-kill to work.
     executorProcess.unref();
+    const startedAt = Date.now();
     // Also unref the stdio streams — without this, the piped stdout/stderr keep
     // Electron's event loop alive after the executor is killed, causing a second
     // Ctrl+C to be needed to return to the terminal prompt.
@@ -400,15 +420,19 @@ async function startExecutor() {
       // (quit, account switch, settings) is no longer the current one. The current one exiting
       // is a crash or an outside kill: start it again and reload, which hands the renderer the new
       // port and credential and takes it through unlock, as an account switch does.
-      if (executorProcess === proc && !executorStoppedForQuit) {
-        executorProcess = null;
-        if (mayRespawnExecutor()) {
-          console.log('[main] Starting the executor again');
-          void restartExecutorAndReload();
-          return;
-        }
-        console.error('[main] The executor keeps exiting; not starting it again');
+      // Not before the window exists: the first start is still waiting on this executor and fails
+      // on its own, as it does on dev.
+      const outcome = afterExecutorExit(
+        { current: executorProcess === proc, quitting: executorStoppedForQuit, appUp: Boolean(mainWindow), startedAt },
+        mayRestartExecutor,
+      );
+      if (outcome !== 'stopped') executorProcess = null;
+      if (outcome === 'restart') {
+        console.log('[main] Starting the executor again');
+        void restartExecutorAndReload();
+        return;
       }
+      if (outcome === 'give-up') console.error('[main] The executor keeps exiting; not starting it again');
       // Notify the renderer so it shows in DevTools even in packaged builds.
       //
       // `mainWindow?.` only guards against null, not against a *destroyed* window: on quit the
@@ -861,7 +885,20 @@ ipcMain.handle('executor-choose-file', async (_event, { save, defaultName } = {}
   return save ? (result.filePath ?? null) : (result.filePaths[0] ?? null);
 });
 
-async function restartExecutorAndReload() {
+/*
+  Restarts run one after another. Two at once — a crash restart and a settings restart or an
+  account switch — would each stop and start the executor, and the one whose executor was replaced
+  waits out GraphQL on a dead port, then reloads the window a minute later and clears
+  `switchingAccount` under the other. Queued rather than joined, so a switch made during a restart
+  still gets its own: the executor reads the selected account when it starts.
+*/
+let restartChain = Promise.resolve();
+function restartExecutorAndReload() {
+  restartChain = restartChain.catch(() => {}).then(restartExecutorAndReloadOnce);
+  return restartChain;
+}
+
+async function restartExecutorAndReloadOnce() {
   switchingAccount = true;
   try {
     await stopExecutor();
@@ -984,6 +1021,8 @@ ipcMain.handle('get-desktop-sources', async () => {
 });
 
 app.whenReady().then(async () => {
+  // A refused second instance is quitting; it starts nothing.
+  if (!singleInstance) return;
   // Start the app server in production (serves bundled Flux)
   if (!process.env.VITE_DEV_SERVER_URL) {
     startAppServer();
