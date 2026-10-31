@@ -2545,11 +2545,11 @@ packages:
     engines: {node: '>=22.0.0'}
 
   '@coasys/ad4m-connect@https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@da3a30c508042b5264106422f393803f018afd6c':
-    resolution: {tarball: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@da3a30c508042b5264106422f393803f018afd6c}
+    resolution: {integrity: sha512-W6QHWiOvX48PVtZe+2V6v2FCkwphXLLAhSiGe5oTRp+HZ5bqKjauTuQwFODUzc79TePFflxIMRybUmCjQLoeWg==, tarball: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@da3a30c508042b5264106422f393803f018afd6c}
     version: 0.13.1-staging.4
 
   '@coasys/ad4m@https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@da3a30c508042b5264106422f393803f018afd6c':
-    resolution: {tarball: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@da3a30c508042b5264106422f393803f018afd6c}
+    resolution: {integrity: sha512-hBANzZhE1B3GjG7AikoKWmCw9jpcinwD01vJNHzx4XIUVK7dTk3s2v4JBNxjnlhe1ct4JGCiGJDt5vXD/TGkcw==, tarball: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@da3a30c508042b5264106422f393803f018afd6c}
     version: 0.13.1-staging.4
     engines: {node: '>=22'}
 
