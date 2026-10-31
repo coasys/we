@@ -1,0 +1,3 @@
+/target/
+# The endpoint's certificate and private key, written on first run.
+/spike-endpoint-cert/
