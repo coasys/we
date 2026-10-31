@@ -2,3 +2,5 @@
 # x86_64-linux-android) and the iOS ones are added by the build scripts with `rustup target add`.
 [toolchain]
 channel = "1.96.1"
+# CI runs `cargo clippy` and `cargo fmt` on this crate; a fresh runner installs only what is named.
+components = ["clippy", "rustfmt"]
