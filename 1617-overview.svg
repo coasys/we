@@ -1,0 +1,179 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 850" width="940" height="850">
+  <defs>
+    <linearGradient id="grad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#6366F1"/>
+      <stop offset="100%" stop-color="#10B981"/>
+    </linearGradient>
+    <clipPath id="frame">
+      <rect width="940" height="850" rx="16"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#frame)">
+    <rect width="940" height="850" fill="#FFFFFF"/>
+    <rect width="940" height="5" fill="url(#grad)"/>
+  </g>
+  <rect x="0.5" y="0.5" width="939" height="849" rx="16" fill="none" stroke="#E2E8F0" stroke-width="1"/>
+
+  <text x="470" y="42" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700" fill="#1E293B">Log in with a device key</text>
+  <text x="470" y="64" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#64748B">A session lives only as long as the key that opened it</text>
+
+  <!-- ===== Left: the login ===== -->
+  <rect x="40" y="100" width="440" height="580" rx="16" fill="#EEF2FF" stroke="#C7D2FE" stroke-width="1.5"/>
+  <rect x="190" y="86" width="140" height="28" rx="14" fill="#6366F1"/>
+  <text x="260" y="105" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700" fill="#FFFFFF">LOGIN</text>
+
+  <g font-family="Arial, Helvetica, sans-serif">
+    <!-- 1 -->
+    <circle cx="80" cy="150" r="16" fill="#6366F1"/>
+    <text x="80" y="155" text-anchor="middle" font-size="13" font-weight="700" fill="#FFFFFF">1</text>
+    <text x="108" y="146" font-size="15" font-weight="600" fill="#1E293B">Ask for a challenge</text>
+    <text x="108" y="164" font-family="Courier New, Courier, monospace" font-size="11" fill="#1E293B">user.sessionChallenge</text>
+    <text x="108" y="180" font-size="11" fill="#475569">one use, open 60 s; names the executor's DID</text>
+
+    <line x1="80" y1="168" x2="80" y2="206" stroke="#C7D2FE" stroke-width="2" stroke-dasharray="4 4"/>
+
+    <!-- 2 -->
+    <circle cx="80" cy="224" r="16" fill="#6366F1"/>
+    <text x="80" y="229" text-anchor="middle" font-size="13" font-weight="700" fill="#FFFFFF">2</text>
+    <text x="108" y="220" font-size="15" font-weight="600" fill="#1E293B">The device key signs a statement</text>
+    <text x="108" y="238" font-family="Courier New, Courier, monospace" font-size="11" fill="#1E293B">coasys:session {purpose: "login", scid,</text>
+    <text x="108" y="252" font-family="Courier New, Courier, monospace" font-size="11" fill="#1E293B">  key, executor, challenge, issuedAt, …}</text>
+
+    <line x1="80" y1="242" x2="80" y2="280" stroke="#C7D2FE" stroke-width="2" stroke-dasharray="4 4"/>
+
+    <!-- 3 -->
+    <circle cx="80" cy="298" r="16" fill="#6366F1"/>
+    <text x="80" y="303" text-anchor="middle" font-size="13" font-weight="700" fill="#FFFFFF">3</text>
+    <text x="108" y="294" font-size="15" font-weight="600" fill="#1E293B">The executor checks, in order</text>
+    <text x="108" y="312" font-family="Courier New, Courier, monospace" font-size="11" fill="#1E293B">user.loginWithKey</text>
+
+    <!-- check rows: label left, refusal right -->
+    <rect x="108" y="322" width="352" height="26" rx="8" fill="#FFFFFF" stroke="#C7D2FE" stroke-width="1"/>
+    <text x="118" y="339" font-size="11" fill="#1E293B">challenge open, used once</text>
+    <text x="450" y="339" text-anchor="end" font-family="Courier New, Courier, monospace" font-size="10" fill="#4338CA">403 challenge</text>
+
+    <rect x="108" y="352" width="352" height="26" rx="8" fill="#FFFFFF" stroke="#C7D2FE" stroke-width="1"/>
+    <text x="118" y="369" font-size="11" fill="#1E293B">shape: v 1, a did:scid, no PKCE</text>
+    <text x="450" y="369" text-anchor="end" font-family="Courier New, Courier, monospace" font-size="10" fill="#4338CA">400</text>
+
+    <rect x="108" y="382" width="352" height="26" rx="8" fill="#FFFFFF" stroke="#C7D2FE" stroke-width="1"/>
+    <text x="118" y="399" font-size="11" fill="#1E293B">audience: this executor, issuedAt ±120 s</text>
+    <text x="450" y="399" text-anchor="end" font-family="Courier New, Courier, monospace" font-size="10" fill="#4338CA">403 audience</text>
+
+    <rect x="108" y="412" width="352" height="26" rx="8" fill="#FFFFFF" stroke="#C7D2FE" stroke-width="1"/>
+    <text x="118" y="429" font-size="11" fill="#1E293B">signature under coasys:session</text>
+    <text x="450" y="429" text-anchor="end" font-family="Courier New, Courier, monospace" font-size="10" fill="#4338CA">403 signature</text>
+
+    <rect x="108" y="442" width="352" height="70" rx="8" fill="#FFFFFF" stroke="#C7D2FE" stroke-width="1"/>
+    <text x="118" y="459" font-size="11" fill="#1E293B">key in the named log, at its trusted seq:</text>
+    <text x="118" y="474" font-size="11" fill="#1E293B">a valid device key, not a bot or master key</text>
+    <text x="118" y="489" font-size="11" fill="#64748B">read again when the cached read is &gt; 5 min old</text>
+    <text x="450" y="504" text-anchor="end" font-family="Courier New, Courier, monospace" font-size="10" fill="#4338CA">403 key · 503 store-unavailable</text>
+
+    <line x1="80" y1="316" x2="80" y2="536" stroke="#C7D2FE" stroke-width="2" stroke-dasharray="4 4"/>
+
+    <!-- 4 -->
+    <circle cx="80" cy="554" r="16" fill="#6366F1"/>
+    <text x="80" y="559" text-anchor="middle" font-size="13" font-weight="700" fill="#FFFFFF">4</text>
+    <text x="108" y="550" font-size="15" font-weight="600" fill="#1E293B">A grant bound to the key</text>
+    <text x="108" y="568" font-size="11" fill="#475569">records the role, the did:scid, the key and the head seq</text>
+    <text x="108" y="583" font-size="11" fill="#475569">answers a token; the grant lives 1 h</text>
+
+    <line x1="80" y1="572" x2="80" y2="610" stroke="#C7D2FE" stroke-width="2" stroke-dasharray="4 4"/>
+
+    <!-- 5 -->
+    <circle cx="80" cy="628" r="16" fill="#6366F1"/>
+    <text x="80" y="633" text-anchor="middle" font-size="13" font-weight="700" fill="#FFFFFF">5</text>
+    <text x="108" y="624" font-size="15" font-weight="600" fill="#1E293B">Renew on the same key</text>
+    <text x="108" y="642" font-family="Courier New, Courier, monospace" font-size="11" fill="#1E293B">user.renewSession</text>
+    <text x="108" y="657" font-size="11" fill="#475569">a "renew" statement; the key is read again; same grant</text>
+  </g>
+
+  <!-- arrow from the checks to the role card -->
+  <line x1="480" y1="298" x2="502" y2="298" stroke="#94A3B8" stroke-width="1.5"/>
+  <polygon points="508,298 500,292 500,304" fill="#94A3B8"/>
+
+  <!-- ===== Right top: role ===== -->
+  <rect x="510" y="100" width="390" height="236" rx="16" fill="#ECFDF5" stroke="#A7F3D0" stroke-width="1.5"/>
+  <rect x="625" y="86" width="160" height="28" rx="14" fill="#10B981"/>
+  <text x="705" y="105" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700" fill="#FFFFFF">WHICH ROLE</text>
+
+  <g font-family="Arial, Helvetica, sans-serif">
+    <text x="530" y="136" font-size="11" fill="#475569">From the identity, first match wins:</text>
+
+    <rect x="530" y="146" width="350" height="50" rx="10" fill="#FFFFFF" stroke="#A7F3D0" stroke-width="1"/>
+    <text x="544" y="166" font-size="12" font-weight="700" fill="#1E293B">The operator record's identity</text>
+    <text x="544" y="184" font-size="11" fill="#475569">on the main agent</text>
+    <rect x="788" y="158" width="80" height="24" rx="12" fill="#10B981"/>
+    <text x="828" y="174" text-anchor="middle" font-family="Courier New, Courier, monospace" font-size="11" font-weight="700" fill="#FFFFFF">operator</text>
+
+    <rect x="530" y="204" width="350" height="62" rx="10" fill="#FFFFFF" stroke="#A7F3D0" stroke-width="1"/>
+    <text x="544" y="224" font-size="12" font-weight="700" fill="#1E293B">A local agent speaks for it</text>
+    <text x="544" y="241" font-size="11" fill="#475569">the main agent first, then managed</text>
+    <text x="544" y="256" font-size="11" fill="#475569">agents; that agent's own key is valid</text>
+    <rect x="788" y="212" width="80" height="22" rx="11" fill="#10B981"/>
+    <text x="828" y="227" text-anchor="middle" font-family="Courier New, Courier, monospace" font-size="11" font-weight="700" fill="#FFFFFF">app</text>
+    <rect x="788" y="238" width="80" height="22" rx="11" fill="#10B981"/>
+    <text x="828" y="253" text-anchor="middle" font-family="Courier New, Courier, monospace" font-size="11" font-weight="700" fill="#FFFFFF">tenant</text>
+
+    <rect x="530" y="274" width="350" height="42" rx="10" fill="#FFFFFF" stroke="#C7D2FE" stroke-width="1"/>
+    <text x="544" y="300" font-size="12" font-weight="700" fill="#1E293B">Otherwise</text>
+    <text x="868" y="300" text-anchor="end" font-family="Courier New, Courier, monospace" font-size="11" font-weight="700" fill="#4338CA">403 not-known</text>
+  </g>
+
+  <!-- ===== Right bottom: revocation ===== -->
+  <rect x="510" y="366" width="390" height="314" rx="16" fill="#EEF2FF" stroke="#C7D2FE" stroke-width="1.5"/>
+  <rect x="620" y="352" width="170" height="28" rx="14" fill="#6366F1"/>
+  <text x="705" y="371" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700" fill="#FFFFFF">WHEN THE KEY ENDS</text>
+
+  <g font-family="Arial, Helvetica, sans-serif">
+    <text x="530" y="406" font-size="13" font-weight="700" fill="#1E293B">At once</text>
+    <text x="530" y="424" font-size="11" fill="#475569">The executor accepts a head that revokes the key.</text>
+
+    <!-- chain -->
+    <rect x="530" y="434" width="112" height="26" rx="13" fill="#FFFFFF" stroke="#6366F1" stroke-width="1.5"/>
+    <text x="586" y="451" text-anchor="middle" font-family="Courier New, Courier, monospace" font-size="10" font-weight="700" fill="#4338CA">VerdictChange</text>
+    <line x1="642" y1="447" x2="656" y2="447" stroke="#94A3B8" stroke-width="1.5"/>
+    <polygon points="662,447 655,442 655,452" fill="#94A3B8"/>
+    <rect x="664" y="434" width="96" height="26" rx="13" fill="#FFFFFF" stroke="#6366F1" stroke-width="1.5"/>
+    <text x="712" y="451" text-anchor="middle" font-family="Courier New, Courier, monospace" font-size="10" font-weight="700" fill="#4338CA">revoke_key</text>
+    <line x1="760" y1="447" x2="774" y2="447" stroke="#94A3B8" stroke-width="1.5"/>
+    <polygon points="780,447 773,442 773,452" fill="#94A3B8"/>
+    <rect x="782" y="434" width="98" height="26" rx="13" fill="#6366F1"/>
+    <text x="831" y="451" text-anchor="middle" font-size="11" font-weight="700" fill="#FFFFFF">sockets close</text>
+
+    <line x1="530" y1="478" x2="880" y2="478" stroke="#C7D2FE" stroke-width="1"/>
+
+    <text x="530" y="502" font-size="13" font-weight="700" fill="#1E293B">Every 5 minutes</text>
+    <text x="530" y="520" font-size="11" fill="#475569">The executor reads the key of each live grant again.</text>
+
+    <rect x="530" y="530" width="350" height="28" rx="8" fill="#FFFFFF" stroke="#A7F3D0" stroke-width="1"/>
+    <text x="542" y="548" font-size="11" fill="#1E293B">valid device key</text>
+    <text x="868" y="548" text-anchor="end" font-size="11" font-weight="700" fill="#047857">keep, record the check</text>
+
+    <rect x="530" y="562" width="350" height="28" rx="8" fill="#FFFFFF" stroke="#C7D2FE" stroke-width="1"/>
+    <text x="542" y="580" font-size="11" fill="#1E293B">not valid any more, or a bot key</text>
+    <text x="868" y="580" text-anchor="end" font-size="11" font-weight="700" fill="#4338CA">end the grants</text>
+
+    <rect x="530" y="594" width="350" height="46" rx="8" fill="#FFFFFF" stroke="#C7D2FE" stroke-width="1"/>
+    <text x="542" y="612" font-size="11" fill="#1E293B">the store cannot be read</text>
+    <text x="542" y="628" font-size="11" fill="#64748B">fail closed</text>
+    <text x="868" y="612" text-anchor="end" font-size="11" font-weight="700" fill="#047857">keep if last valid check &lt; 1 h</text>
+    <text x="868" y="628" text-anchor="end" font-size="11" font-weight="700" fill="#4338CA">else end the grants</text>
+
+    <text x="530" y="662" font-size="11" fill="#475569">A renewal reads the key too: <tspan font-family="Courier New, Courier, monospace" font-weight="700" fill="#4338CA">403 key</tspan> also ends the grant.</text>
+  </g>
+
+  <!-- ===== Bottom strip: never on this machine ===== -->
+  <rect x="40" y="710" width="860" height="112" rx="16" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.5"/>
+  <rect x="60" y="696" width="270" height="28" rx="14" fill="#6366F1"/>
+  <text x="195" y="715" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700" fill="#FFFFFF">NEVER "ON THIS MACHINE"</text>
+
+  <g font-family="Arial, Helvetica, sans-serif">
+    <text x="60" y="748" font-size="13" font-weight="700" fill="#1E293B">A key-login operator is never the operator on this machine, on any listener.</text>
+    <text x="60" y="766" font-size="11" fill="#475569">A forwarded port can make a remote device key look local. So every local-only method answers it</text>
+    <text x="60" y="782" font-size="11" fill="#475569">with <tspan font-family="Courier New, Courier, monospace" font-weight="700" fill="#4338CA">403 local-only</tspan>, also on a loopback listener:</text>
+    <text x="60" y="804" font-family="Courier New, Courier, monospace" font-size="11" fill="#1E293B">agent.unlock · runtime.quit · identity.rekey · identity.custodyStatus · agent.signSessionStatement</text>
+  </g>
+</svg>
