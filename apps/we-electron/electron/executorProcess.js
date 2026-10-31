@@ -116,7 +116,9 @@ export async function stopExecutorsFor(dataPath, log = console.log) {
  * The executor is the app's whole backend: when it dies on its own the window stays up, every
  * call fails, and the client redials a port nothing listens on, every 30 s, until the user quits.
  * Starting it again ends that. The limit stops an executor that keeps failing (a corrupt store, a
- * port it cannot bind) from being restarted in a loop; past it, the exit is left to the user.
+ * port it cannot bind) from being restarted in a loop; past it, the exit is left to the user. A
+ * restart the user starts from settings does not reset the count: only a healthy run does, so an
+ * executor that still crashes within `healthyMs` of it is not restarted again on its own.
  *
  * Counted in a row rather than per time window: a window only catches failures faster than itself,
  * so an executor dying 30 s after each start never filled a 3-per-minute window and was restarted

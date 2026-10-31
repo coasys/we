@@ -124,11 +124,13 @@ if (seedProductName && !app.isPackaged) app.setName(seedProductName);
   stops the first one's (`stopExecutorsFor`) and deletes the locks under it; the first then starts
   its executor again and stops the second's, and so on. The lock is per `userData` directory, and a
   seed product runs under its own name (above) and so its own directory: different products still
-  run side by side. Taken before the registry and any executor work, so a refused launch does nothing.
+  run side by side. Taken before the registry and any executor work, and a refused launch exits at
+  once: `app.quit()` would let the rest of this module run, and the registry migrates account
+  directories when it is created.
 */
 const singleInstance = app.requestSingleInstanceLock();
 if (!singleInstance) {
-  app.quit();
+  process.exit(0);
 } else {
   app.on('second-instance', () => {
     if (!mainWindow || mainWindow.isDestroyed()) return;
@@ -411,21 +413,22 @@ async function startExecutor() {
 
     const proc = executorProcess;
     executorProcess.on('exit', (code, signal) => {
-      // Expected during an account switch — we killed it on purpose and are about to respawn.
-      if (switchingAccount) return;
-
-      const msg = `[main] Executor exited — code: ${code}, signal: ${signal}`;
-      console.log(msg);
       // `stopExecutor` clears `executorProcess` before it signals, so an executor this app stopped
       // (quit, account switch, settings) is no longer the current one. The current one exiting
-      // is a crash or an outside kill: start it again and reload, which hands the renderer the new
-      // port and credential and takes it through unlock, as an account switch does.
+      // is a crash or an outside kill, also while a restart waits for it to start: start it again
+      // and reload, which hands the renderer the new port and credential and takes it through
+      // unlock, as an account switch does.
       // Not before the window exists: the first start is still waiting on this executor and fails
       // on its own, as it does on dev.
       const outcome = afterExecutorExit(
         { current: executorProcess === proc, quitting: executorStoppedForQuit, appUp: Boolean(mainWindow), startedAt },
         mayRestartExecutor,
       );
+      // Stopped on purpose for a restart or an account switch: expected, nothing to report.
+      if (outcome === 'stopped' && switchingAccount) return;
+
+      const msg = `[main] Executor exited — code: ${code}, signal: ${signal}`;
+      console.log(msg);
       if (outcome !== 'stopped') executorProcess = null;
       if (outcome === 'restart') {
         console.log('[main] Starting the executor again');
@@ -1021,8 +1024,6 @@ ipcMain.handle('get-desktop-sources', async () => {
 });
 
 app.whenReady().then(async () => {
-  // A refused second instance is quitting; it starts nothing.
-  if (!singleInstance) return;
   // Start the app server in production (serves bundled Flux)
   if (!process.env.VITE_DEV_SERVER_URL) {
     startAppServer();
