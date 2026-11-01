@@ -21826,6 +21826,7 @@ dependencies = [
  "ad4m-client",
  "ad4m-executor",
  "dirs 5.0.1",
+ "javascriptcore-rs",
  "serde",
  "serde_json",
  "tauri",

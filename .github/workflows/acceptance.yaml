@@ -1,0 +1,151 @@
+# The acceptance world (`tests/acceptance/`), every night and on demand: the desktop app's harness
+# build in a local world — an identity store and executors from the ad4m commit WE pins — driven
+# through its windows under Xvfb, in a D-Bus session of its own. tests/acceptance/README.md has what
+# runs and how to run it on a computer.
+#
+# A failed run opens an issue (or comments on the open one) with the failing scenario and its step,
+# and keeps the report and the screenshots as an artifact. The world's logs stay on the runner. That is a notice only: this is
+# not a required check, and it stops no merge. A scenario that is pending is reported and does not
+# fail the run.
+#
+# It builds all it runs, from the pinned ad4m commit: the executor, the identity store, ad4m's test
+# languages (the identity suite's own inputs) and the desktop app's harness build. That takes most
+# of a run's time; nothing here is cached yet.
+#
+# Ubuntu 24.04: the executor needs glibc 2.38 or later, and the app the WebKitGTK 4.1 it links.
+name: Acceptance
+
+on:
+  schedule:
+    - cron: '23 2 * * *'
+  workflow_dispatch:
+    inputs:
+      only:
+        description: Scenario ids to run, separated by spaces. Empty runs them all.
+        default: ''
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: acceptance
+  cancel-in-progress: false
+
+jobs:
+  local-world:
+    name: Local world
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    env:
+      CARGO_NET_RETRY: '10'
+    steps:
+      - uses: actions/checkout@v7
+
+      # Two Rust builds of the executor's tree do not fit beside the runner's preinstalled toolchains.
+      - name: Free disk space
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+
+      - name: System packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake protobuf-compiler libasound2-dev libssl-dev \
+            libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev \
+            xvfb dbus gnome-keyring
+
+      - uses: ./.github/actions/setup
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Check out ad4m at the commit WE pins
+        run: |
+          SHA="$(node scripts/ad4m-pin.mjs --commit)"
+          DIR="$(dirname "$GITHUB_WORKSPACE")/ad4m"
+          echo "AD4M_REPO=$DIR" >> "$GITHUB_ENV"
+          echo "ad4m $SHA in $DIR"
+          git init -q "$DIR"
+          git -C "$DIR" fetch -q --depth 1 https://github.com/coasys/ad4m.git "$SHA"
+          git -C "$DIR" checkout -q FETCH_HEAD
+
+      - name: Build the executor and the identity store
+        working-directory: ${{ env.AD4M_REPO }}
+        run: |
+          rustup toolchain install
+          printf 'retry = 5\nretry-connrefused\nretry-delay = 10\n' >> ~/.curlrc
+          mkdir -p rust-executor/dapp/dist
+          echo '<html><body>AD4M</body></html>' > rust-executor/dapp/dist/index.html
+          (cd rust-executor && cargo run --release --features generate_snapshot --bin generate_snapshot)
+          cargo build --release -p ad4m -p identity-store --bin ad4m-executor --bin identity-store
+
+      # The languages the identity suite runs with, published to its shared test directories.
+      - name: Prepare ad4m's test languages
+        working-directory: ${{ env.AD4M_REPO }}
+        run: |
+          pnpm install --no-frozen-lockfile
+          (cd core && pnpm install --no-frozen-lockfile && pnpm run build)
+          bash scripts/install-hc-toolchain.sh
+          cd tests/js && LOCAL_MODE=true pnpm run prepare-test-local
+
+      - name: Build WE for the Coasys seed
+        env:
+          WE_SEED: seeds/coasys.seed.json
+        run: pnpm --filter '@we/app-tauri...' --workspace-concurrency=1 build
+
+      - name: Build the desktop app's harness build
+        working-directory: apps/we-tauri/src-tauri
+        env:
+          WE_SEED: seeds/coasys.seed.json
+          # The executor's crates are already built there.
+          CARGO_TARGET_DIR: ${{ env.AD4M_REPO }}/target
+        run: |
+          node ../scripts/generate-seed-config.cjs
+          rustup toolchain install
+          cargo build --release --features harness,tauri/custom-protocol
+          echo "WE_HARNESS_APP=$CARGO_TARGET_DIR/release/we" >> "$GITHUB_ENV"
+
+      # The custody store against a real Secret Service, in a session of its own: the lower-layer
+      # test of what the scenario with the session's Secret Service checks end to end.
+      - name: Custody against a Secret Service
+        working-directory: apps/we-tauri/src-tauri/custody
+        run: |
+          export XDG_RUNTIME_DIR="$(mktemp -d)"
+          dbus-run-session -- bash -c 'K="$(mktemp -d)";
+            printf secret | HOME="$K" XDG_DATA_HOME="$K" gnome-keyring-daemon --unlock --components=secrets >/dev/null &&
+            CUSTODY_SECRET_SERVICE=1 cargo test --test secret_service'
+
+      - name: Run the scenarios
+        id: run
+        env:
+          ONLY: ${{ github.event.inputs.only }}
+        run: |
+          ARGS=(--out "$RUNNER_TEMP/acceptance")
+          for id in $ONLY; do ARGS+=(--only "$id"); done
+          pnpm --filter @we/acceptance acceptance -- "${ARGS[@]}"
+
+      - name: Keep the report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: acceptance-${{ github.run_id }}
+          path: ${{ runner.temp }}/acceptance
+          if-no-files-found: ignore
+          retention-days: 14
+
+      # The notice: one open issue collects every failed run until somebody closes it.
+      - name: Notice of a failed run
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SUMMARY: ${{ runner.temp }}/acceptance/summary.md
+        run: |
+          BODY="$(printf 'The acceptance run failed: %s\n\n' "$RUN_URL"; if [ -f "$SUMMARY" ]; then head -c 60000 "$SUMMARY"; else echo 'It failed before a scenario ran: see the run log.'; fi)"
+          TITLE='The nightly acceptance run fails'
+          NUMBER="$(gh issue list --state open --search "in:title \"$TITLE\"" --json number --jq '.[0].number')"
+          if [ -n "$NUMBER" ]; then
+            gh issue comment "$NUMBER" --body "$BODY"
+          else
+            gh issue create --title "$TITLE" --body "$BODY"
+          fi

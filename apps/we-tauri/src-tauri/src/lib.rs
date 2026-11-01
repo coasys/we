@@ -4,6 +4,11 @@ mod app_state;
 mod commands;
 mod executor_log;
 mod generated;
+// The acceptance world's driver: see `harness.rs`. Linux only, where the automated acceptance runs.
+#[cfg(all(feature = "harness", target_os = "linux"))]
+mod harness;
+#[cfg(all(feature = "harness", not(target_os = "linux")))]
+compile_error!("the harness build is for Linux only");
 
 // Declared by path rather than through `generated/mod.rs`: that module is only emitted on the
 // generator's embedded-apps path, while this file is emitted on both and is always read here.
@@ -215,11 +220,13 @@ pub fn run() {
         .unwrap_or_else(|| home.join(".local/share"))
         .join("coasys")
         .join("custody");
+    #[cfg(not(all(feature = "harness", target_os = "linux")))]
+    let custody_store = we_custody::store::system_store(custody_dir.clone());
+    #[cfg(all(feature = "harness", target_os = "linux"))]
+    let custody_store =
+        harness::custody_store(|| we_custody::store::system_store(custody_dir.clone()));
     let custody = we_custody::spawn(
-        we_custody::DesktopVault::new(
-            we_custody::store::system_store(custody_dir.clone()),
-            we_custody::PendingIncepts::file(custody_dir),
-        ),
+        we_custody::DesktopVault::new(custody_store, we_custody::PendingIncepts::file(custody_dir)),
         we_custody::ExecutorAddress {
             url: format!("http://127.0.0.1:{graphql_port}"),
             admin_credential: std::sync::Arc::from(req_credential.as_str()),
@@ -235,12 +242,12 @@ pub fn run() {
         default_data_path,
     };
 
-    tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_dialog::init())
-        .manage(state)
-        .manage(commands::identity::IdentityState::new(custody))
-        .invoke_handler(tauri::generate_handler![
+    #[cfg(all(feature = "harness", target_os = "linux"))]
+    let (harness_custody, ipc_log) = (custody.clone(), harness::IpcLog::default());
+    #[cfg(all(feature = "harness", target_os = "linux"))]
+    let ipc_record = ipc_log.clone();
+    let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> =
+        Box::new(tauri::generate_handler![
             commands::state::get_port,
             commands::state::request_credential,
             commands::accounts::list_accounts,
@@ -259,7 +266,20 @@ pub fn run() {
             commands::identity::identity_flow_step,
             commands::identity::identity_flow_cancel,
             commands::identity::identity_flow_finish
-        ])
+        ]);
+
+    tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .manage(state)
+        .manage(commands::identity::IdentityState::new(custody))
+        .invoke_handler(move |invoke| {
+            // The harness build keeps which window invoked which command, for the acceptance
+            // world's assertions. Never the arguments.
+            #[cfg(all(feature = "harness", target_os = "linux"))]
+            ipc_record.record(invoke.message.webview().label(), invoke.message.command());
+            handler(invoke)
+        })
         .setup(move |app| {
             // Start embedded app HTTP servers (in production only)
             // Uses configuration generated from we-seed.json
@@ -273,7 +293,8 @@ pub fn run() {
                 }
             }
 
-            let config = Ad4mConfig {
+            #[allow(unused_mut)]
+            let mut config = Ad4mConfig {
                 // A `Secret`: the executor can compare it and never print or serialise it.
                 admin_credential: Some(Secret::new(req_credential.clone())),
                 app_data_path: Some(app_data_path.to_str().unwrap().to_string()),
@@ -292,6 +313,9 @@ pub fn run() {
                 ..Default::default()
             };
 
+            #[cfg(all(feature = "harness", target_os = "linux"))]
+            harness::adjust_config(&mut config);
+
             // Start the executor in the background
             tauri::async_runtime::spawn(async move {
                 rust_executor::run(config).await;
@@ -300,6 +324,13 @@ pub fn run() {
             // WebRTC needs the webview told it may have the devices — see `enable_media`.
             #[cfg(target_os = "linux")]
             enable_media(app);
+
+            #[cfg(all(feature = "harness", target_os = "linux"))]
+            harness::start(
+                app.handle().clone(),
+                harness_custody.clone(),
+                ipc_log.clone(),
+            );
 
             // Dev tools are hidden by default
             // Uncomment to enable in development:

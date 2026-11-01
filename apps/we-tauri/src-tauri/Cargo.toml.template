@@ -14,6 +14,11 @@ edition = "2021"
 name = "app_lib"
 crate-type = ["staticlib", "rlib"]
 
+[features]
+# The acceptance world's build (src/harness.rs, tests/acceptance/): dials the harness link named by
+# COASYS_HARNESS_URL and answers its commands. Linux only. Never in a release build.
+harness = ["dep:javascriptcore-rs"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -51,6 +56,9 @@ dirs = "5"
 # dependency that is not in here does not exist.
 [target.'cfg(target_os = "linux")'.dependencies]
 webkit2gtk = { version = "=2.0.2", features = ["v2_40"] }
+# The harness build reads a script's answer as a JavaScriptCore value (src/harness.rs). The version
+# webkit2gtk 2.0.2 itself depends on, for the same reason webkit2gtk is pinned above.
+javascriptcore-rs = { version = "=1.1.2", optional = true }
 
 # Must mirror ad4m's workspace-root `[patch.crates-io]`, and mirror whatever is there NOW.
 #
