@@ -36,7 +36,7 @@
     }
   },
   "devDependencies": {
-    "@types/node": "^26.6.5",
+    "@types/node": "^26.6.6",
     "@we/cli": "workspace:*",
     "@we/design-types": "workspace:*",
     "esbuild-plugin-solid": "^0.6.0",
