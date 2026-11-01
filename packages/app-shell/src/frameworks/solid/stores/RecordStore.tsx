@@ -2606,43 +2606,71 @@ export function RecordStoreProvider(props: ParentProps) {
     The space's layer of a type's presentation — see `shared/shapes/presentation.ts`. Read live, as
     the space's key is drawn: a change somebody else makes reaches every card here.
   */
-  async function reloadSpacePresentation(): Promise<void> {
+  /** Reads the space's layer. Answers with the space's record id, or '' when there is no space record. */
+  async function reloadSpacePresentation(): Promise<string> {
     const dataset = datasetStore.currentDataset();
     if (!dataset) {
       setSpacePresentation({});
-      return;
+      return '';
     }
     try {
       const space = (await Space.findOne(dataset.handle as never)) as { id?: string } | null;
-      if (!space?.id || datasetStore.currentDataset()?.id !== dataset.id) return;
-      const parent = { id: space.id, relation: 'typeStyles', entity: 'Space' };
-      const rows = (await TypeStyle.findAll(dataset.handle, { parent } as Record<string, unknown>)) as KeyRow[];
-      if (datasetStore.currentDataset()?.id !== dataset.id) return;
-      const out: Record<string, TypePresentation> = {};
-      for (const row of rows) {
-        const layer = presentationOf(row);
-        if (row.nodeType && Object.keys(layer).length) out[row.nodeType] = layer;
-      }
-      setSpacePresentation(out);
+      if (!space?.id || datasetStore.currentDataset()?.id !== dataset.id) return '';
+      const rows = (await TypeStyle.findAll(dataset.handle, {
+        parent: spaceTypeStyles(space.id),
+      } as Record<string, unknown>)) as KeyRow[];
+      if (datasetStore.currentDataset()?.id !== dataset.id) return space.id;
+      applySpacePresentation(rows);
+      return space.id;
     } catch (error) {
       console.warn("RecordStore: could not read the space's presentation of its types", error);
+      return '';
     }
+  }
+  /** The space's own `TypeStyle` records, as a parent scope. */
+  const spaceTypeStyles = (spaceId: string) => ({ id: spaceId, relation: 'typeStyles', entity: 'Space' });
+  /** The space's layer, from its `TypeStyle` rows — read, or pushed by the watch below. */
+  function applySpacePresentation(rows: readonly KeyRow[]): void {
+    const out: Record<string, TypePresentation> = {};
+    for (const row of rows) {
+      const layer = presentationOf(row);
+      if (row.nodeType && Object.keys(layer).length) out[row.nodeType] = layer;
+    }
+    setSpacePresentation(out);
   }
   createEffect(() => {
     const dataset = datasetStore.currentDataset();
     let stopped = false;
-    let watch: { subscribe(cb: () => void): Promise<unknown>; dispose(): void } | undefined;
+    let watch: { subscribe(cb: (rows: KeyRow[]) => void): Promise<KeyRow[]>; dispose(): void } | undefined;
     onCleanup(() => {
       stopped = true;
       watch?.dispose();
     });
     setSpacePresentation({});
     if (!dataset) return;
-    void untrack(reloadSpacePresentation).then(() => {
+    void untrack(reloadSpacePresentation).then((spaceId) => {
       if (stopped) return;
       // A backend whose records cannot be followed is read once, on entering.
       const query = (TypeStyle as unknown as { query?: (dataset: unknown, q: object) => typeof watch }).query;
       if (typeof query !== 'function') return;
+      if (spaceId) {
+        /*
+          The watch asks what the read asked — the space's own styles, not every canvas's — so what it
+          pushes is the layer, whole, and is applied as it arrives rather than read again.
+        */
+        const follow = (rows: KeyRow[]) => void (!stopped && applySpacePresentation(rows));
+        watch = query.call(TypeStyle, dataset.handle, { parent: spaceTypeStyles(spaceId) });
+        watch
+          ?.subscribe(follow)
+          // What the watch opened on: a style written between the first read and now is in it.
+          .then(follow)
+          .catch((error: unknown) => console.warn("RecordStore: could not watch the space's types", error));
+        return;
+      }
+      /*
+        No space record to scope to yet — a dataset that becomes a space later. Any style written is
+        the cue to look for the space again, so this one watch still only signals.
+      */
       watch = query.call(TypeStyle, dataset.handle, {});
       watch
         ?.subscribe(() => void (!stopped && reloadSpacePresentation()))
