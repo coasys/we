@@ -797,6 +797,9 @@ importers:
       '@we/backend-conformance':
         specifier: workspace:*
         version: link:../conformance
+      '@we/block-shared':
+        specifier: workspace:*
+        version: link:../../block-system/shared
       '@we/cli':
         specifier: workspace:*
         version: link:../../cli
