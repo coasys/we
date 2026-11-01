@@ -336,9 +336,15 @@ async function botWithWaker() {
     channel,
     /**
      * Everything composed since the fixture was made arrives in the watched neighbourhood under a
-     * person's own signature, as sync delivers it; then the bot's wakes, 1 s after the first one came, or none after 30 s.
+     * person's own signature, as sync delivers it; then the bot's wakes, 1 s after every address in
+     * `expected` has woken, or whatever had woken by the deadline.
+     *
+     * The deadline grows with the links replayed. Each one arrives as a diff of its own, which the
+     * executor works through after `addLinkExpression` has returned, and a mention is only seen
+     * once its links have been: about 0.3 s a link on a fast machine and twice that on a CI
+     * runner. A post is about fifty links, so a fixed 30 s failed whenever the runner was slow.
      */
-    async deliver(): Promise<{ woken: MentionMessage[]; why: string }> {
+    async deliver(expected: string[]): Promise<{ woken: MentionMessage[]; why: string }> {
       const someone = person();
       const written = (await client.perspective.queryLinks(composingUuid, new LinkQuery({})))
         .filter((l) => !before.has(key(l)))
@@ -346,11 +352,17 @@ async function botWithWaker() {
       for (const link of written) {
         await client.perspective.addLinkExpression(watchedUuid, someone.sign(link.data));
       }
-      const deadline = Date.now() + 30_000;
-      while (!wakes.length && Date.now() < deadline) await new Promise((r) => setTimeout(r, 250));
-      // Ten debounce windows more, so a wrong wake that came after the first one is seen too.
+      const replayed = Date.now();
+      const deadline = replayed + Math.max(30_000, written.length * 1_500);
+      const allWoken = () => expected.every((address) => wakes.flat().some((m) => m.address === address));
+      while (!allWoken() && Date.now() < deadline) await new Promise((r) => setTimeout(r, 250));
+      const waited = Date.now() - replayed;
+      // Ten debounce windows more, so a wrong wake that came after the expected ones is seen too.
       if (wakes.length) await new Promise((r) => setTimeout(r, 1_000));
-      return { woken: wakes.flat(), why: `config: ${JSON.stringify(config)}` };
+      return {
+        woken: wakes.flat(),
+        why: `${written.length} links replayed, ${waited} ms waited; config: ${JSON.stringify(config)}`,
+      };
     },
   };
 }
@@ -364,7 +376,7 @@ describe('a bot @mentioned in a WE channel', () => {
       const lineId = await lineMentioning(fixture.composing.handle, fixture.channel.id, name(fixture.bot), fixture.bot);
 
       // Woken, naming the line and the channel it is in.
-      const { woken, why } = await fixture.deliver();
+      const { woken, why } = await fixture.deliver([lineId]);
       expect(
         woken.map((m) => m.address),
         why,
@@ -382,7 +394,7 @@ describe('a bot @mentioned in a WE channel', () => {
     const rootId = await postMentioning(fixture.composing.handle, fixture.channel.id, UNKNOWN_NAME, fixture.bot);
     const lineId = await lineMentioning(fixture.composing.handle, fixture.channel.id, UNKNOWN_NAME, fixture.bot);
 
-    const { woken, why } = await fixture.deliver();
+    const { woken, why } = await fixture.deliver([lineId, rootId]);
     const addresses = woken.map((m) => m.address);
     expect(addresses, why).toContain(lineId);
     expect(addresses, why).toContain(rootId);
@@ -406,7 +418,7 @@ describe('a bot @mentioned in a WE channel', () => {
 
     // Then a person writes the same kind of line, so the waker is shown to be listening.
     const theirLine = await lineMentioning(fixture.composing.handle, fixture.channel.id, UNKNOWN_NAME, fixture.bot);
-    const { woken, why } = await fixture.deliver();
+    const { woken, why } = await fixture.deliver([theirLine]);
     const addresses = woken.map((m) => m.address);
     expect(addresses, why).toContain(theirLine);
     expect(addresses, why).not.toContain(ownLine);
