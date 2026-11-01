@@ -2,8 +2,10 @@ mod accounts;
 mod app_server;
 mod app_state;
 mod commands;
+mod data_folder;
 mod executor_log;
 mod generated;
+mod main_window;
 
 // Declared by path rather than through `generated/mod.rs`: that module is only emitted on the
 // generator's embedded-apps path, while this file is emitted on both and is always read here.
@@ -117,6 +119,65 @@ fn enable_media(app: &tauri::App) {
 }
 
 pub fn run() {
+    // Nothing happens before `build`. A second start of the app has to hand over and exit without
+    // touching anything of the copy that runs — its log, its data folders, its ports — and
+    // `tauri-plugin-single-instance` decides that while `build` initialises the plugins. The app's
+    // own `setup`, where `start` does everything else, runs only later, when the event loop is
+    // ready. So every side effect of a start lives in `start`; `startup_order` in the tests pins
+    // that Tauri still runs a plugin's setup before the app's.
+    let app = tauri::Builder::default()
+        // First: a second start of the app shows this one's window and goes, so two copies of one
+        // product never run on one data folder. The plugin is keyed by the identifier; the custody
+        // folder and the keychain names are not, so a WE app and a Coasys app can run together on
+        // the same custody folder. The main window hides on close (`main_window.rs`), and starting
+        // the app again shows it.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            main_window::show(app)
+        }))
+        // No opener plugin: no page calls it. `main_window.rs` opens a link in the browser from
+        // here, for an `https` address only.
+        .plugin(tauri_plugin_dialog::init())
+        .invoke_handler(tauri::generate_handler![
+            commands::state::get_port,
+            commands::state::request_credential,
+            commands::accounts::list_accounts,
+            commands::accounts::create_account,
+            commands::accounts::set_account_display,
+            commands::accounts::select_account,
+            commands::accounts::remove_account,
+            commands::accounts::apply_account_selection,
+            commands::accounts::get_executor_settings,
+            commands::accounts::set_executor_settings,
+            commands::accounts::restart_executor,
+            commands::accounts::choose_file,
+            commands::identity::identity_open,
+            commands::identity::identity_public_state,
+            commands::identity::identity_flow_start,
+            commands::identity::identity_flow_step,
+            commands::identity::identity_flow_cancel,
+            commands::identity::identity_flow_finish
+        ])
+        .setup(start)
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(|_app, _event| {
+        // macOS: a click on the Dock icon while the window is hidden shows it.
+        #[cfg(target_os = "macos")]
+        if let tauri::RunEvent::Reopen { .. } = _event {
+            main_window::show(_app);
+        }
+    });
+}
+
+/// Everything a start does: the log, the data folders, the port, the custody service, the window
+/// and the executor. Runs as the app's `setup`, so only once this copy is the one that runs — see
+/// `run`. The state the commands read is managed here, before the window that calls them exists.
+fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    // Before anything makes a window: the webview makes its data folder when it starts.
+    #[cfg(target_os = "linux")]
+    move_former_webview_data(&app.config().identifier);
+
     // Find a free port for the GraphQL server
     let graphql_port = find_port(12000, 13000).expect("Failed to find free port");
 
@@ -211,10 +272,8 @@ pub fn run() {
     // the admin credential only). The sealed file is the fallback for Linux without a Secret Service,
     // and for a macOS build without the keychain entitlement.
     // The same folder keeps the incept of an identity made here until its publish is confirmed.
-    let custody_dir = dirs::data_dir()
-        .unwrap_or_else(|| home.join(".local/share"))
-        .join("coasys")
-        .join("custody");
+    let custody_dir =
+        data_folder::custody_dir(&dirs::data_dir().unwrap_or_else(|| home.join(".local/share")));
     let custody = we_custody::spawn(
         we_custody::DesktopVault::new(
             we_custody::store::system_store(custody_dir.clone()),
@@ -235,84 +294,88 @@ pub fn run() {
         default_data_path,
     };
 
-    tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_dialog::init())
-        .manage(state)
-        .manage(commands::identity::IdentityState::new(custody))
-        .invoke_handler(tauri::generate_handler![
-            commands::state::get_port,
-            commands::state::request_credential,
-            commands::accounts::list_accounts,
-            commands::accounts::create_account,
-            commands::accounts::set_account_display,
-            commands::accounts::select_account,
-            commands::accounts::remove_account,
-            commands::accounts::apply_account_selection,
-            commands::accounts::get_executor_settings,
-            commands::accounts::set_executor_settings,
-            commands::accounts::restart_executor,
-            commands::accounts::choose_file,
-            commands::identity::identity_open,
-            commands::identity::identity_public_state,
-            commands::identity::identity_flow_start,
-            commands::identity::identity_flow_step,
-            commands::identity::identity_flow_cancel,
-            commands::identity::identity_flow_finish
-        ])
-        .setup(move |app| {
-            // Start embedded app HTTP servers (in production only)
-            // Uses configuration generated from we-seed.json
-            #[cfg(not(debug_assertions))]
-            {
-                let resource_path_result = app.path().resource_dir();
-                if let Ok(resource_path) = resource_path_result {
-                    generated::setup_seed_servers(resource_path);
-                } else {
-                    eprintln!("Warning: Failed to get resource directory");
-                }
-            }
+    app.manage(state);
+    app.manage(commands::identity::IdentityState::new(custody));
 
-            let config = Ad4mConfig {
-                // A `Secret`: the executor can compare it and never print or serialise it.
-                admin_credential: Some(Secret::new(req_credential.clone())),
-                app_data_path: Some(app_data_path.to_str().unwrap().to_string()),
-                // `port` is the executor's GraphQL/REST port — the same one the electron host
-                // passes as `--port`. It was `gql_port` in an older Ad4mConfig.
-                port: Some(graphql_port),
-                run_dapp_server: Some(false), // Disabled - we serve the app ourselves
-                connect_holochain: Some(true),
-                // Off unless asked for: MCP opens a port that serves this agent's data to anything
-                // local that speaks the protocol. Read here because the executor takes its
-                // configuration once, at startup.
-                enable_mcp: Some(executor_settings.mcp_enabled),
-                mcp_port: Some(executor_settings.mcp_port),
-                identity_store_url: identity_store_url.clone(),
-                identity_store_keys: identity_store_keys.clone(),
-                ..Default::default()
-            };
+    main_window::create(app)?;
+    main_window::create_tray(app)?;
 
-            // Start the executor in the background
-            tauri::async_runtime::spawn(async move {
-                rust_executor::run(config).await;
-            });
+    // Start embedded app HTTP servers (in production only)
+    // Uses configuration generated from we-seed.json
+    #[cfg(not(debug_assertions))]
+    {
+        let resource_path_result = app.path().resource_dir();
+        if let Ok(resource_path) = resource_path_result {
+            generated::setup_seed_servers(resource_path);
+        } else {
+            eprintln!("Warning: Failed to get resource directory");
+        }
+    }
 
-            // WebRTC needs the webview told it may have the devices — see `enable_media`.
-            #[cfg(target_os = "linux")]
-            enable_media(app);
+    let config = Ad4mConfig {
+        // A `Secret`: the executor can compare it and never print or serialise it.
+        admin_credential: Some(Secret::new(req_credential.clone())),
+        app_data_path: Some(app_data_path.to_str().unwrap().to_string()),
+        // `port` is the executor's GraphQL/REST port — the same one the electron host
+        // passes as `--port`. It was `gql_port` in an older Ad4mConfig.
+        port: Some(graphql_port),
+        run_dapp_server: Some(false), // Disabled - we serve the app ourselves
+        connect_holochain: Some(true),
+        // Off unless asked for: MCP opens a port that serves this agent's data to anything
+        // local that speaks the protocol. Read here because the executor takes its
+        // configuration once, at startup.
+        enable_mcp: Some(executor_settings.mcp_enabled),
+        mcp_port: Some(executor_settings.mcp_port),
+        identity_store_url: identity_store_url.clone(),
+        identity_store_keys: identity_store_keys.clone(),
+        ..Default::default()
+    };
 
-            // Dev tools are hidden by default
-            // Uncomment to enable in development:
-            // #[cfg(debug_assertions)]
-            // {
-            //     let window = app.get_webview_window("main").unwrap();
-            //     window.open_devtools();
-            // }
+    // Start the executor in the background
+    tauri::async_runtime::spawn(async move {
+        rust_executor::run(config).await;
+    });
 
-            Ok(())
-        })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+    // WebRTC needs the webview told it may have the devices — see `enable_media`.
+    #[cfg(target_os = "linux")]
+    enable_media(app);
+
+    // Dev tools are hidden by default
+    // Uncomment to enable in development:
+    // #[cfg(debug_assertions)]
+    // {
+    //     let window = app.get_webview_window("main").unwrap();
+    //     window.open_devtools();
+    // }
+
+    Ok(())
+}
+
+/// Moves the webview's data folder from the identifier this app had before, once. See
+/// `data_folder.rs`; Tauri keeps that folder in the local data folder (`$XDG_DATA_HOME`).
+#[cfg(target_os = "linux")]
+fn move_former_webview_data(identifier: &str) {
+    let Some(base) = dirs::data_local_dir() else {
+        return;
+    };
+    match data_folder::move_webview_data(&base, seed_runtime::FORMER_IDENTIFIER, identifier) {
+        data_folder::Move::Nothing => {}
+        data_folder::Move::Done { from, to } => {
+            eprintln!(
+                "we: moved the webview's data from {} to {}",
+                from.display(),
+                to.display()
+            )
+        }
+        data_folder::Move::BothExist { former } => eprintln!(
+            "we: kept {} as it is: this app has a webview data folder of its own already",
+            former.display()
+        ),
+        data_folder::Move::Failed { from, error } => eprintln!(
+            "we: could not move the webview's data from {}: {error}; it starts with none",
+            from.display()
+        ),
+    }
 }
 
 #[cfg(test)]
@@ -333,5 +396,40 @@ mod tests {
         );
         assert_eq!(identity_store_setting(None, Some("")), None);
         assert_eq!(identity_store_setting(None, None), None);
+    }
+
+    /// `run` rests on this: a plugin's setup runs inside `build`, and the app's setup — `start`,
+    /// which rotates the log, moves data folders, takes a port and starts custody and the executor
+    /// — only once the event loop runs. `tauri-plugin-single-instance` makes a second start exit in
+    /// its setup, so a second start reaches none of `start`. Were Tauri to run the app's setup
+    /// first, a second start would rotate the running copy's `ad4m.log` again.
+    #[test]
+    fn startup_order() {
+        use std::sync::{Arc, Mutex};
+
+        let seen = Arc::new(Mutex::new(Vec::<&str>::new()));
+        let in_plugin = seen.clone();
+        let in_app = seen.clone();
+        let mut app = tauri::test::mock_builder()
+            .plugin(
+                tauri::plugin::Builder::<tauri::test::MockRuntime>::new("decides")
+                    .setup(move |_, _| {
+                        in_plugin.lock().unwrap().push("plugin");
+                        Ok(())
+                    })
+                    .build(),
+            )
+            .setup(move |_| {
+                in_app.lock().unwrap().push("app");
+                Ok(())
+            })
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .expect("the mock app builds");
+
+        assert_eq!(*seen.lock().unwrap(), ["plugin"]);
+        // One turn of the loop, which is where Tauri runs the app's setup; `run` would not return.
+        #[allow(deprecated)]
+        app.run_iteration(|_, _| {});
+        assert_eq!(*seen.lock().unwrap(), ["plugin", "app"]);
     }
 }

@@ -117,6 +117,9 @@ pub async fn identity_open(
                 "identity-step-done",
                 json!({ "step": kind, "outcome": ended }),
             );
+            // The main window can be hidden behind it: the app leaves the Dock now if so.
+            #[cfg(target_os = "macos")]
+            crate::main_window::leave_dock_if_unseen(&events, IDENTITY);
         }
     });
     Ok(json!({ "opened": true }))

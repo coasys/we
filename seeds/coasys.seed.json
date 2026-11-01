@@ -8,6 +8,7 @@
   "desktop": {
     "productName": "Coasys",
     "appId": "io.coasys.app",
+    "tauriId": "org.coasys.app",
     "icon": "packages/templates/cartridges/src/coasys/assets/icon.svg"
   },
   "bundles": ["coasys"],
