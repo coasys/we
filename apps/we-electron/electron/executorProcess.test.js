@@ -107,6 +107,11 @@ describe('executorEnv', () => {
   it('leaves an inherited RUST_LOG alone', () => {
     expect(executorEnv({ rust_executor: 'debug' }, { RUST_LOG: 'trace' }).RUST_LOG).toBe('trace');
   });
+
+  // To attach a debugger to the executor, or read its state after the app crashed.
+  it('leaves an inherited AD4M_EXIT_WITH_PARENT alone', () => {
+    expect(executorEnv(undefined, { AD4M_EXIT_WITH_PARENT: 'false' }).AD4M_EXIT_WITH_PARENT).toBe('false');
+  });
 });
 
 describe('waitUntilReady', () => {

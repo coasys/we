@@ -51,7 +51,10 @@ export function executorPidsFor(psOutput, dataPath) {
  * ended. It runs detached, in its own session, so a terminal's Ctrl+C or hangup never reaches it,
  * and an app that crashes, is killed, or dies of a second signal while `before-quit` still waits on
  * `stopExecutor` sends it nothing: it used to run on, holding the data path's locks, until the next
- * launch stopped it. An executor too old to know the variable ignores it.
+ * launch stopped it. An executor too old to know the variable ignores it, and so does one on
+ * Windows: the executor only watches its parent on macOS and Linux. An inherited value wins, so
+ * `AD4M_EXIT_WITH_PARENT=false` keeps the executor running past the app, to attach a debugger to it
+ * or read its state after a crash.
  *
  * Log levels reach it as `RUST_LOG`, which is the only lever there is: the executor's own logging
  * setup reads that variable and, finding it set, leaves it alone. Written as overrides — anything
@@ -68,7 +71,7 @@ export function executorEnv(logLevels, env = process.env) {
     overrides.length && !env.RUST_LOG
       ? { RUST_LOG: overrides.map(([crate, level]) => `${crate}=${level}`).join(',') }
       : {};
-  return { ...env, AD4M_EXIT_WITH_PARENT: 'true', ...rustLog };
+  return { AD4M_EXIT_WITH_PARENT: 'true', ...env, ...rustLog };
 }
 
 /**
