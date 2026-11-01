@@ -51,7 +51,10 @@ export function executorPidsFor(psOutput, dataPath) {
  * ended. It runs detached, in its own session, so a terminal's Ctrl+C or hangup never reaches it,
  * and an app that crashes, is killed, or dies of a second signal while `before-quit` still waits on
  * `stopExecutor` sends it nothing: it used to run on, holding the data path's locks, until the next
- * launch stopped it. An executor too old to know the variable ignores it.
+ * launch stopped it. An executor too old to know the variable ignores it, and so does one on
+ * Windows: the executor only watches its parent on macOS and Linux. An inherited value wins, so
+ * `AD4M_EXIT_WITH_PARENT=false` keeps the executor running past the app, to attach a debugger to it
+ * or read its state after a crash.
  *
  * Log levels reach it as `RUST_LOG`, which is the only lever there is: the executor's own logging
  * setup reads that variable and, finding it set, leaves it alone. Written as overrides — anything
@@ -68,7 +71,25 @@ export function executorEnv(logLevels, env = process.env) {
     overrides.length && !env.RUST_LOG
       ? { RUST_LOG: overrides.map(([crate, level]) => `${crate}=${level}`).join(',') }
       : {};
-  return { ...env, AD4M_EXIT_WITH_PARENT: 'true', ...rustLog };
+  return { AD4M_EXIT_WITH_PARENT: 'true', ...env, ...rustLog };
+}
+
+/**
+ * Poll `probe` until it answers true: `'ready'`, or `'gone'` once `gone()` says the process being
+ * waited on has exited, or `'timeout'` after `attempts` tries `interval` ms apart.
+ *
+ * `gone` is what keeps a start that has already failed from waiting out the whole budget. An
+ * executor that dies while it starts leaves nothing listening, and without it the wait polled the
+ * dead port for a minute: on first launch that minute passed before the start reported its error,
+ * and during a crash restart the restart queued behind it waited too.
+ */
+export async function waitUntilReady(probe, { gone = () => false, attempts = 120, interval = 500, wait = sleep } = {}) {
+  for (let i = 0; i < attempts; i++) {
+    if (gone()) return 'gone';
+    if (await probe()) return 'ready';
+    await wait(interval);
+  }
+  return 'timeout';
 }
 
 const isAlive = (pid) => {
