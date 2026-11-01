@@ -26,8 +26,8 @@
     "@we/backend-ad4m": "workspace:*"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "2.12.3",
-    "@types/three": "^0.185.4",
+    "@tauri-apps/cli": "2.12.4",
+    "@types/three": "^0.186.0",
     "@we/brand": "workspace:*",
     "@we/cli": "workspace:*",
     "@we/csp": "workspace:*",
@@ -35,7 +35,7 @@
     "@we/globe-widget": "workspace:*",
     "concurrently": "^10.0.6",
     "typescript": "^6.0.3",
-    "vite": "^8.3.4",
+    "vite": "^8.3.5",
     "vite-plugin-solid": "^2.11.14",
     "wait-on": "^9.5.1"
   }
