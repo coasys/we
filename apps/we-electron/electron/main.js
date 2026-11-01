@@ -24,7 +24,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { createAccountRegistry, expandHome } from './accounts.js';
 import { startCustody } from './custodySidecar.js';
 import { openExecutorLog } from './executorLog.js';
-import { afterExecutorExit, restartBudget, stopExecutorsFor, stopProcess } from './executorProcess.js';
+import { afterExecutorExit, executorEnv, restartBudget, stopExecutorsFor, stopProcess } from './executorProcess.js';
 import { createIdentity, IDENTITY_PAGE, IDENTITY_SCHEME, identityFile, isIdentityPage } from './identityWindow.js';
 import { executorSpawnEnv, handleFromWindow, isFromWindow } from './ipcSender.js';
 import {
@@ -219,24 +219,6 @@ function ensureDataPathInitialised(executorPath, dataPath, log) {
     return;
   }
   console.log('[main] Executor init complete');
-}
-
-/**
- * The environment the executor is started with.
- *
- * Log levels reach it as `RUST_LOG`, which is the only lever there is: the executor's own logging
- * setup reads that variable and, finding it set, leaves it alone. Written as overrides — anything
- * not named keeps the executor's default, which is why this builds a string only from what the user
- * actually chose.
- *
- * An inherited `RUST_LOG` always wins. Someone who exported one before launching is debugging
- * something specific, and having a settings screen quietly override that would be the opposite of
- * helpful.
- */
-function executorEnv(logLevels) {
-  const overrides = Object.entries(logLevels ?? {});
-  if (!overrides.length || process.env.RUST_LOG) return process.env;
-  return { ...process.env, RUST_LOG: overrides.map(([crate, level]) => `${crate}=${level}`).join(',') };
 }
 
 // Find a free port in the given range
