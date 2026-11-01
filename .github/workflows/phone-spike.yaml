@@ -1,0 +1,83 @@
+# Phone spike 1 (apps/we-phone, crates/phone-transport): does the Capacitor shell, with the Rust
+# pinned-connection plugin, still build on both platforms? See apps/we-phone/SPIKE.md.
+#
+# Builds only. The exit criteria were measured on an emulator by hand (SPIKE.md says how); nothing
+# here starts an emulator or an executor.
+name: Phone spike
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - apps/we-phone/**
+      - crates/phone-transport/**
+      - .github/workflows/phone-spike.yaml
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  transport:
+    name: Transport crate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: crates/phone-transport
+    steps:
+      - uses: actions/checkout@v7
+      # rust-toolchain.toml in the crate names the channel; rustup installs it on first use.
+      - name: Test
+        run: cargo test --all-features
+      - name: Clippy
+        run: cargo clippy --all-features --all-targets -- -D warnings
+
+  android:
+    name: Android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      # The Ubuntu runner image ships the Android SDK at $ANDROID_HOME; only the NDK is added.
+      - name: NDK
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;27.2.12479018"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+      - name: cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      - name: Build WE for the web
+        run: pnpm build:web
+      - name: Assemble the phone's web directory
+        working-directory: apps/we-phone
+        run: pnpm build:web && pnpm exec cap sync android
+      - name: Build the Rust transport and its Kotlin bindings
+        working-directory: apps/we-phone
+        run: scripts/build-android-rust.sh
+      - name: Build the APK
+        working-directory: apps/we-phone/android
+        run: ./gradlew assembleDebug
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coasys-debug-apk
+          path: apps/we-phone/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7
+
+  ios:
+    name: iOS (XCFramework)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build the XCFramework and the Swift bindings
+        working-directory: apps/we-phone
+        run: scripts/build-ios.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: we-phone-transport-xcframework
+          path: apps/we-phone/plugins/coasys-transport/ios/Frameworks/WePhoneTransport.xcframework
+          retention-days: 7

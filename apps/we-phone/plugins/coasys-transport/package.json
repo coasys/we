@@ -1,0 +1,28 @@
+{
+  "private": true,
+  "name": "@coasys/capacitor-transport",
+  "version": "0.1.0-spike.1",
+  "description": "Capacitor plugin CoasysTransport: the pinned TLS 1.3 WebSocket to the desktop, in Rust (crates/phone-transport) through uniffi",
+  "license": "MIT",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "files": [
+    "src",
+    "android/build.gradle",
+    "android/src/main",
+    "ios/Sources",
+    "Package.swift"
+  ],
+  "peerDependencies": {
+    "@capacitor/core": "^8.6.0"
+  },
+  "capacitor": {
+    "android": {
+      "src": "android"
+    },
+    "ios": {
+      "src": "."
+    }
+  }
+}
