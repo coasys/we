@@ -12,7 +12,14 @@ import { v4 as uuidv4 } from 'uuid';
 
 import { createAccountRegistry, expandHome } from './accounts.js';
 import { openExecutorLog } from './executorLog.js';
-import { afterExecutorExit, executorEnv, restartBudget, stopExecutorsFor, stopProcess } from './executorProcess.js';
+import {
+  afterExecutorExit,
+  executorEnv,
+  restartBudget,
+  stopExecutorsFor,
+  stopProcess,
+  waitUntilReady,
+} from './executorProcess.js';
 import { executorSpawnEnv, handleFromMainWindow, isFromMainWindow } from './ipcSender.js';
 import {
   allowMediaPermission,
@@ -235,9 +242,10 @@ function findFreePort(startPort, endPort) {
 
 // Wait for the GraphQL server to be fully ready (not just TCP port open).
 // Polls the /graphql HTTP endpoint — any HTTP response (even 400) means GraphQL is up.
-async function waitForGraphQL(port, maxAttempts = 120, interval = 500) {
-  for (let i = 0; i < maxAttempts; i++) {
-    const ready = await new Promise((resolve) => {
+// Gives up as soon as `proc`, the executor being waited on, has exited: see `waitUntilReady`.
+async function waitForGraphQL(port, proc) {
+  const answers = () =>
+    new Promise((resolve) => {
       const req = http.request(
         {
           method: 'POST',
@@ -256,13 +264,16 @@ async function waitForGraphQL(port, maxAttempts = 120, interval = 500) {
       req.end();
     });
 
-    if (ready) {
-      console.log(`GraphQL server on port ${port} is ready`);
-      return;
-    }
-    await new Promise((r) => setTimeout(r, interval));
+  const outcome = await waitUntilReady(answers, { gone: () => proc.exitCode !== null || proc.signalCode !== null });
+  if (outcome === 'ready') {
+    console.log(`GraphQL server on port ${port} is ready`);
+    return;
   }
-  throw new Error(`GraphQL server on port ${port} not ready after ${maxAttempts} attempts`);
+  throw new Error(
+    outcome === 'gone'
+      ? `The executor exited before its GraphQL server on port ${port} was ready`
+      : `GraphQL server on port ${port} not ready after 60 s`,
+  );
 }
 
 // Start the AD4M executor
@@ -432,7 +443,7 @@ async function startExecutor() {
     console.log('AD4M executor process started, waiting for GraphQL server...');
 
     // Wait for the GraphQL server to be fully ready (not just TCP port open)
-    await waitForGraphQL(ad4mPort);
+    await waitForGraphQL(ad4mPort, proc);
 
     console.log('AD4M executor ready');
   } catch (error) {
@@ -886,18 +897,28 @@ handle('executor-choose-file', async (_event, { save, defaultName } = {}) => {
   still gets its own: the executor reads the selected account when it starts.
 */
 let restartChain = Promise.resolve();
+/** Restarts waiting in `restartChain` behind the one running. */
+let restartsQueued = 0;
 function restartExecutorAndReload() {
-  restartChain = restartChain.catch(() => {}).then(restartExecutorAndReloadOnce);
+  restartsQueued += 1;
+  restartChain = restartChain
+    .catch(() => {})
+    .then(() => {
+      restartsQueued -= 1;
+      return restartExecutorAndReloadOnce();
+    });
   return restartChain;
 }
 
 async function restartExecutorAndReloadOnce() {
   switchingAccount = true;
+  let started = false;
   try {
     await stopExecutor();
     // startExecutor picks up the new path, waits for GraphQL, and refreshes port/token — which the
     // reloaded renderer asks for again over IPC, so it never sees the old credentials.
     await startExecutor();
+    started = true;
   } catch (err) {
     console.error('[main] Could not start the executor for the selected account:', err);
     // Fall through to the reload anyway: the renderer's boot will surface a connection failure,
@@ -905,6 +926,11 @@ async function restartExecutorAndReloadOnce() {
   } finally {
     switchingAccount = false;
   }
+
+  // A start that failed because its executor died is followed by the restart that death queued,
+  // which reloads in its turn: reloading here as well would show the connection failure for the
+  // moment between the two.
+  if (!started && restartsQueued > 0) return;
 
   if (!mainWindow || mainWindow.isDestroyed()) return;
 
@@ -1024,7 +1050,19 @@ app.whenReady().then(async () => {
     ad4mToken = process.env.WE_EXTERNAL_AD4M_TOKEN;
     console.log('[main] External executor mode — port:', ad4mPort);
   } else {
-    await startExecutor();
+    try {
+      await startExecutor();
+    } catch (err) {
+      // No window exists yet, so this box is the only way to say the app failed. Before it, the
+      // rejection went unhandled and the app ran on with no window until it was killed.
+      const logLine = executorLog ? `\n\nThe executor's log: ${executorLog.path}` : '';
+      dialog.showErrorBox(
+        'The app could not start',
+        `The AD4M executor it runs on did not start.\n\n${err.message}${logLine}`,
+      );
+      app.quit();
+      return;
+    }
   }
 
   // Then create the window
