@@ -1,192 +1,177 @@
 /**
- * The models an AD4M executor runs, as the neutral `ModelAdminPort`.
+ * The models an AD4M executor uses, as the neutral `ModelAdminPort`.
+ *
+ * The executor runs no model itself: every model is a reference to one an **endpoint** serves (an
+ * Ollama, a llama-server, vLLM, a speech server, OpenAI, Anthropic), and the endpoint holds the
+ * address, the key and the health. So this adapter administers both, and translates AD4M's
+ * `SCREAMING_CASE` vocabulary into the port's.
  *
  * Gated by the same two questions as runtime administration (see `Ad4mRuntimeOptions`): reading
  * wherever the token's grant allows, changing only where the grant allows it *and* the node is
  * ours. The store reads capability off the port's shape, so a member left off is a control that
  * does not appear.
  */
-import type { Ad4mClient, AIModel, ModelInput, ModelType } from '@coasys/ad4m';
+import {
+  type Ad4mClient,
+  AI_RECOMMENDED_MODELS,
+  AI_SERVER_INSTALL_LINKS,
+  type AiCapability as Ad4mCapability,
+  type AiEndpoint as Ad4mEndpoint,
+  type AIModel,
+  type EndpointHealth,
+  type EndpointKind,
+  type ModelInput,
+  type ModelStatus,
+  type ModelType,
+} from '@coasys/ad4m';
 import type {
-  AiApiProtocol,
+  AiCapability,
+  AiEndpoint,
+  AiEndpointDraft,
+  AiEndpointHealth,
+  AiEndpointKind,
   AiModel,
   AiModelDraft,
   AiModelKind,
-  AiModelSource,
+  AiModelStatus,
+  AiRecommendedModel,
   ModelAdminPort,
 } from '@we/backend-shared';
 
 import { CAP_DOMAIN, CAP_VERB, createCapabilityCheck } from './capabilities';
 import type { Ad4mRuntimeOptions } from './runtimeAdminAdapter';
 
-/**
- * The model names AD4M's local runner knows how to fetch and run.
- *
- * Carried here rather than asked for, because the executor exposes no list of them: the launcher's
- * dropdowns are the only place they are written down. Nothing breaks if this drifts behind a new
- * executor build — a name AD4M added is simply missing from the picker, and the Hugging Face source
- * still reaches it — so it is a convenience list, not a contract.
- */
-const PRESETS: Record<AiModelKind, string[]> = {
-  llm: [
-    'deephermes-3-llama-3-8b-Q4',
-    'deephermes-3-llama-3-8b-Q6',
-    'deephermes-3-llama-3-8b-Q8',
-    'Qwen2.5.1-Coder-7B-Instruct',
-    'deepseek_r1_distill_qwen_1_5b',
-    'deepseek_r1_distill_qwen_7b',
-    'deepseek_r1_distill_qwen_14b',
-    'deepseek_r1_distill_llama_8b',
-    'mistral_7b',
-    'mistral_7b_instruct',
-    'mistral_7b_instruct_2',
-    'solar_10_7b',
-    'solar_10_7b_instruct',
-    'llama_7b',
-    'llama_7b_chat',
-    'llama_7b_code',
-    'llama_8b',
-    'llama_8b_chat',
-    'llama_3_1_8b_chat',
-    'llama_13b',
-    'llama_13b_chat',
-    'llama_13b_code',
-    'llama_34b_code',
-    'llama_70b',
-  ],
-  embedding: ['bert'],
-  transcription: [
-    'whisper_tiny',
-    'whisper_tiny_quantized',
-    'whisper_tiny_en',
-    'whisper_tiny_en_quantized',
-    'whisper_base',
-    'whisper_base_en',
-    'whisper_small',
-    'whisper_small_en',
-    'whisper_medium',
-    'whisper_medium_en',
-    'whisper_medium_en_quantized_distil',
-    'whisper_large',
-    'whisper_large_v2',
-    'whisper_distil_medium_en',
-    'whisper_distil_large_v2',
-    'whisper_distil_large_v3',
-    'whisper_distil_large_v3_quantized',
-    'whisper_large_v3_turbo_quantized',
-  ],
-};
-
-/**
- * The executor's name for each wire format. It accepts several spellings on the way in and answers
- * with these on the way out, so these are the ones worth writing.
- */
-const PROTOCOL_TO_AD4M: Record<AiApiProtocol, string> = {
-  openai: 'OPEN_AI',
-  anthropic: 'ANTHROPIC',
-  ollama: 'OLLAMA',
-};
-
-/**
- * An unrecognised API type reads as OpenAI, which is what every remote model was before there was a
- * choice — and what the executor itself assumes when none is given.
- *
- * Every type the executor answers with must be named here. One that was not read as OpenAI, and the
- * next save wrote it back as one: an Ollama model edited in settings lost its own provider.
- */
-function toProtocol(apiType: unknown): AiApiProtocol {
-  const type = String(apiType).toUpperCase();
-  if (type === 'ANTHROPIC') return 'anthropic';
-  if (type === 'OLLAMA') return 'ollama';
-  return 'openai';
-}
-
 const KIND_TO_AD4M: Record<AiModelKind, ModelType> = {
   llm: 'LLM',
   embedding: 'EMBEDDING',
   transcription: 'TRANSCRIPTION',
+  speech: 'SPEECH',
 };
 
-function toKind(modelType: ModelType): AiModelKind {
-  if (modelType === 'EMBEDDING') return 'embedding';
-  if (modelType === 'TRANSCRIPTION') return 'transcription';
-  return 'llm';
+const KIND_FROM_AD4M: Record<ModelType, AiModelKind> = {
+  LLM: 'llm',
+  EMBEDDING: 'embedding',
+  TRANSCRIPTION: 'transcription',
+  SPEECH: 'speech',
+};
+
+const ENDPOINT_KIND_TO_AD4M: Record<AiEndpointKind, EndpointKind> = {
+  ollama: 'OLLAMA',
+  'llama-server': 'LLAMA_SERVER',
+  vllm: 'VLLM',
+  openai: 'OPEN_AI',
+  anthropic: 'ANTHROPIC',
+  'openai-audio': 'OPEN_AI_AUDIO',
+  'openai-compatible': 'OPEN_AI_COMPATIBLE',
+};
+
+const ENDPOINT_KIND_FROM_AD4M = Object.fromEntries(
+  Object.entries(ENDPOINT_KIND_TO_AD4M).map(([ours, theirs]) => [theirs, ours]),
+) as Record<EndpointKind, AiEndpointKind>;
+
+/** The model type each capability serves, so a capability list can be read as kinds. */
+const CAPABILITY_FROM_AD4M: Record<Ad4mCapability, AiCapability> = {
+  chat: 'chat',
+  embeddings: 'embeddings',
+  transcription: 'transcription',
+  speech: 'speech',
+};
+
+export function toModelStatus(status: ModelStatus | null | undefined): AiModelStatus {
+  switch (status?.state) {
+    case 'READY':
+      return { state: 'ready' };
+    case 'MISSING':
+      return { state: 'missing' };
+    case 'ENDPOINT_DOWN':
+      return { state: 'endpoint-down' };
+    case 'PULLING':
+      return { state: 'pulling', progress: Math.max(0, Math.min(100, Math.round(status.progress ?? 0))) };
+    default:
+      return { state: 'unknown' };
+  }
+}
+
+function toHealth(health: EndpointHealth): AiEndpointHealth {
+  const state = health.state === 'UNKNOWN' ? 'unknown' : (health.state.toLowerCase() as AiEndpointHealth['state']);
+  return { state, detail: health.detail ?? '', models: health.servedModels ?? [] };
+}
+
+function toCapabilities(capabilities: Ad4mCapability[] | undefined): AiCapability[] {
+  return (capabilities ?? []).map((capability) => CAPABILITY_FROM_AD4M[capability]).filter(Boolean);
+}
+
+function toEndpoint(endpoint: Ad4mEndpoint): AiEndpoint {
+  return {
+    id: endpoint.id,
+    name: endpoint.name,
+    kind: ENDPOINT_KIND_FROM_AD4M[endpoint.kind] ?? 'openai-compatible',
+    baseUrl: endpoint.baseUrl,
+    hasApiKey: endpoint.hasApiKey,
+    capabilities: toCapabilities(endpoint.capabilities),
+    ...(endpoint.maxNumCtx ? { maxContext: endpoint.maxNumCtx } : {}),
+    ...(endpoint.requestTimeoutSecs ? { requestTimeoutSecs: endpoint.requestTimeoutSecs } : {}),
+    ...(endpoint.maxConcurrent ? { maxConcurrent: endpoint.maxConcurrent } : {}),
+    health: toHealth(endpoint.health),
+  };
 }
 
 /**
- * AD4M's model record, read as a source.
- *
- * The distinctions are implicit in the record: an `api` block means a remote endpoint, a `local`
- * block with a `huggingfaceRepo` means a repo to fetch, and a `local` block without one means
- * either a preset name or a path — which the executor itself tells apart the same way, by whether
- * the name matches a build it knows. Reading it once here is what lets the form ask a single
- * question instead of inferring the answer from which fields are populated.
+ * An update replaces the endpoint's settings, so everything the draft carries goes, and a setting
+ * left out is a setting removed — except the key, where absent keeps the stored one. Capabilities
+ * are never sent: left out, the executor probes them from what the server lists.
  */
-function toSource(model: AIModel): AiModelSource {
-  if (model.api) {
-    return {
-      kind: 'api',
-      protocol: toProtocol(model.api.apiType),
-      baseUrl: model.api.baseUrl,
-      hasApiKey: model.api.hasApiKey,
-      model: model.api.model,
-      ...(model.api.maxNumCtx ? { maxContext: model.api.maxNumCtx } : {}),
-    };
-  }
-  const local = model.local;
-  if (!local) return { kind: 'preset', name: '' };
-  const tokenizer = local.tokenizerSource
-    ? {
-        repo: local.tokenizerSource.repo,
-        revision: local.tokenizerSource.revision,
-        fileName: local.tokenizerSource.fileName,
-      }
-    : undefined;
-  if (local.huggingfaceRepo) {
-    return {
-      kind: 'huggingface',
-      repo: local.huggingfaceRepo,
-      revision: local.revision || 'main',
-      fileName: local.fileName,
-      tokenizer,
-    };
-  }
-  const isPreset = Object.values(PRESETS).some((names) => names.includes(local.fileName));
-  return isPreset ? { kind: 'preset', name: local.fileName } : { kind: 'file', fileName: local.fileName, tokenizer };
+function toEndpointInput(draft: AiEndpointDraft) {
+  return {
+    name: draft.name,
+    kind: ENDPOINT_KIND_TO_AD4M[draft.kind],
+    baseUrl: draft.baseUrl,
+    ...(draft.apiKey !== undefined ? { apiKey: draft.apiKey } : {}),
+    ...(draft.maxContext ? { maxNumCtx: draft.maxContext } : {}),
+    ...(draft.requestTimeoutSecs ? { requestTimeoutSecs: draft.requestTimeoutSecs } : {}),
+    ...(draft.maxConcurrent ? { maxConcurrent: draft.maxConcurrent } : {}),
+  };
 }
 
 function toModelInput(draft: AiModelDraft): ModelInput {
-  const input = { name: draft.name, modelType: KIND_TO_AD4M[draft.kind] } as ModelInput;
-  const source = draft.source;
-  if (source.kind === 'api') {
-    // The protocol used to be dropped on read and written back as OpenAI, so saving any edit to an
-    // Anthropic model silently turned it into an OpenAI one pointed at Anthropic's URL.
-    input.api = {
-      baseUrl: source.baseUrl,
-      // Left out, the executor keeps the key it holds; `''` removes it. It never sends one back, so
-      // there is nothing to echo here — an edit that does not touch the key must not send one.
-      ...(source.apiKey !== undefined ? { apiKey: source.apiKey } : {}),
-      model: source.model,
-      apiType: PROTOCOL_TO_AD4M[source.protocol],
-      // An update replaces the record, so a ceiling left out here is a ceiling removed.
-      ...(source.maxContext ? { maxNumCtx: source.maxContext } : {}),
-    };
-  } else if (source.kind === 'huggingface') {
-    input.local = {
-      fileName: source.fileName,
-      huggingfaceRepo: source.repo,
-      revision: source.revision || 'main',
-      tokenizerSource: source.tokenizer?.fileName ? source.tokenizer : undefined,
-    };
-  } else if (source.kind === 'file') {
-    input.local = {
-      fileName: source.fileName,
-      tokenizerSource: source.tokenizer?.fileName ? source.tokenizer : undefined,
-    };
-  } else {
-    input.local = { fileName: source.name };
-  }
-  return input;
+  return {
+    name: draft.name,
+    modelType: KIND_TO_AD4M[draft.kind],
+    endpointId: draft.endpointId,
+    remoteModel: draft.remoteModel,
+    // An update replaces the record, so a choice made elsewhere must be sent back to survive.
+    ...(draft.nativeTools !== undefined ? { nativeTools: draft.nativeTools } : {}),
+  };
+}
+
+function toModel(model: AIModel, defaultIds: Set<string>): AiModel {
+  return {
+    id: model.id,
+    name: model.name,
+    kind: KIND_FROM_AD4M[model.modelType] ?? 'llm',
+    endpointId: model.endpointId,
+    remoteModel: model.remoteModel,
+    ...(typeof model.nativeTools === 'boolean' ? { nativeTools: model.nativeTools } : {}),
+    status: toModelStatus(model.status),
+    isDefault: defaultIds.has(model.id),
+  };
+}
+
+/** The SDK's recommendations, in the port's words. Data, not a contract: a name AD4M changes simply follows. */
+function recommended(): ReturnType<NonNullable<ModelAdminPort['recommended']>> {
+  return {
+    models: AI_RECOMMENDED_MODELS.flatMap((model): AiRecommendedModel[] => {
+      const kind = KIND_FROM_AD4M[model.modelType];
+      const { description } = model;
+      if (model.ollama) return [{ kind, endpointKind: 'ollama', model: model.ollama, description }];
+      if (model.openAiAudio) return [{ kind, endpointKind: 'openai-audio', model: model.openAiAudio, description }];
+      return [];
+    }),
+    installLinks: [
+      { label: 'Ollama', url: AI_SERVER_INSTALL_LINKS.ollama },
+      { label: 'speaches', url: AI_SERVER_INSTALL_LINKS.speaches },
+    ],
+  };
 }
 
 export function createAd4mModelAdmin(backendClient: unknown, options: Ad4mRuntimeOptions = {}): ModelAdminPort {
@@ -209,39 +194,22 @@ export function createAd4mModelAdmin(backendClient: unknown, options: Ad4mRuntim
   const read: ModelAdminPort = {
     /**
      * Defaults are read per kind rather than carried on the record. AD4M keeps one default per
-     * model type and `getEntities` does not say which, so the launcher asked for the LLM default only
-     * and no other kind could ever show as default. Three calls answer it for all of them.
+     * model type and `ai.models` does not say which, so one call per kind answers it.
      */
     async list() {
       const models = await client.ai.getModels();
       const defaults = await Promise.all(
         (Object.values(KIND_TO_AD4M) as ModelType[]).map((type) =>
-          // A kind with no default set is not an error — it resolves to no id.
-          client.ai.getDefaultModel(type).catch(() => undefined),
+          // A kind with no default answers null, and an older refusal is no default either.
+          client.ai.getDefaultModel(type).catch(() => null),
         ),
       );
-      const defaultIds = new Set(defaults.filter(Boolean).map((model) => model!.id));
-      return models.map((model) => ({
-        id: model.id,
-        name: model.name,
-        kind: toKind(model.modelType),
-        source: toSource(model),
-        isDefault: defaultIds.has(model.id),
-      })) satisfies AiModel[];
-    },
-
-    async presets(kind) {
-      return PRESETS[kind] ?? [];
+      const defaultIds = new Set(defaults.flatMap((model) => (model ? [model.id] : [])));
+      return models.map((model) => toModel(model, defaultIds));
     },
 
     async status(id) {
-      const status = await client.ai.modelLoadingStatus(id);
-      return {
-        downloaded: status.downloaded,
-        loaded: status.loaded,
-        progress: status.progress ?? 0,
-        status: status.status ?? '',
-      };
+      return toModelStatus(await client.ai.modelStatus(id));
     },
 
     async tasks() {
@@ -253,10 +221,42 @@ export function createAd4mModelAdmin(backendClient: unknown, options: Ad4mRuntim
         systemPrompt: task.systemPrompt,
       }));
     },
+
+    onModelStatus(listener) {
+      return client.on('model-status', ({ endpointId, remoteModel, status }) =>
+        listener({ endpointId, remoteModel, status: toModelStatus(status) }),
+      );
+    },
+
+    recommended,
   };
 
   /**
-   * Changing which models the node runs — administration, and refused to a guest.
+   * The endpoints themselves, which the executor shows only to its operator: a managed user's
+   * session is refused `ai.endpoints`, and the health events go to the main agent alone. So they are
+   * the node's, like changing anything is.
+   */
+  const endpoints: ModelAdminPort = {
+    async endpoints() {
+      return (await client.ai.endpoints()).map(toEndpoint);
+    },
+
+    async detectEndpoints() {
+      return (await client.ai.detectEndpoints()).map((found) => ({
+        kind: ENDPOINT_KIND_FROM_AD4M[found.kind] ?? 'openai-compatible',
+        baseUrl: found.baseUrl,
+        capabilities: toCapabilities(found.capabilities),
+        models: found.servedModels,
+      }));
+    },
+
+    onEndpointHealth(listener) {
+      return client.on('ai-endpoint-status', ({ endpointId, health }) => listener(endpointId, toHealth(health)));
+    },
+  };
+
+  /**
+   * Changing which models the node uses — administration, and refused to a guest.
    *
    * AD4M is explicit about the boundary: `get_user_default_capabilities` grants a hosted user
    * `AI READ/CREATE/PROMPT/TRANSCRIBE` and pointedly excludes `UPDATE` and `DELETE` as "admin
@@ -266,13 +266,12 @@ export function createAd4mModelAdmin(backendClient: unknown, options: Ad4mRuntim
   const write: ModelAdminPort = {
     /**
      * A first model of its kind becomes that kind's default. Otherwise it is added and does
-     * nothing, which reads to the user as the button having failed — the launcher does the same for
-     * LLMs and leaves the other kinds unset.
+     * nothing, which reads to the user as the button having failed.
      */
     async add(draft) {
       const id = await client.ai.addModel(toModelInput(draft));
       const type = KIND_TO_AD4M[draft.kind];
-      const existing = await client.ai.getDefaultModel(type).catch(() => undefined);
+      const existing = await client.ai.getDefaultModel(type).catch(() => null);
       if (!existing) await client.ai.setDefaultModel(type, id);
     },
 
@@ -297,28 +296,46 @@ export function createAd4mModelAdmin(backendClient: unknown, options: Ad4mRuntim
     },
 
     // Discovery needs `AI CREATE` on the executor, the same grant as adding the model it is for.
-    ...discovery(client),
+    async discover(query) {
+      const params =
+        'endpointId' in query
+          ? { endpointId: query.endpointId }
+          : {
+              kind: ENDPOINT_KIND_TO_AD4M[query.kind],
+              baseUrl: query.baseUrl,
+              ...(query.apiKey ? { apiKey: query.apiKey } : {}),
+            };
+      return (await client.ai.discoverModels(params)).map((model) => ({
+        id: model.id,
+        capabilities: toCapabilities(model.capabilities),
+      }));
+    },
+
+    async addEndpoint(draft) {
+      return toEndpoint(await client.ai.addEndpoint(toEndpointInput(draft)));
+    },
+
+    async updateEndpoint(id, draft) {
+      return toEndpoint(await client.ai.updateEndpoint(id, toEndpointInput(draft)));
+    },
+
+    async removeEndpoint(id) {
+      await client.ai.removeEndpoint(id);
+    },
+
+    /**
+     * Resolves when the server has the whole model, which for gigabytes is minutes: the call is the
+     * executor's long kind, and progress arrives through `onModelStatus` meanwhile.
+     */
+    async pullModel(endpointId, remoteModel) {
+      await client.ai.pullModel(endpointId, remoteModel);
+    },
   };
 
+  const operates = administersNode && granted(CAP_DOMAIN.ai, CAP_VERB.read);
   return {
     ...(granted(CAP_DOMAIN.ai, CAP_VERB.read) ? read : {}),
+    ...(operates ? endpoints : {}),
     ...(administersNode && granted(CAP_DOMAIN.ai, CAP_VERB.create) ? write : {}),
-  };
-}
-
-/**
- * `discover`, where the client can ask for it.
- *
- * `AIClient.discoverModels` arrived with the executor's Anthropic provider, after the SDK this
- * package pins. Checked on the instance rather than assumed, so the settings page offers the model
- * list wherever it works and the typed field everywhere else, instead of a button that throws.
- */
-function discovery(client: Ad4mClient): Pick<ModelAdminPort, 'discover'> {
-  const ai = client.ai as unknown as
-    { discoverModels?: (baseUrl: string, apiKey?: string, apiType?: string) => Promise<string[]> } | undefined;
-  if (!ai || typeof ai.discoverModels !== 'function') return {};
-  return {
-    discover: ({ protocol, baseUrl, apiKey }) =>
-      ai.discoverModels!(baseUrl, apiKey || undefined, PROTOCOL_TO_AD4M[protocol]),
   };
 }

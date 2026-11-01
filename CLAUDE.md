@@ -3267,18 +3267,27 @@ RuntimeStore:
   - canConfigureAi: boolean — the models can be changed, not just listed. False for a guest on somebody else's node, which grants reading the models but refuses changing them. Gate add/edit/remove/set-default controls on this and the section itself on canManageAi
   - canConfigureExecutor: boolean — this host starts the backend, so how it starts it can be changed. False on web
   - unsupportedCapabilities: { name, firstSeen }[] — capabilities this backend was asked for and does not have, `name` being the backend's own word for each (its RPC method name), so it can be searched for in that backend's source. What a node running an older build looks like from inside the app: the adapter degrades rather than failing, so the symptom is a part of the app quietly doing less, and this is the only thing connecting that to the node. EMPTY MEANS NOTHING HAS BEEN REFUSED YET, not that the backend is current — nothing is recorded until something asks — so say as much rather than rendering silence as health
-  - aiModels: AiModelView[] — installed models, each carrying its display strings (kindLabel, sourceLabel, detail, statusText, ready) alongside id/name/kind/source/isDefault. Empty until loadAiModels() runs
+  - aiModels: AiModelView[] — the node's models, each a reference to a model a server (endpoint) serves: id, name, kind ('llm' | 'embedding' | 'transcription' | 'speech'), endpointId, remoteModel (the id the server knows it by), status ({ state: 'ready' | 'missing' | 'pulling' | 'endpoint-down' | 'unknown', progress }), isDefault, and its display strings kindLabel, endpointName, statusText, ready. Empty until loadAiModels() runs; statuses follow the backend's events while settings are open
   - aiTasks: AiTask[] — named prompts apps registered against a model (id, name, modelId, systemPrompt)
-  - aiForm: AiModelForm | null — the model form while it is open, null when closed. One flat field per input; read with runtimeStore.aiForm.<field>. The backend never returns a stored key: apiKey is only a key typed to send (empty keeps the stored one), apiKeyStored says one is held, and apiKeyRemoved set true removes it on save
-  - aiPresetOptions: { label, value }[] — model names the backend can fetch itself, for the open form kind
-  - aiFormComplete: boolean — the open form has every field its chosen source needs
-  - aiMaxContextError: string — why the open form's context limit (aiForm.apiMaxContext) cannot be saved, or empty. Bind it to that field's error: a limit that does not parse holds Save disabled, and nothing else says which field is doing it
-  - aiApiKeyError: string — why the open form's key holds Save, or empty: the base URL moved away from the address the stored key was set for and no new key was typed. Bind it to the key field's error
-  - aiDiscoverNeedsKey: boolean — the open form keeps a key the backend holds, so "List models" needs the key typed again: the backend never hands a stored key back. Disable that control on it and say why
-  - aiServiceOptions: { label, value }[] — the remote services a model can be reached through (Anthropic, OpenAI, OpenRouter…) plus 'Custom endpoint', for a we-select bound to aiForm.apiService. Pass the value to setAiService. Show the protocol and base URL fields only while aiForm.apiService == 'custom'
-  - canDiscoverAiModels: boolean — the backend can ask a remote endpoint which models it serves. Gate a "List models" control on it; where it is false, the model id is typed
-  - aiDiscoveredModelOptions: { label, value }[] — the models the open form's endpoint said it serves, for a we-select. Empty until discoverAiModels() answers, and empty again once the protocol, URL or key changes
-  - aiFormDirty: boolean — the open form has been edited since it opened. What a discard guard reads; compared against a snapshot taken on open, so looking at a model's settings and closing again asks nothing
+  - aiForm: AiModelForm | null — the model form while it is open, null when closed: { id, name, kind, endpointId, remoteModel }. Read with runtimeStore.aiForm.<field>, write with setAiFormField. An empty name saves as the model's id
+  - aiFormComplete: boolean — the open model form names a server and a model on it
+  - aiFormDirty: boolean — the open model form has been edited since it opened. What a discard guard reads; compared against a snapshot taken on open, so looking at a model's settings and closing again asks nothing
+  - aiEndpointOptions: { label, value }[] — the servers that can serve the open model form's kind, for a we-select bound to aiForm.endpointId. Empty means no added server can: say so, and point at adding one
+  - canDiscoverAiModels: boolean — the backend can ask a server which models it serves. Gate a refresh control on it; where it is false, the model id is typed
+  - aiDiscoveredModelOptions: { label, value }[] — the models the open form's server said it serves, of the form's kind where the server says, for a Combobox (a model the server does not have yet can still be typed). Asked when the form opens and whenever its server changes
+  - aiRecommendedModel: string — the model the backend recommends for the open form's kind on its server's kind (an Ollama, a speech server), or empty. Worth saying beside the model field
+  - aiCanPull: boolean — the open form's model can be downloaded onto its server: an Ollama that does not list it. Offer pullAiModel on it
+  - aiPullText: string — a download onto a server in progress, in words ("Downloading qwen3:8b — 45%"), or empty. Moves with the backend’s events
+  - canManageAiEndpoints: boolean — the backend shows its model servers to this connection: the operator only, since a server carries an address and health. Gate the servers section on it
+  - aiEndpoints: AiEndpointView[] — the model servers: id, name, kind, baseUrl, hasApiKey (never the key), capabilities, health ({ state, detail, models }), and the display strings kindLabel, healthText, healthy, modelCount. Loaded with loadAiModels()
+  - aiDetectedEndpoints: { kind, baseUrl, capabilities, models, label, detail }[] — model servers running on the node's machine that are not added yet, found when settings open or by detectAiEndpoints(). One press from use: addDetectedEndpoint(baseUrl)
+  - aiInstallLinks: { label, url }[] — where to get a model server (Ollama, a speech server), for when none runs on the node's machine
+  - aiEndpointForm: AiEndpointForm | null — the server form while it is open: { id, name, service, kind, baseUrl, apiKey, apiKeyStored, apiKeyBaseUrl, apiKeyRemoved, maxContext }. The backend never returns a stored key: apiKey is only a key typed to send (empty keeps the stored one), apiKeyStored says one is held, and apiKeyRemoved set true removes it on save. An empty name saves as the kind and port
+  - aiEndpointFormComplete: boolean — the open server form has an address and nothing holding its save
+  - aiEndpointFormDirty: boolean — the open server form has been edited since it opened, so a pasted key is not thrown away by a click on the backdrop. What a discard guard reads
+  - aiMaxContextError: string — why the open server form's context limit (aiEndpointForm.maxContext) cannot be saved, or empty. Bind it to that field's error: a limit that does not parse holds Save disabled, and nothing else says which field is doing it
+  - aiApiKeyError: string — why the open server form's key holds Save, or empty: the address moved away from the one the stored key was set for and no new key was typed. Bind it to the key field's error
+  - aiServiceOptions: { label, value }[] — the kinds of server an endpoint can be (Ollama, llama-server, vLLM, a speech server, Anthropic, OpenAI, OpenRouter…) plus 'custom', for a we-select bound to aiEndpointForm.service. Pass the value to setAiService, which sets the kind and a starting address
   - languages: InstalledLanguage[] — language plugins installed in this backend (address, name, system). Empty until loadLanguages() runs
   - trustedAgents: string[] — trusted peer ids. Empty until loadTrustedAgents() runs
   - authorizedApps: AuthorizedApp[] — external apps holding credentials (id, name, description, url, iconUrl, capabilities, revoked). Empty until loadAuthorizedApps() runs
@@ -3297,18 +3306,27 @@ RuntimeStore:
   - pendingConsent: ConsentRequest | null — a request awaiting the user's decision (kind: 'capability' | 'trust', title, message, app, peerId)
   - consentSecret: string — a code an approval returned, to be relayed to the asking app
 - Actions:
-  - loadAiModels(): fetches the installed AI models and their load status
+  - loadAiModels(): fetches the models and the servers they run on
   - loadAiTasks(): fetches the prompts apps registered against a model
-  - newAiModel(): opens the model form empty, for a new model
+  - newAiModel(): opens the model form empty, on the first server that can serve a language model
   - editAiModel(id: string): opens the model form on an existing model
-  - setAiFormField(field: string, value: string | boolean): sets one field of the open model form. Takes the field name so one action serves every input
-  - setAiService(id: string): chooses the open form's service. A named one sets the protocol and base URL; 'custom' keeps what the form holds for editing
-  - discoverAiModels(): asks the open form's endpoint which models it serves, through the node — also the check that the key works. A refusal lands in error; an empty model field takes the first model. Does nothing while aiDiscoverNeedsKey
+  - setAiFormField(field: string, value: string): sets one field of the open model form. Takes the field name so one action serves every input. Changing kind moves the form to a server that can serve it; changing endpointId asks that server what it has
+  - discoverAiModels(): asks the open form's server which models it serves. A refusal lands in error; an empty model field takes the recommended model, else the first that fits
+  - pullAiModel(): downloads the open form's model onto its Ollama. Resolves when the server has all of it; aiPullText says how far meanwhile
   - closeAiForm(): closes the model form, discarding it
-  - saveAiModel(): saves the open form — adds or updates depending on whether it has an id
-  - removeAiModel(id: string): deletes a model
+  - saveAiModel(): saves the open model form — adds or updates depending on whether it has an id
+  - removeAiModel(id: string): deletes a model. The model on its server is left alone
   - setDefaultAiModel(id: string): makes this the model apps get when they ask for its kind
   - removeAiTask(id: string): deletes a registered prompt
+  - detectAiEndpoints(): looks for model servers running on the node's machine. Saves nothing
+  - addDetectedEndpoint(baseUrl: string): adds a server detectAiEndpoints found, as it was found
+  - newAiEndpoint(): opens the server form empty, on Ollama at its default address
+  - editAiEndpoint(id: string): opens the server form on an existing server
+  - setAiEndpointField(field: string, value: string | boolean): sets one field of the open server form. Takes the field name so one action serves every input
+  - setAiService(id: string): chooses the open server form's service: sets its kind and a starting address, which stays editable. 'custom' is any other OpenAI-compatible server
+  - closeAiEndpointForm(): closes the server form, discarding it
+  - saveAiEndpoint(): saves the open server form — adds or updates. The backend checks the server once and saves it whatever it answers
+  - removeAiEndpoint(id: string): removes a server. Refused while models run on it
   - loadLanguages(): fetches the installed languages
   - installLanguage(address: string): installs a language by content address, then reloads the list
   - removeLanguage(address: string): removes an installed language. Refuses the backend own system languages
@@ -3898,10 +3916,13 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - callAgents — Everyone in this call, recording or not — the denominator of coverage; empty outside a call.
   - callId — The record extraction decisions for this call are written against — the call’s own record from its first second.
   - callOnScreenLive — Somebody is in the call the address names right now.
+  - canConnectServer — Whether a speech server was found on the node’s machine that this connection may connect in one step.
   - canEditProposals — Whether an edited suggestion can be written back on accept.
-  - canInstallModel — Whether this connection may install the model the backend offers.
   - changedIds — Agreed records carrying a suggested change, by id.
   - collectionId — The record this call’s transcript lives in, or null until something has been said.
+  - connectError — Why the last one-click setup failed; empty otherwise.
+  - connectingServer — A one-click setup is registering the speech server and its model.
+  - connectServerLabel — The connect button’s words, naming the server found — "Use the speech server at localhost:8000"; empty when none was found.
   - editingProposal — The suggestion open for editing, or empty when none is.
   - enabled — Whether this agent is recording their own microphone into the call.
   - error — Why the session stopped, when status is error; empty otherwise.
@@ -3916,18 +3937,15 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - extractTurns — How many transcript turns the last pass read.
   - heard — Something has been said that the record does not hold yet — buffered, being written or still with the model.
   - inCall — Whether this agent is in a call right now.
-  - installError — Why the last model install failed; empty otherwise.
-  - installingModel — A one-click model install is registering its model.
-  - installModelLabel — The install button’s words, naming the offered model and its size; empty when none is offered.
   - invited — Somebody else in this call is recording and this agent is not, having not opted out.
   - invitedBy — The agent id of the first peer recording this call, or empty when none is.
   - level — Microphone loudness as the voice detector measures it, 0–1.
   - levelPercent — The microphone level as a CSS width for a meter.
   - listening — True only while actually transcribing — what a record button highlights on.
   - liveCollectionId — The record the call this agent is in is writing into, or empty when there is none.
-  - modelDownloading — A transcription model is installed and its weights are still arriving.
-  - modelDownloadText — The download line, ready to show — "Downloading the speech model — 45%".
   - modelMissing — No transcription model is installed on this node, as last read.
+  - modelUnready — A transcription model is installed and cannot run yet — still downloading, or its server is not answering.
+  - modelUnreadyText — Why the model cannot run yet, ready to show — "Downloading the speech model — 45%", "The speech server is not answering".
   - open — Whether the transcript panel is open.
   - partialCoverage — Someone in this call is not being transcribed.
   - passRunning — Whether any extraction pass is running right now, this node’s or a peer’s.
@@ -3940,8 +3958,9 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - reconnecting — The link to the speech model dropped and is being re-established; what is said meanwhile is held.
   - recordingCall — This agent’s recording of the call it is in, wherever the call is — { enabled, listening, available }. For the call bar; the other members answer for the space on screen.
   - replyingTo — The line a reply is being written to — { id, text, author, surface } — or null. `surface` is always 'transcript'.
+  - serverInstallUrl — Where to get a speech server, for when none was found on the node’s machine; empty where this connection may not set one up.
   - speaking — Whether the microphone level currently counts as speech.
-  - status — What the session is doing — idle, no-backend, no-model, no-audio, downloading, starting, listening or error.
+  - status — What the session is doing — idle, no-backend, no-model, no-audio, model-unready, starting, listening or error.
   - thresholdPercent — The speech-onset threshold as a CSS width, to mark on the same meter.
   - tiedBusy — Whether a confirmed tied decision is still being written.
   - tiedDecision — A decision waiting on confirmation because it decides others too — { kind, title, body, detail, confirmLabel } — or null.
@@ -3962,13 +3981,13 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - closeExtractionPanel — Closes the extraction panel.
   - closePanel — Closes the transcript panel.
   - confirmTiedDecision — Carries out the decision waiting in tiedDecision, with everything tied to it.
+  - connectServer — Connects the speech server found on the node’s machine, makes its transcription model the default, and resumes recording that was waiting on one.
   - dismissChange — Dismisses one suggested change, leaving the record as it was.
   - editProposal — Opens one suggestion for editing, seeded with what the model proposed.
   - editUtterance — Corrects the words on a line of the transcript, marking a spoken line as corrected.
   - extract — Runs one extraction pass over the call this agent is transcribing.
   - extractCollection — Runs one extraction pass over any call’s record, by id.
   - flushNow — Writes what has been heard so far without waiting for the buffer to fill.
-  - installModel — Installs the model the backend offers and resumes recording that was waiting on one.
   - openExtractionPanel — Opens the extraction panel.
   - openPanel — Opens the transcript panel.
   - readTranscriptFromStart — Shows the beginning of the transcript, to be read forwards.

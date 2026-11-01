@@ -422,16 +422,16 @@ export function DatasetStoreProvider(props: ParentProps) {
       // this store is constructed, and a backend that cannot transcribe simply never sets it.
       transcription: {
         models: async () => (await session.backendPorts()?.transcription?.models()) ?? [],
-        open: async (modelId, onText, tuning) => {
+        open: async (modelId, onText) => {
           const port = session.backendPorts()?.transcription;
           if (!port) throw new Error('transcription: this backend cannot transcribe');
-          return port.open(modelId, onText, tuning);
+          return port.open(modelId, onText);
         },
-        offeredModel: () => session.backendPorts()?.transcription?.offeredModel?.() ?? null,
-        installOfferedModel: async () => {
-          const install = session.backendPorts()?.transcription?.installOfferedModel;
-          if (!install) throw new Error('transcription: this backend cannot install a model');
-          return install();
+        setup: async () => (await session.backendPorts()?.transcription?.setup?.()) ?? null,
+        connectFound: async () => {
+          const connect = session.backendPorts()?.transcription?.connectFound;
+          if (!connect) throw new Error('transcription: this backend cannot set transcription up');
+          return connect();
         },
       },
       // The node's own language model, for a module that summarises, translates or tags. The port

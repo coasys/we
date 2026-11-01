@@ -164,18 +164,22 @@ export type {
   UploadFile,
 } from './backendPorts';
 export type {
-  AiApiProtocol,
-  AiLocalModelSource,
+  AiCapability,
+  AiDetectedEndpoint,
+  AiDiscoveredModel,
+  AiEndpoint,
+  AiEndpointDraft,
+  AiEndpointHealth,
+  AiEndpointKind,
   AiModel,
-  AiModelDiscoveryQuery,
   AiModelDraft,
   AiModelKind,
-  AiModelSource,
-  AiModelSourceDraft,
   AiModelStatus,
+  AiModelStatusEvent,
+  AiRecommendedModel,
+  AiServerInstallLink,
   AiTask,
   ModelAdminPort,
-  TokenizerSource,
 } from './modelAdmin';
 export type {
   AuthorizedApp,
@@ -277,13 +281,7 @@ export type {
 export type { ShapeInput, ShapeStore, StoredShape } from './shapes';
 export type { PersonPort } from './persons';
 export type { IdentityCapabilities, IdentityPort } from './identity';
-export type {
-  TranscriptionModelOffer,
-  TranscriptionRecord,
-  TranscriptionPort,
-  TranscriptionStream,
-  TranscriptionTuning,
-} from './transcription';
+export type { TranscriptionRecord, TranscriptionPort, TranscriptionSetup, TranscriptionStream } from './transcription';
 export type {
   InterpretationPort,
   InterpretationProposal,
