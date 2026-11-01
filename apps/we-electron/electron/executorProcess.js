@@ -71,6 +71,24 @@ export function executorEnv(logLevels, env = process.env) {
   return { ...env, AD4M_EXIT_WITH_PARENT: 'true', ...rustLog };
 }
 
+/**
+ * Poll `probe` until it answers true: `'ready'`, or `'gone'` once `gone()` says the process being
+ * waited on has exited, or `'timeout'` after `attempts` tries `interval` ms apart.
+ *
+ * `gone` is what keeps a start that has already failed from waiting out the whole budget. An
+ * executor that dies while it starts leaves nothing listening, and without it the wait polled the
+ * dead port for a minute: on first launch that minute passed before the start reported its error,
+ * and during a crash restart the restart queued behind it waited too.
+ */
+export async function waitUntilReady(probe, { gone = () => false, attempts = 120, interval = 500, wait = sleep } = {}) {
+  for (let i = 0; i < attempts; i++) {
+    if (gone()) return 'gone';
+    if (await probe()) return 'ready';
+    await wait(interval);
+  }
+  return 'timeout';
+}
+
 const isAlive = (pid) => {
   try {
     process.kill(pid, 0);

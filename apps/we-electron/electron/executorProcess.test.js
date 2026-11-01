@@ -18,6 +18,7 @@ import {
   restartBudget,
   stopExecutorsFor,
   stopProcess,
+  waitUntilReady,
 } from './executorProcess.js';
 
 describe('restartBudget', () => {
@@ -105,6 +106,43 @@ describe('executorEnv', () => {
 
   it('leaves an inherited RUST_LOG alone', () => {
     expect(executorEnv({ rust_executor: 'debug' }, { RUST_LOG: 'trace' }).RUST_LOG).toBe('trace');
+  });
+});
+
+describe('waitUntilReady', () => {
+  /** A probe answering `answers` in turn, and a wait that takes no time. */
+  const setup = (answers) => {
+    let asked = 0;
+    const probe = async () => answers[asked++] ?? false;
+    return { probe, asked: () => asked, wait: async () => {} };
+  };
+
+  it('is ready once the probe answers', async () => {
+    const { probe, asked, wait } = setup([false, false, true]);
+    expect(await waitUntilReady(probe, { wait })).toBe('ready');
+    expect(asked()).toBe(3);
+  });
+
+  it('times out after its attempts', async () => {
+    const { probe, asked, wait } = setup([]);
+    expect(await waitUntilReady(probe, { attempts: 5, wait })).toBe('timeout');
+    expect(asked()).toBe(5);
+  });
+
+  // An executor that died while it started: on dev the wait polled its dead port for a minute.
+  it('stops as soon as the process it waits on is gone', async () => {
+    const { probe, asked, wait } = setup([]);
+    let exited = false;
+    const outcome = waitUntilReady(
+      async () => {
+        const answer = await probe();
+        if (asked() === 2) exited = true;
+        return answer;
+      },
+      { gone: () => exited, wait },
+    );
+    expect(await outcome).toBe('gone');
+    expect(asked()).toBe(2);
   });
 });
 
