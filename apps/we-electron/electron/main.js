@@ -12,7 +12,14 @@ import { v4 as uuidv4 } from 'uuid';
 
 import { createAccountRegistry, expandHome } from './accounts.js';
 import { openExecutorLog } from './executorLog.js';
-import { stopExecutorsFor, stopProcess } from './executorProcess.js';
+import {
+  afterExecutorExit,
+  executorEnv,
+  restartBudget,
+  stopExecutorsFor,
+  stopProcess,
+  waitUntilReady,
+} from './executorProcess.js';
 import {
   allowMediaPermission,
   isExternallyOpenable,
@@ -42,6 +49,8 @@ let ad4mToken = null;
 let executorProcess = null;
 /** Set while an account switch is tearing the executor down on purpose. */
 let switchingAccount = false;
+/** Whether an executor that exited on its own may be started again now. See `restartBudget`. */
+const mayRestartExecutor = restartBudget();
 /** The current run's log in the account's data directory (see `executorLog.js`), or null. */
 let executorLog = null;
 
@@ -117,6 +126,27 @@ const seedProductName = (() => {
 })();
 if (seedProductName && !app.isPackaged) app.setName(seedProductName);
 
+/*
+  One instance per app. A second launch would start its own executor on the same data path, which
+  stops the first one's (`stopExecutorsFor`) and deletes the locks under it; the first then starts
+  its executor again and stops the second's, and so on. The lock is per `userData` directory, and a
+  seed product runs under its own name (above) and so its own directory: different products still
+  run side by side. Taken before the registry and any executor work, and a refused launch exits at
+  once: `app.quit()` would let the rest of this module run, and the registry migrates account
+  directories when it is created.
+*/
+const singleInstance = app.requestSingleInstanceLock();
+if (!singleInstance) {
+  process.exit(0);
+} else {
+  app.on('second-instance', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  });
+}
+
 // The registry needs the app's config directory, which is available before `ready`.
 const accounts = createAccountRegistry({
   configDir: app.getPath('userData'),
@@ -181,24 +211,6 @@ function ensureDataPathInitialised(executorPath, dataPath, log) {
   console.log('[main] Executor init complete');
 }
 
-/**
- * The environment the executor is started with.
- *
- * Log levels reach it as `RUST_LOG`, which is the only lever there is: the executor's own logging
- * setup reads that variable and, finding it set, leaves it alone. Written as overrides — anything
- * not named keeps the executor's default, which is why this builds a string only from what the user
- * actually chose.
- *
- * An inherited `RUST_LOG` always wins. Someone who exported one before launching is debugging
- * something specific, and having a settings screen quietly override that would be the opposite of
- * helpful.
- */
-function executorEnv(logLevels) {
-  const overrides = Object.entries(logLevels ?? {});
-  if (!overrides.length || process.env.RUST_LOG) return process.env;
-  return { ...process.env, RUST_LOG: overrides.map(([crate, level]) => `${crate}=${level}`).join(',') };
-}
-
 // Find a free port in the given range
 function findFreePort(startPort, endPort) {
   return new Promise((resolve, reject) => {
@@ -229,9 +241,10 @@ function findFreePort(startPort, endPort) {
 
 // Wait for the GraphQL server to be fully ready (not just TCP port open).
 // Polls the /graphql HTTP endpoint — any HTTP response (even 400) means GraphQL is up.
-async function waitForGraphQL(port, maxAttempts = 120, interval = 500) {
-  for (let i = 0; i < maxAttempts; i++) {
-    const ready = await new Promise((resolve) => {
+// Gives up as soon as `proc`, the executor being waited on, has exited: see `waitUntilReady`.
+async function waitForGraphQL(port, proc) {
+  const answers = () =>
+    new Promise((resolve) => {
       const req = http.request(
         {
           method: 'POST',
@@ -250,13 +263,16 @@ async function waitForGraphQL(port, maxAttempts = 120, interval = 500) {
       req.end();
     });
 
-    if (ready) {
-      console.log(`GraphQL server on port ${port} is ready`);
-      return;
-    }
-    await new Promise((r) => setTimeout(r, interval));
+  const outcome = await waitUntilReady(answers, { gone: () => proc.exitCode !== null || proc.signalCode !== null });
+  if (outcome === 'ready') {
+    console.log(`GraphQL server on port ${port} is ready`);
+    return;
   }
-  throw new Error(`GraphQL server on port ${port} not ready after ${maxAttempts} attempts`);
+  throw new Error(
+    outcome === 'gone'
+      ? `The executor exited before its GraphQL server on port ${port} was ready`
+      : `GraphQL server on port ${port} not ready after 60 s`,
+  );
 }
 
 // Start the AD4M executor
@@ -365,6 +381,7 @@ async function startExecutor() {
     // Detach from the parent — lets Node.js exit without waiting for the child,
     // and is required for process.kill(-pid) group-kill to work.
     executorProcess.unref();
+    const startedAt = Date.now();
     // Also unref the stdio streams — without this, the piped stdout/stderr keep
     // Electron's event loop alive after the executor is killed, causing a second
     // Ctrl+C to be needed to return to the terminal prompt.
@@ -387,12 +404,31 @@ async function startExecutor() {
       console.error('Failed to start executor:', err);
     });
 
+    const proc = executorProcess;
     executorProcess.on('exit', (code, signal) => {
-      // Expected during an account switch — we killed it on purpose and are about to respawn.
-      if (switchingAccount) return;
+      // `stopExecutor` clears `executorProcess` before it signals, so an executor this app stopped
+      // (quit, account switch, settings) is no longer the current one. The current one exiting
+      // is a crash or an outside kill, also while a restart waits for it to start: start it again
+      // and reload, which hands the renderer the new port and credential and takes it through
+      // unlock, as an account switch does.
+      // Not before the window exists: the first start is still waiting on this executor and fails
+      // on its own, as it does on dev.
+      const outcome = afterExecutorExit(
+        { current: executorProcess === proc, quitting: executorStoppedForQuit, appUp: Boolean(mainWindow), startedAt },
+        mayRestartExecutor,
+      );
+      // Stopped on purpose for a restart or an account switch: expected, nothing to report.
+      if (outcome === 'stopped' && switchingAccount) return;
 
       const msg = `[main] Executor exited — code: ${code}, signal: ${signal}`;
       console.log(msg);
+      if (outcome !== 'stopped') executorProcess = null;
+      if (outcome === 'restart') {
+        console.log('[main] Starting the executor again');
+        void restartExecutorAndReload();
+        return;
+      }
+      if (outcome === 'give-up') console.error('[main] The executor keeps exiting; not starting it again');
       // Notify the renderer so it shows in DevTools even in packaged builds.
       //
       // `mainWindow?.` only guards against null, not against a *destroyed* window: on quit the
@@ -406,7 +442,7 @@ async function startExecutor() {
     console.log('AD4M executor process started, waiting for GraphQL server...');
 
     // Wait for the GraphQL server to be fully ready (not just TCP port open)
-    await waitForGraphQL(ad4mPort);
+    await waitForGraphQL(ad4mPort, proc);
 
     console.log('AD4M executor ready');
   } catch (error) {
@@ -845,13 +881,36 @@ ipcMain.handle('executor-choose-file', async (_event, { save, defaultName } = {}
   return save ? (result.filePath ?? null) : (result.filePaths[0] ?? null);
 });
 
-async function restartExecutorAndReload() {
+/*
+  Restarts run one after another. Two at once — a crash restart and a settings restart or an
+  account switch — would each stop and start the executor, and the one whose executor was replaced
+  waits out GraphQL on a dead port, then reloads the window a minute later and clears
+  `switchingAccount` under the other. Queued rather than joined, so a switch made during a restart
+  still gets its own: the executor reads the selected account when it starts.
+*/
+let restartChain = Promise.resolve();
+/** Restarts waiting in `restartChain` behind the one running. */
+let restartsQueued = 0;
+function restartExecutorAndReload() {
+  restartsQueued += 1;
+  restartChain = restartChain
+    .catch(() => {})
+    .then(() => {
+      restartsQueued -= 1;
+      return restartExecutorAndReloadOnce();
+    });
+  return restartChain;
+}
+
+async function restartExecutorAndReloadOnce() {
   switchingAccount = true;
+  let started = false;
   try {
     await stopExecutor();
     // startExecutor picks up the new path, waits for GraphQL, and refreshes port/token — which the
     // reloaded renderer asks for again over IPC, so it never sees the old credentials.
     await startExecutor();
+    started = true;
   } catch (err) {
     console.error('[main] Could not start the executor for the selected account:', err);
     // Fall through to the reload anyway: the renderer's boot will surface a connection failure,
@@ -859,6 +918,11 @@ async function restartExecutorAndReload() {
   } finally {
     switchingAccount = false;
   }
+
+  // A start that failed because its executor died is followed by the restart that death queued,
+  // which reloads in its turn: reloading here as well would show the connection failure for the
+  // moment between the two.
+  if (!started && restartsQueued > 0) return;
 
   if (!mainWindow || mainWindow.isDestroyed()) return;
 
@@ -978,7 +1042,19 @@ app.whenReady().then(async () => {
     ad4mToken = process.env.WE_EXTERNAL_AD4M_TOKEN;
     console.log('[main] External executor mode — port:', ad4mPort);
   } else {
-    await startExecutor();
+    try {
+      await startExecutor();
+    } catch (err) {
+      // No window exists yet, so this box is the only way to say the app failed. Before it, the
+      // rejection went unhandled and the app ran on with no window until it was killed.
+      const logLine = executorLog ? `\n\nThe executor's log: ${executorLog.path}` : '';
+      dialog.showErrorBox(
+        'The app could not start',
+        `The AD4M executor it runs on did not start.\n\n${err.message}${logLine}`,
+      );
+      app.quit();
+      return;
+    }
   }
 
   // Then create the window

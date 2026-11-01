@@ -11,10 +11,145 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { describe, expect, it } from 'vitest';
 
-import { executorPidsFor, stopExecutorsFor, stopProcess } from './executorProcess.js';
+import {
+  afterExecutorExit,
+  executorEnv,
+  executorPidsFor,
+  restartBudget,
+  stopExecutorsFor,
+  stopProcess,
+  waitUntilReady,
+} from './executorProcess.js';
+
+describe('restartBudget', () => {
+  const MIN = 60_000;
+  /** A budget on a clock the test moves, and `crash(upFor)`: an executor that ran `upFor` exits now. */
+  const setup = () => {
+    let t = 0;
+    const mayRestart = restartBudget({ limit: 3, healthyMs: 5 * MIN, now: () => t });
+    return (upFor) => {
+      const startedAt = t;
+      t += upFor;
+      return mayRestart(startedAt);
+    };
+  };
+
+  it('allows three quick restarts in a row, then refuses', () => {
+    const crash = setup();
+    expect([crash(1_000), crash(1_000), crash(1_000), crash(1_000)]).toEqual([true, true, true, false]);
+  });
+
+  it('allows a restart again once an executor has run healthily', () => {
+    const crash = setup();
+    expect([crash(1_000), crash(1_000), crash(1_000)]).toEqual([true, true, true]);
+    // Started by hand after the budget ran out, say, and stayed up.
+    expect(crash(5 * MIN)).toBe(true);
+    expect([crash(1_000), crash(1_000)]).toEqual([true, true]);
+    expect(crash(1_000)).toBe(false);
+  });
+
+  it('allows an executor that crashes now and then, 30 min apart, to be restarted every time', () => {
+    const crash = setup();
+    for (let i = 0; i < 10; i++) expect(crash(30 * MIN)).toBe(true);
+  });
+
+  // A sliding 3-per-minute window never filled for this one, so it was restarted forever.
+  it('refuses an executor that crashes 30 s after every start, after three restarts', () => {
+    const crash = setup();
+    const allowed = Array.from({ length: 10 }, () => crash(30_000));
+    expect(allowed).toEqual([true, true, true, false, false, false, false, false, false, false]);
+  });
+});
+
+describe('afterExecutorExit', () => {
+  const exit = (state) => {
+    let asked = 0;
+    const outcome = afterExecutorExit({ current: true, quitting: false, appUp: true, startedAt: 0, ...state }, () => {
+      asked += 1;
+      return state.budgetLeft ?? true;
+    });
+    return { outcome, asked };
+  };
+
+  it('restarts the current executor once the app is up, spending the budget', () => {
+    expect(exit({})).toEqual({ outcome: 'restart', asked: 1 });
+  });
+
+  it('gives up when the budget is spent', () => {
+    expect(exit({ budgetLeft: false })).toEqual({ outcome: 'give-up', asked: 1 });
+  });
+
+  it('leaves an executor that this app stopped alone, without spending the budget', () => {
+    expect(exit({ current: false })).toEqual({ outcome: 'stopped', asked: 0 });
+    expect(exit({ quitting: true })).toEqual({ outcome: 'stopped', asked: 0 });
+  });
+
+  // The first start is still waiting on it; a restart would start a second executor behind its back.
+  it('does not restart before the window exists', () => {
+    expect(exit({ appUp: false })).toEqual({ outcome: 'leave', asked: 0 });
+  });
+});
 
 const ps = (...lines) => lines.join('\n');
 const exe = '/Applications/WE.app/Contents/Resources/ad4m-executor';
+
+describe('executorEnv', () => {
+  it('tells the executor to end with this app, however the app ends', () => {
+    expect(executorEnv(undefined, { PATH: '/bin' })).toEqual({ PATH: '/bin', AD4M_EXIT_WITH_PARENT: 'true' });
+  });
+
+  it('turns chosen log levels into RUST_LOG', () => {
+    const env = executorEnv({ rust_executor: 'debug', holochain: 'warn' }, {});
+    expect(env.RUST_LOG).toBe('rust_executor=debug,holochain=warn');
+    expect(env.AD4M_EXIT_WITH_PARENT).toBe('true');
+  });
+
+  it('leaves an inherited RUST_LOG alone', () => {
+    expect(executorEnv({ rust_executor: 'debug' }, { RUST_LOG: 'trace' }).RUST_LOG).toBe('trace');
+  });
+
+  // To attach a debugger to the executor, or read its state after the app crashed.
+  it('leaves an inherited AD4M_EXIT_WITH_PARENT alone', () => {
+    expect(executorEnv(undefined, { AD4M_EXIT_WITH_PARENT: 'false' }).AD4M_EXIT_WITH_PARENT).toBe('false');
+  });
+});
+
+describe('waitUntilReady', () => {
+  /** A probe answering `answers` in turn, and a wait that takes no time. */
+  const setup = (answers) => {
+    let asked = 0;
+    const probe = async () => answers[asked++] ?? false;
+    return { probe, asked: () => asked, wait: async () => {} };
+  };
+
+  it('is ready once the probe answers', async () => {
+    const { probe, asked, wait } = setup([false, false, true]);
+    expect(await waitUntilReady(probe, { wait })).toBe('ready');
+    expect(asked()).toBe(3);
+  });
+
+  it('times out after its attempts', async () => {
+    const { probe, asked, wait } = setup([]);
+    expect(await waitUntilReady(probe, { attempts: 5, wait })).toBe('timeout');
+    expect(asked()).toBe(5);
+  });
+
+  // An executor that died while it started: on dev the wait polled its dead port for a minute.
+  it('stops as soon as the process it waits on is gone', async () => {
+    const { probe, asked, wait } = setup([]);
+    let exited = false;
+    const outcome = waitUntilReady(
+      async () => {
+        const answer = await probe();
+        if (asked() === 2) exited = true;
+        return answer;
+      },
+      { gone: () => exited, wait },
+    );
+    expect(await outcome).toBe('gone');
+    expect(asked()).toBe(2);
+  });
+});
 
 describe('executorPidsFor', () => {
   it('finds the executor running on this data path', () => {

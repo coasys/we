@@ -44,6 +44,54 @@ export function executorPidsFor(psOutput, dataPath) {
   return pids;
 }
 
+/**
+ * The environment the executor is started with.
+ *
+ * `AD4M_EXIT_WITH_PARENT`: the executor shuts down once this app's process is gone, however it
+ * ended. It runs detached, in its own session, so a terminal's Ctrl+C or hangup never reaches it,
+ * and an app that crashes, is killed, or dies of a second signal while `before-quit` still waits on
+ * `stopExecutor` sends it nothing: it used to run on, holding the data path's locks, until the next
+ * launch stopped it. An executor too old to know the variable ignores it, and so does one on
+ * Windows: the executor only watches its parent on macOS and Linux. An inherited value wins, so
+ * `AD4M_EXIT_WITH_PARENT=false` keeps the executor running past the app, to attach a debugger to it
+ * or read its state after a crash.
+ *
+ * Log levels reach it as `RUST_LOG`, which is the only lever there is: the executor's own logging
+ * setup reads that variable and, finding it set, leaves it alone. Written as overrides — anything
+ * not named keeps the executor's default, which is why this builds a string only from what the user
+ * actually chose.
+ *
+ * An inherited `RUST_LOG` always wins. Someone who exported one before launching is debugging
+ * something specific, and having a settings screen quietly override that would be the opposite of
+ * helpful.
+ */
+export function executorEnv(logLevels, env = process.env) {
+  const overrides = Object.entries(logLevels ?? {});
+  const rustLog =
+    overrides.length && !env.RUST_LOG
+      ? { RUST_LOG: overrides.map(([crate, level]) => `${crate}=${level}`).join(',') }
+      : {};
+  return { AD4M_EXIT_WITH_PARENT: 'true', ...env, ...rustLog };
+}
+
+/**
+ * Poll `probe` until it answers true: `'ready'`, or `'gone'` once `gone()` says the process being
+ * waited on has exited, or `'timeout'` after `attempts` tries `interval` ms apart.
+ *
+ * `gone` is what keeps a start that has already failed from waiting out the whole budget. An
+ * executor that dies while it starts leaves nothing listening, and without it the wait polled the
+ * dead port for a minute: on first launch that minute passed before the start reported its error,
+ * and during a crash restart the restart queued behind it waited too.
+ */
+export async function waitUntilReady(probe, { gone = () => false, attempts = 120, interval = 500, wait = sleep } = {}) {
+  for (let i = 0; i < attempts; i++) {
+    if (gone()) return 'gone';
+    if (await probe()) return 'ready';
+    await wait(interval);
+  }
+  return 'timeout';
+}
+
 const isAlive = (pid) => {
   try {
     process.kill(pid, 0);
@@ -107,4 +155,49 @@ export async function stopExecutorsFor(dataPath, log = console.log) {
     const how = await stopProcess(pid);
     log(`[main] Previous executor stopped (${how})`);
   }
+}
+
+/**
+ * Whether an executor that exited on its own may be started again: up to `limit` restarts in a row,
+ * the count ending only when an executor has stayed up for `healthyMs`.
+ *
+ * The executor is the app's whole backend: when it dies on its own the window stays up, every
+ * call fails, and the client redials a port nothing listens on, every 30 s, until the user quits.
+ * Starting it again ends that. The limit stops an executor that keeps failing (a corrupt store, a
+ * port it cannot bind) from being restarted in a loop; past it, the exit is left to the user. A
+ * restart the user starts from settings does not reset the count: only a healthy run does, so an
+ * executor that still crashes within `healthyMs` of it is not restarted again on its own.
+ *
+ * Counted in a row rather than per time window: a window only catches failures faster than itself,
+ * so an executor dying 30 s after each start never filled a 3-per-minute window and was restarted
+ * forever. A run that lasted `healthyMs` shows the restart worked, so the next crash starts afresh.
+ *
+ * Returns a function taking when the exited executor started; it answers for this exit and counts
+ * the restart when it allows one.
+ */
+export function restartBudget({ limit = 3, healthyMs = 5 * 60_000, now = Date.now } = {}) {
+  let restarts = 0;
+  return (startedAt) => {
+    if (now() - startedAt >= healthyMs) restarts = 0;
+    if (restarts >= limit) return false;
+    restarts += 1;
+    return true;
+  };
+}
+
+/**
+ * What to do about an executor that exited:
+ *
+ * - 'stopped' — it was not the current executor, or the app is quitting: this app stopped it.
+ * - 'leave' — the current one, before the window exists. The first start is still waiting on it
+ *   and fails on its own; a restart now would start a second executor that wait knows nothing of.
+ * - 'restart' — the current one crashed or was killed from outside, and `mayRestart` allows it.
+ * - 'give-up' — the same, past the budget.
+ *
+ * `mayRestart` is a `restartBudget` and is only consulted, and so only spent, for a restart.
+ */
+export function afterExecutorExit({ current, quitting, appUp, startedAt }, mayRestart) {
+  if (!current || quitting) return 'stopped';
+  if (!appUp) return 'leave';
+  return mayRestart(startedAt) ? 'restart' : 'give-up';
 }
