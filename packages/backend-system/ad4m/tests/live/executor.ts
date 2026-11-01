@@ -29,6 +29,17 @@ import type { TestProject } from 'vitest/node';
 export interface LiveExecutor {
   url: string;
   token: string;
+  /**
+   * The executor's MCP endpoint (`http://…/mcp`), which is how a bot reaches the tools a waker is
+   * configured from (`get_mention_waker_config`). Absent for an executor already running
+   * (`AD4M_LIVE_URL`) unless `AD4M_LIVE_MCP_URL` names it.
+   */
+  mcpUrl?: string;
+  /**
+   * True when this run started the executor and made its agent, so tests may write to the agent
+   * itself (its profile). An executor already running is somebody's agent: never write to it.
+   */
+  disposable?: boolean;
 }
 
 declare module 'vitest' {
@@ -109,13 +120,18 @@ export default async function setup(project: TestProject): Promise<() => Promise
     const client = new Ad4mClient(presetUrl, token);
     await ensureUnlockedAgent(client);
     client.close();
-    project.provide('ad4mExecutor', { url: presetUrl, token });
+    project.provide('ad4mExecutor', { url: presetUrl, token, mcpUrl: process.env.AD4M_LIVE_MCP_URL });
     return async () => {};
   }
 
   const binary = executorBinary();
   const dataPath = mkdtempSync(join(tmpdir(), 'we-ad4m-live-'));
-  const [port, hcAdminPort, hcAppPort] = [await freePort(), await freePort(), await freePort()];
+  const [port, hcAdminPort, hcAppPort, mcpPort] = [
+    await freePort(),
+    await freePort(),
+    await freePort(),
+    await freePort(),
+  ];
   const token = randomUUID();
   const output: string[] = [];
 
@@ -146,6 +162,10 @@ export default async function setup(project: TestProject): Promise<() => Promise
       'false',
       '--run-dapp-server',
       'false',
+      '--enable-mcp',
+      'true',
+      '--mcp-port',
+      String(mcpPort),
     ],
     { stdio: ['ignore', 'pipe', 'pipe'] },
   );
@@ -190,6 +210,6 @@ export default async function setup(project: TestProject): Promise<() => Promise
     throw new Error(`${(error as Error).message}\n--- executor output ---\n${output.join('').slice(-8_000)}`);
   }
 
-  project.provide('ad4mExecutor', { url, token });
+  project.provide('ad4mExecutor', { url, token, mcpUrl: `http://127.0.0.1:${mcpPort}/mcp`, disposable: true });
   return stop;
 }
