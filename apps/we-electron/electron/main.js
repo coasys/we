@@ -1042,7 +1042,19 @@ app.whenReady().then(async () => {
     ad4mToken = process.env.WE_EXTERNAL_AD4M_TOKEN;
     console.log('[main] External executor mode — port:', ad4mPort);
   } else {
-    await startExecutor();
+    try {
+      await startExecutor();
+    } catch (err) {
+      // No window exists yet, so this box is the only way to say the app failed. Before it, the
+      // rejection went unhandled and the app ran on with no window until it was killed.
+      const logLine = executorLog ? `\n\nThe executor's log: ${executorLog.path}` : '';
+      dialog.showErrorBox(
+        'The app could not start',
+        `The AD4M executor it runs on did not start.\n\n${err.message}${logLine}`,
+      );
+      app.quit();
+      return;
+    }
   }
 
   // Then create the window
