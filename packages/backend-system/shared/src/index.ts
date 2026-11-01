@@ -246,7 +246,7 @@ export type {
   Proposal,
 } from './workflows';
 export type { CallPort, CallSessionOptions } from './call';
-export { NO_IDENTITY_CAPABILITIES } from './identity';
+export { NO_IDENTITY_CAPABILITIES, readKeyLogEvent } from './identity';
 export { SELF_PERSONS } from './persons';
 export {
   actionOf,
@@ -276,7 +276,17 @@ export type {
 } from './policy';
 export type { ShapeInput, ShapeStore, StoredShape } from './shapes';
 export type { PersonPort } from './persons';
-export type { IdentityCapabilities, IdentityPort } from './identity';
+export type {
+  DeviceKeyView,
+  IdentityCapabilities,
+  IdentityPort,
+  IdentityStatusView,
+  KeyLogDevice,
+  KeyLogEvent,
+  KeyLogFork,
+  KeyLogHead,
+  KeyLogView,
+} from './identity';
 export type {
   TranscriptionModelOffer,
   TranscriptionRecord,

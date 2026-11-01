@@ -229,6 +229,46 @@ export interface PlatformAdapter {
    * that needs it is the one the OS did not take.
    */
   screenSources?: ScreenSourceHost;
+
+  /**
+   * The person's master key, kept by the host's custody service behind its own window.
+   *
+   * Present only on the desktop shell that has one (Tauri). The app never receives a word, a
+   * passphrase or a key through it: it asks the host to open a step, the host's identity window
+   * runs it, and the app learns the outcome and reads public state again. Absent everywhere else,
+   * where Settings shows the key log and the devices but offers no change to them.
+   */
+  identity?: IdentityHost;
+}
+
+/** A change to the identity the host's identity window can run. */
+export type IdentityStep = { kind: 'create' } | { kind: 'add-device' } | { kind: 'revoke'; keyId: string };
+
+/** How a step ended. */
+export type IdentityStepOutcome = 'done' | 'cancelled' | 'failed';
+
+/** What the custody service may tell the main window: public facts, never a secret. */
+export interface CustodyPublic {
+  /** The identity this computer's custody holds a master key for, or `null`. */
+  did: string | null;
+  /** The index of the master key held here, if one is. */
+  holdsMaster: { index: number } | null;
+  /** How the custody is unlocked on this computer: the OS prompt, or a passphrase it asks for. */
+  unlock: 'touch-id-or-password' | 'passphrase' | null;
+  /**
+   * Why no identity step can run on this computer, in words a person reads — a build with no
+   * identity store key, whose executor would refuse everything it publishes. Absent or null when
+   * steps can run.
+   */
+  blocked?: string | null;
+}
+
+export interface IdentityHost {
+  /** Opens the identity window on `step`; resolves when the step ends there. */
+  open(step: IdentityStep): Promise<IdentityStepOutcome>;
+  publicState(): Promise<CustodyPublic>;
+  /** Called when the custody's public state changes. Returns the unsubscribe. */
+  onCustodyChanged?(listener: (state: CustodyPublic) => void): () => void;
 }
 
 /** One thing that could be shared, as the host describes it. */
