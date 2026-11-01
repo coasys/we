@@ -11,7 +11,14 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { describe, expect, it } from 'vitest';
 
-import { afterExecutorExit, executorPidsFor, restartBudget, stopExecutorsFor, stopProcess } from './executorProcess.js';
+import {
+  afterExecutorExit,
+  executorEnv,
+  executorPidsFor,
+  restartBudget,
+  stopExecutorsFor,
+  stopProcess,
+} from './executorProcess.js';
 
 describe('restartBudget', () => {
   const MIN = 60_000;
@@ -84,6 +91,22 @@ describe('afterExecutorExit', () => {
 
 const ps = (...lines) => lines.join('\n');
 const exe = '/Applications/WE.app/Contents/Resources/ad4m-executor';
+
+describe('executorEnv', () => {
+  it('tells the executor to end with this app, however the app ends', () => {
+    expect(executorEnv(undefined, { PATH: '/bin' })).toEqual({ PATH: '/bin', AD4M_EXIT_WITH_PARENT: 'true' });
+  });
+
+  it('turns chosen log levels into RUST_LOG', () => {
+    const env = executorEnv({ rust_executor: 'debug', holochain: 'warn' }, {});
+    expect(env.RUST_LOG).toBe('rust_executor=debug,holochain=warn');
+    expect(env.AD4M_EXIT_WITH_PARENT).toBe('true');
+  });
+
+  it('leaves an inherited RUST_LOG alone', () => {
+    expect(executorEnv({ rust_executor: 'debug' }, { RUST_LOG: 'trace' }).RUST_LOG).toBe('trace');
+  });
+});
 
 describe('executorPidsFor', () => {
   it('finds the executor running on this data path', () => {
