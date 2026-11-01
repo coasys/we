@@ -1,6 +1,9 @@
 # The desktop custody service: the person's master key, kept by the shell's main
 # process behind the OS unlock, and the identity flows that use it.
 #
+# The Tauri app links it as a library. The Electron app runs it as the `we-custody` binary
+# (`src/bin/we-custody.rs`, the protocol in `src/sidecar.rs`) beside the executor.
+#
 # Its own crate, and on purpose not a module of the `we` app: the app links `ad4m-executor` into its
 # process, and this crate must not (the master key never rests where language code
 # runs). It reaches the executor only over its RPC, with the admin credential. `tests/boundary.rs`
@@ -23,11 +26,12 @@ cheap-kdf = []
 # From the ad4m commit WE pins (`node scripts/ad4m-pin.mjs --commit`): `tests/boundary.rs` checks
 # the two agree. For a local ad4m checkout, override with
 #   cargo test --config 'patch."https://github.com/coasys/ad4m".ad4m-identity-client.path="<ad4m>/ad4m-identity-client"' …
-# (and the same for ad4m-identity-core and ad4m-client), as `apps/we-tauri/DEVELOPMENT.md` says.
+# (and the same for ad4m-identity-core and ad4m-client), as `crates/custody/README.md` says.
 ad4m-identity-client = { git = "https://github.com/coasys/ad4m", rev = "e980cf7638fd21f8d018af470803daae2e6bb327", features = ["ws"] }
 ad4m-identity-core = { git = "https://github.com/coasys/ad4m", rev = "e980cf7638fd21f8d018af470803daae2e6bb327", features = ["build", "words"] }
 ad4m-client = { git = "https://github.com/coasys/ad4m", rev = "e980cf7638fd21f8d018af470803daae2e6bb327" }
-tokio = { version = "1", features = ["rt", "sync", "macros", "time"] }
+# `io-std` and `io-util`: the sidecar's lines on stdin and stdout.
+tokio = { version = "1", features = ["rt", "sync", "macros", "time", "io-std", "io-util"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
@@ -38,6 +42,8 @@ rand_core = { version = "0.6", features = ["getrandom"] }
 unicode-normalization = "0.1"
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 log = "0.4"
+# Where the custody folder is (`host::custody_dir`), the same in every desktop app.
+dirs = "5"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # Pure Rust over zbus, so no libdbus or libsecret is needed to build.

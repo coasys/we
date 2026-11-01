@@ -4,11 +4,12 @@
  */
 import { describe, expect, it } from 'vitest';
 
-// The policy as `vite.identity.config.ts` writes it into the built page.
-import policy from './csp.txt?raw';
-import mainSource from './main.ts?raw';
+// The policy as `vite.js` writes it into the built page.
+import policy from '../csp.txt?raw';
+import indexSource from './index.ts?raw';
 import { heading, isLast, remaining, wordNumber } from './screens';
 import screensSource from './screens.ts?raw';
+import windowSource from './window.ts?raw';
 
 const IDENTITY_CSP = policy.trim();
 
@@ -68,9 +69,9 @@ describe('the identity window', () => {
   });
 
   it('imports nothing of WE: no template, store or module code reaches the window', () => {
-    for (const source of [mainSource, screensSource]) {
-      const imports = [...source.matchAll(/from '([^']+)'/g)].map((m) => m[1]);
-      for (const name of imports) expect(name === '@tauri-apps/api/core' || name.startsWith('./')).toBe(true);
+    for (const source of [indexSource, windowSource, screensSource]) {
+      const imports = [...source.matchAll(/(?:from|import) '([^']+)'/g)].map((m) => m[1]);
+      for (const name of imports) expect(name.startsWith('./')).toBe(true);
       expect(source).not.toMatch(/\.(innerHTML|outerHTML|insertAdjacentHTML)\b|document\.write\(/);
     }
   });

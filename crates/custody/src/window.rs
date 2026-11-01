@@ -138,8 +138,10 @@ mod tests {
 
     #[test]
     fn the_dev_host_is_the_one_tauri_dev_serves_from() {
-        let conf: serde_json::Value =
-            serde_json::from_str(include_str!("../../tauri.conf.json")).unwrap();
+        let conf: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../apps/we-tauri/src-tauri/tauri.conf.json"
+        ))
+        .unwrap();
         assert_eq!(conf["build"]["devUrl"], format!("http://{DEV_HOST}"));
     }
 }
