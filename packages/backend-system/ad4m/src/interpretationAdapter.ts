@@ -720,6 +720,27 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
   >();
 
   /**
+   * The last registration step queued for each perspective and watch id.
+   *
+   * A watch is read, compared and rewritten as one sequence against shared links, so two sequences
+   * for one key must not interleave: each would remove the links the other is removing. A call
+   * queues behind the one before it rather than joining it, because it may ask for something
+   * different — and once the first has landed, the second finds it already registered and writes
+   * nothing. Dropped when the queue drains, so the map holds only what is in flight.
+   */
+  const registrations = new Map<string, Promise<void>>();
+  function oneAtATime(perspective: PerspectiveProxy, watchId: string, run: () => Promise<void>): Promise<void> {
+    const key = `${perspective.uuid}\n${watchId}`;
+    const next = (registrations.get(key) ?? Promise.resolve()).then(run, run);
+    const settled = next.catch(() => {});
+    registrations.set(key, settled);
+    void settled.then(() => {
+      if (registrations.get(key) === settled) registrations.delete(key);
+    });
+    return next;
+  }
+
+  /**
    * The collection a *one-shot* pass is reading, while it reads it.
    *
    * `watchParents` answers the same question for a standing watch and cannot answer it here: a
@@ -1325,34 +1346,17 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
         Best-effort: a read that fails leaves `existing` empty and falls through to a plain
         registration, which is the pre-existing behaviour rather than a new failure mode.
       */
-      let existing: string[] = [];
-      try {
-        existing = await readProcessorClasses(perspective, request.watchId);
-      } catch (error) {
-        trace('interpretation', 'watch:classes-unreadable', { error: String(error) });
-      }
-      const desired = [...interpretationClasses].sort();
-      if (existing.length && existing.join(',') !== desired.join(',')) {
-        trace('interpretation', 'watch:classes-changed', {
-          watchId: request.watchId,
-          from: existing,
-          to: desired,
-        });
-        await deleteProcessorConfig(perspective, request.watchId);
-      }
-
-      try {
-        await perspective.addAutoProcessor({
-          processorId: request.watchId,
-          sourceScopeQuery,
-          basePrefix: prefixFor(conversationOf(request)!),
-          interpretationClasses,
-          debounceMs: request.debounceMs ?? WATCH_DEFAULTS.debounceMs,
-          batchMin: request.batchMin ?? WATCH_DEFAULTS.batchMin,
-          batchMax: request.batchMax ?? WATCH_DEFAULTS.batchMax,
-          maxWaitMs: WATCH_DEFAULTS.maxWaitMs,
-          claimTtlMs: WATCH_DEFAULTS.claimTtlMs,
-          /*
+      const config = {
+        processorId: request.watchId,
+        sourceScopeQuery,
+        basePrefix: prefixFor(conversationOf(request)!),
+        interpretationClasses,
+        debounceMs: request.debounceMs ?? WATCH_DEFAULTS.debounceMs,
+        batchMin: request.batchMin ?? WATCH_DEFAULTS.batchMin,
+        batchMax: request.batchMax ?? WATCH_DEFAULTS.batchMax,
+        maxWaitMs: WATCH_DEFAULTS.maxWaitMs,
+        claimTtlMs: WATCH_DEFAULTS.claimTtlMs,
+        /*
           Emit the LLM exchange, never persist it — and the two are one decision only because #903
           split them.
 
@@ -1366,18 +1370,57 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
           `InterpretationRun` in the shared graph, where it syncs to every peer and stays there —
           tens of KB per pass, permanently, for something worth reading for five minutes.
         */
-          emitDebugEvents: true,
-          persistDebug: false,
-        } as Parameters<PerspectiveProxy['addAutoProcessor']>[0]);
-      } catch (error) {
-        // Same backstop as the one-shot path, and it matters more here: a watch failure is caught
-        // by the caller and, before this, disappeared into a console line — which is why a node
-        // that could not auto-extract looked for three days like one that simply had nothing to
-        // extract.
-        if (!recordMissingMethod(error)) throw error;
-        executorSupports = false;
-        throw new Error(UNSUPPORTED_WATCH);
-      }
+        emitDebugEvents: true,
+        persistDebug: false,
+      };
+      const desired = [...new Set(interpretationClasses)].sort();
+
+      /*
+        One read-compare-write at a time per watch.
+
+        Two calls for one id used to run the sequence side by side: both read the old config, both
+        removed its links (the second failing "Link not found" on every one), both registered. The
+        second now waits for the first, then reads a config that already says what it wants, and
+        stops there.
+      */
+      await oneAtATime(perspective, request.watchId, async () => {
+        let existing: RegisteredProcessor = { classes: [], scalars: new Map() };
+        try {
+          existing = await readProcessorConfig(perspective, request.watchId);
+        } catch (error) {
+          trace('interpretation', 'watch:classes-unreadable', { error: String(error) });
+        }
+        if (existing.classes.length) {
+          // Already registered as asked — by this client or any member. Nothing to write, which is
+          // what keeps a watch called on every reactive re-run from churning the shared graph.
+          if (sameRegistration(existing, desired, config)) {
+            trace('interpretation', 'watch:unchanged', { watchId: request.watchId });
+            return;
+          }
+          // Same classes, a setting changed: the scalars are overwritten by a registration, so this
+          // rewrites them in place. Only a different class list needs the delete.
+          if (existing.classes.join(',') !== desired.join(',')) {
+            trace('interpretation', 'watch:classes-changed', {
+              watchId: request.watchId,
+              from: existing.classes,
+              to: desired,
+            });
+            await deleteProcessorConfig(perspective, request.watchId);
+          }
+        }
+
+        try {
+          await perspective.addAutoProcessor(config as Parameters<PerspectiveProxy['addAutoProcessor']>[0]);
+        } catch (error) {
+          // Same backstop as the one-shot path, and it matters more here: a watch failure is caught
+          // by the caller and, before this, disappeared into a console line — which is why a node
+          // that could not auto-extract looked for three days like one that simply had nothing to
+          // extract.
+          if (!recordMissingMethod(error)) throw error;
+          executorSupports = false;
+          throw new Error(UNSUPPORTED_WATCH);
+        }
+      });
     },
 
     async reconcile(dataset: DatasetHandle, request: LinkedRequest): Promise<number> {
@@ -1443,7 +1486,8 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
       // throwing into a teardown path.
       if (!runtimeSupportsAutoProcessing(dataset)) return;
       watchParents.delete(watchId);
-      await deleteProcessorConfig(proxy(dataset), watchId);
+      const perspective = proxy(dataset);
+      await oneAtATime(perspective, watchId, () => deleteProcessorConfig(perspective, watchId));
     },
   };
 }
@@ -1508,23 +1552,81 @@ const processorNode = (watchId: string) => `ad4m://autoprocessor/${watchId}`;
 const INTERPRETATION_CLASS_PREDICATE = 'ad4m://interpretation_class';
 
 /**
- * The target classes a registered watch is currently looking for, or `[]` when there is no config.
+ * The scalars `write_processor` writes through its setters, by the `addAutoProcessor` field that sets
+ * each — the paths `AutoProcessorConfig` declares. What {@link sameRegistration} compares, so a
+ * watch whose settings changed (a new scope query in a release, a different batch size) is still
+ * rewritten, and one whose settings did not is left alone.
+ */
+const PROCESSOR_SCALARS = {
+  sourceScopeQuery: 'ad4m://source_scope_query',
+  basePrefix: 'ad4m://base_prefix',
+  debounceMs: 'ad4m://debounce_ms',
+  batchMin: 'ad4m://batch_min',
+  batchMax: 'ad4m://batch_max',
+  maxWaitMs: 'ad4m://max_wait_ms',
+  claimTtlMs: 'ad4m://claim_ttl_ms',
+  emitDebugEvents: 'ad4m://emit_debug_events',
+} as const;
+
+/** A registered processor as its links say: the distinct classes, and every value each scalar holds. */
+interface RegisteredProcessor {
+  classes: string[];
+  scalars: Map<string, Set<string>>;
+}
+
+/**
+ * What a registered watch is currently configured to do — `classes` empty when there is no config.
  *
  * Read off the links rather than through the ORM, for the reason spelled out in
  * {@link deleteProcessorConfig}: `AutoProcessorConfig.findAll` needs `register`, and `register`
- * writes SDNA over a class the engine owns.
+ * writes SDNA over a class the engine owns. One read of the node's links answers both halves.
+ *
+ * **Distinct**, and that is the bug this once was. `write_processor` adds the class links rather
+ * than replacing them, one copy per class per registration, under whoever registered — so a watch
+ * two members (or one client twice) have registered holds every class twice. Read as a list, that
+ * never equalled the wanted set, so every `watch` deleted the config and registered it again, which
+ * added more copies: hundreds of link removals a minute from one client, each churning every live
+ * query in the space. The copies say one thing, and are read as one.
  *
  * Sorted, so a comparison against a desired list is about membership rather than about the order
  * two writers happened to add links in — which is also how the executor's own loader returns it.
  */
-async function readProcessorClasses(perspective: PerspectiveProxy, watchId: string): Promise<string[]> {
-  const links = await perspective.get(
-    new LinkQuery({ source: processorNode(watchId), predicate: INTERPRETATION_CLASS_PREDICATE }),
-  );
-  return links
-    .map((link) => decode(link.data.target))
-    .filter((value): value is string => typeof value === 'string')
-    .sort();
+async function readProcessorConfig(perspective: PerspectiveProxy, watchId: string): Promise<RegisteredProcessor> {
+  const links = await perspective.get(new LinkQuery({ source: processorNode(watchId) }));
+  const classes = new Set<string>();
+  const scalars = new Map<string, Set<string>>();
+  for (const link of links) {
+    const { predicate } = link.data;
+    const value = decode(link.data.target);
+    if (!predicate || value === undefined || value === null) continue;
+    if (predicate === INTERPRETATION_CLASS_PREDICATE) {
+      if (typeof value === 'string') classes.add(value);
+      continue;
+    }
+    const held = scalars.get(predicate) ?? new Set<string>();
+    held.add(String(value));
+    scalars.set(predicate, held);
+  }
+  return { classes: [...classes].sort(), scalars };
+}
+
+/**
+ * Whether a registered processor already is the one a registration would write.
+ *
+ * Every scalar has to hold exactly the value asked for. The executor stores numbers as strings
+ * (`literal:string:5000`), so values compare as text. A scalar with no link, or with two values
+ * (two writers whose setters raced), is a difference, and the registration that follows settles it.
+ */
+function sameRegistration(
+  existing: RegisteredProcessor,
+  classes: readonly string[],
+  config: Record<keyof typeof PROCESSOR_SCALARS, unknown>,
+): boolean {
+  if (existing.classes.join(',') !== classes.join(',')) return false;
+  return (Object.keys(PROCESSOR_SCALARS) as (keyof typeof PROCESSOR_SCALARS)[]).every((field) => {
+    const held = existing.scalars.get(PROCESSOR_SCALARS[field]);
+    return held?.size === 1 && held.has(String(config[field]));
+  });
 }
 
 /**
