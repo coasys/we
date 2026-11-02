@@ -224,9 +224,15 @@ export async function readFeedWindow(
       order: { createdAt: order },
       limit: CALL_WINDOW,
     }),
+    /*
+      What extraction found, per kind. No `include`: a row carries `extractedFrom` as the source's
+      id unasked, which is all an activity row reads — its title comes from `calls` above. Including
+      it hydrated the source into every row, and the source is usually a call holding every line said
+      in it: about 18 KB a row, near a megabyte a page, re-read on every refresh.
+    */
     ...options.activityTypes.map((entity) =>
-      find(entity, { within: root, order: { createdAt: order }, limit: shown, include: { extractedFrom: true } }).then(
-        (rows) => rows.map((row) => ({ row, entity })),
+      find(entity, { within: root, order: { createdAt: order }, limit: shown }).then((rows) =>
+        rows.map((row) => ({ row, entity })),
       ),
     ),
   ]);
