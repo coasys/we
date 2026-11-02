@@ -173,6 +173,39 @@ describe('the feed window', () => {
     });
     expect(activity[1]).toMatchObject({ origin: '', author: 'did:ben', summary: '1 task' });
   });
+
+  it('reads where a record came from as an id, never hydrating the source', async () => {
+    /*
+      `extractedFrom` is usually the call, a collection holding every line said in it. Including it
+      hydrated that whole collection into every row: 18 KB a row, 926 KB for one page of
+      connections, re-read on every refresh. The row carries the relation's id unasked, and the
+      title comes from the calls this window reads anyway.
+    */
+    const { find, asked } = store([
+      ...calls,
+      {
+        entity: 'TaskBlock',
+        id: 't1',
+        in: ROOT,
+        title: 'Brief',
+        createdAt: t(2),
+        author: 'did:ann',
+        extractedFrom: 'monday',
+      },
+    ]);
+    const { rows: drawn } = await readFeedWindow(find, {
+      root: ROOT,
+      shown: 10,
+      fromStart: false,
+      activityTypes: ['TaskBlock', 'Relationship'],
+    });
+    const activityReads = asked.filter((a) => a.entity === 'TaskBlock' || a.entity === 'Relationship');
+    expect(activityReads).toHaveLength(2);
+    for (const { query } of activityReads) {
+      expect(query).toEqual({ within: ROOT, order: { createdAt: 'desc' }, limit: 10 });
+    }
+    expect(drawn.find((r) => r.kind === 'activity')).toMatchObject({ origin: 'monday', originTitle: 'Monday sync' });
+  });
 });
 
 describe('grouping and naming', () => {
