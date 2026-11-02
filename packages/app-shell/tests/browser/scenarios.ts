@@ -42,6 +42,7 @@ import coasysBundle from '../../../../bundles/coasys.bundle.json';
 import fieldGuideBundle from '../../../../bundles/field-guide.bundle.json';
 import toolLibraryBundle from '../../../../bundles/tool-library.bundle.json';
 import { viewBar } from '../../../templates/cartridges/src/coasys/space/bar.ts';
+import { callBarAside } from '../../../templates/cartridges/src/coasys/space/views.ts';
 import { sharingPickerOptions } from '../../src/shared/sharingOptions';
 
 export interface Scenario {
@@ -2205,6 +2206,34 @@ const coasysBar = (): Scenario => {
 };
 
 /**
+ * A running call's bar: Live and the transcript export at its end, beside Page and Canvas, in Glow.
+ */
+const coasysCallBar = (): Scenario => {
+  const glow = BUNDLE_LAB_THEMES.find((t) => t.label === 'coasys-glow')?.theme ?? {};
+  return {
+    node: {
+      type: 'Column',
+      theme: glow,
+      props: { width: '900px', bg: 'page' },
+      children: [
+        viewBar(
+          [{ label: 'Calls', onClick: { $invoke: 'routeStore.navigate', args: ['/calls'] } }, { label: 'Standup' }],
+          'phone',
+          callBarAside("'call-1'"),
+        ),
+      ],
+    },
+    tables: {},
+    stores: {
+      routeStore: { params: {}, templateSegments: [], setParam: () => {}, navigate: () => {} },
+      shellStore: { collapsedLanes: [] },
+      modules: { call: { liveCalls: [{ recordId: 'call-1', count: 2 }] } },
+      spaceStore: { exportCallTranscript: (id: string) => ((globalThis as { __exported?: string }).__exported = id) },
+    },
+  };
+};
+
+/**
  * The Coasys mark and name as the sign-in screen draws them and as the open rail does, each from the
  * bundle itself, in boxes of the same size: signing in fades the one away over the other, so their
  * marks and names must sit on the same pixels.
@@ -2421,6 +2450,7 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'coasys:about': coasysAbout,
   'feed:view': feedViewPage,
   'coasys:bar': coasysBar,
+  'coasys:call-bar': coasysCallBar,
   'border:with-hover': borderWithHover,
   'coasys:lockup': coasysLockup,
   'signIn:coasys': coasysSignIn,
