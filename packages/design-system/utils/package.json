@@ -28,7 +28,7 @@
     "@we/tokens": "workspace:*"
   },
   "peerDependencies": {
-    "solid-js": "^1.9.17"
+    "solid-js": "^1.9.18"
   },
   "peerDependenciesMeta": {
     "solid-js": {
@@ -36,11 +36,11 @@
     }
   },
   "devDependencies": {
-    "@types/node": "^26.6.5",
+    "@types/node": "^26.6.6",
     "@we/cli": "workspace:*",
     "@we/design-types": "workspace:*",
     "esbuild-plugin-solid": "^0.6.0",
-    "solid-js": "^1.9.17",
+    "solid-js": "^1.9.18",
     "tsup": "^9.0.0",
     "vitest": "^5.0.5"
   },

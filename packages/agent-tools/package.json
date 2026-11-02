@@ -35,7 +35,7 @@
     "@we/themes": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^26.6.5",
+    "@types/node": "^26.6.6",
     "@we/backend-inmemory": "workspace:*",
     "@we/cli": "workspace:*",
     "@we/template-showcase": "workspace:*",
