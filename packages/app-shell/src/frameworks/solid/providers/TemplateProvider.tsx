@@ -13,6 +13,7 @@ import { provideChromeBag, provideTemplateBag } from '@shared/registries/templat
 import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/templateSurface';
 import { installRenderSettleOnExit, installSafeModeShortcut } from '@shared/safeMode';
 import { hostSourceBag } from '@shared/sources';
+import { readSpaceRoot } from '@shared/spaceLandmarks';
 import { workflowStateOf } from '@shared/taskWorkflow';
 import { taskWorkflowLive } from '@shared/taskWorkflowLive';
 import { landsOnRoot } from '@shared/templateLanding';
@@ -204,8 +205,7 @@ export default function TemplateProvider() {
   async function spaceRootOf(perspective: DatasetProxy): Promise<string> {
     if (perspective === datasetStore.currentDataset()?.handle && spaceStore.root()) return spaceStore.root();
     try {
-      const space = await Space.findOne(perspective, { include: { root: true } });
-      return space?.root?.id ?? '';
+      return (await readSpaceRoot(perspective))?.root ?? '';
     } catch {
       return '';
     }

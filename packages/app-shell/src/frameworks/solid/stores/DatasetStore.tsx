@@ -22,6 +22,7 @@ import { gatherTranscriptTurns, type TurnRecord } from '@shared/interpretation/t
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import { getSeed } from '@shared/seedRegistry';
+import { readSpaceRoot } from '@shared/spaceLandmarks';
 import { isSystemDataset, SYSTEM_DATASET_NAMES, SYSTEM_DATASETS } from '@shared/systemDatasets';
 import {
   type DatasetHandle,
@@ -683,22 +684,15 @@ export function DatasetStoreProvider(props: ParentProps) {
     what it found in place.
 
     A dataset with no space collection — one made before spaces had one — files under the
-    conversation itself, which is what every pass did before. Read once per dataset and kept: the
-    collection is written at creation and never changes.
+    conversation itself, which is what every pass did before. Read once per dataset and kept, by
+    `readSpaceRoot`: the collection is written at creation and never changes.
   */
-  const spaceRoots = new WeakMap<object, string>();
   async function filedUnder(handle: unknown, conversation: string): Promise<ParentRef> {
-    let root = spaceRoots.get(handle as object);
-    if (root === undefined) {
-      try {
-        const SpaceModel = getEntityForDataset('Space', handle) as
-          { findOne(h: unknown, q: unknown): Promise<{ root?: { id?: string } } | null> } | undefined;
-        const space = await SpaceModel?.findOne(handle, { include: { root: true } });
-        root = space?.root?.id ?? '';
-      } catch {
-        root = '';
-      }
-      if (root) spaceRoots.set(handle as object, root);
+    let root = '';
+    try {
+      root = (await readSpaceRoot(handle as DatasetProxy))?.root ?? '';
+    } catch {
+      // Filed under the conversation, and asked again next pass.
     }
     return { id: root || conversation, relation: 'children', entity: 'CollectionBlock' };
   }

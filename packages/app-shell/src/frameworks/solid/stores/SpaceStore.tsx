@@ -52,7 +52,7 @@ import { defaultViewOrder, viewRegistry } from '@shared/registries/viewRegistry'
 import { seedDefaultEnabledModules } from '@shared/seedModules';
 import { getSeed } from '@shared/seedRegistry';
 import { type SharingPickerOption, sharingPickerOptions } from '@shared/sharingOptions';
-import { readSpaceLandmarks, writeSpaceLandmark } from '@shared/spaceLandmarks';
+import { landmarksByName, readSpaceLandmarks, readSpaceRoot, writeSpaceLandmark } from '@shared/spaceLandmarks';
 import {
   createPolicyCheck,
   type GovernedSpace,
@@ -1188,6 +1188,16 @@ const SPACE_AVATAR_PX = 512;
  * being stored as itself. Refusing it keeps the misfiling where it can be seen.
  */
 const TASK_STATE_SEMANTICS: TaskStateView['semantic'][] = ['open', 'active', 'blocked', 'done', 'cancelled'];
+
+/**
+ * A model's live query, as this store follows one. `subscribe` resolves with the rows it opened on and
+ * hands the callback every later result whole — the records themselves, so a change is applied from
+ * what arrived rather than by asking the backend the same question again.
+ */
+type LiveRows<T> = { subscribe(cb: (rows: T[]) => void): Promise<T[]>; dispose(): void };
+
+/** What a collection's extraction settings are read from — see `autoExtractFor`. */
+const COLLECTION_SETTINGS_FIELDS = ['autoExtract', 'extractionTargets'] as const;
 
 export function SpaceStoreProvider(props: ParentProps) {
   const session = useSessionStore();
@@ -3235,13 +3245,13 @@ export function SpaceStoreProvider(props: ParentProps) {
     const uuid = datasetStore.currentDataset()?.id;
     if (!dataset || !datasetStore.isWeSpace()) return;
     try {
-      const space = await Space.findOne(dataset, { include: { root: true } });
+      const space = await readSpaceRoot(dataset);
       const landmarks = await readSpaceLandmarks(dataset);
       if (datasetStore.currentDataset()?.id !== uuid) return; // navigated away while loading
       // Landmarks first: `root` is what says the read has answered, so a template asking "is there a
       // board?" never hears "no" in the frame between the two.
       setSpaceLandmarks(landmarks);
-      setSpaceRoot(space?.root?.id ?? '');
+      setSpaceRoot(space?.root ?? '');
     } catch (error) {
       console.warn('SpaceStore: could not read the space’s collection and landmarks', error);
     }
@@ -3257,19 +3267,31 @@ export function SpaceStoreProvider(props: ParentProps) {
     const dataset = datasetStore.currentDataset()?.handle;
     const weSpace = datasetStore.isWeSpace();
     let stopped = false;
-    let watch: { subscribe(cb: () => void): Promise<unknown>; dispose(): void } | undefined;
+    let watch: LiveRows<SpaceLandmark> | undefined;
     onCleanup(() => {
       stopped = true;
       watch?.dispose();
     });
     setSpaceRoot('');
     setSpaceLandmarks({});
+    /*
+      The pushed rows are the landmarks, whole: the same query `readSpaceLandmarks` makes. Only a space
+      whose collection was not there yet when it was read — a starter still writing — is read again,
+      since the collection is not what this query watches.
+    */
+    const follow = (rows: SpaceLandmark[], opened = false) => {
+      if (stopped) return;
+      if (!opened && !untrack(spaceRoot)) return void reloadSpaceStructure();
+      setSpaceLandmarks(landmarksByName(rows));
+    };
     void untrack(reloadSpaceStructure).then(() => {
       if (stopped || !dataset || !weSpace) return;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       watch = (SpaceLandmark as any).query(dataset, {}) as typeof watch;
       watch
-        ?.subscribe(() => void (!stopped && reloadSpaceStructure()))
+        ?.subscribe((rows) => follow(rows))
+        // What the watch opened on: a landmark written between the first read and now is in it.
+        .then((rows) => follow(rows, true))
         .catch((error: unknown) => {
           console.warn('SpaceStore: could not watch the space’s landmarks', error);
         });
@@ -3344,35 +3366,41 @@ export function SpaceStoreProvider(props: ParentProps) {
       // diff-first idempotent path — a read in the common case — and the same step `loadShapes`
       // takes for exactly this reason.
       await ports.ensure(dataset, TaskState as never);
-      const records = dedupeBySlug(await TaskState.findAll(dataset));
+      const records = await TaskState.findAll(dataset);
       if (datasetStore.currentDataset()?.id !== uuid) return; // navigated away while loading
-      setOwnTaskStates(
-        records.map((r: TaskState) => ({
-          id: r.id,
-          name: r.name || r.slug,
-          slug: r.slug || deriveSlug(r.name || ''),
-          semantic: (r.semantic || 'open') as TaskStateView['semantic'],
-          color: r.color || '',
-          icon: r.icon || '',
-          retired: Boolean(r.retired),
-          // A record written before these existed has neither: one approval, from anybody.
-          approvals: approvalsOf({ slug: '', approvals: r.approvals }),
-          approverKind: r.approverKind || '',
-          evidence: parseTaskStateEvidence(r.evidence).map((g) => ({
-            entity: g.entity,
-            ...(g.where ? { where: g.where } : {}),
-            via: g.via && 'relation' in g.via ? g.via.relation : '',
-            min: g.min ?? 1,
-            label: evidenceLabel(g),
-          })),
-        })),
-      );
+      applyTaskStates(records);
     } catch (error) {
       console.warn('SpaceStore: could not read task states', error);
       if (datasetStore.currentDataset()?.id === uuid) setOwnTaskStates([]);
     } finally {
       if (datasetStore.currentDataset()?.id === uuid) setTaskStatesLoaded(true);
     }
+  }
+
+  /** The space's state records, as the store holds them — from a read, or from what a watch pushed. */
+  function applyTaskStates(rows: TaskState[]): void {
+    const records = dedupeBySlug(rows);
+    setOwnTaskStates(
+      records.map((r: TaskState) => ({
+        id: r.id,
+        name: r.name || r.slug,
+        slug: r.slug || deriveSlug(r.name || ''),
+        semantic: (r.semantic || 'open') as TaskStateView['semantic'],
+        color: r.color || '',
+        icon: r.icon || '',
+        retired: Boolean(r.retired),
+        // A record written before these existed has neither: one approval, from anybody.
+        approvals: approvalsOf({ slug: '', approvals: r.approvals }),
+        approverKind: r.approverKind || '',
+        evidence: parseTaskStateEvidence(r.evidence).map((g) => ({
+          entity: g.entity,
+          ...(g.where ? { where: g.where } : {}),
+          via: g.via && 'relation' in g.via ? g.via.relation : '',
+          min: g.min ?? 1,
+          label: evidenceLabel(g),
+        })),
+      })),
+    );
   }
 
   /*
@@ -3390,17 +3418,29 @@ export function SpaceStoreProvider(props: ParentProps) {
     const dataset = datasetStore.currentDataset()?.handle;
     const weSpace = datasetStore.isWeSpace();
     let stopped = false;
-    let watch: { subscribe(cb: () => void): Promise<unknown>; dispose(): void } | undefined;
+    let watch: LiveRows<TaskState> | undefined;
     onCleanup(() => {
       stopped = true;
       watch?.dispose();
     });
+    // The pushed rows are the states, whole — the read `loadTaskStates` makes — so a change is
+    // applied from them. The list is already on screen, so nothing drops back to "not loaded".
+    const follow = (rows: TaskState[]) => {
+      if (stopped) return;
+      try {
+        applyTaskStates(rows);
+      } catch (error) {
+        console.warn('SpaceStore: could not read task states', error);
+      }
+    };
     void loadTaskStates().then(() => {
       if (stopped || !dataset || !weSpace) return;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       watch = (TaskState as any).query(dataset, {}) as typeof watch;
       watch
-        ?.subscribe(() => void (!stopped && loadTaskStates(true)))
+        ?.subscribe(follow)
+        // What the watch opened on: a state written between the first read and now is in it.
+        .then(follow)
         .catch((error: unknown) => {
           console.warn('SpaceStore: could not watch task states', error);
         });
@@ -4140,21 +4180,31 @@ export function SpaceStoreProvider(props: ParentProps) {
     try {
       const [roles, grants] = await Promise.all([Role.findAll(dataset), RoleGrant.findAll(dataset)]);
       if (datasetStore.currentDataset()?.id !== uuid) return;
-      setRoleRows(roles.map((r) => ({ id: r.id, slug: r.slug, name: r.name, description: r.description })));
-      setGrantRows(
-        grants.map((g) => ({
-          id: g.id,
-          role: g.role,
-          agent: g.agent,
-          createdAt: g.createdAt as GrantRow['createdAt'],
-          revokedAt: g.revokedAt,
-        })),
-      );
+      applyRoles(roles);
+      applyGrants(grants);
     } catch (error) {
       console.warn('SpaceStore: could not read the space’s roles', error);
     } finally {
       if (datasetStore.currentDataset()?.id === uuid) setRolesLoaded(true);
     }
+  }
+
+  /** The space's role records, as the store holds them — from a read, or from what a watch pushed. */
+  function applyRoles(roles: Role[]): void {
+    setRoleRows(roles.map((r) => ({ id: r.id, slug: r.slug, name: r.name, description: r.description })));
+  }
+
+  /** The space's grants, likewise. */
+  function applyGrants(grants: RoleGrant[]): void {
+    setGrantRows(
+      grants.map((g) => ({
+        id: g.id,
+        role: g.role,
+        agent: g.agent,
+        createdAt: g.createdAt as GrantRow['createdAt'],
+        revokedAt: g.revokedAt,
+      })),
+    );
   }
 
   createEffect(() => {
@@ -4178,14 +4228,22 @@ export function SpaceStoreProvider(props: ParentProps) {
       }
       await untrack(reloadRoles);
       if (stopped || !dataset || !weSpace) return;
-      for (const Model of [Role, RoleGrant]) {
+      // Each watch pushes its own model's records whole, which is all its half of the roles is made
+      // of — so a change is applied from them, and the other half is left as it is.
+      const follows: [unknown, (rows: never[]) => void][] = [
+        [Role, applyRoles],
+        [RoleGrant, applyGrants],
+      ];
+      for (const [Model, apply] of follows) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const watch = (Model as any).query(dataset, {}) as
-          { subscribe(cb: () => void): Promise<unknown>; dispose(): void } | undefined;
+        const watch = (Model as any).query(dataset, {}) as LiveRows<never> | undefined;
         if (!watch) continue;
         watches.push(watch);
+        const follow = (rows: never[]) => void (!stopped && apply(rows));
         watch
-          .subscribe(() => void (!stopped && reloadRoles()))
+          .subscribe(follow)
+          // What the watch opened on: a grant written between the first read and now is in it.
+          .then(follow)
           .catch((error: unknown) => console.warn('SpaceStore: could not watch the space’s roles', error));
       }
     })();
@@ -4297,7 +4355,11 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   /** Every version, with its author as a person. */
   async function readPolicyVersions(dataset: DatasetProxy): Promise<PolicyVersion[]> {
-    const rows = (await Policy.findAll(dataset).catch(() => [])) as Policy[];
+    return policyVersionsOf((await Policy.findAll(dataset).catch(() => [])) as Policy[]);
+  }
+
+  /** The policy records as versions — from a read, or from what a watch pushed. */
+  function policyVersionsOf(rows: Policy[]): Promise<PolicyVersion[]> {
     return Promise.all(
       rows.map(async (row) => ({
         id: row.id,
@@ -4328,13 +4390,24 @@ export function SpaceStoreProvider(props: ParentProps) {
     const dataset = datasetStore.currentDataset()?.handle;
     const weSpace = datasetStore.isWeSpace();
     let stopped = false;
-    let watch: { subscribe(cb: () => void): Promise<unknown>; dispose(): void } | undefined;
+    let watch: LiveRows<Policy> | undefined;
     onCleanup(() => {
       stopped = true;
       watch?.dispose();
     });
     setPolicyRows([]);
     setPolicyLoaded(false);
+    // The pushed rows are every version, whole — the read `reloadPolicy` makes — so a new version is
+    // applied from them. A later push supersedes an earlier one still resolving its authors.
+    let pushed = 0;
+    const follow = (rows: Policy[]) => {
+      if (stopped) return;
+      const turn = ++pushed;
+      void policyVersionsOf(rows).then(
+        (versions) => void (!stopped && turn === pushed && setPolicyRows(versions)),
+        (error: unknown) => console.warn('SpaceStore: could not read the space’s policy', error),
+      );
+    };
     void (async () => {
       const schemas = session.backendPorts()?.schemas;
       // A space made before policies existed has the entity uninstalled; see the roles effect above.
@@ -4342,9 +4415,11 @@ export function SpaceStoreProvider(props: ParentProps) {
       await untrack(reloadPolicy);
       if (stopped || !dataset || !weSpace) return;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      watch = (Policy as any).query(dataset, {}) as { subscribe(cb: () => void): Promise<unknown>; dispose(): void };
+      watch = (Policy as any).query(dataset, {}) as LiveRows<Policy>;
       watch
-        ?.subscribe(() => void (!stopped && reloadPolicy()))
+        ?.subscribe(follow)
+        // What the watch opened on: a version written between the first read and now is in it.
+        .then(follow)
         .catch((error: unknown) => console.warn('SpaceStore: could not watch the space’s policy', error));
     })();
   });
@@ -4738,34 +4813,46 @@ export function SpaceStoreProvider(props: ParentProps) {
     const ids = askedCollections();
     if (!handle || !datasetStore.isWeSpace() || !ids.length) return;
     let stopped = false;
-    let watch: { subscribe(cb: () => void): Promise<unknown>; dispose(): void } | undefined;
+    let watch: LiveRows<CollectionBlock> | undefined;
     onCleanup(() => {
       stopped = true;
       watch?.dispose();
     });
+    /*
+      Only the two fields the settings are made of. Without `properties` a read hydrates every field,
+      `children` among them — and the space's own collection holds everything in the space.
+    */
+    const query = { where: { id: ids }, properties: [...COLLECTION_SETTINGS_FIELDS] };
+    const apply = (rows: CollectionBlock[]) => {
+      setCollectionSettings((current) => {
+        const next = { ...current };
+        for (const row of rows) {
+          next[row.id] = { autoExtract: row.autoExtract, extractionTargets: row.extractionTargets };
+        }
+        return next;
+      });
+    };
     const read = async () => {
       try {
-        const rows = await CollectionBlock.findAll(handle, { where: { id: ids } });
+        const rows = await CollectionBlock.findAll(handle, query as never);
         if (stopped) return;
-        setCollectionSettings((current) => {
-          const next = { ...current };
-          for (const row of rows) {
-            next[row.id] = { autoExtract: row.autoExtract, extractionTargets: row.extractionTargets };
-          }
-          return next;
-        });
+        apply(rows);
       } catch (error) {
         console.warn('SpaceStore: could not read what these collections extract', error);
       } finally {
         if (!stopped) setLoadedCollections(new Set(ids));
       }
     };
+    // The watch asks what the read asked, so what it pushes is the settings, whole.
+    const follow = (rows: CollectionBlock[]) => void (!stopped && apply(rows));
     void read().then(() => {
       if (stopped) return;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      watch = (CollectionBlock as any).query(handle, { where: { id: ids } }) as typeof watch;
+      watch = (CollectionBlock as any).query(handle, query) as typeof watch;
       watch
-        ?.subscribe(() => void (!stopped && read()))
+        ?.subscribe(follow)
+        // What the watch opened on: a switch thrown between the first read and now is in it.
+        .then(follow)
         .catch((error: unknown) => {
           console.warn('SpaceStore: could not follow what these collections extract', error);
         });
