@@ -1313,6 +1313,29 @@ Most @we/primitives also accept Design System Props (see next section for detail
 @we/primitives:
 - we-alert (DesignSystemElement)
   Props: variant: 'soft' | 'edge' = 'soft', dismissible: boolean = false, icon: string = ''
+- we-animated-icon (LayoutElement) — A small drawing that moves, for something happening now: loading, a call that is live, somebody
+typing, somebody speaking.
+
+`name` picks the drawing:
+
+- `spinner` — a turning ring, for waiting on something.
+- `live` — a dot with a ring going out from it, for something running now: a live call, a
+  recording (in the danger tone), somebody online.
+- `typing` — three dots rising in turn, for somebody writing, or the assistant thinking.
+- `speaking` — bars moving out of step, for whoever is talking, or audio playing.
+
+Sized and coloured as `we-icon` is, so one can take an icon's place: `size` is a size token or any
+CSS length, and with none it is the icon size its container publishes. Its colour is the accent
+unless `color` names a role, a palette token or any CSS colour — so `tone` re-points it, a live
+dot inside a success badge is the success colour, and `color: 'currentColor'` makes it the text's.
+
+Every copy of a drawing is at the same point in its cycle at the same moment, wherever and
+whenever it mounted: the live dots in a sidebar and on a page pulse together, and a spinner that
+reappears after the window reloads picks up where the last left off.
+
+For somebody who asked for less motion, the dot and the bars stand still, the typing dots fade in
+turn rather than rise, and the spinner keeps turning, since a still spinner looks stuck.
+  Props: name: 'spinner' | 'live' | 'typing' | 'speaking' = 'spinner', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '{css-length}' = '', color: string = ''
 - we-audio (LayoutVisualElement)
   Props: src: string = '', controls: boolean = false, preload: 'none' | 'metadata' | 'auto' = 'metadata', autoplay: boolean = false, loop: boolean = false, muted: boolean = false, stream?: MediaStream | null | undefined
 - we-avatar (LayoutVisualElement)

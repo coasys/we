@@ -778,6 +778,56 @@ const squareLoading = (): Scenario => ({
 });
 
 /**
+ * The drawings that move, beside a primitive that animated before they existed.
+ *
+ * The skeleton is here for the reduced-motion fix rather than for itself: it is the plainest loop in
+ * a shadow root, and it is what showed the document's rule never reached one. Two live dots, so the
+ * case can see two copies move in step; two badges, the size a bar draws and the size the tree does.
+ */
+const animatedIcons = (): Scenario => ({
+  node: {
+    type: 'Column',
+    props: { gap: '400', p: '300' },
+    children: [
+      {
+        type: 'Row',
+        props: { gap: '400', ay: 'center' },
+        children: [
+          { type: 'we-animated-icon', props: { id: 'spinner', name: 'spinner', size: 'md' } },
+          { type: 'we-animated-icon', props: { id: 'live', name: 'live', size: 'md', color: 'success' } },
+          { type: 'we-animated-icon', props: { id: 'live-2', name: 'live', size: 'md', color: '#e62b63' } },
+          { type: 'we-animated-icon', props: { id: 'typing', name: 'typing', size: 'md', color: 'text-muted' } },
+          { type: 'we-animated-icon', props: { id: 'speaking', name: 'speaking', size: 'md' } },
+          { type: 'we-skeleton', props: { id: 'skeleton', width: '80px', height: '16px' } },
+        ],
+      },
+      {
+        type: 'Row',
+        props: { gap: '400', ay: 'center' },
+        children: [
+          {
+            type: 'we-badge',
+            props: { id: 'badge-md', tone: 'success' },
+            children: [{ type: 'we-animated-icon', props: { name: 'live' } }, 'Live'],
+          },
+          {
+            type: 'we-badge',
+            props: { id: 'badge-sm', tone: 'success', size: 'sm' },
+            children: [{ type: 'we-animated-icon', props: { name: 'live' } }, 'Live'],
+          },
+          {
+            type: 'we-badge',
+            props: { id: 'badge-xs', tone: 'success', size: 'xs' },
+            children: [{ type: 'we-animated-icon', props: { name: 'live' } }, 'Live'],
+          },
+        ],
+      },
+    ],
+  },
+  tables: {},
+});
+
+/**
  * The shape every call surface is: a square control, a name of unknown length, a square control.
  *
  * A row capped narrower than its contents want, which is what a pill measured to its own contents
@@ -2418,6 +2468,7 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'ds:surface-images': surfaceImages,
   'ds:token-offsets': tokenOffsets,
   'ds:square-loading': squareLoading,
+  'ds:animated-icons': animatedIcons,
   'ds:crowded-square-row': crowdedSquareRow,
   'ds:pinned-page': pinnedPage(120),
   'ds:pinned-short': pinnedPage(20),
