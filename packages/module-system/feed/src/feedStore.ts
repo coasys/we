@@ -34,6 +34,8 @@ export interface FeedDeps {
   action: ModuleStoreDeps['action'];
   onDispose: ModuleStoreDeps['onDispose'];
   dataset: ModuleStoreDeps['dataset'];
+  /** The space collection, as the host knows it — see `ModuleStoreDeps.spaceRoot`. */
+  spaceRoot: ModuleStoreDeps['spaceRoot'];
   records: RecordsKernel | undefined;
   interpretation: InterpretationKernel | undefined;
   /** Write a message — the store's own, so typed lines and feed messages are written one way. */
@@ -49,32 +51,20 @@ export function createFeed(deps: FeedDeps) {
   const looking = () => open() || viewers() > 0;
   /** Records a pass made in this space that nobody has kept yet, by id. */
   const [unconfirmed, setUnconfirmed] = signal<string[]>([]);
-  const [root, setRoot] = signal('');
+  /** The space's collection — the one fact the Feed starts from. The host's, so it is never read twice. */
+  const root = () => (deps.dataset?.() ? (deps.spaceRoot?.() ?? '') : '');
   const [shown, setShown] = signal(FEED_FIRST_PAGE);
   const [fromStart, setFromStart] = signal(false);
   const [rows, setRows] = signal<FeedRow[]>([]);
   const [hasMore, setHasMore] = signal(false);
   const [loaded, setLoaded] = signal(false);
 
-  /*
-    The space's collection, found through the space record — the one fact the Feed starts from.
-    Asked again whenever the dataset changes, and forgotten first so a switch never draws the last
-    space's rows under the new space's name.
-  */
+  // Forgotten whenever the dataset changes, so a switch never draws the last space's rows under the
+  // new space's name.
   effect?.(() => {
-    const here = deps.dataset?.();
-    setRoot('');
+    void deps.dataset?.();
     setRows([]);
     setLoaded(false);
-    if (!here || typeof records?.find !== 'function') return;
-    void records
-      .find('Space', { include: { root: true }, limit: 1 })
-      .then((spaces) => {
-        const found = spaces[0]?.root as { id?: unknown } | string | undefined;
-        const id = typeof found === 'string' ? found : typeof found?.id === 'string' ? found.id : '';
-        if (deps.dataset?.() === here) setRoot(id);
-      })
-      .catch(() => {});
   });
 
   let generation = 0;

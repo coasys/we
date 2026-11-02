@@ -647,6 +647,12 @@ export interface ModuleStoreDeps {
 
   /** The dataset the module is currently scoped to, read reactively. `null` outside a space. */
   dataset?: () => DatasetHandle | null;
+  /**
+   * The collection the space on screen hangs off (`Space.root`) — where its top-level records live —
+   * read reactively. Empty until the host knows it, outside a space, and in a space made before spaces
+   * had one. The host's own answer, so a module never reads the space record again to find it.
+   */
+  spaceRoot?: () => string;
   /** The current dataset's **global** uri — what presence puts in `Focus.datasetUri`. */
   datasetUri?: () => string | null;
   /** How the current dataset is named inside a record reference — `n:<cid>` or `p:<uuid>`. Empty while none is open. */
