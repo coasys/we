@@ -1614,8 +1614,6 @@ Same principle as nested zones, one layer up: the innermost thing under the poin
 gesture. A sortable *inside* an overlay is unaffected — only the path between the press and the
 item is considered.
   Props: direction: 'vertical' | 'horizontal' = 'vertical', gap: string = '', zone: string = '', group: string = '', locked: boolean = false
-- we-spinner (LayoutElement)
-  Props: size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | (string & {}) = 'md', color: string = ''
 - we-switch (DesignSystemElement)
   Props: checked: boolean = false, disabled: boolean = false, name: string = '', label: string = '', value: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', labelOff: string = '', labelOn: string = ''
 - we-tab (DesignSystemElement)
@@ -2251,7 +2249,7 @@ seven roles every family has. So `"red"` as a colour is the theme's red, not CSS
 for that.
 
 **Layout-only primitives** — these accept only Layout props (not Visual, Flex, Typography, or State):
-we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
+we-animated-icon, we-divider, we-icon, we-menu-group, we-popover, we-tooltip
 
 ### Layout
 
@@ -5619,7 +5617,7 @@ WRONG icon names (Heroicons/Material — do NOT use):
 - Size a template root with `minHeight`, never `height`. `height: '100%'` makes the root exactly as tall as the viewport, so a route with more content than that overflows the *box* — and the root's background stops at the fold while the content keeps scrolling. `minHeight: '100%'` fills the viewport when a route is short and grows when it is long, which is what a page background needs. The same applies to `'100vh'` — and prefer `'100dvh'` to `'100vh'` anywhere a full-viewport height is meant: on a phone the address bar makes `vh` taller than what is actually visible, so the last rows of the page sit under the browser chrome. Identical on a desktop.
 
 Most @we/primitives inherit all Design System Props documented above (layout, visual, flex, typography, state).
-Some layout-only primitives (we-avatar, we-icon, we-image, we-spinner, etc.) only accept Layout props — see the Design System Props section for the full list.
+Some layout-only primitives (we-avatar, we-icon, we-image, we-animated-icon, etc.) only accept Layout props — see the Design System Props section for the full list.
 
 Native HTML elements (lowercase tags render directly without registry entries):
 - Layout: div, section, article, aside, main, nav, header, footer

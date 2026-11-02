@@ -372,7 +372,10 @@ const communitySection: SchemaNode = {
             },
             {
               type: '$if',
-              props: { condition: { $: 'local.saving' }, then: { type: 'we-spinner', props: { size: 'sm' } } },
+              props: {
+                condition: { $: 'local.saving' },
+                then: { type: 'we-animated-icon', props: { name: 'spinner', size: 'sm' } },
+              },
             },
           ],
         },

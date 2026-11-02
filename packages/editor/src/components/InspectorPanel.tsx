@@ -1781,7 +1781,7 @@ function BgImagePicker(props: {
                   when={!loadingImages()}
                   fallback={
                     <Row ax="center" py="400">
-                      <we-spinner size="sm" />
+                      <we-animated-icon name="spinner" size="sm" />
                     </Row>
                   }
                 >
@@ -1825,7 +1825,7 @@ function BgImagePicker(props: {
                   when={!uploading()}
                   fallback={
                     <Row ax="center" py="400">
-                      <we-spinner size="sm" />
+                      <we-animated-icon name="spinner" size="sm" />
                     </Row>
                   }
                 >

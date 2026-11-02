@@ -19941,9 +19941,9 @@ export const seedBundles: Bundle[] = [
                                                                             $: "local.topReplies > count(local.threadRows.filter(r, r.respondsTo.id == (local.discussionRoot ? local.discussionRoot : row.id) && r.kind == 'reply'))",
                                                                           },
                                                                           then: {
-                                                                            type: 'we-spinner',
+                                                                            type: 'we-animated-icon',
                                                                             slot: 'end',
-                                                                            props: { size: 'xs' },
+                                                                            props: { name: 'spinner', size: 'xs' },
                                                                           },
                                                                         },
                                                                       },

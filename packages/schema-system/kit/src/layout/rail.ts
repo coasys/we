@@ -321,7 +321,7 @@ export function railButton(opts: RailButtonOptions): SchemaNode {
                 type: '$if',
                 props: {
                   condition: opts.busy,
-                  then: { type: 'we-spinner', props: { size: 'xs' } },
+                  then: { type: 'we-animated-icon', props: { name: 'spinner', size: 'xs' } },
                   else: { type: 'we-icon', props: { name: opts.icon } },
                 },
               },
