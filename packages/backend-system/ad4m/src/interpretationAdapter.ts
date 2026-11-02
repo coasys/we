@@ -1557,6 +1557,11 @@ const INTERPRETATION_CLASS_PREDICATE = 'ad4m://interpretation_class';
  * watch whose settings changed (a new scope query in a release, a different batch size) is still
  * rewritten, and one whose settings did not is left alone.
  */
+/*
+  Every setting `watch` writes that the executor stores on the config: one left out would read as
+  unchanged when only it changed. `persistDebug` is not here because the executor stores no field
+  for it (`AutoProcessorConfig` has none), so there is nothing to compare; add it if that changes.
+*/
 const PROCESSOR_SCALARS = {
   sourceScopeQuery: 'ad4m://source_scope_query',
   basePrefix: 'ad4m://base_prefix',
