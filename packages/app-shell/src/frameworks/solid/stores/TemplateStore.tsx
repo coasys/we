@@ -963,7 +963,7 @@ export function TemplateStoreProvider(props: ParentProps) {
   // Load saved templates when root perspective becomes available
   createEffect(() => {
     if (datasetStore.rootDataset()) {
-      loadSavedTemplates().finally(() => setLoading(false));
+      void loadSavedTemplates().finally(() => setLoading(false));
     }
   });
 
@@ -1356,7 +1356,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       const p = datasetStore.currentDataset();
       if (!p) {
         routeStore.navigate('/');
-        datasetStore.updateAgentSettings({ currentTemplateId: realId });
+        void datasetStore.updateAgentSettings({ currentTemplateId: realId });
         return;
       }
       const base = `/space/${canonicalSpaceId(p)}`;
@@ -1367,7 +1367,7 @@ export function TemplateStoreProvider(props: ParentProps) {
         const currentView = segs[0] === 'space' && segs[2] ? segs[2] : 'globe';
         routeStore.navigate(`${base}/${lastViewByTemplate.get(realId) ?? currentView}`);
       }
-      datasetStore.updateAgentSettings({ currentTemplateId: realId });
+      void datasetStore.updateAgentSettings({ currentTemplateId: realId });
     } else {
       console.error(`TemplateStore: switchTemplate - Invalid templateId "${newTemplateId}"`);
     }
@@ -2123,7 +2123,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       } else {
         routeStore.navigate('/');
       }
-      datasetStore.updateAgentSettings({ currentTemplateId: templateId });
+      void datasetStore.updateAgentSettings({ currentTemplateId: templateId });
       setOperationLoading(null);
       return true;
     } catch (error) {

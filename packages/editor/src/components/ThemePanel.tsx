@@ -680,18 +680,18 @@ export function ThemePanel() {
 
   function saveTheme() {
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => themeStore.saveEditingTheme(), SAVE_DEBOUNCE_MS);
+    saveTimer = setTimeout(() => void themeStore.saveEditingTheme(), SAVE_DEBOUNCE_MS);
   }
 
   function saveThemeNow() {
     clearTimeout(saveTimer);
-    themeStore.saveEditingTheme();
+    void themeStore.saveEditingTheme();
   }
 
   onCleanup(() => {
     if (saveTimer !== undefined) {
       clearTimeout(saveTimer);
-      themeStore.saveEditingTheme();
+      void themeStore.saveEditingTheme();
     }
   });
 

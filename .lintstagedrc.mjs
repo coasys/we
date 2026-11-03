@@ -11,7 +11,13 @@
  * `--max-warnings 0` matches what CI enforces, so the hook and the pipeline agree about what
  * "clean" means. `--no-warn-ignored` keeps a staged file that ESLint's config ignores (the
  * generated sources, the seed files) from failing the commit merely for being passed in.
+ *
+ * The type-aware rules are left to CI and `pnpm lint`: they build a TypeScript program for the package
+ * a staged file is in, which for app-shell is about 20 seconds and 3 GB on every commit. The ESLint
+ * processes lint-staged starts inherit this.
  */
+process.env.WE_LINT_TYPES = 'off';
+
 export default {
   '*.{ts,tsx,js,jsx,mjs,cjs}': 'eslint --fix --max-warnings 0 --no-warn-ignored',
 

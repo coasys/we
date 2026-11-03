@@ -177,4 +177,4 @@ async function run() {
 }
 
 // Run CLI
-run();
+void run();

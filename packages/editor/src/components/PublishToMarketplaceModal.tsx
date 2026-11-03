@@ -225,7 +225,7 @@ export function PublishToMarketplaceModal(props: Props) {
         <we-button variant="ghost" onClick={props.onClose} disabled={publishing()}>
           Cancel
         </we-button>
-        <we-button variant="solid" disabled={!canPublish()} loading={publishing()} onClick={handlePublish}>
+        <we-button variant="solid" disabled={!canPublish()} loading={publishing()} onClick={() => void handlePublish()}>
           Publish
         </we-button>
       </Row>
