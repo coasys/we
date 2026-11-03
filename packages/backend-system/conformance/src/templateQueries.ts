@@ -380,7 +380,11 @@ const CASES: Record<TemplateQueryCase, QueryCase> = {
 
 /** A relation reads back as the record, or as its id, depending on whether it was included. */
 const idOf = (value: unknown): string | undefined =>
-  value && typeof value === 'object' ? String((value as { id?: unknown }).id) : value ? String(value) : undefined;
+  value && typeof value === 'object'
+    ? String((value as { id?: unknown }).id)
+    : typeof value === 'string' && value
+      ? value
+      : undefined;
 
 function answer(rows: Row[], expected: QueryCase['expect'], keyOf: (id: string) => string): unknown {
   if ('order' in expected) return rows.map((r) => keyOf(r.id));

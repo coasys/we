@@ -3,8 +3,7 @@ export const REACTIVE_ACCESSOR = Symbol('schema-reactive-accessor');
 
 export function markReactive<T>(value: T): T {
   if (typeof value === 'function') {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (value as any)[REACTIVE_ACCESSOR] = true;
+    Reflect.set(value, REACTIVE_ACCESSOR, true);
   }
   return value;
 }
@@ -42,7 +41,7 @@ export function deepUnwrap(value: unknown, depth = 0): unknown {
     return value.map((item) => deepUnwrap(item, depth + 1));
   }
   if (value && typeof value === 'object') {
-    const proto = Object.getPrototypeOf(value);
+    const proto: unknown = Object.getPrototypeOf(value);
     if (proto !== Object.prototype && proto !== null) return value;
     const result: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value)) {

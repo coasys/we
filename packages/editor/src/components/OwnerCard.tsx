@@ -400,7 +400,7 @@ function PanelCard(props: { dockId: string }) {
     if (forkedFrom) body.forkedFrom = forkedFrom;
     const written = write((template) => {
       const meta = ((template as TemplateSchema).meta ??= { name: '', description: '', icon: '' });
-      const panels = (meta.panels ??= []) as TemplatePanel[];
+      const panels = (meta.panels ??= []);
       const existing = panels.find(
         (entry) => entry.module === panel.moduleId && !entry.node && (!entry.dock || entry.dock === panel.dock),
       );
@@ -411,7 +411,7 @@ function PanelCard(props: { dockId: string }) {
           module: panel.moduleId,
           dock: panel.dock,
           node: body,
-        } as TemplatePanel);
+        });
       return true;
     });
     // The panel's contents are the template's now, so the region it was is gone: select what is there.
@@ -611,8 +611,8 @@ function ViewCard(props: { id: string }) {
 
 /** The `meta.panels` entry whose supplied contents hold this node, when it is a module's panel. */
 function suppliedEntryHolding(template: SchemaNode, nodeId: string): TemplatePanel | undefined {
-  const panels = ((template as TemplateSchema).meta?.panels ?? []) as TemplatePanel[];
-  return panels.find((entry) => entry.module && entry.node && findNodeById(entry.node as SchemaNode, nodeId));
+  const panels = (template as TemplateSchema).meta?.panels ?? [];
+  return panels.find((entry) => entry.module && entry.node && findNodeById(entry.node, nodeId));
 }
 
 /** Keys an entry carries when arranging a panel made it, and nothing a template placed it with. */
@@ -645,7 +645,7 @@ export function SuppliedPanelNote(props: { nodeId: string }) {
     const id = entry()?.id;
     const written = write((template) => {
       const meta = (template as TemplateSchema).meta;
-      const panels = (meta?.panels ?? []) as TemplatePanel[];
+      const panels = meta?.panels ?? [];
       const index = panels.findIndex((candidate) => candidate.id === id);
       if (index < 0) return false;
       const target = panels[index];
@@ -888,11 +888,12 @@ export function CopiedPartNote(props: { nodeId: string }) {
     return { outermost, changed, returnable, clean: !dirty.get(outermost) };
   });
 
-  const partOf = (level: SchemaNode) => {
-    const id = String(level.forkedPart?.placement.id ?? '');
-    return host.owners?.part(id) ?? null;
+  const placedId = (level: SchemaNode): string | undefined => {
+    const id = level.forkedPart?.placement.id;
+    return typeof id === 'string' ? id : undefined;
   };
-  const labelOf = (level: SchemaNode) => partOf(level)?.label ?? String(level.forkedPart?.placement.id ?? 'a part');
+  const partOf = (level: SchemaNode) => host.owners?.part(placedId(level) ?? '') ?? null;
+  const labelOf = (level: SchemaNode) => partOf(level)?.label ?? placedId(level) ?? 'a part';
   const moduleName = () => {
     const found = forks();
     return (found && partOf(found.outermost)?.moduleName) || 'its module';
@@ -918,7 +919,7 @@ export function CopiedPartNote(props: { nodeId: string }) {
     });
     if (!written) return;
     // The node selected may have gone back with a level; if so, select what replaced the outermost.
-    if (!findNodeById(host.template.currentTemplate as SchemaNode, props.nodeId)) visualEditor.onSelect(first ?? null);
+    if (!findNodeById(host.template.currentTemplate, props.nodeId)) visualEditor.onSelect(first ?? null);
   };
 
   return (

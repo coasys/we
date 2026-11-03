@@ -79,7 +79,7 @@ export function createAd4mSchemaPort(backendClient: unknown): SchemaPort {
     hasCoreSchema: (dataset) => {
       // A switch reads the stored shapes next if this answers yes — start that read alongside.
       warmStoredShapes(proxy(dataset));
-      return isEntityRegistered(proxy(dataset), Space as never);
+      return isEntityRegistered(proxy(dataset), Space);
     },
     prepare: (dataset) => warmSchemaReads(proxy(dataset)),
     hasAnySchema: async (dataset) => (await proxy(dataset).getShaclNames()).length > 0,
@@ -114,7 +114,7 @@ export function createAd4mSchemaPort(backendClient: unknown): SchemaPort {
 
     // The read half of `declare`, through the very function `compileManifest` builds its classes
     // from — so the predicate a `scope` resolves against and the one the class writes cannot differ.
-    entries: (manifest: EntityManifest, opts) => manifestToEntries(manifest, opts as never),
+    entries: (manifest: EntityManifest, opts) => manifestToEntries(manifest, opts),
 
     declareInDataset(dataset, manifest: EntityManifest, opts) {
       const classes = compileManifest(manifest, {
@@ -127,7 +127,7 @@ export function createAd4mSchemaPort(backendClient: unknown): SchemaPort {
         resolveExternal: (name) => getEntityForDataset(name, dataset) as typeof Ad4mModel | undefined,
       });
       mergeDynamicEntities(proxy(dataset).uuid, classes as Record<string, EntityClass>);
-      registerDeclaredRelations(manifestToEntries(manifest, opts as never));
+      registerDeclaredRelations(manifestToEntries(manifest, opts));
       return classes;
     },
 
@@ -193,7 +193,7 @@ export function createAd4mBackendPorts(
   // side effect in the shell; it belongs to the backend choice. Use .className (set by @Model)
   // rather than .name — bundlers mangle the native .name in production builds.
   for (const M of [...ROOT_MODELS, ...SPACE_MODELS]) {
-    registerEntity((M as { className?: string }).className ?? M.name, M as unknown as EntityClass);
+    registerEntity((M as { className?: string }).className ?? M.name, M);
   }
   // Batching, registered beside the models it batches: the neutral runEntityTransaction resolves
   // to AD4M's own transaction here, and to individual writes on a backend without one.
@@ -207,8 +207,13 @@ export function createAd4mBackendPorts(
     fetch: async (dataset, address) => {
       const expr = await (dataset as PerspectiveProxy).getExpression(address);
       if (!expr?.data) return null;
-      const data = typeof expr.data === 'string' ? JSON.parse(expr.data) : expr.data;
-      return data?.data_base64 && data?.file_type ? data : null;
+      const data: unknown = typeof expr.data === 'string' ? JSON.parse(expr.data) : expr.data;
+      if (!data || typeof data !== 'object') return null;
+      const { data_base64, file_type } = data as Record<string, unknown>;
+      if (typeof data_base64 !== 'string' || !data_base64) return null;
+      if (typeof file_type !== 'string' || !file_type) return null;
+      // Both fields just checked; the payload is handed on whole, as the language stored it.
+      return data as { data_base64: string; file_type: string };
     },
   });
 

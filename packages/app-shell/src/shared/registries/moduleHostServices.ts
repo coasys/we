@@ -541,9 +541,9 @@ export function createModuleStoreDeps(framework: {
       },
       offeredModel: () => services.transcription?.offeredModel?.() ?? null,
       installOfferedModel: async () => {
-        const install = services.transcription?.installOfferedModel;
-        if (!install) throw new Error('transcription: this backend cannot install a model');
-        return install();
+        const port = services.transcription;
+        if (!port?.installOfferedModel) throw new Error('transcription: this backend cannot install a model');
+        return port.installOfferedModel();
       },
     },
 

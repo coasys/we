@@ -100,7 +100,7 @@ function warnUnknown(id: string): void {
  * nobody wrote.
  */
 function substitute<T>(value: T, from: string, to: string): T {
-  if (Array.isArray(value)) return value.map((entry) => substitute(entry, from, to)) as unknown as T;
+  if (Array.isArray(value)) return (value as unknown[]).map((entry) => substitute(entry, from, to)) as T;
   if (!value || typeof value !== 'object') return value;
 
   const record = value as Record<string, unknown>;
@@ -166,7 +166,7 @@ function instantiate(placement: SchemaNode, part: Part): SchemaNode {
   const props = (placement.props ?? {}) as { subject?: unknown; inputs?: unknown };
   const key = `${placement.id ?? ''}\u0000${JSON.stringify([props.subject ?? null, props.inputs ?? null])}`;
   let byKey = instances.get(part.node);
-  if (!byKey) instances.set(part.node, (byKey = new Map()));
+  if (!byKey) instances.set(part.node, (byKey = new Map<string, SchemaNode>()));
   const cached = byKey.get(key);
   if (cached) return cached;
 
@@ -321,7 +321,8 @@ export function openPartPath(
     if (!at || at.type !== '$part') return null;
     const opened = openRaw(at, 'one');
     if (!opened) return null;
-    parts.push(String((at.props as { id?: unknown } | undefined)?.id ?? ''));
+    const partId = (at.props as { id?: unknown } | undefined)?.id;
+    parts.push(typeof partId === 'string' ? partId : '');
     if (i === 0) root = opened;
     else {
       for (const key of Object.keys(at)) delete (at as Record<string, unknown>)[key];
@@ -335,10 +336,10 @@ export function openPartPath(
 
 /** Every `$part` below a node replaced by what it is, all the way down. One nobody publishes stays. */
 function inlineParts<T>(value: T): T {
-  if (Array.isArray(value)) return value.map((entry) => inlineParts(entry)) as unknown as T;
+  if (Array.isArray(value)) return (value as unknown[]).map((entry) => inlineParts(entry)) as T;
   if (!value || typeof value !== 'object') return value;
   const record = value as Record<string, unknown>;
-  if (record.type === '$part') return (openRaw(record as SchemaNode, 'all') ?? record) as T;
+  if (record.type === '$part') return (openRaw(record, 'all') ?? record) as T;
   return Object.fromEntries(Object.entries(record).map(([key, entry]) => [key, inlineParts(entry)])) as T;
 }
 
@@ -365,7 +366,7 @@ function resolveList(children: unknown): unknown {
 
   let changed = false;
   const out: unknown[] = [];
-  for (const child of children) {
+  for (const child of children as unknown[]) {
     if (!isNode(child)) {
       /*
         Walked rather than passed over, because not everything in a list of "children" is a node.

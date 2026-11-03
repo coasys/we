@@ -107,7 +107,7 @@ export function createInMemoryWorkflowPort(selfId: () => string | undefined): Wo
   // A to-one relation arrives as an id, a hydrated row, or a one-element list of either — the last
   // being how a record is written with one (`{ node: [id] }`).
   const idOf = (value: unknown): string | undefined => {
-    const one = Array.isArray(value) ? value[0] : value;
+    const one: unknown = Array.isArray(value) ? value[0] : value;
     return typeof one === 'string' ? one : ((one as { id?: string } | null)?.id ?? undefined);
   };
 
@@ -220,6 +220,7 @@ export function createInMemoryWorkflowPort(selfId: () => string | undefined): Wo
   return {
     capabilities: IN_MEMORY_WORKFLOW_CAPABILITIES,
 
+    // eslint-disable-next-line @typescript-eslint/require-await -- Kept async so anything thrown on the way (a handle that is not an object, an unknown workflow, no agent, a listener) reaches the caller as a rejection, as the port promises.
     async install(dataset, definition) {
       const problems = validateWorkflowDefinition(definition, IN_MEMORY_WORKFLOW_CAPABILITIES);
       if (problems.length) throw new Error(`workflows: ${problems.join(' ')}`);
@@ -228,6 +229,7 @@ export function createInMemoryWorkflowPort(selfId: () => string | undefined): Wo
       notify(store);
     },
 
+    // eslint-disable-next-line @typescript-eslint/require-await -- Kept async so anything thrown on the way (a handle that is not an object, an unknown workflow, no agent, a listener) reaches the caller as a rejection, as the port promises.
     async list(dataset) {
       const store = storeFor(dataset);
       return [...store.workflows.keys()].map((name): WorkflowSummary => ({
@@ -237,11 +239,13 @@ export function createInMemoryWorkflowPort(selfId: () => string | undefined): Wo
       }));
     },
 
+    // eslint-disable-next-line @typescript-eslint/require-await -- Kept async so anything thrown on the way (a handle that is not an object, an unknown workflow, no agent, a listener) reaches the caller as a rejection, as the port promises.
     async read(dataset, name) {
       const workflow = storeFor(dataset).workflows.get(name);
       return workflow ? structuredClone(workflow) : null;
     },
 
+    // eslint-disable-next-line @typescript-eslint/require-await -- Kept async so anything thrown on the way (a handle that is not an object, an unknown workflow, no agent, a listener) reaches the caller as a rejection, as the port promises.
     async remove(dataset, name) {
       const store = storeFor(dataset);
       const records = store.items.get(name)?.size ?? 0;
@@ -251,6 +255,7 @@ export function createInMemoryWorkflowPort(selfId: () => string | undefined): Wo
       notify(store);
     },
 
+    // eslint-disable-next-line @typescript-eslint/require-await -- Kept async so anything thrown on the way (a handle that is not an object, an unknown workflow, no agent, a listener) reaches the caller as a rejection, as the port promises.
     async start(dataset, workflow, record, opts) {
       const store = storeFor(dataset);
       const before = itemsOf(store, workflow).has(record);
@@ -310,6 +315,7 @@ export function createInMemoryWorkflowPort(selfId: () => string | undefined): Wo
       return { outcome: 'moved', state: to, moves: [move] };
     },
 
+    // eslint-disable-next-line @typescript-eslint/require-await -- Kept async so anything thrown on the way (a handle that is not an object, an unknown workflow, no agent, a listener) reaches the caller as a rejection, as the port promises.
     async withdraw(dataset, workflow, record) {
       const store = storeFor(dataset);
       const did = me();
@@ -326,6 +332,7 @@ export function createInMemoryWorkflowPort(selfId: () => string | undefined): Wo
       return withdrawn;
     },
 
+    // eslint-disable-next-line @typescript-eslint/require-await -- Kept async so anything thrown on the way (a handle that is not an object, an unknown workflow, no agent, a listener) reaches the caller as a rejection, as the port promises.
     async watch(dataset, workflow, onChange) {
       const store = storeFor(dataset);
       let stopped = false;
@@ -345,6 +352,7 @@ export function createInMemoryWorkflowPort(selfId: () => string | undefined): Wo
       };
     },
 
+    // eslint-disable-next-line @typescript-eslint/require-await -- Kept async so anything thrown on the way (a handle that is not an object, an unknown workflow, no agent, a listener) reaches the caller as a rejection, as the port promises.
     async history(dataset, workflow, record) {
       const item = itemsOf(storeFor(dataset), workflow).get(record);
       return item ? structuredClone(item.history) : [];

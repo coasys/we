@@ -157,7 +157,7 @@ function ShellOverlayInner(props: {
     any overlay can be opened, and `resolveParts` returns by identity when there is nothing to
     expand — so a view that places none pays nothing.
   */
-  const resolved = resolveParts((reactiveSchema ?? untrack(() => props.view.schema)) as SchemaNode);
+  const resolved = resolveParts(reactiveSchema ?? untrack(() => props.view.schema));
   const schema = (Array.isArray(resolved) ? resolved[0] : resolved) as typeof props.view.schema;
 
   return (
@@ -295,7 +295,7 @@ export function TemplateLayout(
    */
   const templateWithParts = (): SchemaNode => {
     const expanded = resolveParts(stores.templateStore.currentTemplate);
-    return ((Array.isArray(expanded) ? expanded[0] : expanded) ?? stores.templateStore.currentTemplate) as SchemaNode;
+    return (Array.isArray(expanded) ? expanded[0] : expanded) ?? stores.templateStore.currentTemplate;
   };
 
   // Taken back on unmount. A template switch unmounts this layout, and without the cleanup the
@@ -413,7 +413,7 @@ export function TemplateLayout(
     const td = stores.themeStore.activeTemplateTheme();
     if (!td) return undefined;
     const overrides = parseOverrides(td.overrides);
-    return (overrides.themeName as string | undefined) ?? (isValidThemeKey(td.id) ? td.id : undefined);
+    return overrides.themeName ?? (isValidThemeKey(td.id) ? td.id : undefined);
   });
 
   const rightOffset = () => computeRightOffset(stores);

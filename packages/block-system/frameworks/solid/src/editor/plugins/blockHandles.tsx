@@ -492,7 +492,7 @@ export function BlockHandles(props: { ctx: EditorContext }) {
 
       if (isFileDrop) {
         if ((e.target as Element)?.closest?.('[data-file-droppable="true"]')) return;
-        if (target) void dropFiles(editor, Array.from(files!), target.dom, target.before);
+        if (target) void dropFiles(editor, Array.from(files), target.dom, target.before);
         return;
       }
       if (source && target && source !== target.dom) {

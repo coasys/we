@@ -263,12 +263,10 @@ export default [
     },
   },
   /*
-    Rules that need TypeScript's types, from typescript-eslint's `recommended-type-checked` set. These
-    three ask what happens when a promise fails: one nobody handles (`no-floating-promises`), an async
-    function where a plain callback is expected, whose failure the caller never sees
-    (`no-misused-promises`), and an `await` on something that is not a promise (`await-thenable`).
-    The rest of the set comes in a few rules at a time; once all of it passes, this list becomes the
-    set itself.
+    Rules that need TypeScript's types: typescript-eslint's `recommended-type-checked` set, whole, so
+    a rule the set gains arrives with the upgrade. They catch what syntax and `tsc` do not: a promise
+    nobody handles, an object printed as "[object Object]", a method that loses `this`, and a value
+    typed `any` switching checking off for everything it touches. One rule is off, below, with why.
 
     Types cost a TypeScript program per package, so this covers the packages' own `src` only, never
     tests or generated files, and `pnpm lint` runs one process per package (scripts/lint.mjs): one
@@ -276,7 +274,14 @@ export default [
     WE_LINT_TYPES=off, so a commit is not a 20-second, 3 GB wait; CI and `pnpm lint` run these.
   */
   ...(process.env.WE_LINT_TYPES === 'off'
-    ? []
+    ? [
+        {
+          // Without types, a disable for a type-aware rule looks unused. Reporting it would fail the
+          // commit, and `--fix` would delete it.
+          name: 'typescript/type-aware-off',
+          linterOptions: { reportUnusedDisableDirectives: 'off' },
+        },
+      ]
     : [
         {
           name: 'typescript/type-aware',
@@ -286,9 +291,14 @@ export default [
             parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
           },
           rules: {
-            '@typescript-eslint/no-floating-promises': 'error',
-            '@typescript-eslint/no-misused-promises': 'error',
-            '@typescript-eslint/await-thenable': 'error',
+            ...tsPlugin.configs['recommended-type-checked-only'].rules,
+            /*
+              Off on purpose. The opaque handle types (`DatasetHandle`, `DatasetProxy`, `BlockDataset`,
+              `ComposedDocument`) are `unknown` so that no package can look inside one, which makes
+              `Handle | null` collapse to `unknown`. The rule calls the `| null` redundant, but it is
+              there for the reader: it says null means "none". Every report was one of these.
+            */
+            '@typescript-eslint/no-redundant-type-constituents': 'off',
           },
         },
       ]),

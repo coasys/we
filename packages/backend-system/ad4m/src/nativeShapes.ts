@@ -52,7 +52,7 @@ function compiled(shape: ShapeInput, resolve: (name: string) => unknown = () => 
   });
   const cls = classes[shape.name];
   if (!cls) throw new Error(`shapes: the manifest does not declare "${shape.name}"`);
-  return cls as unknown as Shaped;
+  return cls;
 }
 
 /** Every link on a shape's node and on its property shapes, as the perspective holds them. */
@@ -76,7 +76,7 @@ async function writeAnnotations(perspective: PerspectiveProxy, shape: ShapeInput
   const storedKeys = new Set(stored.map(({ link }) => linkKey(link)));
   const stale = stored.filter(({ link }) => !desiredKeys.has(linkKey(link)));
   const missing = desired.filter((l) => !storedKeys.has(linkKey(l)));
-  if (stale.length) await perspective.removeLinks(stale.map(({ expression }) => expression) as never);
+  if (stale.length) await perspective.removeLinks(stale.map(({ expression }) => expression));
   if (missing.length) await perspective.addLinks(missing.map((l) => new Link(l)));
 }
 
@@ -87,7 +87,7 @@ async function annotationExpressions(perspective: PerspectiveProxy, held: readon
   return found
     .flat()
     .filter((expression) => isAnnotation(expression.data))
-    .map((expression) => ({ expression, link: expression.data as LinkLike }));
+    .map((expression) => ({ expression, link: expression.data }));
 }
 
 export function createAd4mShapeStore(deps: Ad4mShapeStoreDeps): ShapeStore {
@@ -139,7 +139,7 @@ export function createAd4mShapeStore(deps: Ad4mShapeStoreDeps): ShapeStore {
       const perspective = proxy(dataset);
       const held = await shapeLinks(perspective, id);
       const annotations = await annotationExpressions(perspective, held);
-      if (annotations.length) await perspective.removeLinks(annotations.map(({ expression }) => expression) as never);
+      if (annotations.length) await perspective.removeLinks(annotations.map(({ expression }) => expression));
     },
 
     async keep(dataset, shape) {

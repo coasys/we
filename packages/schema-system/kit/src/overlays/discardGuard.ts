@@ -104,7 +104,7 @@ export function discardGuard(opts: DiscardGuardOptions): {
         then: { $setLocal: FLAG, value: true },
         else: opts.close,
       },
-    } as SchemaProp,
+    },
 
     /*
       The same question as a close, remembering that the answer was Back. Without that, Discard ran
@@ -121,7 +121,7 @@ export function discardGuard(opts: DiscardGuardOptions): {
           ],
           else: goBack,
         },
-      } as SchemaProp,
+      },
     }),
 
     localState: {

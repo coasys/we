@@ -87,7 +87,7 @@ export interface AppDataset extends Omit<DatasetRef, 'handle'> {
   handle: DatasetProxy;
 }
 
-const toApp = (ref: DatasetRef): AppDataset => ref as AppDataset;
+const toApp = (ref: DatasetRef): AppDataset => ref;
 
 /**
  * The one segment a space is addressed by — its shared id when it has one, its local id otherwise.
@@ -369,7 +369,7 @@ export function DatasetStoreProvider(props: ParentProps) {
   ): Promise<void> {
     try {
       await ExtractionPass.create(
-        handle as never,
+        handle,
         {
           outcome: pass.outcome,
           recordCount: pass.recordCount,
@@ -378,7 +378,7 @@ export function DatasetStoreProvider(props: ParentProps) {
           trigger: pass.trigger ?? 'manual',
           prompt: pass.prompt ?? '',
           response: pass.response ?? '',
-        } as never,
+        },
         { parent: { id: collectionId, relation: 'extractionPasses', entity: 'CollectionBlock' } },
       );
     } catch (error) {
@@ -429,9 +429,9 @@ export function DatasetStoreProvider(props: ParentProps) {
         },
         offeredModel: () => session.backendPorts()?.transcription?.offeredModel?.() ?? null,
         installOfferedModel: async () => {
-          const install = session.backendPorts()?.transcription?.installOfferedModel;
-          if (!install) throw new Error('transcription: this backend cannot install a model');
-          return install();
+          const port = session.backendPorts()?.transcription;
+          if (!port?.installOfferedModel) throw new Error('transcription: this backend cannot install a model');
+          return port.installOfferedModel();
         },
       },
       // The node's own language model, for a module that summarises, translates or tags. The port
@@ -691,7 +691,7 @@ export function DatasetStoreProvider(props: ParentProps) {
   async function filedUnder(handle: unknown, conversation: string): Promise<ParentRef> {
     let root = '';
     try {
-      root = (await readSpaceRoot(handle as DatasetProxy))?.root ?? '';
+      root = (await readSpaceRoot(handle))?.root ?? '';
     } catch {
       // Filed under the conversation, and asked again next pass.
     }
@@ -738,7 +738,8 @@ export function DatasetStoreProvider(props: ParentProps) {
     const json = agentSettings()?.datasetOrder;
     if (!json) return [];
     try {
-      return JSON.parse(json);
+      const order: unknown = JSON.parse(json);
+      return Array.isArray(order) ? order.filter((id): id is string => typeof id === 'string') : [];
     } catch {
       return [];
     }
@@ -1034,11 +1035,17 @@ export function DatasetStoreProvider(props: ParentProps) {
     }
   }
 
+  /** The stored fields of an `AgentSettings` record — its keys minus its methods. */
+  type AgentSettingsField = {
+    [K in keyof AgentSettings]: AgentSettings[K] extends (...args: never[]) => unknown ? never : K;
+  }[keyof AgentSettings];
+
   async function updateAgentSettings(updates: Partial<AgentSettings>): Promise<boolean> {
     const settings = agentSettings();
     if (!settings) return false;
 
-    const keys = Object.keys(updates) as (keyof AgentSettings)[];
+    // Updates name stored fields only, never one of the record's methods.
+    const keys = Object.keys(updates) as AgentSettingsField[];
     const before = Object.fromEntries(keys.map((key) => [key, settings[key]])) as Partial<AgentSettings>;
 
     Object.assign(settings, updates);
@@ -1254,11 +1261,11 @@ export function DatasetStoreProvider(props: ParentProps) {
     }
 
     try {
-      const handle = (await lifecycle.get(targetUuid))?.handle as DatasetProxy | undefined;
+      const handle = (await lifecycle.get(targetUuid))?.handle;
       if (!handle) return '';
-      const dedupe = session.backendPorts()?.schemas.dedupe;
-      if (!dedupe) return '';
-      const { removed, authors } = await dedupe(handle);
+      const schemas = session.backendPorts()?.schemas;
+      if (!schemas?.dedupe) return '';
+      const { removed, authors } = await schemas.dedupe(handle);
       if (removed === 0) return 'No duplicate SDNA links found.';
       const myDid = session.me()?.did;
       const authorList = authors.map((did) => (did === myDid ? `${did} (you)` : did)).join(', ');

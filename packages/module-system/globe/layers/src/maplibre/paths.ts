@@ -7,14 +7,7 @@
  * Cesium. Dashed lines are their own layer, since a dash pattern is not something MapLibre lets each
  * feature choose; an arc is drawn solid.
  */
-import {
-  arcPositions,
-  followTime,
-  type LonLat,
-  type PathFeature,
-  pathFeatures,
-  type PathsOptions,
-} from '@we/globe-core';
+import { arcPositions, followTime, type PathFeature, pathFeatures, type PathsOptions } from '@we/globe-core';
 import type { LineLayerSpecification, MapMouseEvent } from 'maplibre-gl';
 
 import type { LayerRenderer, MapLibreRendererContext } from '../types';
@@ -25,7 +18,7 @@ import { addSource, continuous, maplibreColors, pickFeatures } from './shared';
 function line(feature: PathFeature): [number, number][] {
   const out: (readonly [number, number])[] = [];
   for (let i = 1; i < feature.positions.length; i++) {
-    const segment = arcPositions(feature.positions[i - 1] as LonLat, feature.positions[i] as LonLat, 0, 24);
+    const segment = arcPositions(feature.positions[i - 1], feature.positions[i], 0, 24);
     segment.forEach(([lon, lat], index) => {
       if (i === 1 || index > 0) out.push([lon, lat]);
     });

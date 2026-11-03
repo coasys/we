@@ -144,7 +144,7 @@ export function FileInput(props: FileInputProps) {
             <we-input
               type="text"
               value={pendingTitle()}
-              on:input={(e: CustomEvent) => setPendingTitle(e.detail)}
+              on:input={(e: CustomEvent<string>) => setPendingTitle(e.detail)}
               placeholder="Title (optional)"
               width="100%"
             />

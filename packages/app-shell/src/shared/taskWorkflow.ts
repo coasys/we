@@ -187,7 +187,7 @@ export function compileTaskWorkflow(
       lanes: [{ states: slugs }],
       exceptions:
         rule === 'next-and-back' && slugs.length > 1
-          ? [{ from: slugs[slugs.length - 1]!, to: slugs[slugs.length - 2]! }]
+          ? [{ from: slugs[slugs.length - 1], to: slugs[slugs.length - 2] }]
           : [],
     },
     settings,

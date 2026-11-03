@@ -45,7 +45,7 @@ export function Search(allProps: SearchComponentProps) {
   const [containerProps, inputProps] = splitProps(rest, containerKeys);
 
   const wrapperStyle = createMemo(() =>
-    buildLayoutStyles({ ...containerProps, display: containerProps.display ?? 'block' } as LayoutProps, 'column'),
+    buildLayoutStyles({ ...containerProps, display: containerProps.display ?? 'block' }, 'column'),
   );
 
   const [localValue, setLocalValue] = createSignal(untrack(() => props.value) ?? '');
@@ -80,7 +80,7 @@ export function Search(allProps: SearchComponentProps) {
 
   createEffect(() => {
     if (!inputRef) return;
-    for (const key of Object.keys(inputProps as object)) {
+    for (const key of Object.keys(inputProps)) {
       const val = (inputProps as Record<string, unknown>)[key];
       if (val !== undefined) inputRef[key] = val;
     }

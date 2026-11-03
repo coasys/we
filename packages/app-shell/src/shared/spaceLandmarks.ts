@@ -11,6 +11,8 @@
  */
 import { type DatasetProxy, Space, SpaceLandmark } from '@we/entities';
 
+import { isoOf } from './interpretation/callExport';
+
 /** The space's landmarks, by name → the id of the record that is it. The newest wins a name. */
 export async function readSpaceLandmarks(dataset: DatasetProxy): Promise<Record<string, string>> {
   return landmarksByName(await SpaceLandmark.findAll(dataset));
@@ -25,10 +27,10 @@ export function landmarksByName(
 ): Record<string, string> {
   const byName: Record<string, { id: string; at: string }> = {};
   for (const landmark of landmarks) {
-    const node = Array.isArray(landmark.node) ? landmark.node[0] : landmark.node;
-    const at = String(landmark.createdAt ?? '');
+    const node = relationId(landmark.node);
+    const at = isoOf(landmark.createdAt);
     if (!landmark.name || !node) continue;
-    if (!byName[landmark.name] || at > byName[landmark.name].at) byName[landmark.name] = { id: String(node), at };
+    if (!byName[landmark.name] || at > byName[landmark.name].at) byName[landmark.name] = { id: node, at };
   }
   return Object.fromEntries(Object.entries(byName).map(([name, { id }]) => [name, id]));
 }
@@ -93,7 +95,7 @@ export function seedSpaceRoot(dataset: DatasetProxy, space: { id?: string; root?
 
 /** A to-one relation's id, however a row carries it: the id, a one-element list, or the record. */
 function relationId(value: unknown): string {
-  const one = Array.isArray(value) ? value[0] : value;
+  const one: unknown = Array.isArray(value) ? value[0] : value;
   if (typeof one === 'string') return one;
   const id = (one as { id?: unknown } | null | undefined)?.id;
   return typeof id === 'string' ? id : '';
@@ -107,6 +109,6 @@ export async function writeSpaceLandmark(
   nodeId: string,
 ): Promise<void> {
   // An untyped to-one is written as a one-element list at creation — see `createBoard`.
-  const landmark = await SpaceLandmark.create(dataset, { name, node: [nodeId] } as never);
+  const landmark = await SpaceLandmark.create(dataset, { name, node: [nodeId] });
   await Space.addRelation(dataset, spaceId, 'landmarks', landmark.id);
 }

@@ -2,7 +2,7 @@
 // Import global styles from app-shell
 import '@we/app-shell/shared/index.scss';
 
-import { App, PlatformProvider, type WeSeedFile } from '@we/app-shell/solid';
+import { App, PlatformProvider } from '@we/app-shell/solid';
 import weSeed from '@we/seed-file';
 import { render } from 'solid-js/web';
 
@@ -17,7 +17,7 @@ if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
 
 render(
   () => (
-    <PlatformProvider seed={weSeed as unknown as WeSeedFile} platform={electronPlatform} backend={ad4mConnector}>
+    <PlatformProvider seed={weSeed} platform={electronPlatform} backend={ad4mConnector}>
       <App />
     </PlatformProvider>
   ),

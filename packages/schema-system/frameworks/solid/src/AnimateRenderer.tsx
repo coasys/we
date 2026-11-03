@@ -64,7 +64,7 @@ export function AnimateRenderer({ node, stores, context, renderNode }: AnimateRe
   const hasCondition = node.props?.condition !== undefined;
   const conditionMet = createMemo(() => {
     const condition = resolveProp(node.props?.condition, stores, context, createMemo);
-    return !!(typeof condition === 'function' ? condition() : condition);
+    return !!(typeof condition === 'function' ? (condition as () => unknown)() : condition);
   });
 
   // Start in the hidden state; transitions will reveal / hide the element. Except under

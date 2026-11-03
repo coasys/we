@@ -282,7 +282,7 @@ export async function readFeedWindow(
   for (const call of calls) {
     const sorted = [...lines].sort((a, b) => (fromStart ? timeOf(a) - timeOf(b) : timeOf(b) - timeOf(a)));
     if (sorted.length >= shown) {
-      const edge = timeOf(sorted[shown - 1] as unknown as Row);
+      const edge = timeOf(sorted[shown - 1]);
       const began = timeOf(call);
       // Nothing this call said can reach into a full window — see "When to stop reading calls".
       const outOfReach = fromStart ? began > edge : began + MAX_CALL_SPAN_MS < edge;
@@ -299,9 +299,7 @@ export async function readFeedWindow(
   }
 
   const activity = groupActivity(extracted.flat(), titles, options.pending);
-  const merged: FeedRow[] = [...lines, ...activity].sort((a, b) =>
-    before(timeOf(a as unknown as Row), timeOf(b as unknown as Row)) ? -1 : 1,
-  );
+  const merged: FeedRow[] = [...lines, ...activity].sort((a, b) => (before(timeOf(a), timeOf(b)) ? -1 : 1));
   const hasMore = merged.length > shown || filled || reachedCalls < calls.length || calls.length >= CALL_WINDOW;
   return { rows: merged.slice(0, shown), hasMore };
 }

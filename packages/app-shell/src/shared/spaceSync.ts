@@ -88,8 +88,8 @@ export async function syncSpaceToParent(
       name: space.name,
       description: space.description,
       discovery: space.discovery,
-      ...(avatarField !== undefined && { avatar: avatarField as string }),
-      ...(coverImageField !== undefined && { coverImage: coverImageField as string }),
+      ...(avatarField !== undefined && { avatar: avatarField }),
+      ...(coverImageField !== undefined && { coverImage: coverImageField }),
     });
   }
 

@@ -127,7 +127,7 @@ function identified(
   const seen = new Set<string>();
   const out: { id: string; row: Row }[] = [];
   let duplicates = 0;
-  (Array.isArray(rows) ? rows : []).forEach((row, index) => {
+  (Array.isArray(rows) ? (rows as readonly Row[]) : []).forEach((row, index) => {
     if (!row || typeof row !== 'object') return;
     const id = rowId(row, index, idPath);
     if (seen.has(id)) {
@@ -147,7 +147,7 @@ function identified(
  */
 function rowsOf(data: readonly Row[] | undefined, slice: TimeSlice | null | undefined): readonly Row[] {
   if (slice) return slice.rows;
-  return Array.isArray(data) ? data : [];
+  return Array.isArray(data) ? (data as readonly Row[]) : [];
 }
 
 /** What time adds to a row's subject: its age in days, for a rule to read as `data.age`. */

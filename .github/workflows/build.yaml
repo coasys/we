@@ -24,19 +24,23 @@ concurrency:
 # read the log. Now the PR itself says Lint / Build / Typecheck / Test / Schemas, and a
 # failure names its stage before anyone clicks anything.
 #
-# Wall clock: lint needs no build output, so it has no business queueing behind a
-# three-minute build; and typecheck, test and schema validation only need the build's
-# *result*, so they can run alongside each other rather than end to end.
+# Wall clock: lint, typecheck, test and schema validation only need the build's *result*,
+# so they run alongside each other rather than end to end. Lint needs it too: its type-aware
+# rules read each package's declarations, and a package's are in its build output.
 #
 # The three downstream jobs take the build's output as an artifact instead of rebuilding
 # it — see "Package build outputs" below.
 jobs:
+  # Runs after Build: the type-aware rules resolve imports between packages through each one's
+  # dist types, and without them every such type is unresolved and reads as unsafe.
   lint:
     name: Lint
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
+      - uses: ./.github/actions/restore-build
 
       # How lint runs (one process per package, for the type-aware rules) lives in the `lint` script
       # itself, scripts/lint.mjs, so CI and a developer's own `pnpm lint` cannot disagree about it.

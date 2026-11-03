@@ -64,7 +64,7 @@ function labelOf(block: ContentBlock): string {
   }
   const fields = block as unknown as Record<string, unknown>;
   for (const key of ['title', 'label', 'name', 'altText', 'url']) {
-    if (typeof fields[key] === 'string' && fields[key]) return fields[key] as string;
+    if (typeof fields[key] === 'string' && fields[key]) return fields[key];
   }
   return entityOf(block) ?? block._type;
 }
@@ -116,8 +116,8 @@ function DraggableBlock(props: { block: ContentBlock; children: JSX.Element }): 
           `recordid` attribute is not the property the element reads. Objects are set as properties
           already. The test in blockRendererDrag.test.tsx holds this. */}
       <we-draggable
-        entity={entity()!}
-        prop:recordId={props.block._key!}
+        entity={entity()}
+        prop:recordId={props.block._key}
         prop:datasetKey={source!.datasetKey ?? ''}
         label={labelOf(props.block)}
         icon={ICONS[props.block._type] ?? 'square'}

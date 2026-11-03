@@ -102,7 +102,7 @@ export function resolveProp(value: unknown, stores: Props, context: Props, memo:
                 if (typeof subFn === 'function') (subFn as (...a: unknown[]) => unknown)(...args);
               }
             } else if (typeof fn === 'function') {
-              fn(...args);
+              (fn as (...a: unknown[]) => unknown)(...args);
             }
           }
         };

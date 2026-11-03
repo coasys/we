@@ -549,7 +549,7 @@ function replyBody(
                           ],
                         },
                       },
-                    } as SchemaNode,
+                    },
                   ]
                 : [],
             },
@@ -1003,10 +1003,7 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
           // The tree first: `createPost(json, options)`. `we://response` rather than `we://child`
           // — a reply answers the thing rather than becoming part of it, which is what lets a reply
           // be a full composition with children of its own.
-          args: [
-            { $: 'arg' },
-            { kind: 'reply', parentId: { $: `local.${REPLY_TO}` }, relation: 'responses' } as SchemaProp,
-          ],
+          args: [{ $: 'arg' }, { kind: 'reply', parentId: { $: `local.${REPLY_TO}` }, relation: 'responses' }],
         },
       }),
     ],

@@ -162,7 +162,7 @@ function shapesIn(node: Node, into = new Map<string, { n: number; size: number }
  * Maximal shapes only, so a shared subtree is counted once rather than once per node inside it.
  */
 function overlapOf(node: Node, path: string[]): Overlap | undefined {
-  const sides = (['then', 'else'] as const).map((slot) => [node.props?.[slot]].flat().filter(isNode) as Node[]);
+  const sides = (['then', 'else'] as const).map((slot) => [node.props?.[slot]].flat().filter<Node>(isNode));
   if (!sides[0].length || !sides[1].length) return undefined;
 
   const [a, b] = sides.map((roots) => {
@@ -202,7 +202,11 @@ function overlapOf(node: Node, path: string[]): Overlap | undefined {
   const cond =
     typeof condition === 'object' && condition !== null && typeof (condition as { $?: unknown }).$ === 'string'
       ? (condition as { $: string }).$
-      : String(condition ?? '?');
+      : condition === undefined || condition === null
+        ? '?'
+        : typeof condition === 'string'
+          ? condition
+          : JSON.stringify(condition);
   return {
     shared,
     then: bytes(sides[0]),

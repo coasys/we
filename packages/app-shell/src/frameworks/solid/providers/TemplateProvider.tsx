@@ -25,8 +25,22 @@ import { signalOptimism } from '../../../shared/signalOptimism';
 import { signalOrder } from '../../../shared/signalOrder';
 
 /** A relation comes back as ids or as hydrated rows; read either, the way `arrangedBoard` does. */
-const idOf = (entry: unknown): string =>
-  typeof entry === 'string' ? entry : String((entry as { id?: unknown } | null)?.id ?? '');
+const idOf = (entry: unknown): string => {
+  if (typeof entry === 'string') return entry;
+  const id = (entry as { id?: unknown } | null)?.id;
+  return typeof id === 'string' ? id : '';
+};
+
+/** The part of a registered entity class a record write by name uses. */
+interface RecordModel {
+  create(dataset: unknown, fields: Record<string, unknown>, options?: Record<string, unknown>): Promise<RecordInstance>;
+  update(dataset: unknown, id: string, fields: Record<string, unknown>): Promise<RecordInstance>;
+  delete(dataset: unknown, id: string): Promise<void>;
+  findAll(dataset: unknown, query?: unknown): Promise<RecordInstance[]>;
+}
+
+/** An entity's registered class by name; the registry answers untyped, but every class implements these. */
+const recordModel = (entity: string) => getEntity(entity) as unknown as RecordModel;
 
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
 import {
@@ -52,7 +66,7 @@ import {
 } from '@solid/stores';
 import type { Stores } from '@solid/types';
 import { Route, Router } from '@solidjs/router';
-import { datasetKey, formatRef, manifestEntries } from '@we/backend-shared';
+import { datasetKey, formatRef, manifestEntries, type RecordInstance } from '@we/backend-shared';
 import { type ContentInput, copyableContent, createBlocks, deleteBlocks, reconcileBlocks } from '@we/block-shared';
 import { BlockDisplayOverrides, BlockHostProvider, colorFor } from '@we/block-solid';
 import { toastService } from '@we/components/solid';
@@ -61,7 +75,7 @@ import { CollectionBlock, getEntity, Space } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import type { DocumentAccess } from '@we/module-shared';
 import { holdTopLayer, installTopLayerGuard } from '@we/primitives/top-layer';
-import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
+import type { TemplateSchema } from '@we/schema-shared';
 import {
   EDIT_SURFACE_ATTR,
   expandViewRoutes,
@@ -160,11 +174,11 @@ export default function TemplateProvider() {
   // different one (e.g. 'datasetStore.rootDataset' for we-root entities like AgentSettings).
   const recordActions = {
     create: async (entity: string, data: Record<string, unknown> = {}, options?: Record<string, unknown>) => {
-      const [Entity, p] = resolve(entity, options as { dataset?: string });
+      const [Entity, p] = resolve(entity, options);
       const rest = Object.fromEntries(Object.entries(options ?? {}).filter(([k]) => k !== 'dataset'));
-      const fields = await withCollectionDefaults(entity, data, p as DatasetProxy);
+      const fields = await withCollectionDefaults(entity, data, p);
       const created = await Entity.create(p, fields, Object.keys(rest).length ? rest : undefined);
-      threadResponse(p as DatasetProxy, created as { id?: string } | undefined, rest);
+      threadResponse(p, created, rest);
       return created;
     },
     update: (entity: string, id: string, data: Record<string, unknown>, options?: { dataset?: string }) => {
@@ -189,7 +203,7 @@ export default function TemplateProvider() {
    * `DatasetTarget` for why those two must not be the same outcome.
    */
   function moduleTarget(uri?: string): DatasetProxy | null {
-    if (!uri) return (datasetStore.currentDataset()?.handle as DatasetProxy | undefined) ?? null;
+    if (!uri) return datasetStore.currentDataset()?.handle ?? null;
     const found = datasetStore.datasets().find((d) => d.sharedUri === uri || d.id === uri);
     if (!found) {
       console.warn(`module host: no dataset for "${uri}" — refusing rather than writing elsewhere`);
@@ -237,7 +251,7 @@ export default function TemplateProvider() {
   async function withCollectionDefaults(
     entity: string,
     fields: Record<string, unknown>,
-    perspective: DatasetProxy | undefined,
+    perspective?: DatasetProxy,
   ): Promise<Record<string, unknown>> {
     if (entity !== 'CollectionBlock' || fields.mode !== 'feed' || 'autoExtract' in fields || !perspective)
       return fields;
@@ -265,8 +279,8 @@ export default function TemplateProvider() {
     rest: Record<string, unknown>,
   ) {
     const stamped = await withCollectionDefaults(entity, fields, perspective);
-    const created = await getEntity(entity).create(perspective, stamped, Object.keys(rest).length ? rest : undefined);
-    threadResponse(perspective, created as { id?: string } | undefined, rest);
+    const created = await recordModel(entity).create(perspective, stamped, Object.keys(rest).length ? rest : undefined);
+    threadResponse(perspective, created, rest);
     return created;
   }
 
@@ -313,7 +327,7 @@ export default function TemplateProvider() {
 
   /** The same, for `record.update` — `recordActions` resolves a store *path*, and a module has a handle. */
   function updateInDataset(entity: string, id: string, fields: Record<string, unknown>, perspective: DatasetProxy) {
-    return getEntity(entity).update(perspective, id, fields);
+    return recordModel(entity).update(perspective, id, fields);
   }
 
   // The same capability schemas get as `record.create`, lent to module stores that must write
@@ -385,7 +399,7 @@ export default function TemplateProvider() {
         find: async (entity, query) => {
           if (!datasetStore.personalDataset()) return [];
           const [Model, p] = resolve(entity, { dataset: PERSONAL_DATASET });
-          const rows = (await Model.findAll(p, query as never)) as unknown as Record<string, unknown>[];
+          const rows = (await Model.findAll(p, query)) as unknown as Record<string, unknown>[];
           return rows ?? [];
         },
         update: async (entity, id, fields) => {
@@ -451,7 +465,7 @@ export default function TemplateProvider() {
       removeEntity: async (entity, id, options) => {
         const p = moduleTarget(options?.dataset);
         if (!p) return;
-        await getEntity(entity).delete(p, id);
+        await recordModel(entity).delete(p, id);
       },
 
       /*
@@ -677,13 +691,16 @@ export default function TemplateProvider() {
 
       // A card's state is held as an arrangement of one, so it settles through the same lookup —
       // `<cardId>.status` against what the pool actually says the record's state is.
-      for (const record of (Array.isArray((given as { records?: unknown }).records)
+      for (const record of Array.isArray((given as { records?: unknown }).records)
         ? (given as { records: unknown[] }).records
-        : []) as unknown[]) {
+        : []) {
         const row = record as { id?: string; status?: unknown } | null;
         // Against the state the board draws — the run's where there is one — or a drop that moved a
         // run would be held until `status` caught up, which it may never do if nobody mirrors it.
-        if (row?.id) rows.set(`${row.id}.status`, [workflowStateOf(workflowView, row.id) ?? String(row.status ?? '')]);
+        if (row?.id)
+          rows.set(`${row.id}.status`, [
+            workflowStateOf(workflowView, row.id) ?? (typeof row.status === 'string' ? row.status : ''),
+          ]);
       }
 
       queueMicrotask(() => boardOptimism.settle((id, relation) => rows.get(`${id}.${relation}`)));
@@ -845,6 +862,7 @@ export default function TemplateProvider() {
 
   // Resolves one of the named dataset accessors above. Only called at action-dispatch time, so
   // `stores` is always fully initialized.
+
   function resolveDataset(path?: string): DatasetProxy | null {
     if (!path || !DATASET_PATHS.has(path)) {
       if (path) console.warn(`dataset: "${path}" is not a dataset accessor; using the current one`);
@@ -857,14 +875,14 @@ export default function TemplateProvider() {
     // assumed, since the assertion this list makes is about *names*, not about shapes.
     let val: unknown = typeof accessor === 'function' ? (accessor as () => unknown)() : accessor;
     // Dataset accessors resolve to refs; model calls consume the handle inside.
-    if (val && typeof val === 'object' && 'handle' in val) val = (val as { handle: unknown }).handle;
-    return (val as DatasetProxy | null) ?? null;
+    if (val && typeof val === 'object' && 'handle' in val) val = val.handle;
+    return val ?? null;
   }
 
   // Mutations need the raw model class (create/update/delete), not the renderer's read-only
   // handle — resolved through the model layer's own registry.
   function resolve(entityName: string, opts?: { dataset?: string }) {
-    return [getEntity(entityName), resolveDataset(opts?.dataset) ?? datasetStore.currentDataset()!.handle] as const;
+    return [recordModel(entityName), resolveDataset(opts?.dataset) ?? datasetStore.currentDataset()!.handle] as const;
   }
 
   /*
@@ -920,7 +938,7 @@ export default function TemplateProvider() {
         path,
         args,
         path === 'spaceStore.deleteCollection'
-          ? collectionFacts(datasetStore.currentDataset()?.handle, String(args[0] ?? ''))
+          ? collectionFacts(datasetStore.currentDataset()?.handle, typeof args[0] === 'string' ? args[0] : '')
           : undefined,
       ),
     // Enforced: this is the bag a stranger's template renders against.
@@ -989,7 +1007,7 @@ export default function TemplateProvider() {
     props: { styles: { display: 'contents' } },
     get children() {
       const { meta: _meta, ...app } = templateStore.appTemplate();
-      const expanded = resolveParts(app as SchemaNode);
+      const expanded = resolveParts(app);
       return Array.isArray(expanded) ? expanded : [expanded];
     },
   };
@@ -1315,7 +1333,7 @@ export default function TemplateProvider() {
         path: SPACE_ROUTE_PATH,
         children: [{ type: '$routes' }],
         routes: [...routes, ...extras],
-      } as unknown as (typeof routes)[number],
+      },
     ]);
   });
 
@@ -1615,7 +1633,7 @@ export default function TemplateProvider() {
   // 2. Shell chrome components like InspectorPanel (in templateEditor) get context too
   return (
     <BlockHostProvider
-      dataset={() => (datasetStore.currentDataset()?.handle as never) ?? null}
+      dataset={() => datasetStore.currentDataset()?.handle ?? null}
       /*
         Who a composer here can @mention: every member of the space on screen. The host's knowledge,
         provided once, so no template names a store to get it.

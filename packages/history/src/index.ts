@@ -158,7 +158,7 @@ export function createHistory(signal: SignalFactory, options: { limit?: number }
   /** Drop entries the world has moved past, from the top down, and hand back the first that holds. */
   function nextApplicable(stack: HistoryEntry[], direction: 'undo' | 'redo'): HistoryEntry | undefined {
     while (stack.length) {
-      const entry = stack[stack.length - 1]!;
+      const entry = stack[stack.length - 1];
       if (entry.scope !== scope || entry.stale?.(direction) === true) {
         stack.pop();
         continue;

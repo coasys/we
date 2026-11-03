@@ -158,7 +158,7 @@ export function ghostOutline(visual: NodeVisual, at: Point): string {
     const [rx, ry] = [width / 2, height / 2];
     return `M ${left} ${at.y} a ${rx} ${ry} 0 1 0 ${width} 0 a ${rx} ${ry} 0 1 0 ${-width} 0 Z`;
   }
-  const cut = cardSilhouette(visual.cardShape as CardShape | undefined);
+  const cut = cardSilhouette(visual.cardShape);
   if (cut) return `M ${cut.map(([x, y]) => `${left + x * width} ${top + y * height}`).join(' L ')} Z`;
   const r = Math.min(width, height) / 12;
   return (

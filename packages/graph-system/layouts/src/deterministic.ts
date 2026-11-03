@@ -101,7 +101,7 @@ function reduceCrossings(levels: Map<number, string[]>, input: LayoutInput, swee
       // A node with no neighbour in the adjacent row has no opinion; leaving it where it is keeps the
       // sort stable rather than dragging it to one end.
       if (!linked.length) return row.indexOf(id);
-      return (linked as number[]).reduce((sum, p) => sum + p, 0) / linked.length;
+      return linked.reduce((sum, p) => sum + p, 0) / linked.length;
     };
     return [...row].sort((a, b) => barycentre(a) - barycentre(b) || a.localeCompare(b));
   };

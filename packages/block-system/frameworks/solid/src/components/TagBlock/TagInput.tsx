@@ -62,12 +62,12 @@ export function TagInput(props: TagInputProps) {
                 <we-input
                   type="text"
                   value={name()}
-                  on:input={(e: CustomEvent) => setName(e.detail)}
+                  on:input={(e: CustomEvent<string>) => setName(e.detail)}
                   placeholder="Tag name"
                 />
               </we-form-field>
               <we-form-field label="Color">
-                <we-color-picker value={color()} onChange={(e: CustomEvent) => setColor(e.detail)} />
+                <we-color-picker value={color()} onChange={(e: CustomEvent<string>) => setColor(e.detail)} />
               </we-form-field>
               <Row ax="end" gap="200">
                 <we-button variant="soft" onClick={closeModal}>
