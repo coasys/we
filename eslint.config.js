@@ -263,12 +263,10 @@ export default [
     },
   },
   /*
-    Rules that need TypeScript's types, from typescript-eslint's `recommended-type-checked` set. These
-    three ask what happens when a promise fails: one nobody handles (`no-floating-promises`), an async
-    function where a plain callback is expected, whose failure the caller never sees
-    (`no-misused-promises`), and an `await` on something that is not a promise (`await-thenable`).
-    The rest of the set comes in a few rules at a time; once all of it passes, this list becomes the
-    set itself.
+    Rules that need TypeScript's types: typescript-eslint's `recommended-type-checked` set, whole, so
+    a rule the set gains arrives with the upgrade. They catch what syntax and `tsc` do not: a promise
+    nobody handles, an object printed as "[object Object]", a method that loses `this`, and a value
+    typed `any` switching checking off for everything it touches. One rule is off, below, with why.
 
     Types cost a TypeScript program per package, so this covers the packages' own `src` only, never
     tests or generated files, and `pnpm lint` runs one process per package (scripts/lint.mjs): one
@@ -293,22 +291,7 @@ export default [
             parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
           },
           rules: {
-            '@typescript-eslint/no-floating-promises': 'error',
-            '@typescript-eslint/no-misused-promises': 'error',
-            '@typescript-eslint/await-thenable': 'error',
-            '@typescript-eslint/no-base-to-string': 'error',
-            '@typescript-eslint/restrict-template-expressions': 'error',
-            '@typescript-eslint/require-await': 'error',
-            '@typescript-eslint/prefer-promise-reject-errors': 'error',
-            '@typescript-eslint/no-unsafe-enum-comparison': 'error',
-            '@typescript-eslint/only-throw-error': 'error',
-            '@typescript-eslint/unbound-method': 'error',
-            '@typescript-eslint/no-unsafe-argument': 'error',
-            '@typescript-eslint/no-unsafe-assignment': 'error',
-            '@typescript-eslint/no-unsafe-call': 'error',
-            '@typescript-eslint/no-unsafe-member-access': 'error',
-            '@typescript-eslint/no-unsafe-return': 'error',
-            '@typescript-eslint/no-unnecessary-type-assertion': 'error',
+            ...tsPlugin.configs['recommended-type-checked-only'].rules,
             /*
               Off on purpose. The opaque handle types (`DatasetHandle`, `DatasetProxy`, `BlockDataset`,
               `ComposedDocument`) are `unknown` so that no package can look inside one, which makes
