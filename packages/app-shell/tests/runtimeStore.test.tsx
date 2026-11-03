@@ -19,6 +19,11 @@ import type {
   AiModelStatusEvent,
   BackendPorts,
   ConsentRequest,
+  LocalAiHardware,
+  LocalAiPlan,
+  LocalAiPort,
+  LocalAiProgress,
+  LocalAiStatus,
   ModelAdminPort,
   PeerRecords,
   RuntimeAdminPort,
@@ -317,6 +322,7 @@ describe('AI models and the servers they run on', () => {
     hasApiKey: false,
     capabilities: ['chat', 'embeddings'],
     health: { state: 'reachable', detail: '', models: ['nomic-embed-text:latest'] },
+    managed: false,
   };
   const remote: AiEndpoint = {
     id: 'e2',
@@ -326,6 +332,7 @@ describe('AI models and the servers they run on', () => {
     hasApiKey: true,
     capabilities: ['chat'],
     health: { state: 'unauthorized', detail: '', models: [] },
+    managed: false,
   };
   const qwen: AiModel = {
     id: 'm1',
@@ -637,6 +644,267 @@ describe('AI models and the servers they run on', () => {
     const store = mount();
     expect(store.canManageAiEndpoints()).toBe(false);
     expect(store.canManageAi()).toBe(true);
+  });
+});
+
+describe('local AI on this device', () => {
+  const hardware: LocalAiHardware = {
+    os: 'linux',
+    arch: 'x64',
+    cpu: 'Test CPU',
+    ramBytes: 32e9,
+    gpus: [{ vendor: 'amd', type: 'integrated', name: 'Test GPU', vramBytes: 4e9 }],
+    backends: ['cpu', 'vulkan'],
+    memoryBudgetBytes: 19e9,
+    hardwareClass: 'test-class',
+    notes: [],
+  };
+  const plan: LocalAiPlan = {
+    hardwareClass: 'test-class',
+    runtimes: [
+      {
+        id: 'llama-server',
+        version: 'b1',
+        build: 'linux-x64-vulkan',
+        backend: 'vulkan',
+        sizeBytes: 40e6,
+        installed: false,
+        kinds: ['llm', 'embedding'],
+      },
+    ],
+    models: [{ kind: 'llm', model: 'test-chat', sizeBytes: 2.5e9, memoryBytes: 3e9, license: 'MIT', installed: false }],
+    unavailable: [],
+    downloadBytes: 2.54e9,
+    totalBytes: 2.54e9,
+    memoryBytes: 3e9,
+    memoryBudgetBytes: 19e9,
+    fits: true,
+    reasons: [],
+  };
+  const notInstalled: LocalAiStatus = {
+    installed: false,
+    installing: false,
+    autostart: true,
+    runtimes: [],
+    models: [],
+  };
+  const running: LocalAiStatus = {
+    installed: true,
+    installing: false,
+    autostart: true,
+    runtimes: [
+      {
+        id: 'llama-server',
+        version: 'b1',
+        build: 'linux-x64-vulkan',
+        kinds: ['llm'],
+        phase: 'running',
+        port: 40001,
+        restarts: 0,
+        detail: '',
+        endpointId: 'local',
+        onGpu: true,
+        gpuBytes: 3e9,
+      },
+    ],
+    models: [{ kind: 'llm', model: 'test-chat', modelId: 'm-local' }],
+  };
+  const managed: AiEndpoint = {
+    id: 'local',
+    name: 'Local llama-server',
+    kind: 'llama-server',
+    baseUrl: 'http://127.0.0.1:40001',
+    hasApiKey: false,
+    capabilities: ['chat'],
+    health: { state: 'reachable', detail: '', models: ['test-chat'] },
+    managed: true,
+  };
+
+  /** A local port whose install waits until the test lets it finish, emitting progress meanwhile. */
+  function localPort(overrides: Partial<LocalAiPort> = {}) {
+    const calls: string[] = [];
+    let status = notInstalled;
+    let emit: ((progress: LocalAiProgress) => void) | null = null;
+    let finish: (() => void) | null = null;
+    const local: LocalAiPort = {
+      hardware: async () => hardware,
+      plan: async () => (status.installed ? { ...plan, downloadBytes: 0 } : plan),
+      status: async () => status,
+      async install() {
+        calls.push('install');
+        await new Promise<void>((resolve) => (finish = resolve));
+        status = running;
+        return status;
+      },
+      async start() {
+        calls.push('start');
+        status = running;
+        return status;
+      },
+      async stop() {
+        calls.push('stop');
+        status = { ...running, runtimes: [{ ...running.runtimes[0], phase: 'stopped', onGpu: null }] };
+        return status;
+      },
+      async remove(deleteFiles) {
+        calls.push(`remove:${deleteFiles}`);
+        status = notInstalled;
+      },
+      onProgress(listener) {
+        emit = listener;
+        return () => (emit = null);
+      },
+      ...overrides,
+    };
+    const endpoints: ModelAdminPort = {
+      list: async () => [],
+      endpoints: async () => (status.installed ? [managed] : []),
+      add: async () => {},
+      removeEndpoint: async (id) => void calls.push(`removeEndpoint:${id}`),
+      updateEndpoint: async () => managed,
+      local,
+    };
+    return {
+      models: endpoints,
+      calls,
+      progress: (event: Partial<LocalAiProgress>) =>
+        emit?.({
+          phase: 'download',
+          item: '',
+          itemDoneBytes: 0,
+          itemTotalBytes: 0,
+          doneBytes: 0,
+          totalBytes: 0,
+          detail: '',
+          ...event,
+        }),
+      finish: () => finish?.(),
+    };
+  }
+
+  it('reads the machine and the plan when the settings open, in words', async () => {
+    activeShellView = 'settings';
+    ports = { models: localPort().models };
+    const store = mount();
+    await vi.waitFor(() => expect(store.localAi().loaded).toBe(true));
+    expect(store.canUseLocalAi()).toBe(true);
+    expect(store.localAi()).toMatchObject({
+      device: 'Test CPU · 32.0 GB memory',
+      gpus: ['Test GPU · integrated · 4.0 GB'],
+      compute: 'Can run models on the GPU with Vulkan',
+      summary: 'Downloads 2.5 GB · fits this device',
+      installLabel: 'Install (2.5 GB)',
+      installed: false,
+      canInstall: true,
+    });
+    expect(store.localAi().items.map((item) => [item.label, item.name, item.sizeText])).toEqual([
+      ['Language model', 'test-chat', '2.5 GB'],
+      ['Model server', 'llama-server b1 · Vulkan', '40 MB'],
+    ]);
+  });
+
+  it('shows an install’s progress while it runs, then the running state and the managed server', async () => {
+    activeShellView = 'settings';
+    const local = localPort();
+    ports = { models: local.models };
+    const store = mount();
+    await vi.waitFor(() => expect(store.localAi().loaded).toBe(true));
+
+    const installing = store.installLocalAi();
+    expect(store.localAi().installing).toBe(true);
+    expect(store.localAi().canInstall).toBe(false);
+    local.progress({
+      phase: 'download',
+      item: 'test-chat',
+      itemDoneBytes: 1e9,
+      itemTotalBytes: 2.5e9,
+      doneBytes: 1e9,
+      totalBytes: 2.54e9,
+    });
+    expect(store.localAi().progress).toEqual({
+      percent: 39,
+      text: 'Downloading test-chat — 1.0 GB of 2.5 GB',
+      failed: false,
+    });
+    // A late event never moves the bar back within one install.
+    local.progress({ phase: 'download', item: 'test-chat', doneBytes: 0.5e9, totalBytes: 2.54e9 });
+    expect(store.localAi().progress?.percent).toBe(39);
+
+    local.finish();
+    await installing;
+    expect(store.localAi()).toMatchObject({ installed: true, installing: false, running: true, progress: null });
+    expect(store.localAi().runtimes).toEqual([
+      {
+        key: 'llama-server',
+        label: 'Language model · llama-server b1 · Vulkan',
+        stateText: 'Running · on the GPU (3.0 GB)',
+        ok: true,
+      },
+    ]);
+    expect(store.aiEndpoints()[0]).toMatchObject({ kindLabel: 'This device', editable: false });
+  });
+
+  it('keeps a failed install’s reason on screen', async () => {
+    activeShellView = 'settings';
+    const local = localPort();
+    ports = { models: local.models };
+    const store = mount();
+    await vi.waitFor(() => expect(store.localAi().loaded).toBe(true));
+    local.progress({ phase: 'failed', detail: 'checksum mismatch' });
+    expect(store.localAi().progress).toEqual({
+      percent: 0,
+      text: 'The install failed — checksum mismatch',
+      failed: true,
+    });
+  });
+
+  it('stops, starts and removes, with or without the files', async () => {
+    activeShellView = 'settings';
+    const local = localPort();
+    ports = { models: local.models };
+    const store = mount();
+    await vi.waitFor(() => expect(store.localAi().loaded).toBe(true));
+    await store.startLocalAi();
+    expect(store.localAi().running).toBe(true);
+
+    await store.stopLocalAi();
+    expect(store.localAi()).toMatchObject({ running: false, anyRunning: false });
+    expect(store.localAi().runtimes[0].stateText).toBe('Stopped');
+
+    await store.removeLocalAi(true);
+    expect(local.calls).toEqual(['start', 'stop', 'remove:true']);
+    expect(store.localAi().installed).toBe(false);
+    expect(store.aiEndpoints()).toEqual([]);
+  });
+
+  it('does not edit or remove a managed server as a server', async () => {
+    activeShellView = 'settings';
+    const local = localPort();
+    ports = { models: local.models };
+    const store = mount();
+    await vi.waitFor(() => expect(store.localAi().loaded).toBe(true));
+    await store.startLocalAi();
+    expect(store.aiEndpoints()).toHaveLength(1);
+
+    store.editAiEndpoint('local');
+    expect(store.aiEndpointForm()).toBeNull();
+    await store.removeAiEndpoint('local');
+    expect(local.calls).not.toContain('removeEndpoint:local');
+  });
+
+  it('offers no install to a connection that may only look', async () => {
+    const local = localPort({ install: undefined, start: undefined, stop: undefined, remove: undefined });
+    ports = { models: local.models };
+    const store = mount();
+    expect(store.canUseLocalAi()).toBe(true);
+    expect(store.canConfigureLocalAi()).toBe(false);
+  });
+
+  it('has no local AI where the backend has none', () => {
+    ports = { models: { list: async () => [] } };
+    const store = mount();
+    expect(store.canUseLocalAi()).toBe(false);
+    expect(store.localAi().loaded).toBe(false);
   });
 });
 

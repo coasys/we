@@ -179,6 +179,15 @@ export type {
   AiRecommendedModel,
   AiServerInstallLink,
   AiTask,
+  LocalAiGpu,
+  LocalAiHardware,
+  LocalAiPlan,
+  LocalAiPlannedModel,
+  LocalAiPlannedRuntime,
+  LocalAiPort,
+  LocalAiProgress,
+  LocalAiRuntimeStatus,
+  LocalAiStatus,
   ModelAdminPort,
 } from './modelAdmin';
 export type {

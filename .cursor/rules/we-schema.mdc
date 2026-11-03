@@ -3279,7 +3279,7 @@ RuntimeStore:
   - aiCanPull: boolean — the open form's model can be downloaded onto its server: an Ollama that does not list it. Offer pullAiModel on it
   - aiPullText: string — a download onto a server in progress, in words ("Downloading qwen3:8b — 45%"), or empty. Moves with the backend’s events
   - canManageAiEndpoints: boolean — the backend shows its model servers to this connection: the operator only, since a server carries an address and health. Gate the servers section on it
-  - aiEndpoints: AiEndpointView[] — the model servers: id, name, kind, baseUrl, hasApiKey (never the key), capabilities, health ({ state, detail, models }), and the display strings kindLabel, healthText, healthy, modelCount. Loaded with loadAiModels()
+  - aiEndpoints: AiEndpointView[] — the model servers: id, name, kind, baseUrl, hasApiKey (never the key), capabilities, health ({ state, detail, models }), managed, and the display strings kindLabel, healthText, healthy, modelCount, editable. A managed server is the one local AI runs ("This device"): editable is false, it cannot be edited or removed as a server, and it goes with removeLocalAi. Loaded with loadAiModels()
   - aiDetectedEndpoints: { kind, baseUrl, capabilities, models, label, detail }[] — model servers running on the node's machine that are not added yet, found when settings open or by detectAiEndpoints(). One press from use: addDetectedEndpoint(baseUrl)
   - aiInstallLinks: { label, url }[] — where to get a model server (Ollama, a speech server), for when none runs on the node's machine
   - aiEndpointForm: AiEndpointForm | null — the server form while it is open: { id, name, service, kind, baseUrl, apiKey, apiKeyStored, apiKeyBaseUrl, apiKeyRemoved, maxContext }. The backend never returns a stored key: apiKey is only a key typed to send (empty keeps the stored one), apiKeyStored says one is held, and apiKeyRemoved set true removes it on save. An empty name saves as the kind and port
@@ -3288,6 +3288,9 @@ RuntimeStore:
   - aiMaxContextError: string — why the open server form's context limit (aiEndpointForm.maxContext) cannot be saved, or empty. Bind it to that field's error: a limit that does not parse holds Save disabled, and nothing else says which field is doing it
   - aiApiKeyError: string — why the open server form's key holds Save, or empty: the address moved away from the one the stored key was set for and no new key was typed. Bind it to the key field's error
   - aiServiceOptions: { label, value }[] — the kinds of server an endpoint can be (Ollama, llama-server, vLLM, a speech server, Anthropic, OpenAI, OpenRouter…) plus 'custom', for a we-select bound to aiEndpointForm.service. Pass the value to setAiService, which sets the kind and a starting address
+  - canUseLocalAi: boolean — the backend can install and run models on its own machine, and shows this connection that machine and what an install would do. The operator only. Gate the "This device" section on it
+  - canConfigureLocalAi: boolean — local AI can be installed, started, stopped and removed from here. Gate those controls on it
+  - localAi: LocalAiView — the "This device" section, already in words: device (processor and memory), gpus (string[]), compute (what the models would run on), budget, notes, items ({ key, label, name, sizeText, done }[] — the models and server programs an install brings), unavailable and reasons (string[]), fits, summary ("Downloads 3.1 GB · fits this device"), installLabel, installed, installing, running (every server runs), anyRunning, runtimes ({ key, label, stateText, ok }[] — phase, on the GPU or not, restarts), progress ({ percent, text, failed } while an install runs, and after one fails) and canInstall. loaded is false until the machine and the plan have been read
   - languages: InstalledLanguage[] — language plugins installed in this backend (address, name, system). Empty until loadLanguages() runs
   - trustedAgents: string[] — trusted peer ids. Empty until loadTrustedAgents() runs
   - authorizedApps: AuthorizedApp[] — external apps holding credentials (id, name, description, url, iconUrl, capabilities, revoked). Empty until loadAuthorizedApps() runs
@@ -3326,7 +3329,12 @@ RuntimeStore:
   - setAiService(id: string): chooses the open server form's service: sets its kind and a starting address, which stays editable. 'custom' is any other OpenAI-compatible server
   - closeAiEndpointForm(): closes the server form, discarding it
   - saveAiEndpoint(): saves the open server form — adds or updates. The backend checks the server once and saves it whatever it answers
-  - removeAiEndpoint(id: string): removes a server. Refused while models run on it
+  - removeAiEndpoint(id: string): removes a server. Refused while models run on it, and for a managed server (local AI), which goes with removeLocalAi
+  - loadLocalAi(): reads the machine, the plan and how local AI runs. Done when the settings open
+  - installLocalAi(): downloads, checks, starts and registers what the plan says, making its models the defaults. Gigabytes: resolves when done, with localAi.progress moving meanwhile
+  - startLocalAi(): starts the local model servers
+  - stopLocalAi(): stops them. Their models stay registered and answer again once started
+  - removeLocalAi(deleteFiles: boolean): unregisters and stops local AI; deleteFiles true deletes the downloaded models and programs as well
   - loadLanguages(): fetches the installed languages
   - installLanguage(address: string): installs a language by content address, then reloads the list
   - removeLanguage(address: string): removes an installed language. Refuses the backend own system languages

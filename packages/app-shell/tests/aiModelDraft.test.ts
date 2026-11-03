@@ -35,6 +35,7 @@ function endpoint(overrides: Partial<AiEndpoint> = {}): AiEndpoint {
     hasApiKey: false,
     capabilities: ['chat'],
     health: { state: 'reachable', detail: '', models: [] },
+    managed: false,
     ...overrides,
   };
 }

@@ -351,6 +351,11 @@ export interface AiEndpointView extends AiEndpoint {
   healthy: boolean;
   /** How many of this node's models run on it. */
   modelCount: number;
+  /**
+   * Can be edited and removed as a server. False for one the backend runs itself (local AI), which
+   * is changed through "This device" instead — the backend refuses an edit or a removal of it.
+   */
+  editable: boolean;
 }
 
 export function describeEndpoint(endpoint: AiEndpoint, models: AiModel[]): AiEndpointView {
@@ -367,10 +372,11 @@ export function describeEndpoint(endpoint: AiEndpoint, models: AiModel[]): AiEnd
           : 'Not checked yet';
   return {
     ...endpoint,
-    kindLabel: ENDPOINT_KIND_LABELS[endpoint.kind],
+    kindLabel: endpoint.managed ? 'This device' : ENDPOINT_KIND_LABELS[endpoint.kind],
     healthText,
     healthy: health.state === 'reachable' || health.state === 'unknown',
     modelCount: models.filter((m) => m.endpointId === endpoint.id).length,
+    editable: !endpoint.managed,
   };
 }
 
