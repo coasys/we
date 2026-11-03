@@ -55,7 +55,7 @@ export async function check({ measure, measureAll, measurePart, count }) {
     one has no box. Filtering on a drawn box is therefore exactly the question: which icons made it
     onto the screen.
   */
-  const spinners = await count('we-spinner');
+  const spinners = await count('we-animated-icon[name="spinner"]');
   const icons = (await measureAll('we-icon')).filter((i) => i.w > 0 && i.h > 0);
   if (spinners !== 2) problems.push(`expected 2 spinners, found ${spinners}`);
   if (icons.length !== 1) {

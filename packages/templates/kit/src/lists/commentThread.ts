@@ -316,7 +316,7 @@ function truncationNote(opts: CommentThreadOptions, level: number, itemsExpr: st
             type: '$if',
             props: {
               condition: { $: pending },
-              then: { type: 'we-spinner', slot: 'end', props: { size: 'xs' } },
+              then: { type: 'we-animated-icon', slot: 'end', props: { name: 'spinner', size: 'xs' } },
             },
           },
         ],
