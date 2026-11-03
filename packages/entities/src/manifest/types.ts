@@ -69,20 +69,6 @@ export interface CalloutBlockRecord extends WeNodeRecord {
   version: number;
 }
 
-export interface ChatMessageRecord extends WeNodeRecord {
-  role: string;
-  content: string;
-}
-
-export interface ChatSessionRecord extends WeNodeRecord {
-  name: string;
-  templateId: string;
-  messages: ChatMessageRecord[];
-  addMessages(value: string | { id: string }, batch?: string): Promise<unknown>;
-  removeMessages(value: string | { id: string }, batch?: string): Promise<unknown>;
-  setMessages(values: (string | { id: string })[], batch?: string): Promise<unknown>;
-}
-
 export interface CodeBlockRecord extends WeNodeRecord {
   code: string;
   language: string;

@@ -10,8 +10,6 @@ export * from './AgentSettings';
 export * from './Amendment';
 export * from './AudioBlock';
 export * from './CalloutBlock';
-export * from './ChatMessage';
-export * from './ChatSession';
 export * from './CodeBlock';
 export * from './CollectionBlock';
 export * from './DividerBlock';

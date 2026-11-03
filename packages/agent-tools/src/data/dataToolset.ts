@@ -29,8 +29,6 @@ import type { SessionAnswer, SessionTool, SessionToolset } from '../core/convers
 const CONFIGURATION = new Set([
   'AgentSettings',
   'Amendment',
-  'ChatMessage',
-  'ChatSession',
   'EdgeRoute',
   'ModelRun',
   'MutedAgent',

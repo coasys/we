@@ -1444,26 +1444,6 @@ export const contextData: ContextData = {
       relations: [],
     },
     {
-      name: 'ChatMessage',
-      className: 'ChatMessage',
-      extends: 'WeNode',
-      fields: [
-        { name: 'role', type: 'string', predicate: 'we://role', required: false },
-        { name: 'content', type: 'string', predicate: 'we://content', required: false },
-      ],
-      relations: [],
-    },
-    {
-      name: 'ChatSession',
-      className: 'ChatSession',
-      extends: 'WeNode',
-      fields: [
-        { name: 'name', type: 'string', predicate: 'we://name', required: false },
-        { name: 'templateId', type: 'string', predicate: 'we://template_id', required: false },
-      ],
-      relations: [{ name: 'messages', kind: 'HasMany', predicate: 'we://chat_message', target: 'ChatMessage' }],
-    },
-    {
       name: 'CodeBlock',
       className: 'CodeBlock',
       extends: 'WeNode',
