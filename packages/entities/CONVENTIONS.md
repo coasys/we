@@ -86,7 +86,7 @@ enforced.
 > **"Can a person meaningfully create this fresh, inline, while authoring a document?"**
 
 - **Yes** → `blockable: true`, and give it a `version`. `TextBlock`, `TaskBlock`, `ImageBlock`.
-- **No** → leave it off. `Space`, `Signal`, `ChatSession`, `Template`.
+- **No** → leave it off. `Space`, `Signal`, `Template`.
 
 Being blockable does **not** mean the entity only exists inside documents. `LocationBlock` is
 referenced by `Space.location`, `TaskBlock` renders standalone on a task board — both are ordinary
@@ -163,6 +163,7 @@ The writers today:
 | Writer                              | Run                                                | Marked                                                                                                                                 |
 | ----------------------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | The agent's data tools              | the conversation's, `agent`                        | what they create; what they change is an `Amendment`                                                                                   |
+| The editor's own chat               | one per reply, `chat`, hung off the chat           | the reply's `TextBlock`; the person's messages carry nothing                                                                           |
 | The transcriber                     | one per speaker, call and model, `transcription`   | each spoken line, beside `source: 'spoken'`                                                                                            |
 | An extraction pass somebody presses | one per pass, `extraction`, opened before the pass | what the pass _made_, by the backend (`run` on the interpretation port), since only it knows which records it made rather than matched |
 
@@ -207,7 +208,7 @@ All `@Property` predicates use the `we://` namespace. Use snake_case for multi-w
 @Property({ through: 'we://start_date' })
 ```
 
-**Prefer generic, reusable predicates.** When two models share the same semantic concept (e.g. `name`, `description`, `url`), use the same predicate — this enables cross-model graph pattern queries. For example, querying `?node we://name ?name` returns names from `LocationBlock`, `Theme`, `ChatSession`, `TagBlock`, and any future model without knowing the type in advance.
+**Prefer generic, reusable predicates.** When two models share the same semantic concept (e.g. `name`, `description`, `url`), use the same predicate — this enables cross-model graph pattern queries. For example, querying `?node we://name ?name` returns names from `LocationBlock`, `Theme`, `TagBlock`, and any future model without knowing the type in advance.
 
 ---
 
