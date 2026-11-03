@@ -3297,7 +3297,7 @@ export function RecordStoreProvider(props: ParentProps) {
     dragOnCanvas,
     removeFromCanvas,
     deleteRecords,
-    canvasHistory: history.state,
+    canvasHistory: () => history.state(),
     /*
       Scoped on the way in, every time.
 

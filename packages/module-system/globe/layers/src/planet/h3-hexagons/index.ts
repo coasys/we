@@ -44,7 +44,7 @@ export const h3HexagonsLayer: LayerKind<H3HexagonsOptions> = {
   ...H3_GRID,
   renderers: {
     cesium: (context: CesiumRendererContext, options: H3HexagonsOptions) => {
-      const { viewer, events, onCleanup } = context;
+      const { viewer, events } = context;
       const {
         maxResolution = 8,
         color = '#3388ff',
@@ -299,7 +299,7 @@ export const h3HexagonsLayer: LayerKind<H3HexagonsOptions> = {
       viewer.canvas.addEventListener('pointerleave', onPointerLeave);
       viewer.camera.moveStart.addEventListener(onCameraMove);
 
-      onCleanup(() => {
+      context.onCleanup(() => {
         destroyed = true;
         cancelAnimationFrame(raf);
         viewer.canvas.removeEventListener('pointermove', onPointerMove);

@@ -2562,7 +2562,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     clearSpaceTemplates,
     spaceTemplatePending,
     awaitingSpaceRecord: spaceRecord.waiting,
-    choosingSpaceTemplate: choosing.choosing,
+    choosingSpaceTemplate: () => choosing.choosing(),
     safeMode: () => safe,
     leaveSafeMode,
     leaveSafeModeInto,

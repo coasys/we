@@ -71,7 +71,7 @@ export const proceduralStarsLayer: LayerKind<ProceduralStarsLayerOptions> = {
   ...PROCEDURAL_STARS,
   renderers: {
     cesium: (context: CesiumRendererContext, options: ProceduralStarsLayerOptions) => {
-      const { viewer, onCleanup } = context;
+      const { viewer } = context;
       const {
         count = 5000,
         minDistance = 43628000, // Default: ~43,628 km from surface
@@ -123,7 +123,7 @@ export const proceduralStarsLayer: LayerKind<ProceduralStarsLayerOptions> = {
       }
 
       // Register cleanup
-      onCleanup(() => {
+      context.onCleanup(() => {
         viewer.scene.primitives.remove(starCollection);
       });
     },

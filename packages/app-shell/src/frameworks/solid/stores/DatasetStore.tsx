@@ -429,9 +429,9 @@ export function DatasetStoreProvider(props: ParentProps) {
         },
         offeredModel: () => session.backendPorts()?.transcription?.offeredModel?.() ?? null,
         installOfferedModel: async () => {
-          const install = session.backendPorts()?.transcription?.installOfferedModel;
-          if (!install) throw new Error('transcription: this backend cannot install a model');
-          return install();
+          const port = session.backendPorts()?.transcription;
+          if (!port?.installOfferedModel) throw new Error('transcription: this backend cannot install a model');
+          return port.installOfferedModel();
         },
       },
       // The node's own language model, for a module that summarises, translates or tags. The port
@@ -1034,11 +1034,17 @@ export function DatasetStoreProvider(props: ParentProps) {
     }
   }
 
+  /** The stored fields of an `AgentSettings` record — its keys minus its methods. */
+  type AgentSettingsField = {
+    [K in keyof AgentSettings]: AgentSettings[K] extends (...args: never[]) => unknown ? never : K;
+  }[keyof AgentSettings];
+
   async function updateAgentSettings(updates: Partial<AgentSettings>): Promise<boolean> {
     const settings = agentSettings();
     if (!settings) return false;
 
-    const keys = Object.keys(updates) as (keyof AgentSettings)[];
+    // Updates name stored fields only, never one of the record's methods.
+    const keys = Object.keys(updates) as AgentSettingsField[];
     const before = Object.fromEntries(keys.map((key) => [key, settings[key]])) as Partial<AgentSettings>;
 
     Object.assign(settings, updates);
@@ -1256,9 +1262,9 @@ export function DatasetStoreProvider(props: ParentProps) {
     try {
       const handle = (await lifecycle.get(targetUuid))?.handle as DatasetProxy | undefined;
       if (!handle) return '';
-      const dedupe = session.backendPorts()?.schemas.dedupe;
-      if (!dedupe) return '';
-      const { removed, authors } = await dedupe(handle);
+      const schemas = session.backendPorts()?.schemas;
+      if (!schemas?.dedupe) return '';
+      const { removed, authors } = await schemas.dedupe(handle);
       if (removed === 0) return 'No duplicate SDNA links found.';
       const myDid = session.me()?.did;
       const authorList = authors.map((did) => (did === myDid ? `${did} (you)` : did)).join(', ');

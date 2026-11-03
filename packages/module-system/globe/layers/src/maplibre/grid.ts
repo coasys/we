@@ -27,7 +27,7 @@ const FADE = 0.22;
 const HOVER_FADE = 0.28;
 
 export function renderGrid(context: MapLibreRendererContext, options: H3HexagonsOptions): void {
-  const { map, id, events, onCleanup } = context;
+  const { map, id, events } = context;
   const {
     maxResolution = 8,
     color = '#3388ff',
@@ -51,7 +51,7 @@ export function renderGrid(context: MapLibreRendererContext, options: H3Hexagons
   const fillId = `${id}:fill`;
   map.addSource(fillId, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
   map.addLayer({ id: fillId, type: 'fill', source: fillId, paint: { 'fill-color': hoverColor, 'fill-opacity': 0 } });
-  onCleanup(() => {
+  context.onCleanup(() => {
     if (map.getLayer(fillId)) map.removeLayer(fillId);
     if (map.getSource(fillId)) map.removeSource(fillId);
   });
@@ -155,7 +155,7 @@ export function renderGrid(context: MapLibreRendererContext, options: H3Hexagons
   map.on('mousemove', onPointer);
   map.on('mouseout', onLeave);
   map.on('click', onClick);
-  onCleanup(() => {
+  context.onCleanup(() => {
     if (frame) cancelAnimationFrame(frame);
     map.off('move', onMove);
     map.off('mousemove', onPointer);

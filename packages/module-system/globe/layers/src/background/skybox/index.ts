@@ -95,12 +95,12 @@ export const skyboxLayer: LayerKind<SkyboxLayerOptions> = {
     by the app with Cesium's other files, so it is there offline.
   */
     cesium: (context: CesiumRendererContext, options: SkyboxLayerOptions) => {
-      const { viewer, onCleanup } = context;
+      const { viewer } = context;
       const { textureSet = 'tycho2-1k', customPaths, cdnBaseUrl = SKYBOX_CDN_BASE } = options;
       let cancelled = false;
       let current: SkyBox = SkyBox.createEarthSkyBox();
       viewer.scene.skyBox = current;
-      onCleanup(() => {
+      context.onCleanup(() => {
         cancelled = true;
         if (viewer.scene.skyBox === current) {
           viewer.scene.skyBox = undefined as unknown as SkyBox;

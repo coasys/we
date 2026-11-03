@@ -130,8 +130,8 @@ function peerStream(index: number): MediaStream | null {
   canvas.width = 640;
   canvas.height = 360;
   const ctx = canvas.getContext('2d');
-  const capture = (canvas as HTMLCanvasElement & { captureStream?: (fps?: number) => MediaStream }).captureStream;
-  if (!ctx || typeof capture !== 'function') return null;
+  const capturable = canvas as HTMLCanvasElement & { captureStream?: (fps?: number) => MediaStream };
+  if (!ctx || typeof capturable.captureStream !== 'function') return null;
 
   const hue = (index * 67) % 360;
   let frame = 0;
@@ -154,7 +154,7 @@ function peerStream(index: number): MediaStream | null {
 
   draw();
   timers.push(setInterval(draw, 1000 / 15));
-  const stream = capture.call(canvas, 15);
+  const stream = capturable.captureStream(15);
   streams.set(index, stream);
   return stream;
 }

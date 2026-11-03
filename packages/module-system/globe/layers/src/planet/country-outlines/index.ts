@@ -39,7 +39,7 @@ export const countryOutlinesLayer: LayerKind<CountryOutlinesOptions> = {
   ...COUNTRY_OUTLINES,
   renderers: {
     cesium: async (context: CesiumRendererContext, options: CountryOutlinesOptions) => {
-      const { viewer, events, onCleanup } = context;
+      const { viewer, events } = context;
       const { color = '#ffffff', opacity = 0.5, width = 2 } = options;
       const dataUrl = outlinesUrl(options.dataUrl);
 
@@ -47,7 +47,7 @@ export const countryOutlinesLayer: LayerKind<CountryOutlinesOptions> = {
       let cancelled = false;
 
       // Register cleanup first
-      onCleanup(() => {
+      context.onCleanup(() => {
         cancelled = true;
         entities.forEach((id) => {
           try {
