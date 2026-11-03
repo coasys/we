@@ -106,8 +106,8 @@ const ROLES = {
 const encode = (value: unknown): string => Literal.from(JSON.stringify(value)).toUrl();
 const decode = (target: string): unknown => {
   try {
-    const raw = Literal.fromUrl(target).get();
-    return typeof raw === 'string' ? JSON.parse(raw) : raw;
+    const raw: unknown = Literal.fromUrl(target).get();
+    return typeof raw === 'string' ? (JSON.parse(raw) as unknown) : raw;
   } catch {
     return undefined;
   }

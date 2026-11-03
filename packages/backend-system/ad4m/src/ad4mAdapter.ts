@@ -93,10 +93,13 @@ export function toRendererEntity(Model: Ad4mEntityClass): RendererEntityClass {
   const known = rendererEntities.get(Model);
   if (known) return known;
   const adapted: RendererEntityClass = {
+    // The registry types its classes loosely; every AD4M-registered one is an Ad4mModel subclass,
+    // as toRendererUnion below also relies on.
     query: (dataset, opts) =>
-      Model.query(asPerspective(dataset), opts as Parameters<typeof Model.query>[1]) as ReturnType<
-        RendererEntityClass['query']
-      >,
+      (Model as unknown as typeof Ad4mModel).query(
+        asPerspective(dataset),
+        opts as Parameters<typeof Ad4mModel.query>[1],
+      ) as unknown as ReturnType<RendererEntityClass['query']>,
     findAll: (dataset, opts, ctl) =>
       // Called through a widened signature on purpose: `@coasys/ad4m` types `findAll` as
       // `(perspective, query?)`, with no third argument — yet the renderer passes an abort-signal

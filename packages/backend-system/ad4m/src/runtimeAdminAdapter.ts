@@ -56,6 +56,35 @@ function toAuthorizedApp(app: Apps): AuthorizedApp {
   };
 }
 
+/**
+ * The app described by a capability request's `addon` — the executor's JSON of `{ auth: AuthInfo }`.
+ * Read field by field because it arrives as text; a request without an `auth` object throws, which
+ * the subscriber reports and skips.
+ */
+function readRequestedAuth(addon: string): {
+  appName: string;
+  appDesc: string;
+  appUrl: string;
+  appIconPath?: string;
+  capabilities: unknown[];
+} {
+  const parsed: unknown = JSON.parse(addon);
+  const auth: unknown = typeof parsed === 'object' && parsed !== null && 'auth' in parsed ? parsed.auth : undefined;
+  if (typeof auth !== 'object' || auth === null) throw new Error('capability request carries no app');
+  const text = (key: string): string | undefined => {
+    const value: unknown = (auth as Record<string, unknown>)[key];
+    return typeof value === 'string' ? value : undefined;
+  };
+  const capabilities: unknown = (auth as Record<string, unknown>).capabilities;
+  return {
+    appName: text('appName') ?? '',
+    appDesc: text('appDesc') ?? '',
+    appUrl: text('appUrl') ?? '',
+    appIconPath: text('appIconPath'),
+    capabilities: Array.isArray(capabilities) ? (capabilities as unknown[]) : [],
+  };
+}
+
 export interface Ad4mRuntimeOptions {
   /**
    * Whether this connection operates the node it reached. Defaults to true.
@@ -133,7 +162,7 @@ export function createAd4mRuntimeAdmin(backendClient: unknown, options: Ad4mRunt
         // enum, so it is compared with those literals.
         if (info.type === 'CAPABILITY_REQUESTED' && info.addon) {
           try {
-            const auth = JSON.parse(info.addon).auth;
+            const auth = readRequestedAuth(info.addon);
             handler({
               kind: 'capability',
               title: info.title,
@@ -143,9 +172,7 @@ export function createAd4mRuntimeAdmin(backendClient: unknown, options: Ad4mRunt
                 description: auth.appDesc,
                 url: auth.appUrl,
                 iconUrl: auth.appIconPath,
-                capabilities: (auth.capabilities ?? []).map((cap: unknown) =>
-                  capSentence(cap as Parameters<typeof capSentence>[0]),
-                ),
+                capabilities: auth.capabilities.map((cap) => capSentence(cap as Parameters<typeof capSentence>[0])),
               },
               payload: info.addon,
             });

@@ -91,7 +91,11 @@ export async function readChatStream(
       }[];
     };
     try {
-      chunk = JSON.parse(data);
+      const parsed: unknown = JSON.parse(data);
+      // An event that is valid JSON but not an object (`null`, a bare string) carries no delta.
+      if (!parsed || typeof parsed !== 'object') return;
+      // The streaming chat-completions wire format; every field read below is optional-chained.
+      chunk = parsed as typeof chunk;
     } catch {
       // One unreadable event costs one delta; aborting would cost the whole reply.
       return;
@@ -143,8 +147,8 @@ export async function readChatStream(
 function parseArguments(raw: string): Record<string, unknown> {
   if (!raw) return {};
   try {
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    const parsed: unknown = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
   } catch {
     return {};
   }

@@ -207,8 +207,13 @@ export function createAd4mBackendPorts(
     fetch: async (dataset, address) => {
       const expr = await (dataset as PerspectiveProxy).getExpression(address);
       if (!expr?.data) return null;
-      const data = typeof expr.data === 'string' ? JSON.parse(expr.data) : expr.data;
-      return data?.data_base64 && data?.file_type ? data : null;
+      const data: unknown = typeof expr.data === 'string' ? JSON.parse(expr.data) : expr.data;
+      if (!data || typeof data !== 'object') return null;
+      const { data_base64, file_type } = data as Record<string, unknown>;
+      if (typeof data_base64 !== 'string' || !data_base64) return null;
+      if (typeof file_type !== 'string' || !file_type) return null;
+      // Both fields just checked; the payload is handed on whole, as the language stored it.
+      return data as { data_base64: string; file_type: string };
     },
   });
 

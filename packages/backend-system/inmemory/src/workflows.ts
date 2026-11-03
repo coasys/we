@@ -107,7 +107,7 @@ export function createInMemoryWorkflowPort(selfId: () => string | undefined): Wo
   // A to-one relation arrives as an id, a hydrated row, or a one-element list of either — the last
   // being how a record is written with one (`{ node: [id] }`).
   const idOf = (value: unknown): string | undefined => {
-    const one = Array.isArray(value) ? value[0] : value;
+    const one: unknown = Array.isArray(value) ? value[0] : value;
     return typeof one === 'string' ? one : ((one as { id?: string } | null)?.id ?? undefined);
   };
 

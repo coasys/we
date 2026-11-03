@@ -371,7 +371,7 @@ async function heldDefinition(perspective: PerspectiveProxy, name: string, flowU
 function didOf(target: string): string {
   if (!target.startsWith('literal:')) return target;
   try {
-    const value = Literal.fromUrl(target).get();
+    const value: unknown = Literal.fromUrl(target).get();
     return typeof value === 'string' ? value : target;
   } catch {
     return target;

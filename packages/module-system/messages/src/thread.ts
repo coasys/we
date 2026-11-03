@@ -53,7 +53,7 @@ const timeOf = (row: Row): number => {
 
 /** Who and what a reply answers, from its included parent — or from the page, where the parent is a bare id on it. */
 function quoteOf(row: Row, byId: Map<string, Row>): ReplyQuote | null {
-  const parent = Array.isArray(row.respondsTo) ? row.respondsTo[0] : row.respondsTo;
+  const parent: unknown = Array.isArray(row.respondsTo) ? row.respondsTo[0] : row.respondsTo;
   const found: Row | undefined =
     parent && typeof parent === 'object'
       ? (parent as Row)
