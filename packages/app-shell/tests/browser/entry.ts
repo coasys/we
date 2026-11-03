@@ -51,6 +51,7 @@ import {
   SuppliedPanelNote,
   ThemePanel,
 } from '@we/editor';
+import { AiPanel } from '@we/editor/ai';
 import {
   EDIT_SURFACE_ATTR,
   installGestureTracking,
@@ -1518,6 +1519,97 @@ function themePanelProbe(overrides = '{"themeName":"dark"}'): void {
 }
 
 /**
+ * The AI chat with a reply in every state a backend's reply can be in: done, its steps folded;
+ * failed, with the error and a step that failed; interrupted by a restart; and one still running,
+ * its steps open and Stop in place of Send.
+ */
+function chatPanelProbe(): void {
+  const at = (minutes: number) => new Date(Date.UTC(2026, 10, 3, 12, minutes)).toISOString();
+  const messages = [
+    { id: 'm1', role: 'user', content: 'Make the heading bold and add a subtitle', createdAt: at(0) },
+    {
+      id: 'r1',
+      role: 'assistant',
+      content: 'I made the heading bold and added a subtitle under it.',
+      createdAt: at(1),
+      replyStatus: 'done',
+      steps: [
+        { tool: 'get_documentation', outcome: 'ok' },
+        { tool: 'template_read', target: 'ad4m://t/1', outcome: 'ok' },
+        { tool: 'template_update', target: 'ad4m://t/1', outcome: 'ok' },
+      ],
+    },
+    { id: 'm2', role: 'user', content: 'Now use the accent colour for it', createdAt: at(2) },
+    {
+      id: 'r2',
+      role: 'assistant',
+      content: '',
+      createdAt: at(3),
+      replyStatus: 'failed',
+      replyError: 'credits ran out before the agent had finished',
+      steps: [
+        { tool: 'template_read', target: 'ad4m://t/1', outcome: 'ok' },
+        {
+          tool: 'template_update',
+          target: 'ad4m://t/1',
+          outcome: 'error',
+          error: 'the template changed since it was read',
+        },
+      ],
+    },
+    { id: 'm3', role: 'user', content: 'Try again', createdAt: at(4) },
+    { id: 'r3', role: 'assistant', content: '', createdAt: at(5), replyStatus: 'interrupted', steps: [] },
+    { id: 'm4', role: 'user', content: 'Move the subtitle above the heading', createdAt: at(6) },
+    {
+      id: 'r4',
+      role: 'assistant',
+      content: '',
+      createdAt: at(7),
+      status: 'streaming',
+      replyStatus: 'running',
+      steps: [
+        { tool: 'template_read', target: 'ad4m://t/1', outcome: 'ok' },
+        { tool: 'template_update', target: 'ad4m://t/1', outcome: 'running' },
+      ],
+    },
+  ];
+  const session = {
+    messages: () => messages,
+    isStreaming: () => true,
+    streamingContent: () => '<span class="shimmer">*Working on it…*</span>',
+    assistantAvailable: () => true,
+    assistantStatus: () => ({ state: 'ready', name: 'Node', model: 'claude', detail: '' }),
+    refreshAssistant: () => {},
+    sendMessage: async () => {},
+    clearHistory: () => {},
+    sessions: () => [{ id: 's1', name: 'Chat 1' }],
+    activeSessionId: () => 's1',
+    newChat: () => {},
+    switchSession: () => {},
+    deleteSession: async () => {},
+    replyRunning: () => true,
+    cancelReply: () => {
+      (window as unknown as Record<string, unknown>).__probeCancelled = true;
+    },
+    undo: async () => {},
+    redo: async () => {},
+  };
+  const host = document.getElementById('mount') as HTMLElement;
+  host.innerHTML = '';
+  const dispose = render(
+    () =>
+      createComponent(EditorHostProvider, {
+        value: { session } as never,
+        get children() {
+          return createComponent(AiPanel, {});
+        },
+      }),
+    host,
+  );
+  probeDisposers.unshift(dispose);
+}
+
+/**
  * The app's toast stack, mounted with one toast raised, so a case can measure how a toast lays out.
  * Returns the toast's id; the container stays until the next case clears the mount.
  */
@@ -1546,6 +1638,7 @@ function toastProbe(message: string, actionLabel = ''): string {
   themeApi: { applyThemeVars, clearThemeVars, setDisplayPreferences, setThemeLive },
   themeDrag,
   themePanelProbe,
+  chatPanelProbe,
   composerFrame,
   editorProbe,
   editorProbeCover,

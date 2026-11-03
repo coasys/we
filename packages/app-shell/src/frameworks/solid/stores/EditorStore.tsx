@@ -1379,6 +1379,11 @@ export function EditorStoreProvider(props: ParentProps) {
       uses: modelTree.uses,
       validationContext: getValidationCtx(),
       onDisplay: setStreamingContent,
+      // The same steps a backend's reply carries, kept on the reply while this loop runs it.
+      onStep: (step) =>
+        setMessages((prev) =>
+          prev.map((m) => (m.id === streamMsg.id ? { ...m, steps: [...(m.steps ?? []), step] } : m)),
+        ),
       debug: devLog,
       accept: async (merged) => {
         pushSnapshot();
