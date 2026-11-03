@@ -97,6 +97,21 @@ export interface FeedWindowOptions {
   activityTypes: string[];
   /** Records still awaiting a decision, by id. */
   pending?: ReadonlySet<string>;
+  /**
+   * Whether the answer is no longer wanted — the window moved, or nobody is looking. Asked before
+   * each further step, so a read nobody will draw stops instead of running its call pages against
+   * the executor alongside the read that replaced it. A stopped read rejects with
+   * {@link FeedReadStopped}.
+   */
+  stopped?: () => boolean;
+}
+
+/** What {@link readFeedWindow} rejects with when `stopped` says its answer is no longer wanted. */
+export class FeedReadStopped extends Error {
+  constructor() {
+    super('the feed read was stopped');
+    this.name = 'FeedReadStopped';
+  }
 }
 
 const timeOf = (row: Row | FeedRow | undefined): number => {
@@ -192,6 +207,22 @@ export function groupActivity(
 }
 
 /**
+ * The same rows with each activity item marked by whether it is still a suggestion — so the
+ * suggestions settling re-marks what is on screen rather than reading the window again. A row whose
+ * marks did not move is returned as it was, and so is the list when none did, so nothing redraws.
+ */
+export function markPending(rows: FeedRow[], pending: ReadonlySet<string>): FeedRow[] {
+  let moved = false;
+  const marked = rows.map((row) => {
+    if (row.kind !== 'activity' || row.items.every((item) => item.pending === pending.has(item.id))) return row;
+    moved = true;
+    const items = row.items.map((item) => ({ ...item, pending: pending.has(item.id) }));
+    return { ...row, items, suggested: items.filter((item) => item.pending).length };
+  });
+  return moved ? marked : rows;
+}
+
+/**
  * One window of the Feed: the rows to draw, in the order the window grows (newest first from the
  * live end, oldest first from the start), and whether there is more beyond it.
  */
@@ -237,6 +268,10 @@ export async function readFeedWindow(
     ),
   ]);
 
+  const stop = () => {
+    if (options.stopped?.()) throw new FeedReadStopped();
+  };
+  stop();
   const titles = new Map<string, string>(calls.map((call) => [text(call.id), text(call.title) || 'A call']));
   titles.set(root, 'the space');
 
@@ -255,6 +290,7 @@ export async function readFeedWindow(
     }
     reachedCalls += 1;
     const callId = text(call.id);
+    stop();
     const said = await find('TextBlock', page(callId));
     if (said.length >= shown) filled = true;
     lines = lines.concat(
