@@ -39,7 +39,7 @@ import { VIEWING_LIVE_EXPR } from './subject';
  * How big the leading glyph is, whichever glyph it happens to be.
  *
  * Stated once and applied to both, because the spinner and the icon are swapped in place when a
- * pass settles. `we-icon` left unsized falls back to something larger than `we-spinner` resolves
+ * pass settles. `we-icon` left unsized falls back to something larger than the spinner resolves
  * for the same token, so the row grew by a few pixels at the exact moment the pass completed — a
  * twitch on every row, in a bar that is meant to be glanceable.
  *
@@ -69,7 +69,7 @@ const phaseIcon: SchemaNode = {
   type: '$if',
   props: {
     condition: { $: 'pass.running' },
-    then: { type: 'we-spinner', props: { size: GLYPH_SIZE } },
+    then: { type: 'we-animated-icon', props: { name: 'spinner', size: GLYPH_SIZE } },
     else: {
       type: 'we-icon',
       props: {

@@ -21,7 +21,7 @@ const baseLayered = new WeakMap<object, CSSResultOrNative>();
  *
  * Built from the authored text. Re-serialising parsed rules looked equivalent and is not: CSSOM
  * serialisation of a shorthand holding `var()` comes back lossy, which on a prototype of this took
- * `we-spinner`'s ring borders and `we-skeleton`'s wave gradient. Only a native sheet with no source
+ * the spinner's ring borders and `we-skeleton`'s wave gradient. Only a native sheet with no source
  * text falls back to its rules.
  */
 function inBaseLayer(style: CSSResultOrNative): CSSResultOrNative {
