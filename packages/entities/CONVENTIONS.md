@@ -134,8 +134,37 @@ Almost every entity extends `WeNode`, which in turn extends `Ad4mModel`.
   a response is a child of nothing, and where it was said is its thread subject's `partOf`. See
   `docs/architecture/relations.md`
 - `signals: string[]` — HasMany relation for signal IDs
+- `runs` / `generatedBy` — what a model was asked to do about the node, and the run that wrote it
+  (see "What a model made" below)
 
 These are always present on every model instance but are only surfaced in the UI where contextually appropriate (e.g. a `LocationBlock` pin on a map might not show a thread of responses, but the data is there if needed in future).
+
+---
+
+## What a model made
+
+A record a model wrote on somebody's behalf says so, one way, whatever wrote it:
+
+- **`ModelRun`** is one time a model was asked to do something: its `kind` (`extraction`, `chat`,
+  `agent`), the model, what started it, how it ended (`outcome`), how many records it made, a
+  per-kind `detail`, and, where the writer keeps it, the exchange (`prompt`, `output`). What it was
+  about holds it in its `runs`.
+- **`generatedBy`**, on every `WeNode`, is the run that wrote the record. A writer sets it in the
+  create itself (a to-one, as the single-entry list `[runId]`), so the record is never seen
+  unmarked. The author stays the person: `author` is who it was made for, `generatedBy` that a model
+  did the writing.
+- **`Amendment`** is a run's change to a record that already existed, one per property, with the
+  value it replaced. Hung off what it was made from (`CollectionBlock.amendments`, for a call), or
+  standing alone, naming its `run`.
+- **What an extraction pass made** is the exception: the pass runs where the records are written,
+  and the client never learns which ones it made, so those records keep the call's `extracted` link
+  (`extractedFrom`) as their mark.
+
+Ask **`generatedRun(record)`** (`@we/entities`, and the host expression function of the same name)
+rather than reading either relation: it is the one place that knows both. A template edit is not an
+amendment: a template is one document with its own `version` history.
+
+Transcripts are not marked. A transcribed line is the speaker's own words, written down by a model.
 
 ---
 
