@@ -92,7 +92,7 @@ const joinSpaceModal: SchemaNode = formModal({
           type: 'Row',
           props: { gap: '200', ay: 'center' },
           children: [
-            { type: 'we-spinner', props: { size: 'xs', color: 'text-faint' } },
+            { type: 'we-animated-icon', props: { name: 'spinner', size: 'xs', color: 'text-faint' } },
             {
               type: 'we-text',
               props: { variant: 'footnote', color: 'text-muted' },

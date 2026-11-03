@@ -192,7 +192,7 @@ const firstRunSplash: SchemaNode = {
       type: 'Row',
       props: { gap: '300', ay: 'center', height: '40px' },
       children: [
-        { type: 'we-spinner', props: { size: 'sm' } },
+        { type: 'we-animated-icon', props: { name: 'spinner', size: 'sm' } },
         { type: 'we-text', props: { fontSize: '400', color: 'text-muted' }, children: ['Loading...'] },
       ],
     },
@@ -327,7 +327,7 @@ const welcomeHeading: SchemaNode = {
 const neutralWait: SchemaNode = {
   type: 'Row',
   props: { gap: '300', ay: 'center', height: '40px' },
-  children: [{ type: 'we-spinner', props: { size: 'sm' } }],
+  children: [{ type: 'we-animated-icon', props: { name: 'spinner', size: 'sm' } }],
 };
 
 /**
@@ -346,7 +346,7 @@ const creatingAccountState: SchemaNode = {
   type: 'Row',
   props: { gap: '300', ay: 'center' },
   children: [
-    { type: 'we-spinner', props: { size: 'sm' } },
+    { type: 'we-animated-icon', props: { name: 'spinner', size: 'sm' } },
     { type: 'we-text', props: { color: 'text-muted' }, children: ['Preparing new account...'] },
   ],
 };
@@ -413,7 +413,7 @@ function knownAccountState(account: string): SchemaNode {
         type: 'Row',
         props: { gap: '300', ay: 'center', height: '40px' },
         children: [
-          { type: 'we-spinner', props: { size: 'sm' } },
+          { type: 'we-animated-icon', props: { name: 'spinner', size: 'sm' } },
           { type: 'we-text', props: { color: 'text-muted' }, children: ['Loading account...'] },
         ],
       },
@@ -521,7 +521,7 @@ const settingUpState: SchemaNode = {
       type: 'Row',
       props: { gap: '300', ay: 'center' },
       children: [
-        { type: 'we-spinner', props: { size: 'sm' } },
+        { type: 'we-animated-icon', props: { name: 'spinner', size: 'sm' } },
         { type: 'we-text', children: ['Setting up your account...'] },
       ],
     },

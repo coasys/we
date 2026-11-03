@@ -69,7 +69,11 @@ const portable: Record<string, SchemaNode> = {
   }),
   pageShell: pageShell({ children: [{ type: 'we-text', children: ['x'] }], minHeight: '100dvh' }),
   sectionCard: sectionCard({ title: 'About', description: 'D.', children: [] }),
-  'sectionCard (aside)': sectionCard({ title: 'Signals', aside: { type: 'we-spinner' }, children: [] }),
+  'sectionCard (aside)': sectionCard({
+    title: 'Signals',
+    aside: { type: 'we-animated-icon', props: { name: 'spinner' } },
+    children: [],
+  }),
   attributeRow: attributeRow({ icon: 'globe', label: 'Discovery', value: 'Listed' }),
   'attributeRow (control)': attributeRow({
     icon: 'map-pin',
@@ -552,7 +556,7 @@ describe('contracts call sites depend on', () => {
     expect(pending).toContain('local.topReplies >');
 
     const spinner = (button!.children as Record<string, unknown>[]).find(
-      (c) => (c.props as { then?: { type?: string } } | undefined)?.then?.type === 'we-spinner',
+      (c) => (c.props as { then?: { type?: string } } | undefined)?.then?.type === 'we-animated-icon',
     );
     expect(spinner, 'no spinner on the control').toBeTruthy();
     expect((spinner!.props as { condition?: { $?: string } }).condition?.$).toBe(pending);

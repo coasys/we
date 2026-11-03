@@ -1582,9 +1582,9 @@ interface RegisteredProcessor {
 /**
  * What a registered watch is currently configured to do — `classes` empty when there is no config.
  *
- * Read off the links rather than through the ORM, for the reason spelled out in
- * {@link deleteProcessorConfig}: `AutoProcessorConfig.findAll` needs `register`, and `register`
- * writes SDNA over a class the engine owns. One read of the node's links answers both halves.
+ * Read off the links rather than through the ORM: `AutoProcessorConfig.findAll` needs `register`,
+ * and `register` writes SDNA over a class the engine owns (see {@link deleteProcessorConfig}). One
+ * read of the node's links answers both halves.
  *
  * **Distinct**, and that is the bug this once was. `write_processor` adds the class links rather
  * than replacing them, one copy per class per registration, under whoever registered — so a watch
@@ -1635,48 +1635,39 @@ function sameRegistration(
 }
 
 /**
- * Delete a processor's config, which is what stops it — and the seam an AD4M release closes.
+ * Delete a processor's config, which is what stops it.
  *
  * Deleting the config *is* the removal. `write_processor` puts an `AutoProcessorConfig` instance
  * into the perspective's own graph and the watch loop reads its processors back out of that graph
- * on every tick, so removing the record is what stops the loop seeing it. That also makes it the
- * right shape rather than a workaround: the config is shared with every peer, so this stops the
- * watch for the neighbourhood rather than only for whoever pressed stop — which is what a shared
- * watch has to mean.
+ * on every tick, so removing the record is what stops the loop seeing it. The config is shared with
+ * every peer, so this stops the watch for the neighbourhood rather than only for whoever pressed
+ * stop — which is what a shared watch has to mean.
  *
- * **`perspective.removeAutoProcessor(watchId)` replaces this whole body** once WE's pinned
- * `@coasys/ad4m` carries it. It landed in `coasys/ad4m` #931 and is on `dev`; the version pinned
- * here (`0.13.0-test-interpretation-2`) was published before it, so until a build is cut from
- * `dev` the links have to be removed by hand. Nothing else about the feature waits on that.
+ * **One request.** `removeAutoProcessor` has the executor remove every link on the config node —
+ * the scalars and every copy of every class link — in one batch and one commit
+ * (`remove_processor` in ad4m's `auto_processor/config.rs`). This used to read the node's links and
+ * remove them one `removeLink` at a time, which on staging was a dozen sequential round trips,
+ * about 4.6 s, on the press that leaves a call — and a removal interrupted part way left a node no
+ * longer conforming to the class: stopped, but by accident.
  *
- * ## Why the links, and not the ORM
+ * The processor's `InterpretationRun` nodes stay. They link *to* the config node rather than from
+ * it, and they are the processed-turn cursor, so a watch registered again under this id resumes
+ * where this one stopped rather than re-reading every turn.
  *
- * This used to call `AutoProcessorConfig.register(perspective)` first, because `findAll` resolves a
- * shape by name and the client model is named differently from the class the executor registers.
- * But `register` *writes SDNA*: it installs the TypeScript model's SHACL over the same target class
- * the executor hard-wires, replacing a definition the engine owns as a side effect of tidying up
- * after a call.
+ * Idempotent: the executor answers `false` for a processor that is not there — never written, or
+ * removed first by another member — and that is not a failure of a teardown.
  *
- * The two shapes agree on property names and paths — there is a parity test for exactly that — and
- * that test compares nothing else. Setters, constructors and literal encoding are all free to
- * differ while it passes, and the write path is made of setters. So the class an executor wrote
- * through on one call could be a different class by the next one, with nothing in between reporting
- * a problem.
- *
- * Whether or not that is what bit us, a delete has no business redefining a class. The node URI is
- * derived from the processor id, so its links can be removed directly — no shape lookup, no
- * registration, nothing for the engine's own definition to collide with.
+ * Not through the ORM: `AutoProcessorConfig.findAll` needs `register`, and `register` writes the
+ * client model's SHACL over a class the executor owns. A delete has no business redefining a class.
  */
 async function deleteProcessorConfig(perspective: PerspectiveProxy, watchId: string): Promise<void> {
-  const links = await perspective.get(new LinkQuery({ source: processorNode(watchId) }));
-  for (const link of links) {
-    try {
-      await perspective.remove(link);
-    } catch (error) {
-      // One stubborn link should not strand the rest: what stops the watch is the required scalars
-      // going away, and a partial removal still achieves that.
-      console.warn('[interpretation] could not remove a watch config link', error);
-    }
+  try {
+    await perspective.removeAutoProcessor(watchId);
+  } catch (error) {
+    // Feeds the unsupported-capabilities list when the executor predates the method, then fails as
+    // before: a watch that could not be stopped is worth the caller knowing about.
+    recordMissingMethod(error);
+    throw error;
   }
 }
 

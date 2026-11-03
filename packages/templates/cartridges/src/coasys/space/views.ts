@@ -294,13 +294,48 @@ const CALL_ID = 'routeStore.params.id';
 const MINE = `modules.call.callRecordId == ${CALL_ID}`;
 
 /**
- * A call, as its own page: the people in it and what is being said.
+ * The end of a call's bar: Live while it runs, and the transcript to take away.
+ *
+ * The badge is `sm` so it stands the height of the Page / Canvas switch beside it rather than over
+ * it. The export is offered whether the call is running or over, and to everyone: it reads the
+ * shared record and writes to the reader's own device, so there is nobody else's account involved.
+ */
+export const callBarAside = (callId: string): SchemaNode[] => [
+  {
+    type: '$if',
+    props: {
+      condition: { $: `find(modules.call.liveCalls, { recordId: ${callId} })` },
+      then: { type: 'we-badge', props: { tone: 'success', size: 'sm' }, children: [liveDot, 'Live'] },
+    },
+  },
+  {
+    type: 'we-tooltip',
+    props: { content: 'Export the transcript', placement: 'bottom' },
+    children: [
+      {
+        type: 'we-button',
+        props: {
+          variant: 'ghost',
+          size: 'md',
+          square: true,
+          label: 'Export the transcript',
+          onClick: { $invoke: 'spaceStore.exportCallTranscript', args: [{ $: callId }] },
+        },
+        children: [{ type: 'we-icon', props: { name: 'download-simple' } }],
+      },
+    ],
+  },
+];
+
+/**
+ * A call, as its own page: what is being said in it.
  *
  * The space template's page for a call's record (`meta.recordViews`), so wherever a call is linked —
- * the tree, a message, a search — it opens here rather than as a generic record. The tiles are the
- * call module's; the transcript is the transcribe module's, pointed at this call. The controls are
- * not here: the call module's bar holds them on every page, this one included, so a second set
- * would be the same buttons twice.
+ * the tree, a message, a search — it opens here rather than as a generic record. The transcript is
+ * the transcribe module's, pointed at this call. Neither the controls nor the
+ * people in the call are here: the call module's bar holds the controls on every page and its panel
+ * draws everyone in the call, connecting and all, so a second set of either would be the same thing
+ * twice. What the page adds, for somebody not in the call, is the way into it.
  */
 export const callPage: SchemaNode = {
   type: 'Column',
@@ -315,15 +350,7 @@ export const callPage: SchemaNode = {
         { label: { $: "first(local.callRecord).title ? first(local.callRecord).title : 'Call'" } },
       ],
       'phone',
-      [
-        {
-          type: '$if',
-          props: {
-            condition: { $: `find(modules.call.liveCalls, { recordId: ${CALL_ID} })` },
-            then: { type: 'we-badge', props: { tone: 'success' }, children: [liveDot, 'Live'] },
-          },
-        },
-      ],
+      callBarAside(CALL_ID),
       [
         // Renaming is the call module's, so it is the same here as anywhere a call's name is drawn.
         { type: '$part', props: { id: 'call.renameCallButton', subject: { $: CALL_ID } } },
@@ -332,25 +359,9 @@ export const callPage: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $: MINE },
+        // Somebody in the call has it in the call panel; somebody who is not has the way in here.
+        condition: { $: `!(${MINE})` },
         then: {
-          type: 'Column',
-          props: { p: '500' },
-          children: [
-            {
-              type: 'Grid',
-              props: { minChildWidth: '220px', gap: '300', childAspect: '16 / 9', maxHeight: '50vh' },
-              children: [
-                {
-                  type: '$each',
-                  props: { items: { $: 'modules.call.tiles' }, as: 'tile' },
-                  children: [{ type: '$part', props: { id: 'call.tile' } }],
-                },
-              ],
-            },
-          ],
-        },
-        else: {
           type: 'Row',
           props: { gap: '300', p: '500', ay: 'center' },
           children: [
