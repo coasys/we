@@ -621,7 +621,7 @@ const networkMetricsModal: SchemaNode = {
                   type: 'Column',
                   props: { ax: 'center', ay: 'center', gap: '300', p: '600' },
                   children: [
-                    { type: 'we-spinner' },
+                    { type: 'we-animated-icon', props: { name: 'spinner' } },
                     {
                       type: 'we-text',
                       props: { color: 'text-muted' },
@@ -777,7 +777,7 @@ const peerExchangeModal: SchemaNode = {
                           type: 'Row',
                           props: { gap: '300', ay: 'center', p: '400', ax: 'center' },
                           children: [
-                            { type: 'we-spinner', props: { size: 'sm' } },
+                            { type: 'we-animated-icon', props: { name: 'spinner', size: 'sm' } },
                             {
                               type: 'we-text',
                               props: { color: 'text-muted' },

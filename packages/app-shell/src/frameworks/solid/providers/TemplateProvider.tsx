@@ -1212,7 +1212,7 @@ export default function TemplateProvider() {
     type: 'Column',
     props: { flex: '1', height: '100%', ax: 'center', ay: 'center', gap: '300', p: '600', bg: 'page' },
     children: [
-      { type: 'we-spinner', props: { size: 'lg' } },
+      { type: 'we-animated-icon', props: { name: 'spinner', size: 'lg' } },
       { type: 'we-text', props: { variant: 'body', color: 'text' }, children: ['Loading space data…'] },
       {
         type: 'we-text',
@@ -1232,7 +1232,7 @@ export default function TemplateProvider() {
   const choosingSpaceTemplateNode = {
     type: 'Column',
     props: { flex: '1', height: '100%', ax: 'center', ay: 'center', p: '600', bg: 'page' },
-    children: [{ type: 'we-spinner', props: { size: 'md' } }],
+    children: [{ type: 'we-animated-icon', props: { name: 'spinner', size: 'md' } }],
   };
   const CHOOSING_SPACE_TEMPLATE = 'choosing-space-template';
 
