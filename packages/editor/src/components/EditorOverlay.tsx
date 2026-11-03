@@ -73,7 +73,7 @@ const ANNOTATION = {
 const LOGIC_TYPES = new Set(['$each', '$if', '$animate', '$single', '$routes']);
 
 // Node types where size is controlled via the `size` prop rather than `width`/`height`
-const SIZE_PROP_TYPES = new Set(['we-icon', 'we-avatar', 'we-spinner']);
+const SIZE_PROP_TYPES = new Set(['we-icon', 'we-avatar', 'we-animated-icon']);
 
 // Layout container types that always accept drops, even when empty
 const CONTAINER_TYPES = new Set(['Column', 'Row', 'Grid', 'Card']);

@@ -429,11 +429,12 @@ export default class Button extends DesignSystemElement {
    */
   private _spinner() {
     const onOwnFill = FILLED_VARIANTS.has(this.variant);
-    return html`<we-spinner
+    return html`<we-animated-icon
+      name="spinner"
       part="spinner"
       size="var(--we-context-icon-size, var(--we-size-sm))"
       color=${onOwnFill ? 'currentColor' : 'accent-text'}
-    ></we-spinner>`;
+    ></we-animated-icon>`;
   }
 
   private _content() {

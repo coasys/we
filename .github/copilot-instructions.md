@@ -1313,6 +1313,29 @@ Most @we/primitives also accept Design System Props (see next section for detail
 @we/primitives:
 - we-alert (DesignSystemElement)
   Props: variant: 'soft' | 'edge' = 'soft', dismissible: boolean = false, icon: string = ''
+- we-animated-icon (LayoutElement) — A small drawing that moves, for something happening now: loading, a call that is live, somebody
+typing, somebody speaking.
+
+`name` picks the drawing:
+
+- `spinner` — a turning ring, for waiting on something.
+- `live` — a dot with a ring going out from it, for something running now: a live call, a
+  recording (in the danger tone), somebody online.
+- `typing` — three dots rising in turn, for somebody writing, or the assistant thinking.
+- `speaking` — bars moving out of step, for whoever is talking, or audio playing.
+
+Sized and coloured as `we-icon` is, so one can take an icon's place: `size` is a size token or any
+CSS length, and with none it is the icon size its container publishes. Its colour is the accent
+unless `color` names a role, a palette token or any CSS colour — so `tone` re-points it, a live
+dot inside a success badge is the success colour, and `color: 'currentColor'` makes it the text's.
+
+Every copy of a drawing is at the same point in its cycle at the same moment, wherever and
+whenever it mounted: the live dots in a sidebar and on a page pulse together, and a spinner that
+reappears after the window reloads picks up where the last left off.
+
+For somebody who asked for less motion, the dot and the bars stand still, the typing dots fade in
+turn rather than rise, and the spinner keeps turning, since a still spinner looks stuck.
+  Props: name: 'spinner' | 'live' | 'typing' | 'speaking' = 'spinner', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '{css-length}' = '', color: string = ''
 - we-audio (LayoutVisualElement)
   Props: src: string = '', controls: boolean = false, preload: 'none' | 'metadata' | 'auto' = 'metadata', autoplay: boolean = false, loop: boolean = false, muted: boolean = false, stream?: MediaStream | null | undefined
 - we-avatar (LayoutVisualElement)
@@ -1591,8 +1614,6 @@ Same principle as nested zones, one layer up: the innermost thing under the poin
 gesture. A sortable *inside* an overlay is unaffected — only the path between the press and the
 item is considered.
   Props: direction: 'vertical' | 'horizontal' = 'vertical', gap: string = '', zone: string = '', group: string = '', locked: boolean = false
-- we-spinner (LayoutElement)
-  Props: size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | (string & {}) = 'md', color: string = ''
 - we-switch (DesignSystemElement)
   Props: checked: boolean = false, disabled: boolean = false, name: string = '', label: string = '', value: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', labelOff: string = '', labelOn: string = ''
 - we-tab (DesignSystemElement)
@@ -2228,7 +2249,7 @@ seven roles every family has. So `"red"` as a colour is the theme's red, not CSS
 for that.
 
 **Layout-only primitives** — these accept only Layout props (not Visual, Flex, Typography, or State):
-we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
+we-animated-icon, we-divider, we-icon, we-menu-group, we-popover, we-tooltip
 
 ### Layout
 
@@ -5596,7 +5617,7 @@ WRONG icon names (Heroicons/Material — do NOT use):
 - Size a template root with `minHeight`, never `height`. `height: '100%'` makes the root exactly as tall as the viewport, so a route with more content than that overflows the *box* — and the root's background stops at the fold while the content keeps scrolling. `minHeight: '100%'` fills the viewport when a route is short and grows when it is long, which is what a page background needs. The same applies to `'100vh'` — and prefer `'100dvh'` to `'100vh'` anywhere a full-viewport height is meant: on a phone the address bar makes `vh` taller than what is actually visible, so the last rows of the page sit under the browser chrome. Identical on a desktop.
 
 Most @we/primitives inherit all Design System Props documented above (layout, visual, flex, typography, state).
-Some layout-only primitives (we-avatar, we-icon, we-image, we-spinner, etc.) only accept Layout props — see the Design System Props section for the full list.
+Some layout-only primitives (we-avatar, we-icon, we-image, we-animated-icon, etc.) only accept Layout props — see the Design System Props section for the full list.
 
 Native HTML elements (lowercase tags render directly without registry entries):
 - Layout: div, section, article, aside, main, nav, header, footer

@@ -296,7 +296,7 @@ const COMPONENT_WORDS: Record<string, string[]> = {
   calendar: ['Calendar'],
   divider: ['we-divider'],
   tooltip: ['we-tooltip'],
-  spinner: ['we-spinner'],
+  spinner: ['we-animated-icon'],
   progress: ['we-progress-bar'],
   markdown: ['we-markdown'],
   link: ['we-link'],

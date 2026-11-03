@@ -37,7 +37,7 @@ describe('the task board', () => {
   it('holds a loading state until every subscription has answered, then fades the board in', () => {
     expect(json).toContain('"condition":{"$":"local.boardLoaded && local.columnsLoaded && local.poolLoaded"}');
     expect(json).toContain('"enterTransition":{"type":"fade"');
-    expect(json).toContain('"type":"we-spinner"');
+    expect(json).toContain('"type":"we-animated-icon"');
   });
 
   it('marks a card a pass made and offers Keep and Discard on it, through the transcribe module', () => {
