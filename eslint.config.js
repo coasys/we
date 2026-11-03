@@ -4,6 +4,7 @@ import tsParser from '@typescript-eslint/parser';
 import eslintConfigPrettier from 'eslint-config-prettier';
 import prettierPlugin from 'eslint-plugin-prettier';
 import simpleImportSortPlugin from 'eslint-plugin-simple-import-sort';
+import solidPlugin from 'eslint-plugin-solid';
 
 import prettierConfig from './.prettierrc.json' with { type: 'json' };
 
@@ -291,6 +292,36 @@ export default [
           },
         },
       ]),
+  /*
+    Solid's own mistakes, which TypeScript cannot see: a prop destructured out of reactivity, a signal
+    read where nothing tracks it, a list mapped where <For> keeps its rows. Every .tsx here is Solid
+    (the Lit primitives are .ts).
+  */
+  {
+    ...solidPlugin.configs['flat/typescript'],
+    name: 'solid/recommended',
+    files: ['{packages,apps}/**/src/**/*.tsx'],
+    // The playgrounds are benchmarks and probes, each written at a chosen layer on purpose: the render
+    // bench measures "what a developer writes today", `.map()` and all.
+    ignores: ['apps/playgrounds/**'],
+    rules: {
+      ...solidPlugin.configs['flat/typescript'].rules,
+      'solid/style-prop': 'off',
+      'solid/reactivity': 'off',
+    },
+  },
+  {
+    /*
+      The schema renderer dispatches on a node once and returns the renderer for its type, so it
+      destructures and returns early by design. A node never changes under a mounted renderer:
+      children render through <For>, which keys by object, so a changed node is a new object and a
+      new mount (see `renderChildren` in SchemaRenderer.tsx). Reading it through `props` would cost
+      the hottest path in the app and buy nothing.
+    */
+    name: 'solid/schema-renderer',
+    files: ['packages/schema-system/frameworks/solid/src/**/*.tsx'],
+    rules: { 'solid/no-destructure': 'off', 'solid/components-return-once': 'off' },
+  },
   // Turn off any rules that conflict with prettier
   eslintConfigPrettier,
   {

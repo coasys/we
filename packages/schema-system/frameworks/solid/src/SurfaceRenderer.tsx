@@ -1,4 +1,5 @@
 import { surfaceStyles } from '@we/schema-shared';
+import { For } from 'solid-js';
 
 import { createSurface } from './createSurface';
 import type { RendererOutput, SchemaNode } from './types';
@@ -48,7 +49,9 @@ export function SurfaceRenderer(props: {
   return (
     <div {...outerAttrs} style={style} ref={outerRef}>
       <div {...tierAttrs} ref={tierRef} />
-      {(props.node.children as SchemaNode[] | undefined)?.map((child) => props.renderNode(child, childContext))}
+      <For each={props.node.children as SchemaNode[] | undefined}>
+        {(child) => props.renderNode(child, childContext)}
+      </For>
     </div>
   );
 }

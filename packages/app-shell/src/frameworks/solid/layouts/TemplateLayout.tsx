@@ -102,11 +102,7 @@ export function computeBottomOffset(stores: Stores): string {
 // Shell overlay inner — rendered inside ShellRouteStoreProvider + MemoryRouter
 // ---------------------------------------------------------------------------
 
-function ShellOverlayInner({
-  stores,
-  chromeStores,
-  view,
-}: {
+function ShellOverlayInner(props: {
   /** The host's own handle. A view's store factory is host code and reads wiring through it. */
   stores: Stores;
   /** What the overlay's schema renders against — chrome tier, because these views are chrome. */
@@ -119,10 +115,10 @@ function ShellOverlayInner({
   const overlaySurface = createSurface();
   // Shell views name themes too — the schema-tests page demonstrates a scoped `cyberpunk` section —
   // and they are mounted on demand, so the template's own pass never sees them.
-  stores.themeStore.requestNamedThemes(view.schema);
+  props.stores.themeStore.requestNamedThemes(props.view.schema);
   // Built from the raw stores (the schema-tests view reaches for `testDataset` and `backendPorts`,
   // both host wiring), then merged into the *chrome* bag, which is what actually gets rendered.
-  const { $schema: reactiveSchema, ...storeEntries } = view.stores?.(stores, shellRouteStore) ?? {};
+  const { $schema: reactiveSchema, ...storeEntries } = props.view.stores?.(props.stores, shellRouteStore) ?? {};
   /*
     The overlay's router, put through the same bag as everything else it renders against.
 
@@ -134,7 +130,11 @@ function ShellOverlayInner({
     call and no schema's.
   */
   const shellRouteBag = buildTemplateBag({ routeStore: shellRouteStore }, { grants: CHROME_TIER }).routeStore;
-  const shellStores: Stores = { ...chromeStores, routeStore: shellRouteBag, ...(storeEntries as Partial<Stores>) };
+  const shellStores: Stores = {
+    ...props.chromeStores,
+    routeStore: shellRouteBag,
+    ...(storeEntries as Partial<Stores>),
+  };
   /*
     `$part` expanded here too, because a shell view is chrome and chrome may place a module's pieces.
 
@@ -153,8 +153,8 @@ function ShellOverlayInner({
     any overlay can be opened, and `resolveParts` returns by identity when there is nothing to
     expand — so a view that places none pays nothing.
   */
-  const resolved = resolveParts((reactiveSchema ?? view.schema) as SchemaNode);
-  const schema = (Array.isArray(resolved) ? resolved[0] : resolved) as typeof view.schema;
+  const resolved = resolveParts((reactiveSchema ?? props.view.schema) as SchemaNode);
+  const schema = (Array.isArray(resolved) ? resolved[0] : resolved) as typeof props.view.schema;
 
   return (
     <MemoryRouter
@@ -587,10 +587,12 @@ export function TemplateLayout(
                 >
                   {/* The overlay's box is painted while the chunk arrives, so a lazy view opens
                       onto the surface it is about to fill rather than onto the template behind it. */}
-                  <Show when={view()}>
+                  {/* Keyed: the overlay is built for one view, so another view is a new overlay rather than
+                      the last one's schema and stores under a new name. */}
+                  <Show when={view()} keyed>
                     {(entry) => (
                       <ShellRouteStoreProvider>
-                        <ShellOverlayInner stores={stores} chromeStores={props.chromeStores} view={entry()} />
+                        <ShellOverlayInner stores={stores} chromeStores={props.chromeStores} view={entry} />
                       </ShellRouteStoreProvider>
                     )}
                   </Show>

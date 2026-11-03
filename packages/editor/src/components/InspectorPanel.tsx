@@ -1590,12 +1590,18 @@ function RingPicker(props: { value: string; onChange: (v: string) => void }) {
                 </we-text>
 
                 {/* White + black */}
-                <Row gap="100">{['white', 'black'].map((v) => swatch(v))}</Row>
+                <Row gap="100">
+                  <For each={['white', 'black']}>{(v) => swatch(v)}</For>
+                </Row>
 
                 {/* Hue rows */}
                 <Column gap="100">
                   <For each={COLOR_HUES}>
-                    {(hue) => <Row gap="100">{COLOR_SHADES.map((shade) => swatch(`${hue}-${shade}`))}</Row>}
+                    {(hue) => (
+                      <Row gap="100">
+                        <For each={COLOR_SHADES}>{(shade) => swatch(`${hue}-${shade}`)}</For>
+                      </Row>
+                    )}
                   </For>
                 </Column>
               </Column>
