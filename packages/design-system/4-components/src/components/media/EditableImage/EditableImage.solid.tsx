@@ -303,7 +303,7 @@ export function EditableImage(allProps: EditableImageProps) {
 
       {/* Crop — the only step left in the modal. */}
       <Show when={modalOpen()}>
-        <we-modal close={closeModal} size={modalSize()}>
+        <we-modal close={() => closeModal()} size={modalSize()}>
           <Column width="100%" ax="center" gap="500">
             <we-text variant="heading-md">Crop image</we-text>
             <ImageCrop

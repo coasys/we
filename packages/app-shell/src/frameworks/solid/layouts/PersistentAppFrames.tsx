@@ -15,12 +15,13 @@
 import type { Stores } from '@solid/types';
 import { Column } from '@we/components/solid';
 import { panelResizing } from '@we/editor/runtime';
-import { For } from 'solid-js';
+import { For, untrack } from 'solid-js';
 
 import { computeBottomOffset, computeLeftOffset, computeRightOffset, computeTopOffset } from './TemplateLayout';
 
 export function PersistentAppFrames(props: { stores: Stores }) {
-  const { stores } = props;
+  // The host's store handle, made once at boot and never replaced.
+  const stores = untrack(() => props.stores);
 
   return (
     <Column

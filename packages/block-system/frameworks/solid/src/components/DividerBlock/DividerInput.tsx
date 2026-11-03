@@ -1,5 +1,5 @@
 import { Column } from '@we/components/solid';
-import { createSignal, Show } from 'solid-js';
+import { createSignal, Show, untrack } from 'solid-js';
 
 import { BlockToolbar } from '../BlockToolbar';
 import { DividerDisplay } from './DividerDisplay';
@@ -19,7 +19,7 @@ const STYLE_OPTIONS = [
 ];
 
 export function DividerInput(props: DividerInputProps) {
-  const [style, setStyle] = createSignal<DividerVariant>(props.style || 'solid');
+  const [style, setStyle] = createSignal<DividerVariant>(untrack(() => props.style) || 'solid');
 
   function handleStyleChange(e: CustomEvent) {
     setStyle(e.detail);

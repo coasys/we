@@ -50,7 +50,7 @@ function Route(props: { title: string; detail: string; action: string; onPress: 
     <Column gap="100" py="200">
       <Row ax="between" ay="center" gap="300">
         <we-text variant="label">{props.title}</we-text>
-        <we-button size="xs" variant="soft" disabled={props.disabled} onClick={props.onPress}>
+        <we-button size="xs" variant="soft" disabled={props.disabled} onClick={() => props.onPress()}>
           {props.action}
         </we-button>
       </Row>
@@ -122,8 +122,9 @@ export function PartCard(props: { node: SchemaNode }) {
 
   const takeOver = (depth: 'one' | 'all') => {
     let replacement: SchemaNode | undefined;
+    const nodeId = props.node.id ?? '';
     write((template) => {
-      const found = findNodeById(template, props.node.id ?? '');
+      const found = findNodeById(template, nodeId);
       const opened = found && host.owners?.openPart(found.node, depth);
       if (!found || !opened) return false;
       replacement = copyWithNewIds(opened);
@@ -136,8 +137,9 @@ export function PartCard(props: { node: SchemaNode }) {
   };
 
   const remove = () => {
+    const nodeId = props.node.id ?? '';
     const removed = write((template) => {
-      const found = findNodeById(template, props.node.id ?? '');
+      const found = findNodeById(template, nodeId);
       if (!found?.parent || found.key !== 'children' || !found.parent.children) return false;
       found.parent.children.splice(found.index, 1);
       return true;
@@ -152,8 +154,9 @@ export function PartCard(props: { node: SchemaNode }) {
   };
 
   const setInput = (name: string, expression: string) => {
+    const nodeId = props.node.id ?? '';
     write((template) => {
-      const found = findNodeById(template, props.node.id ?? '');
+      const found = findNodeById(template, nodeId);
       if (!found) return false;
       const nodeProps = (found.node.props ??= {}) as Record<string, unknown>;
       const inputs = { ...((nodeProps.inputs as Record<string, unknown> | undefined) ?? {}) };
@@ -308,9 +311,11 @@ function PartNodeCard(props: { owner: OwnerRef }) {
 
   const makeOwn = () => {
     let picked: string | undefined;
+    const steps = chain();
+    const ownerId = props.owner.id;
     write((template) => {
-      const found = findNodeById(template, chain()[0] ?? '');
-      const path = found && host.owners?.openPath?.(found.node, chain(), props.owner.id);
+      const found = findNodeById(template, steps[0] ?? '');
+      const path = found && host.owners?.openPath?.(found.node, steps, ownerId);
       if (!found || !path) return false;
       (path.target as unknown as Record<string, unknown>)[PICKED] = true;
       const replacement = copyWithNewIds(path.node);
@@ -1026,8 +1031,9 @@ export function PartsPalette(props: { node: SchemaNode }) {
 
   const add = (part: OwnedPart) => {
     const placed = ensureNodeIds({ type: '$part', props: { id: part.id } });
+    const nodeId = props.node.id ?? '';
     const written = write((template) => {
-      const found = findNodeById(template, props.node.id ?? '');
+      const found = findNodeById(template, nodeId);
       if (!found) return false;
       (found.node.children ??= []).push(placed);
       const meta = (template as TemplateSchema).meta;

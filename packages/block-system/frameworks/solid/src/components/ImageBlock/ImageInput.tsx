@@ -187,7 +187,7 @@ export function ImageInput(props: ImageInputProps) {
       {/* Crop modal — portalled to escape the editor's contenteditable context. */}
       <Show when={rawUrl()}>
         <Portal>
-          <we-modal close={handleCropBack} size="md">
+          <we-modal close={() => handleCropBack()} size="md">
             <we-text variant="heading-md">Crop Image</we-text>
             <ImageCrop
               src={rawUrl()!}

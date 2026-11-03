@@ -17,7 +17,7 @@ import { history } from 'prosemirror-history';
 import type { Schema } from 'prosemirror-model';
 import { EditorState, type Plugin } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
-import { createEffect, createSignal, on, onCleanup, onMount, Show, useContext } from 'solid-js';
+import { createEffect, createSignal, on, onCleanup, onMount, Show, untrack, useContext } from 'solid-js';
 import { Portal } from 'solid-js/web';
 
 import { registerCoreBlockComponents } from '../core-block-components';
@@ -87,7 +87,6 @@ type Props = Omit<BlockComposerProps, 'ax' | 'ay'> & Pick<ColumnProps, 'ax' | 'a
 export function BlockComposer(props: Props) {
   const host = useBlockHost();
   const overrides = useContext(DisplayOverridesContext);
-  const { width = '100%' } = props;
 
   let mountEl: HTMLDivElement | undefined;
   const [view, setView] = createSignal<EditorView | null>(null);
@@ -153,9 +152,10 @@ export function BlockComposer(props: Props) {
   /**
    * The live session, when this composer was asked to `collaborate` and the host can provide one.
    * With a session the document is the session's: the editor renders the shared fragment, every
-   * edit is an update to it, and the models are written from it on save.
+   * edit is an update to it, and the models are written from it on save. Decided once, because the
+   * editor below is built around whichever document this is.
    */
-  const session: CollabSession | null = props.collaborate ? host.collab(props.collaborate) : null;
+  const session: CollabSession | null = untrack(() => (props.collaborate ? host.collab(props.collaborate) : null));
 
   function save() {
     const v = view();
@@ -354,7 +354,7 @@ export function BlockComposer(props: Props) {
   );
 
   return (
-    <Column class="we-block-composer-wrapper" width={width} ax={props.ax} ay={props.ay}>
+    <Column class="we-block-composer-wrapper" width={props.width ?? '100%'} ax={props.ax} ay={props.ay}>
       <div ref={mountEl} class="we-block-composer-mount" />
       <MentionCard root={() => mountEl} />
       <Show when={view()}>

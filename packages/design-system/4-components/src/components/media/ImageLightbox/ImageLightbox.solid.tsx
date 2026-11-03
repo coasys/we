@@ -39,7 +39,7 @@ export function ImageLightbox(props: ImageLightboxProps) {
             size="sm"
             square
             style={{ position: 'absolute', top: '12px', right: '12px', 'z-index': '1' }}
-            onClick={props.onClose}
+            onClick={() => props.onClose()}
           >
             <we-icon name="x" />
           </we-button>

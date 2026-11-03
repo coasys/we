@@ -306,8 +306,18 @@ export default [
     ignores: ['apps/playgrounds/**'],
     rules: {
       ...solidPlugin.configs['flat/typescript'].rules,
-      'solid/reactivity': 'off',
     },
+  },
+  {
+    /*
+      `reactivity` reads app-shell's stores and providers wrong. They hand accessors to registries and
+      to helpers that read them in their own tracked scopes, which the rule cannot follow: across all
+      of them it reported 56 places and none was a bug. A store's genuine read-once is still written
+      with `untrack`, which says so to the next reader.
+    */
+    name: 'solid/app-shell-stores',
+    files: ['packages/app-shell/src/frameworks/solid/{stores,providers}/**/*.tsx'],
+    rules: { 'solid/reactivity': 'off' },
   },
   {
     /*

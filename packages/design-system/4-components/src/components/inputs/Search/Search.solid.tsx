@@ -1,6 +1,6 @@
 import type { LayoutProps } from '@we/design-utils/solid';
 import { buildLayoutStyles } from '@we/design-utils/solid';
-import { createEffect, createMemo, createSignal, onCleanup, splitProps } from 'solid-js';
+import { createEffect, createMemo, createSignal, onCleanup, splitProps, untrack } from 'solid-js';
 
 import type { SearchProps as SearchOwnProps } from './Search.types';
 
@@ -48,7 +48,7 @@ export function Search(allProps: SearchComponentProps) {
     buildLayoutStyles({ ...containerProps, display: containerProps.display ?? 'block' } as LayoutProps, 'column'),
   );
 
-  const [localValue, setLocalValue] = createSignal(props.value ?? '');
+  const [localValue, setLocalValue] = createSignal(untrack(() => props.value) ?? '');
   let debounceId: ReturnType<typeof setTimeout> | undefined;
   let inputRef: (HTMLElement & Record<string, unknown>) | undefined;
 

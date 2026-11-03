@@ -45,6 +45,9 @@ export default function BlockTypeMenu(props: {
   selectType: (type: string) => void;
   close: () => void;
 }) {
+  // Fixed for the menu's life: a press anywhere outside it closes it, so it is remounted rather than
+  // moved when it opens on another block.
+  // eslint-disable-next-line solid/reactivity -- props are fixed for the life of the menu, see above
   const { nodeType, position, selectType, close } = props;
   const [focusIndex, setFocusIndex] = createSignal(-1);
   const [filter, setFilter] = createSignal('');

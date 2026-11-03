@@ -48,7 +48,7 @@ import { lazy } from 'solid-js';
 const EditorOverlay = lazy(() => import('@we/editor').then((m) => ({ default: m.EditorOverlay })));
 import { createSurface, RenderSchema } from '@we/schema-solid';
 import type { ParentProps } from 'solid-js';
-import { createEffect, createMemo, onCleanup, Show } from 'solid-js';
+import { createEffect, createMemo, onCleanup, Show, untrack } from 'solid-js';
 
 import { buildRoutes, RouteSurface } from '../utils/buildRoutes';
 import { createLiveSchema } from '../utils/liveSchema';
@@ -115,10 +115,14 @@ function ShellOverlayInner(props: {
   const overlaySurface = createSurface();
   // Shell views name themes too — the schema-tests page demonstrates a scoped `cyberpunk` section —
   // and they are mounted on demand, so the template's own pass never sees them.
-  props.stores.themeStore.requestNamedThemes(props.view.schema);
+  //
+  // Everything this setup reads from props is fixed for the overlay's life: the bags are made once by
+  // the host, and the overlay is mounted keyed on its view, so another view is another overlay.
+  untrack(() => props.stores.themeStore.requestNamedThemes(props.view.schema));
   // Built from the raw stores (the schema-tests view reaches for `testDataset` and `backendPorts`,
   // both host wiring), then merged into the *chrome* bag, which is what actually gets rendered.
-  const { $schema: reactiveSchema, ...storeEntries } = props.view.stores?.(props.stores, shellRouteStore) ?? {};
+  const { $schema: reactiveSchema, ...storeEntries } =
+    untrack(() => props.view.stores?.(props.stores, shellRouteStore)) ?? {};
   /*
     The overlay's router, put through the same bag as everything else it renders against.
 
@@ -131,7 +135,7 @@ function ShellOverlayInner(props: {
   */
   const shellRouteBag = buildTemplateBag({ routeStore: shellRouteStore }, { grants: CHROME_TIER }).routeStore;
   const shellStores: Stores = {
-    ...props.chromeStores,
+    ...untrack(() => props.chromeStores),
     routeStore: shellRouteBag,
     ...(storeEntries as Partial<Stores>),
   };
@@ -153,7 +157,7 @@ function ShellOverlayInner(props: {
     any overlay can be opened, and `resolveParts` returns by identity when there is nothing to
     expand — so a view that places none pays nothing.
   */
-  const resolved = resolveParts((reactiveSchema ?? props.view.schema) as SchemaNode);
+  const resolved = resolveParts((reactiveSchema ?? untrack(() => props.view.schema)) as SchemaNode);
   const schema = (Array.isArray(resolved) ? resolved[0] : resolved) as typeof props.view.schema;
 
   return (
@@ -222,8 +226,9 @@ export function TemplateLayout(
   // `stores` is the *template* bag and is used for exactly one thing: rendering the template.
   // Everything else here — route wiring, panel geometry, theme resolution — is host work and reads
   // `host`, which still has the members a bag deliberately withholds.
-  const stores = props.hostStores;
-  const templateStores = props.stores;
+  // Both bags are made once by the host and never replaced.
+  const stores = untrack(() => props.hostStores);
+  const templateStores = untrack(() => props.stores);
 
   // Wire useNavigate/useLocation (available here because we're inside <Router>) into routeStore
   const navigate = useNavigate();

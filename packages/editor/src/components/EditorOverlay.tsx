@@ -591,6 +591,8 @@ function VisualEditorLayer() {
     h: number;
   } | null>(null);
   // $each ancestor of the current drop target (null when target is not inside a $each)
+
+  // eslint-disable-next-line solid/reactivity -- only the setter is used; nothing reads the value back
   const [, setDndEachScopeId] = createSignal<string | null>(null);
   // Raw DOMRects for all rendered instances of the $each template child
   const [dndEachScopeRects, setDndEachScopeRects] = createSignal<DOMRect[]>([]);
@@ -725,6 +727,7 @@ function VisualEditorLayer() {
   });
 
   createEffect(() => {
+    // eslint-disable-next-line solid/reactivity -- the effect reruns and restarts its loop when the id changes
     const childId = templateChildIdForInstances();
     if (!childId) {
       setInstanceRects([]);

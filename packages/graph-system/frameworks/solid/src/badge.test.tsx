@@ -51,6 +51,7 @@ describe('a card’s badge', () => {
             {
               nodeBadges: {
                 score: (props: { recordId?: string; recordType?: string }) => {
+                  // eslint-disable-next-line solid/reactivity -- records what each render was given
                   seen.push({ recordId: props.recordId, recordType: props.recordType });
                   return <button class="mark">3</button>;
                 },

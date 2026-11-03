@@ -1,4 +1,5 @@
 import { currentProductName } from '@shared/bundles/brand';
+import { untrack } from 'solid-js';
 
 /**
  * The screen when there is no app left.
@@ -18,8 +19,10 @@ import { currentProductName } from '@shared/bundles/brand';
  * flow: fixed to the viewport, over everything, owing nothing to any parent.
  */
 export function AppFailure(props: { error: unknown }) {
-  const message = props.error instanceof Error ? props.error.message : String(props.error);
-  console.error('[we] the app failed to start:', props.error);
+  // An error boundary hands each failure to a fresh fallback, so the error is fixed for this one.
+  const error = untrack(() => props.error);
+  const message = error instanceof Error ? error.message : String(error);
+  console.error('[we] the app failed to start:', error);
 
   return (
     <div

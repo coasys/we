@@ -1478,6 +1478,7 @@ export function ThemePanel() {
    * than what it stores.
    */
   const measureElevation = (): string[] => {
+    // eslint-disable-next-line solid/reactivity -- `lum` is only called straight away below, never kept
     const colors = roleColors();
     const lum = (r: ThemeRole) => {
       const c = parseColor(colors[r] ?? '');

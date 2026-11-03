@@ -503,7 +503,8 @@ export function DatasetStoreProvider(props: ParentProps) {
       interpretCollection: async (collectionId) => {
         const port = session.backendPorts()?.interpretation;
         if (!port) throw new Error('interpretation: this backend cannot interpret');
-        const dataset = currentDataset();
+        // The dataset this pass was asked for: a space switched mid-pass must not redirect its writes.
+        const dataset = untrack(currentDataset);
         if (!dataset) throw new Error('interpretation: no dataset to interpret into');
 
         const modelFor = (entity: string) => getEntityForDataset(entity, dataset.handle);

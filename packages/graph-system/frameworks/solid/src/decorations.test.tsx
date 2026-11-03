@@ -104,6 +104,7 @@ describe('decorations', () => {
 
   it('moves a mark without remounting it, so there is something to interpolate', () => {
     const [marks, setMarks] = createSignal<GraphDecoration[]>([mark('did:ana', 10, 10, true)]);
+    // eslint-disable-next-line solid/reactivity -- the host binding reads the accessor when the graph draws
     const host = mount({ host: drawing(marks) });
 
     const before = host.querySelector('.we-graph__decoration') as HTMLElement;
