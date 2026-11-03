@@ -1737,7 +1737,7 @@ function addColumnModal(opts: TaskBoardOptions): SchemaNode {
 export const taskBoardLoading: SchemaNode = {
   type: 'Column',
   props: { width: '100%', minHeight: '240px', ax: 'center', ay: 'center' },
-  children: [{ type: 'we-spinner', props: { size: 'lg' } }],
+  children: [{ type: 'we-animated-icon', props: { name: 'spinner', size: 'lg' } }],
 };
 
 export function taskBoard(opts: TaskBoardOptions): SchemaNode {
