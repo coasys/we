@@ -67,6 +67,9 @@ export const ROOT_MODELS = [
   // sync one agent's read positions, and their mute list, to every member of that community.
   ReadMarker,
   MutedAgent,
+  // The person's messages in an agent session the executor keeps here (`agentConversations.ts`): a text
+  // record, which the executor reads as `TextContent`.
+  TextBlock,
 ] as const;
 
 /**
