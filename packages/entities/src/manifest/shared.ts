@@ -128,9 +128,9 @@ export const WE_NODE_RELATIONS: EntitySchema['relations'] = {
    */
   runs: { target: 'ModelRun', cardinality: 'many', predicate: 'we://model_run' },
   /**
-   * The run that wrote this record, where a model wrote it on somebody's behalf. Empty on anything a
-   * person made, and on what an extraction pass made, which `extractedFrom` marks instead (see
-   * `ModelRun`). `generatedRun` in `@we/entities` answers both ways at once.
+   * The run that wrote this record, where a model wrote it on somebody's behalf — a transcribed line,
+   * what an extraction pass made, a record an agent created. Empty on anything a person made. Set
+   * by whoever writes the record, in the same write; `generatedRun` in `@we/entities` reads it.
    *
    * The author stays the person: who a record was made for is `author`, and this says that a model
    * did the writing.

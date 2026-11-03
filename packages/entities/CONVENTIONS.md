@@ -143,12 +143,13 @@ These are always present on every model instance but are only surfaced in the UI
 
 ## What a model made
 
-A record a model wrote on somebody's behalf says so, one way, whatever wrote it:
+A record a model wrote on somebody's behalf says so, one way, whatever wrote it. **Whoever writes
+it marks it, in the same write, and the run's `kind` says what kind of writing it was.**
 
-- **`ModelRun`** is one time a model was asked to do something: its `kind` (`extraction`, `chat`,
-  `agent`), the model, what started it, how it ended (`outcome`), how many records it made, a
-  per-kind `detail`, and, where the writer keeps it, the exchange (`prompt`, `output`). What it was
-  about holds it in its `runs`.
+- **`ModelRun`** is one time a model was asked to do something: its `kind` (`extraction`,
+  `transcription`, `chat`, `agent`), the model, what started it, how it ended (`outcome`), how many
+  records it made (`recordCount`), a per-kind `detail`, and, where the writer keeps it, the exchange
+  (`prompt`, `output`). What it was about holds it in its `runs`.
 - **`generatedBy`**, on every `WeNode`, is the run that wrote the record. A writer sets it in the
   create itself (a to-one, as the single-entry list `[runId]`), so the record is never seen
   unmarked. The author stays the person: `author` is who it was made for, `generatedBy` that a model
@@ -156,15 +157,31 @@ A record a model wrote on somebody's behalf says so, one way, whatever wrote it:
 - **`Amendment`** is a run's change to a record that already existed, one per property, with the
   value it replaced. Hung off what it was made from (`CollectionBlock.amendments`, for a call), or
   standing alone, naming its `run`.
-- **What an extraction pass made** is the exception: the pass runs where the records are written,
-  and the client never learns which ones it made, so those records keep the call's `extracted` link
-  (`extractedFrom`) as their mark.
+
+The writers today:
+
+| Writer                              | Run                                                | Marked                                                                                                                                 |
+| ----------------------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| The agent's data tools              | the conversation's, `agent`                        | what they create; what they change is an `Amendment`                                                                                   |
+| The transcriber                     | one per speaker, call and model, `transcription`   | each spoken line, beside `source: 'spoken'`                                                                                            |
+| An extraction pass somebody presses | one per pass, `extraction`, opened before the pass | what the pass _made_, by the backend (`run` on the interpretation port), since only it knows which records it made rather than matched |
 
 Ask **`generatedRun(record)`** (`@we/entities`, and the host expression function of the same name)
-rather than reading either relation: it is the one place that knows both. A template edit is not an
-amendment: a template is one document with its own `version` history.
+rather than reading the relation. It answers "did a model write this"; what kind of writing is the
+run's `kind`, so a surface hiding replies an assistant wrote filters on it rather than on
+`generatedRun` alone, which would hide every transcript too. Lineage stays separate:
+`extractedFrom` says which call a record came out of, and is not provenance.
 
-Transcripts are not marked. A transcribed line is the speaker's own words, written down by a model.
+Two gaps, both in what a backend does rather than in the shape:
+
+- **A pass a standing watch runs is not marked.** A watch is configured once per call, and its run is
+  written when the pass settles, after the records are, so nothing names the run while they are
+  written. Its records keep their `extracted` link.
+- **Not every backend marks what a pass made.** The AD4M adapter does; a backend without
+  interpretation has nothing to mark. The conformance suite has no interpretation cases, since they
+  need a language model, so this is checked by the adapter's own tests.
+
+A template edit is not an amendment: a template is one document with its own `version` history.
 
 ---
 
