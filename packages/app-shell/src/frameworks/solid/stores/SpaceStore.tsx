@@ -52,7 +52,13 @@ import { defaultViewOrder, viewRegistry } from '@shared/registries/viewRegistry'
 import { seedDefaultEnabledModules } from '@shared/seedModules';
 import { getSeed } from '@shared/seedRegistry';
 import { type SharingPickerOption, sharingPickerOptions } from '@shared/sharingOptions';
-import { landmarksByName, readSpaceLandmarks, readSpaceRoot, writeSpaceLandmark } from '@shared/spaceLandmarks';
+import {
+  landmarksByName,
+  readSpaceLandmarks,
+  readSpaceRoot,
+  seedSpaceRoot,
+  writeSpaceLandmark,
+} from '@shared/spaceLandmarks';
 import {
   createPolicyCheck,
   type GovernedSpace,
@@ -178,6 +184,7 @@ import {
 import { hasViewsMarker, templateThemeId } from '@we/schema-shared';
 import {
   Accessor,
+  batch,
   createComputed,
   createContext,
   createEffect,
@@ -955,6 +962,11 @@ export interface SpaceStore {
    * switch template and a template must never assume what another set up.
    */
   landmarks: Accessor<Record<string, string>>;
+  /**
+   * The landmarks have answered for the space on screen. Until then an absent landmark means "not
+   * known yet", not "none": gate a "there is no board" on this, never on `root`, which arrives first.
+   */
+  landmarksLoaded: Accessor<boolean>;
   /**
    * Whether one collection — a call, a channel, the space's own — is extracted as it grows: its own
    * answer, copied from the space's default when it was made. False until it has been read.
@@ -3239,22 +3251,43 @@ export function SpaceStoreProvider(props: ParentProps) {
   */
   const [spaceRoot, setSpaceRoot] = createSignal('');
   const [spaceLandmarks, setSpaceLandmarks] = createSignal<Record<string, string>>({});
+  /**
+   * The landmarks have answered for the space on screen. Its own flag, set with them, so a template
+   * asking "is there a board?" never hears "no" before they are in — `root` arrives first now, and
+   * used to be what said so.
+   */
+  const [landmarksLoaded, setLandmarksLoaded] = createSignal(false);
+  // The collection to modules too, so the Feed starts from this answer rather than reading the space
+  // record again for it.
+  onCleanup(provideModuleHostServices({ spaceRoot: () => spaceRoot() }));
   /** Read the space collection and the landmarks again — after an action made a record the space's. */
   async function reloadSpaceStructure(): Promise<void> {
-    const dataset = datasetStore.currentDataset()?.handle;
-    const uuid = datasetStore.currentDataset()?.id;
-    if (!dataset || !datasetStore.isWeSpace()) return;
-    try {
-      const space = await readSpaceRoot(dataset);
-      const landmarks = await readSpaceLandmarks(dataset);
-      if (datasetStore.currentDataset()?.id !== uuid) return; // navigated away while loading
-      // Landmarks first: `root` is what says the read has answered, so a template asking "is there a
-      // board?" never hears "no" in the frame between the two.
-      setSpaceLandmarks(landmarks);
-      setSpaceRoot(space?.root ?? '');
-    } catch (error) {
-      console.warn('SpaceStore: could not read the space’s collection and landmarks', error);
-    }
+    const ds = datasetStore.currentDataset();
+    const dataset = ds?.handle;
+    if (!ds || !dataset || !datasetStore.isWeSpace()) return;
+    const here = () => datasetStore.currentDataset()?.id === ds.id; // not navigated away while loading
+    /*
+      The list has read this space's row, and that row carries its collection's id, so the collection
+      is known without asking — the read below answers from it. The two reads are independent and run
+      together; each is set the moment it is in. The Feed and every channel branch wait on `root`,
+      and only a template asking about a landmark waits on the landmarks, through `landmarksLoaded`.
+    */
+    seedSpaceRoot(
+      dataset,
+      untrack(mySpaces).find((space) => isSpaceSelf(space, ds)),
+    );
+    const root = readSpaceRoot(dataset).then((space) => {
+      if (here()) setSpaceRoot(space?.root ?? '');
+    });
+    const landmarks = readSpaceLandmarks(dataset).then((found) => {
+      if (!here()) return;
+      batch(() => {
+        setSpaceLandmarks(found);
+        setLandmarksLoaded(true);
+      });
+    });
+    const failed = (await Promise.allSettled([root, landmarks])).find((r) => r.status === 'rejected');
+    if (failed) console.warn('SpaceStore: could not read the space’s collection and landmarks', failed.reason);
   }
   /*
     Read on entering the space, then follow its landmarks.
@@ -3274,6 +3307,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     });
     setSpaceRoot('');
     setSpaceLandmarks({});
+    setLandmarksLoaded(false);
     /*
       The pushed rows are the landmarks, whole: the same query `readSpaceLandmarks` makes. Only a space
       whose collection was not there yet when it was read — a starter still writing — is read again,
@@ -3282,7 +3316,10 @@ export function SpaceStoreProvider(props: ParentProps) {
     const follow = (rows: SpaceLandmark[], opened = false) => {
       if (stopped) return;
       if (!opened && !untrack(spaceRoot)) return void reloadSpaceStructure();
-      setSpaceLandmarks(landmarksByName(rows));
+      batch(() => {
+        setSpaceLandmarks(landmarksByName(rows));
+        setLandmarksLoaded(true);
+      });
     };
     void untrack(reloadSpaceStructure).then(() => {
       if (stopped || !dataset || !weSpace) return;
@@ -6456,6 +6493,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     autoInterpret,
     root: spaceRoot,
     landmarks: spaceLandmarks,
+    landmarksLoaded,
     starterChoices,
     autoExtractFor,
     setAutoExtractFor,

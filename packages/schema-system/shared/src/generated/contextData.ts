@@ -3242,6 +3242,7 @@ export const contextData: ContextData = {
         autoInterpret: { type: 'boolean' },
         root: { type: 'string' },
         landmarks: { type: 'object' },
+        landmarksLoaded: { type: 'boolean' },
         extractionTargets: { type: 'array' },
         taskWorkflowRule: { type: 'string' },
         taskWorkflowEnabled: { type: 'boolean' },
