@@ -146,39 +146,56 @@ const styles = css`
   }
 
   /*
-    live — a dot, and a ring going out from it and fading. The ring is at rest invisible, so a dot
-    whose motion has been stopped is just the dot.
+    live — a dot that swells, and at its fullest lets go of a ring that carries on outward and fades.
+    One motion rather than two: the dot speeds up as it swells, the ring leaves at that speed and
+    slows as it goes, and the dot eases back slowly enough not to read as a second movement. A swell
+    that ended before the ring appeared looked like a stop and a restart.
+
+    The ring is an outline whose line keeps its width as it grows, and it is free to spread past the
+    drawing's box, so a 12px dot still has a pulse anyone can see while taking only its own room. At
+    rest it is invisible, so a dot whose motion has been stopped is just the dot.
   */
   .live-core {
-    animation: we-animated-live-core 1.8s ease-in infinite;
+    animation: we-animated-live-core 1.8s linear infinite;
     animation-delay: var(--we-animated-icon-phase, 0ms);
   }
   .live-ring {
     opacity: 0;
-    animation: we-animated-live-ring 1.8s ease-in infinite;
+    fill: none;
+    stroke: var(--we-animated-icon-color);
+    stroke-width: max(1.5px, calc(var(--we-animated-icon-stroke) * 0.75));
+    vector-effect: non-scaling-stroke;
+    animation: we-animated-live-ring 1.8s linear infinite;
     animation-delay: var(--we-animated-icon-phase, 0ms);
   }
   @keyframes we-animated-live-core {
-    0%,
-    50%,
-    100% {
+    0% {
       transform: scale(1);
+      animation-timing-function: cubic-bezier(0.5, 0, 1, 1);
     }
     25% {
-      transform: scale(1.2);
+      transform: scale(1.25);
+      animation-timing-function: cubic-bezier(0.4, 0, 0.6, 1);
+    }
+    70%,
+    100% {
+      transform: scale(1);
     }
   }
   @keyframes we-animated-live-ring {
-    0% {
-      transform: scale(1);
-      opacity: 0.8;
-    }
-    50% {
-      transform: scale(2.4);
+    0%,
+    24.9% {
+      transform: scale(1.25);
       opacity: 0;
     }
+    25% {
+      transform: scale(1.25);
+      opacity: 0.9;
+      animation-timing-function: cubic-bezier(0, 0.4, 0.4, 1);
+    }
+    80%,
     100% {
-      transform: scale(1);
+      transform: scale(2.4);
       opacity: 0;
     }
   }
@@ -321,8 +338,8 @@ export default class AnimatedIcon extends LayoutElement {
     switch (this.name) {
       case 'live':
         return html`<svg viewBox="0 0 24 24" aria-hidden="true">
-          ${svg`<circle class="live-ring" cx="12" cy="12" r="5"></circle>
-          <circle class="live-core" cx="12" cy="12" r="5"></circle>`}
+          ${svg`<circle class="live-ring" cx="12" cy="12" r="7"></circle>
+          <circle class="live-core" cx="12" cy="12" r="7"></circle>`}
         </svg>`;
       case 'typing':
         return html`<svg class="typing" viewBox="0 0 24 24" aria-hidden="true">
