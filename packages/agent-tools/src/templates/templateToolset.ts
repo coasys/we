@@ -204,7 +204,7 @@ async function update({ record, args, models = [], author }: ToolCall) {
     return {
       text:
         `Error: The template has changed since it was read — it is version ${version} now, and these patches ` +
-        `were written against version ${parsed.version}. Read it again with ${TEMPLATE_READ}: its node ids ` +
+        `were written against version ${JSON.stringify(parsed.version)}. Read it again with ${TEMPLATE_READ}: its node ids ` +
         'may have changed. Then write the patches against what it says now.',
     };
   if (Array.isArray(parsed.patches) && parsed.patches.length === 0)

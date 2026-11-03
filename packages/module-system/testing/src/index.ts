@@ -82,14 +82,18 @@ function matches(row: Record<string, unknown>, where: Record<string, unknown> | 
   });
 }
 
+/** A field as the text rows are ordered by: a scalar as it prints, anything else as nothing. */
+const sortText = (value: unknown): string =>
+  typeof value === 'string' ? value : typeof value === 'number' || typeof value === 'boolean' ? String(value) : '';
+
 function select(rows: FakeRow[], query: RecordQuery | undefined): FakeRow[] {
   let out = rows.filter((row) => matches(row, query?.where) && (!query?.within || row.__parent === query.within));
   const order = Object.entries(query?.order ?? {})[0];
   if (order) {
     const [field, direction] = order;
     out = [...out].sort((a, b) => {
-      const x = String(a[field] ?? '');
-      const y = String(b[field] ?? '');
+      const x = sortText(a[field]);
+      const y = sortText(b[field]);
       return direction === 'desc' ? y.localeCompare(x) : x.localeCompare(y);
     });
   }

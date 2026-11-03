@@ -206,7 +206,7 @@ function entityEntries(moduleId: string, manifest: ManifestLike, predicates?: Re
       predicate: minted(name, field, spec.predicate),
       required: spec.required ?? false,
       ...(spec.default !== undefined && spec.default !== '' && spec.default !== 0 && spec.default !== false
-        ? { default: typeof spec.default === 'string' ? `'${spec.default}'` : String(spec.default) }
+        ? { default: typeof spec.default === 'string' ? `'${spec.default}'` : JSON.stringify(spec.default) }
         : {}),
     })),
     relations: Object.entries(entity.relations ?? {}).map(([relation, spec]) => ({

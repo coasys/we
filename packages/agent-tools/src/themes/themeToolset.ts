@@ -65,7 +65,7 @@ function readRecord(record: RecordInput | undefined) {
   if (!themeToolset.appliesTo.includes(record.className))
     throw new Error(`The theme tools work on Theme records, not ${record.className}.`);
   return {
-    name: String(record.properties.name ?? ''),
+    name: typeof record.properties.name === 'string' ? record.properties.name : '',
     version: Number(record.properties.version) || 1,
     overrides: parseOverrides(fileText(record.properties.overrides) || null),
     css: fileText(record.properties.css),
@@ -167,7 +167,7 @@ function update({ record, args }: ToolCall) {
     return {
       text:
         `Error: The theme has changed since it was read — it is version ${stored.version} now, and this edit ` +
-        `was written against version ${parsed.version}. Read it again with ${THEME_READ} and write the edit ` +
+        `was written against version ${JSON.stringify(parsed.version)}. Read it again with ${THEME_READ} and write the edit ` +
         'against what it says now.',
     };
   if (parsed.overrides !== undefined && !isObject(parsed.overrides))

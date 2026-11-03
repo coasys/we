@@ -137,10 +137,21 @@ export function propertyExpander(options: PropertyExpanderOptions = {}): Expande
 function asScalar(value: unknown): string | number | boolean | null {
   if (value === null || value === undefined) return null;
   if (['string', 'number', 'boolean'].includes(typeof value)) return value as string | number | boolean;
-  return String(value);
+  return textOf(value);
+}
+
+/**
+ * A value as text: a scalar as it prints, anything structured as JSON. Printed with `String`, every
+ * object reads `[object Object]` — as a label, and as the address that merges equal values into one
+ * shared node, so every object-valued property shared a single value node.
+ */
+function textOf(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') return String(value);
+  return JSON.stringify(value) ?? '';
 }
 
 function format(value: unknown): string {
-  const text = value === null || value === undefined ? '—' : String(value);
+  const text = value === null || value === undefined ? '—' : textOf(value);
   return text.length > 40 ? `${text.slice(0, 37)}…` : text;
 }

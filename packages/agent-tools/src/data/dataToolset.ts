@@ -144,7 +144,10 @@ export function createDataToolset(options: DataToolsetOptions): SessionToolset {
 
   async function spaceRoot(): Promise<{ id: string; name: string }> {
     const space = await spaceRecord();
-    return { id: (space?.root as { id?: string } | undefined)?.id ?? '', name: String(space?.name ?? '') };
+    return {
+      id: (space?.root as { id?: string } | undefined)?.id ?? '',
+      name: typeof space?.name === 'string' ? space.name : '',
+    };
   }
 
   function row(entry: EntityManifestEntry, record: Record<string, unknown>): Record<string, unknown> {
@@ -421,7 +424,8 @@ export function createDataToolset(options: DataToolsetOptions): SessionToolset {
         required: ['entity', 'id'],
       },
       writes: true,
-      confirm: (args) => `Delete this ${String(args.entity ?? 'record')}? It cannot be brought back.`,
+      confirm: (args) =>
+        `Delete this ${typeof args.entity === 'string' ? args.entity : 'record'}? It cannot be brought back.`,
       run: deleteRecord,
     },
     {
@@ -467,7 +471,7 @@ export function createDataToolset(options: DataToolsetOptions): SessionToolset {
             },
             writes: true,
             confirm: (args: Record<string, unknown>) =>
-              `Add a new kind of record, ${String(args.name ?? '')}, to this space for everyone in it?`,
+              `Add a new kind of record, ${typeof args.name === 'string' ? args.name : ''}, to this space for everyone in it?`,
             run: defineModel,
           },
         ]

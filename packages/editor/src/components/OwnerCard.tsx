@@ -888,11 +888,12 @@ export function CopiedPartNote(props: { nodeId: string }) {
     return { outermost, changed, returnable, clean: !dirty.get(outermost) };
   });
 
-  const partOf = (level: SchemaNode) => {
-    const id = String(level.forkedPart?.placement.id ?? '');
-    return host.owners?.part(id) ?? null;
+  const placedId = (level: SchemaNode): string | undefined => {
+    const id = level.forkedPart?.placement.id;
+    return typeof id === 'string' ? id : undefined;
   };
-  const labelOf = (level: SchemaNode) => partOf(level)?.label ?? String(level.forkedPart?.placement.id ?? 'a part');
+  const partOf = (level: SchemaNode) => host.owners?.part(placedId(level) ?? '') ?? null;
+  const labelOf = (level: SchemaNode) => partOf(level)?.label ?? placedId(level) ?? 'a part';
   const moduleName = () => {
     const found = forks();
     return (found && partOf(found.outermost)?.moduleName) || 'its module';

@@ -321,7 +321,8 @@ export function openPartPath(
     if (!at || at.type !== '$part') return null;
     const opened = openRaw(at, 'one');
     if (!opened) return null;
-    parts.push(String((at.props as { id?: unknown } | undefined)?.id ?? ''));
+    const partId = (at.props as { id?: unknown } | undefined)?.id;
+    parts.push(typeof partId === 'string' ? partId : '');
     if (i === 0) root = opened;
     else {
       for (const key of Object.keys(at)) delete (at as Record<string, unknown>)[key];

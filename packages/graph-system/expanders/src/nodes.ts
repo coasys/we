@@ -61,7 +61,9 @@ export function labelProperty(shape: EntityShape | undefined): string | undefine
  * whole document into the graph store.
  */
 function trim(value: unknown): string | undefined {
-  if (value === null || value === undefined) return undefined;
+  // Only a scalar is a caption. A record or list printed as one reads `[object Object]`, so it
+  // gives no label and the next candidate is used instead.
+  if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') return undefined;
   const text = String(value).trim();
   if (!text) return undefined;
   return text.length > 300 ? `${text.slice(0, 297)}…` : text;

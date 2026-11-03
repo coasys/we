@@ -276,7 +276,14 @@ export default [
     WE_LINT_TYPES=off, so a commit is not a 20-second, 3 GB wait; CI and `pnpm lint` run these.
   */
   ...(process.env.WE_LINT_TYPES === 'off'
-    ? []
+    ? [
+        {
+          // Without types, a disable for a type-aware rule looks unused. Reporting it would fail the
+          // commit, and `--fix` would delete it.
+          name: 'typescript/type-aware-off',
+          linterOptions: { reportUnusedDisableDirectives: 'off' },
+        },
+      ]
     : [
         {
           name: 'typescript/type-aware',
@@ -289,6 +296,8 @@ export default [
             '@typescript-eslint/no-floating-promises': 'error',
             '@typescript-eslint/no-misused-promises': 'error',
             '@typescript-eslint/await-thenable': 'error',
+            '@typescript-eslint/no-base-to-string': 'error',
+            '@typescript-eslint/restrict-template-expressions': 'error',
           },
         },
       ]),

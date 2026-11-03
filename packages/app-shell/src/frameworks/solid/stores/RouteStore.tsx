@@ -131,11 +131,22 @@ const RouteContext = createContext<RouteStore>();
  * them turned `?call=ad4m://obj/x` into `?call=ad4m%3A%2F%2Fobj%2Fx` — the same call written two
  * ways, depending on whether a link or `setParam` wrote it. Every reader decodes either form alike.
  */
+/**
+ * A query value as the text the address carries. A list is comma-joined, which is what `split()`
+ * reads back; an object is written as JSON rather than as "[object Object]".
+ */
+function paramText(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') return String(value);
+  if (Array.isArray(value)) return value.map(paramText).join(',');
+  return JSON.stringify(value) ?? '';
+}
+
 export function queryString(values: URLSearchParams | Record<string, unknown>): string {
   const search = new URLSearchParams();
   const entries = values instanceof URLSearchParams ? [...values] : Object.entries(values);
   for (const [name, value] of entries) {
-    if (value !== null && value !== undefined && value !== '') search.set(name, String(value));
+    if (value !== null && value !== undefined && value !== '') search.set(name, paramText(value));
   }
   return search.toString().replace(/%3A/gi, ':').replace(/%2F/gi, '/');
 }

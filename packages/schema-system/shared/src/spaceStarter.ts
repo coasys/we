@@ -430,7 +430,9 @@ export function starterProblems(starter: SpaceStarter, vocabulary: StarterVocabu
   };
 
   const taskStateSlugs = new Set(
-    (starter.records ?? []).filter((r) => r.entity === 'TaskState').map((r) => String(r.fields?.slug ?? '')),
+    (starter.records ?? [])
+      .filter((r) => r.entity === 'TaskState')
+      .map((r) => (typeof r.fields?.slug === 'string' ? r.fields.slug : '')),
   );
   (starter.records ?? []).forEach((record, index) => {
     const at = `records[${index}]`;

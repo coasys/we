@@ -257,7 +257,7 @@ function conditionFromLeaf(op: Op, value: Scalar | Scalar[]): unknown {
     case 'gte':
       return { [op]: value };
     default:
-      throw new Error(`irToFlatQuery: operator "${op}" is not expressible in the flat where clause`);
+      throw new Error(`irToFlatQuery: operator "${String(op)}" is not expressible in the flat where clause`);
   }
 }
 

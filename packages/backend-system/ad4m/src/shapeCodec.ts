@@ -415,14 +415,18 @@ export function readShape(links: readonly LinkLike[]): ReadShape | null {
   }
 
   const manifestVersion = value(shapeUri, ANNOTATION.manifestVersion);
+  const text = (predicate: string) => {
+    const held = value(shapeUri, predicate);
+    return typeof held === 'string' ? held : '';
+  };
   return {
     shapeUri,
     name,
-    description: String(value(shapeUri, ANNOTATION.recordDescription) ?? ''),
-    icon: String(value(shapeUri, ANNOTATION.icon) ?? ''),
+    description: text(ANNOTATION.recordDescription),
+    icon: text(ANNOTATION.icon),
     shapeId,
     version: Number(value(shapeUri, ANNOTATION.version) ?? 1),
-    forkedFrom: String(value(shapeUri, ANNOTATION.forkedFrom) ?? ''),
+    forkedFrom: text(ANNOTATION.forkedFrom),
     manifest: {
       version: typeof manifestVersion === 'string' ? manifestVersion : '1',
       entities: { [name]: entity },

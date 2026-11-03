@@ -17,7 +17,8 @@ function placeholderFor(name: string, attrs: Record<string, unknown>, paragraph?
     case 'blockquote':
       return 'Quote';
     case 'heading':
-      return `Heading ${attrs.headingLevel}`;
+      // The schema defaults the level to 1.
+      return `Heading ${typeof attrs.headingLevel === 'number' ? attrs.headingLevel : 1}`;
     default:
       return '';
   }

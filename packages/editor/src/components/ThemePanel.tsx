@@ -1109,7 +1109,8 @@ export function ThemePanel() {
         .replace(/\.(woff2?|ttf|otf)$/i, '')
         .replace(/[^\p{L}\p{N} _-]/gu, ' ')
         .trim();
-      const face: FontFaceSetting = { family, src: String(reader.result) };
+      // `readAsDataURL` always yields a string.
+      const face: FontFaceSetting = { family, src: reader.result as string };
       const problem = fontFaceProblem(face);
       setFontProblem(problem ?? '');
       if (problem) return;

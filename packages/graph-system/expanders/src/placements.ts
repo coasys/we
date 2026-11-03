@@ -99,8 +99,10 @@ function supersedes(row: PlacementRow, best: PlacementRow): boolean {
   const a = writtenAt(row);
   const b = writtenAt(best);
   if (a !== b) return a > b;
-  return String(row.id ?? '') > String(best.id ?? '');
+  return idOf(row) > idOf(best);
 }
+
+const idOf = (row: PlacementRow): string => (typeof row.id === 'string' ? row.id : '');
 
 /**
  * The placement that applies, out of everything stored for one node.

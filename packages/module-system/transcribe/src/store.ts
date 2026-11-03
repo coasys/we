@@ -1408,8 +1408,16 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       if (!field) continue;
       const held = before[name];
       // Absent and empty are one case here: both read as "nothing there before", which is what a
-      // property being filled in for the first time is, and it is the common amendment.
-      const previousValue = held === undefined || held === null ? '' : String(held);
+      // property being filled in for the first time is, and it is the common amendment. A scalar is
+      // logged as it prints and anything structured as JSON, never as `[object Object]`.
+      const previousValue =
+        held === undefined || held === null
+          ? ''
+          : typeof held === 'string'
+            ? held
+            : typeof held === 'number' || typeof held === 'boolean'
+              ? String(held)
+              : (JSON.stringify(held) ?? '');
       const newValue = edited?.[name] ?? field.value;
       if (previousValue === newValue) continue;
       try {
@@ -3736,8 +3744,8 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
           typeof line?.id === 'string' && line.id
             ? {
                 id: line.id,
-                text: String(line.text ?? ''),
-                author: String(line.author ?? ''),
+                text: typeof line.text === 'string' ? line.text : '',
+                author: typeof line.author === 'string' ? line.author : '',
                 surface: 'transcript',
               }
             : null,

@@ -25,7 +25,7 @@
  */
 import type { LocalMetaMap } from '../propResolvers/local';
 import { readField } from './reach';
-import { matchesWhere } from './where';
+import { asText, matchesWhere } from './where';
 
 export type FunctionCategory = 'list' | 'text' | 'number' | 'object' | 'form';
 
@@ -86,7 +86,6 @@ export function arityOf(spec: FunctionSpec): [number, number] {
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 const asList = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
-const asText = (value: unknown): string => (value == null ? '' : String(value));
 const asNumber = (value: unknown): number => {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;

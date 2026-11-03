@@ -707,7 +707,8 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
         surface reads. One that is waiting leaves the board as it was; its card shows the question.
       */
       if (task && to.slug && workflow?.enabled()) {
-        const current = workflow.stateOf(cardId) ?? String((task as { status?: unknown }).status ?? '');
+        const status = (task as { status?: unknown }).status;
+        const current = workflow.stateOf(cardId) ?? (typeof status === 'string' ? status : '');
         const outcome = await workflow.move(cardId, current, to.slug);
         /*
           Already there counts as moved: the writes below put `status` and the arrangement where the

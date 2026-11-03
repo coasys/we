@@ -11,6 +11,8 @@
  */
 import { type DatasetProxy, Space, SpaceLandmark } from '@we/entities';
 
+import { isoOf } from './interpretation/callExport';
+
 /** The space's landmarks, by name → the id of the record that is it. The newest wins a name. */
 export async function readSpaceLandmarks(dataset: DatasetProxy): Promise<Record<string, string>> {
   return landmarksByName(await SpaceLandmark.findAll(dataset));
@@ -26,7 +28,7 @@ export function landmarksByName(
   const byName: Record<string, { id: string; at: string }> = {};
   for (const landmark of landmarks) {
     const node = Array.isArray(landmark.node) ? landmark.node[0] : landmark.node;
-    const at = String(landmark.createdAt ?? '');
+    const at = isoOf(landmark.createdAt);
     if (!landmark.name || !node) continue;
     if (!byName[landmark.name] || at > byName[landmark.name].at) byName[landmark.name] = { id: String(node), at };
   }

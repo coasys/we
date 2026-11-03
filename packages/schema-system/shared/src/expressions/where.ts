@@ -21,6 +21,17 @@ import { RANGE_OPS, rangeCompare } from '@we/backend-shared';
 
 import { readField } from './reach';
 
+/**
+ * A value as the expression language turns it into text: nothing for an absent value, and otherwise
+ * what JavaScript's `String` prints. Template interpolation, `+` with a string side, the text
+ * functions and the where-object's text operators all share it, so they cannot disagree about what
+ * a value reads as — a record or list included, which prints as JavaScript prints it.
+ */
+export function asText(value: unknown): string {
+  // eslint-disable-next-line @typescript-eslint/no-base-to-string -- the language's defined conversion of any value to text; see above.
+  return value == null ? '' : String(value);
+}
+
 export function matchesWhere(item: unknown, where: Record<string, unknown>): boolean {
   const record = item as Record<string, unknown> | null | undefined;
 
@@ -52,12 +63,7 @@ export function matchesWhere(item: unknown, where: Record<string, unknown>): boo
         continue;
       }
       if ('contains' in expected) {
-        if (
-          !String(actual ?? '')
-            .toLowerCase()
-            .includes(String(expected.contains ?? '').toLowerCase())
-        )
-          return false;
+        if (!asText(actual).toLowerCase().includes(asText(expected.contains).toLowerCase())) return false;
         continue;
       }
       const bounds = RANGE_OPS.filter((op) => op in expected);
@@ -68,11 +74,11 @@ export function matchesWhere(item: unknown, where: Record<string, unknown>): boo
       let anchored = false;
       if ('startsWith' in expected) {
         anchored = true;
-        if (!String(actual ?? '').startsWith(String(expected.startsWith ?? ''))) return false;
+        if (!asText(actual).startsWith(asText(expected.startsWith))) return false;
       }
       if ('endsWith' in expected) {
         anchored = true;
-        if (!String(actual ?? '').endsWith(String(expected.endsWith ?? ''))) return false;
+        if (!asText(actual).endsWith(asText(expected.endsWith))) return false;
       }
       if (anchored) continue;
       if ('not' in expected) {

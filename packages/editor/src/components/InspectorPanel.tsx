@@ -1954,8 +1954,9 @@ function BoxRecord(props: {
   const hasMargin = () => ['m', 'mt', 'mr', 'mb', 'ml'].some((k) => availableKeys().has(k));
 
   const rawVal = (key: string): string => {
+    // A spacing bound to an expression is an object, and has no text to edit here.
     const v = props.currentProps[key];
-    return v !== undefined && v !== null ? String(v) : '';
+    return typeof v === 'string' || typeof v === 'number' ? String(v) : '';
   };
 
   const paddingPh = () => rawVal('p') || '—';

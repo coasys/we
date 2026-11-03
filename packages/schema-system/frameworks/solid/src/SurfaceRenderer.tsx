@@ -41,7 +41,8 @@ export function SurfaceRenderer(props: {
   renderNode: (node: SchemaNode, context: Record<string, unknown>) => RendererOutput;
 }): RendererOutput {
   // A mounted node and its context are fixed for the renderer's life; see `renderChildren`.
-  const asKey = String(untrack(() => props.node.props?.as) ?? 'surface');
+  const as = untrack(() => props.node.props?.as);
+  const asKey = typeof as === 'string' ? as : 'surface';
   const { surface, outerRef, tierRef, outerAttrs, tierAttrs } = createSurface();
 
   const childContext = { ...untrack(() => props.context), [asKey]: surface };

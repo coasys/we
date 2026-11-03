@@ -9,7 +9,8 @@ import type { DatasetHandle, EntityManifest, ReferencePort } from '@we/backend-s
 
 type Row = Record<string, unknown>;
 
-const timeOf = (value: unknown) => (typeof value === 'number' ? value : Date.parse(String(value ?? '')) || 0);
+const timeOf = (value: unknown) =>
+  typeof value === 'number' ? value : typeof value === 'string' ? Date.parse(value) || 0 : 0;
 
 export function createInMemoryReferencePort(manifest: EntityManifest): ReferencePort {
   return {
@@ -29,7 +30,7 @@ export function createInMemoryReferencePort(manifest: EntityManifest): Reference
           if (!holds || typeof row.id !== 'string') continue;
           found.push({
             id: row.id,
-            author: String(row.author ?? ''),
+            author: typeof row.author === 'string' ? row.author : '',
             at: new Date(timeOf(row.createdAt)).toISOString(),
           });
         }

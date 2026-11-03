@@ -650,7 +650,8 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
         .catch((error: unknown) => {
           // A type this backend will not subscribe to leaves the graph as loaded rather than
           // taking it down — the same degradation every other read here makes.
-          console.warn(`[graph] cannot watch ${request.entity}:`, error);
+          const entities = Array.isArray(request.entity) ? request.entity.join(', ') : request.entity;
+          console.warn(`[graph] cannot watch ${entities}:`, error);
         });
 
       return () => {

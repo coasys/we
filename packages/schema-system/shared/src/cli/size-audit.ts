@@ -202,7 +202,11 @@ function overlapOf(node: Node, path: string[]): Overlap | undefined {
   const cond =
     typeof condition === 'object' && condition !== null && typeof (condition as { $?: unknown }).$ === 'string'
       ? (condition as { $: string }).$
-      : String(condition ?? '?');
+      : condition === undefined || condition === null
+        ? '?'
+        : typeof condition === 'string'
+          ? condition
+          : JSON.stringify(condition);
   return {
     shared,
     then: bytes(sides[0]),

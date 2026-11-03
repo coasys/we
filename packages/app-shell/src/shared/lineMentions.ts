@@ -19,6 +19,9 @@
 import { mentionChanges, mentionedDids, parseMarks, rebaseMarks, serializeMarks } from '@we/block-shared';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 
+/** A line's text field, which is a string wherever it is set. */
+const textOf = (value: unknown): string => (typeof value === 'string' ? value : '');
+
 /** The relation-write half of an entity class, as every backend's offers it. */
 export interface MentionWriter {
   addRelation(dataset: unknown, id: string, relation: string, targetId: string): Promise<void>;
@@ -65,9 +68,7 @@ export async function prepareMentionUpdate(
 
   const before = parseMarks(current.marks);
   const marks =
-    'marks' in fields
-      ? parseMarks(fields.marks)
-      : rebaseMarks(String(current.text ?? ''), String(fields.text ?? ''), before);
+    'marks' in fields ? parseMarks(fields.marks) : rebaseMarks(textOf(current.text), textOf(fields.text), before);
   const next =
     'marks' in fields || marks.length !== before.length ? { ...fields, marks: serializeMarks(marks) } : fields;
 

@@ -15,6 +15,7 @@ import {
   type AmendmentEntry,
   exportFileName,
   formatExtractionLog,
+  isoOf,
   type PassEntry,
   transcriptLine,
 } from '@shared/interpretation/callExport';
@@ -3371,11 +3372,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    */
   function dedupeBySlug(records: TaskState[]): TaskState[] {
     const stamp = (r: TaskState) =>
-      String(
-        (r as unknown as { timestamp?: unknown }).timestamp ??
-          (r as unknown as { createdAt?: unknown }).createdAt ??
-          '',
-      );
+      isoOf((r as unknown as { timestamp?: unknown }).timestamp ?? (r as unknown as { createdAt?: unknown }).createdAt);
     const bySlug = new Map<string, TaskState>();
     for (const record of [...records].sort((a, b) => stamp(a).localeCompare(stamp(b)))) {
       const slug = record.slug || deriveSlug(record.name || '');
@@ -4128,7 +4125,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       const records = (await InvolvementType.findAll(dataset)) as InvolvementType[];
       if (datasetStore.currentDataset()?.id !== uuid) return;
       const stamp = (r: InvolvementType) =>
-        String((r as unknown as { timestamp?: unknown; createdAt?: unknown }).timestamp ?? r.createdAt ?? '');
+        isoOf((r as unknown as { timestamp?: unknown; createdAt?: unknown }).timestamp ?? r.createdAt);
       setOwnInvolvementTypes(
         [...records]
           .sort((a, b) => stamp(a).localeCompare(stamp(b)))
@@ -5336,7 +5333,8 @@ export function SpaceStoreProvider(props: ParentProps) {
   const readAsDataURI = (file: File) =>
     new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result));
+      // `readAsDataURL` always yields a string.
+      reader.onload = () => resolve(reader.result as string);
       reader.onerror = () => reject(reader.error);
       reader.readAsDataURL(file);
     });

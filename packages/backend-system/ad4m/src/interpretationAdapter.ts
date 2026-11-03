@@ -351,6 +351,17 @@ function decode(value: unknown): unknown {
  * and that is not a change anybody would be asked about either. A read that fails keeps the value:
  * a real change shown is better than one silently dropped.
  */
+/**
+ * A decoded value as text, for comparing: a scalar as it prints, anything structured as JSON. Printed
+ * with `String`, every object reads `[object Object]`, so two different ones compared equal.
+ */
+function comparableText(value: unknown): string {
+  if (value === undefined || value === null) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') return String(value);
+  return JSON.stringify(value) ?? '';
+}
+
 async function withoutUnchanged(
   perspective: PerspectiveProxy,
   base: string,
@@ -367,8 +378,8 @@ async function withoutUnchanged(
       kept.push([predicate, value]);
       continue;
     }
-    const proposed = String(unwrapped(value) ?? '');
-    if (!current.some((c) => String(c ?? '') === proposed)) kept.push([predicate, value]);
+    const proposed = comparableText(unwrapped(value));
+    if (!current.some((c) => comparableText(c) === proposed)) kept.push([predicate, value]);
   }
   return kept;
 }
@@ -1613,7 +1624,7 @@ async function readProcessorConfig(perspective: PerspectiveProxy, watchId: strin
       continue;
     }
     const held = scalars.get(predicate) ?? new Set<string>();
-    held.add(String(value));
+    held.add(comparableText(value));
     scalars.set(predicate, held);
   }
   return { classes: [...classes].sort(), scalars };

@@ -25,8 +25,11 @@ import { signalOptimism } from '../../../shared/signalOptimism';
 import { signalOrder } from '../../../shared/signalOrder';
 
 /** A relation comes back as ids or as hydrated rows; read either, the way `arrangedBoard` does. */
-const idOf = (entry: unknown): string =>
-  typeof entry === 'string' ? entry : String((entry as { id?: unknown } | null)?.id ?? '');
+const idOf = (entry: unknown): string => {
+  if (typeof entry === 'string') return entry;
+  const id = (entry as { id?: unknown } | null)?.id;
+  return typeof id === 'string' ? id : '';
+};
 
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
 import {
@@ -683,7 +686,10 @@ export default function TemplateProvider() {
         const row = record as { id?: string; status?: unknown } | null;
         // Against the state the board draws — the run's where there is one — or a drop that moved a
         // run would be held until `status` caught up, which it may never do if nobody mirrors it.
-        if (row?.id) rows.set(`${row.id}.status`, [workflowStateOf(workflowView, row.id) ?? String(row.status ?? '')]);
+        if (row?.id)
+          rows.set(`${row.id}.status`, [
+            workflowStateOf(workflowView, row.id) ?? (typeof row.status === 'string' ? row.status : ''),
+          ]);
       }
 
       queueMicrotask(() => boardOptimism.settle((id, relation) => rows.get(`${id}.${relation}`)));
@@ -920,7 +926,7 @@ export default function TemplateProvider() {
         path,
         args,
         path === 'spaceStore.deleteCollection'
-          ? collectionFacts(datasetStore.currentDataset()?.handle, String(args[0] ?? ''))
+          ? collectionFacts(datasetStore.currentDataset()?.handle, typeof args[0] === 'string' ? args[0] : '')
           : undefined,
       ),
     // Enforced: this is the bag a stranger's template renders against.

@@ -100,7 +100,14 @@ function evaluateRule(value: unknown, rule: ValidationRule, getFieldValue?: (fie
       return isNaN(num) || num > rule.value ? (rule.message ?? `Must be at most ${rule.value}`) : null;
     }
     case 'pattern': {
-      const str = typeof value === 'string' ? value : String(value ?? '');
+      // Text is tested as written and a number or boolean as it prints; anything else has no text
+      // for a pattern to test.
+      const str =
+        typeof value === 'string'
+          ? value
+          : typeof value === 'number' || typeof value === 'boolean'
+            ? String(value)
+            : '';
       const re = compilePattern(rule.value);
       // A pattern that will not compile fails the field rather than passing it. A rule nobody can
       // satisfy is visible; a rule that silently approves everything is the one that gets shipped.

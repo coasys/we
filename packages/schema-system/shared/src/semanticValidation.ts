@@ -2449,9 +2449,8 @@ function checkRoutes(
     contextScope: new Set<string>(),
   };
   for (let i = 0; i < routes.length; i++) {
-    const own = String((routes[i] as { path?: unknown } | undefined)?.path ?? '')
-      .split('/')
-      .filter(Boolean).length;
+    const routePath = (routes[i] as { path?: unknown } | undefined)?.path;
+    const own = (typeof routePath === 'string' ? routePath : '').split('/').filter(Boolean).length;
     walkNode(
       routes[i],
       `${path}.routes[${i}]`,

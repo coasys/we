@@ -189,7 +189,9 @@ function actorMatches(actor: Actor, who: ActorFacts, author: string | null | und
   return typeof actor === 'object' && who.roles.includes(actor.role);
 }
 
-const same = (a: unknown, b: unknown) => a === b || (a != null && b != null && String(a) === String(b));
+/** Equal, or the same scalar written another way — a stored `5` meets a condition's `'5'`. */
+const same = (a: unknown, b: string | number | boolean) =>
+  a === b || ((typeof a === 'string' || typeof a === 'number' || typeof a === 'boolean') && String(a) === String(b));
 
 function conditionHolds(when: Condition | undefined, request: ActionRequest): boolean {
   if (!when) return true;

@@ -96,9 +96,9 @@ export function textBlockToRecord(block: TextContentBlock): Record<string, unkno
 export function recordToTextBlock(record: Record<string, unknown>): TextContentBlock {
   const block: TextContentBlock = { _type: 'block', text: typeof record.text === 'string' ? record.text : '' };
   if (typeof record.id === 'string' && record.id) block._key = record.id;
-  const style = String(record.style ?? '');
+  const style = typeof record.style === 'string' ? record.style : '';
   block.style = style === 'h1' || style === 'h2' || style === 'h3' || style === 'blockquote' ? style : 'normal';
-  const listItem = String(record.listItem ?? '');
+  const listItem = typeof record.listItem === 'string' ? record.listItem : '';
   if (listItem === 'bullet' || listItem === 'number' || listItem === 'check') block.listItem = listItem;
   const level = typeof record.level === 'number' ? record.level : Number(record.level ?? 0);
   if (level > 0) block.level = level;

@@ -281,7 +281,7 @@ export function readBundle(
       }
       if (brand.about !== undefined && typeof brand.about !== 'string') problem('brand.about', 'about must be text');
       if (brand.aboutPage !== undefined && !(typeof brand.aboutPage === 'string' && pageIds.has(brand.aboutPage)))
-        problem('brand.aboutPage', `Names "${String(brand.aboutPage)}", which is not one of this bundle's pages`);
+        problem('brand.aboutPage', `Names ${JSON.stringify(brand.aboutPage)}, which is not one of this bundle's pages`);
     }
   }
 
@@ -349,7 +349,7 @@ export function readBundle(
       if (!shells.some((t) => t.id === display.template))
         problem(
           'display.template',
-          `Names "${String(display.template)}", which is not one of this bundle's space templates`,
+          `Names ${JSON.stringify(display.template)}, which is not one of this bundle's space templates`,
         );
     } else if (display.spaces === 'ours') {
       problem('display.template', 'Showing every space "ours" needs the space template to show them with');

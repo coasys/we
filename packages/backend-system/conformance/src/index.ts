@@ -344,7 +344,7 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
         // Empty, however a backend spells it, and no longer findable by what it said.
         const rows = await reader('TaskBlock').findAll(subject.dataset, {});
         expect(rows.map((r) => r.title).sort()).toEqual(['First', 'Second']);
-        for (const row of rows) expect(row.description ?? '', `${row.title}'s description`).toBe('');
+        for (const row of rows) expect(row.description ?? '', `${row.title as string}'s description`).toBe('');
         expect(
           await reader('TaskBlock').findAll(subject.dataset, { where: { description: 'Something' } }),
         ).toHaveLength(0);

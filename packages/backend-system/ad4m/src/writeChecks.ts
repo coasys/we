@@ -88,9 +88,11 @@ function relationCheck(model: ModelInternals, kind: 'add' | 'remove', relation: 
 }
 
 const idsOf = (value: unknown): string[] =>
-  (Array.isArray(value) ? value : value == null ? [] : [value]).map((v) =>
-    typeof v === 'string' ? v : String((v as { id?: unknown })?.id ?? ''),
-  );
+  (Array.isArray(value) ? value : value == null ? [] : [value]).map((v) => {
+    if (typeof v === 'string') return v;
+    const id = (v as { id?: unknown })?.id;
+    return typeof id === 'string' ? id : '';
+  });
 
 /**
  * Install the checks on `Ad4mModel.prototype`. Idempotent.

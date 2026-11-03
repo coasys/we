@@ -1084,7 +1084,8 @@ export function RecordStoreProvider(props: ParentProps) {
     if (file.type.startsWith('image/')) return compressImageToFileData(file, file.name);
     const uri = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result));
+      // `readAsDataURL` always yields a string.
+      reader.onload = () => resolve(reader.result as string);
       reader.onerror = () => reject(reader.error);
       reader.readAsDataURL(file);
     });
@@ -2027,7 +2028,12 @@ export function RecordStoreProvider(props: ParentProps) {
   const sameStored = (held: unknown, want: unknown): boolean => {
     const normalised = held === undefined || held === '' ? (typeof want === 'number' ? 0 : PLACEMENT_UNSET) : held;
     if (typeof want === 'number' && typeof normalised === 'number') return Math.abs(want - normalised) < 1;
-    return String(normalised) === String(want);
+    // Placement fields hold scalars; anything else compares by its JSON rather than as "[object Object]".
+    const text = (value: unknown) =>
+      typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+        ? String(value)
+        : JSON.stringify(value);
+    return text(normalised) === text(want);
   };
 
   /** Replay a set of moves in one direction, skipping any card a peer has moved since. */
@@ -2414,9 +2420,10 @@ export function RecordStoreProvider(props: ParentProps) {
       */
       const moved = (event.recordType || RELATIONSHIP) === RELATIONSHIP;
       const otherId = record[event.end === 'source' ? 'target' : 'source'];
+      const otherType = record[event.end === 'source' ? 'targetType' : 'sourceType'];
       const other = {
         id: typeof otherId === 'string' ? otherId : '',
-        type: String(record[event.end === 'source' ? 'targetType' : 'sourceType'] ?? ''),
+        type: typeof otherType === 'string' ? otherType : '',
       };
       const to = { id: event.nodeId, type: event.nodeType };
       await Model.update(dataset.handle, event.recordId, {
@@ -2841,7 +2848,10 @@ export function RecordStoreProvider(props: ParentProps) {
     let next: unknown = raw;
     if (kind === 'number') next = raw === '' || raw === null || raw === undefined ? undefined : Number(raw);
     else if (kind === 'boolean') next = Boolean(raw);
-    else if (raw !== null && raw !== undefined && typeof raw !== 'string') next = String(raw);
+    // An object (a component's event detail, say) is kept as JSON rather than stored as "[object Object]".
+    else if (raw !== null && typeof raw === 'object') next = JSON.stringify(raw);
+    else if (raw !== null && raw !== undefined && typeof raw !== 'string')
+      next = String(raw as number | boolean | bigint);
     if (next === undefined || (typeof next === 'number' && Number.isNaN(next))) return;
     try {
       await entityClass(entity, dataset.handle).update(dataset.handle, id, { [field]: next });
@@ -2918,8 +2928,8 @@ export function RecordStoreProvider(props: ParentProps) {
       if (!row || typeof row.source !== 'string' || typeof row.target !== 'string') return;
       const key = await keyFor(
         dataset.handle,
-        { id: row.source, type: String(row.sourceType ?? '') },
-        { id: row.target, type: String(row.targetType ?? '') },
+        { id: row.source, type: typeof row.sourceType === 'string' ? row.sourceType : '' },
+        { id: row.target, type: typeof row.targetType === 'string' ? row.targetType : '' },
         row.label,
       );
       if (key !== row.connection) await Model.update(dataset.handle as never, id, { connection: key } as never);

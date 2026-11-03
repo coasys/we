@@ -71,12 +71,18 @@ function permitted(key: string, value: unknown, native: boolean): unknown {
  * attributes: `aria-label` as a property names nothing to a screen reader, and `data-*` as a property
  * is invisible to a selector. Both used to be set that way, silently.
  */
+/** The name a scope node binds its value under — its `as`, which is a name only when it is text. */
+function scopeName(as: unknown, fallback: string): string {
+  return typeof as === 'string' ? as : fallback;
+}
+
 function assignToHost(host: HTMLElement & Record<string, unknown>, key: string, value: unknown): void {
   if (!/^(data|aria)-/.test(key)) {
     host[key] = value;
     return;
   }
   if (value === undefined || value === null || value === false) host.removeAttribute(key);
+  // eslint-disable-next-line @typescript-eslint/no-base-to-string -- an attribute is text, and any other value is printed as the DOM's own setAttribute would print it.
   else host.setAttribute(key, String(value));
 }
 
@@ -915,6 +921,9 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
                     typeof resolved === 'function' && REACTIVE_ACCESSOR in resolved
                       ? (resolved as unknown as () => unknown)()
                       : resolved;
+                  // Printed as an expression's template interpolation prints it, so a text child and
+                  // `{{ … }}` cannot disagree about how a value reads.
+                  // eslint-disable-next-line @typescript-eslint/no-base-to-string -- see above; any value may be printed here.
                   return v != null ? String(v) : '';
                 }}
               </>
@@ -1037,7 +1046,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
           const i = untrack(index);
           return renderNode(itemSchema, {
             ...effectiveContext,
-            [String(node.props?.as ?? 'item')]: item,
+            [scopeName(node.props?.as, 'item')]: item,
             index: i,
             prev: i > 0 ? itemsArray()[i - 1] : undefined,
           });
@@ -1052,7 +1061,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
   // replacing an array element, which avoids DOM destruction and preserves focus.
   // Acts as a scope provider: all children are rendered with the resolved item in scope.
   if (node.type === '$single') {
-    const asKey = String(node.props?.as ?? 'item');
+    const asKey = scopeName(node.props?.as, 'item');
     const [hasItem, setHasItem] = createSignal(false);
     const [item, setItem] = createStore<Record<string, unknown>>({});
 
@@ -1159,14 +1168,15 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
   // $agent: demand-fetch and inject an AgentProfileSummary into child context.
   // Usage: { type: '$agent', props: { did: '$item.author', as: 'agent' }, children: [...] }
   if (node.type === '$agent') {
-    const asKey = String(node.props?.as ?? 'agent');
+    const asKey = scopeName(node.props?.as, 'agent');
     const [hasAgent, setHasAgent] = createSignal(false);
     const [agentStore, setAgentStore] = createStore<Record<string, unknown>>({});
 
     createEffect(() => {
       const rawDid = node.props?.did;
       // resolveProp handles both '$post.author' strings and token objects like { $local: 'selectedPin.id' }
-      const did = rawDid ? String(resolveProp(rawDid, stores, effectiveContext) ?? '') : '';
+      const resolved = rawDid ? resolveProp(rawDid, stores, effectiveContext) : undefined;
+      const did = typeof resolved === 'string' ? resolved : '';
       if (!did) return;
 
       const identities = stores.$identities;

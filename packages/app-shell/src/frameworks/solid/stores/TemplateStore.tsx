@@ -68,6 +68,7 @@ import {
 import {
   remoteUpdateFor,
   sameTemplateContent,
+  stampText,
   TEMPLATE_WATCH_FIELDS,
   templateChanges,
 } from '../../../shared/templateSync';
@@ -402,7 +403,7 @@ export function TemplateStoreProvider(props: ParentProps) {
   const writingElsewhere = new Set<string>();
   /** Note a write this agent made to a template record, so its echo is not taken for news. */
   function noteOwnWrite(record: { id: string; version?: unknown }): void {
-    ownSaves.set(record.id, String(record.version ?? ''));
+    ownSaves.set(record.id, stampText(record.version));
   }
 
   /**
