@@ -591,6 +591,8 @@ function VisualEditorLayer() {
     h: number;
   } | null>(null);
   // $each ancestor of the current drop target (null when target is not inside a $each)
+
+  // eslint-disable-next-line solid/reactivity -- only the setter is used; nothing reads the value back
   const [, setDndEachScopeId] = createSignal<string | null>(null);
   // Raw DOMRects for all rendered instances of the $each template child
   const [dndEachScopeRects, setDndEachScopeRects] = createSignal<DOMRect[]>([]);
@@ -725,6 +727,7 @@ function VisualEditorLayer() {
   });
 
   createEffect(() => {
+    // eslint-disable-next-line solid/reactivity -- the effect reruns and restarts its loop when the id changes
     const childId = templateChildIdForInstances();
     if (!childId) {
       setInstanceRects([]);
@@ -1841,7 +1844,7 @@ function VisualEditorLayer() {
               rect={shown().rect}
               clipped={ownerVisible()?.clipped}
               label={deepLabel(shown().owner.name, shown().owner.parts, true)}
-              style="owned"
+              variant="owned"
               selected
             />
           )}
@@ -1853,7 +1856,7 @@ function VisualEditorLayer() {
             rect={hoverRingRect()!}
             clipped={hoverVisible()?.clipped}
             label={hoverLabel()}
-            style={hoverOwned() ? 'owned' : isLogicType(hoveredType()) ? 'logic' : 'visual'}
+            variant={hoverOwned() ? 'owned' : isLogicType(hoveredType()) ? 'logic' : 'visual'}
             selected={false}
           />
         </Show>
@@ -1861,10 +1864,10 @@ function VisualEditorLayer() {
         {/* $each parent selected: amber outline spanning all instances + ghost outlines on each instance */}
         <Show when={isEachParentSelected()}>
           <Show when={eachContainerRelRect()}>
-            <NodeHighlight rect={eachContainerRelRect()!} style="each-parent" selected />
+            <NodeHighlight rect={eachContainerRelRect()!} variant="each-parent" selected />
           </Show>
           <For each={instanceRelRects()}>
-            {(rect) => <NodeHighlight rect={rect} style="each-instance" selected={false} />}
+            {(rect) => <NodeHighlight rect={rect} variant="each-instance" selected={false} />}
           </For>
         </Show>
 
@@ -1875,7 +1878,7 @@ function VisualEditorLayer() {
             {(box) => {
               const rect = toRelative(box.rect);
               return rect ? (
-                <NodeHighlight rect={rect} clipped={box.clipped} style="each-instance" selected={false} />
+                <NodeHighlight rect={rect} clipped={box.clipped} variant="each-instance" selected={false} />
               ) : null;
             }}
           </For>
@@ -1887,7 +1890,7 @@ function VisualEditorLayer() {
             rect={selectRingRect()!}
             clipped={selectVisible()?.clipped}
             label={selectLabel()}
-            style={isLogicType(selectedInfo()?.node.type) ? 'logic' : 'visual'}
+            variant={isLogicType(selectedInfo()?.node.type) ? 'logic' : 'visual'}
             selected
           />
         </Show>
@@ -1912,11 +1915,11 @@ function VisualEditorLayer() {
 
         {/* D&D: $each scope — amber ring around all iterations when dropping into a $each template */}
         <Show when={isDragging() && dndEachScopeContainerRelRect()}>
-          <NodeHighlight rect={dndEachScopeContainerRelRect()!} style="each-parent" selected />
+          <NodeHighlight rect={dndEachScopeContainerRelRect()!} variant="each-parent" selected />
         </Show>
         <Show when={isDragging() && dndEachScopeInstanceRelRects().length > 0}>
           <For each={dndEachScopeInstanceRelRects()}>
-            {(rect) => <NodeHighlight rect={rect} style="each-instance" selected={false} />}
+            {(rect) => <NodeHighlight rect={rect} variant="each-instance" selected={false} />}
           </For>
         </Show>
 
@@ -2258,13 +2261,13 @@ type RingLabel = { name: string; note: string };
  */
 function NodeHighlight(props: {
   rect: HighlightRect;
-  style: HighlightStyle;
+  variant: HighlightStyle;
   selected: boolean;
   clipped?: ClippedSides;
   label?: RingLabel;
 }) {
   const color = () => {
-    switch (props.style) {
+    switch (props.variant) {
       case 'logic':
         return ANNOTATION.logic;
       case 'each-parent':
@@ -2278,14 +2281,16 @@ function NodeHighlight(props: {
     }
   };
   const borderStyle = () =>
-    props.style === 'logic' || props.style === 'each-parent' || props.style === 'each-instance' ? 'dashed' : 'solid';
+    props.variant === 'logic' || props.variant === 'each-parent' || props.variant === 'each-instance'
+      ? 'dashed'
+      : 'solid';
   const width = () => (props.selected ? '2px' : '1px');
   const edge = (side: keyof ClippedSides) =>
     `${width()} ${props.clipped?.[side] ? 'dashed' : borderStyle()} ${color()}`;
 
   return (
     <div
-      data-we-ring={props.selected ? 'selected' : props.style === 'each-instance' ? 'instance' : 'hover'}
+      data-we-ring={props.selected ? 'selected' : props.variant === 'each-instance' ? 'instance' : 'hover'}
       data-we-ring-clipped={
         props.clipped
           ? (['top', 'right', 'bottom', 'left'] as const).filter((side) => props.clipped![side]).join(' ')

@@ -339,6 +339,7 @@ export function ImageCrop(allProps: ImageCropProps) {
     out.getContext('2d')!.drawImage(off, srcX, srcY, srcW, srcH, 0, 0, outW, outH);
 
     const type = outputType();
+    const q = quality();
     const rawName = allProps.fileName ?? 'image';
     const ext = type.split('/')[1] ?? 'jpg';
     const baseName = rawName.replace(/\.[^.]+$/, '');
@@ -353,7 +354,7 @@ export function ImageCrop(allProps: ImageCropProps) {
           resolve(new File([blob], `${baseName}.${ext}`, { type }));
         },
         type,
-        quality(),
+        q,
       );
     });
   }

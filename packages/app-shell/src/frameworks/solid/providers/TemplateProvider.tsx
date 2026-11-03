@@ -1517,7 +1517,9 @@ export default function TemplateProvider() {
       stores: templateBag,
       chromeStores: chromeBag,
       hostStores: stores,
-      children: props.children as never,
+      // Read once: the router's children build its route outlet on every read, so reading them again
+      // would mount a second copy of the routes.
+      children: untrack(() => props.children) as never,
     });
 
   // Visual editor context — lives here (above the Router) so context is available to all

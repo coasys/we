@@ -1179,11 +1179,13 @@ export function ThemePanel() {
   ) {
     return (
       <Row gap="100">
-        {(Object.keys(labels) as T[]).map((p) => (
-          <we-button size="sm" variant={isActive(p) ? 'soft' : 'ghost'} onClick={() => onSelect(p)} flex="1">
-            {labels[p]}
-          </we-button>
-        ))}
+        <For each={Object.keys(labels) as T[]}>
+          {(p) => (
+            <we-button size="sm" variant={isActive(p) ? 'soft' : 'ghost'} onClick={() => onSelect(p)} flex="1">
+              {labels[p]}
+            </we-button>
+          )}
+        </For>
       </Row>
     );
   }
@@ -1476,6 +1478,7 @@ export function ThemePanel() {
    * than what it stores.
    */
   const measureElevation = (): string[] => {
+    // eslint-disable-next-line solid/reactivity -- `lum` is only called straight away below, never kept
     const colors = roleColors();
     const lum = (r: ThemeRole) => {
       const c = parseColor(colors[r] ?? '');
@@ -1581,11 +1584,13 @@ export function ThemePanel() {
     */
     const badgeRow = (variant: 'soft' | 'solid') => (
       <Row gap="100" wrap ay="center">
-        {(['neutral', 'accent', 'success', 'warning', 'danger'] as const).map((tone) => (
-          <we-badge variant={variant} tone={tone} size="xs">
-            {tone}
-          </we-badge>
-        ))}
+        <For each={['neutral', 'accent', 'success', 'warning', 'danger'] as const}>
+          {(tone) => (
+            <we-badge variant={variant} tone={tone} size="xs">
+              {tone}
+            </we-badge>
+          )}
+        </For>
       </Row>
     );
     return (

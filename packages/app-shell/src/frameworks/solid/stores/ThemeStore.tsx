@@ -622,7 +622,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     screen when they change — a space's and a node's as well as this store's. Set once now, from the
     cache, so the first paint already has them.
   */
-  setDisplayPreferences(displayPreferences());
+  setDisplayPreferences(untrack(displayPreferences));
   createEffect(() => setDisplayPreferences(displayPreferences()));
   function setDisplayPreference<K extends keyof DisplayPreferences>(
     key: K,

@@ -1,6 +1,6 @@
 import type { TransitionConfig } from '@we/schema-shared';
 import { resolveProp } from '@we/schema-shared';
-import { createEffect, createMemo, createSignal, onCleanup, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, onCleanup, Show, untrack } from 'solid-js';
 
 import {
   buildTransitionCSS,
@@ -72,7 +72,7 @@ export function ConditionalRenderer({ node, stores, context, renderNode }: Condi
 
   const effectiveCondition = createMemo(() => !!conditionMet());
 
-  const startVisible = effectiveCondition();
+  const startVisible = untrack(effectiveCondition);
   const initialHiddenTransform = enterTransition ? hiddenTransform(enterTransition) : '';
   const initialHiddenOpacity = enterTransition ? hiddenOpacity(enterTransition) : 0;
 

@@ -1,6 +1,6 @@
 export type * from './Grid.types';
 import { parseAspect, solveTiling, type Tiling } from '@we/design-utils';
-import { createSignal, type JSX, onCleanup } from 'solid-js';
+import { createSignal, type JSX, onCleanup, untrack } from 'solid-js';
 
 import { createLayoutComponent } from '../createLayoutComponent';
 import type { GridProps } from './Grid.types';
@@ -25,7 +25,8 @@ const UNTILED = '[data-we-untiled], [data-we-surface-tier]';
  * divide the content box, and solving against the border box overflows by exactly the padding.
  */
 function useTiling(props: GridProps): { ref?: (el: HTMLElement) => void; style?: () => JSX.CSSProperties } {
-  if (props.childAspect === undefined && props.onMeasure === undefined) return {};
+  // Decided at creation: the ref is attached once, so a grid that starts without either never measures.
+  if (untrack(() => props.childAspect === undefined && props.onMeasure === undefined)) return {};
 
   const [tiling, setTiling] = createSignal<Tiling>({ columns: 1, rows: 1 });
   let last: Tiling | undefined;

@@ -329,7 +329,7 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
 
         {/* Group items */}
         <Show when={!collapsed()}>
-          <Index each={groupItems()}>{(getEntry) => renderEntry(getEntry)}</Index>
+          <Index each={groupItems()}>{renderEntry}</Index>
         </Show>
       </>
     );
@@ -517,7 +517,7 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
             />
           </div>
         </Show>
-        <Index each={props.items}>{(getEntry) => renderEntry(getEntry)}</Index>
+        <Index each={props.items}>{renderEntry}</Index>
       </we-menu>
     </we-popover>
   );

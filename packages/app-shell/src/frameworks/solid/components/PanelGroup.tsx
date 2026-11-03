@@ -21,7 +21,7 @@ import { chromeBag } from '@shared/registries/templateBag';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
 import type { TemplatePanel } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
-import { For, type JSX } from 'solid-js';
+import { For, type JSX, untrack } from 'solid-js';
 
 /** What a panel is called: its declared title, else its dock's name. */
 export function panelTitle(dockId: string, declared: TemplatePanel | undefined): string {
@@ -35,7 +35,8 @@ export const sectionKey = (dockId: string) => dockId.replace(/^template:/, '');
 
 /** One panel's frame, drawn with the chrome's stores, as the shell draws a card over the window. */
 export function PanelFrame(props: { id: string }) {
-  const entry = dockRegistry.get(props.id);
+  // Drawn per member of a keyed `<For>`, so a different id is a different frame.
+  const entry = dockRegistry.get(untrack(() => props.id));
   const bag = chromeBag();
   return entry && bag ? RenderSchema({ node: frameBox(entry), stores: bag, registry }) : null;
 }

@@ -27,7 +27,7 @@ import {
   scopeIsAnchored,
   validateField,
 } from '@we/schema-shared';
-import { batch, createEffect, createMemo, createSignal, For, JSX, onCleanup, Show } from 'solid-js';
+import { batch, createEffect, createMemo, createSignal, For, JSX, onCleanup, Show, untrack } from 'solid-js';
 import { createStore, produce, reconcile } from 'solid-js/store';
 import { Dynamic } from 'solid-js/web';
 
@@ -622,7 +622,8 @@ function isStaticValue(value: unknown): boolean {
  * downstream sees the tree it has always seen.
  */
 export function RenderSchema(props: RenderProps): RendererOutput {
-  return RenderNode(props.node?.$defs ? { ...props, node: expandDefinitions(props.node) } : props);
+  // A mounted node never changes under its renderer (see `renderChildren`), so this is decided once.
+  return RenderNode(untrack(() => (props.node?.$defs ? { ...props, node: expandDefinitions(props.node) } : props)));
 }
 
 function RenderNode({ node, stores, registry, context = {}, children }: RenderProps): RendererOutput {
@@ -1001,8 +1002,10 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
       const descriptor = resolveQueryProp(rawItems);
       // The accessor reads $getEntity reactively inside its own effect — empty
       // until the backend bindings land, live from then on.
+      // eslint-disable-next-line solid/reactivity -- assigned once, on one branch or the other
       itemsArray = createQuerySignal(descriptor, stores, effectiveContext);
     } else {
+      // eslint-disable-next-line solid/reactivity -- assigned once, on one branch or the other
       itemsArray = createMemo(() => {
         // Read from store proxy INSIDE the memo so Solid tracks mutations from updateSchema/patching
         const currentItems = (node.props as Record<string, unknown>)?.items;
@@ -1029,14 +1032,16 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
     // here — are unaffected.
     return (
       <For each={itemsArray()}>
-        {(item, index) =>
-          renderNode(itemSchema, {
+        {(item, index) => {
+          // Captured when the row renders, like `$prev` — see above.
+          const i = untrack(index);
+          return renderNode(itemSchema, {
             ...effectiveContext,
             [String(node.props?.as ?? 'item')]: item,
-            index: index(),
-            prev: index() > 0 ? itemsArray()[index() - 1] : undefined,
-          })
-        }
+            index: i,
+            prev: i > 0 ? itemsArray()[i - 1] : undefined,
+          });
+        }}
       </For>
     );
   }
@@ -1215,7 +1220,8 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
   // Dev-time loudness is not lost: `we-validate-schemas` catches unknown types before runtime, which
   // is the right place for a typo. What changes is only the runtime, where one bad node should cost
   // that node and nothing more.
-  if (!component()) {
+  // Decided once: a mounted node keeps its type (see `renderChildren`).
+  if (!untrack(component)) {
     const message = `Unknown component "${node.type}"`;
     console.error(`${message}. It may belong to a feature module that is not enabled, or the type may be misspelt.`);
     return (
