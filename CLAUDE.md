@@ -3105,8 +3105,7 @@ EditorStore:
   - assistantStatus: { state: 'ready' | 'loading' | 'error' | 'unchecked' | 'none', name, model, detail } | null — which model answers the chat and whether it can right now, checked without spending tokens when the panel opens and after a failed send. `unchecked` means the backend could not ask, not that it failed; `detail` says why for error and loading
   - templateName: string — the name of the template being edited, for the editor’s own header
   - templateIcon: string — its icon
-  - isReadOnly: boolean — the template on screen cannot be saved in place (a built-in, or somebody else's). Edits buffer as pending changes; offer Fork rather than Save. Answers for the template rendered, so do not use it to gate per-row controls in a list — switcherGroups carries `editable` per row
-  - hasPendingChanges: boolean — buffered edits exist against a read-only template, waiting for a fork to land in
+  - isReadOnly: boolean — the template on screen cannot be saved in place (a built-in, or somebody else's): offer Fork rather than Edit. Answers for the template rendered, so do not use it to gate per-row controls in a list — switcherGroups carries `editable` per row
   - pickerOpen: boolean — the fork/fresh naming dialog is showing
   - pickerAction: 'fork' | 'fresh' — which the open picker is for
   - pickerDefaultName: string — what the picker’s name field starts with
@@ -3142,10 +3141,10 @@ EditorStore:
   - startFresh(): opens the picker to start an empty template
   - confirmPicker(name: string, icon: string, destination: 'personal' | 'space'): creates the fork or fresh template and enters editing on it
   - cancelPicker(): closes the picker without creating anything
-  - enterTemplateEditing(action?: 'edit' | 'fork' | 'fresh'): opens a template editing session on the template on screen. Omit action to edit in place; a read-only template buffers its edits
-  - editApp(id?: string): opens an editing session on the app — the chrome around every space — made the agent's app first when an id is given. Starts in preview, as a template's session does. WE's own app is built in, so its edits buffer and the session offers Fork
-  - forkApp(id?: string): the same, then opens the picker to name a copy of it. The copy becomes the agent's app, in every space, and stays the one being edited
-  - exitTemplateEditing(): ends the template session. Buffered changes to a read-only template are dropped
+  - enterTemplateEditing(action?: 'edit' | 'fork' | 'fresh'): opens a template editing session on the template on screen. Omit action to edit in place; asked of a built-in template, it opens the fork picker instead, since a built-in is forked rather than edited
+  - editApp(id?: string): opens an editing session on the app — the chrome around every space — made the agent's app first when an id is given. Starts in preview, as a template's session does. Asked of a built-in app (WE's own), it opens the fork picker instead, and the copy is what gets edited
+  - forkApp(id?: string): opens the picker to name a copy of the app, without opening a session on the original. The copy becomes the agent's app, in every space, and is the one edited
+  - exitTemplateEditing(): ends the template session
   - toggle(): toggles the AI chat panel open/closed
   - open(): opens the AI chat panel
   - close(): closes it

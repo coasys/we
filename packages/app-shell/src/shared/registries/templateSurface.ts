@@ -1477,7 +1477,6 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     templateName: state('editor'),
     templateIcon: state('editor'),
     isReadOnly: state('editor'),
-    hasPendingChanges: state('editor'),
     pickerOpen: state('editor'),
     pickerAction: state('editor'),
     pickerDefaultName: state('editor'),

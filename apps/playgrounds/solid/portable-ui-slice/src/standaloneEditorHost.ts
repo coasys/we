@@ -120,15 +120,13 @@ export function createStandaloneEditorHost(initial: TemplateSchema): {
       undo: async () => {},
       redo: async () => {},
       pushSnapshot: () => {},
-      // Nothing to keep: this stand-in holds its schema in a signal, and `isReadOnly` is false, so
-      // the branch a real host takes here — persist in place, or buffer against a built-in — has no
-      // counterpart. The editor calls it after every direct manipulation.
+      // Nothing to keep: this stand-in holds its schema in a signal, so the save a real host makes
+      // here has no counterpart. The editor calls it after every direct manipulation.
       commitEdit: async () => {},
 
       templateName: () => 'Demo feed',
       templateIcon: () => 'list',
       isReadOnly: () => false,
-      hasPendingChanges: () => false,
       startFork: () => {},
       startFresh: () => {},
       pickerOpen: () => false,

@@ -197,10 +197,9 @@ export function createTemplateSession(options: TemplateSessionOptions): Template
   /**
    * The template each batch patches — carried across batches, not re-read from wherever it is kept.
    *
-   * A read-only template's accepted patches are buffered rather than written, so re-reading the
-   * stored template at the top of each turn patched the original again and overwrote the buffer:
-   * of five tool calls across five turns only the last survived, and all five were reported as
-   * applied. Held here, and advanced wherever a batch is committed.
+   * Each batch patches the result of the last one, whether or not that has been written and read
+   * back yet, so a turn never patches an older copy than the one the model was just told about.
+   * Held here, and advanced wherever a batch is committed.
    */
   let working: SchemaNode = ensureNodeIds(structuredClone(options.schema), mint);
 
