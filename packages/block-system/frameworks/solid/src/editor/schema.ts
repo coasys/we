@@ -287,7 +287,9 @@ const marks: Record<string, MarkSpec> = {
 
 function readProps(dom: HTMLElement): Record<string, unknown> {
   try {
-    return JSON.parse(dom.getAttribute('data-props') ?? '{}');
+    // Pasted HTML can carry any `data-props`, so only a plain object is taken as props.
+    const parsed: unknown = JSON.parse(dom.getAttribute('data-props') ?? '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
   } catch {
     return {};
   }

@@ -18,6 +18,7 @@ import {
   applyThemeVars,
   basePolarity,
   fontFaceProblem,
+  parseOverrides,
   previewDisplay,
   roleVar,
   setThemeLive,
@@ -650,10 +651,7 @@ export function ThemePanel() {
 
   const editing = () => themeStore.editingTheme();
   /** The theme as stored: its base, and a `light` or `dark` block when it has two sides. */
-  const stored = createMemo<ThemeOverrides>(() => {
-    const raw = editing()?.overrides;
-    return raw ? JSON.parse(raw) : {};
-  });
+  const stored = createMemo<ThemeOverrides>(() => parseOverrides(editing()?.overrides));
 
   /*
     Sides. A theme is light, dark, or both — a base, and a block holding what differs on the other
@@ -1836,7 +1834,7 @@ export function ThemePanel() {
                 <we-icon-picker
                   value={editing()!.icon}
                   size="sm"
-                  on:change={(e: CustomEvent) => {
+                  on:change={(e: CustomEvent<string>) => {
                     themeStore.updateEditingMeta({ icon: e.detail });
                     saveTheme();
                   }}
@@ -1846,7 +1844,7 @@ export function ThemePanel() {
                   placeholder="Theme name"
                   size="sm"
                   flex="1"
-                  on:input={(e: CustomEvent) => themeStore.updateEditingMeta({ name: e.detail })}
+                  on:input={(e: CustomEvent<string>) => themeStore.updateEditingMeta({ name: e.detail })}
                   on:blur={() => saveTheme()}
                 />
               </Row>

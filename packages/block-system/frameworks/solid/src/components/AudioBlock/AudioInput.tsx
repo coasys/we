@@ -171,14 +171,14 @@ export function AudioInput(props: AudioInputProps) {
             <we-input
               type="text"
               value={pendingTitle()}
-              on:input={(e: CustomEvent) => setPendingTitle(e.detail)}
+              on:input={(e: CustomEvent<string>) => setPendingTitle(e.detail)}
               placeholder="Track title (optional)"
               width="100%"
             />
             <we-input
               type="text"
               value={pendingArtist()}
-              on:input={(e: CustomEvent) => setPendingArtist(e.detail)}
+              on:input={(e: CustomEvent<string>) => setPendingArtist(e.detail)}
               placeholder="Artist (optional)"
               width="100%"
             />

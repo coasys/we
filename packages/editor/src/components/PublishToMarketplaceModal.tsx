@@ -123,12 +123,12 @@ export function PublishToMarketplaceModal(props: Props) {
             <we-input
               value={name()}
               placeholder={isTheme() ? 'Theme name' : 'Template name'}
-              on:input={(e: CustomEvent) => setName(e.detail)}
+              on:input={(e: CustomEvent<string>) => setName(e.detail)}
             />
           </Column>
           <Column gap="100">
             <we-text variant="label">Icon</we-text>
-            <we-icon-picker value={icon()} on:change={(e: CustomEvent) => setIcon(e.detail)} />
+            <we-icon-picker value={icon()} on:change={(e: CustomEvent<string>) => setIcon(e.detail)} />
           </Column>
         </Row>
 
@@ -138,7 +138,7 @@ export function PublishToMarketplaceModal(props: Props) {
           <we-input
             value={slug()}
             placeholder={isTheme() ? 'theme-slug' : 'template-slug'}
-            on:input={(e: CustomEvent) => setSlug(slugify(e.detail))}
+            on:input={(e: CustomEvent<string>) => setSlug(slugify(e.detail))}
           />
           <we-text variant="footnote" color="text-muted">
             Unique identifier for this listing in the marketplace. Change it if you're publishing a variant that
@@ -153,7 +153,7 @@ export function PublishToMarketplaceModal(props: Props) {
             value={description()}
             placeholder={isTheme() ? 'Describe this theme…' : 'Describe what this template is for…'}
             rows={3}
-            on:input={(e: CustomEvent) => setDescription(e.detail)}
+            on:input={(e: CustomEvent<string>) => setDescription(e.detail)}
           />
         </Column>
 
@@ -161,7 +161,11 @@ export function PublishToMarketplaceModal(props: Props) {
         <Show when={!isTheme()}>
           <Column gap="100">
             <we-text variant="label">Associated theme (optional)</we-text>
-            <we-select value={themeId()} options={themeOptions()} onChange={(e: CustomEvent) => setThemeId(e.detail)} />
+            <we-select
+              value={themeId()}
+              options={themeOptions()}
+              onChange={(e: CustomEvent<string>) => setThemeId(e.detail)}
+            />
             <we-text variant="footnote" color="text-muted">
               Link a theme so users can install it alongside this template.
             </we-text>

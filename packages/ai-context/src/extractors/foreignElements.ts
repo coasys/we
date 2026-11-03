@@ -68,6 +68,16 @@ export interface CustomElementsManifest {
 }
 
 /**
+ * A package's parsed manifest, checked as far as its top level; below that it is read in the published
+ * Custom Elements Manifest schema these interfaces mirror. Anything else is treated as declaring nothing.
+ */
+function asManifest(value: unknown): CustomElementsManifest {
+  if (typeof value !== 'object' || value === null) return {};
+  const modules = (value as { modules?: unknown }).modules;
+  return Array.isArray(modules) ? (value as CustomElementsManifest) : {};
+}
+
+/**
  * The elements a manifest declares, as reference entries — limited to `tags` when given.
  *
  * Props are the public, writable instance fields, since the renderer sets props as properties; an
@@ -145,7 +155,7 @@ export function extractForeignElements(repoRoot: string): ForeignElementEntry[] 
     const manifestPath = entry.manifest ?? pkg.customElements;
     const manifest: CustomElementsManifest =
       manifestPath && existsSync(resolve(dir, manifestPath))
-        ? JSON.parse(readFileSync(resolve(dir, manifestPath), 'utf-8'))
+        ? asManifest(JSON.parse(readFileSync(resolve(dir, manifestPath), 'utf-8')))
         : {};
     const found = foreignElementsFromManifest(manifest, entry.package, entry.tags);
     const documented = new Set(found.map((element) => element.tagName));

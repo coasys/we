@@ -164,7 +164,7 @@ export function ImageInput(props: ImageInputProps) {
               <we-input
                 type="text"
                 value={imageUrl()}
-                on:input={(e: CustomEvent) => setImageUrl(e.detail)}
+                on:input={(e: CustomEvent<string>) => setImageUrl(e.detail)}
                 placeholder="Or paste an image URL…"
                 flex="1"
               />
@@ -176,7 +176,7 @@ export function ImageInput(props: ImageInputProps) {
             <we-input
               type="text"
               value={altText()}
-              on:input={(e: CustomEvent) => setAltText(e.detail)}
+              on:input={(e: CustomEvent<string>) => setAltText(e.detail)}
               placeholder="Alt text (optional)"
               width="100%"
             />

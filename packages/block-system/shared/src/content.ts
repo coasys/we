@@ -132,7 +132,10 @@ export function isContentDocument(value: unknown): value is ContentDocument {
 }
 
 export function isContentBlockArray(value: unknown): value is ContentBlock[] {
-  return Array.isArray(value) && value.every((b) => typeof b === 'object' && b !== null && typeof b._type === 'string');
+  return (
+    Array.isArray(value) &&
+    value.every((b: unknown) => typeof b === 'object' && b !== null && '_type' in b && typeof b._type === 'string')
+  );
 }
 
 /** A fresh, empty composition: the one paragraph a cursor needs. */

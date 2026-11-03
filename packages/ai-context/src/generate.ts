@@ -187,6 +187,23 @@ function mergeStoreEntries(
  * Discover packages with a "context" field in their package.json
  * and extract the appropriate context fragment for each.
  */
+interface ContextConfig {
+  type: string;
+  src?: string;
+}
+
+/** The parts of a package.json this reads: its name, and a `context` entry when it has one with a type. */
+function readContextConfig(pkg: unknown): { name?: string; context?: ContextConfig } {
+  if (typeof pkg !== 'object' || pkg === null) return {};
+  const { name, context } = pkg as { name?: unknown; context?: unknown };
+  const out: { name?: string; context?: ContextConfig } = typeof name === 'string' ? { name } : {};
+  if (typeof context === 'object' && context !== null) {
+    const { type, src } = context as { type?: unknown; src?: unknown };
+    if (typeof type === 'string' && type) out.context = { type, ...(typeof src === 'string' ? { src } : {}) };
+  }
+  return out;
+}
+
 async function discoverFragments(): Promise<ContextFragment[]> {
   const fragments: ContextFragment[] = [];
 
@@ -200,9 +217,9 @@ async function discoverFragments(): Promise<ContextFragment[]> {
 
   for (const rel of pkgPaths) {
     const abs = resolve(repoRoot, rel);
-    const pkg = JSON.parse(readFileSync(abs, 'utf-8'));
+    const pkg = readContextConfig(JSON.parse(readFileSync(abs, 'utf-8')));
     const config = pkg.context;
-    if (!config?.type) continue;
+    if (!config) continue;
 
     const pkgDir = dirname(abs);
     const src = resolve(pkgDir, config.src ?? DEFAULTS[config.type]);

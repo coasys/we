@@ -171,7 +171,7 @@ export function AiPanel() {
           submitOnEnter
           flex="1"
           minWidth="0"
-          on:input={(e: CustomEvent) => setInputValue(e.detail)}
+          on:input={(e: CustomEvent<string>) => setInputValue(e.detail)}
           on:submit={handleSend}
         />
         <we-button
