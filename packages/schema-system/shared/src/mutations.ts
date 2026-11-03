@@ -71,8 +71,8 @@ function accumulateMutations(mutations: Mutation[] = [], path: (string | number)
     // Diff shared indices, then emit length mutation if the array shrank
     const maxLen = Math.max(a.length, b.length);
     for (let i = 0; i < maxLen; i++) {
-      const oldItem = a[i];
-      const newItem = b[i];
+      const oldItem: unknown = a[i];
+      const newItem: unknown = b[i];
       const itemPath = [...path, i];
       if (i >= b.length) {
         // Element removed — handled by the length mutation below

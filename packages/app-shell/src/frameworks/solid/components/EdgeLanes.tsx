@@ -29,7 +29,7 @@ import { COLLAPSED_PX, DOCK_GAP_PX, EDGES, PANEL_LAYER_BASE } from '@shared/dock
 import { dockRegistry, dockTitle, STOW_ICONS } from '@shared/registries/dockRegistry';
 import { weProps } from '@we/design-utils/solid';
 import type { DockEdge } from '@we/module-shared';
-import { createMemo, For, Index, Show } from 'solid-js';
+import { createMemo, For, Index, Show, untrack } from 'solid-js';
 
 import { type EdgeLane, type EdgeSeat, useShellStore } from '../stores/ShellStore';
 import { LaneDivider } from './LaneDivider';
@@ -60,7 +60,8 @@ function showing(seat: EdgeSeat | undefined, geometry: ReturnType<ReturnType<typ
 }
 
 function Seat(props: { seat: () => EdgeSeat | undefined; edge: Edge }) {
-  const vertical = props.edge === 'left' || props.edge === 'right';
+  // An edge's pieces are mounted once per entry of the fixed `EDGES`, so the edge never changes under one.
+  const vertical = untrack(() => props.edge === 'left' || props.edge === 'right');
   const ids = createMemo(() => props.seat()?.ids ?? [], [], { equals: sameStrings });
   /*
     Folded across a top or bottom lane, a seat is its titlebar against the edge rather than a band of
@@ -94,7 +95,7 @@ function Divider(props: {
   across?: number;
 }) {
   const shellStore = useShellStore();
-  const vertical = props.edge === 'left' || props.edge === 'right';
+  const vertical = untrack(() => props.edge === 'left' || props.edge === 'right');
   return (
     <LaneDivider
       direction={vertical ? 'column' : 'row'}
@@ -128,7 +129,7 @@ function Divider(props: {
  */
 function InnerEdge(props: { first: () => string | undefined; edge: Edge }) {
   const shellStore = useShellStore();
-  const side = INBOARD[props.edge];
+  const side = untrack(() => INBOARD[props.edge]);
   const across = side === 'left' || side === 'right';
   return (
     <we-resize-handle
@@ -171,7 +172,7 @@ function InnerEdge(props: { first: () => string | undefined; edge: Edge }) {
  */
 function StowStrip(props: { lane: () => EdgeLane | undefined; edge: Edge }) {
   const shellStore = useShellStore();
-  const vertical = props.edge === 'left' || props.edge === 'right';
+  const vertical = untrack(() => props.edge === 'left' || props.edge === 'right');
   const ids = () => props.lane()?.seats.flatMap((seat) => seat.ids) ?? [];
   const away = () => Boolean(shellStore.dockGeometry()[ids()[0] ?? '']?.awayFaded);
   const title = (id: string) => {
@@ -238,7 +239,7 @@ function StowStrip(props: { lane: () => EdgeLane | undefined; edge: Edge }) {
 }
 
 function Lane(props: { lane: () => EdgeLane | undefined; edge: Edge }) {
-  const vertical = props.edge === 'left' || props.edge === 'right';
+  const vertical = untrack(() => props.edge === 'left' || props.edge === 'right');
   const shellStore = useShellStore();
   const seatKeys = createMemo(() => props.lane()?.seats.map((seat) => seat.key) ?? [], [], { equals: sameStrings });
   const seatAt = (index: number) => props.lane()?.seats[index];
@@ -340,7 +341,7 @@ function EdgeOf(props: { edge: Edge }) {
  */
 function CoverOf(props: { edge: Edge }) {
   const shellStore = useShellStore();
-  const vertical = props.edge === 'left' || props.edge === 'right';
+  const vertical = untrack(() => props.edge === 'left' || props.edge === 'right');
   const lane = () => shellStore.edgeLanes().covers[props.edge];
   const seatKeys = createMemo(() => lane()?.seats.map((seat) => seat.key) ?? [], [], { equals: sameStrings });
   // As high as its highest card: raising one of them raises the lane.

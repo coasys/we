@@ -175,7 +175,12 @@ function suggestions(signal: ReturnType<typeof reactive>['signal'], staged: stri
   };
 }
 
-function mount(s: ReturnType<typeof space>, interpretation?: unknown, r = reactive()) {
+/**
+ * A Feed over `s`, given its space collection by the host as the app gives it: `spaceStore.root`, a
+ * signal. `setRoot` moves it, as switching space does.
+ */
+function mount(s: ReturnType<typeof space>, interpretation?: unknown, r = reactive(), initialRoot = 'root-1') {
+  const [spaceRoot, setRoot] = r.signal(initialRoot);
   const feed = createFeed({
     signal: r.signal,
     effect: r.effect,
@@ -183,13 +188,13 @@ function mount(s: ReturnType<typeof space>, interpretation?: unknown, r = reacti
     action: markAction,
     onDispose: () => {},
     dataset: () => 'space-1',
-    spaceRoot: () => 'root-1',
+    spaceRoot,
     records: s.records as never,
     interpretation: interpretation as never,
     write: async () => null,
   });
   const call = (name: keyof typeof feed) => (feed[name] as unknown as () => void)();
-  return { feed, open: () => call('openFeed'), close: () => call('closeFeed') };
+  return { feed, setRoot, open: () => call('openFeed'), close: () => call('closeFeed') };
 }
 
 /** A space with a call in it and a task extraction found, as a real space looks at load. */
@@ -305,6 +310,48 @@ describe('where the Feed starts from', () => {
     expect((feed.feedRoot as unknown as () => string)()).toBe('root-1');
     expect((feed.feedRows as unknown as () => { id: string }[])().map((row) => row.id)).toEqual(['msg-1']);
     expect(s.reads).not.toContain('Space');
+    vi.useRealTimers();
+  });
+
+  it('moves its window when the host’s collection changes, and reads nothing for the one it left', async () => {
+    /*
+      The root a read began with is what decides whether its answer is still wanted, and that root
+      is now the host's. Switching it mid-read stops the read for the old collection at its next
+      step, and the new one is read in its place.
+    */
+    vi.useFakeTimers();
+    const s = busySpace();
+    const { feed, open, setRoot } = mount(s);
+    await vi.runAllTimersAsync();
+    s.hold();
+    open();
+    expect(s.windowReads()).toBe(1);
+    setRoot('root-2');
+    s.release();
+    await vi.runAllTimersAsync();
+
+    expect((feed.feedRoot as unknown as () => string)()).toBe('root-2');
+    expect(s.windowReads()).toBe(2);
+    // The read for root-1 stopped before walking its calls; root-2 has none.
+    expect(s.callPages()).toBe(0);
+    expect((feed.feedRows as unknown as () => unknown[])()).toEqual([]);
+    expect(s.reads).not.toContain('Space');
+    vi.useRealTimers();
+  });
+
+  it('reads nothing while the host has no collection, and reads once it has one', async () => {
+    vi.useFakeTimers();
+    const s = busySpace();
+    const { open, setRoot } = mount(s, undefined, reactive(), '');
+    await vi.runAllTimersAsync();
+    open();
+    await vi.runAllTimersAsync();
+    expect(s.windowReads()).toBe(0);
+
+    setRoot('root-1');
+    await vi.runAllTimersAsync();
+    expect(s.windowReads()).toBe(1);
+    expect(s.callPages()).toBe(3);
     vi.useRealTimers();
   });
 });

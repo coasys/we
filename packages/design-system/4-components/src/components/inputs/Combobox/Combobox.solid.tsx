@@ -1,6 +1,6 @@
 import type { LayoutProps } from '@we/design-utils/solid';
 import { buildLayoutStyles } from '@we/design-utils/solid';
-import { createEffect, createMemo, createSignal, For, onCleanup, Show, splitProps } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, onCleanup, Show, splitProps, untrack } from 'solid-js';
 
 import type { ComboboxOption, ComboboxProps as ComboboxOwnProps } from './Combobox.types';
 
@@ -18,7 +18,7 @@ function normalizeOptions(opts: string[] | ComboboxOption[]): ComboboxOption[] {
 export function Combobox(allProps: ComboboxComponentProps) {
   const [props, layoutProps] = splitProps(allProps, ownKeys);
 
-  const [display, setDisplay] = createSignal(props.value ?? '');
+  const [display, setDisplay] = createSignal(untrack(() => props.value) ?? '');
   const [open, setOpen] = createSignal(false);
   const [focused, setFocused] = createSignal(false);
 
@@ -42,10 +42,7 @@ export function Combobox(allProps: ComboboxComponentProps) {
   });
 
   const containerStyle = createMemo(() =>
-    buildLayoutStyles(
-      { ...layoutProps, position: 'relative', display: layoutProps.display ?? 'block' } as LayoutProps,
-      'column',
-    ),
+    buildLayoutStyles({ ...layoutProps, position: 'relative', display: layoutProps.display ?? 'block' }, 'column'),
   );
 
   const normalized = createMemo(() => normalizeOptions(props.options ?? []));

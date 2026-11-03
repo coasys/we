@@ -49,7 +49,7 @@ export function createInMemoryBackend(config: BackendConfig) {
 
   function run(entity: string, opts: QueryOpts): Row[] {
     const { ir } = compileQuery({ entity, ...opts });
-    return executeQueryIR(ir, dataset) as Row[];
+    return executeQueryIR(ir, dataset);
   }
 
   function getEntity(name: string) {

@@ -5,22 +5,23 @@ import { produce, SetStoreFunction } from 'solid-js/store';
 
 export type SchemaUpdateResult = { applied: boolean; errors?: ValidationError[] };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- cleanSchemaNode operates on untyped recursive structures
-function cleanSchemaNode(node: any): any {
+// The result is a shallow copy of `node` with null children dropped from the same keys, so it keeps
+// the caller's type.
+function cleanSchemaNode<T>(node: T): T {
   if (!node || typeof node !== 'object') return node;
-  const cleaned = { ...node };
+  const cleaned: Record<string, unknown> = { ...(node as Record<string, unknown>) };
   if (Array.isArray(cleaned.children)) {
-    cleaned.children = cleaned.children
-      .filter((child: unknown) => child !== null && child !== undefined)
+    cleaned.children = (cleaned.children as unknown[])
+      .filter((child) => child !== null && child !== undefined)
       .map(cleanSchemaNode);
   }
   if (cleaned.slots && typeof cleaned.slots === 'object') {
     cleaned.slots = Object.fromEntries(Object.entries(cleaned.slots).map(([k, v]) => [k, cleanSchemaNode(v)]));
   }
   if (Array.isArray(cleaned.routes)) {
-    cleaned.routes = cleaned.routes.map(cleanSchemaNode);
+    cleaned.routes = (cleaned.routes as unknown[]).map(cleanSchemaNode);
   }
-  return cleaned;
+  return cleaned as T;
 }
 
 export function updateSchema<T extends TemplateSchema | SchemaNode>(

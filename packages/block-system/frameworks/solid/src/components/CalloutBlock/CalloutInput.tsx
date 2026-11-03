@@ -1,5 +1,5 @@
 import { Column } from '@we/components/solid';
-import { createSignal } from 'solid-js';
+import { createSignal, untrack } from 'solid-js';
 
 import { CalloutDisplay } from './CalloutDisplay';
 
@@ -19,7 +19,7 @@ const VARIANT_OPTIONS = [
 ];
 
 export function CalloutInput(props: CalloutInputProps) {
-  const [variant, setVariant] = createSignal(props.variant || 'info');
+  const [variant, setVariant] = createSignal(untrack(() => props.variant) || 'info');
 
   function handleTextInput(e: CustomEvent) {
     props.onChange('text', e.detail);

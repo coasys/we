@@ -66,7 +66,11 @@ export function createFeedStore(deps: ModuleStoreDeps) {
         setReplyingTo(
           // A line with no id is nothing a reply can hang off: refused here, not after it is typed.
           typeof line?.id === 'string' && line.id
-            ? { id: line.id, text: String(line.text ?? ''), author: String(line.author ?? '') }
+            ? {
+                id: line.id,
+                text: typeof line.text === 'string' ? line.text : '',
+                author: typeof line.author === 'string' ? line.author : '',
+              }
             : null,
         ),
       'Starts a reply to one line — pass { id, text, author } — which the Feed’s composer then sends as a reply.',

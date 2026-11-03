@@ -252,7 +252,7 @@ export function writeThemeSettings(theme: ThemeOverrides, into: Record<string, s
   for (const [key, setting] of Object.entries(THEME_SETTINGS) as [DirectSetting, ThemeSetting][]) {
     const value = theme[key];
     if (value === undefined) continue;
-    const written = setting.write ? setting.write(value as never) : String(value);
+    const written = setting.write ? setting.write(value) : String(value);
     if (written !== undefined) into[setting.variable] = written;
   }
 }
@@ -275,5 +275,5 @@ export function readThemeSettings(theme: ThemeOverrides, styles: CSSStyleDeclara
     const value = setting.read(raw);
     if (value !== undefined) result[key] = value;
   }
-  return result as ThemeOverrides;
+  return result;
 }

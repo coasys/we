@@ -62,7 +62,7 @@ export const themeRegistry: Record<string, ThemeRegistryEntry> = {
         name: theme.name,
         icon: theme.icon ?? 'palette',
         css: theme.css ?? null,
-        overrides: theme.overrides as ThemeOverrides,
+        overrides: theme.overrides,
       },
     ]),
   ),

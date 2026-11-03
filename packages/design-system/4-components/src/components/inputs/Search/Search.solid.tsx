@@ -1,6 +1,6 @@
 import type { LayoutProps } from '@we/design-utils/solid';
 import { buildLayoutStyles } from '@we/design-utils/solid';
-import { createEffect, createMemo, createSignal, onCleanup, splitProps } from 'solid-js';
+import { createEffect, createMemo, createSignal, onCleanup, splitProps, untrack } from 'solid-js';
 
 import type { SearchProps as SearchOwnProps } from './Search.types';
 
@@ -45,10 +45,10 @@ export function Search(allProps: SearchComponentProps) {
   const [containerProps, inputProps] = splitProps(rest, containerKeys);
 
   const wrapperStyle = createMemo(() =>
-    buildLayoutStyles({ ...containerProps, display: containerProps.display ?? 'block' } as LayoutProps, 'column'),
+    buildLayoutStyles({ ...containerProps, display: containerProps.display ?? 'block' }, 'column'),
   );
 
-  const [localValue, setLocalValue] = createSignal(props.value ?? '');
+  const [localValue, setLocalValue] = createSignal(untrack(() => props.value) ?? '');
   let debounceId: ReturnType<typeof setTimeout> | undefined;
   let inputRef: (HTMLElement & Record<string, unknown>) | undefined;
 
@@ -80,7 +80,7 @@ export function Search(allProps: SearchComponentProps) {
 
   createEffect(() => {
     if (!inputRef) return;
-    for (const key of Object.keys(inputProps as object)) {
+    for (const key of Object.keys(inputProps)) {
       const val = (inputProps as Record<string, unknown>)[key];
       if (val !== undefined) inputRef[key] = val;
     }

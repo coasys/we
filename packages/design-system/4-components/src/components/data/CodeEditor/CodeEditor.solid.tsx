@@ -247,6 +247,7 @@ export function CodeEditor(props: CodeEditorProps) {
           language.syntaxHighlighting(highlight.classHighlighter),
           props.language === 'css' ? langCss.css() : langJson.json(),
           readOnlyCompartment.of(cmState.EditorState.readOnly.of(props.readOnly ?? false)),
+          // eslint-disable-next-line solid/reactivity -- CodeMirror calls this per update; props are read then
           cmView.EditorView.updateListener.of((update) => {
             if (update.docChanged) {
               const value = update.state.doc.toString();
@@ -295,6 +296,7 @@ export function CodeEditor(props: CodeEditorProps) {
           to hundreds of thousands of characters and a one-character query matches most of them,
           on every keystroke.
         */
+          // eslint-disable-next-line solid/reactivity -- CodeMirror calls this per update; props are read then
           cmView.EditorView.updateListener.of((update) => {
             if (!props.onSearchMatches) return;
             const query = cmSearch.getSearchQuery(update.state);

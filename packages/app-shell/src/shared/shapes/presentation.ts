@@ -37,7 +37,7 @@ export function presentationOf(row: { display?: unknown; controls?: unknown; aut
   const isObject = (v: unknown): v is Record<string, unknown> =>
     Boolean(v) && typeof v === 'object' && !Array.isArray(v);
   return {
-    ...(isObject(display) ? { display: display as EntitySchema['display'] } : {}),
+    ...(isObject(display) ? { display: display } : {}),
     ...(isObject(controls) ? { controls: controls as TypePresentation['controls'] } : {}),
     ...(Array.isArray(authoring) && authoring.every((f) => typeof f === 'string') ? { authoring } : {}),
   };

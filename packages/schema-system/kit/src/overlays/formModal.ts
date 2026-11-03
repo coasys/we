@@ -116,7 +116,7 @@ export function formModal(opts: FormModalOptions): SchemaNode {
     if (Array.isArray(handler)) {
       if (handler.length === 0) return [opts.close];
       const last = closing(handler[handler.length - 1]);
-      return [...handler.slice(0, -1), ...(Array.isArray(last) ? last : [last])];
+      return [...(handler as unknown[]).slice(0, -1), ...(Array.isArray(last) ? (last as unknown[]) : [last])];
     }
     if (!handler || typeof handler !== 'object') return [handler, opts.close];
 

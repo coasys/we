@@ -27,12 +27,14 @@ import {
   datasetKey,
   datasetKindOf,
   type EntitySchema,
+  type EntityStatic,
   formatRef,
   HERE,
   namePropertyOf,
   type ParentRef,
+  type RecordInstance,
 } from '@we/backend-shared';
-import { type ContentInput, copyableContent, createBlock, createBlocks, deleteBlocks } from '@we/block-shared';
+import { copyableContent, createBlock, createBlocks, deleteBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
 import {
   CollectionBlock,
@@ -132,6 +134,21 @@ export interface PendingLink {
 const RELATIONSHIP = 'Relationship';
 
 /**
+ * A class this file writes through, picked by name at runtime. Loose over fields because which
+ * entity it is is only known then.
+ */
+type AnyEntity = EntityStatic<RecordInstance & Record<string, unknown>>;
+
+/**
+ * The registry's class for `name`. The registry's entries are typed loosely (`any`-valued); every
+ * class it holds presents the contract's static surface, so it is read as that here, once — the same
+ * conversion `@we/entities` makes for its own proxies.
+ */
+function entityNamed(name: string): AnyEntity {
+  return getEntity(name) as unknown as AnyEntity;
+}
+
+/**
  * Models that can be *shown* but are not content anybody creates from a picker — see
  * {@link displayableEntities}. Every core block is shown as well, whether or not it can be made.
  *
@@ -162,9 +179,9 @@ async function createPlacement(
   batchId?: string,
 ): Promise<void> {
   await Placement.create(
-    dataset as never,
-    { nodeType, x: at.x, y: at.y, node: [nodeId] } as never,
-    { parent, ...(batchId ? { batchId } : {}) } as never,
+    dataset,
+    { nodeType, x: at.x, y: at.y, node: [nodeId] },
+    { parent, ...(batchId ? { batchId } : {}) },
   );
 }
 
@@ -200,10 +217,11 @@ async function createConnection(
   sourceId: string,
   targetId: string,
 ): Promise<string> {
-  const created = (await getEntity(RELATIONSHIP).create(
-    dataset as never,
-    { ...fields, source: [sourceId], target: [targetId] } as never,
-  )) as { id?: string } | null;
+  const created = (await entityNamed(RELATIONSHIP).create(dataset, {
+    ...fields,
+    source: [sourceId],
+    target: [targetId],
+  })) as { id?: string } | null;
   return String(created?.id ?? '');
 }
 
@@ -232,15 +250,12 @@ type PlacementRow = { id: string; node?: string; tier?: string } & Record<string
  * tier go: a placement for another breakpoint is not a duplicate of it.
  */
 async function drawnPlacement(dataset: unknown, parent: ParentRef, nodeId: string): Promise<PlacementRow | undefined> {
-  const existing = (await Placement.findAll(
-    dataset as never,
-    { parent } as Record<string, unknown>,
-  )) as unknown as PlacementRow[];
+  const existing = (await Placement.findAll(dataset, { parent })) as unknown as PlacementRow[];
   const rows = existing.filter((row) => row.node === nodeId);
   const drawn = resolvePlacement(rows);
   if (!drawn) return undefined;
   for (const row of rows) {
-    if (row !== drawn && (row.tier ?? '') === (drawn.tier ?? '')) await Placement.delete(dataset as never, row.id);
+    if (row !== drawn && (row.tier ?? '') === (drawn.tier ?? '')) await Placement.delete(dataset, row.id);
   }
   return drawn;
 }
@@ -860,8 +875,9 @@ export function RecordStoreProvider(props: ParentProps) {
    * registry" while the model sat listed in the space's settings. The per-dataset lookup prefers the
    * global class and falls back to the space's own, so every caller here goes through it.
    */
-  function entityClass(entity: string, handle: unknown): ReturnType<typeof getEntity> {
-    return (getEntityForDataset(entity, handle) ?? getEntity(entity)) as ReturnType<typeof getEntity>;
+  function entityClass(entity: string, handle: unknown): AnyEntity {
+    // The same reading of the registry's loose entries as `entityNamed`.
+    return (getEntityForDataset(entity, handle) ?? getEntity(entity)) as unknown as AnyEntity;
   }
 
   /**
@@ -1059,7 +1075,7 @@ export function RecordStoreProvider(props: ParentProps) {
    * filled from the file when nobody has typed one.
    */
   function writeInto(draft: Accessor<RecordDraft | null>, name: string, value: unknown): void {
-    const file = Array.isArray(value) ? value[0] : value;
+    const file: unknown = Array.isArray(value) ? value[0] : value;
     if (typeof File === 'undefined' || !(file instanceof File)) {
       writeFieldValue(draft(), name, value === null || value === undefined ? '' : (value as RecordFieldValue));
       setDraftEdits((n) => n + 1);
@@ -1084,8 +1100,9 @@ export function RecordStoreProvider(props: ParentProps) {
     if (file.type.startsWith('image/')) return compressImageToFileData(file, file.name);
     const uri = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result));
-      reader.onerror = () => reject(reader.error);
+      // `readAsDataURL` always yields a string.
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(reader.error ?? new Error(`Could not read ${file.name}`));
       reader.readAsDataURL(file);
     });
     return dataURIToFileData(uri, file.name);
@@ -1139,7 +1156,7 @@ export function RecordStoreProvider(props: ParentProps) {
     }
     const label =
       (typeof fields.name === 'string' && fields.name) ||
-      `${(picked.latitude as number).toFixed(4)}, ${(picked.longitude as number).toFixed(4)}`;
+      `${picked.latitude.toFixed(4)}, ${picked.longitude.toFixed(4)}`;
     setRecordDraft(
       withRelationEntry(current, field, {
         key: existing?.key ?? `new-${++entrySeq}`,
@@ -1166,7 +1183,7 @@ export function RecordStoreProvider(props: ParentProps) {
     const relation = relationFieldOf(field);
     const found = relation ? schemaFor(relation.target) : undefined;
     const property = found ? imagePropertyOf(found.schema) : '';
-    const picked = Array.isArray(file) ? file[0] : file;
+    const picked: unknown = Array.isArray(file) ? file[0] : file;
     if (!relation || !property || typeof File === 'undefined' || !(picked instanceof File)) return;
     try {
       const payload = (await readFile(picked)) as { data_base64: string; file_type: string; name: string };
@@ -1445,7 +1462,7 @@ export function RecordStoreProvider(props: ParentProps) {
 
     try {
       await runEntityTransaction(dataset.handle, async (tx) => {
-        const root = (await createBlocks(dataset.handle as never, editorState as never, {
+        const root = (await createBlocks(dataset.handle, editorState as never, {
           kind: 'card',
           anchor: home,
           batchId: tx.batchId,
@@ -1602,12 +1619,9 @@ export function RecordStoreProvider(props: ParentProps) {
    * trips on a gesture that happens when somebody lets go of a mouse.
    */
   async function spineLinks(handle: unknown, relationshipTypeId: string): Promise<SpineLink[]> {
-    const rows = (await getEntity(RELATIONSHIP).findAll(
-      handle as never,
-      {
-        where: { relationshipTypeId },
-      } as never,
-    )) as unknown as SpineLink[];
+    const rows = (await entityNamed(RELATIONSHIP).findAll(handle, {
+      where: { relationshipTypeId },
+    } as never)) as unknown as SpineLink[];
     return rows.filter((row) => row && typeof row.id === 'string');
   }
 
@@ -1645,14 +1659,11 @@ export function RecordStoreProvider(props: ParentProps) {
    * the same rule, so the preview refuses before the drop rather than this after it.
    */
   async function detachSpine(handle: unknown, linkId: string): Promise<boolean> {
-    const Model = getEntity(RELATIONSHIP);
-    const row = (await Model.findOne(
-      handle as never,
-      {
-        where: { id: linkId },
-        include: { $responses: { from: 'responses', count: true }, $signals: { from: 'signals', count: true } },
-      } as never,
-    )) as unknown as { $responses?: number; $signals?: number } | null;
+    const Model = entityNamed(RELATIONSHIP);
+    const row = (await Model.findOne(handle, {
+      where: { id: linkId },
+      include: { $responses: { from: 'responses', count: true }, $signals: { from: 'signals', count: true } },
+    } as never)) as unknown as { $responses?: number; $signals?: number } | null;
     if (!row) return false;
 
     if (Number(row.$responses ?? 0) > 0 || Number(row.$signals ?? 0) > 0) {
@@ -1885,7 +1896,7 @@ export function RecordStoreProvider(props: ParentProps) {
 
       const placements = (await Placement.findAll(handle, {
         parent: { id: canvas, relation: 'children', entity: 'CollectionBlock' },
-      } as Record<string, unknown>)) as unknown as { node?: string; rank?: number }[];
+      })) as unknown as { node?: string; rank?: number }[];
       const rankOf = new Map<string, number>();
       for (const row of placements) {
         const rank = Number(row.rank);
@@ -2027,7 +2038,12 @@ export function RecordStoreProvider(props: ParentProps) {
   const sameStored = (held: unknown, want: unknown): boolean => {
     const normalised = held === undefined || held === '' ? (typeof want === 'number' ? 0 : PLACEMENT_UNSET) : held;
     if (typeof want === 'number' && typeof normalised === 'number') return Math.abs(want - normalised) < 1;
-    return String(normalised) === String(want);
+    // Placement fields hold scalars; anything else compares by its JSON rather than as "[object Object]".
+    const text = (value: unknown) =>
+      typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+        ? String(value)
+        : JSON.stringify(value);
+    return text(normalised) === text(want);
   };
 
   /** Replay a set of moves in one direction, skipping any card a peer has moved since. */
@@ -2315,7 +2331,7 @@ export function RecordStoreProvider(props: ParentProps) {
     const parent = { id: canvas, relation: 'children', entity: 'CollectionBlock' };
 
     try {
-      const existing = (await EdgeRoute.findAll(dataset.handle, { parent } as Record<string, unknown>)) as {
+      const existing = (await EdgeRoute.findAll(dataset.handle, { parent })) as {
         id: string;
         connection?: string;
         sourceAnchor?: string;
@@ -2337,11 +2353,7 @@ export function RecordStoreProvider(props: ParentProps) {
         await EdgeRoute.delete(dataset.handle, already!.id);
       }
       if (write.action === 'delete') return;
-      await EdgeRoute.create(
-        dataset.handle as never,
-        { ...write.fields, connection: [event.recordId] } as never,
-        { parent } as never,
-      );
+      await EdgeRoute.create(dataset.handle, { ...write.fields, connection: [event.recordId] }, { parent });
     } catch (error) {
       console.error('RecordStore: anchoring a connection on a canvas failed', error);
       toastService.error('Could not save that.');
@@ -2396,7 +2408,7 @@ export function RecordStoreProvider(props: ParentProps) {
     // The end drawn at its new card from now, not when the write comes back — see `holdConnection`.
     const held = holdConnection({ kind: 'moved', id: event.recordId, end: event.end, to: event.nodeId });
     try {
-      const Model = getEntity(event.recordType || RELATIONSHIP);
+      const Model = entityNamed(event.recordType || RELATIONSHIP);
       const record = (await Model.findOne(dataset.handle, { where: { id: event.recordId } })) as Record<
         string,
         unknown
@@ -2414,9 +2426,10 @@ export function RecordStoreProvider(props: ParentProps) {
       */
       const moved = (event.recordType || RELATIONSHIP) === RELATIONSHIP;
       const otherId = record[event.end === 'source' ? 'target' : 'source'];
+      const otherType = record[event.end === 'source' ? 'targetType' : 'sourceType'];
       const other = {
         id: typeof otherId === 'string' ? otherId : '',
-        type: String(record[event.end === 'source' ? 'targetType' : 'sourceType'] ?? ''),
+        type: typeof otherType === 'string' ? otherType : '',
       };
       const to = { id: event.nodeId, type: event.nodeType };
       await Model.update(dataset.handle, event.recordId, {
@@ -2464,7 +2477,7 @@ export function RecordStoreProvider(props: ParentProps) {
     const points = JSON.stringify(event.points);
 
     try {
-      const existing = (await EdgeRoute.findAll(dataset.handle, { parent } as Record<string, unknown>)) as {
+      const existing = (await EdgeRoute.findAll(dataset.handle, { parent })) as {
         id: string;
         connection?: string;
         sourceAnchor?: string;
@@ -2474,11 +2487,7 @@ export function RecordStoreProvider(props: ParentProps) {
 
       if (!already) {
         if (!event.points.length) return;
-        await EdgeRoute.create(
-          dataset.handle as never,
-          { points, connection: [event.recordId] } as never,
-          { parent } as never,
-        );
+        await EdgeRoute.create(dataset.handle, { points, connection: [event.recordId] }, { parent });
         return;
       }
       if (!event.points.length && !already.sourceAnchor && !already.targetAnchor) {
@@ -2529,8 +2538,7 @@ export function RecordStoreProvider(props: ParentProps) {
       console.warn(`RecordStore: "${field}" is not a card presentation property`);
       return undefined;
     }
-    const raw =
-      value !== null && typeof value === 'object' && 'detail' in value ? (value as { detail: unknown }).detail : value;
+    const raw = value !== null && typeof value === 'object' && 'detail' in value ? value.detail : value;
     if (typeof raw === 'number') return raw;
     return typeof raw === 'string' && raw ? raw : PLACEMENT_UNSET;
   }
@@ -2574,8 +2582,7 @@ export function RecordStoreProvider(props: ParentProps) {
   async function setTypeColor(canvas: string, nodeType: string, color: unknown): Promise<void> {
     const dataset = datasetStore.currentDataset();
     if (!dataset || !canvas || !nodeType) return;
-    const raw =
-      color !== null && typeof color === 'object' && 'detail' in color ? (color as { detail: unknown }).detail : color;
+    const raw = color !== null && typeof color === 'object' && 'detail' in color ? color.detail : color;
     // The same sentinel a card's own colour uses, and for the same reason: `''` cannot be stored, so
     // without it a type could be given a colour and never have it taken away.
     const value = typeof raw === 'string' && raw ? raw : PLACEMENT_UNSET;
@@ -2585,7 +2592,7 @@ export function RecordStoreProvider(props: ParentProps) {
       // An upsert against the canvas's own children, exactly as a placement is: the parent link is
       // what makes a style belong to a canvas, and colouring a type twice must not leave two records
       // disagreeing about it.
-      const existing = (await TypeStyle.findAll(dataset.handle, { parent } as Record<string, unknown>)) as {
+      const existing = (await TypeStyle.findAll(dataset.handle, { parent })) as {
         id: string;
         nodeType?: string;
       }[];
@@ -2596,7 +2603,7 @@ export function RecordStoreProvider(props: ParentProps) {
       }
       // Nothing to clear that was never set.
       if (value === PLACEMENT_UNSET) return;
-      await TypeStyle.create(dataset.handle as never, { nodeType, color: value } as never, { parent } as never);
+      await TypeStyle.create(dataset.handle, { nodeType, color: value }, { parent });
     } catch (error) {
       console.error('RecordStore: colouring a type on a canvas failed', error);
       toastService.error('Could not save that colour.');
@@ -2614,11 +2621,11 @@ export function RecordStoreProvider(props: ParentProps) {
       return '';
     }
     try {
-      const space = (await Space.findOne(dataset.handle as never)) as { id?: string } | null;
+      const space = (await Space.findOne(dataset.handle)) as { id?: string } | null;
       if (!space?.id || datasetStore.currentDataset()?.id !== dataset.id) return '';
       const rows = (await TypeStyle.findAll(dataset.handle, {
         parent: spaceTypeStyles(space.id),
-      } as Record<string, unknown>)) as KeyRow[];
+      })) as KeyRow[];
       if (datasetStore.currentDataset()?.id !== dataset.id) return space.id;
       applySpacePresentation(rows);
       return space.id;
@@ -2687,7 +2694,7 @@ export function RecordStoreProvider(props: ParentProps) {
     if (!dataset || !spaceId || !nodeType) return;
     const parent = { id: spaceId, relation: 'typeStyles', entity: 'Space' };
     try {
-      const existing = (await TypeStyle.findAll(dataset.handle, { parent } as Record<string, unknown>)) as KeyRow[];
+      const existing = (await TypeStyle.findAll(dataset.handle, { parent })) as KeyRow[];
       const rows = existing.filter((row) => row.nodeType === nodeType);
       const color = rows.find((row) => row.color)?.color ?? '';
       const fields = presentationFields(presentation ?? {});
@@ -2696,7 +2703,7 @@ export function RecordStoreProvider(props: ParentProps) {
       for (const row of rows) await TypeStyle.delete(dataset.handle, row.id);
       const keep = Object.fromEntries(Object.entries({ color, ...fields }).filter(([, v]) => v));
       if (Object.keys(keep).length) {
-        await TypeStyle.create(dataset.handle as never, { nodeType, ...keep } as never, { parent } as never);
+        await TypeStyle.create(dataset.handle, { nodeType, ...keep }, { parent });
       }
       await reloadSpacePresentation();
     } catch (error) {
@@ -2778,13 +2785,13 @@ export function RecordStoreProvider(props: ParentProps) {
             return ds ? { handle: ds.handle, name: ds.name } : null;
           },
           readPost: async (handle, id) => {
-            const post = await CollectionBlock.findOne(handle as never, { where: { id } });
+            const post = await CollectionBlock.findOne(handle, { where: { id } });
             return post ? { author: post.author, editorState: post.editorState } : null;
           },
           copyable: (handle, editorState, only) => copyableContent(handle, editorState, only),
           write: async (blocks, fields) => {
             const home = contentHome();
-            const root = await createBlocks(here.handle, blocks as ContentInput, {
+            const root = await createBlocks(here.handle, blocks, {
               kind: 'post',
               fields,
               ...(home ? { anchor: { id: home, relation: 'children', entity: 'CollectionBlock' } } : {}),
@@ -2835,13 +2842,14 @@ export function RecordStoreProvider(props: ParentProps) {
   async function updateRecordField(entity: string, id: string, field: string, value: unknown): Promise<void> {
     const dataset = datasetStore.currentDataset();
     if (!dataset || !entity || !id || !field) return;
-    const raw =
-      value !== null && typeof value === 'object' && 'detail' in value ? (value as { detail: unknown }).detail : value;
+    const raw = value !== null && typeof value === 'object' && 'detail' in value ? value.detail : value;
     const kind = displays()[entity]?.fields.find((row) => row.name === field)?.kind;
     let next: unknown = raw;
     if (kind === 'number') next = raw === '' || raw === null || raw === undefined ? undefined : Number(raw);
     else if (kind === 'boolean') next = Boolean(raw);
-    else if (raw !== null && raw !== undefined && typeof raw !== 'string') next = String(raw);
+    // An object (a component's event detail, say) is kept as JSON rather than stored as "[object Object]".
+    else if (raw !== null && typeof raw === 'object') next = JSON.stringify(raw);
+    else if (typeof raw === 'number' || typeof raw === 'boolean' || typeof raw === 'bigint') next = String(raw);
     if (next === undefined || (typeof next === 'number' && Number.isNaN(next))) return;
     try {
       await entityClass(entity, dataset.handle).update(dataset.handle, id, { [field]: next });
@@ -2874,12 +2882,9 @@ export function RecordStoreProvider(props: ParentProps) {
     const field = titleField(end.type);
     if (!field) return end.id;
     try {
-      const row = (await entityClass(end.type, handle).findOne(
-        handle as never,
-        {
-          where: { id: end.id },
-        } as never,
-      )) as Record<string, unknown> | null;
+      const row = (await entityClass(end.type, handle).findOne(handle, {
+        where: { id: end.id },
+      } as never)) as Record<string, unknown> | null;
       const value = row?.[field];
       return typeof value === 'string' && value.trim() ? value : end.id;
     } catch {
@@ -2910,19 +2915,16 @@ export function RecordStoreProvider(props: ParentProps) {
     const dataset = datasetStore.currentDataset();
     if (!dataset || !id) return;
     try {
-      const Model = getEntity(RELATIONSHIP);
-      const row = (await Model.findOne(dataset.handle as never, { where: { id } } as never)) as Record<
-        string,
-        unknown
-      > | null;
+      const Model = entityNamed(RELATIONSHIP);
+      const row = (await Model.findOne(dataset.handle, { where: { id } } as never)) as Record<string, unknown> | null;
       if (!row || typeof row.source !== 'string' || typeof row.target !== 'string') return;
       const key = await keyFor(
         dataset.handle,
-        { id: row.source, type: String(row.sourceType ?? '') },
-        { id: row.target, type: String(row.targetType ?? '') },
+        { id: row.source, type: typeof row.sourceType === 'string' ? row.sourceType : '' },
+        { id: row.target, type: typeof row.targetType === 'string' ? row.targetType : '' },
         row.label,
       );
-      if (key !== row.connection) await Model.update(dataset.handle as never, id, { connection: key } as never);
+      if (key !== row.connection) await Model.update(dataset.handle, id, { connection: key });
     } catch (error) {
       console.warn('RecordStore: could not refresh a connection key', error);
     }
@@ -2931,10 +2933,9 @@ export function RecordStoreProvider(props: ParentProps) {
   /** Every connection touching a record, rekeyed — after the record's title changed. */
   async function rekeyConnectionsOf(handle: unknown, id: string): Promise<void> {
     try {
-      const rows = (await getEntity(RELATIONSHIP).findAll(
-        handle as never,
-        { where: { OR: [{ source: id }, { target: id }] } } as never,
-      )) as unknown as { id?: string }[];
+      const rows = (await entityNamed(RELATIONSHIP).findAll(handle, {
+        where: { OR: [{ source: id }, { target: id }] },
+      } as never)) as unknown as { id?: string }[];
       for (const row of rows) if (typeof row?.id === 'string') await rekeyConnection(row.id);
     } catch (error) {
       console.warn('RecordStore: could not refresh the keys of a renamed record', error);
@@ -2954,15 +2955,14 @@ export function RecordStoreProvider(props: ParentProps) {
   async function setSpaceTypeColor(spaceId: string, nodeType: string, color: unknown): Promise<void> {
     const dataset = datasetStore.currentDataset();
     if (!dataset || !spaceId || !nodeType) return;
-    const raw =
-      color !== null && typeof color === 'object' && 'detail' in color ? (color as { detail: unknown }).detail : color;
+    const raw = color !== null && typeof color === 'object' && 'detail' in color ? color.detail : color;
     const value = typeof raw === 'string' ? raw : '';
     // The relation's own predicate, not `children`: a space is not a container and a key is not one
     // of its contents. It is what `Space.typeStyles` reads through.
     const parent = { id: spaceId, relation: 'typeStyles', entity: 'Space' };
 
     try {
-      const existing = (await TypeStyle.findAll(dataset.handle, { parent } as Record<string, unknown>)) as KeyRow[];
+      const existing = (await TypeStyle.findAll(dataset.handle, { parent })) as KeyRow[];
       const rows = existing.filter((row) => row.nodeType === nodeType);
       if (!value) {
         // Clearing deletes. `''` cannot be stored — the ORM's update skips it — and the canvas
@@ -2970,12 +2970,7 @@ export function RecordStoreProvider(props: ParentProps) {
         // the type is laid out is written again with that alone.
         const kept = rows.map(presentationOf).find((p) => Object.keys(p).length);
         for (const row of rows) await TypeStyle.delete(dataset.handle, row.id);
-        if (kept)
-          await TypeStyle.create(
-            dataset.handle as never,
-            { nodeType, ...presentationFields(kept) } as never,
-            { parent } as never,
-          );
+        if (kept) await TypeStyle.create(dataset.handle, { nodeType, ...presentationFields(kept) }, { parent });
         return;
       }
       const [already, ...duplicates] = rows;
@@ -2985,7 +2980,7 @@ export function RecordStoreProvider(props: ParentProps) {
         await TypeStyle.update(dataset.handle, already.id, { color: value });
         return;
       }
-      await TypeStyle.create(dataset.handle as never, { nodeType, color: value } as never, { parent } as never);
+      await TypeStyle.create(dataset.handle, { nodeType, color: value }, { parent });
     } catch (error) {
       console.error("RecordStore: colouring a type in the space's key failed", error);
       toastService.error('Could not save that colour.');
@@ -3012,7 +3007,7 @@ export function RecordStoreProvider(props: ParentProps) {
     try {
       const existing = (await Placement.findAll(dataset.handle, {
         parent: { id: canvas, relation: 'children', entity: 'CollectionBlock' },
-      } as Record<string, unknown>)) as unknown as PlacementRow[];
+      })) as unknown as PlacementRow[];
       const rows = existing.filter((placement) => placement.node === nodeId);
       if (!rows.length) return null;
 
@@ -3053,7 +3048,7 @@ export function RecordStoreProvider(props: ParentProps) {
         be two rows disagreeing about where the card is.
       */
       if (await drawnPlacement(dataset.handle, parent, nodeId)) return;
-      await Placement.create(dataset.handle as never, { ...fields, node: [nodeId] } as never, { parent } as never);
+      await Placement.create(dataset.handle, { ...fields, node: [nodeId] }, { parent });
     } catch (error) {
       console.error('RecordStore: putting a card back on a canvas failed', error);
       toastService.error('Could not put that back.');
@@ -3129,8 +3124,9 @@ export function RecordStoreProvider(props: ParentProps) {
         for (const row of rows) {
           const Model = entityClass(row.recordType!, dataset.handle);
           if (!Model) continue;
-          const found = (await Model.findOne(dataset.handle as never, { where: { id: row.recordId } } as never)) as
-            { delete?: (batch?: string) => Promise<unknown> } | undefined;
+          const found = (await Model.findOne(dataset.handle, { where: { id: row.recordId } } as never)) as {
+            delete?: (batch?: string) => Promise<unknown>;
+          } | null;
           await found?.delete?.(tx.batchId);
         }
       });
@@ -3226,7 +3222,7 @@ export function RecordStoreProvider(props: ParentProps) {
         and making a second one.
       */
       try {
-        await linkRelations(draft, created as { id?: string } & Record<string, unknown>, dataset.handle);
+        await linkRelations(draft, created, dataset.handle);
       } catch (error) {
         console.error('RecordStore: attaching related records failed', error);
         toastService.error(`${draft.label} created, but what was attached to it could not be saved.`);
@@ -3287,7 +3283,7 @@ export function RecordStoreProvider(props: ParentProps) {
     dragOnCanvas,
     removeFromCanvas,
     deleteRecords,
-    canvasHistory: history.state,
+    canvasHistory: () => history.state(),
     /*
       Scoped on the way in, every time.
 

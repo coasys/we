@@ -175,7 +175,7 @@ export function resolveToggleLocalInProp(
       );
       return;
     }
-    const list = Array.isArray(current) ? current : [];
+    const list: unknown[] = Array.isArray(current) ? current : [];
     setter(list.includes(member) ? list.filter((entry) => entry !== member) : [...list, member]);
   };
 }
@@ -195,7 +195,7 @@ export function resolveCallLocalProp(value: { $callLocal: string }, context: Pro
   return (...args: unknown[]) => {
     const fn = accessor();
     if (typeof fn === 'function') {
-      fn(...args);
+      (fn as (...a: unknown[]) => unknown)(...args);
     } else {
       warn(`Schema $callLocal: field "${value.$callLocal}" is not a function (yet?)`);
     }

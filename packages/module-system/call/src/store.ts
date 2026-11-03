@@ -2871,7 +2871,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
     callConfigSaving: state(callConfigSaving, 'Whether a call config write is in flight.'),
 
     setCallConfigField: action(
-      (field: string, value: unknown) => writeCallConfig({ ...callConfig(), [field]: value } as CallConfigState),
+      (field: string, value: unknown) => writeCallConfig({ ...callConfig(), [field]: value }),
       'Write one field of the call config.',
     ),
 

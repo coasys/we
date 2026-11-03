@@ -1159,7 +1159,7 @@ export function parsePeerInfos(text: string): string[] {
   const trimmed = text.trim();
   if (!trimmed) return [];
   try {
-    const parsed = JSON.parse(trimmed);
+    const parsed: unknown = JSON.parse(trimmed);
     if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
   } catch {
     // Not JSON — fall through to the line-separated reading.

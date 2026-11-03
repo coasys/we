@@ -19,7 +19,7 @@ export interface FeatureDiff<T> {
  * recomputation of a template's expression makes them.
  */
 export function drawingKey(feature: object): string {
-  return JSON.stringify(feature, (key, value) =>
+  return JSON.stringify(feature, (key: string, value: unknown) =>
     key === 'row' || key === 'rows' || key === 'subject' || key === 'selected' || key === 'group' ? undefined : value,
   );
 }

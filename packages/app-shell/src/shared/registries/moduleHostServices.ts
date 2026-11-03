@@ -541,9 +541,9 @@ export function createModuleStoreDeps(framework: {
       },
       setup: async () => (await services.transcription?.setup?.()) ?? null,
       connectFound: async () => {
-        const connect = services.transcription?.connectFound;
-        if (!connect) throw new Error('transcription: this backend cannot set transcription up');
-        return connect();
+        const port = services.transcription;
+        if (!port?.connectFound) throw new Error('transcription: this backend cannot set transcription up');
+        return port.connectFound();
       },
     },
 

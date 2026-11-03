@@ -351,6 +351,17 @@ function decode(value: unknown): unknown {
  * and that is not a change anybody would be asked about either. A read that fails keeps the value:
  * a real change shown is better than one silently dropped.
  */
+/**
+ * A decoded value as text, for comparing: a scalar as it prints, anything structured as JSON. Printed
+ * with `String`, every object reads `[object Object]`, so two different ones compared equal.
+ */
+function comparableText(value: unknown): string {
+  if (value === undefined || value === null) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') return String(value);
+  return JSON.stringify(value) ?? '';
+}
+
 async function withoutUnchanged(
   perspective: PerspectiveProxy,
   base: string,
@@ -367,8 +378,8 @@ async function withoutUnchanged(
       kept.push([predicate, value]);
       continue;
     }
-    const proposed = String(unwrapped(value) ?? '');
-    if (!current.some((c) => String(c ?? '') === proposed)) kept.push([predicate, value]);
+    const proposed = comparableText(unwrapped(value));
+    if (!current.some((c) => comparableText(c) === proposed)) kept.push([predicate, value]);
   }
   return kept;
 }
@@ -403,8 +414,7 @@ function unwrapped(raw: unknown): unknown {
   let value = raw;
   for (let depth = 0; depth < 3; depth++) {
     const decoded = decode(value);
-    const inner =
-      decoded && typeof decoded === 'object' && 'data' in decoded ? (decoded as { data: unknown }).data : decoded;
+    const inner = decoded && typeof decoded === 'object' && 'data' in decoded ? decoded.data : decoded;
     if (inner === value) break;
     value = inner;
   }
@@ -626,7 +636,7 @@ async function runObserved(
     classes?: string[],
     options?: { observe?: { observationId: string; emitDebugEvents?: boolean } },
   ) => Promise<string[]>;
-  const run = perspective.runInterpretation.bind(perspective) as Observable;
+  const run = perspective.runInterpretation.bind<Observable>(perspective);
 
   if (!observationId) return run(turns, basePrefix, classes);
   return run(turns, basePrefix, classes, { observe: { observationId, emitDebugEvents: true } });
@@ -669,7 +679,7 @@ function linkedRequest<T extends InterpretationRequest>(request: T): ByPredicate
     ...(parent ? { parent: linked(parent) } : {}),
     ...(provenance ? { provenance: linked(provenance) } : {}),
     ...(recognised ? { recognised: linked(recognised) } : {}),
-  } as ByPredicate<T>;
+  };
 }
 
 /**
@@ -1152,6 +1162,7 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
       }
     },
 
+    // eslint-disable-next-line @typescript-eslint/require-await -- attaching is synchronous, but a handle that is not a perspective must reject as the port promises, not throw.
     async observe(
       dataset: DatasetHandle,
       cb: (activity: InterpretationActivity) => void,
@@ -1414,7 +1425,7 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
         }
 
         try {
-          await perspective.addAutoProcessor(config as Parameters<PerspectiveProxy['addAutoProcessor']>[0]);
+          await perspective.addAutoProcessor(config);
         } catch (error) {
           // Same backstop as the one-shot path, and it matters more here: a watch failure is caught
           // by the caller and, before this, disappeared into a console line — which is why a node
@@ -1613,7 +1624,7 @@ async function readProcessorConfig(perspective: PerspectiveProxy, watchId: strin
       continue;
     }
     const held = scalars.get(predicate) ?? new Set<string>();
-    held.add(String(value));
+    held.add(comparableText(value));
     scalars.set(predicate, held);
   }
   return { classes: [...classes].sort(), scalars };

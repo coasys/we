@@ -50,7 +50,7 @@ function Route(props: { title: string; detail: string; action: string; onPress: 
     <Column gap="100" py="200">
       <Row ax="between" ay="center" gap="300">
         <we-text variant="label">{props.title}</we-text>
-        <we-button size="xs" variant="soft" disabled={props.disabled} onClick={props.onPress}>
+        <we-button size="xs" variant="soft" disabled={props.disabled} onClick={() => props.onPress()}>
           {props.action}
         </we-button>
       </Row>
@@ -122,8 +122,9 @@ export function PartCard(props: { node: SchemaNode }) {
 
   const takeOver = (depth: 'one' | 'all') => {
     let replacement: SchemaNode | undefined;
+    const nodeId = props.node.id ?? '';
     write((template) => {
-      const found = findNodeById(template, props.node.id ?? '');
+      const found = findNodeById(template, nodeId);
       const opened = found && host.owners?.openPart(found.node, depth);
       if (!found || !opened) return false;
       replacement = copyWithNewIds(opened);
@@ -136,8 +137,9 @@ export function PartCard(props: { node: SchemaNode }) {
   };
 
   const remove = () => {
+    const nodeId = props.node.id ?? '';
     const removed = write((template) => {
-      const found = findNodeById(template, props.node.id ?? '');
+      const found = findNodeById(template, nodeId);
       if (!found?.parent || found.key !== 'children' || !found.parent.children) return false;
       found.parent.children.splice(found.index, 1);
       return true;
@@ -152,8 +154,9 @@ export function PartCard(props: { node: SchemaNode }) {
   };
 
   const setInput = (name: string, expression: string) => {
+    const nodeId = props.node.id ?? '';
     write((template) => {
-      const found = findNodeById(template, props.node.id ?? '');
+      const found = findNodeById(template, nodeId);
       if (!found) return false;
       const nodeProps = (found.node.props ??= {}) as Record<string, unknown>;
       const inputs = { ...((nodeProps.inputs as Record<string, unknown> | undefined) ?? {}) };
@@ -308,9 +311,11 @@ function PartNodeCard(props: { owner: OwnerRef }) {
 
   const makeOwn = () => {
     let picked: string | undefined;
+    const steps = chain();
+    const ownerId = props.owner.id;
     write((template) => {
-      const found = findNodeById(template, chain()[0] ?? '');
-      const path = found && host.owners?.openPath?.(found.node, chain(), props.owner.id);
+      const found = findNodeById(template, steps[0] ?? '');
+      const path = found && host.owners?.openPath?.(found.node, steps, ownerId);
       if (!found || !path) return false;
       (path.target as unknown as Record<string, unknown>)[PICKED] = true;
       const replacement = copyWithNewIds(path.node);
@@ -395,7 +400,7 @@ function PanelCard(props: { dockId: string }) {
     if (forkedFrom) body.forkedFrom = forkedFrom;
     const written = write((template) => {
       const meta = ((template as TemplateSchema).meta ??= { name: '', description: '', icon: '' });
-      const panels = (meta.panels ??= []) as TemplatePanel[];
+      const panels = (meta.panels ??= []);
       const existing = panels.find(
         (entry) => entry.module === panel.moduleId && !entry.node && (!entry.dock || entry.dock === panel.dock),
       );
@@ -406,7 +411,7 @@ function PanelCard(props: { dockId: string }) {
           module: panel.moduleId,
           dock: panel.dock,
           node: body,
-        } as TemplatePanel);
+        });
       return true;
     });
     // The panel's contents are the template's now, so the region it was is gone: select what is there.
@@ -606,8 +611,8 @@ function ViewCard(props: { id: string }) {
 
 /** The `meta.panels` entry whose supplied contents hold this node, when it is a module's panel. */
 function suppliedEntryHolding(template: SchemaNode, nodeId: string): TemplatePanel | undefined {
-  const panels = ((template as TemplateSchema).meta?.panels ?? []) as TemplatePanel[];
-  return panels.find((entry) => entry.module && entry.node && findNodeById(entry.node as SchemaNode, nodeId));
+  const panels = (template as TemplateSchema).meta?.panels ?? [];
+  return panels.find((entry) => entry.module && entry.node && findNodeById(entry.node, nodeId));
 }
 
 /** Keys an entry carries when arranging a panel made it, and nothing a template placed it with. */
@@ -640,7 +645,7 @@ export function SuppliedPanelNote(props: { nodeId: string }) {
     const id = entry()?.id;
     const written = write((template) => {
       const meta = (template as TemplateSchema).meta;
-      const panels = (meta?.panels ?? []) as TemplatePanel[];
+      const panels = meta?.panels ?? [];
       const index = panels.findIndex((candidate) => candidate.id === id);
       if (index < 0) return false;
       const target = panels[index];
@@ -883,11 +888,12 @@ export function CopiedPartNote(props: { nodeId: string }) {
     return { outermost, changed, returnable, clean: !dirty.get(outermost) };
   });
 
-  const partOf = (level: SchemaNode) => {
-    const id = String(level.forkedPart?.placement.id ?? '');
-    return host.owners?.part(id) ?? null;
+  const placedId = (level: SchemaNode): string | undefined => {
+    const id = level.forkedPart?.placement.id;
+    return typeof id === 'string' ? id : undefined;
   };
-  const labelOf = (level: SchemaNode) => partOf(level)?.label ?? String(level.forkedPart?.placement.id ?? 'a part');
+  const partOf = (level: SchemaNode) => host.owners?.part(placedId(level) ?? '') ?? null;
+  const labelOf = (level: SchemaNode) => partOf(level)?.label ?? placedId(level) ?? 'a part';
   const moduleName = () => {
     const found = forks();
     return (found && partOf(found.outermost)?.moduleName) || 'its module';
@@ -913,7 +919,7 @@ export function CopiedPartNote(props: { nodeId: string }) {
     });
     if (!written) return;
     // The node selected may have gone back with a level; if so, select what replaced the outermost.
-    if (!findNodeById(host.template.currentTemplate as SchemaNode, props.nodeId)) visualEditor.onSelect(first ?? null);
+    if (!findNodeById(host.template.currentTemplate, props.nodeId)) visualEditor.onSelect(first ?? null);
   };
 
   return (
@@ -1026,8 +1032,9 @@ export function PartsPalette(props: { node: SchemaNode }) {
 
   const add = (part: OwnedPart) => {
     const placed = ensureNodeIds({ type: '$part', props: { id: part.id } });
+    const nodeId = props.node.id ?? '';
     const written = write((template) => {
-      const found = findNodeById(template, props.node.id ?? '');
+      const found = findNodeById(template, nodeId);
       if (!found) return false;
       (found.node.children ??= []).push(placed);
       const meta = (template as TemplateSchema).meta;

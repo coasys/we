@@ -79,13 +79,13 @@ export function signalTypesByUse(options: unknown): unknown[] {
     the vocabulary's own, which is what makes two surfaces showing one record agree.
   */
   const settled = Array.isArray(order) ? (order as unknown[]).filter((id) => typeof id === 'string') : [];
-  const rank = new Map(settled.map((id, at) => [id as string, at]));
+  const rank = new Map(settled.map((id, at) => [id, at]));
   const placed = (type: unknown) => {
     const id = (type as { id?: unknown } | null)?.id;
     return typeof id === 'string' ? rank.get(id) : undefined;
   };
 
-  const ordered = [...types].sort((a, b) => {
+  const ordered = [...(types as unknown[])].sort((a, b) => {
     const [left, right] = [placed(a), placed(b)];
     if (left !== undefined && right !== undefined) return left - right;
     // A type the settled order never saw goes after every type it did, however used it is: it

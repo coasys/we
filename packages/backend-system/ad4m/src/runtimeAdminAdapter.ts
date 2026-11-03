@@ -17,7 +17,7 @@
  * no path to give it. The launcher's own publish form asks the user to type the path, and its
  * buttons are wired to the install handler, so it has never published anything.
  */
-import { type Ad4mClient, type Apps, capSentence, ExceptionType } from '@coasys/ad4m';
+import { type Ad4mClient, type Apps, capSentence } from '@coasys/ad4m';
 import type { AuthorizedApp, RuntimeAdminPort } from '@we/backend-shared';
 
 import type { Ad4mCapability } from './capabilities';
@@ -53,6 +53,35 @@ function toAuthorizedApp(app: Apps): AuthorizedApp {
     // Rendering here rather than in the shell keeps AD4M's capability vocabulary out of templates.
     capabilities: (app.auth.capabilities ?? []).map((cap) => capSentence(cap)),
     revoked: !!app.revoked,
+  };
+}
+
+/**
+ * The app described by a capability request's `addon` — the executor's JSON of `{ auth: AuthInfo }`.
+ * Read field by field because it arrives as text; a request without an `auth` object throws, which
+ * the subscriber reports and skips.
+ */
+function readRequestedAuth(addon: string): {
+  appName: string;
+  appDesc: string;
+  appUrl: string;
+  appIconPath?: string;
+  capabilities: unknown[];
+} {
+  const parsed: unknown = JSON.parse(addon);
+  const auth: unknown = typeof parsed === 'object' && parsed !== null && 'auth' in parsed ? parsed.auth : undefined;
+  if (typeof auth !== 'object' || auth === null) throw new Error('capability request carries no app');
+  const text = (key: string): string | undefined => {
+    const value: unknown = (auth as Record<string, unknown>)[key];
+    return typeof value === 'string' ? value : undefined;
+  };
+  const capabilities: unknown = (auth as Record<string, unknown>).capabilities;
+  return {
+    appName: text('appName') ?? '',
+    appDesc: text('appDesc') ?? '',
+    appUrl: text('appUrl') ?? '',
+    appIconPath: text('appIconPath'),
+    capabilities: Array.isArray(capabilities) ? (capabilities as unknown[]) : [],
   };
 }
 
@@ -129,9 +158,11 @@ export function createAd4mRuntimeAdmin(backendClient: unknown, options: Ad4mRunt
      */
     onConsentRequest(handler) {
       return client.on('exception-occurred', ({ exception: info }) => {
-        if (info.type === ExceptionType.CapabilityRequested && info.addon) {
+        // The event types `type` as a union of string literals rather than the SDK's `ExceptionType`
+        // enum, so it is compared with those literals.
+        if (info.type === 'CAPABILITY_REQUESTED' && info.addon) {
           try {
-            const auth = JSON.parse(info.addon).auth;
+            const auth = readRequestedAuth(info.addon);
             handler({
               kind: 'capability',
               title: info.title,
@@ -141,9 +172,7 @@ export function createAd4mRuntimeAdmin(backendClient: unknown, options: Ad4mRunt
                 description: auth.appDesc,
                 url: auth.appUrl,
                 iconUrl: auth.appIconPath,
-                capabilities: (auth.capabilities ?? []).map((cap: unknown) =>
-                  capSentence(cap as Parameters<typeof capSentence>[0]),
-                ),
+                capabilities: auth.capabilities.map((cap) => capSentence(cap as Parameters<typeof capSentence>[0])),
               },
               payload: info.addon,
             });
@@ -154,7 +183,7 @@ export function createAd4mRuntimeAdmin(backendClient: unknown, options: Ad4mRunt
           }
         }
 
-        if (info.type === ExceptionType.AgentIsUntrusted && info.addon) {
+        if (info.type === 'AGENT_IS_UNTRUSTED' && info.addon) {
           handler({
             kind: 'trust',
             title: info.title,
