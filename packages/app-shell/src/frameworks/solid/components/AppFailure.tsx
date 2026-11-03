@@ -45,7 +45,7 @@ export function AppFailure(props: { error: unknown }) {
       }}
     >
       <h1 style={{ 'font-size': '20px', margin: 0 }}>{currentProductName()} could not start</h1>
-      <p style={{ margin: 0, 'max-width': '48ch', 'line-height': 1.5, opacity: 0.8 }}>{message}</p>
+      <p style={{ margin: 0, 'max-width': '48ch', 'line-height': '1.5', opacity: 0.8 }}>{message}</p>
       <button
         type="button"
         onClick={() => window.location.reload()}

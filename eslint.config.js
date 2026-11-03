@@ -306,7 +306,6 @@ export default [
     ignores: ['apps/playgrounds/**'],
     rules: {
       ...solidPlugin.configs['flat/typescript'].rules,
-      'solid/style-prop': 'off',
       'solid/reactivity': 'off',
     },
   },
