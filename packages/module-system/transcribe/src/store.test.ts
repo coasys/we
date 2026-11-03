@@ -68,6 +68,11 @@ interface HarnessDeps {
 
 function harness(peers: Peer[] = [], extraDeps: HarnessDeps = {}) {
   const created: Created[] = [];
+  /**
+   * The transcription runs, kept apart from `created`: one is written before somebody's first line
+   * in a call, and the tests about where lines go are about lines.
+   */
+  const runs: (Created & { id: string })[] = [];
   const linked: Linked[] = [];
   const published: Activity[] = [];
   const cleared: string[] = [];
@@ -102,8 +107,10 @@ function harness(peers: Peer[] = [], extraDeps: HarnessDeps = {}) {
     },
     records: {
       create: async (entity: string, fields: Record<string, unknown>, options?: Created['options']) => {
-        created.push({ entity, fields, options });
-        return `id-${nextId++}`;
+        const id = `id-${nextId++}`;
+        if (entity === 'ModelRun') runs.push({ entity, fields, options, id });
+        else created.push({ entity, fields, options });
+        return id;
       },
       link: async (entity: string, id: string, relation: string, value: string) => {
         linked.push({ entity, id, relation, value });
@@ -140,6 +147,7 @@ function harness(peers: Peer[] = [], extraDeps: HarnessDeps = {}) {
   return {
     store,
     created,
+    runs,
     linked,
     published,
     cleared,
@@ -251,7 +259,9 @@ describe('the call record', () => {
     await h.say('first words');
     expect(h.created).toHaveLength(0);
 
-    h.setPeers([peer(ME, { type: 'call', id: CALL, record: RECORD })]);
+    // Awaited: the record arriving flushes the held words itself, and that write now waits on the
+    // transcription run first, so the explicit flush below can find the buffer already taken.
+    await h.setPeers([peer(ME, { type: 'call', id: CALL, record: RECORD })]);
     await h.store.flushNow();
 
     expect(h.created[0].fields.text).toBe('first words');
@@ -2616,6 +2626,23 @@ describe('typing into a transcript', () => {
     await h.say('hello there');
 
     expect(h.created.find((c) => c.entity === 'TextBlock')?.fields.source).toBe('spoken');
+  });
+
+  it('marks what a microphone heard as written by one transcription run, made once', async () => {
+    // A model wrote these words down, so they say so as everything a model writes does — one run
+    // for somebody's speech in a call, not one per line, and hung off the call it was heard in.
+    const h = harness(inCall);
+
+    await h.say('hello there');
+    await h.say('and welcome');
+
+    expect(h.runs).toHaveLength(1);
+    expect(h.runs[0].fields).toMatchObject({ kind: 'transcription', trigger: 'auto' });
+    expect(h.runs[0].options?.parent).toMatchObject({ relation: 'runs', entity: 'CollectionBlock' });
+
+    const lines = h.created.filter((c) => c.entity === 'TextBlock');
+    expect(lines).toHaveLength(2);
+    for (const line of lines) expect(line.fields.generatedBy).toEqual([h.runs[0].id]);
   });
 
   it('writes a typed message into the same timeline, saying it was typed', async () => {

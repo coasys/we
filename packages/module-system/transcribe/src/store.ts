@@ -722,6 +722,41 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   let node: AudioWorkletNode | null = null;
   let source: MediaStreamAudioSourceNode | null = null;
   let stream: Awaited<ReturnType<NonNullable<typeof transcription>['open']>> | null = null;
+  /** The model the open stream is listening with, for the run its lines are marked with. */
+  let hearingModel = '';
+  /**
+   * The run each spoken line is marked as written by: one per call, per model, for this agent.
+   *
+   * A line a recogniser heard is a model's writing on the speaker's behalf, so it says so the way
+   * everything else a model writes does — `generatedBy` a `ModelRun` — and `source: 'spoken'` stays
+   * beside it, saying how the words arrived. One run for the whole of somebody's speech in a call
+   * rather than one per line: a line is not a separate request, and a run per utterance would be a
+   * record per sentence for nothing a reader asks about. A new model is a new run, since which model
+   * heard the words is what the run is for.
+   *
+   * Held as the promise, so two flushes racing for the first line make one run. Forgotten when its
+   * write fails, so the next line tries again rather than every line going unmarked.
+   */
+  const transcriptionRuns = new Map<string, Promise<string | null>>();
+
+  function transcriptionRun(collection: string, dataset?: string): Promise<string | null> {
+    if (!createEntity) return Promise.resolve(null);
+    const key = `${collection}|${hearingModel}`;
+    let run = transcriptionRuns.get(key);
+    if (!run) {
+      run = createEntity(
+        'ModelRun',
+        { kind: 'transcription', model: hearingModel, trigger: 'auto' },
+        { parent: { id: collection, relation: 'runs', entity: 'CollectionBlock' }, ...(dataset ? { dataset } : {}) },
+      ).catch((cause: unknown) => {
+        transcriptionRuns.delete(key);
+        console.error('transcribe: could not record the transcription run', cause);
+        return null;
+      });
+      transcriptionRuns.set(key, run);
+    }
+    return run;
+  }
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
   let buffer = '';
   /**
@@ -1673,12 +1708,14 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
 
       // The call's space, not the reader's. See `myCall().datasetUri`.
       const dataset = myCall()?.datasetUri ?? undefined;
+      const run = await transcriptionRun(slot.id, dataset);
       await createEntity?.(
         'TextBlock',
         // `spoken`, because a recogniser heard it — the one writer that may say so. Everything else
         // in this timeline is a person typing, and a transcript that cannot tell them apart claims
-        // somebody said what they wrote. See `TextBlock.source`.
-        { text, source: SPOKEN },
+        // somebody said what they wrote. See `TextBlock.source`. And `generatedBy` the run, in the
+        // same write, because a model wrote it down: see `transcriptionRuns`.
+        { text, source: SPOKEN, ...(run ? { generatedBy: [run] } : {}) },
         { parent: { id: slot.id, relation: 'children', entity: 'CollectionBlock' }, ...(dataset ? { dataset } : {}) },
       );
       await recordSelfParticipation(slot.id, dataset);
@@ -1898,6 +1935,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
 
       newStream = await transcription.open(model.id, onText, TUNING);
       if (mine !== generation) return await unwind();
+      hearingModel = model.id;
 
       newContext = new AudioContext();
       // Built here rather than fetched: see `workletSource`. Revoked as soon as it is registered —
