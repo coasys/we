@@ -76,6 +76,13 @@ Which side is decided by what the backend provides. A backend that runs agents p
 port; one built before it could answers `AgentUnavailableError`, and the request falls back to WE's
 own conversation. The same choice is what lets a backend that runs no agents at all still offer them.
 
+The node also keeps the conversation itself (`agents.conversations`). It holds the history, runs
+each reply, so the reply finishes with the app closed and shows on every device, and records each
+tool call the agent makes as a step on the reply (the tool, the record it acted on, how it went;
+never what the call sent or got back). WE writes the person's message, follows the conversation and
+draws it; it never holds it. On a node that predates this, WE keeps the chat, as above, and one
+chat is never split between the two.
+
 ### Help only the client can give
 
 Some of what an agent could use exists only where the person is: what they have selected, what is on
