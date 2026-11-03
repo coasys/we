@@ -430,8 +430,11 @@ export async function readFired(
   return new Set(answers.flat().flatMap((entry) => entry.fired));
 }
 
-/** Every proposal on these runs, with its voters, whether it settled a move, and its evidence. */
-async function readProposals(perspective: PerspectiveProxy, runs: readonly Run[]): Promise<EngineProposal[]> {
+/**
+ * Every proposal on these runs, with its voters, whether it settled a move, and its evidence.
+ * Exported for its tests; the port is the way in.
+ */
+export async function readProposals(perspective: PerspectiveProxy, runs: readonly Run[]): Promise<EngineProposal[]> {
   if (!runs.length) return [];
   const runIds = new Set(runs.map((run) => run.id));
   let rows: FlowTransitionProposal[] = [];

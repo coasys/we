@@ -420,8 +420,8 @@ export { FILE_STORAGE_LANGUAGE };
  * neighbourhood languages, so on a freshly generated agent nothing has ever pulled the
  * file-storage bundle down. `expression.create` does NOT install on demand — it looks the
  * language up in the loaded-runtimes map and fails with `NotFound` — and `expression.get`
- * finds nothing for an unloaded language (no expression, or an `RpcError` naming the failed
- * read; `resolveExpressionToDataUri` treats both as no picture), so every avatar, cover image and file
+ * resolves to null for a missing expression or an unloaded language, and rejects only when the
+ * lookup itself fails (`resolveExpressionToDataUri` treats both as no picture), so every avatar, cover image and file
  * block fails until something installs it. `languages.byAddress` is the install trigger
  * (executor-side it calls `language_by_ref`, which fetches + saves the bundle); Flux gets away
  * with never thinking about this because its `createProfile` calls `byAddress` first, which is

@@ -880,9 +880,11 @@ export async function deduplicateSpaceSdna(p: PerspectiveProxy): Promise<{ remov
   record(nameRemoved);
 
   // Each shape's triples are independent of every other shape's — dedupe them
-  // concurrently rather than one shape at a time. This walk is structurally identical
-  // to getAllShacl()/getShacl() (one RPC round trip per triple), which over a remote
-  // connection turns a linear-looking loop into the dominant cost of the whole operation;
+  // concurrently rather than one shape at a time. This walk follows the same link graph
+  // getAllShacl() reads, but link by link (one RPC round trip per triple) because it has to
+  // see every duplicate copy — getAllShacl() reads every named shape in one call and skips one
+  // it cannot decode, so it cannot be used to find what to remove. Over a remote connection
+  // those round trips turn a linear-looking loop into the dominant cost of the whole operation;
   // see the doc comment on hasSubjectClassLink above for the same round-trip-count issue.
   await Promise.all(
     nameLinks.map(async (nameLink) => {

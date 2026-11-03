@@ -192,11 +192,12 @@ describe('getProfile — nothing published', () => {
 
 describe('getProfile — a picture that cannot be read', () => {
   /*
-    `expression.get` rejects a failed read with an `RpcError` rather than answering `null` (ad4m
-    #1443). Either way the profile it decorates stands without the picture: a peer's avatar being
-    unreachable is not a reason to show them nameless.
+    `expression.get` answers `null` for a missing expression or an unloaded language, and rejects
+    with an `RpcError` only when the lookup itself fails. A read that fails leaves the profile it
+    decorates standing without the picture: a peer's avatar being unreachable is not a reason to
+    show them nameless.
   */
-  it('keeps the name when the avatar read rejects', async () => {
+  it('keeps the name when the avatar read fails', async () => {
     const profile = await getProfile(DID, {
       agent: {
         byDID: async () => ({
@@ -210,7 +211,7 @@ describe('getProfile — a picture that cannot be read', () => {
       },
       expression: {
         get: async () => {
-          throw new RpcError(404, 'expression not found');
+          throw new RpcError(500, 'Failed to get expression QmFileStorage://unreadable: storage unavailable');
         },
       },
     });
