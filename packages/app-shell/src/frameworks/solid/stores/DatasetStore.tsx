@@ -87,7 +87,7 @@ export interface AppDataset extends Omit<DatasetRef, 'handle'> {
   handle: DatasetProxy;
 }
 
-const toApp = (ref: DatasetRef): AppDataset => ref as AppDataset;
+const toApp = (ref: DatasetRef): AppDataset => ref;
 
 /**
  * The one segment a space is addressed by — its shared id when it has one, its local id otherwise.
@@ -369,7 +369,7 @@ export function DatasetStoreProvider(props: ParentProps) {
   ): Promise<void> {
     try {
       await ExtractionPass.create(
-        handle as never,
+        handle,
         {
           outcome: pass.outcome,
           recordCount: pass.recordCount,
@@ -378,7 +378,7 @@ export function DatasetStoreProvider(props: ParentProps) {
           trigger: pass.trigger ?? 'manual',
           prompt: pass.prompt ?? '',
           response: pass.response ?? '',
-        } as never,
+        },
         { parent: { id: collectionId, relation: 'extractionPasses', entity: 'CollectionBlock' } },
       );
     } catch (error) {
@@ -691,7 +691,7 @@ export function DatasetStoreProvider(props: ParentProps) {
   async function filedUnder(handle: unknown, conversation: string): Promise<ParentRef> {
     let root = '';
     try {
-      root = (await readSpaceRoot(handle as DatasetProxy))?.root ?? '';
+      root = (await readSpaceRoot(handle))?.root ?? '';
     } catch {
       // Filed under the conversation, and asked again next pass.
     }
@@ -1261,7 +1261,7 @@ export function DatasetStoreProvider(props: ParentProps) {
     }
 
     try {
-      const handle = (await lifecycle.get(targetUuid))?.handle as DatasetProxy | undefined;
+      const handle = (await lifecycle.get(targetUuid))?.handle;
       if (!handle) return '';
       const schemas = session.backendPorts()?.schemas;
       if (!schemas?.dedupe) return '';

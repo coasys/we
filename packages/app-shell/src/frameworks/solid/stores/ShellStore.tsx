@@ -914,7 +914,7 @@ function stripLegacyThickness(placements: Record<string, FloatPlacement>): Recor
     Object.entries(placements).map(([id, placement]) => {
       if (!placement || typeof placement !== 'object' || !('thickness' in placement)) return [id, placement];
       const { thickness: _legacy, ...rest } = placement as FloatPlacement & { thickness?: number };
-      return [id, rest as FloatPlacement];
+      return [id, rest];
     }),
   );
 }
@@ -1862,7 +1862,7 @@ export function ShellStoreProvider(props: ParentProps) {
         Object.entries(merged).filter(([, value]) => value !== undefined && value !== false),
       );
       const next = { ...prev };
-      if (Object.keys(cleaned).length) next[key] = cleaned as LaneState;
+      if (Object.keys(cleaned).length) next[key] = cleaned;
       else delete next[key];
       saveLanes(next);
       return next;

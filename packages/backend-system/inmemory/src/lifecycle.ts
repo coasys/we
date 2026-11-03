@@ -546,7 +546,7 @@ export function createInMemoryBackendPorts(
         getEntityForDataset(name, dataset) as ReturnType<NonNullable<RendererDataBindings['$getEntityForDataset']>>,
       $queryAdapter: inMemoryQueryAdapter,
       $identities: {
-        get: (id) => deps.profiles().find((p) => p.did === id) as Record<string, unknown> | undefined,
+        get: (id) => deps.profiles().find((p) => p.did === id),
         fetch: (id) => void deps.fetchProfile(id),
       },
       $ephemeral: deps.ephemeral,

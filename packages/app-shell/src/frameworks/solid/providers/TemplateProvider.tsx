@@ -75,7 +75,7 @@ import { CollectionBlock, getEntity, Space } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import type { DocumentAccess } from '@we/module-shared';
 import { holdTopLayer, installTopLayerGuard } from '@we/primitives/top-layer';
-import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
+import type { TemplateSchema } from '@we/schema-shared';
 import {
   EDIT_SURFACE_ATTR,
   expandViewRoutes,
@@ -174,11 +174,11 @@ export default function TemplateProvider() {
   // different one (e.g. 'datasetStore.rootDataset' for we-root entities like AgentSettings).
   const recordActions = {
     create: async (entity: string, data: Record<string, unknown> = {}, options?: Record<string, unknown>) => {
-      const [Entity, p] = resolve(entity, options as { dataset?: string });
+      const [Entity, p] = resolve(entity, options);
       const rest = Object.fromEntries(Object.entries(options ?? {}).filter(([k]) => k !== 'dataset'));
-      const fields = await withCollectionDefaults(entity, data, p as DatasetProxy);
+      const fields = await withCollectionDefaults(entity, data, p);
       const created = await Entity.create(p, fields, Object.keys(rest).length ? rest : undefined);
-      threadResponse(p as DatasetProxy, created as { id?: string } | undefined, rest);
+      threadResponse(p, created, rest);
       return created;
     },
     update: (entity: string, id: string, data: Record<string, unknown>, options?: { dataset?: string }) => {
@@ -280,7 +280,7 @@ export default function TemplateProvider() {
   ) {
     const stamped = await withCollectionDefaults(entity, fields, perspective);
     const created = await recordModel(entity).create(perspective, stamped, Object.keys(rest).length ? rest : undefined);
-    threadResponse(perspective, created as { id?: string } | undefined, rest);
+    threadResponse(perspective, created, rest);
     return created;
   }
 
@@ -399,7 +399,7 @@ export default function TemplateProvider() {
         find: async (entity, query) => {
           if (!datasetStore.personalDataset()) return [];
           const [Model, p] = resolve(entity, { dataset: PERSONAL_DATASET });
-          const rows = (await Model.findAll(p, query as never)) as unknown as Record<string, unknown>[];
+          const rows = (await Model.findAll(p, query)) as unknown as Record<string, unknown>[];
           return rows ?? [];
         },
         update: async (entity, id, fields) => {
@@ -691,9 +691,9 @@ export default function TemplateProvider() {
 
       // A card's state is held as an arrangement of one, so it settles through the same lookup —
       // `<cardId>.status` against what the pool actually says the record's state is.
-      for (const record of (Array.isArray((given as { records?: unknown }).records)
+      for (const record of Array.isArray((given as { records?: unknown }).records)
         ? (given as { records: unknown[] }).records
-        : []) as unknown[]) {
+        : []) {
         const row = record as { id?: string; status?: unknown } | null;
         // Against the state the board draws — the run's where there is one — or a drop that moved a
         // run would be held until `status` caught up, which it may never do if nobody mirrors it.
@@ -875,7 +875,7 @@ export default function TemplateProvider() {
     // assumed, since the assertion this list makes is about *names*, not about shapes.
     let val: unknown = typeof accessor === 'function' ? (accessor as () => unknown)() : accessor;
     // Dataset accessors resolve to refs; model calls consume the handle inside.
-    if (val && typeof val === 'object' && 'handle' in val) val = (val as { handle: unknown }).handle;
+    if (val && typeof val === 'object' && 'handle' in val) val = val.handle;
     return val ?? null;
   }
 
@@ -1007,7 +1007,7 @@ export default function TemplateProvider() {
     props: { styles: { display: 'contents' } },
     get children() {
       const { meta: _meta, ...app } = templateStore.appTemplate();
-      const expanded = resolveParts(app as SchemaNode);
+      const expanded = resolveParts(app);
       return Array.isArray(expanded) ? expanded : [expanded];
     },
   };
@@ -1333,7 +1333,7 @@ export default function TemplateProvider() {
         path: SPACE_ROUTE_PATH,
         children: [{ type: '$routes' }],
         routes: [...routes, ...extras],
-      } as unknown as (typeof routes)[number],
+      },
     ]);
   });
 
@@ -1633,7 +1633,7 @@ export default function TemplateProvider() {
   // 2. Shell chrome components like InspectorPanel (in templateEditor) get context too
   return (
     <BlockHostProvider
-      dataset={() => (datasetStore.currentDataset()?.handle as never) ?? null}
+      dataset={() => datasetStore.currentDataset()?.handle ?? null}
       /*
         Who a composer here can @mention: every member of the space on screen. The host's knowledge,
         provided once, so no template names a store to get it.

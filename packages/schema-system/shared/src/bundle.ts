@@ -207,7 +207,7 @@ export function readBundle(
   if (typeof input.id !== 'string' || !ID.test(input.id))
     problem('id', 'Needs an id of lowercase letters, digits and single dashes');
   for (const key of ['version', 'name'] as const) {
-    if (typeof input[key] !== 'string' || !(input[key] as string).trim()) problem(key, `Needs a ${key}`);
+    if (typeof input[key] !== 'string' || !input[key].trim()) problem(key, `Needs a ${key}`);
   }
   for (const key of ['description', 'icon'] as const) {
     if (input[key] !== undefined && typeof input[key] !== 'string') problem(key, `${key} must be text`);
@@ -275,7 +275,7 @@ export function readBundle(
         if (brand[key] === undefined) continue;
         if (typeof brand[key] !== 'string') problem(`brand.${key}`, `${key} must be SVG source`);
         else {
-          const why = svgProblem(brand[key] as string);
+          const why = svgProblem(brand[key]);
           if (why) problem(`brand.${key}`, `The ${key} ${why}`);
         }
       }

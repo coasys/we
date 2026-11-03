@@ -99,7 +99,7 @@ export function toRendererEntity(Model: Ad4mEntityClass): RendererEntityClass {
       (Model as unknown as typeof Ad4mModel).query(
         asPerspective(dataset),
         opts as Parameters<typeof Ad4mModel.query>[1],
-      ) as unknown as ReturnType<RendererEntityClass['query']>,
+      ),
     findAll: (dataset, opts, ctl) =>
       // Called through a widened signature on purpose: `@coasys/ad4m` types `findAll` as
       // `(perspective, query?)`, with no third argument — yet the renderer passes an abort-signal
@@ -124,14 +124,8 @@ export function toRendererEntity(Model: Ad4mEntityClass): RendererEntityClass {
 export function toRendererUnion(Models: Ad4mEntityClass[]): RendererEntityClass {
   const classes = Models as unknown as (typeof Ad4mModel)[];
   return {
-    query: (dataset, opts) =>
-      Ad4mModel.queryOf(asPerspective(dataset), classes, opts as Query) as unknown as ReturnType<
-        RendererEntityClass['query']
-      >,
-    findAll: (dataset, opts, ctl) =>
-      Ad4mModel.findAllOf(asPerspective(dataset), classes, opts as Query, ctl) as unknown as ReturnType<
-        RendererEntityClass['findAll']
-      >,
+    query: (dataset, opts) => Ad4mModel.queryOf(asPerspective(dataset), classes, opts as Query),
+    findAll: (dataset, opts, ctl) => Ad4mModel.findAllOf(asPerspective(dataset), classes, opts as Query, ctl),
   };
 }
 
@@ -215,9 +209,7 @@ export function createAd4mDataBindings(
     $currentDataset: deps.currentPerspective,
     // Identity directory behind the `$agent` block, bound to AD4M's agent cache.
     $identities: {
-      get: (did) =>
-        (deps.agentFor ? deps.agentFor(did) : deps.agents().find((a) => a.did === did)) as
-          Record<string, unknown> | undefined,
+      get: (did) => (deps.agentFor ? deps.agentFor(did) : deps.agents().find((a) => a.did === did)),
       fetch: (did) => void deps.fetchAgent(did),
     },
     $queryAdapter: createAd4mQueryAdapter(deps.currentPerspectiveEntities),
@@ -398,7 +390,7 @@ export function createAd4mQueryAdapter(getEntities: () => EntityManifestEntry[])
       if (scope) {
         (opts as Record<string, unknown>).parent = resolveScopeToParent(getEntities(), scope);
       }
-      return selectAsProperties(opts) as QueryOptions;
+      return selectAsProperties(opts);
     },
   };
 }

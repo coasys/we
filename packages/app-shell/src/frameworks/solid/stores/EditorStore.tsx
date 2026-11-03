@@ -361,7 +361,7 @@ export function EditorStoreProvider(props: ParentProps) {
   function pushSnapshot() {
     const current = isReadOnly() ? (pendingTemplate() ?? deepClone(edit.template())) : deepClone(edit.template());
     setUndoStack((prev) => {
-      const next = [...prev, { type: 'template' as const, snapshot: current as TemplateSchema }];
+      const next = [...prev, { type: 'template' as const, snapshot: current }];
       return next.length > MAX_UNDO ? next.slice(next.length - MAX_UNDO) : next;
     });
     setRedoStack([]);
@@ -380,7 +380,7 @@ export function EditorStoreProvider(props: ParentProps) {
       await edit.persist();
       return;
     }
-    setPendingTemplate(deepClone(edit.template()) as TemplateSchema);
+    setPendingTemplate(deepClone<TemplateSchema>(edit.template()));
   }
 
   async function undo() {
@@ -390,9 +390,7 @@ export function EditorStoreProvider(props: ParentProps) {
     setUndoStack((prev) => prev.slice(0, -1));
 
     if (entry.type === 'template') {
-      const currentSnap = (
-        isReadOnly() ? (pendingTemplate() ?? deepClone(edit.template())) : deepClone(edit.template())
-      ) as TemplateSchema;
+      const currentSnap = isReadOnly() ? (pendingTemplate() ?? deepClone(edit.template())) : deepClone(edit.template());
       setRedoStack((prev) => [...prev, { type: 'template' as const, snapshot: currentSnap }]);
       if (isReadOnly()) {
         setPendingTemplate(entry.snapshot);
@@ -418,9 +416,7 @@ export function EditorStoreProvider(props: ParentProps) {
     setRedoStack((prev) => prev.slice(0, -1));
 
     if (entry.type === 'template') {
-      const currentSnap = (
-        isReadOnly() ? (pendingTemplate() ?? deepClone(edit.template())) : deepClone(edit.template())
-      ) as TemplateSchema;
+      const currentSnap = isReadOnly() ? (pendingTemplate() ?? deepClone(edit.template())) : deepClone(edit.template());
       setUndoStack((prev) => [...prev, { type: 'template' as const, snapshot: currentSnap }]);
       if (isReadOnly()) {
         setPendingTemplate(entry.snapshot);
@@ -951,7 +947,7 @@ export function EditorStoreProvider(props: ParentProps) {
         ...deepClone(starterTemplate),
         id: templateId,
         meta: { name, icon, description: '' },
-      } as TemplateSchema;
+      };
     } else {
       // Fork: clone current state (with any pending changes)
       const base = pendingTemplate() ?? edit.template();
@@ -959,7 +955,7 @@ export function EditorStoreProvider(props: ParentProps) {
         ...deepClone(base),
         id: templateId,
         meta: { ...base.meta, name, icon },
-      } as TemplateSchema;
+      };
     }
 
     const saveDestination = destination === 'space' ? 'space' : 'root';
@@ -983,7 +979,7 @@ export function EditorStoreProvider(props: ParentProps) {
     }
 
     // Enter template editing on the newly created template
-    enterTemplateEditing(action as 'fork' | 'fresh');
+    enterTemplateEditing(action);
   }
 
   function cancelPicker() {
@@ -1068,7 +1064,7 @@ export function EditorStoreProvider(props: ParentProps) {
     setMessages((prev) => [...prev, streamMsg]);
     setStreamingContent('<span class="shimmer">*Working on it…*</span>');
     try {
-      const before = deepClone(template) as TemplateSchema;
+      const before = deepClone<TemplateSchema>(template);
       const { result, stored: after } = await templateStore.writtenElsewhere(template, () =>
         agents.run({
           dataset: stored.dataset,
@@ -1123,7 +1119,7 @@ export function EditorStoreProvider(props: ParentProps) {
       a read-only template continues from them rather than reverting them.
     */
     const prepared = await prepareTemplateRequest({
-      template: deepClone(pendingTemplate() ?? edit.template()) as SchemaNode,
+      template: deepClone(pendingTemplate() ?? edit.template()),
       request: text,
       models: datasetStore.currentDatasetEntities(),
     });
@@ -1162,7 +1158,7 @@ export function EditorStoreProvider(props: ParentProps) {
         edit.update({
           ...authored,
           id: edit.template().id,
-        } as TemplateSchema);
+        });
         await edit.persist();
         setPendingTemplate(null);
         return prepared.accepted;
@@ -1264,7 +1260,7 @@ export function EditorStoreProvider(props: ParentProps) {
         // say they were "already hydrated on the session model", which is what made Clear History a
         // no-op on any conversation this run had started.
         for (const msg of await messagesFor(record.id)) {
-          await record.removeMessages(msg as ChatMessageRecord);
+          await record.removeMessages(msg);
           await (msg as ChatMessageRecord).delete();
         }
       } catch (err) {

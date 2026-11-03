@@ -76,8 +76,7 @@ export type FakeRow = Record<string, unknown> & { id: string; author: string };
 function matches(row: Record<string, unknown>, where: Record<string, unknown> | undefined): boolean {
   return Object.entries(where ?? {}).every(([key, value]) => {
     if (Array.isArray(value)) return value.includes(row[key]);
-    if (value && typeof value === 'object' && 'not' in (value as object))
-      return row[key] !== (value as { not: unknown }).not;
+    if (value && typeof value === 'object' && 'not' in value) return row[key] !== value.not;
     return row[key] === value;
   });
 }

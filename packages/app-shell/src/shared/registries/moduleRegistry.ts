@@ -222,7 +222,7 @@ function declaredEntities(schemas: SchemaPort, scope: ModuleScope): unknown[] {
     const byName = schemas.declare(entities.manifest, {
       moduleId: definition.manifest.id,
       predicates: entities.predicates,
-    }) as Record<string, unknown>;
+    });
     const compiled = Object.values(byName);
     compiledEntities.set(definition.manifest.id, compiled);
     registerModuleBlocks(definition, byName);
@@ -770,7 +770,7 @@ export const moduleRegistry = {
   requiredBy(schema: SchemaNode | TemplateSchema): string[] {
     const providers = this.componentProviders();
     const required = new Set<string>();
-    for (const name of collectComponentTypes(schema as SchemaNode)) {
+    for (const name of collectComponentTypes(schema)) {
       const moduleId = providers.get(name);
       if (moduleId) required.add(moduleId);
     }
@@ -904,8 +904,7 @@ export const moduleRegistry = {
     const out: Record<string, RegisteredPart> = {};
     for (const { definition } of moduleRegistry.all()) {
       for (const [name, part] of Object.entries(definition.contributes?.parts ?? {})) {
-        const normalised: ModulePart =
-          'node' in part && !('type' in part) ? (part as ModulePart) : { node: part as SchemaNode };
+        const normalised: ModulePart = 'node' in part && !('type' in part) ? part : { node: part as SchemaNode };
         out[`${definition.manifest.id}.${name}`] = {
           ...normalised,
           id: `${definition.manifest.id}.${name}`,

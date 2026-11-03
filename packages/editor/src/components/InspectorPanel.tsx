@@ -210,8 +210,8 @@ function treeChildren(node: SchemaNode): Array<{ child: SchemaNode; contextLabel
 
   if (node.children) {
     for (const child of node.children) {
-      if (typeof child === 'object' && child !== null && !Array.isArray(child) && 'type' in (child as object)) {
-        result.push({ child: child as SchemaNode });
+      if (typeof child === 'object' && child !== null && !Array.isArray(child) && 'type' in child) {
+        result.push({ child: child });
       }
     }
   }
@@ -234,10 +234,10 @@ function treeChildren(node: SchemaNode): Array<{ child: SchemaNode; contextLabel
     for (const [propName, val] of Object.entries(node.props)) {
       if (Array.isArray(val)) {
         for (const item of val) {
-          if (isPropsSchemaNode(item)) result.push({ child: item as SchemaNode, contextLabel: propName });
+          if (isPropsSchemaNode(item)) result.push({ child: item, contextLabel: propName });
         }
       } else if (isPropsSchemaNode(val)) {
-        result.push({ child: val as SchemaNode, contextLabel: propName });
+        result.push({ child: val, contextLabel: propName });
       }
     }
   }
@@ -384,7 +384,7 @@ function NodeTree() {
 
   return (
     <TreeNode
-      node={templateStore.currentTemplate as SchemaNode}
+      node={templateStore.currentTemplate}
       depth={0}
       selectedId={visualEditor.selectedId}
       hoveredId={visualEditor.hoveredId}
@@ -451,7 +451,7 @@ export function InspectorPanel() {
       const patch =
         value === '' || value === null || value === false ? { props: { [key]: null } } : { props: { [key]: value } };
       const patched = mergeNode(found.node, patch);
-      const updated = replaceNodeInTree(clone as SchemaNode, found.node, patched) as TemplateSchema;
+      const updated = replaceNodeInTree(clone, found.node, patched) as TemplateSchema;
       session.pushSnapshot();
       templateStore.updateTemplate(updated);
       schedulePersist();
@@ -469,7 +469,7 @@ export function InspectorPanel() {
       const found = findNodeById(clone, id);
       if (!found) return;
       const patched = mergeNode(found.node, { children });
-      const updated = replaceNodeInTree(clone as SchemaNode, found.node, patched) as TemplateSchema;
+      const updated = replaceNodeInTree(clone, found.node, patched) as TemplateSchema;
       session.pushSnapshot();
       templateStore.updateTemplate(updated);
       schedulePersist();
@@ -791,7 +791,7 @@ function NodeProperties(props: {
   // section. Recomputed from the live template so newly added $localState or $each
   // ancestors show up without reselecting the node.
   const scope = createMemo<ScopeGroup[]>(() =>
-    getScopeAtNode(templateStore.currentTemplate as SchemaNode, props.node.id ?? '', {
+    getScopeAtNode(templateStore.currentTemplate, props.node.id ?? '', {
       storeEntries: contextData.storeEntries,
       models: contextData.models,
     }),
@@ -2216,8 +2216,8 @@ function PropRow(props: {
     return (
       <Combobox
         options={[
-          ...(props.value !== '' ? [{ label: '(unset)', value: '' } as ComboboxOption] : []),
-          ...(props.options ?? []).map((o) => ({ label: o, value: o }) as ComboboxOption),
+          ...(props.value !== '' ? [{ label: '(unset)', value: '' }] : []),
+          ...(props.options ?? []).map((o) => ({ label: o, value: o })),
         ]}
         value={strVal()}
         size="xs"

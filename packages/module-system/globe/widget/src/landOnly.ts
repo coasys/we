@@ -54,7 +54,7 @@ export class LandOnlyImageryProvider extends UrlTemplateImageryProvider {
       canvas.height = height;
       const context = canvas.getContext('2d');
       if (!context) return tile;
-      context.drawImage(tile as CanvasImageSource, 0, 0, width, height);
+      context.drawImage(tile, 0, 0, width, height);
       // Keep only what the mask covers. The mask tile spans 2^shift tiles a side; this tile is one.
       context.globalCompositeOperation = 'destination-in';
       context.imageSmoothingEnabled = true;

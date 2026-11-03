@@ -110,7 +110,7 @@ export function readValue(value: unknown): unknown {
 function settle(value: unknown): unknown {
   const read = readValue(value);
   if (!isNamespace(read)) return read;
-  return RAW in read ? (read as CallbackNamespace)[RAW] : undefined;
+  return RAW in read ? read[RAW] : undefined;
 }
 
 function readProperty(object: unknown, property: string): unknown {
@@ -121,7 +121,7 @@ function readProperty(object: unknown, property: string): unknown {
   if (base === null || base === undefined) return undefined;
   if (typeof base === 'string') return property === 'length' ? base.length : undefined;
   if (typeof base !== 'object') return undefined;
-  return readValue(readField(base as object, property));
+  return readValue(readField(base, property));
 }
 
 /**

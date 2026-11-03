@@ -129,7 +129,7 @@ function resolvePalette() {
     most of them, and would make this break on whichever theme was chosen rather than on all of them.
   */
   const p = THEME_PRESETS[ICON_THEME].parameters as ThemeParameters;
-  const polarity = (p.polarity ?? 'light') as 'light' | 'dark';
+  const polarity = p.polarity ?? 'light';
   const floor = parseFloat(String(p.lightnessFloor ?? '0%'));
   const ceiling = parseFloat(String(p.lightnessCeiling ?? '100%'));
   const hue = p.accentHue ?? 288;

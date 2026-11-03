@@ -490,7 +490,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
           );
         }
         const data: InMemoryDataset = { tables: dataset.tables as Record<string, Row[]>, relations: engineRelations };
-        return executeQueryIR(ir, data) as AnyRow[];
+        return executeQueryIR(ir, data);
       }
 
       /**

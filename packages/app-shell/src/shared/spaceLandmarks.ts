@@ -109,6 +109,6 @@ export async function writeSpaceLandmark(
   nodeId: string,
 ): Promise<void> {
   // An untyped to-one is written as a one-element list at creation — see `createBoard`.
-  const landmark = await SpaceLandmark.create(dataset, { name, node: [nodeId] } as never);
+  const landmark = await SpaceLandmark.create(dataset, { name, node: [nodeId] });
   await Space.addRelation(dataset, spaceId, 'landmarks', landmark.id);
 }

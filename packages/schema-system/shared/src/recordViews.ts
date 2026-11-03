@@ -51,7 +51,7 @@ const TEMPLATE_ONLY = ['id', 'meta', 'author', 'templateVersion', 'schemaVersion
 function asBody(view: TemplateSchema): SchemaNode {
   const body = { ...view } as Record<string, unknown>;
   for (const key of TEMPLATE_ONLY) delete body[key];
-  return body as SchemaNode;
+  return body;
 }
 
 /**

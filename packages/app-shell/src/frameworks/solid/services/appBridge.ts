@@ -138,9 +138,9 @@ export function startAppBridge(deps: AppBridgeDeps) {
     if (port === undefined || token === undefined) return;
 
     // Send to ALL mounted we-iframe elements (there may be multiple apps)
-    const weIframes = document.querySelectorAll('we-iframe') as NodeListOf<
+    const weIframes = document.querySelectorAll<
       HTMLElement & { postMessage: (data: Record<string, unknown>, origin: string) => void }
-    >;
+    >('we-iframe');
 
     // On desktop, pass the raw port/token so the embedded app can open its own WebSocket.
     // On web, the embedded app cannot reach localhost directly (browser PNA enforcement),

@@ -83,7 +83,7 @@ export function mergeOverrides(stored: ThemeOverrides, given: Record<string, unk
   for (const [key, value] of Object.entries(given)) {
     if (value === null) delete next[key];
     else if (NESTED.has(key) && isObject(value) && isObject(next[key])) {
-      const inner: Record<string, unknown> = { ...(next[key] as Record<string, unknown>) };
+      const inner: Record<string, unknown> = { ...next[key] };
       for (const [k, v] of Object.entries(value)) {
         if (v === null) delete inner[k];
         else inner[k] = v;
@@ -91,7 +91,7 @@ export function mergeOverrides(stored: ThemeOverrides, given: Record<string, unk
       next[key] = inner;
     } else next[key] = value;
   }
-  return next as ThemeOverrides;
+  return next;
 }
 
 /** Why the settings cannot be saved, or undefined when they can. */

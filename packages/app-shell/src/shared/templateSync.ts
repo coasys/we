@@ -18,7 +18,7 @@ import type { TemplateSchema } from '@we/schema-shared';
  */
 export function sameTemplateContent(a: TemplateSchema, b: TemplateSchema): boolean {
   const bare = (t: TemplateSchema) => {
-    const { templateVersion: _v, author: _a, _fromSpace: _s, ...rest } = t as TemplateSchema & { author?: string };
+    const { templateVersion: _v, author: _a, _fromSpace: _s, ...rest } = t;
     return JSON.stringify(rest);
   };
   return bare(a) === bare(b);

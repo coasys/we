@@ -49,7 +49,7 @@ export function writePatch(
       block[key] = value;
     }
   }
-  return { [side]: block } as Partial<ThemeOverrides>;
+  return { [side]: block };
 }
 
 /**
@@ -70,14 +70,14 @@ export function sidesPatch(theme: ThemeOverrides, choice: SidesChoice): Partial<
   const current = sidesOf(theme);
   if (choice === current) return undefined;
   if (choice === 'both') {
-    return { [other]: { polarity: other, ...rangeForPolarity(other, theme.themeName) } } as Partial<ThemeOverrides>;
+    return { [other]: { polarity: other, ...rangeForPolarity(other, theme.themeName) } };
   }
   if (current === 'both') {
-    if (choice === base) return { [other]: undefined } as Partial<ThemeOverrides>;
+    if (choice === base) return { [other]: undefined };
     const folded = withThemeSide(theme, choice);
     const patch: Record<string, unknown> = { ...folded, light: undefined, dark: undefined };
     for (const key of Object.keys(theme)) if (!(key in folded)) patch[key] = undefined;
-    return patch as Partial<ThemeOverrides>;
+    return patch;
   }
   return {
     polarity: choice,

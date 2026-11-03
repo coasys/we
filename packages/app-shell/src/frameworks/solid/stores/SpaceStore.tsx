@@ -1862,7 +1862,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     space: SpaceInput,
     location?: Partial<LocationBlock>,
   ): Promise<Space> {
-    const spaceRecord = await Space.create(dataset, space as Partial<Space>);
+    const spaceRecord = await Space.create(dataset, space);
     if (location) {
       const locationRecord = await LocationBlock.create(dataset, location);
       await spaceRecord.setLocation(locationRecord);
@@ -1914,7 +1914,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       ...defaults,
       ...(starter?.input !== undefined && { autoExtract: starter.input }),
     });
-    await space.setRoot({ id: root.id } as CollectionBlock);
+    await space.setRoot({ id: root.id });
 
     const target = {
       rootId: root.id,
@@ -1928,8 +1928,8 @@ export function SpaceStoreProvider(props: ParentProps) {
         if (!Model) throw new Error(`no ${entity} in this space's schema`);
         const made = await Model.create(
           dataset,
-          fields as never,
-          (parentId ? { parent: { id: parentId, relation: 'children', entity: 'CollectionBlock' } } : {}) as never,
+          fields,
+          parentId ? { parent: { id: parentId, relation: 'children', entity: 'CollectionBlock' } } : {},
         );
         return made.id;
       },
@@ -1974,7 +1974,7 @@ export function SpaceStoreProvider(props: ParentProps) {
 
       // Create the dataset
       const spaceRef = await lifecycle.create(name);
-      const spaceHandle = spaceRef.handle as DatasetProxy;
+      const spaceHandle = spaceRef.handle;
       if (access === 'shared' && !lifecycle.publish) throw new Error('This backend cannot publish shared datasets.');
 
       // Register SDNA models (full set, same as switchDataset uses)
@@ -2170,7 +2170,7 @@ export function SpaceStoreProvider(props: ParentProps) {
 
     const spaceRecord = await addSpaceToDataset(ds.handle, spaceData);
     // A space made from a foreign perspective is still a new WE space, so it gets the same structure.
-    await writeSpaceStructure(ds.handle as DatasetProxy, spaceRecord, starter);
+    await writeSpaceStructure(ds.handle, spaceRecord, starter);
 
     if (!mySpaces().some((s) => s.uuid === spaceRecord.uuid)) {
       setMySpaces((prev) => [...prev, spaceRecord]);
@@ -2237,7 +2237,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    * space was joined, and none of the things that make a joined space usable had happened.
    */
   async function finishJoin(joinedRef: DatasetRef, focus: boolean): Promise<void> {
-    const joinedHandle = joinedRef.handle as DatasetProxy;
+    const joinedHandle = joinedRef.handle;
 
     // A join returns before the dataset has synced, and until it has it holds none of the
     // space's data — the creator's schema included. Everything below reads it, so wait.
@@ -2753,9 +2753,9 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   function broadcastPerspectiveNavigation(communityId: string): void {
-    const iframes = document.querySelectorAll('we-iframe') as NodeListOf<
-      HTMLElement & { postMessage: (data: unknown, origin: string) => void }
-    >;
+    const iframes = document.querySelectorAll<HTMLElement & { postMessage: (data: unknown, origin: string) => void }>(
+      'we-iframe',
+    );
     iframes.forEach((el) => {
       if (typeof el.postMessage === 'function') {
         el.postMessage({ type: 'NAVIGATE_PERSPECTIVE', communityId }, '*');
@@ -2794,7 +2794,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     await Space.update(ds.handle, spaceRecord.id, { [field]: fileData });
     // Only the current space has a live subscription refreshing it; every other row in the spaces
     // list is served from this cache, so without it the change would not appear until a reload.
-    updateSpaceInCache(ds, { [field]: fileData } as never);
+    updateSpaceInCache(ds, { [field]: fileData });
     if (spaceRecord.discovery === 'listed') {
       const globalDs = datasetStore.globalDataset();
       if (globalDs) {
@@ -2825,7 +2825,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     await spaceRecord.save();
     // See updateSpaceImage — only the current space is refreshed by a live subscription.
     const { location: _location, ...scalars } = updates;
-    updateSpaceInCache(ds, scalars as never);
+    updateSpaceInCache(ds, scalars);
 
     if (updates.location !== undefined) {
       if (updates.location === null) {
@@ -3029,10 +3029,10 @@ export function SpaceStoreProvider(props: ParentProps) {
         At most one reaction per person per type is what "upsert" means here, so the write enforces
         it rather than assuming it.
       */
-      const mine = (await Signal.findAll(p, {
+      const mine = await Signal.findAll(p, {
         parent: { id: nodeId, relation: 'signals' },
         where: { signalTypeId, author: myDid },
-      })) as Signal[];
+      });
 
       /*
         Withdrawing a reaction removes the record; changing one edits it in place.
@@ -3404,7 +3404,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       // Every space predates this entity, so none of them have its shape installed. `ensure` is the
       // diff-first idempotent path — a read in the common case — and the same step `loadShapes`
       // takes for exactly this reason.
-      await ports.ensure(dataset, TaskState as never);
+      await ports.ensure(dataset, TaskState);
       const records = await TaskState.findAll(dataset);
       if (datasetStore.currentDataset()?.id !== uuid) return; // navigated away while loading
       applyTaskStates(records);
@@ -3424,7 +3424,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         id: r.id,
         name: r.name || r.slug,
         slug: r.slug || deriveSlug(r.name || ''),
-        semantic: (r.semantic || 'open') as TaskStateView['semantic'],
+        semantic: r.semantic || 'open',
         color: r.color || '',
         icon: r.icon || '',
         retired: Boolean(r.retired),
@@ -3765,7 +3765,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       toastService.error('Could not save this change for the space.');
       throw error;
     }
-    updateSpaceInCache(ds, { archivedWorkflows: archivedWorkflowsJson } as never);
+    updateSpaceInCache(ds, { archivedWorkflows: archivedWorkflowsJson });
     setCurrentSpace((prev) =>
       prev
         ? (Object.assign(Object.create(Object.getPrototypeOf(prev) as object | null), prev, {
@@ -3813,7 +3813,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       toastService.error('Could not save this change for the space.');
       throw error;
     }
-    updateSpaceInCache(ds, { taskWorkflowRule: next } as never);
+    updateSpaceInCache(ds, { taskWorkflowRule: next });
     setCurrentSpace((prev) =>
       prev
         ? (Object.assign(Object.create(Object.getPrototypeOf(prev) as object | null), prev, {
@@ -4127,7 +4127,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     setInvolvementTypesLoaded(false);
     try {
       // Every space predates the entity; `ensure` is the diff-first install `loadTaskStates` uses.
-      await ports.ensure(dataset, InvolvementType as never);
+      await ports.ensure(dataset, InvolvementType);
       const records = (await InvolvementType.findAll(dataset)) as InvolvementType[];
       if (datasetStore.currentDataset()?.id !== uuid) return;
       const stamp = (r: InvolvementType) =>
@@ -4139,7 +4139,7 @@ export function SpaceStoreProvider(props: ParentProps) {
             id: r.id,
             name: r.name || r.slug,
             slug: r.slug || deriveSlug(r.name || ''),
-            semantic: (INVOLVEMENT_SEMANTICS.includes(r.semantic) ? r.semantic : 'responsible') as InvolvementSemantic,
+            semantic: INVOLVEMENT_SEMANTICS.includes(r.semantic) ? r.semantic : 'responsible',
             reflexive: Boolean(r.reflexive),
             appliesTo: parseAppliesTo(r.appliesTo),
             icon: r.icon || '',
@@ -4678,7 +4678,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   const settingLevels = createMemo<LevelValues>(() => {
     const uuid = datasetStore.currentDataset()?.id;
     return {
-      deployment: (getSeed().settings ?? {}) as LevelValues['deployment'],
+      deployment: getSeed().settings ?? {},
       agent: parseSettings(datasetStore.agentSettings()?.moduleSettings, 'AgentSettings.moduleSettings'),
       space: parseSettings(currentSpace()?.moduleSettings, 'Space.moduleSettings'),
       'agent-in-space': parseSettings(preferenceFor(uuid)?.moduleSettings, 'SpacePreference.moduleSettings'),
@@ -4738,13 +4738,13 @@ export function SpaceStoreProvider(props: ParentProps) {
     const raw = (space as unknown as { moduleSettings?: string }).moduleSettings;
     const next = value === undefined ? clearSetting(raw, group, key) : writeSetting(raw, group, key, value);
     try {
-      await Space.update(ds.handle, space.id, { moduleSettings: next } as Partial<Space>);
+      await Space.update(ds.handle, space.id, { moduleSettings: next });
     } catch (error) {
       console.error('SpaceStore: could not persist a module setting', error);
       toastService.error('Could not save this change for the space.');
       throw error;
     }
-    updateSpaceInCache(ds, { moduleSettings: next } as never);
+    updateSpaceInCache(ds, { moduleSettings: next });
     if (!isCurrent(ds)) return;
     setCurrentSpace((prev) =>
       prev
@@ -4766,7 +4766,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (!uuid) return;
     const raw = preferenceFor(uuid)?.moduleSettings;
     const next = value === undefined ? clearSetting(raw, group, key) : writeSetting(raw, group, key, value);
-    await updateSpacePreference(uuid, { moduleSettings: next } as Partial<SpacePreference>);
+    await updateSpacePreference(uuid, { moduleSettings: next });
   }
 
   /** The same, for this agent everywhere. Also private, and also the root dataset. */
@@ -5515,7 +5515,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     const next = new Set(mutedModulesFor(uuid));
     if (visible) next.delete(moduleId);
     else next.add(moduleId);
-    await updateSpacePreference(uuid, { mutedModules: JSON.stringify([...next]) } as Partial<SpacePreference>);
+    await updateSpacePreference(uuid, { mutedModules: JSON.stringify([...next]) });
   }
 
   /**
@@ -5628,7 +5628,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   async function setSpaceTemplateOverride(templateId: string, spaceUuid?: string): Promise<void> {
     const uuid = spaceUuid ?? datasetStore.currentDataset()?.id;
     if (!uuid) return;
-    await updateSpacePreference(uuid, { templateId } as Partial<SpacePreference>);
+    await updateSpacePreference(uuid, { templateId });
     if (datasetStore.currentDataset()?.id !== uuid) return;
     const template = templateStore.allTemplates().find((t) => t.id === resolveTemplateFor(uuid));
     if (template) templateStore.replaceTemplate(template);
@@ -5638,7 +5638,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   async function setSpaceThemeOverride(themeId: string, spaceUuid?: string): Promise<void> {
     const uuid = spaceUuid ?? datasetStore.currentDataset()?.id;
     if (!uuid) return;
-    await updateSpacePreference(uuid, { themeId } as Partial<SpacePreference>);
+    await updateSpacePreference(uuid, { themeId });
     if (datasetStore.currentDataset()?.id !== uuid) return;
     const effective = resolveThemeFor(uuid);
     // Explicit: this is only reached by someone choosing a theme, so it outranks an editing
@@ -5866,7 +5866,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       toastService.error('Could not save this change for the space.');
       throw error;
     }
-    updateSpaceInCache(ds, { autoInterpret: enabled } as never);
+    updateSpaceInCache(ds, { autoInterpret: enabled });
     if (!isCurrent(ds)) return;
     setCurrentSpace((prev) =>
       prev
@@ -5900,7 +5900,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       toastService.error('Could not save this change for the space.');
       throw error;
     }
-    updateSpaceInCache(ds, { threadMode } as never);
+    updateSpaceInCache(ds, { threadMode });
     if (!isCurrent(ds)) return;
     // A new instance, the `setExtractionTarget` idiom: `currentSpace` is a plain signal and Solid
     // dedupes on `===`, so handing back the object just written notifies nothing and every thread
@@ -5937,7 +5937,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       toastService.error('Could not save this change for the space.');
       throw error;
     }
-    updateSpaceInCache(ds, { extractionTargets: extractionTargetsJson } as never);
+    updateSpaceInCache(ds, { extractionTargets: extractionTargetsJson });
     if (!isCurrent(ds)) return;
     // Republished as a *new* instance, the `setModuleEnabled` idiom: `currentSpace` is a plain
     // signal and Solid dedupes on `===`, so handing back the object just written through notifies
@@ -5974,7 +5974,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       // the setting is a community decision, and the next member to open the page sees the old one.
       throw error;
     }
-    updateSpaceInCache(ds, { enabledModules: enabledModulesJson } as never);
+    updateSpaceInCache(ds, { enabledModules: enabledModulesJson });
     if (!isCurrent(ds)) return;
     // Republished as a *new* instance rather than the one just written through. `currentSpace` is a
     // plain signal, so Solid dedupes on `===` — handing back the same object (which is what mutating
@@ -6064,7 +6064,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       toastService.error('Could not save this change for the space.');
       throw error;
     }
-    updateSpaceInCache(ds, { enabledViews: enabledViewsJson } as never);
+    updateSpaceInCache(ds, { enabledViews: enabledViewsJson });
     if (!isCurrent(ds)) return;
     // A new instance, for the reason `setModuleEnabled` spells out: `currentSpace` dedupes on `===`,
     // so re-setting a mutated object notifies nothing and the nav strip keeps its old sections.
@@ -6090,7 +6090,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     const next = new Set(hiddenViewsFor(uuid));
     if (visible) next.delete(viewId);
     else next.add(viewId);
-    await updateSpacePreference(uuid, { hiddenViews: JSON.stringify([...next]) } as Partial<SpacePreference>);
+    await updateSpacePreference(uuid, { hiddenViews: JSON.stringify([...next]) });
   }
 
   // Subscribe to current space data reactively whenever the dataset changes.
@@ -6228,7 +6228,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       if (template) templateStore.replaceTemplate(template);
     }
     // Keep mySpaces cache in sync so template pre-loading uses the fresh defaultTemplateId
-    updateSpaceInCache(ds, { defaultTemplateId: templateId } as never);
+    updateSpaceInCache(ds, { defaultTemplateId: templateId });
     const [space] = await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) });
     if (space) await Space.update(ds.handle, space.id, { defaultTemplateId: templateId });
   }
@@ -6237,7 +6237,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     const ds = targetDataset(spaceUuid);
     if (!ds) return;
     if (isCurrent(ds)) setSpaceDefaultThemeId(themeId);
-    updateSpaceInCache(ds, { defaultThemeId: themeId } as never);
+    updateSpaceInCache(ds, { defaultThemeId: themeId });
     if (isCurrent(ds)) explainHiddenSpaceTheme();
     const [space] = await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) });
     if (space) await Space.update(ds.handle, space.id, { defaultThemeId: themeId });

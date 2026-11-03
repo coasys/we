@@ -33,10 +33,10 @@ function forEachPropsNode(node: SchemaNode, fn: (child: SchemaNode) => void): vo
     if (typeof val !== 'object' || val === null) continue;
     if (Array.isArray(val)) {
       for (const item of val) {
-        if (isPropsSchemaNode(item)) fn(item as SchemaNode);
+        if (isPropsSchemaNode(item)) fn(item);
       }
     } else if (isPropsSchemaNode(val)) {
-      fn(val as SchemaNode);
+      fn(val);
     }
   }
 }
@@ -53,7 +53,7 @@ function forEachPropsNode(node: SchemaNode, fn: (child: SchemaNode) => void): vo
  */
 function forEachPanelNode(node: SchemaNode, fn: (child: SchemaNode) => void): void {
   for (const panel of panelsOf(node) ?? []) {
-    if (isSchemaChild(panel.node)) fn(panel.node as SchemaNode);
+    if (isSchemaChild(panel.node)) fn(panel.node);
   }
 }
 
@@ -90,7 +90,7 @@ export function collectComponentTypes(schema: SchemaNode): Set<string> {
       }
     }
     if (node.routes) {
-      for (const route of node.routes) visit(route as SchemaNode);
+      for (const route of node.routes) visit(route);
     }
     if (node.slots) {
       for (const slotNode of Object.values(node.slots)) visit(slotNode);
@@ -120,7 +120,7 @@ export function forEachNode(schema: SchemaNode, fn: (node: SchemaNode, parent: S
       }
     }
     if (node.routes) {
-      for (const route of node.routes) into(route as SchemaNode);
+      for (const route of node.routes) into(route);
     }
     if (node.slots) {
       for (const slotNode of Object.values(node.slots)) into(slotNode);
@@ -248,7 +248,7 @@ export function findNodeById(schema: SchemaNode, targetId: string): FindNodeResu
     }
     if (node.routes) {
       for (let i = 0; i < node.routes.length; i++) {
-        const result = search(node.routes[i] as SchemaNode, node, 'routes', i);
+        const result = search(node.routes[i], node, 'routes', i);
         if (result) return result;
       }
     }
@@ -269,7 +269,7 @@ export function findNodeById(schema: SchemaNode, targetId: string): FindNodeResu
             }
           }
         } else if (isPropsSchemaNode(val)) {
-          const result = search(val as SchemaNode, node, `props.${propName}`, 0);
+          const result = search(val, node, `props.${propName}`, 0);
           if (result) return result;
         }
       }
@@ -305,7 +305,7 @@ export function findNodeById(schema: SchemaNode, targetId: string): FindNodeResu
       for (let i = 0; i < panels.length; i++) {
         const panelNode = panels[i].node;
         if (!isSchemaChild(panelNode)) continue;
-        const result = search(panelNode as SchemaNode, node, `meta.panels.${i}`, 0);
+        const result = search(panelNode, node, `meta.panels.${i}`, 0);
         if (result) return result;
       }
     }
@@ -410,12 +410,12 @@ export function insertChild(
     // Append
     arr.push(node);
   } else if ('after' in position) {
-    const sibIdx = arr.findIndex((c) => (c as SchemaNode).id === position.after);
+    const sibIdx = arr.findIndex((c) => c.id === position.after);
     if (sibIdx === -1)
       return { error: `Sibling id "${position.after}" not found in ${arrayKey} of node "${parentId}".` };
     arr.splice(sibIdx + 1, 0, node);
   } else {
-    const sibIdx = arr.findIndex((c) => (c as SchemaNode).id === position.before);
+    const sibIdx = arr.findIndex((c) => c.id === position.before);
     if (sibIdx === -1)
       return { error: `Sibling id "${position.before}" not found in ${arrayKey} of node "${parentId}".` };
     arr.splice(sibIdx, 0, node);
@@ -447,7 +447,7 @@ export function removeChild(
   const arr = parent[arrayKey] as SchemaNode[] | undefined;
   if (!arr) return { error: `Node "${parentId}" has no ${arrayKey} array.` };
 
-  const idx = arr.findIndex((c) => (c as SchemaNode).id === childId);
+  const idx = arr.findIndex((c) => c.id === childId);
   if (idx === -1) return { error: `Child id "${childId}" not found in ${arrayKey} of node "${parentId}".` };
 
   arr.splice(idx, 1);

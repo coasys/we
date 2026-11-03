@@ -131,7 +131,7 @@ export function replaceNodeInTree(schema: SchemaNode, target: SchemaNode, replac
     const nextPanels = panels.map((panel) => {
       const node = panel.node;
       if (!isSchemaChild(node)) return panel;
-      const replaced = node === target ? replacement : replaceNodeInTree(node as SchemaNode, target, replacement);
+      const replaced = node === target ? replacement : replaceNodeInTree(node, target, replacement);
       if (replaced === node) return panel;
       changed = true;
       return { ...panel, node: replaced };

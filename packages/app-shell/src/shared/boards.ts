@@ -240,7 +240,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
             ...(options?.gathers ? { gathers: [options.gathers] } : {}),
             // In the order made, which is the community's order — see the note above on why here.
             ...(columns.length ? { children: columns } : {}),
-          } as never,
+          },
           { batchId: tx.batchId },
         );
         if (parentId) {
@@ -284,13 +284,13 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
       if (anchorId) {
         const anchor = await CollectionBlock.findOne(p, { where: { id: anchorId }, include: { board: true } });
         if (!anchor) return '';
-        const existing = anchor.board as unknown as CollectionBlock | undefined;
+        const existing = anchor.board;
         if (existing?.id) return existing.id;
         const made = await createBoard(title?.trim() || 'This call', anchorId, {
           dataset: datasetUri,
           gathers: anchorId,
         });
-        if (made) await anchor.setBoard({ id: made } as CollectionBlock);
+        if (made) await anchor.setBoard({ id: made });
         return made;
       }
 
@@ -354,7 +354,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
         include: { board: true },
       });
       if (!anchor) return '';
-      const existing = anchor.board as unknown as CollectionBlock | undefined;
+      const existing = anchor.board;
       if (existing?.id) return existing.id;
       const held = ids(anchor.children);
 
@@ -845,17 +845,21 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
         for this one straight away, so it appears where the rest of the waiting work does, saying so.
       */
       const asking = Boolean(column.slug && workflow?.enabled() && workflow.needsAgreement(column.slug));
-      const initial = asking && workflow ? workflow.entryFor(column.slug!) : column.slug;
+      const initial = asking && workflow ? workflow.entryFor(column.slug) : column.slug;
       let taskId = '';
       await runEntityTransaction(p, async (tx) => {
-        const task = await Task.create(p, { title: title.trim(), ...(initial ? { status: initial } : {}) }, {
-          ...(anchorId ? { parent: { id: anchorId, relation: 'children', entity: 'CollectionBlock' } } : {}),
-          batchId: tx.batchId,
-        } as never);
+        const task = await Task.create(
+          p,
+          { title: title.trim(), ...(initial ? { status: initial } : {}) },
+          {
+            ...(anchorId ? { parent: { id: anchorId, relation: 'children', entity: 'CollectionBlock' } } : {}),
+            batchId: tx.batchId,
+          },
+        );
         taskId = (task as { id: string }).id;
         if (!asking) await CollectionBlock.addRelation(p, column.id, 'arranges', taskId, tx.batchId);
       });
-      if (asking && workflow && taskId && initial) await workflow.move(taskId, initial, column.slug!);
+      if (asking && workflow && taskId && initial) await workflow.move(taskId, initial, column.slug);
     } catch (error) {
       console.error('SpaceStore: could not add that task', error);
       notify('Could not add that task');

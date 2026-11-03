@@ -308,6 +308,7 @@ export default [
             '@typescript-eslint/no-unsafe-call': 'error',
             '@typescript-eslint/no-unsafe-member-access': 'error',
             '@typescript-eslint/no-unsafe-return': 'error',
+            '@typescript-eslint/no-unnecessary-type-assertion': 'error',
             /*
               Off on purpose. The opaque handle types (`DatasetHandle`, `DatasetProxy`, `BlockDataset`,
               `ComposedDocument`) are `unknown` so that no package can look inside one, which makes

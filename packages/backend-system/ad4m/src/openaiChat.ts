@@ -95,7 +95,7 @@ export async function readChatStream(
       // An event that is valid JSON but not an object (`null`, a bare string) carries no delta.
       if (!parsed || typeof parsed !== 'object') return;
       // The streaming chat-completions wire format; every field read below is optional-chained.
-      chunk = parsed as typeof chunk;
+      chunk = parsed;
     } catch {
       // One unreadable event costs one delta; aborting would cost the whole reply.
       return;

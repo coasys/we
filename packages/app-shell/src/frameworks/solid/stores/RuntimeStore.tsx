@@ -41,7 +41,6 @@ import { useSessionStore } from '@solid/stores/SessionStore';
 import { useShellStore } from '@solid/stores/ShellStore';
 import type {
   AiModelKind,
-  AiModelStatus,
   AiTask,
   AuthorizedApp,
   ConsentRequest,
@@ -634,7 +633,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
     const byId = new Map(statuses);
     setAiModels((models) =>
       models.map((model) => {
-        const status = byId.get(model.id) as AiModelStatus | undefined;
+        const status = byId.get(model.id);
         return status ? describeModel(model, status) : model;
       }),
     );

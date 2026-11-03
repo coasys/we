@@ -102,7 +102,7 @@ export function findNodeChain(root: SchemaNode, nodeId: string): SchemaNode[] | 
     }
     if (node.routes) {
       for (const route of node.routes) {
-        const found = search(route as SchemaNode, chain);
+        const found = search(route, chain);
         if (found) return found;
       }
     }
@@ -183,7 +183,7 @@ function inferItemProperties(
 ): { properties?: string[]; hint?: string } {
   if (Array.isArray(items)) {
     const first: unknown = items.find((i) => typeof i === 'object' && i !== null && !Array.isArray(i));
-    if (first) return { properties: Object.keys(first as object), hint: 'literal list' };
+    if (first) return { properties: Object.keys(first), hint: 'literal list' };
     return {};
   }
   if (typeof items !== 'object' || items === null) return {};

@@ -74,7 +74,7 @@ export interface CustomElementsManifest {
 function asManifest(value: unknown): CustomElementsManifest {
   if (typeof value !== 'object' || value === null) return {};
   const modules = (value as { modules?: unknown }).modules;
-  return Array.isArray(modules) ? (value as CustomElementsManifest) : {};
+  return Array.isArray(modules) ? value : {};
 }
 
 /**

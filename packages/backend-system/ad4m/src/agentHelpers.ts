@@ -152,7 +152,7 @@ export async function getProfile(did: string, backendClient: unknown): Promise<A
   try {
     const agentPerspective = await client.agent.byDID(cleanedDid);
     if (!agentPerspective?.perspective?.links) return result;
-    const links = agentPerspective.perspective.links as LinkExpression[];
+    const links = agentPerspective.perspective.links;
 
     // Parse WE format (we://profile source)
     const weLinks = links.filter((l) => l.data.source === WE_PROFILE_SOURCE);

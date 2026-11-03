@@ -346,7 +346,7 @@ async function preUploadFileAssets(perspective: BlockDataset, blocks: ContentBlo
       }
     }
     if (isCollectionBlock(patched)) {
-      (patched as CollectionContentBlock).content = await preUploadFileAssets(perspective, patched.content ?? []);
+      patched.content = await preUploadFileAssets(perspective, patched.content ?? []);
     }
     out.push(patched);
   }
@@ -394,10 +394,7 @@ export async function resolveExpressionAddresses(
       }
     }
     if (isCollectionBlock(patched)) {
-      (patched as CollectionContentBlock).content = await resolveExpressionAddresses(
-        perspective,
-        patched.content ?? [],
-      );
+      patched.content = await resolveExpressionAddresses(perspective, patched.content ?? []);
     }
     out.push(patched);
   }
@@ -437,7 +434,7 @@ function findByKey(blocks: readonly ContentBlock[], key: string): ContentBlock[]
   for (const block of blocks) {
     if (block._key === key) return [block];
     if (isCollectionBlock(block)) {
-      const inner = findByKey((block as CollectionContentBlock).content ?? [], key);
+      const inner = findByKey(block.content ?? [], key);
       if (inner) return inner;
     }
   }
@@ -447,11 +444,7 @@ function findByKey(blocks: readonly ContentBlock[], key: string): ContentBlock[]
 function withoutKeys(blocks: readonly ContentBlock[]): ContentBlock[] {
   return blocks.map((block) => {
     const { _key: _dropped, ...rest } = block;
-    return (
-      isCollectionBlock(block)
-        ? { ...rest, content: withoutKeys((block as CollectionContentBlock).content ?? []) }
-        : rest
-    ) as ContentBlock;
+    return isCollectionBlock(block) ? { ...rest, content: withoutKeys(block.content ?? []) } : rest;
   });
 }
 
@@ -975,7 +968,7 @@ export async function reconcileBlocks(
         }
       }
       if (!model) {
-        model = (await registration.model.create(perspective, data, { batchId: tx.batchId })) as BlockRecord;
+        model = await registration.model.create(perspective, data, { batchId: tx.batchId });
       }
       block._key = model.id;
       if (uploaded) uploaded._key = model.id;

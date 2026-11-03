@@ -289,7 +289,7 @@ export function toPortableText(blocks: readonly ContentBlock[]): ContentBlock[] 
         ...(marks.length ? { marks } : {}),
         children: projected.children,
         markDefs: projected.markDefs,
-      } as TextContentBlock;
+      };
     }
     if (isCollectionBlock(block)) {
       return { ...block, _key: key, content: toPortableText(block.content ?? []) };

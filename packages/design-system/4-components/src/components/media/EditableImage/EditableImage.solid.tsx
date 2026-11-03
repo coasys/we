@@ -107,7 +107,7 @@ export function EditableImage(allProps: EditableImageProps) {
     dsProps.smUpProps ||
     dsProps.mdUpProps ||
     dsProps.lgUpProps;
-  const { style, attrs, checkSurface } = useStateProps(baseStyle, dsProps as EditableImageProps, 'column');
+  const { style, attrs, checkSurface } = useStateProps(baseStyle, dsProps, 'column');
 
   /**
    * Straight to the OS file picker. Clicking used to open a modal whose only content was a

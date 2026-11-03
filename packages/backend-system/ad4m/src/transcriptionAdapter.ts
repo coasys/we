@@ -208,7 +208,7 @@ export function createAd4mTranscriptionPort(
           name: OFFERED_MODEL.name,
           local: { fileName: OFFERED_PRESET },
           modelType: TRANSCRIPTION_MODEL_TYPE,
-        } as Parameters<Ad4mClient['ai']['addModel']>[0])
+        })
         .catch((cause: unknown) => {
           refused = cause;
         });

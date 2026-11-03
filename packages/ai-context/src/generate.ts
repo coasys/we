@@ -122,7 +122,7 @@ function mergeStoreEntries(
     const hand = byName.get(store.name);
     if (!hand) {
       undocumented.push(store.name);
-      return store as StoreEntry;
+      return store;
     }
 
     const state: StoreEntry['state'] = {};

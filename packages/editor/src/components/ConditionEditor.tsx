@@ -234,7 +234,7 @@ function ConditionRow(props: {
         ? cmp.right?.kind === 'list'
           ? cmp.right
           : ({ kind: 'list', value: [] } as ConditionOperand)
-        : (cmp.right ?? ({ kind: 'literal', value: '' } as ConditionOperand));
+        : (cmp.right ?? { kind: 'literal', value: '' });
     props.onChange({ type: 'comparison', operator, left: cmp.left, right });
   };
 

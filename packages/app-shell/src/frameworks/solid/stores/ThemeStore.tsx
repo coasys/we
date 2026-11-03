@@ -3,7 +3,6 @@ import { readDeviceApp } from '@shared/bundles/deviceApp';
 import { offeredInPickers } from '@shared/devOnlyOffers';
 import { appTemplateRegistry } from '@shared/registries/appTemplates';
 import { seedBundleAppId, seedBundleApps } from '@shared/registries/seedBundles';
-import type { ThemeKey } from '@shared/registries/themeRegistry';
 import { devOnlyThemeIds, isValidThemeKey, themeRegistry } from '@shared/registries/themeRegistry';
 import { getSeed } from '@shared/seedRegistry';
 import { explain } from '@shared/userMessage';
@@ -78,7 +77,7 @@ function parseDisplay(raw: string | null | undefined): DisplayPreferences {
   if (!raw) return {};
   try {
     const parsed: unknown = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' ? (parsed as DisplayPreferences) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
   } catch {
     return {};
   }
@@ -295,7 +294,7 @@ export interface ThemeStore {
 const ThemeContext = createContext<ThemeStore>();
 
 function registryToThemeData(key: string): ThemeData {
-  const t = themeRegistry[key as ThemeKey] ?? { name: key, icon: 'palette', css: null, overrides: null };
+  const t = themeRegistry[key] ?? { name: key, icon: 'palette', css: null, overrides: null };
   return {
     id: key,
     slug: key,
@@ -1625,7 +1624,7 @@ export function ThemeStoreProvider(props: ParentProps) {
         existingRecord.css = sourceCss ? asFileField(encodeToFileData(sourceCss, 'theme.css', 'text/css')) : null;
         await existingRecord.save();
         const updated = modelToThemeData(existingRecord);
-        setInstalledThemes((prev) => prev.map((t) => (t.id === existingRecord!.id ? updated : t)));
+        setInstalledThemes((prev) => prev.map((t) => (t.id === existingRecord.id ? updated : t)));
         toastService.success(`Theme "${source.name}" updated to v${source.version}`);
         return;
       }

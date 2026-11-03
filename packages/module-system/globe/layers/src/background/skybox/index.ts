@@ -103,7 +103,7 @@ export const skyboxLayer: LayerKind<SkyboxLayerOptions> = {
       context.onCleanup(() => {
         cancelled = true;
         if (viewer.scene.skyBox === current) {
-          viewer.scene.skyBox = undefined as unknown as SkyBox;
+          viewer.scene.skyBox = undefined;
         }
       });
       // TODO: brightness is not yet implemented, needs custom shader
@@ -152,7 +152,7 @@ export const skyboxLayer: LayerKind<SkyboxLayerOptions> = {
         };
       }
 
-      const faces = Object.entries(sources) as [string, string][];
+      const faces = Object.entries<string>(sources);
       Promise.all(faces.map(([face, url]) => loadFace(url).then((image) => [face, image] as const)))
         .then((loaded) => {
           if (cancelled || viewer.isDestroyed() || viewer.scene.skyBox !== current) return;

@@ -6,7 +6,6 @@
  */
 import { Ad4mClient, Perspective, PerspectiveHandle, type PerspectiveProxy, PerspectiveState } from '@coasys/ad4m';
 import {
-  type AgentIdentity,
   type AgentSessionPort,
   type DatasetChangeHandlers,
   type DatasetLifecyclePort,
@@ -601,7 +600,7 @@ export function createAd4mAgentSession(backendClient: unknown): AgentSessionPort
      */
     async me() {
       const agent = await client.agent.me();
-      return { ...(agent as unknown as Record<string, unknown>), id: agent.did } as AgentIdentity;
+      return { ...(agent as unknown as Record<string, unknown>), id: agent.did };
     },
   };
 }

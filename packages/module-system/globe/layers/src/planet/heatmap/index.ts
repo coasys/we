@@ -139,14 +139,14 @@ export function renderHeatmap(context: CesiumRendererContext, initial: HeatmapOp
       image: canvases[current],
       color: new Color(1, 1, 1, heatOpacity(options)),
     });
-    const primitive = primitives.add(
+    const primitive = primitives.add<GroundPrimitive>(
       new GroundPrimitive({
         geometryInstances: new GeometryInstance({
           geometry: new RectangleGeometry({ rectangle, vertexFormat: EllipsoidSurfaceAppearance.VERTEX_FORMAT }),
         }),
         appearance: new EllipsoidSurfaceAppearance({ material, aboveGround: false }),
       }),
-    ) as GroundPrimitive;
+    );
     if (pending) primitives.remove(pending.primitive);
     pending = { primitive, material };
   };

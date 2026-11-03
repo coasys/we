@@ -103,7 +103,7 @@ export function PresentPart(props: { part: string; at?: string; editing: boolean
   untrack(() => {
     const whileShown = moduleRegistry.parts()[props.part]?.whileShown;
     if (!whileShown) return;
-    const store = moduleRegistry.get(props.part.split('.')[0] ?? '')?.store as Record<string, unknown> | undefined;
+    const store = moduleRegistry.get(props.part.split('.')[0] ?? '')?.store;
     const call = (key: string) => {
       const member = store?.[key];
       if (typeof member === 'function') (member as () => void)();

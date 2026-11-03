@@ -21,7 +21,7 @@ import { panelInstances } from '@shared/registries/panelInstances';
 import { templateBag } from '@shared/registries/templateBag';
 import { onTemplatePanelsChanged, templatePanels } from '@shared/registries/templatePanels';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
-import { EDIT_SURFACE_ATTR, type SchemaNode } from '@we/schema-shared';
+import { EDIT_SURFACE_ATTR } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import { createMemo, createSignal, onCleanup } from 'solid-js';
 
@@ -54,8 +54,8 @@ export function TemplatePanelBody(props: { panelId?: string; moduleId?: string; 
     if (!panel?.node) return undefined;
     // `$part` is expanded here rather than by the renderer, the same way `$slot` is — see
     // `moduleParts.ts`. A panel is the first place an interface reaches for a module's pieces.
-    const expanded = resolveParts(panel.node as SchemaNode);
-    return (Array.isArray(expanded) ? expanded[0] : expanded) as SchemaNode | undefined;
+    const expanded = resolveParts(panel.node);
+    return Array.isArray(expanded) ? expanded[0] : expanded;
   });
 
   /*

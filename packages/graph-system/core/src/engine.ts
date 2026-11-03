@@ -2096,7 +2096,7 @@ export class GraphEngine {
         edge.id,
         from,
         to,
-        normaliseCurve(style.curve as string | undefined),
+        normaliseCurve(style.curve),
         0,
         looseTo ? 0 : this.clearanceFor(this.store.node(targetId)),
         looseFrom ? 0 : this.clearanceFor(this.store.node(sourceId), 0),

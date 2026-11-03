@@ -142,7 +142,7 @@ export function renderPoints(
         },
       ];
     });
-    void (map.getSource(grownId) as GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features: grown });
+    void map.getSource<GeoJSONSource>(grownId)?.setData({ type: 'FeatureCollection', features: grown });
   };
   const images = mountImages(context);
   const colors = maplibreColors(context, () => draw());

@@ -90,7 +90,7 @@ function isLogicType(t: string | undefined): boolean {
 function isContainerNode(node: SchemaNode): boolean {
   if (node.type && CONTAINER_TYPES.has(node.type)) return true;
   if (!Array.isArray(node.children)) return false;
-  return node.children.some((c) => typeof c === 'object' && c !== null && 'type' in (c as object));
+  return node.children.some((c) => typeof c === 'object' && c !== null && 'type' in c);
 }
 
 // -----------------------------------------------------------------------
@@ -496,7 +496,7 @@ function findLogicNodeBoundsEl(node: SchemaNode, container: HTMLElement): HTMLEl
   if (node.type === '$if') {
     for (const branch of [node.props?.then, node.props?.else] as (SchemaNode | undefined)[]) {
       if (branch?.id) {
-        const el = container.querySelector(`[data-we-node-id="${branch.id}"]`) as HTMLElement | null;
+        const el = container.querySelector<HTMLElement>(`[data-we-node-id="${branch.id}"]`);
         if (el) return (el.firstElementChild as HTMLElement) ?? el;
       }
     }
@@ -504,7 +504,7 @@ function findLogicNodeBoundsEl(node: SchemaNode, container: HTMLElement): HTMLEl
   if (node.type === '$each') {
     const templateChild = (node.children as SchemaNode[] | undefined)?.[0];
     if (templateChild?.id) {
-      const el = container.querySelector(`[data-we-node-id="${templateChild.id}"]`) as HTMLElement | null;
+      const el = container.querySelector<HTMLElement>(`[data-we-node-id="${templateChild.id}"]`);
       if (el) return (el.firstElementChild as HTMLElement) ?? el;
     }
   }
@@ -902,7 +902,7 @@ function VisualEditorLayer() {
       }
 
       const patched = mergeNode(found.node, { props });
-      const updated = replaceNodeInTree(clone as SchemaNode, found.node, patched) as TemplateSchema;
+      const updated = replaceNodeInTree(clone, found.node, patched) as TemplateSchema;
       session.pushSnapshot();
       templateStore.updateTemplate(updated);
       void session.commitEdit();
@@ -1102,7 +1102,7 @@ function VisualEditorLayer() {
     dndNodeId = nodeId;
     const pid = found.parent.id;
     dndSourceParentId = pid !== undefined ? pid : '';
-    dndSourceArrayKey = found.key as 'children' | 'routes';
+    dndSourceArrayKey = found.key;
 
     const el = getNodeBoundsElement(nodeId);
     const rect = el?.getBoundingClientRect();
@@ -1211,7 +1211,7 @@ function VisualEditorLayer() {
     for (const child of childNodes) {
       if (!child.id) continue;
       // Query within targetEl so we get the child of the specific $each instance being hovered
-      const childWrapper = targetEl!.querySelector(`[data-we-node-id="${child.id}"]`) as HTMLElement | null;
+      const childWrapper = targetEl!.querySelector<HTMLElement>(`[data-we-node-id="${child.id}"]`);
       // Logic nodes ($if, $each, etc.) have no wrapper div — fall back to their rendered content's bounds
       const childBoundsEl = childWrapper
         ? ((childWrapper.firstElementChild as HTMLElement) ?? childWrapper)
@@ -1294,14 +1294,14 @@ function VisualEditorLayer() {
 
     try {
       const clone = deepClone(templateStore.currentTemplate) as TemplateSchema;
-      const found = findNodeById(clone as SchemaNode, dndNodeId);
+      const found = findNodeById(clone, dndNodeId);
       if (!found) {
         cleanupDrag();
         return;
       }
       const nodeToMove = found.node;
 
-      const removeErr = removeChild(clone as SchemaNode, dndSourceParentId, dndSourceArrayKey, dndNodeId);
+      const removeErr = removeChild(clone, dndSourceParentId, dndSourceArrayKey, dndNodeId);
       if (removeErr) {
         console.error('[DnD]', removeErr.error);
         cleanupDrag();
@@ -1309,7 +1309,7 @@ function VisualEditorLayer() {
       }
 
       const position = dndInsertBeforeId ? { before: dndInsertBeforeId } : undefined;
-      const insertErr = insertChild(clone as SchemaNode, dndDropTargetId, 'children', nodeToMove, position);
+      const insertErr = insertChild(clone, dndDropTargetId, 'children', nodeToMove, position);
       if (insertErr) {
         console.error('[DnD]', insertErr.error);
         cleanupDrag();
@@ -1352,12 +1352,12 @@ function VisualEditorLayer() {
     if (!nodeId) return;
     try {
       const clone = deepClone(templateStore.currentTemplate) as TemplateSchema;
-      const found = findNodeById(clone as SchemaNode, nodeId);
+      const found = findNodeById(clone, nodeId);
       if (!found || !found.parent) return;
       if (found.key !== 'children' && found.key !== 'routes') return;
-      const arrayKey = found.key as 'children' | 'routes';
+      const arrayKey = found.key;
 
-      const removeErr = removeChild(clone as SchemaNode, found.parent.id ?? '', arrayKey, nodeId);
+      const removeErr = removeChild(clone, found.parent.id ?? '', arrayKey, nodeId);
       if (removeErr) {
         console.error('[Delete]', removeErr.error);
         return;
@@ -1572,7 +1572,7 @@ function VisualEditorLayer() {
     if (nodeId && under) {
       // A part is measured by its frame — all of it — not by whichever of the module's nodes the
       // pointer happens to be over, which would ring one message as though it were the feed.
-      const wrapper = part ? null : ((under as HTMLElement).closest('[data-we-node-id]') as HTMLElement | null);
+      const wrapper = part ? null : (under as HTMLElement).closest<HTMLElement>('[data-we-node-id]');
       const boundsEl = part?.el ?? (wrapper ? ((wrapper.firstElementChild as HTMLElement) ?? wrapper) : null);
       if (boundsEl) {
         const rect = boxOf(boundsEl);

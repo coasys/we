@@ -86,7 +86,7 @@ export function renderGrid(context: MapLibreRendererContext, options: H3Hexagons
     lines.set(features);
     const cell = selected ?? hovered;
     const outline = cell ? [continuous(cellOutline(cell))] : [];
-    void (map.getSource(fillId) as GeoJSONSource | undefined)?.setData({
+    void map.getSource<GeoJSONSource>(fillId)?.setData({
       type: 'FeatureCollection',
       features: outline.length
         ? [{ type: 'Feature', geometry: { type: 'Polygon', coordinates: outline }, properties: {} }]

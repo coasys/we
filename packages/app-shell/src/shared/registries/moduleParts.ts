@@ -339,7 +339,7 @@ function inlineParts<T>(value: T): T {
   if (Array.isArray(value)) return (value as unknown[]).map((entry) => inlineParts(entry)) as T;
   if (!value || typeof value !== 'object') return value;
   const record = value as Record<string, unknown>;
-  if (record.type === '$part') return (openRaw(record as SchemaNode, 'all') ?? record) as T;
+  if (record.type === '$part') return (openRaw(record, 'all') ?? record) as T;
   return Object.fromEntries(Object.entries(record).map(([key, entry]) => [key, inlineParts(entry)])) as T;
 }
 

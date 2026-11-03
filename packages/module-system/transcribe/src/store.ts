@@ -1359,7 +1359,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     if (!findEntity || !proposal.entity) return null;
     try {
       const rows = await findEntity(proposal.entity, { where: { id: proposal.id }, limit: 1 }, callTarget());
-      return (rows?.[0] as Record<string, unknown> | undefined) ?? null;
+      return rows?.[0] ?? null;
     } catch (error) {
       console.warn('transcribe: could not read the record a change is about —', error);
       return null;

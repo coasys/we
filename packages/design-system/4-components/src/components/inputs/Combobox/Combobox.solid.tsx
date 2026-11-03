@@ -42,10 +42,7 @@ export function Combobox(allProps: ComboboxComponentProps) {
   });
 
   const containerStyle = createMemo(() =>
-    buildLayoutStyles(
-      { ...layoutProps, position: 'relative', display: layoutProps.display ?? 'block' } as LayoutProps,
-      'column',
-    ),
+    buildLayoutStyles({ ...layoutProps, position: 'relative', display: layoutProps.display ?? 'block' }, 'column'),
   );
 
   const normalized = createMemo(() => normalizeOptions(props.options ?? []));

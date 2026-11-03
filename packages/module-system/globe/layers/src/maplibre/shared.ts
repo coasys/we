@@ -66,7 +66,7 @@ export function addSource(context: MapLibreRendererContext, layers: LayerSpecifi
   });
   return {
     set(features: Feature[]) {
-      void (map.getSource(id) as GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features });
+      void map.getSource<GeoJSONSource>(id)?.setData({ type: 'FeatureCollection', features });
     },
   };
 }

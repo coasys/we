@@ -1,4 +1,4 @@
-import { Cartesian3, Color, PointPrimitive, PointPrimitiveCollection } from 'cesium';
+import { Cartesian3, Color, PointPrimitiveCollection } from 'cesium';
 
 import { PROCEDURAL_STARS } from '../../meta';
 import type { CesiumRendererContext, LayerKind } from '../../types';
@@ -119,7 +119,7 @@ export const proceduralStarsLayer: LayerKind<ProceduralStarsLayerOptions> = {
           position: new Cartesian3(x, y, z),
           pixelSize: size,
           color: new Color(baseColor.red, baseColor.green, baseColor.blue, brightness),
-        } as PointPrimitive);
+        });
       }
 
       // Register cleanup

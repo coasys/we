@@ -117,9 +117,9 @@ export const h3HexagonsLayer: LayerKind<H3HexagonsOptions> = {
               const poly = mapForRes.get(id)!;
               poly.positions = positions;
               poly.width = width;
-              poly.material = Material.fromType('Color', { color: hexColor }) as Material;
+              poly.material = Material.fromType('Color', { color: hexColor });
             } else {
-              const material = Material.fromType('Color', { color: hexColor }) as Material;
+              const material = Material.fromType('Color', { color: hexColor });
               const poly = collection.add({ positions, width, material });
               mapForRes.set(id, poly);
             }

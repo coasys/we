@@ -699,7 +699,7 @@ export function ThemePanel() {
   }
 
   function setOverride<K extends keyof ThemeOverrides>(key: K, value: ThemeOverrides[K] | undefined) {
-    write({ [key]: value } as Partial<ThemeOverrides>);
+    write({ [key]: value });
   }
 
   function setOverrides(partial: Partial<ThemeOverrides>) {
@@ -764,7 +764,7 @@ export function ThemePanel() {
 
   /** Pin the fill to exactly what was picked, past the correction — the label may then not read. */
   function keepPicked(family: ChromaticFamily) {
-    write({ roles: { ...overrides().roles, [family]: picked()[family] } as ThemeOverrides['roles'] });
+    write({ roles: { ...overrides().roles, [family]: picked()[family] } });
     saveTheme();
   }
 
@@ -1070,7 +1070,7 @@ export function ThemePanel() {
   function setTypeStyle(role: TypeRole, key: keyof TypeStyle, value: string | undefined) {
     const current = overrides().typeStyles ?? {};
     const next = pruned({ ...current, [role]: pruned({ ...current[role], [key]: value }) });
-    setOverride('typeStyles', next as ThemeOverrides['typeStyles']);
+    setOverride('typeStyles', next);
   }
 
   const [component, setComponent] = createSignal('button');
@@ -1083,7 +1083,7 @@ export function ThemePanel() {
   function resetComponent(name: string) {
     const next = { ...overrides().components };
     delete next[name];
-    setOverride('components', pruned(next) as ThemeOverrides['components']);
+    setOverride('components', pruned<NonNullable<ThemeOverrides['components']>>(next));
     saveTheme();
   }
 
@@ -1260,7 +1260,7 @@ export function ThemePanel() {
   const [roleColors, setRoleColors] = createSignal<Record<string, string>>({});
   const [familyColors, setFamilyColors] = createSignal<Record<string, FamilySample>>({});
   const [effectiveSaturation, setEffectiveSaturation] = createSignal({ theme: 50, palette: 50 });
-  const probeStyle = createMemo(() => themeParametersToStyle(overrides()) as Record<string, string>);
+  const probeStyle = createMemo(() => themeParametersToStyle(overrides()));
 
   /**
    * True from the moment a pointer goes down in this panel until it comes back up.
@@ -2214,10 +2214,7 @@ export function ThemePanel() {
               <Column gap="200">
                 <Subheading>Overall</Subheading>
                 {presetRow(
-                  { sharp: 'Sharp', default: 'Default', rounded: 'Rounded', pill: 'Pill' } as Record<
-                    ShapePreset,
-                    string
-                  >,
+                  { sharp: 'Sharp', default: 'Default', rounded: 'Rounded', pill: 'Pill' },
                   (p) => activeShapePreset() === p,
                   (p) => setOverrides(SHAPE_PRESETS[p]),
                 )}
@@ -2297,10 +2294,7 @@ export function ThemePanel() {
                   Size
                 </we-text>
                 {presetRow(
-                  { sm: 'Small', default: 'Default', lg: 'Large', xl: 'Extra large' } as Record<
-                    FontScalePreset,
-                    string
-                  >,
+                  { sm: 'Small', default: 'Default', lg: 'Large', xl: 'Extra large' },
                   (p) => activeFontScalePreset() === p,
                   (p) => {
                     const scale = FONT_SCALE_PRESETS[p];
@@ -2381,7 +2375,7 @@ export function ThemePanel() {
               <Column gap="200">
                 <Subheading>Overall</Subheading>
                 {presetRow(
-                  { compact: 'Compact', comfortable: 'Normal', spacious: 'Roomy' } as Record<SpacingPreset, string>,
+                  { compact: 'Compact', comfortable: 'Normal', spacious: 'Roomy' },
                   (p) => activeSpacingPreset() === p,
                   (p) => setOverrides(SPACING_PRESETS[p]),
                 )}
@@ -2405,10 +2399,7 @@ export function ThemePanel() {
               <Column gap="200">
                 <Subheading>Strength</Subheading>
                 {presetRow(
-                  { flat: 'Flat', subtle: 'Subtle', elevated: 'Elevated', dramatic: 'Dramatic' } as Record<
-                    NonNullable<ThemeOverrides['shadowIntensity']>,
-                    string
-                  >,
+                  { flat: 'Flat', subtle: 'Subtle', elevated: 'Elevated', dramatic: 'Dramatic' },
                   (p) => overrides().shadowIntensity === p,
                   (p) => {
                     setOverride('shadowIntensity', p);
@@ -2420,10 +2411,7 @@ export function ThemePanel() {
                 <Subheading>Glow</Subheading>
                 {/* What shadow: 'glow' draws — the accent as light, coloured by an element's tone. */}
                 {presetRow(
-                  { none: 'None', subtle: 'Subtle', medium: 'Medium', strong: 'Strong' } as Record<
-                    NonNullable<ThemeOverrides['glowIntensity']>,
-                    string
-                  >,
+                  { none: 'None', subtle: 'Subtle', medium: 'Medium', strong: 'Strong' },
                   (p) => (overrides().glowIntensity ?? 'medium') === p,
                   (p) => {
                     setOverride('glowIntensity', p === 'medium' ? undefined : p);
@@ -2481,10 +2469,7 @@ export function ThemePanel() {
               <Column gap="200">
                 <Subheading>Animation speed</Subheading>
                 {presetRow(
-                  { none: 'None', fast: 'Fast', normal: 'Normal', slow: 'Slow' } as Record<
-                    NonNullable<ThemeOverrides['animationSpeed']>,
-                    string
-                  >,
+                  { none: 'None', fast: 'Fast', normal: 'Normal', slow: 'Slow' },
                   (p) => (overrides().animationSpeed ?? 'normal') === p,
                   (p) => {
                     setOverride('animationSpeed', p === 'normal' ? undefined : p);

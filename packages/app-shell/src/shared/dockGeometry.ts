@@ -1152,7 +1152,7 @@ export function edgeLaneBox(
   edge: Exclude<DockEdge, null>,
   inset: ContentInset,
 ): { top?: number; right?: number; bottom?: number; left?: number } {
-  const region = contentRegion({ width: 0, height: 0 } as Viewport);
+  const region = contentRegion({ width: 0, height: 0 });
   if (edge === 'left') return { left: region.left, top: region.top, bottom: region.bottom };
   if (edge === 'right') return { right: region.right, top: region.top, bottom: region.bottom };
   const sides = { left: region.left + inset.left, right: region.right + inset.right };

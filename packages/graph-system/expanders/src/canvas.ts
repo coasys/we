@@ -313,7 +313,7 @@ export function placementStyle(row: Record<string, unknown>): Record<string, Gra
   };
   const text = (key: string, as: string) => {
     // The sentinel is dropped exactly as an empty value is — that is what makes it mean "unset".
-    if (typeof row[key] === 'string' && row[key] && row[key] !== PLACEMENT_UNSET) style[as] = row[key] as string;
+    if (typeof row[key] === 'string' && row[key] && row[key] !== PLACEMENT_UNSET) style[as] = row[key];
   };
   number('width', 'canvasWidth');
   number('height', 'canvasHeight');

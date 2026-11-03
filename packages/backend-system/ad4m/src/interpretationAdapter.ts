@@ -414,8 +414,7 @@ function unwrapped(raw: unknown): unknown {
   let value = raw;
   for (let depth = 0; depth < 3; depth++) {
     const decoded = decode(value);
-    const inner =
-      decoded && typeof decoded === 'object' && 'data' in decoded ? (decoded as { data: unknown }).data : decoded;
+    const inner = decoded && typeof decoded === 'object' && 'data' in decoded ? decoded.data : decoded;
     if (inner === value) break;
     value = inner;
   }
@@ -637,7 +636,7 @@ async function runObserved(
     classes?: string[],
     options?: { observe?: { observationId: string; emitDebugEvents?: boolean } },
   ) => Promise<string[]>;
-  const run = perspective.runInterpretation.bind(perspective) as Observable;
+  const run = perspective.runInterpretation.bind<Observable>(perspective);
 
   if (!observationId) return run(turns, basePrefix, classes);
   return run(turns, basePrefix, classes, { observe: { observationId, emitDebugEvents: true } });
@@ -680,7 +679,7 @@ function linkedRequest<T extends InterpretationRequest>(request: T): ByPredicate
     ...(parent ? { parent: linked(parent) } : {}),
     ...(provenance ? { provenance: linked(provenance) } : {}),
     ...(recognised ? { recognised: linked(recognised) } : {}),
-  } as ByPredicate<T>;
+  };
 }
 
 /**
@@ -1426,7 +1425,7 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
         }
 
         try {
-          await perspective.addAutoProcessor(config as Parameters<PerspectiveProxy['addAutoProcessor']>[0]);
+          await perspective.addAutoProcessor(config);
         } catch (error) {
           // Same backstop as the one-shot path, and it matters more here: a watch failure is caught
           // by the caller and, before this, disappeared into a console line — which is why a node

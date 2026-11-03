@@ -221,7 +221,7 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
       when={getItem().avatar}
       fallback={
         <Show when={getItem().icon}>
-          <we-icon name={getItem().icon!} size={metrics().icon} />
+          <we-icon name={getItem().icon} size={metrics().icon} />
         </Show>
       }
     >
@@ -455,7 +455,7 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
       aria-label={iconOnly() ? (props.triggerTitle ?? 'Options') : undefined}
     >
       <Show when={props.triggerIcon}>
-        <we-icon name={props.triggerIcon!} />
+        <we-icon name={props.triggerIcon} />
       </Show>
       {label()}
     </we-button>
@@ -490,7 +490,7 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
         }
       >
         <Show when={props.triggerTitle} fallback={trigger('trigger')}>
-          <we-tooltip slot="trigger" content={props.triggerTitle!} placement="bottom">
+          <we-tooltip slot="trigger" content={props.triggerTitle} placement="bottom">
             {trigger('')}
           </we-tooltip>
         </Show>

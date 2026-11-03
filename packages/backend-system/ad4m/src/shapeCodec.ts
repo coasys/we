@@ -405,7 +405,7 @@ export function readShape(links: readonly LinkLike[]): ReadShape | null {
         ? { vocabulary: value(node, ANNOTATION.vocabulary) as string }
         : {}),
       ...(control ? { control: control as never } : {}),
-    } as EntitySchema['properties'][string];
+    };
   }
 
   if (whole !== undefined) entity.display = whole as EntitySchema['display'];
@@ -430,7 +430,7 @@ export function readShape(links: readonly LinkLike[]): ReadShape | null {
     manifest: {
       version: typeof manifestVersion === 'string' ? manifestVersion : '1',
       entities: { [name]: entity },
-    } as EntityManifest,
+    },
   };
 }
 
