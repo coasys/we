@@ -85,7 +85,7 @@ export function signalTypesByUse(options: unknown): unknown[] {
     return typeof id === 'string' ? rank.get(id) : undefined;
   };
 
-  const ordered = [...types].sort((a, b) => {
+  const ordered = [...(types as unknown[])].sort((a, b) => {
     const [left, right] = [placed(a), placed(b)];
     if (left !== undefined && right !== undefined) return left - right;
     // A type the settled order never saw goes after every type it did, however used it is: it

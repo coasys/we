@@ -125,7 +125,7 @@ import {
   viewSettings,
 } from '@shared/viewResolution';
 import { evidenceLabel, refusalWords } from '@shared/workflowViews';
-import type { AgentProfileSummary, DatasetRef, WorkflowView } from '@we/backend-shared';
+import type { AgentProfileSummary, DatasetRef, EntityStatic, RecordInstance, WorkflowView } from '@we/backend-shared';
 import { displayName, isPolicyRefusal, parseServerUrl, SELF_PERSONS, trace, validatePolicy } from '@we/backend-shared';
 import type { ContentInput } from '@we/block-shared';
 import {
@@ -172,6 +172,7 @@ import {
   Space,
   SpaceLandmark,
   SpacePreference,
+  type TaskBlock,
   TaskState,
 } from '@we/entities';
 import type { ResolvedView, TemplateSchema } from '@we/schema-shared';
@@ -335,7 +336,7 @@ interface ShareTask {
 function resolveEnabledModules(raw: string | undefined, fallback: () => string[] = defaultEnabledModules): string[] {
   if (raw) {
     try {
-      const parsed = JSON.parse(raw);
+      const parsed: unknown = JSON.parse(raw);
       if (Array.isArray(parsed)) return parsed.filter((id): id is string => typeof id === 'string');
     } catch {
       console.warn('enabledModules is not valid JSON; falling back to the default');
@@ -1365,7 +1366,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     const raw = preferenceFor(spaceUuid)?.mutedModules;
     if (!raw) return [];
     try {
-      const parsed = JSON.parse(raw);
+      const parsed: unknown = JSON.parse(raw);
       return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
     } catch {
       return [];
@@ -1922,14 +1923,15 @@ export function SpaceStoreProvider(props: ParentProps) {
     };
     await applyStarterRecords(starter, target, {
       create: async (entity, fields, parentId) => {
-        const Model = getEntityForDataset(entity, dataset);
+        // Any entity a starter names; the registry answers untyped, but every class has this surface.
+        const Model = getEntityForDataset(entity, dataset) as EntityStatic<RecordInstance> | undefined;
         if (!Model) throw new Error(`no ${entity} in this space's schema`);
         const made = await Model.create(
           dataset,
           fields as never,
           (parentId ? { parent: { id: parentId, relation: 'children', entity: 'CollectionBlock' } } : {}) as never,
         );
-        return (made as { id: string }).id;
+        return made.id;
       },
       landmark: (name, nodeId) => writeSpaceLandmark(dataset, space.id, name, nodeId),
       linkSpace: (relations) => linkSpaceRelations(Space, dataset, space.id, relations),
@@ -2103,7 +2105,9 @@ export function SpaceStoreProvider(props: ParentProps) {
         routeStore.navigate(`/space/${sharedId}${rest}${window.location.search}`, { replace: true });
       }
       // Only now does the space show as shared: before this, a failure leaves it retryable.
-      const shared = Object.assign(Object.create(Object.getPrototypeOf(space)), space, { url: sharedId }) as Space;
+      const shared = Object.assign(Object.create(Object.getPrototypeOf(space) as object | null), space, {
+        url: sharedId,
+      }) as Space;
       setMySpaces((prev) => prev.map((s) => (s.uuid === uuid ? shared : s)));
       setShares(({ [uuid]: _done, ...rest }) => rest);
       if (shared.discovery === 'listed') await listInGlobal(shared, task.listing);
@@ -2376,7 +2380,9 @@ export function SpaceStoreProvider(props: ParentProps) {
   function updateSpaceInCache(dataset: AppDataset, updates: Partial<Space>): void {
     setMySpaces((prev) =>
       prev.map((s) =>
-        isSpaceSelf(s, dataset) ? Object.assign(Object.create(Object.getPrototypeOf(s)), s, updates) : s,
+        isSpaceSelf(s, dataset)
+          ? (Object.assign(Object.create(Object.getPrototypeOf(s) as object | null), s, updates) as Space)
+          : s,
       ),
     );
   }
@@ -3324,8 +3330,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     };
     void untrack(reloadSpaceStructure).then(() => {
       if (stopped || !dataset || !weSpace) return;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      watch = (SpaceLandmark as any).query(dataset, {}) as typeof watch;
+      watch = SpaceLandmark.query(dataset, {});
       watch
         ?.subscribe((rows) => follow(rows))
         // What the watch opened on: a landmark written between the first read and now is in it.
@@ -3469,8 +3474,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     };
     void loadTaskStates().then(() => {
       if (stopped || !dataset || !weSpace) return;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      watch = (TaskState as any).query(dataset, {}) as typeof watch;
+      watch = TaskState.query(dataset, {});
       watch
         ?.subscribe(follow)
         // What the watch opened on: a state written between the first read and now is in it.
@@ -3695,10 +3699,10 @@ export function SpaceStoreProvider(props: ParentProps) {
    */
   async function mirrorTaskStatus(taskId: string, slug: string): Promise<void> {
     const p = datasetStore.currentDataset()?.handle;
-    const Task = p ? getEntityForDataset('TaskBlock', p) : undefined;
+    // The registry answers untyped, but what it holds under 'TaskBlock' is the TaskBlock class.
+    const Task = p ? (getEntityForDataset('TaskBlock', p) as typeof TaskBlock | undefined) : undefined;
     if (!p || !Task) return;
-    const task = (await Task.findOne(p, { where: { id: taskId } })) as
-      { status?: string; save(): Promise<unknown> } | null | undefined;
+    const task = await Task.findOne(p, { where: { id: taskId } });
     if (!task || task.status === slug) return;
     task.status = slug;
     const started = performance.now();
@@ -3764,7 +3768,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     updateSpaceInCache(ds, { archivedWorkflows: archivedWorkflowsJson } as never);
     setCurrentSpace((prev) =>
       prev
-        ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, {
+        ? (Object.assign(Object.create(Object.getPrototypeOf(prev) as object | null), prev, {
             archivedWorkflows: archivedWorkflowsJson,
           }) as Space)
         : prev,
@@ -3812,7 +3816,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     updateSpaceInCache(ds, { taskWorkflowRule: next } as never);
     setCurrentSpace((prev) =>
       prev
-        ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, { taskWorkflowRule: next }) as Space)
+        ? (Object.assign(Object.create(Object.getPrototypeOf(prev) as object | null), prev, {
+            taskWorkflowRule: next,
+          }) as Space)
         : prev,
     );
   }
@@ -4264,22 +4270,18 @@ export function SpaceStoreProvider(props: ParentProps) {
       if (stopped || !dataset || !weSpace) return;
       // Each watch pushes its own model's records whole, which is all its half of the roles is made
       // of — so a change is applied from them, and the other half is left as it is.
-      const follows: [unknown, (rows: never[]) => void][] = [
-        [Role, applyRoles],
-        [RoleGrant, applyGrants],
-      ];
-      for (const [Model, apply] of follows) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const watch = (Model as any).query(dataset, {}) as LiveRows<never> | undefined;
-        if (!watch) continue;
+      const followAll = <T,>(watch: LiveRows<T> | undefined, apply: (rows: T[]) => void) => {
+        if (!watch) return;
         watches.push(watch);
-        const follow = (rows: never[]) => void (!stopped && apply(rows));
+        const follow = (rows: T[]) => void (!stopped && apply(rows));
         watch
           .subscribe(follow)
           // What the watch opened on: a grant written between the first read and now is in it.
           .then(follow)
           .catch((error: unknown) => console.warn('SpaceStore: could not watch the space’s roles', error));
-      }
+      };
+      followAll(Role.query(dataset, {}), applyRoles);
+      followAll(RoleGrant.query(dataset, {}), applyGrants);
     })();
   });
 
@@ -4448,8 +4450,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       if (dataset && weSpace && schemas) await schemas.ensure(dataset, Policy as never).catch(() => undefined);
       await untrack(reloadPolicy);
       if (stopped || !dataset || !weSpace) return;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      watch = (Policy as any).query(dataset, {}) as LiveRows<Policy>;
+      watch = Policy.query(dataset, {});
       watch
         ?.subscribe(follow)
         // What the watch opened on: a version written between the first read and now is in it.
@@ -4747,7 +4748,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (!isCurrent(ds)) return;
     setCurrentSpace((prev) =>
       prev
-        ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, { moduleSettings: next }) as Space)
+        ? (Object.assign(Object.create(Object.getPrototypeOf(prev) as object | null), prev, {
+            moduleSettings: next,
+          }) as Space)
         : prev,
     );
   }
@@ -4881,8 +4884,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     const follow = (rows: CollectionBlock[]) => void (!stopped && apply(rows));
     void read().then(() => {
       if (stopped) return;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      watch = (CollectionBlock as any).query(handle, query) as typeof watch;
+      watch = CollectionBlock.query(handle, query);
       watch
         ?.subscribe(follow)
         // What the watch opened on: a switch thrown between the first read and now is in it.
@@ -5868,7 +5870,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (!isCurrent(ds)) return;
     setCurrentSpace((prev) =>
       prev
-        ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, { autoInterpret: enabled }) as Space)
+        ? (Object.assign(Object.create(Object.getPrototypeOf(prev) as object | null), prev, {
+            autoInterpret: enabled,
+          }) as Space)
         : prev,
     );
   }
@@ -5902,7 +5906,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     // dedupes on `===`, so handing back the object just written notifies nothing and every thread
     // on screen would keep the previous answer until something else refetched the space.
     setCurrentSpace((prev) =>
-      prev ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, { threadMode }) as Space) : prev,
+      prev
+        ? (Object.assign(Object.create(Object.getPrototypeOf(prev) as object | null), prev, { threadMode }) as Space)
+        : prev,
     );
   }
 
@@ -5939,7 +5945,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     // previous value until something else refetched the space.
     setCurrentSpace((prev) =>
       prev
-        ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, {
+        ? (Object.assign(Object.create(Object.getPrototypeOf(prev) as object | null), prev, {
             extractionTargets: extractionTargetsJson,
           }) as Space)
         : prev,
@@ -5977,7 +5983,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     // idiom as `updateSpaceInCache`.
     setCurrentSpace((prev) =>
       prev
-        ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, {
+        ? (Object.assign(Object.create(Object.getPrototypeOf(prev) as object | null), prev, {
             enabledModules: enabledModulesJson,
           }) as Space)
         : prev,
@@ -6064,7 +6070,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     // so re-setting a mutated object notifies nothing and the nav strip keeps its old sections.
     setCurrentSpace((prev) =>
       prev
-        ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, {
+        ? (Object.assign(Object.create(Object.getPrototypeOf(prev) as object | null), prev, {
             enabledViews: enabledViewsJson,
           }) as Space)
         : prev,
@@ -6095,11 +6101,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       setCurrentSpace(null);
       return;
     }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const builder = (Space as any).query(ds.handle, { where: spaceSelfWhere(ds), include: { location: true } }) as {
-      subscribe: (cb: (results: Space[]) => void) => Promise<Space[]>;
-      dispose: () => void;
-    };
+    const builder: LiveRows<Space> = Space.query(ds.handle, { where: spaceSelfWhere(ds), include: { location: true } });
     const handleResult = (results: Space[]) => setCurrentSpace(results[0] ?? null);
     builder
       .subscribe(handleResult)
@@ -6401,8 +6403,15 @@ export function SpaceStoreProvider(props: ParentProps) {
       return;
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const CommunityClass = getEntityForDataset('Community', ds.handle) as any;
+    // A foreign app's own model, so WE declares none of it; this is the one read made of it.
+    const CommunityClass = getEntityForDataset('Community', ds.handle) as
+      | {
+          findOne(
+            dataset: unknown,
+            query: object,
+          ): Promise<{ name?: string; description?: string; thumbnail?: string } | null>;
+        }
+      | undefined;
     if (!CommunityClass) {
       setForeignSpacePrefill(null);
       return;

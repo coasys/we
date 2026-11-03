@@ -27,7 +27,7 @@ export class SeedProcessor {
    */
   private generateVariableName(): string {
     const id = this.generateIntegrationId();
-    return id.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+    return id.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase());
   }
 
   /**

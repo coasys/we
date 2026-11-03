@@ -780,7 +780,9 @@ export const moduleRegistry = {
 
   /** Components every registered module contributes, for the host's component registry. */
   components(): Record<string, unknown> {
-    return Object.assign({}, ...moduleRegistry.all().map((m) => m.definition.contributes?.components ?? {}));
+    return Object.fromEntries(
+      moduleRegistry.all().flatMap((m) => Object.entries(m.definition.contributes?.components ?? {})),
+    );
   },
 
   /** Views modules contribute, keyed by id — beside the built-in catalogue in `availableViews`. */

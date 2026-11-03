@@ -1234,7 +1234,7 @@ export function EditorStoreProvider(props: ParentProps) {
   // ----------------------------------------------------------------
   function onSchemaEdit(json: string) {
     try {
-      const parsed = JSON.parse(json);
+      const parsed: unknown = JSON.parse(json);
       pushSnapshot();
       /*
         Ids kept as typed: a node keeps its identity through an edit here like any other. One typed

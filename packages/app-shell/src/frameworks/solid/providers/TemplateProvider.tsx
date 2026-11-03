@@ -31,6 +31,17 @@ const idOf = (entry: unknown): string => {
   return typeof id === 'string' ? id : '';
 };
 
+/** The part of a registered entity class a record write by name uses. */
+interface RecordModel {
+  create(dataset: unknown, fields: Record<string, unknown>, options?: Record<string, unknown>): Promise<RecordInstance>;
+  update(dataset: unknown, id: string, fields: Record<string, unknown>): Promise<RecordInstance>;
+  delete(dataset: unknown, id: string): Promise<void>;
+  findAll(dataset: unknown, query?: unknown): Promise<RecordInstance[]>;
+}
+
+/** An entity's registered class by name; the registry answers untyped, but every class implements these. */
+const recordModel = (entity: string) => getEntity(entity) as unknown as RecordModel;
+
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
 import {
   useAccountStore,
@@ -55,7 +66,7 @@ import {
 } from '@solid/stores';
 import type { Stores } from '@solid/types';
 import { Route, Router } from '@solidjs/router';
-import { datasetKey, formatRef, manifestEntries } from '@we/backend-shared';
+import { datasetKey, formatRef, manifestEntries, type RecordInstance } from '@we/backend-shared';
 import { type ContentInput, copyableContent, createBlocks, deleteBlocks, reconcileBlocks } from '@we/block-shared';
 import { BlockDisplayOverrides, BlockHostProvider, colorFor } from '@we/block-solid';
 import { toastService } from '@we/components/solid';
@@ -268,7 +279,7 @@ export default function TemplateProvider() {
     rest: Record<string, unknown>,
   ) {
     const stamped = await withCollectionDefaults(entity, fields, perspective);
-    const created = await getEntity(entity).create(perspective, stamped, Object.keys(rest).length ? rest : undefined);
+    const created = await recordModel(entity).create(perspective, stamped, Object.keys(rest).length ? rest : undefined);
     threadResponse(perspective, created as { id?: string } | undefined, rest);
     return created;
   }
@@ -316,7 +327,7 @@ export default function TemplateProvider() {
 
   /** The same, for `record.update` — `recordActions` resolves a store *path*, and a module has a handle. */
   function updateInDataset(entity: string, id: string, fields: Record<string, unknown>, perspective: DatasetProxy) {
-    return getEntity(entity).update(perspective, id, fields);
+    return recordModel(entity).update(perspective, id, fields);
   }
 
   // The same capability schemas get as `record.create`, lent to module stores that must write
@@ -454,7 +465,7 @@ export default function TemplateProvider() {
       removeEntity: async (entity, id, options) => {
         const p = moduleTarget(options?.dataset);
         if (!p) return;
-        await getEntity(entity).delete(p, id);
+        await recordModel(entity).delete(p, id);
       },
 
       /*
@@ -871,7 +882,7 @@ export default function TemplateProvider() {
   // Mutations need the raw model class (create/update/delete), not the renderer's read-only
   // handle — resolved through the model layer's own registry.
   function resolve(entityName: string, opts?: { dataset?: string }) {
-    return [getEntity(entityName), resolveDataset(opts?.dataset) ?? datasetStore.currentDataset()!.handle] as const;
+    return [recordModel(entityName), resolveDataset(opts?.dataset) ?? datasetStore.currentDataset()!.handle] as const;
   }
 
   /*

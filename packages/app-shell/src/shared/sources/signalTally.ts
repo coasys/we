@@ -77,7 +77,7 @@ export function reactions(options: unknown): unknown[] {
     me?: unknown;
     pending?: unknown;
   };
-  const rows = Array.isArray(signals) ? signals : [];
+  const rows: unknown[] = Array.isArray(signals) ? signals : [];
   if (!Array.isArray(pending) || typeof record !== 'string' || typeof type !== 'string' || typeof me !== 'string') {
     return rows;
   }

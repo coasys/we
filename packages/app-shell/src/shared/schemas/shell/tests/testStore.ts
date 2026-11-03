@@ -38,6 +38,21 @@ const TEST_PREDICATES = {
   'TestItem.children': 'we://test_child',
 };
 
+// The parts of a compiled model class and of the dataset handle this page uses. `declare` returns
+// each backend's own payload as `unknown`; the test page only runs against AD4M, where a payload is
+// an Ad4mModel class and the handle a PerspectiveProxy, which have these members.
+interface TestRecord {
+  id: string;
+}
+interface TestModelClass {
+  create(dataset: unknown, data: Record<string, unknown>, opts?: Record<string, unknown>): Promise<TestRecord>;
+  delete(dataset: unknown, id: string): Promise<void>;
+  findAll(dataset: unknown): Promise<TestRecord[]>;
+}
+interface TestPerspective {
+  ensureSDNASubjectClass(model: TestModelClass): Promise<void>;
+}
+
 // ---------------------------------------------------------------------------
 // Store factory — test-oriented signals for integration test template
 // ---------------------------------------------------------------------------
@@ -48,16 +63,14 @@ export function createTestStore(
 ) {
   // Declared lazily: the schemas port only exists once the backend connects, and every action
   // here runs post-boot. `declare` compiles the manifest and registers the models queryable.
-  let TestItem: any;
-  let TestChild: any;
-  function ensureEntities(): boolean {
-    if (TestItem) return true;
+  let models: { TestItem: TestModelClass; TestChild: TestModelClass } | null = null;
+  function ensureEntities() {
+    if (models) return models;
     const port = schemas();
-    if (!port) return false;
+    if (!port) return null;
     const classes = port.declare(TEST_MANIFEST, { moduleId: 'test', predicates: TEST_PREDICATES });
-    TestItem = classes.TestItem;
-    TestChild = classes.TestChild;
-    return true;
+    models = { TestItem: classes.TestItem as TestModelClass, TestChild: classes.TestChild as TestModelClass };
+    return models;
   }
 
   // The "current agent" stand-in for the single-projection (`$myChild`) test's `where: { owner }`.
@@ -130,10 +143,11 @@ export function createTestStore(
 
   async function createTestItem() {
     const p = perspective();
-    if (!p || !ensureEntities()) return;
+    const m = ensureEntities();
+    if (!p || !m) return;
     createdCount++;
     try {
-      await TestItem.create(p, {
+      await m.TestItem.create(p, {
         name: `Item-${createdCount}`,
         status: createdCount % 2 === 0 ? 'draft' : 'active',
         category: 'dynamic',
@@ -145,9 +159,10 @@ export function createTestStore(
 
   async function deleteTestItem(id: string) {
     const p = perspective();
-    if (!p || !id) return;
+    const m = ensureEntities();
+    if (!p || !m || !id) return;
     try {
-      await TestItem.delete(p, id);
+      await m.TestItem.delete(p, id);
     } catch (err) {
       console.error('TestStore: failed to delete TestItem', err);
     }
@@ -157,7 +172,9 @@ export function createTestStore(
   //   Alpha (2 children, 1 mine) · Beta (0 children) · Gamma (1 child, mine)
   async function seedQueryData() {
     const p = perspective();
-    if (!p || !ensureEntities()) return;
+    const m = ensureEntities();
+    if (!p || !m) return;
+    const { TestItem, TestChild } = m;
     try {
       for (const c of await TestChild.findAll(p)) await TestChild.delete(p, c.id);
       for (const it of await TestItem.findAll(p)) await TestItem.delete(p, it.id);
@@ -187,9 +204,11 @@ export function createTestStore(
 
   createEffect(() => {
     const ref = testPerspective();
-    if (!ref || !ensureEntities()) return;
+    const m = ensureEntities();
+    if (!ref || !m) return;
+    const { TestItem, TestChild } = m;
 
-    const p = ref.handle as any;
+    const p = ref.handle as TestPerspective;
 
     void (async () => {
       try {

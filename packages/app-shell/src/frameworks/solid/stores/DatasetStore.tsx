@@ -738,7 +738,8 @@ export function DatasetStoreProvider(props: ParentProps) {
     const json = agentSettings()?.datasetOrder;
     if (!json) return [];
     try {
-      return JSON.parse(json);
+      const order: unknown = JSON.parse(json);
+      return Array.isArray(order) ? order.filter((id): id is string => typeof id === 'string') : [];
     } catch {
       return [];
     }

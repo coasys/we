@@ -27,10 +27,12 @@ import {
   datasetKey,
   datasetKindOf,
   type EntitySchema,
+  type EntityStatic,
   formatRef,
   HERE,
   namePropertyOf,
   type ParentRef,
+  type RecordInstance,
 } from '@we/backend-shared';
 import { type ContentInput, copyableContent, createBlock, createBlocks, deleteBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
@@ -132,6 +134,21 @@ export interface PendingLink {
 const RELATIONSHIP = 'Relationship';
 
 /**
+ * A class this file writes through, picked by name at runtime. Loose over fields because which
+ * entity it is is only known then.
+ */
+type AnyEntity = EntityStatic<RecordInstance & Record<string, unknown>>;
+
+/**
+ * The registry's class for `name`. The registry's entries are typed loosely (`any`-valued); every
+ * class it holds presents the contract's static surface, so it is read as that here, once — the same
+ * conversion `@we/entities` makes for its own proxies.
+ */
+function entityNamed(name: string): AnyEntity {
+  return getEntity(name) as unknown as AnyEntity;
+}
+
+/**
  * Models that can be *shown* but are not content anybody creates from a picker — see
  * {@link displayableEntities}. Every core block is shown as well, whether or not it can be made.
  *
@@ -200,7 +217,7 @@ async function createConnection(
   sourceId: string,
   targetId: string,
 ): Promise<string> {
-  const created = (await getEntity(RELATIONSHIP).create(
+  const created = (await entityNamed(RELATIONSHIP).create(
     dataset as never,
     { ...fields, source: [sourceId], target: [targetId] } as never,
   )) as { id?: string } | null;
@@ -860,8 +877,9 @@ export function RecordStoreProvider(props: ParentProps) {
    * registry" while the model sat listed in the space's settings. The per-dataset lookup prefers the
    * global class and falls back to the space's own, so every caller here goes through it.
    */
-  function entityClass(entity: string, handle: unknown): ReturnType<typeof getEntity> {
-    return (getEntityForDataset(entity, handle) ?? getEntity(entity)) as ReturnType<typeof getEntity>;
+  function entityClass(entity: string, handle: unknown): AnyEntity {
+    // The same reading of the registry's loose entries as `entityNamed`.
+    return (getEntityForDataset(entity, handle) ?? getEntity(entity)) as unknown as AnyEntity;
   }
 
   /**
@@ -1059,7 +1077,7 @@ export function RecordStoreProvider(props: ParentProps) {
    * filled from the file when nobody has typed one.
    */
   function writeInto(draft: Accessor<RecordDraft | null>, name: string, value: unknown): void {
-    const file = Array.isArray(value) ? value[0] : value;
+    const file: unknown = Array.isArray(value) ? value[0] : value;
     if (typeof File === 'undefined' || !(file instanceof File)) {
       writeFieldValue(draft(), name, value === null || value === undefined ? '' : (value as RecordFieldValue));
       setDraftEdits((n) => n + 1);
@@ -1167,7 +1185,7 @@ export function RecordStoreProvider(props: ParentProps) {
     const relation = relationFieldOf(field);
     const found = relation ? schemaFor(relation.target) : undefined;
     const property = found ? imagePropertyOf(found.schema) : '';
-    const picked = Array.isArray(file) ? file[0] : file;
+    const picked: unknown = Array.isArray(file) ? file[0] : file;
     if (!relation || !property || typeof File === 'undefined' || !(picked instanceof File)) return;
     try {
       const payload = (await readFile(picked)) as { data_base64: string; file_type: string; name: string };
@@ -1603,7 +1621,7 @@ export function RecordStoreProvider(props: ParentProps) {
    * trips on a gesture that happens when somebody lets go of a mouse.
    */
   async function spineLinks(handle: unknown, relationshipTypeId: string): Promise<SpineLink[]> {
-    const rows = (await getEntity(RELATIONSHIP).findAll(
+    const rows = (await entityNamed(RELATIONSHIP).findAll(
       handle as never,
       {
         where: { relationshipTypeId },
@@ -1646,7 +1664,7 @@ export function RecordStoreProvider(props: ParentProps) {
    * the same rule, so the preview refuses before the drop rather than this after it.
    */
   async function detachSpine(handle: unknown, linkId: string): Promise<boolean> {
-    const Model = getEntity(RELATIONSHIP);
+    const Model = entityNamed(RELATIONSHIP);
     const row = (await Model.findOne(
       handle as never,
       {
@@ -2402,7 +2420,7 @@ export function RecordStoreProvider(props: ParentProps) {
     // The end drawn at its new card from now, not when the write comes back — see `holdConnection`.
     const held = holdConnection({ kind: 'moved', id: event.recordId, end: event.end, to: event.nodeId });
     try {
-      const Model = getEntity(event.recordType || RELATIONSHIP);
+      const Model = entityNamed(event.recordType || RELATIONSHIP);
       const record = (await Model.findOne(dataset.handle, { where: { id: event.recordId } })) as Record<
         string,
         unknown
@@ -2920,7 +2938,7 @@ export function RecordStoreProvider(props: ParentProps) {
     const dataset = datasetStore.currentDataset();
     if (!dataset || !id) return;
     try {
-      const Model = getEntity(RELATIONSHIP);
+      const Model = entityNamed(RELATIONSHIP);
       const row = (await Model.findOne(dataset.handle as never, { where: { id } } as never)) as Record<
         string,
         unknown
@@ -2941,7 +2959,7 @@ export function RecordStoreProvider(props: ParentProps) {
   /** Every connection touching a record, rekeyed — after the record's title changed. */
   async function rekeyConnectionsOf(handle: unknown, id: string): Promise<void> {
     try {
-      const rows = (await getEntity(RELATIONSHIP).findAll(
+      const rows = (await entityNamed(RELATIONSHIP).findAll(
         handle as never,
         { where: { OR: [{ source: id }, { target: id }] } } as never,
       )) as unknown as { id?: string }[];
@@ -3139,8 +3157,9 @@ export function RecordStoreProvider(props: ParentProps) {
         for (const row of rows) {
           const Model = entityClass(row.recordType!, dataset.handle);
           if (!Model) continue;
-          const found = (await Model.findOne(dataset.handle as never, { where: { id: row.recordId } } as never)) as
-            { delete?: (batch?: string) => Promise<unknown> } | undefined;
+          const found = (await Model.findOne(dataset.handle as never, { where: { id: row.recordId } } as never)) as {
+            delete?: (batch?: string) => Promise<unknown>;
+          } | null;
           await found?.delete?.(tx.batchId);
         }
       });

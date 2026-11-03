@@ -21,7 +21,13 @@
  * the community's states are, and how a failure reaches a person — arrive as `BoardDeps` rather than
  * as imports.
  */
-import { CollectionBlock, type DatasetProxy, getEntityForDataset, runEntityTransaction } from '@we/entities';
+import {
+  CollectionBlock,
+  type DatasetProxy,
+  getEntityForDataset,
+  runEntityTransaction,
+  type TaskBlock,
+} from '@we/entities';
 
 import { spliceSubsetOrder } from './shapes/subsetOrder';
 import { readSpaceLandmarks, readSpaceRoot, writeSpaceLandmark } from './spaceLandmarks';
@@ -143,6 +149,9 @@ export interface BoardActions {
 }
 
 const ids = (value: unknown): string[] => (Array.isArray(value) ? (value as string[]) : []);
+
+// The registry answers untyped, but what it holds under 'TaskBlock' is the TaskBlock class.
+const taskEntity = (dataset: DatasetProxy) => getEntityForDataset('TaskBlock', dataset) as typeof TaskBlock | undefined;
 
 export function createBoardActions(deps: BoardDeps): BoardActions {
   const { dataset, offeredStates, notify, resolveSuggestion, workflow } = deps;
@@ -352,7 +361,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
       // A bare list of ids is native on this backend — it pushes down to a VALUES clause — so this
       // asks "are any of these children tasks?" in one round trip rather than hydrating them all.
       if (!held.length) return '';
-      const Task = getEntityForDataset('TaskBlock', p);
+      const Task = taskEntity(p);
       const tasks = await Task?.findAll(p, { where: { id: held }, limit: 1 });
       if (!tasks?.length) return '';
 
@@ -696,7 +705,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
         release(toColumnId, 'arranges');
         return;
       }
-      const task = to.slug ? await getEntityForDataset('TaskBlock', p)?.findOne(p, { where: { id: cardId } }) : null;
+      const task = to.slug ? await taskEntity(p)?.findOne(p, { where: { id: cardId } }) : null;
       // The drag decides the state; a staged suggestion for it, if there is one, is superseded rather
       // than left to overwrite this the moment somebody presses Keep. Before the write, so the two
       // cannot race.
@@ -785,8 +794,8 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
         }
         if (from) await CollectionBlock.removeRelation(p, from.id, 'arranges', cardId, tx.batchId);
         if (task) {
-          (task as Record<string, unknown>).status = to.slug;
-          await (task as { save: (batch?: string) => Promise<unknown> }).save(tx.batchId);
+          task.status = to.slug;
+          await task.save(tx.batchId);
         }
       });
       /*
@@ -828,7 +837,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
     try {
       const column = await CollectionBlock.findOne(p, { where: { id: columnId } });
       if (!column) return;
-      const Task = getEntityForDataset('TaskBlock', p);
+      const Task = taskEntity(p);
       if (!Task) return;
       /*
         A column whose state waits for agreement cannot be the state a task is born in — that would be
