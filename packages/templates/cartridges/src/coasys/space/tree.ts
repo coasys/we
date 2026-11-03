@@ -650,7 +650,7 @@ const callRunning: SchemaNode = {
       type: 'Row',
       props: { gap: '200', ay: 'center', px: INSET, pb: '300' },
       children: [
-        liveDot,
+        { ...liveDot, props: { ...liveDot.props, size: 'xs' } },
         {
           type: 'we-text',
           props: { variant: 'footnote', color: 'text-muted', flex: '1', minWidth: '0', truncate: true },

@@ -61,7 +61,7 @@ registers just that element (typed per framework via
 - `<we-input>` – Accessible input field
 - `<we-modal>` – Modal dialog
 - `<we-popover>` – Popover/tooltip
-- `<we-spinner>` – Loading spinner
+- `<we-animated-icon>` – A small drawing that moves: a spinner, a live dot, typing dots, speaking bars
 - `<we-text>` – Typography primitive
 - `<we-badge>` – Badge/label
 - `<we-avatar>` – Avatar image
