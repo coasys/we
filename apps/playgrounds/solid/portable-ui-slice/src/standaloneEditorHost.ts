@@ -166,6 +166,8 @@ export function createStandaloneEditorHost(initial: TemplateSchema): {
       newChat: () => {},
       switchSession: () => {},
       deleteSession: async () => {},
+      replyRunning: () => false,
+      cancelReply: () => {},
     },
 
     identity: {

@@ -3111,8 +3111,9 @@ EditorStore:
   - pickerDefaultName: string — what the picker’s name field starts with
   - pickerDefaultIcon: string — what its icon field starts with
   - pickerShowDestination: boolean — the picker offers a personal-or-space destination, which it can only do while a space is open to save into
-  - sessions: ChatSession[] — this template's saved AI sessions (id, name, templateId), newest first
+  - sessions: { id, name }[] — this template's saved AI chats, newest first. Where the backend keeps conversations they are its, and a reply finishes with the editor closed
   - activeSessionId: string | null — the session whose messages are shown
+  - replyRunning: boolean — a reply the backend is running is in progress in the chat on screen; offer cancelReply
   - contentMode: 'preview' | 'visual' — whether the editor shows the rendered template or the visual editing surface
   - schemaJson: string — the template being edited, serialised with its node ids — what the code panel shows and edits. Ids are permanent, so a save keeps them
   - canUndo: boolean (true when there are schema edits that can be undone)
@@ -3131,6 +3132,7 @@ EditorStore:
   - editorDockFloat: boolean — editor panels open floating over the content rather than pushing it aside
 - Actions:
   - refreshAssistant(): checks the chat’s model again — after changing models in settings, or to see whether a failure has cleared
+  - cancelReply(): stops the reply the backend is running in the chat on screen. What it changed before it stopped stays changed
   - newChat(): starts a new AI session for this template and switches to it
   - switchSession(sessionId: string): shows another saved session
   - deleteSession(sessionId: string): deletes a saved session and its messages

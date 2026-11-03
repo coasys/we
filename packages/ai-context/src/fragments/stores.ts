@@ -599,6 +599,7 @@ export const storeEntries: StoreEntry[] = [
       pickerShowDestination: { type: 'boolean' },
       sessions: { type: 'array' },
       activeSessionId: { type: 'string' },
+      replyRunning: { type: 'boolean' },
       schemaJson: { type: 'string' },
       canUndo: { type: 'boolean' },
       canRedo: { type: 'boolean' },
@@ -1692,7 +1693,9 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       pickerDefaultIcon: 'string — what its icon field starts with',
       pickerShowDestination:
         'boolean — the picker offers a personal-or-space destination, which it can only do while a space is open to save into',
-      sessions: "ChatSession[] — this template's saved AI sessions (id, name, templateId), newest first",
+      sessions:
+        "{ id, name }[] — this template's saved AI chats, newest first. Where the backend keeps conversations they are its, and a reply finishes with the editor closed",
+      replyRunning: 'boolean — a reply the backend is running is in progress in the chat on screen; offer cancelReply',
       activeSessionId: 'string | null — the session whose messages are shown',
       contentMode:
         "'preview' | 'visual' — whether the editor shows the rendered template or the visual editing surface",
@@ -1723,6 +1726,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '(): checks the chat’s model again — after changing models in settings, or to see whether a failure has cleared',
       switchSession: '(sessionId: string): shows another saved session',
       deleteSession: '(sessionId: string): deletes a saved session and its messages',
+      cancelReply:
+        '(): stops the reply the backend is running in the chat on screen. What it changed before it stopped stays changed',
       setContentMode:
         "(mode: 'preview' | 'visual'): switches the editor between the rendered preview and the visual editing surface",
       startFork: '(): opens the picker to copy the current template into one you own',

@@ -2387,6 +2387,7 @@ export const contextData: ContextData = {
         pickerShowDestination: { type: 'boolean' },
         sessions: { type: 'array' },
         activeSessionId: { type: 'string' },
+        replyRunning: { type: 'boolean' },
         contentMode: { type: 'object' },
         schemaJson: { type: 'string' },
         canUndo: { type: 'boolean' },
@@ -2406,6 +2407,7 @@ export const contextData: ContextData = {
       },
       actions: [
         'refreshAssistant',
+        'cancelReply',
         'newChat',
         'switchSession',
         'deleteSession',

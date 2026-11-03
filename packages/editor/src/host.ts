@@ -195,6 +195,10 @@ export interface SessionPort {
   clearHistory: () => void;
   sessions: () => { id: string; name: string }[];
   activeSessionId: () => string | null;
+  /** A reply the backend runs is in progress in the chat on screen: show Stop. */
+  replyRunning: () => boolean;
+  /** Stop it. What the agent changed before it stopped stays changed. */
+  cancelReply: () => void | Promise<void>;
   newChat: () => void;
   switchSession: (sessionId: string) => void;
   deleteSession: (sessionId: string) => Promise<void>;
