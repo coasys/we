@@ -437,7 +437,9 @@ export function buildValidationContext(data: ContextData): ValidationContext {
     if (!catalog.placements?.length) continue;
     const names = new Map<string, string[]>();
     for (const plugin of catalog.plugins) names.set(plugin.id, [...(names.get(plugin.id) ?? []), plugin.category]);
-    const byProp = pluginPlacements.get(catalog.component) ?? new Map();
+    const byProp =
+      pluginPlacements.get(catalog.component) ??
+      new Map<string, { key: string; categories: string[]; names: Map<string, string[]>; bare?: boolean }>();
     for (const { prop, key, categories, bare } of catalog.placements)
       byProp.set(prop, { key, categories, names, bare });
     pluginPlacements.set(catalog.component, byProp);

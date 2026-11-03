@@ -157,7 +157,7 @@ function resolveEntityNames(
 function composeHandlers(handlers: unknown[]): (...args: unknown[]) => void {
   return (...args: unknown[]) => {
     for (const fn of handlers) {
-      if (typeof fn === 'function') fn(...args);
+      if (typeof fn === 'function') (fn as (...a: unknown[]) => unknown)(...args);
     }
   };
 }
@@ -1019,8 +1019,8 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
         // Read from store proxy INSIDE the memo so Solid tracks mutations from updateSchema/patching
         const currentItems = (node.props as Record<string, unknown>)?.items;
         const resolvedItems = resolveProp(currentItems, stores, effectiveContext, createMemo);
-        const items = typeof resolvedItems === 'function' ? resolvedItems() : resolvedItems;
-        return Array.isArray(items) ? items : [];
+        const items: unknown = typeof resolvedItems === 'function' ? (resolvedItems as () => unknown)() : resolvedItems;
+        return Array.isArray(items) ? (items as unknown[]) : [];
       });
     }
 
@@ -1334,7 +1334,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
             */
             let fn = resolveProp(item, stores, callContext, noMemo);
             if (typeof fn === 'function' && REACTIVE_ACCESSOR in (fn as object)) fn = (fn as () => unknown)();
-            if (typeof fn === 'function') fn(...args);
+            if (typeof fn === 'function') (fn as (...a: unknown[]) => unknown)(...args);
           }
         };
     } else {

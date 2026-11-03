@@ -182,7 +182,7 @@ function inferItemProperties(
   localRefs: Map<string, ScopeRef>,
 ): { properties?: string[]; hint?: string } {
   if (Array.isArray(items)) {
-    const first = items.find((i) => typeof i === 'object' && i !== null && !Array.isArray(i));
+    const first: unknown = items.find((i) => typeof i === 'object' && i !== null && !Array.isArray(i));
     if (first) return { properties: Object.keys(first as object), hint: 'literal list' };
     return {};
   }

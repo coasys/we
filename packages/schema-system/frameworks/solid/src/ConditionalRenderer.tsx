@@ -58,7 +58,7 @@ export function ConditionalRenderer({ node, stores, context, renderNode }: Condi
   // result from `local`; the condition itself is a plain expression over what is already in scope.
   const conditionMet = createMemo(() => {
     const resolved = resolveProp(node.props?.condition, stores, context, createMemo);
-    return typeof resolved === 'function' ? resolved() : resolved;
+    return typeof resolved === 'function' ? (resolved as () => unknown)() : resolved;
   });
 
   // If no transitions, use standard Show component
