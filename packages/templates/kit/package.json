@@ -19,7 +19,7 @@
     "@we/tokens": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^26.6.5",
+    "@types/node": "^26.6.6",
     "@we/graph-core": "workspace:*",
     "vitest": "^5.0.5"
   }
