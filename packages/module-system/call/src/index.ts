@@ -555,7 +555,7 @@ const tile: SchemaNode = {
                           type: 'Row',
                           props: { gap: '100', ay: 'center' },
                           children: [
-                            { type: 'we-spinner', props: { size: 'xs' } },
+                            { type: 'we-animated-icon', props: { name: 'spinner', size: 'xs' } },
                             {
                               type: 'we-text',
                               props: { variant: 'footnote', color: 'text-muted' },
