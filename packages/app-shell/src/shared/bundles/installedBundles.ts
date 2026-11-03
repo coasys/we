@@ -51,9 +51,13 @@ export function installedThemes(entry: Pick<InstalledBundle, 'themes' | 'theme'>
 export function readInstalledBundles(raw: string | undefined | null): InstalledBundle[] {
   if (!raw) return [];
   try {
-    const parsed = JSON.parse(raw);
+    const parsed: unknown = JSON.parse(raw);
+    // Written by the installer, so an entry with an id is an InstalledBundle.
     return Array.isArray(parsed)
-      ? (parsed.filter((entry) => entry && typeof entry.id === 'string') as InstalledBundle[])
+      ? (parsed.filter(
+          (entry: unknown) =>
+            !!entry && typeof entry === 'object' && typeof (entry as { id?: unknown }).id === 'string',
+        ) as InstalledBundle[])
       : [];
   } catch {
     return [];

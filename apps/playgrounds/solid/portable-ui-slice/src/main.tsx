@@ -6,7 +6,7 @@
 import '@we/primitives'; // side-effect: defines all we-* custom elements
 import '@we/tokens/css'; // design-token CSS variables
 
-import { createInMemoryBackend, type Row as BackendRow } from '@we/backend-inmemory';
+import { createInMemoryBackend } from '@we/backend-inmemory';
 import { Row } from '@we/components/solid';
 import { mountTemplateEditor } from '@we/editor';
 import type { TemplateSchema } from '@we/schema-shared';
@@ -41,7 +41,7 @@ let n = 0;
 function addPost() {
   n += 1;
   backend.mutate((tables) => {
-    (tables.Post as BackendRow[]).push({
+    tables.Post.push({
       id: `new-${n}`,
       title: `Graph update #${n}`,
       content: 'Added at runtime — the live subscription re-rendered this.',

@@ -27,7 +27,7 @@
   },
   "devDependencies": {
     "@coasys/ad4m": "*",
-    "@types/node": "^26.6.5",
+    "@types/node": "^26.6.6",
     "@we/backend-conformance": "workspace:*",
     "@we/block-shared": "workspace:*",
     "@we/cli": "workspace:*",

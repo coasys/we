@@ -41,14 +41,12 @@ export function FlipCard(props: FlipCardProps) {
       ]
         .filter(Boolean)
         .join(' ')}
-      style={
-        {
-          height: height(),
-          width: width(),
-          ...(props.flipDuration ? { '--we-flip-card-duration': props.flipDuration } : {}),
-          ...props.styles,
-        } as Record<string, string | number>
-      }
+      style={{
+        height: height(),
+        width: width(),
+        ...(props.flipDuration ? { '--we-flip-card-duration': props.flipDuration } : {}),
+        ...props.styles,
+      }}
       onClick={handleClick}
       onMouseEnter={applyWobble}
       onMouseLeave={resetWobble}

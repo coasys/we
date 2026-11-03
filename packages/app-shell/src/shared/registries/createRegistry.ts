@@ -72,13 +72,13 @@ export interface RegistryEntry {
 
 export interface Registry<T extends RegistryEntry> {
   /** Add or replace. Announces. */
-  register(entry: T): void;
+  register: (entry: T) => void;
   /** Remove by id. Announces only when something was there — removing nothing is not a change. */
-  remove(id: string): boolean;
-  get(id: string): T | undefined;
-  has(id: string): boolean;
+  remove: (id: string) => boolean;
+  get: (id: string) => T | undefined;
+  has: (id: string) => boolean;
   /** Every entry, in registration order. */
-  all(): T[];
+  all: () => T[];
   /**
    * Every entry in a stable order: the registry's own comparator, else `order` then id.
    *
@@ -86,16 +86,16 @@ export interface Registry<T extends RegistryEntry> {
    * otherwise follow registration order — and chrome would silently rearrange depending on which
    * module happened to load first.
    */
-  ordered(): T[];
+  ordered: () => T[];
   /** Subscribe to changes. Returns an unsubscribe. */
-  subscribe(listener: () => void): () => void;
+  subscribe: (listener: () => void) => () => void;
   /**
    * Tell subscribers something changed that is not an entry — a side table the registry's
    * consumers also read, such as the host stores a dock resolves its keys against.
    */
-  announce(): void;
+  announce: () => void;
   /** Remove everything. Announces once. */
-  clear(): void;
+  clear: () => void;
 }
 
 export interface RegistryOptions<T extends RegistryEntry> {

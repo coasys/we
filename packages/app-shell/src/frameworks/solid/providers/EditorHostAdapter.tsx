@@ -51,7 +51,7 @@ export function EditorHostAdapter(props: ParentProps) {
       if (key === 'currentTemplate') return edit.template();
       if (key === 'updateTemplate') return edit.update;
       if (key === 'persistCurrentTemplate') return edit.persist;
-      return Reflect.get(target, key, receiver);
+      return Reflect.get(target, key, receiver) as unknown;
     },
   });
 

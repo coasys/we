@@ -68,7 +68,7 @@ const SHAPE_PROPERTIES = `SELECT ?name ?prop ?path WHERE {
 type Row = Record<string, string | undefined>;
 
 async function select(perspective: PerspectiveProxy, query: string): Promise<Row[]> {
-  const rows = await perspective.querySparql(query);
+  const rows: unknown = await perspective.querySparql(query);
   return Array.isArray(rows) ? (rows as Row[]) : [];
 }
 
@@ -76,7 +76,7 @@ async function select(perspective: PerspectiveProxy, query: string): Promise<Row
 function shapeName(nameNode: string | undefined): string | undefined {
   if (!nameNode) return undefined;
   try {
-    const value = Literal.fromUrl(nameNode).get();
+    const value: unknown = Literal.fromUrl(nameNode).get();
     return typeof value === 'string' ? value.replace('shacl://', '') : undefined;
   } catch {
     return undefined;

@@ -12,7 +12,7 @@ export function clone<T>(value: T): T {
   // Useful for ensuring reactivity in SolidJS setter by creating new references
   if (Array.isArray(value)) {
     // Clone each item in the array (shallow clone for objects)
-    return value.map((item) => (typeof item === 'object' && item !== null ? { ...item } : item)) as T;
+    return (value as unknown[]).map((item) => (typeof item === 'object' && item !== null ? { ...item } : item)) as T;
   }
   if (typeof value === 'object' && value !== null) {
     return { ...value };
@@ -29,7 +29,8 @@ export function clone<T>(value: T): T {
  * happen. See `@we/editor`'s copy, which reintroduced the same bug and produced exactly that symptom.
  */
 export function deepClone<T>(val: T): T {
-  return JSON.parse(JSON.stringify(val));
+  // The text is this value's own JSON, so it parses back to the same shape.
+  return JSON.parse(JSON.stringify(val)) as T;
 }
 
 export function deriveSlug(name: string): string {

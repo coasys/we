@@ -1381,7 +1381,7 @@ const fragmentTest = section('Fragment (no type)', 'Node without type renders as
       { type: 'we-text', props: { color: 'accent-text' }, children: ['Fragment child 1 (Primary)'] },
       { type: 'we-text', props: { color: 'success-text' }, children: ['Fragment child 2 (Green)'] },
     ],
-  } as SchemaNode,
+  },
 ]);
 
 const fragmentThemeTest = section('Fragment + theme', 'Themeable fragment wraps children in theme div', [
@@ -1395,7 +1395,7 @@ const fragmentThemeTest = section('Fragment + theme', 'Themeable fragment wraps 
     children: [
       { type: 'we-text', props: { color: 'accent' }, children: ['Fragment themed child (should be blue-ish)'] },
     ],
-  } as SchemaNode,
+  },
 ]);
 
 // ---------------------------------------------------------------------------

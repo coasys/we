@@ -1,5 +1,5 @@
 import { Column, Row } from '@we/components/solid';
-import { createSignal } from 'solid-js';
+import { createSignal, untrack } from 'solid-js';
 
 interface CodeInputProps {
   code: string | undefined;
@@ -27,7 +27,7 @@ const LANGUAGE_OPTIONS = [
 ];
 
 export function CodeInput(props: CodeInputProps) {
-  const [language, setLanguage] = createSignal(props.language || '');
+  const [language, setLanguage] = createSignal(untrack(() => props.language) || '');
 
   function handleCodeInput(e: CustomEvent) {
     props.onChange('code', e.detail);

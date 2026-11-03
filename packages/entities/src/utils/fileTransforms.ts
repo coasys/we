@@ -17,7 +17,8 @@ export function decodeFileAsJson(data: string | null | undefined): Record<string
   const raw = decodeFileAsString(data);
   if (!raw) return {};
   try {
-    return JSON.parse(raw);
+    const parsed: unknown = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
   } catch {
     return {};
   }

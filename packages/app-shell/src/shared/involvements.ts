@@ -152,7 +152,7 @@ export function createInvolvementActions(deps: InvolvementDeps): InvolvementActi
 
   /** Every involvement this agent holds on this node — one query on the agent, narrowed by node here. */
   async function heldBy(p: DatasetProxy, nodeId: string, agent: string): Promise<Involvement[]> {
-    const rows = (await Involvement.findAll(p, { where: { agent } })) as Involvement[];
+    const rows = await Involvement.findAll(p, { where: { agent } });
     return rows.filter((row) => relationId(row.node) === nodeId);
   }
 
@@ -186,7 +186,7 @@ export function createInvolvementActions(deps: InvolvementDeps): InvolvementActi
       try {
         const matching = (await heldBy(p, nodeId, agent)).filter((row) => row.kind === kind);
         if (on && !matching.length) {
-          await Involvement.create(p, { agent, kind, node: [nodeId] } as never);
+          await Involvement.create(p, { agent, kind, node: [nodeId] });
         } else if (!on && matching.length) {
           // Every copy, not the first: a duplicate left by two members pressing at once must not
           // survive the person who meant to remove it.
@@ -233,11 +233,7 @@ export function createInvolvementActions(deps: InvolvementDeps): InvolvementActi
           await runEntityTransaction(p, async (tx) => {
             for (const row of stale) await row.delete(tx.batchId);
             if (kind && !already) {
-              await Involvement.create(
-                p,
-                { agent: self, kind, node: [nodeId] } as never,
-                { batchId: tx.batchId } as never,
-              );
+              await Involvement.create(p, { agent: self, kind, node: [nodeId] }, { batchId: tx.batchId });
             }
           });
         }

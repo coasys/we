@@ -1,5 +1,5 @@
 import { Row } from '@we/components/solid';
-import { createEffect, createMemo, createSignal, onCleanup, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
 
 // Text blocks
 const p = { type: 'p', label: 'Text', icon: 'text-t', md: '' };
@@ -45,6 +45,9 @@ export default function BlockTypeMenu(props: {
   selectType: (type: string) => void;
   close: () => void;
 }) {
+  // Fixed for the menu's life: a press anywhere outside it closes it, so it is remounted rather than
+  // moved when it opens on another block.
+  // eslint-disable-next-line solid/reactivity -- props are fixed for the life of the menu, see above
   const { nodeType, position, selectType, close } = props;
   const [focusIndex, setFocusIndex] = createSignal(-1);
   const [filter, setFilter] = createSignal('');
@@ -158,41 +161,45 @@ export default function BlockTypeMenu(props: {
       </Row>
       <we-divider mt="200" mb="400" />
       <Show when={filteredBlocks().length > 0} fallback={<div class="we-block-menu-empty">No matching blocks</div>}>
-        {filteredCategories().map((category, index) => {
-          const offset = () =>
-            filteredCategories()
-              .slice(0, index)
-              .reduce((sum, cat) => sum + cat.blocks.length, 0);
-          return (
-            <>
-              {index > 0 && <div class="we-block-menu-divider" />}
+        <For each={filteredCategories()}>
+          {(category, index) => {
+            const offset = () =>
+              filteredCategories()
+                .slice(0, index())
+                .reduce((sum, cat) => sum + cat.blocks.length, 0);
+            return (
+              <>
+                {index() > 0 && <div class="we-block-menu-divider" />}
 
-              <we-text fontSize="100" fontWeight="600" textTransform="uppercase" color="text-muted" mb="100">
-                {category.title}
-              </we-text>
+                <we-text fontSize="100" fontWeight="600" textTransform="uppercase" color="text-muted" mb="100">
+                  {category.title}
+                </we-text>
 
-              {category.blocks.map((option, blockIndex) => (
-                <button
-                  id={`block-type-menu-${option.type}`}
-                  class={`we-block-menu-item ${focusIndex() === offset() + blockIndex ? 'we-block-menu-focused' : ''}`}
-                  role="menuitem"
-                  tabIndex={focusIndex() === offset() + blockIndex ? 0 : -1}
-                  onMouseEnter={() => setFocusIndex(offset() + blockIndex)}
-                  onClick={(e) => onOptionClick(e, option.type)}
-                  onKeyDown={(e) => onOptionKeyDown(e, option.type)}
-                >
-                  <Row ay="center" gap="300">
-                    <we-icon name={option.icon} weight="bold" color="text-faint" size="sm" />
-                    <we-text fontSize="200">{option.label}</we-text>
-                  </Row>
-                  <we-text fontSize="200" color="text-muted">
-                    {option.md}
-                  </we-text>
-                </button>
-              ))}
-            </>
-          );
-        })}
+                <For each={category.blocks}>
+                  {(option, blockIndex) => (
+                    <button
+                      id={`block-type-menu-${option.type}`}
+                      class={`we-block-menu-item ${focusIndex() === offset() + blockIndex() ? 'we-block-menu-focused' : ''}`}
+                      role="menuitem"
+                      tabIndex={focusIndex() === offset() + blockIndex() ? 0 : -1}
+                      onMouseEnter={() => setFocusIndex(offset() + blockIndex())}
+                      onClick={(e) => onOptionClick(e, option.type)}
+                      onKeyDown={(e) => onOptionKeyDown(e, option.type)}
+                    >
+                      <Row ay="center" gap="300">
+                        <we-icon name={option.icon} weight="bold" color="text-faint" size="sm" />
+                        <we-text fontSize="200">{option.label}</we-text>
+                      </Row>
+                      <we-text fontSize="200" color="text-muted">
+                        {option.md}
+                      </we-text>
+                    </button>
+                  )}
+                </For>
+              </>
+            );
+          }}
+        </For>
       </Show>
     </div>
   );

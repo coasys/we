@@ -220,40 +220,42 @@ export function CodeEditor(props: CodeEditorProps) {
   /** The query the count was last reported for, so typing in the document does not recount it. */
   let lastQuery = '';
 
-  onMount(async () => {
-    const [langCss, langJson, language, cmState, cmView, highlight, cm, cmSearch] = await Promise.all([
-      import('@codemirror/lang-css'),
-      import('@codemirror/lang-json'),
-      import('@codemirror/language'),
-      import('@codemirror/state'),
-      import('@codemirror/view'),
-      import('@lezer/highlight'),
-      import('codemirror'),
-      import('@codemirror/search'),
-    ]);
+  onMount(() => {
+    void (async () => {
+      const [langCss, langJson, language, cmState, cmView, highlight, cm, cmSearch] = await Promise.all([
+        import('@codemirror/lang-css'),
+        import('@codemirror/lang-json'),
+        import('@codemirror/language'),
+        import('@codemirror/state'),
+        import('@codemirror/view'),
+        import('@lezer/highlight'),
+        import('codemirror'),
+        import('@codemirror/search'),
+      ]);
 
-    // The component can unmount while the editor is still loading; without this the view mounts
-    // into a detached node and is never cleaned up.
-    if (!containerRef.isConnected) return;
+      // The component can unmount while the editor is still loading; without this the view mounts
+      // into a detached node and is never cleaned up.
+      if (!containerRef.isConnected) return;
 
-    readOnlyCompartment = new cmState.Compartment();
-    state = cmState.EditorState;
+      readOnlyCompartment = new cmState.Compartment();
+      state = cmState.EditorState;
 
-    view = new cmView.EditorView({
-      doc: props.code ?? '',
-      extensions: [
-        cm.basicSetup,
-        language.syntaxHighlighting(highlight.classHighlighter),
-        props.language === 'css' ? langCss.css() : langJson.json(),
-        readOnlyCompartment.of(cmState.EditorState.readOnly.of(props.readOnly ?? false)),
-        cmView.EditorView.updateListener.of((update) => {
-          if (update.docChanged) {
-            const value = update.state.doc.toString();
-            props.onChange?.(value);
-          }
-        }),
-        cmView.EditorView.theme(themeSpecFor(props.maxHeight)),
-        /*
+      view = new cmView.EditorView({
+        doc: props.code ?? '',
+        extensions: [
+          cm.basicSetup,
+          language.syntaxHighlighting(highlight.classHighlighter),
+          props.language === 'css' ? langCss.css() : langJson.json(),
+          readOnlyCompartment.of(cmState.EditorState.readOnly.of(props.readOnly ?? false)),
+          // eslint-disable-next-line solid/reactivity -- CodeMirror calls this per update; props are read then
+          cmView.EditorView.updateListener.of((update) => {
+            if (update.docChanged) {
+              const value = update.state.doc.toString();
+              props.onChange?.(value);
+            }
+          }),
+          cmView.EditorView.theme(themeSpecFor(props.maxHeight)),
+          /*
           Mod-S saves.
 
           `onSave` was in the props type, documented, passed by callers — and bound to nothing. The
@@ -262,27 +264,27 @@ export function CodeEditor(props: CodeEditorProps) {
           (`Prec.highest`) so nothing there can claim it first, and it returns `true` so the browser
           does not also act on it.
         */
-        cmState.Prec.highest(
-          cmView.keymap.of([
-            {
-              key: 'Mod-s',
-              preventDefault: true,
-              run: (target) => {
-                props.onSave?.(target.state.doc.toString());
-                return true;
+          cmState.Prec.highest(
+            cmView.keymap.of([
+              {
+                key: 'Mod-s',
+                preventDefault: true,
+                run: (target) => {
+                  props.onSave?.(target.state.doc.toString());
+                  return true;
+                },
               },
-            },
-          ]),
-        ),
-        /*
+            ]),
+          ),
+          /*
           The find bar at the TOP, under whatever toolbar the caller has.
 
           CodeMirror puts it at the bottom by default, which on a tall docked panel is the far
           end of the document from the control that opened it and from the count beside that
           control. Top keeps the three together.
         */
-        cmSearch.search({ top: true }),
-        /*
+          cmSearch.search({ top: true }),
+          /*
           How many matches there are, reported outward.
 
           CodeMirror's panel shows none, so "did it find everything?" is unanswerable — which
@@ -294,40 +296,42 @@ export function CodeEditor(props: CodeEditorProps) {
           to hundreds of thousands of characters and a one-character query matches most of them,
           on every keystroke.
         */
-        cmView.EditorView.updateListener.of((update) => {
-          if (!props.onSearchMatches) return;
-          const query = cmSearch.getSearchQuery(update.state);
-          const text = query.search;
-          if (text === lastQuery && !update.docChanged) return;
-          lastQuery = text;
-          if (!text || !query.valid) return props.onSearchMatches({ query: '', matches: 0, capped: false });
+          // eslint-disable-next-line solid/reactivity -- CodeMirror calls this per update; props are read then
+          cmView.EditorView.updateListener.of((update) => {
+            if (!props.onSearchMatches) return;
+            const query = cmSearch.getSearchQuery(update.state);
+            const text = query.search;
+            if (text === lastQuery && !update.docChanged) return;
+            lastQuery = text;
+            if (!text || !query.valid) return props.onSearchMatches({ query: '', matches: 0, capped: false });
 
-          let matches = 0;
-          let capped = false;
-          const cursor = query.getCursor(update.state);
-          for (let next = cursor.next(); !next.done; next = cursor.next()) {
-            if (++matches >= MATCH_CAP) {
-              capped = true;
-              break;
+            let matches = 0;
+            let capped = false;
+            const cursor = query.getCursor(update.state);
+            for (let next = cursor.next(); !next.done; next = cursor.next()) {
+              if (++matches >= MATCH_CAP) {
+                capped = true;
+                break;
+              }
             }
-          }
-          props.onSearchMatches({ query: text, matches, capped });
-        }),
-      ],
-      parent: containerRef,
-      root: containerRef.ownerDocument,
-    });
+            props.onSearchMatches({ query: text, matches, capped });
+          }),
+        ],
+        parent: containerRef,
+        root: containerRef.ownerDocument,
+      });
 
-    props.onReady?.({
-      find: () => view && cmSearch.openSearchPanel(view),
-      goTo: (offset) => {
-        if (!view) return;
-        const length = view.state.doc.length;
-        const at = Math.max(0, Math.min(offset, length));
-        view.dispatch({ selection: { anchor: at, head: Math.min(at + 1, length) }, scrollIntoView: true });
-        view.focus();
-      },
-    });
+      props.onReady?.({
+        find: () => view && cmSearch.openSearchPanel(view),
+        goTo: (offset) => {
+          if (!view) return;
+          const length = view.state.doc.length;
+          const at = Math.max(0, Math.min(offset, length));
+          view.dispatch({ selection: { anchor: at, head: Math.min(at + 1, length) }, scrollIntoView: true });
+          view.focus();
+        },
+      });
+    })().catch((error) => console.error('CodeEditor: could not load the editor', error));
   });
 
   // Sync external code changes (e.g. undo/redo from outside, node switching)

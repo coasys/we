@@ -149,7 +149,7 @@ export function installClearOnEmpty(model: typeof Ad4mModel): void {
       for (const key of emptiedProperties(this)) await clearProperty(this, key);
     }
     return originalInnerUpdate.call(this, setProperties, batchId);
-  } as InnerUpdate;
+  };
 
   prototype[PATCHED] = true;
 }

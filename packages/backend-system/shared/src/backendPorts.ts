@@ -183,10 +183,10 @@ export interface ProfileDirectoryPort {
 
 /** What the host hands the backend to build the renderer's data bindings. */
 export interface DataBindingDeps {
-  currentDataset(): DatasetHandle | null;
-  currentDatasetEntities(): EntityManifestEntry[];
+  currentDataset: () => DatasetHandle | null;
+  currentDatasetEntities: () => EntityManifestEntry[];
   /** Reactive profile cache read — must be read inside the accessor (see `$identities`). */
-  profiles(): Array<{ did?: string }>;
+  profiles: () => Array<{ did?: string }>;
   /**
    * One agent, as a read that depends on that agent alone. Preferred over scanning `profiles()`.
    *
@@ -198,15 +198,15 @@ export interface DataBindingDeps {
    * Optional because it is an optimisation, not a capability: a host without it keeps working
    * through `profiles()`, which is what the in-memory backend and the tests do.
    */
-  profileFor?(id: string): { did?: string } | undefined;
-  fetchProfile(id: string): Promise<void> | void;
+  profileFor?: (id: string) => { did?: string } | undefined;
+  fetchProfile: (id: string) => Promise<void> | void;
   ephemeral: EphemeralPort;
 }
 
 /** Host context available when the ports are constructed. */
 export interface BackendPortsContext {
   /** The authenticated agent's id, read lazily (undefined until the session is usable). */
-  selfId(): string | undefined;
+  selfId: () => string | undefined;
 }
 
 export interface BackendPorts {

@@ -294,7 +294,7 @@ export function cardList(opts: CardListOptions): SchemaNode {
     type: 'Column',
     props: { width: '100%' },
     ...(pageSize !== null && { $localState: { [sizeField]: { type: 'number', initial: pageSize } } }),
-    $queries: { [key]: query as QueryStateField },
+    $queries: { [key]: query },
     children: [
       {
         type: '$if',

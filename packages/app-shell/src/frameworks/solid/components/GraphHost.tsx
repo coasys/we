@@ -185,7 +185,7 @@ function DocumentCard(props: { node: GraphNode; fallback: JSX.Element }) {
 
   return (
     <Show when={editorState()} fallback={props.fallback}>
-      {(state) => <BlockRenderer editorState={state() as never} dataset={datasetStore.currentDataset()?.handle} />}
+      {(state) => <BlockRenderer editorState={state()} dataset={datasetStore.currentDataset()?.handle} />}
     </Show>
   );
 }
@@ -406,7 +406,7 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
     const rows = await model.findAll(handle, {
       limit: REVERSE_SCAN_LIMIT,
       include: { [scope.via]: true },
-    } as QueryOptions);
+    });
 
     return (rows as Record<string, unknown>[]).filter((row) => {
       const value = row[scope.via];
@@ -488,7 +488,7 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
       'source' in seed && seed.source === 'canvas' && seed.options?.weigh
         ? { ...seed, options: { ...seed.options, simulate } }
         : seed,
-    ) as GraphViewProps['seeds'];
+    );
   });
 
   const host: GraphViewProps['host'] = {
@@ -650,7 +650,8 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
         .catch((error: unknown) => {
           // A type this backend will not subscribe to leaves the graph as loaded rather than
           // taking it down — the same degradation every other read here makes.
-          console.warn(`[graph] cannot watch ${request.entity}:`, error);
+          const entities = Array.isArray(request.entity) ? request.entity.join(', ') : request.entity;
+          console.warn(`[graph] cannot watch ${entities}:`, error);
         });
 
       return () => {
@@ -726,7 +727,7 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
       const rows = await model.findAll(handle, options);
       trace('graph', 'read', {
         entity,
-        rows: (rows as unknown[]).length,
+        rows: rows.length,
         parent: (options as { parent?: { id?: string } }).parent?.id,
         where,
         limit,

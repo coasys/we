@@ -215,7 +215,7 @@ export function createAd4mModelAdmin(backendClient: unknown, options: Ad4mRuntim
     async list() {
       const models = await client.ai.getModels();
       const defaults = await Promise.all(
-        (Object.values(KIND_TO_AD4M) as ModelType[]).map((type) =>
+        Object.values<ModelType>(KIND_TO_AD4M).map((type) =>
           // A kind with no default set is not an error — it resolves to no id.
           client.ai.getDefaultModel(type).catch(() => undefined),
         ),
@@ -230,8 +230,8 @@ export function createAd4mModelAdmin(backendClient: unknown, options: Ad4mRuntim
       })) satisfies AiModel[];
     },
 
-    async presets(kind) {
-      return PRESETS[kind] ?? [];
+    presets(kind) {
+      return Promise.resolve(PRESETS[kind] ?? []);
     },
 
     async status(id) {

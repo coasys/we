@@ -197,7 +197,7 @@ async function storedShapes(p: PerspectiveProxy): Promise<Map<string, StoredShap
     return created;
   };
   const select = async (query: string) => {
-    const rows = await p.querySparql(query);
+    const rows: unknown = await p.querySparql(query);
     return Array.isArray(rows) ? (rows as Record<string, string | undefined>[]) : [];
   };
 

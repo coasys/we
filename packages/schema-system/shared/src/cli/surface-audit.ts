@@ -247,7 +247,7 @@ const bestFile = (candidates: Iterable<string>) =>
       depth(b) - depth(a) ||
       Number(a.endsWith('/index.ts')) - Number(b.endsWith('/index.ts')) ||
       a.localeCompare(b),
-  )[0]!;
+  )[0];
 
 /**
  * The ground to report when several walks reached the same node under different ones.

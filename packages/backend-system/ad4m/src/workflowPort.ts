@@ -49,7 +49,6 @@ import {
   type FlowProposeResult as Ad4mFlowProposeResult,
   FlowTransitionProposal,
   Link,
-  type LinkExpression,
   LinkQuery,
   Literal,
   type ModelQuery,
@@ -371,7 +370,7 @@ async function heldDefinition(perspective: PerspectiveProxy, name: string, flowU
 function didOf(target: string): string {
   if (!target.startsWith('literal:')) return target;
   try {
-    const value = Literal.fromUrl(target).get();
+    const value: unknown = Literal.fromUrl(target).get();
     return typeof value === 'string' ? value : target;
   } catch {
     return target;
@@ -454,7 +453,7 @@ export async function readProposals(perspective: PerspectiveProxy, runs: readonl
     readFired(perspective, runsWithProposals),
   ]);
   const votersOf = new Map<string, string[]>();
-  for (const vote of votes as LinkExpression[]) {
+  for (const vote of votes) {
     const voter = didOf(vote.data.target);
     // A vote counts only when its voter signed it — see the module docblock.
     if (vote.author !== voter) continue;
@@ -745,7 +744,7 @@ export function createAd4mWorkflowPort(selfId: () => string | undefined = () => 
       if (!stale.length && !missing.length) return;
       // Removed first: for as long as an old rule and its replacement sit side by side, the engine
       // refuses to move anything into that state.
-      if (stale.length) await perspective.removeLinks(stale as never);
+      if (stale.length) await perspective.removeLinks(stale);
       if (missing.length) await perspective.addLinks(missing);
     },
 
@@ -776,7 +775,7 @@ export function createAd4mWorkflowPort(selfId: () => string | undefined = () => 
       if (records) throw new Error(`workflows: "${name}" still has ${records} record(s) going through it`);
       const held = await heldDefinition(perspective, name, flow.flowUri);
       forget(perspective, name);
-      if (held.length) await perspective.removeLinks(held as never);
+      if (held.length) await perspective.removeLinks(held);
       poke(perspective);
     },
 

@@ -27,7 +27,7 @@ export async function collectionFacts(dataset: unknown, id: string): Promise<Des
   if (!dataset || !id) return {};
   try {
     const read = (ids: string[]) =>
-      CollectionBlock.findAll(dataset as never, { where: { id: ids } } as never) as unknown as Promise<Row[]>;
+      CollectionBlock.findAll(dataset, { where: { id: ids } } as never) as unknown as Promise<Row[]>;
     const [root] = await read([id]);
     if (!root) return {};
 

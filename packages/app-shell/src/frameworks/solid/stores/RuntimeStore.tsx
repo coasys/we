@@ -41,7 +41,6 @@ import { useSessionStore } from '@solid/stores/SessionStore';
 import { useShellStore } from '@solid/stores/ShellStore';
 import type {
   AiModelKind,
-  AiModelStatus,
   AiTask,
   AuthorizedApp,
   ConsentRequest,
@@ -634,7 +633,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
     const byId = new Map(statuses);
     setAiModels((models) =>
       models.map((model) => {
-        const status = byId.get(model.id) as AiModelStatus | undefined;
+        const status = byId.get(model.id);
         return status ? describeModel(model, status) : model;
       }),
     );
@@ -935,7 +934,7 @@ export function parsePeerInfos(text: string): string[] {
   const trimmed = text.trim();
   if (!trimmed) return [];
   try {
-    const parsed = JSON.parse(trimmed);
+    const parsed: unknown = JSON.parse(trimmed);
     if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
   } catch {
     // Not JSON — fall through to the line-separated reading.

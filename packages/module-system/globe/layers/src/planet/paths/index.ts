@@ -9,7 +9,6 @@ import {
   arcPositions,
   FeatureDiffer,
   followTime,
-  type LonLat,
   type PathFeature,
   pathFeatures,
   type PathsOptions,
@@ -34,7 +33,7 @@ function sampled(feature: PathFeature, lift: number): Cartesian3[] {
   const share = positions.length === 2 ? arcHeight : 0;
   const out: Cartesian3[] = [];
   for (let i = 1; i < positions.length; i++) {
-    const segment = arcPositions(positions[i - 1] as LonLat, positions[i] as LonLat, share, share > 0 ? 64 : 24);
+    const segment = arcPositions(positions[i - 1], positions[i], share, share > 0 ? 64 : 24);
     for (const [index, [lon, lat, height]] of segment.entries()) {
       if (i > 1 && index === 0) continue;
       out.push(Cartesian3.fromDegrees(lon, lat, height + lift));
@@ -43,13 +42,13 @@ function sampled(feature: PathFeature, lift: number): Cartesian3[] {
   return out;
 }
 
-export async function renderPaths(
+export function renderPaths(
   context: CesiumRendererContext,
   initial: PathsOptions,
 ): Promise<LayerRenderer<PathsOptions>> {
   const { viewer, id: layer } = context;
   const colors = cesiumColors(context, () => repaint());
-  const lines = viewer.scene.primitives.add(new PolylineCollection()) as PolylineCollection;
+  const lines = viewer.scene.primitives.add<PolylineCollection>(new PolylineCollection());
   const differ = new FeatureDiffer<PathFeature>();
   const drawn = new Map<string, { feature: PathFeature; polyline: Polyline }>();
   let options = initial;
@@ -120,5 +119,5 @@ export async function renderPaths(
   });
 
   rebuild(initial);
-  return { update: rebuild };
+  return Promise.resolve({ update: rebuild });
 }

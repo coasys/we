@@ -11,7 +11,7 @@ import type { ColumnProps } from '@we/components/solid';
 import { Column } from '@we/components/solid';
 import { DOMSerializer } from 'prosemirror-model';
 import type { JSX } from 'solid-js';
-import { createContext, createMemo, createResource, For, Match, Show, Switch, useContext } from 'solid-js';
+import { createContext, createMemo, createResource, For, Match, Show, Switch, untrack, useContext } from 'solid-js';
 import { Dynamic } from 'solid-js/web';
 
 import { registerCoreBlockComponents } from '../core-block-components';
@@ -64,7 +64,7 @@ function labelOf(block: ContentBlock): string {
   }
   const fields = block as unknown as Record<string, unknown>;
   for (const key of ['title', 'label', 'name', 'altText', 'url']) {
-    if (typeof fields[key] === 'string' && fields[key]) return fields[key] as string;
+    if (typeof fields[key] === 'string' && fields[key]) return fields[key];
   }
   return entityOf(block) ?? block._type;
 }
@@ -116,8 +116,8 @@ function DraggableBlock(props: { block: ContentBlock; children: JSX.Element }): 
           `recordid` attribute is not the property the element reads. Objects are set as properties
           already. The test in blockRendererDrag.test.tsx holds this. */}
       <we-draggable
-        entity={entity()!}
-        prop:recordId={props.block._key!}
+        entity={entity()}
+        prop:recordId={props.block._key}
         prop:datasetKey={source!.datasetKey ?? ''}
         label={labelOf(props.block)}
         icon={ICONS[props.block._type] ?? 'square'}
@@ -133,7 +133,8 @@ function DraggableBlock(props: { block: ContentBlock; children: JSX.Element }): 
 }
 
 function CustomBlockElement(props: { block: ContentBlock }): JSX.Element {
-  const Override = useDisplayOverride(props.block._type);
+  // A block's type is fixed for its mount: a block of another type is a different block.
+  const Override = useDisplayOverride(untrack(() => props.block._type));
   const Display = () =>
     Override ??
     (getBlockRegistration(props.block._type)?.display as ((p: Record<string, unknown>) => JSX.Element) | undefined);
@@ -210,7 +211,6 @@ export function Blocks(props: { blocks: readonly ContentBlock[] }): JSX.Element 
  */
 export function BlockRenderer(props: Props) {
   const host = useBlockHost();
-  const { width = '100%', rootClass } = props;
 
   const [blocks] = createResource(
     () => ({ state: props.editorState, dataset: props.dataset ?? host.dataset() }),
@@ -229,22 +229,23 @@ export function BlockRenderer(props: Props) {
     },
   );
 
-  const themeRoot = rootClass
-    ? `we-block-renderer we-block-content ${rootClass}`
-    : 'we-block-renderer we-block-content';
+  const themeRoot = () =>
+    props.rootClass ? `we-block-renderer we-block-content ${props.rootClass}` : 'we-block-renderer we-block-content';
 
   // Where the words are, for the mention card's one listener.
   let wordsEl: HTMLDivElement | undefined;
 
   return (
-    <Column class="we-block-renderer-wrapper" width={width} ax={props.ax} ay={props.ay}>
+    <Column class="we-block-renderer-wrapper" width={props.width ?? '100%'} ax={props.ax} ay={props.ay}>
       {/*
         `data-we-text`: a press on these words selects them. A card that can be dragged around a
         composition used to pick the whole post up the moment somebody tried to highlight a sentence.
       */}
-      <div class={themeRoot} data-we-text="" ref={wordsEl}>
+      <div class={themeRoot()} data-we-text="" ref={wordsEl}>
         <MentionCard root={() => wordsEl} />
-        <BlockDragContext.Provider value={props.blockDrag?.within ? props.blockDrag : undefined}>
+        {/* Read once: a renderer draws one record's blocks, so what they are dragged as is fixed for
+            its mount, and each block reads the context once when it mounts. */}
+        <BlockDragContext.Provider value={untrack(() => (props.blockDrag?.within ? props.blockDrag : undefined))}>
           <Switch fallback={<Blocks blocks={blocks() ?? []} />}>
             <Match when={blocks() === null}>
               <div class="we-unreadable-content">This was written in a format this version of WE cannot read.</div>

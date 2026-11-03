@@ -1,12 +1,6 @@
-import type { EntityClass, FlatQuery, QueryAdapter, RendererStores } from '@we/backend-shared';
+import type { EntityClass, QueryAdapter, RendererStores } from '@we/backend-shared';
 import { combineEntityRows, entityNamesOf, routeQuery } from '@we/backend-shared';
-import type {
-  LocalFieldMeta,
-  LocalStateField,
-  QueryDescriptor,
-  QueryStateField,
-  ValidationRule,
-} from '@we/schema-shared';
+import type { LocalFieldMeta, QueryDescriptor, ValidationRule } from '@we/schema-shared';
 import {
   applyThemeVars,
   deepUnwrap,
@@ -27,7 +21,7 @@ import {
   scopeIsAnchored,
   validateField,
 } from '@we/schema-shared';
-import { batch, createEffect, createMemo, createSignal, For, JSX, onCleanup, Show } from 'solid-js';
+import { batch, createEffect, createMemo, createSignal, For, JSX, onCleanup, Show, untrack } from 'solid-js';
 import { createStore, produce, reconcile } from 'solid-js/store';
 import { Dynamic } from 'solid-js/web';
 
@@ -71,12 +65,18 @@ function permitted(key: string, value: unknown, native: boolean): unknown {
  * attributes: `aria-label` as a property names nothing to a screen reader, and `data-*` as a property
  * is invisible to a selector. Both used to be set that way, silently.
  */
+/** The name a scope node binds its value under — its `as`, which is a name only when it is text. */
+function scopeName(as: unknown, fallback: string): string {
+  return typeof as === 'string' ? as : fallback;
+}
+
 function assignToHost(host: HTMLElement & Record<string, unknown>, key: string, value: unknown): void {
   if (!/^(data|aria)-/.test(key)) {
     host[key] = value;
     return;
   }
   if (value === undefined || value === null || value === false) host.removeAttribute(key);
+  // eslint-disable-next-line @typescript-eslint/no-base-to-string -- an attribute is text, and any other value is printed as the DOM's own setAttribute would print it.
   else host.setAttribute(key, String(value));
 }
 
@@ -151,7 +151,7 @@ function resolveEntityNames(
 function composeHandlers(handlers: unknown[]): (...args: unknown[]) => void {
   return (...args: unknown[]) => {
     for (const fn of handlers) {
-      if (typeof fn === 'function') fn(...args);
+      if (typeof fn === 'function') (fn as (...a: unknown[]) => unknown)(...args);
     }
   };
 }
@@ -218,7 +218,7 @@ function routeForBackend(
     return null;
   }
 
-  const routed = routeQuery({ entity, ...options } as FlatQuery, adapter);
+  const routed = routeQuery({ entity, ...options }, adapter);
 
   if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV) {
     for (const diagnostic of routed.diagnostics) {
@@ -229,7 +229,7 @@ function routeForBackend(
     }
   }
 
-  if (routed.ok) return routed.options as Record<string, unknown>;
+  if (routed.ok) return routed.options;
 
   reportRoutingRefusal(stores, routed.error);
   return null;
@@ -433,7 +433,7 @@ function runQuery(request: {
     for (const { entity, Model, queryOptions } of plans) {
       // Shared with every other node asking the same question — see `subscriptionPool`.
       const release = acquireSubscription(
-        Model as never,
+        Model,
         dataset,
         queryOptions,
         (results) => take(entity, results),
@@ -456,7 +456,7 @@ function runQuery(request: {
     const controller = new AbortController();
     onCleanup(() => controller.abort());
     for (const { entity, Model, queryOptions } of plans) {
-      (Model.findAll(dataset, queryOptions, { signal: controller.signal }) as Promise<unknown[]>)
+      Model.findAll(dataset, queryOptions, { signal: controller.signal })
         .then((results) => {
           if (controller.signal.aborted) return;
           take(entity, results);
@@ -504,7 +504,7 @@ function createQuerySignal(
       // A host store may expose datasets as `DatasetRef`s (described fields + the backend's own
       // handle). Data consumers take the handle; both shapes are contract types, so unwrap here
       // rather than making every template know which one a given store hands back.
-      if (p && typeof p === 'object' && 'handle' in p) p = (p as { handle: unknown }).handle;
+      if (p && typeof p === 'object' && 'handle' in p) p = p.handle;
     } else {
       // The host injects the backend-neutral $currentDataset() (AD4M's currentPerspective, another
       // backend's equivalent) — no AD4M store reference in the renderer.
@@ -622,7 +622,8 @@ function isStaticValue(value: unknown): boolean {
  * downstream sees the tree it has always seen.
  */
 export function RenderSchema(props: RenderProps): RendererOutput {
-  return RenderNode(props.node?.$defs ? { ...props, node: expandDefinitions(props.node) } : props);
+  // A mounted node never changes under its renderer (see `renderChildren`), so this is decided once.
+  return RenderNode(untrack(() => (props.node?.$defs ? { ...props, node: expandDefinitions(props.node) } : props)));
 }
 
 function RenderNode({ node, stores, registry, context = {}, children }: RenderProps): RendererOutput {
@@ -670,7 +671,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
       return resolved;
     };
 
-    for (const [name, field] of Object.entries(node.$localState as Record<string, LocalStateField>)) {
+    for (const [name, field] of Object.entries(node.$localState)) {
       const rawInitial = field.initial;
 
       // Device persistence: an explicit key opts the field into localStorage, so
@@ -730,8 +731,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
       accessors[name] = get;
       // Function-type fields: Solid treats setter(fn) as a functional update (calls fn(prev)).
       // Wrap the setter so that storing a function value works correctly.
-      const baseSetter: (v: unknown) => void =
-        field.type === 'function' ? (v) => set(() => v as never) : (set as (v: unknown) => void);
+      const baseSetter: (v: unknown) => void = field.type === 'function' ? (v) => set(() => v as never) : set;
       const declaredInitial = resolveInitial(rawInitial);
       setters[name] =
         persistKey || (syncSpec && routeParams)
@@ -789,7 +789,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
         rawInitial !== null &&
         typeof rawInitial === 'object' &&
         !Array.isArray(rawInitial) &&
-        Object.keys(rawInitial as object).some((k) => k.startsWith('$'))
+        Object.keys(rawInitial).some((k) => k.startsWith('$'))
       ) {
         const reactiveVal = resolveProp(rawInitial, stores, context, createMemo);
         createEffect(() => {
@@ -805,9 +805,9 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
 
     effectiveContext = {
       ...context,
-      $local: { ...((context.$local as Record<string, unknown>) ?? {}), ...accessors },
-      $localSetters: { ...((context.$localSetters as Record<string, unknown>) ?? {}), ...setters },
-      $localMeta: { ...((context.$localMeta as Record<string, unknown>) ?? {}), ...metaEntries },
+      $local: { ...(context.$local ?? {}), ...accessors },
+      $localSetters: { ...(context.$localSetters ?? {}), ...setters },
+      $localMeta: { ...(context.$localMeta ?? {}), ...metaEntries },
       $localScopeFields: scopeFields,
     };
   }
@@ -838,7 +838,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
       other's signal whichever was declared first, is tracked by it, and re-runs the reader when it
       answers. Declaration order does not matter, and the test says so.
     */
-    const entries = Object.entries(node.$queries as Record<string, QueryStateField>);
+    const entries = Object.entries(node.$queries);
     const forward: Record<string, () => unknown> = {};
     for (const [name] of entries) {
       forward[name] = () => queryAccessors[name]?.() ?? [];
@@ -856,7 +856,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
     }
     effectiveContext = {
       ...effectiveContext,
-      $local: { ...((effectiveContext.$local as Record<string, unknown>) ?? {}), ...queryAccessors },
+      $local: { ...(effectiveContext.$local ?? {}), ...queryAccessors },
     };
   }
 
@@ -906,7 +906,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
             // fine-grained dependencies. A `$query` cannot be read from here — children render
             // inside a memo, and a subscription is an effect — so a question for the backend is
             // hoisted into `$queries` and read back through `local`.
-            const resolved = resolveProp(child as unknown, stores, effectiveContext, createMemo);
+            const resolved = resolveProp(child, stores, effectiveContext, createMemo);
             return (
               <>
                 {() => {
@@ -914,6 +914,9 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
                     typeof resolved === 'function' && REACTIVE_ACCESSOR in resolved
                       ? (resolved as unknown as () => unknown)()
                       : resolved;
+                  // Printed as an expression's template interpolation prints it, so a text child and
+                  // `{{ … }}` cannot disagree about how a value reads.
+                  // eslint-disable-next-line @typescript-eslint/no-base-to-string -- see above; any value may be printed here.
                   return v != null ? String(v) : '';
                 }}
               </>
@@ -1001,14 +1004,16 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
       const descriptor = resolveQueryProp(rawItems);
       // The accessor reads $getEntity reactively inside its own effect — empty
       // until the backend bindings land, live from then on.
+      // eslint-disable-next-line solid/reactivity -- assigned once, on one branch or the other
       itemsArray = createQuerySignal(descriptor, stores, effectiveContext);
     } else {
+      // eslint-disable-next-line solid/reactivity -- assigned once, on one branch or the other
       itemsArray = createMemo(() => {
         // Read from store proxy INSIDE the memo so Solid tracks mutations from updateSchema/patching
         const currentItems = (node.props as Record<string, unknown>)?.items;
         const resolvedItems = resolveProp(currentItems, stores, effectiveContext, createMemo);
-        const items = typeof resolvedItems === 'function' ? resolvedItems() : resolvedItems;
-        return Array.isArray(items) ? items : [];
+        const items: unknown = typeof resolvedItems === 'function' ? (resolvedItems as () => unknown)() : resolvedItems;
+        return Array.isArray(items) ? (items as unknown[]) : [];
       });
     }
 
@@ -1029,14 +1034,16 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
     // here — are unaffected.
     return (
       <For each={itemsArray()}>
-        {(item, index) =>
-          renderNode(itemSchema, {
+        {(item, index) => {
+          // Captured when the row renders, like `$prev` — see above.
+          const i = untrack(index);
+          return renderNode(itemSchema, {
             ...effectiveContext,
-            [String(node.props?.as ?? 'item')]: item,
-            index: index(),
-            prev: index() > 0 ? itemsArray()[index() - 1] : undefined,
-          })
-        }
+            [scopeName(node.props?.as, 'item')]: item,
+            index: i,
+            prev: i > 0 ? itemsArray()[i - 1] : undefined,
+          });
+        }}
       </For>
     );
   }
@@ -1047,7 +1054,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
   // replacing an array element, which avoids DOM destruction and preserves focus.
   // Acts as a scope provider: all children are rendered with the resolved item in scope.
   if (node.type === '$single') {
-    const asKey = String(node.props?.as ?? 'item');
+    const asKey = scopeName(node.props?.as, 'item');
     const [hasItem, setHasItem] = createSignal(false);
     const [item, setItem] = createStore<Record<string, unknown>>({});
 
@@ -1069,7 +1076,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
             for (const part of parts) target = (target as Record<string, unknown>)?.[part];
             p = typeof target === 'function' ? (target as () => unknown)() : target;
             // See the $each dataset resolution above — a store may hand back a DatasetRef.
-            if (p && typeof p === 'object' && 'handle' in p) p = (p as { handle: unknown }).handle;
+            if (p && typeof p === 'object' && 'handle' in p) p = p.handle;
           } else {
             const currentDataset = stores.$currentDataset;
             p = typeof currentDataset === 'function' ? currentDataset() : null;
@@ -1154,14 +1161,15 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
   // $agent: demand-fetch and inject an AgentProfileSummary into child context.
   // Usage: { type: '$agent', props: { did: '$item.author', as: 'agent' }, children: [...] }
   if (node.type === '$agent') {
-    const asKey = String(node.props?.as ?? 'agent');
+    const asKey = scopeName(node.props?.as, 'agent');
     const [hasAgent, setHasAgent] = createSignal(false);
     const [agentStore, setAgentStore] = createStore<Record<string, unknown>>({});
 
     createEffect(() => {
       const rawDid = node.props?.did;
       // resolveProp handles both '$post.author' strings and token objects like { $local: 'selectedPin.id' }
-      const did = rawDid ? String(resolveProp(rawDid, stores, effectiveContext) ?? '') : '';
+      const resolved = rawDid ? resolveProp(rawDid, stores, effectiveContext) : undefined;
+      const did = typeof resolved === 'string' ? resolved : '';
       if (!did) return;
 
       const identities = stores.$identities;
@@ -1215,7 +1223,8 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
   // Dev-time loudness is not lost: `we-validate-schemas` catches unknown types before runtime, which
   // is the right place for a typo. What changes is only the runtime, where one bad node should cost
   // that node and nothing more.
-  if (!component()) {
+  // Decided once: a mounted node keeps its type (see `renderChildren`).
+  if (!untrack(component)) {
     const message = `Unknown component "${node.type}"`;
     console.error(`${message}. It may belong to a feature module that is not enabled, or the type may be misspelt.`);
     return (
@@ -1318,7 +1327,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
             */
             let fn = resolveProp(item, stores, callContext, noMemo);
             if (typeof fn === 'function' && REACTIVE_ACCESSOR in (fn as object)) fn = (fn as () => unknown)();
-            if (typeof fn === 'function') fn(...args);
+            if (typeof fn === 'function') (fn as (...a: unknown[]) => unknown)(...args);
           }
         };
     } else {
