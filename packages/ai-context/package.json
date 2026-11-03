@@ -24,7 +24,7 @@
     "@we/themes": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^26.6.5",
+    "@types/node": "^26.6.6",
     "@we/cli": "workspace:*",
     "@we/module-call": "workspace:*",
     "@we/module-feed": "workspace:*",

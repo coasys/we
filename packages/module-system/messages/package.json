@@ -19,7 +19,7 @@
     "@we/schema-shared": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^26.6.5",
+    "@types/node": "^26.6.6",
     "@we/module-shared": "workspace:*",
     "@we/schema-shared": "workspace:*",
     "typescript": "^6.0.3",

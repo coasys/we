@@ -23,7 +23,7 @@
     "@we/schema-shared": "workspace:*",
     "@we/schema-solid": "workspace:*",
     "@we/template-fixtures": "workspace:*",
-    "solid-js": "^1.9.17"
+    "solid-js": "^1.9.18"
   },
   "devDependencies": {
     "@we/cli": "workspace:*",
@@ -32,8 +32,8 @@
     "@we/globe-widget": "workspace:*",
     "playwright-core": "^1.64.1",
     "typescript": "^6.0.3",
-    "vite": "^8.3.4",
-    "vite-plugin-solid": "^2.11.14",
+    "vite": "^8.3.5",
+    "vite-plugin-solid": "^2.11.15",
     "vitest": "^5.0.5"
   }
 }
