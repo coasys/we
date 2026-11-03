@@ -7,12 +7,12 @@
  * contained. One definition each, here.
  */
 import { TEMPLATE_HTML_ELEMENTS } from './templateElements';
-import type { OperatorToken, SchemaNode } from './types';
+import type { SchemaNode } from './types';
 
 /**
  * Type guard: a child is a SchemaNode (not a string, an array, or an operator token).
  */
-export function isSchemaChild(child: string | SchemaNode | OperatorToken | unknown): child is SchemaNode {
+export function isSchemaChild(child: unknown): child is SchemaNode {
   if (typeof child !== 'object' || child === null || Array.isArray(child)) return false;
   // A node with `type` or `id` is always a SchemaNode, even if it also
   // carries $-prefixed properties like $localState.

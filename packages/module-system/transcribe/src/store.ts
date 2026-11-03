@@ -992,7 +992,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * has not reached this agent yet, which is a presence round trip. The words are still good, so the
    * caller re-buffers rather than dropping them.
    */
-  async function ensureCollection(): Promise<CollectionSlot> {
+  function ensureCollection(): CollectionSlot {
     const call = myCall();
     if (!call) return { state: 'nowhere' };
 
@@ -1634,7 +1634,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     setSettling(text);
 
     try {
-      const slot = await ensureCollection();
+      const slot = ensureCollection();
 
       /*
         The call's record has not arrived yet. Put the words back and come round again — dropping

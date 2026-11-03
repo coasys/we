@@ -53,8 +53,8 @@ export function createStandaloneEditorHost(initial: TemplateSchema): {
       operationLoading: () => null,
       installFromMarketplace: async () => {},
       deleteMarketplaceTemplate: async () => {},
-      publishToSpace: async () => false,
-      publishToMarketplace: async () => undefined,
+      publishToSpace: () => Promise.resolve(false),
+      publishToMarketplace: () => Promise.resolve(undefined),
     },
 
     theme: {
@@ -79,7 +79,7 @@ export function createStandaloneEditorHost(initial: TemplateSchema): {
       updateEditingOverrides: () => {},
       updateEditingCss: () => {},
       updateEditingMeta: () => {},
-      saveEditingTheme: async () => null,
+      saveEditingTheme: () => Promise.resolve(null),
       themeScope: () => 'global',
       // `toggleThemeScope` was renamed to a preference plus an explicit preview when scoping grew a
       // third state; this stand-in host still implemented the old one, which nothing called.
@@ -90,8 +90,8 @@ export function createStandaloneEditorHost(initial: TemplateSchema): {
       setThemeMode: () => {},
       displayPreferences: () => ({}),
       setDisplayPreference: () => {},
-      publishToSpace: async () => false,
-      publishToMarketplace: async () => undefined,
+      publishToSpace: () => Promise.resolve(false),
+      publishToMarketplace: () => Promise.resolve(undefined),
     },
 
     session: {

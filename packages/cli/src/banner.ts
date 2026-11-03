@@ -1,4 +1,4 @@
-export async function printBuildBanner(pkg: { name: string; version: string }) {
+export function printBuildBanner(pkg: { name: string; version: string }): Promise<void> {
   const { name } = pkg;
   // ANSI escape codes for styling
   const green = '\x1b[32m';
@@ -21,4 +21,5 @@ export async function printBuildBanner(pkg: { name: string; version: string }) {
   console.log(`${green}╔${'═'.repeat(boxWidth)}╗${reset}`);
   console.log(`${green}║${displayContent}║${reset}`);
   console.log(`${green}╚${'═'.repeat(boxWidth)}╝${reset}`);
+  return Promise.resolve();
 }

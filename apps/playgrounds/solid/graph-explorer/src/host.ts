@@ -96,6 +96,7 @@ export function createHost(log?: QueryLog): GraphHostBindings {
 
     models: () => SHAPES,
 
+    // eslint-disable-next-line @typescript-eslint/require-await -- answers synchronously, but a malformed request must still reject as the async port it stands in for would, not throw.
     async query(request) {
       const { entity, where, order, limit, offset, include, scope } = request as unknown as QueryRequest;
       const table = TABLES[entity] ?? [];

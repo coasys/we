@@ -622,13 +622,15 @@ export function WorkflowStoreProvider(props: ParentProps) {
     closes on the one and stays open, holding what was typed, on the other. The refusal has already
     been said in a toast.
   */
+  // eslint-disable-next-line @typescript-eslint/require-await -- Kept async so an edit that throws reaches the form as a rejection, which keeps it open, rather than as a synchronous throw.
   const submitted = async (change: (draft: WorkflowDraft) => DraftEdit): Promise<void> => {
     if (!edit(change)) throw new Error('That change was not made');
   };
 
-  async function newWorkflow(preset: WorkflowPreset, label: string, entities: string[] = ['TaskBlock']): Promise<void> {
+  function newWorkflow(preset: WorkflowPreset, label: string, entities: string[] = ['TaskBlock']): Promise<void> {
     const name = workflowNameOf(label) || 'NewWorkflow';
     setDraftState({ draft: presetDraft(preset, name, entities), saved: null });
+    return Promise.resolve();
   }
 
   function editWorkflow(): void {

@@ -230,8 +230,8 @@ export function createAd4mModelAdmin(backendClient: unknown, options: Ad4mRuntim
       })) satisfies AiModel[];
     },
 
-    async presets(kind) {
-      return PRESETS[kind] ?? [];
+    presets(kind) {
+      return Promise.resolve(PRESETS[kind] ?? []);
     },
 
     async status(id) {

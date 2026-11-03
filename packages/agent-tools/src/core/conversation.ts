@@ -96,15 +96,15 @@ export const showToolset: SessionToolset = {
       writes: false,
     },
   ],
-  async call(_name, args) {
+  call(_name, args) {
     const entity = typeof args.entity === 'string' ? args.entity : '';
     const id = typeof args.id === 'string' ? args.id : '';
     const label = typeof args.label === 'string' && args.label.trim() ? args.label.trim() : 'Open';
-    if (!entity || !id) return { text: 'Error: Give the `entity` and `id` of the record to open.' };
-    return {
+    if (!entity || !id) return Promise.resolve({ text: 'Error: Give the `entity` and `id` of the record to open.' });
+    return Promise.resolve({
       text: `The person will be offered "${label}".`,
       actions: [{ kind: 'open', ref: `we:./${entity}/${id}`, label }],
-    };
+    });
   },
 };
 

@@ -24,5 +24,5 @@ export interface PersonPort {
 
 /** Every key its own person: the answer for a backend that has no notion of a person beyond a key. */
 export const SELF_PERSONS: PersonPort = {
-  personOf: async (did) => did || null,
+  personOf: (did) => Promise.resolve(did || null),
 };

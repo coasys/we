@@ -217,6 +217,7 @@ export const themeToolset: RecordToolset = {
   appliesTo: ['Theme'],
   tools: [readTool, updateTool],
 
+  // eslint-disable-next-line @typescript-eslint/require-await -- the work is synchronous, but a malformed record must reject the call as RecordToolset promises, not throw.
   async call(name, input) {
     if (name === THEME_READ) return { text: read(input) };
     if (name === THEME_UPDATE) return update(input);
@@ -224,13 +225,14 @@ export const themeToolset: RecordToolset = {
   },
 
   docs: {
-    list: async () => [
-      {
-        path: DOC_PATH,
-        title: 'Theming',
-        summary: 'Every setting a theme can set, and how to edit one with these tools.',
-      },
-    ],
-    read: async (path) => (path === DOC_PATH ? docText() : undefined),
+    list: () =>
+      Promise.resolve([
+        {
+          path: DOC_PATH,
+          title: 'Theming',
+          summary: 'Every setting a theme can set, and how to edit one with these tools.',
+        },
+      ]),
+    read: (path) => Promise.resolve(path === DOC_PATH ? docText() : undefined),
   },
 };

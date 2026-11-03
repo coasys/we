@@ -43,7 +43,7 @@ function sampled(feature: PathFeature, lift: number): Cartesian3[] {
   return out;
 }
 
-export async function renderPaths(
+export function renderPaths(
   context: CesiumRendererContext,
   initial: PathsOptions,
 ): Promise<LayerRenderer<PathsOptions>> {
@@ -120,5 +120,5 @@ export async function renderPaths(
   });
 
   rebuild(initial);
-  return { update: rebuild };
+  return Promise.resolve({ update: rebuild });
 }

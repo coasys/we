@@ -186,6 +186,7 @@ export const ${variableName}Manifest = ${JSON.stringify(manifest, null, 2)};
 /**
  * Process a seed file and generate integration code
  */
+// eslint-disable-next-line @typescript-eslint/require-await -- Kept async so a seed the processor rejects reaches the caller as a rejection, not a synchronous throw.
 export async function processSeed(seed: WeSeedFile): Promise<ReturnType<SeedProcessor['process']>> {
   const processor = new SeedProcessor(seed);
   return processor.process();

@@ -192,7 +192,7 @@ export default function TemplateProvider() {
    * `DatasetTarget` for why those two must not be the same outcome.
    */
   function moduleTarget(uri?: string): DatasetProxy | null {
-    if (!uri) return (datasetStore.currentDataset()?.handle as DatasetProxy | undefined) ?? null;
+    if (!uri) return datasetStore.currentDataset()?.handle ?? null;
     const found = datasetStore.datasets().find((d) => d.sharedUri === uri || d.id === uri);
     if (!found) {
       console.warn(`module host: no dataset for "${uri}" — refusing rather than writing elsewhere`);
@@ -240,7 +240,7 @@ export default function TemplateProvider() {
   async function withCollectionDefaults(
     entity: string,
     fields: Record<string, unknown>,
-    perspective: DatasetProxy | undefined,
+    perspective?: DatasetProxy,
   ): Promise<Record<string, unknown>> {
     if (entity !== 'CollectionBlock' || fields.mode !== 'feed' || 'autoExtract' in fields || !perspective)
       return fields;
@@ -851,6 +851,7 @@ export default function TemplateProvider() {
 
   // Resolves one of the named dataset accessors above. Only called at action-dispatch time, so
   // `stores` is always fully initialized.
+
   function resolveDataset(path?: string): DatasetProxy | null {
     if (!path || !DATASET_PATHS.has(path)) {
       if (path) console.warn(`dataset: "${path}" is not a dataset accessor; using the current one`);
@@ -864,7 +865,7 @@ export default function TemplateProvider() {
     let val: unknown = typeof accessor === 'function' ? (accessor as () => unknown)() : accessor;
     // Dataset accessors resolve to refs; model calls consume the handle inside.
     if (val && typeof val === 'object' && 'handle' in val) val = (val as { handle: unknown }).handle;
-    return (val as DatasetProxy | null) ?? null;
+    return val ?? null;
   }
 
   // Mutations need the raw model class (create/update/delete), not the renderer's read-only

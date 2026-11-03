@@ -17,7 +17,7 @@
  * no path to give it. The launcher's own publish form asks the user to type the path, and its
  * buttons are wired to the install handler, so it has never published anything.
  */
-import { type Ad4mClient, type Apps, capSentence, ExceptionType } from '@coasys/ad4m';
+import { type Ad4mClient, type Apps, capSentence } from '@coasys/ad4m';
 import type { AuthorizedApp, RuntimeAdminPort } from '@we/backend-shared';
 
 import type { Ad4mCapability } from './capabilities';
@@ -129,7 +129,9 @@ export function createAd4mRuntimeAdmin(backendClient: unknown, options: Ad4mRunt
      */
     onConsentRequest(handler) {
       return client.on('exception-occurred', ({ exception: info }) => {
-        if (info.type === ExceptionType.CapabilityRequested && info.addon) {
+        // The event types `type` as a union of string literals rather than the SDK's `ExceptionType`
+        // enum, so it is compared with those literals.
+        if (info.type === 'CAPABILITY_REQUESTED' && info.addon) {
           try {
             const auth = JSON.parse(info.addon).auth;
             handler({
@@ -154,7 +156,7 @@ export function createAd4mRuntimeAdmin(backendClient: unknown, options: Ad4mRunt
           }
         }
 
-        if (info.type === ExceptionType.AgentIsUntrusted && info.addon) {
+        if (info.type === 'AGENT_IS_UNTRUSTED' && info.addon) {
           handler({
             kind: 'trust',
             title: info.title,

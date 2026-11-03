@@ -191,7 +191,7 @@ function referenceFor(reference: string, about: string, sent: unknown): string {
   ].join('\n\n');
 }
 
-async function update({ record, args, models = [], author }: ToolCall) {
+function update({ record, args, models = [], author }: ToolCall) {
   const parsed = readArguments(args);
   if (!parsed) return { text: `Error: The arguments to ${TEMPLATE_UPDATE} must be a JSON object.` };
   const { template, version } = readRecord(record);

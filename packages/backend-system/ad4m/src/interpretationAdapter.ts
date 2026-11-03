@@ -1163,6 +1163,7 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
       }
     },
 
+    // eslint-disable-next-line @typescript-eslint/require-await -- attaching is synchronous, but a handle that is not a perspective must reject as the port promises, not throw.
     async observe(
       dataset: DatasetHandle,
       cb: (activity: InterpretationActivity) => void,

@@ -454,7 +454,7 @@ export function createAd4mDatasetLifecycle(
       return new Promise<void>((resolve, reject) => {
         const finish = (error?: unknown) => {
           release();
-          if (error) reject(error);
+          if (error) reject(error instanceof Error ? error : new Error('The space did not sync', { cause: error }));
           else resolve();
         };
         const settle = (state: string | null | undefined) => {

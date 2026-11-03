@@ -14,6 +14,7 @@ const timeOf = (value: unknown) =>
 
 export function createInMemoryReferencePort(manifest: EntityManifest): ReferencePort {
   return {
+    // eslint-disable-next-line @typescript-eslint/require-await -- the scan is synchronous, but a bad handle or row must reject as the port promises, not throw.
     referrers: async (dataset: DatasetHandle, relation, target: string, opts) => {
       const tables = (dataset as { tables?: Record<string, Row[]> }).tables ?? {};
       const found: { id: string; author: string; at: string }[] = [];

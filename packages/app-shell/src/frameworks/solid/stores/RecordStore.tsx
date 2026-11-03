@@ -1086,7 +1086,7 @@ export function RecordStoreProvider(props: ParentProps) {
       const reader = new FileReader();
       // `readAsDataURL` always yields a string.
       reader.onload = () => resolve(reader.result as string);
-      reader.onerror = () => reject(reader.error);
+      reader.onerror = () => reject(reader.error ?? new Error(`Could not read ${file.name}`));
       reader.readAsDataURL(file);
     });
     return dataURIToFileData(uri, file.name);

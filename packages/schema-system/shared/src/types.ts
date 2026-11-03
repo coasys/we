@@ -576,7 +576,7 @@ export type QueryToken = {
      *
      * Changing it re-asks the query, which is what tears the subscription down when a call ends.
      */
-    subscribe?: boolean | SchemaProp;
+    subscribe?: SchemaProp;
     /** Store path to the dataset handle (e.g. '$currentDataset', 'testStore.perspective'). */
     dataset?: string;
     /**

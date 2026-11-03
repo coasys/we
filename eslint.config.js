@@ -298,6 +298,17 @@ export default [
             '@typescript-eslint/await-thenable': 'error',
             '@typescript-eslint/no-base-to-string': 'error',
             '@typescript-eslint/restrict-template-expressions': 'error',
+            '@typescript-eslint/require-await': 'error',
+            '@typescript-eslint/prefer-promise-reject-errors': 'error',
+            '@typescript-eslint/no-unsafe-enum-comparison': 'error',
+            '@typescript-eslint/only-throw-error': 'error',
+            /*
+              Off on purpose. The opaque handle types (`DatasetHandle`, `DatasetProxy`, `BlockDataset`,
+              `ComposedDocument`) are `unknown` so that no package can look inside one, which makes
+              `Handle | null` collapse to `unknown`. The rule calls the `| null` redundant, but it is
+              there for the reader: it says null means "none". Every report was one of these.
+            */
+            '@typescript-eslint/no-redundant-type-constituents': 'off',
           },
         },
       ]),

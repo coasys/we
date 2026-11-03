@@ -16,7 +16,7 @@ export function blobToDataURL(blob: Blob): Promise<string> {
       const base64 = result.split(',')[1];
       resolve(base64);
     };
-    reader.onerror = () => reject(reader.error);
+    reader.onerror = () => reject(reader.error ?? new Error('Could not read the file'));
     reader.onabort = () => reject(new Error('Read aborted'));
     reader.readAsDataURL(blob);
   });
@@ -69,9 +69,7 @@ export function resizeImage(file: Blob, percentage: number, maxSize = Infinity):
       image.src = readerEvent.target?.result as string;
     };
 
-    reader.onerror = (err) => {
-      image.onerror = () => no(err);
-    };
+    reader.onerror = () => no(reader.error ?? new Error('Could not read the file'));
 
     reader.readAsDataURL(file);
   });
