@@ -435,7 +435,7 @@ export function EditingBar() {
                                 {space.name}
                               </we-text>
                               <Show when={shareLoading() === space.uuid}>
-                                <we-spinner size="sm" />
+                                <we-animated-icon name="spinner" size="sm" />
                               </Show>
                             </Row>
                           )}

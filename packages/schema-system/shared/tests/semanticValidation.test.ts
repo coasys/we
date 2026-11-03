@@ -40,8 +40,8 @@ function makeContext(overrides?: Partial<ContextData>): ContextData {
         ],
       },
       {
-        tagName: 'we-spinner',
-        className: 'Spinner',
+        tagName: 'we-animated-icon',
+        className: 'AnimatedIcon',
         superclass: 'LayoutElement',
         ownProps: [{ name: 'size', type: 'string', optional: true }],
       },

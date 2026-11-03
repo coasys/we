@@ -154,7 +154,7 @@ seven roles every family has. So \`"red"\` as a colour is the theme's red, not C
 for that.
 
 **Layout-only primitives** — these accept only Layout props (not Visual, Flex, Typography, or State):
-we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
+we-animated-icon, we-divider, we-icon, we-menu-group, we-popover, we-tooltip
 
 ### Layout
 
