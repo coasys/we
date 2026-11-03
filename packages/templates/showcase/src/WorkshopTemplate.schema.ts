@@ -2441,14 +2441,14 @@ const kanbanRoute: RouteSchema = {
                   ],
                 },
                 /*
-                  "No board yet" is an answer, and it is only given once the space's roles have been
-                  read — which `spaceStore.root` says, being set in the same read. Before that the same
-                  spinner the board itself shows holds the place.
+                  "No board yet" is an answer, and it is only given once the space's landmarks have
+                  been read — which `spaceStore.landmarksLoaded` says. Before that the same spinner the
+                  board itself shows holds the place.
                 */
                 else: {
                   type: '$if',
                   props: {
-                    condition: { $: 'spaceStore.root' },
+                    condition: { $: 'spaceStore.landmarksLoaded' },
                     then: callGate(
                       'kanban',
                       'This space has no board yet. Making one arranges the work in it — it never moves anything.',

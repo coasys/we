@@ -68,7 +68,6 @@ function space() {
   let open: (() => void) | null = null;
   let failing = false;
   const answer = (entity: string, within?: string) => {
-    if (entity === 'Space') return [{ root: 'root-1' }];
     if (entity === 'CollectionBlock') return within === 'root-1' ? calls.map((call) => ({ ...call })) : [];
     if (entity === 'TextBlock') {
       if (within === 'root-1') return lines.map((line) => ({ ...line }));
@@ -80,7 +79,7 @@ function space() {
     find: async (entity: string, query: { within?: string } = {}) => {
       reads.push(entity);
       finds.push({ entity, within: query.within });
-      if (entity !== 'Space' && gate) await gate;
+      if (gate) await gate;
       if (entity === 'CollectionBlock' && failing) throw new Error('executor unreachable');
       return answer(entity, query.within);
     },
@@ -184,6 +183,7 @@ function mount(s: ReturnType<typeof space>, interpretation?: unknown, r = reacti
     action: markAction,
     onDispose: () => {},
     dataset: () => 'space-1',
+    spaceRoot: () => 'root-1',
     records: s.records as never,
     interpretation: interpretation as never,
     write: async () => null,
@@ -216,6 +216,7 @@ describe('the Feed staying live', () => {
       action: markAction,
       onDispose: () => {},
       dataset: () => 'space-1',
+      spaceRoot: () => 'root-1',
       records: s.records as never,
       interpretation: undefined,
       write: async () => null,
@@ -251,6 +252,7 @@ describe('the Feed staying live', () => {
       action: markAction,
       onDispose: () => {},
       dataset: () => 'space-1',
+      spaceRoot: () => 'root-1',
       records: s.records as never,
       interpretation: undefined,
       write: async () => null,
@@ -264,6 +266,45 @@ describe('the Feed staying live', () => {
     await vi.runAllTimersAsync();
 
     expect(s.reads.filter((e) => e === 'TextBlock').length).toBeGreaterThan(before);
+    vi.useRealTimers();
+  });
+});
+
+describe('where the Feed starts from', () => {
+  it('takes the space collection from the host and reads no Space of its own', async () => {
+    /*
+      The Feed used to find the collection by reading the Space record with its root included — the
+      same read the host had already made for `spaceStore.root`, so opening a space paid for it twice
+      and the Feed's copy answered no sooner than the host's.
+    */
+    vi.useFakeTimers();
+    const { signal, effect } = reactive();
+    const s = space();
+    s.lines.push({ id: 'msg-1', text: 'hello', author: 'did:ann', createdAt: 1 });
+    const [root, setRoot] = signal('');
+    const feed = createFeed({
+      signal,
+      effect,
+      state: markState,
+      action: markAction,
+      onDispose: () => {},
+      dataset: () => 'space-1',
+      spaceRoot: root,
+      records: s.records as never,
+      interpretation: undefined,
+      write: async () => null,
+    });
+    (feed.openFeed as unknown as () => void)();
+    await vi.runAllTimersAsync();
+    // Nothing is read until the host knows the collection.
+    expect(s.reads).toEqual([]);
+
+    setRoot('root-1');
+    await vi.runAllTimersAsync();
+
+    expect((feed.feedRoot as unknown as () => string)()).toBe('root-1');
+    expect((feed.feedRows as unknown as () => { id: string }[])().map((row) => row.id)).toEqual(['msg-1']);
+    expect(s.reads).not.toContain('Space');
     vi.useRealTimers();
   });
 });
