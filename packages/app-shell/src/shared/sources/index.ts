@@ -17,6 +17,8 @@
  * A module that wants to lend a function contributes an entry here for now; when modules become
  * installable it becomes a declaration on the module contract, catalogued the same way.
  */
+import { generatedRun } from '@we/entities';
+
 import { arrangedBoard } from './arrangedBoard';
 import { calendarMonth, calendarMonths, monthLabel, yearLabel } from './calendarMonth';
 import { can } from './can';
@@ -164,6 +166,13 @@ export const hostSources: readonly HostSource[] = [
     doc: 'A JSON string indented for reading, or the text unchanged when it will not parse — which is the case worth showing rather than swallowing. Options: text. For displaying a stored blob (an extraction pass\u2019s prompt and response); a schema has no JSON.stringify of its own.',
     example: 'formatJson({ text: pass.prompt })',
     fn: formatJson,
+  },
+  {
+    name: 'generatedRun',
+    params: ['options'],
+    doc: 'Whether a model made a record, and how: { by: "run", run } for one a model wrote (a reply in the editor\u2019s chat, a record an agent created), { by: "extraction", from } for one an extraction pass made from a call, or null for what a person made. Reads the record\u2019s own generatedBy and extractedFrom, as ids or included records, so it needs no query. Ask this rather than reading either relation. Options: record.',
+    example: "generatedRun({ record: post }) ? 'Written by AI' : ''",
+    fn: (options: unknown) => generatedRun(((options ?? {}) as { record?: object }).record ?? {}) ?? null,
   },
 ];
 

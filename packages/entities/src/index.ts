@@ -126,6 +126,7 @@ export {
 } from './utils/imageHelpers';
 export type { FileData } from './utils/imageHelpers';
 export { normalizeSignal, denormalizeSignal } from './utils/signalNormalize';
+export { type Generated, generatedRun } from './utils/provenance';
 export { aggregateSignals } from './utils/signalAggregate';
 export { decodeFileAsString, decodeFileAsJson, encodeJsonFileData } from './utils/fileTransforms';
 export { createJsonShapeStore } from './shapeStore';
