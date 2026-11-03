@@ -781,7 +781,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
   function setAiFormField(field: string, value: string): void {
     const before = aiForm();
     if (!before) return;
-    const form = { ...before, [field]: value } as AiModelForm;
+    const form = { ...before, [field]: value };
     if (field === 'kind') {
       const fits = aiEndpointRecords()
         .find((e) => e.id === form.endpointId)
