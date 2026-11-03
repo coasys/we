@@ -66,6 +66,7 @@ function space() {
   const found: Record<string, Record<string, unknown>[]> = {};
   let gate: Promise<void> | null = null;
   let open: (() => void) | null = null;
+  let failing = false;
   const answer = (entity: string, within?: string) => {
     if (entity === 'Space') return [{ root: 'root-1' }];
     if (entity === 'CollectionBlock') return within === 'root-1' ? calls.map((call) => ({ ...call })) : [];
@@ -80,6 +81,7 @@ function space() {
       reads.push(entity);
       finds.push({ entity, within: query.within });
       if (entity !== 'Space' && gate) await gate;
+      if (entity === 'CollectionBlock' && failing) throw new Error('executor unreachable');
       return answer(entity, query.within);
     },
     subscribe: (
@@ -121,11 +123,31 @@ function space() {
     gate = null;
     open?.();
   };
+  /** Every window read fails while set (the call list throws), as with an unreachable executor. */
+  const fail = (on: boolean) => {
+    failing = on;
+  };
   /** One whole read of the window: the call list is asked once per read, and nowhere else. */
   const windowReads = () => finds.filter((f) => f.entity === 'CollectionBlock').length;
   /** The call pages read — the serial part of a read. */
   const callPages = () => finds.filter((f) => f.entity === 'TextBlock' && f.within?.startsWith('call-')).length;
-  return { records, reads, finds, write, edit, lines, calls, said, found, subs, hold, release, windowReads, callPages };
+  return {
+    records,
+    reads,
+    finds,
+    write,
+    edit,
+    lines,
+    calls,
+    said,
+    found,
+    subs,
+    hold,
+    release,
+    fail,
+    windowReads,
+    callPages,
+  };
 }
 
 /** The suggestions kernel: a revision that moves when the set may have, and the set itself. */
@@ -377,6 +399,42 @@ describe('the Feed reading only when something changed', () => {
     // The suggestions are kept between visits, and so are the subscriptions.
     expect(staged.asked.length).toBe(1);
     expect(s.subs.length).toBe(subscribed);
+    vi.useRealTimers();
+  });
+
+  it('reads again on coming back after a read that failed', async () => {
+    vi.useFakeTimers();
+    const r = reactive();
+    const s = busySpace();
+    const staged = suggestions(r.signal, ['task-1']);
+    const { open, close } = mount(s, staged.kernel, r);
+    s.fail(true);
+    await vi.runAllTimersAsync();
+    open();
+    await vi.runAllTimersAsync();
+    expect(s.windowReads()).toBe(1);
+
+    s.fail(false);
+    close();
+    await vi.runAllTimersAsync();
+    open();
+    await vi.runAllTimersAsync();
+    expect(s.windowReads()).toBe(2);
+    vi.useRealTimers();
+  });
+
+  it('does not retry a failing read by itself while it stays open', async () => {
+    vi.useFakeTimers();
+    const r = reactive();
+    const s = busySpace();
+    const staged = suggestions(r.signal, ['task-1']);
+    const { open } = mount(s, staged.kernel, r);
+    s.fail(true);
+    await vi.runAllTimersAsync();
+    open();
+    await vi.runAllTimersAsync();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(s.windowReads()).toBe(1);
     vi.useRealTimers();
   });
 

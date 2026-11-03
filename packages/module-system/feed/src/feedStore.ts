@@ -91,7 +91,12 @@ export function createFeed(deps: FeedDeps) {
 
     What is NOT a change: a subscription's first answer, which is the rows it starts from and so what
     the read alongside it is already drawing, and the suggestions arriving, which re-mark the rows on
-    screen instead (see `markPending`).
+    screen instead (see `markPending`). The trade: the shown lines are subscribed after a read draws
+    them, so an edit that lands between that read's page and the subscription's first answer shows
+    only with the next change.
+
+    A read that fails is not retried by itself (a lasting error would loop), but it is owed: the next
+    time somebody starts looking, it reads again.
 
     A read stops at its next step once its answer is no longer wanted — the window moved, or nobody is
     looking — rather than running its call pages against the executor beside the read that replaced
@@ -102,6 +107,8 @@ export function createFeed(deps: FeedDeps) {
     once, if something changed while nobody looked, and draws what it has with no read otherwise.
   */
   let dirty = true;
+  let failed = false;
+  let wasLooking = false;
   let reading = false;
   let disposed = false;
   let windowKey = '';
@@ -114,6 +121,7 @@ export function createFeed(deps: FeedDeps) {
 
   async function read(): Promise<void> {
     dirty = false;
+    failed = false;
     reading = true;
     const space = root();
     const size = shown();
@@ -141,7 +149,10 @@ export function createFeed(deps: FeedDeps) {
         if (same()) dirty = true;
       } else {
         console.warn('[feed] could not read the feed', error);
-        if (same()) setLoaded(true);
+        if (same()) {
+          setLoaded(true);
+          failed = true;
+        }
       }
     } finally {
       reading = false;
@@ -176,7 +187,12 @@ export function createFeed(deps: FeedDeps) {
       windowKey = key;
       dirty = true;
     }
-    if (looking()) start();
+    const now = looking();
+    // A failed read is owed on the next look: the moment looking starts, not any re-run while it
+    // lasts (this effect also re-runs on what the read itself reads, and a lasting error would loop).
+    if (now && !wasLooking && failed) dirty = true;
+    wasLooking = now;
+    if (now) start();
   });
 
   /*
