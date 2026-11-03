@@ -7844,6 +7844,9 @@
         "landmarks": {
           "type": "object"
         },
+        "landmarksLoaded": {
+          "type": "boolean"
+        },
         "extractionTargets": {
           "type": "array"
         },
