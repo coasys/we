@@ -172,6 +172,22 @@ describe('display strings', () => {
     );
   });
 
+  it('points a stopped local AI server at This device rather than repeating the backend’s detail', () => {
+    const stopped = describeEndpoint(
+      endpoint({
+        managed: true,
+        health: { state: 'unreachable', detail: 'Local AI is not running: start it with ai.localStart', models: [] },
+      }),
+      [],
+    );
+    expect(stopped).toMatchObject({
+      kindLabel: 'This device',
+      healthText: 'Not running — start it under This device',
+      healthy: false,
+      editable: false,
+    });
+  });
+
   it('names a server found on the machine by its kind and where it is', () => {
     expect(
       describeDetected({ kind: 'openai-audio', baseUrl: 'http://[::1]:8000', capabilities: [], models: ['w'] }),

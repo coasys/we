@@ -106,6 +106,16 @@ describe('sentences', () => {
       ok: false,
     });
   });
+
+  it('draws a server stopped on purpose, or never started, as idle rather than as a fault', () => {
+    expect(runtimeView(runtime()).tone).toBe('success');
+    expect(runtimeView(runtime({ phase: null })).tone).toBe('idle');
+    expect(runtimeView(runtime({ phase: 'stopped' })).tone).toBe('idle');
+    expect(runtimeView(runtime({ phase: 'stopped', detail: 'exited with 1' })).tone).toBe('warning');
+    expect(runtimeView(runtime({ phase: 'restarting' })).tone).toBe('warning');
+    expect(runtimeView(runtime({ phase: 'failed' })).tone).toBe('warning');
+    expect(runtimeView(runtime({ build: 'linux-x64-vulkan', onGpu: false })).tone).toBe('warning');
+  });
 });
 
 describe('describeLocalAi', () => {

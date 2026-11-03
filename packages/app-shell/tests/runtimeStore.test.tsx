@@ -839,6 +839,7 @@ describe('local AI on this device', () => {
         label: 'Language model · llama-server b1 · Vulkan',
         stateText: 'Running · on the GPU (3.0 GB)',
         ok: true,
+        tone: 'success',
       },
     ]);
     expect(store.aiEndpoints()[0]).toMatchObject({ kindLabel: 'This device', editable: false });

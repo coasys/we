@@ -141,6 +141,12 @@ export interface LocalAiRuntimeView {
   stateText: string;
   /** Running, and on the GPU where a GPU build was checked. */
   ok: boolean;
+  /**
+   * How the row is drawn: `success` running as it should; `idle` not running and nothing wrong —
+   * never started, or stopped on purpose; `warning` anything else (starting, restarting, failed, or
+   * running on the CPU when the GPU build found no device).
+   */
+  tone: 'success' | 'idle' | 'warning';
 }
 
 const PHASE_TEXT: Record<NonNullable<LocalAiRuntimeStatus['phase']>, string> = {
@@ -160,11 +166,14 @@ export function runtimeView(runtime: LocalAiRuntimeStatus): LocalAiRuntimeView {
   if (runtime.restarts > 0) parts.push(`restarted ${runtime.restarts} ${runtime.restarts === 1 ? 'time' : 'times'}`);
   if (runtime.detail) parts.push(runtime.detail);
   const backend = runtime.build.split('-').pop() ?? '';
+  const ok = runtime.phase === 'running' && runtime.onGpu !== false;
+  const idle = (!runtime.phase || runtime.phase === 'stopped') && !runtime.detail;
   return {
     key: runtime.id,
     label: `${kindsText(runtime.kinds)} · ${runtime.id} ${runtime.version}${backend ? ` · ${backendLabel(backend)}` : ''}`,
     stateText: parts.join(' · '),
-    ok: runtime.phase === 'running' && runtime.onGpu !== false,
+    ok,
+    tone: ok ? 'success' : idle ? 'idle' : 'warning',
   };
 }
 

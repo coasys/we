@@ -358,6 +358,15 @@ export interface AiEndpointView extends AiEndpoint {
   editable: boolean;
 }
 
+/**
+ * What a server that did not answer says. A managed one is started from "This device", and the
+ * backend's own detail for it names an RPC, so it is not repeated.
+ */
+function unreachableText(endpoint: AiEndpoint): string {
+  if (endpoint.managed) return 'Not running — start it under This device';
+  return endpoint.health.detail ? `Not answering — ${endpoint.health.detail}` : 'Not answering';
+}
+
 export function describeEndpoint(endpoint: AiEndpoint, models: AiModel[]): AiEndpointView {
   const { health } = endpoint;
   const healthText =
@@ -366,9 +375,7 @@ export function describeEndpoint(endpoint: AiEndpoint, models: AiModel[]): AiEnd
       : health.state === 'unauthorized'
         ? 'The key was refused'
         : health.state === 'unreachable'
-          ? health.detail
-            ? `Not answering — ${health.detail}`
-            : 'Not answering'
+          ? unreachableText(endpoint)
           : 'Not checked yet';
   return {
     ...endpoint,

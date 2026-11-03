@@ -739,26 +739,45 @@ const UNSET = '!runtimeStore.localAi.installed && !count(runtimeStore.aiEndpoint
 /** The choice is offered at all — only where local AI is one of its answers. */
 const CHOOSING = `runtimeStore.canUseLocalAi && ${UNSET}`;
 
-/** One of the three ways to get AI, as a card that is chosen by pressing it. */
+/**
+ * One of the three ways to get AI, as a card that is chosen by pressing it. A bare button around a
+ * card rather than an outlined button: a button's variants have a fixed control height, and a card
+ * holding an icon, a title and two lines of text overflows it.
+ */
 function setupChoice(value: string, icon: string, title: string, text: string): SchemaNode {
+  const chosen = `local.aiSetup == '${value}'`;
   return {
     type: 'we-button',
     props: {
-      variant: { $: `local.aiSetup == '${value}' ? 'soft' : 'outline'` },
+      variant: 'bare',
       flex: '1 1 200px',
       minWidth: '0',
+      ay: 'stretch',
       onClick: { $setLocal: 'aiSetup', value },
     },
     children: [
       {
         type: 'Column',
-        props: { gap: '200', p: '300', ax: 'start', width: '100%' },
+        props: {
+          gap: '200',
+          p: '400',
+          ax: 'start',
+          width: '100%',
+          height: '100%',
+          r: 'surface',
+          bg: { $: `${chosen} ? 'accent-soft' : 'surface'` },
+          border: { $: `${chosen} ? '1px solid accent-border' : '1px solid border'` },
+          hoverProps: { borderColor: 'border-hover' },
+        },
         children: [
-          { type: 'we-icon', props: { name: icon, size: 'lg' } },
+          {
+            type: 'we-icon',
+            props: { name: icon, size: 'lg', color: { $: `${chosen} ? 'accent-text' : 'text-muted'` } },
+          },
           { type: 'we-text', props: { fontWeight: 'semibold' }, children: [title] },
           {
             type: 'we-text',
-            props: { variant: 'footnote', color: 'text-muted', textAlign: 'left', whiteSpace: 'normal' },
+            props: { variant: 'footnote', color: 'text-muted', textAlign: 'left' },
             children: [text],
           },
         ],
@@ -837,9 +856,13 @@ const runtimeRow: SchemaNode = {
     {
       type: 'we-icon',
       props: {
-        name: { $: "runtime.ok ? 'check-circle' : 'warning'" },
+        name: {
+          $: "runtime.tone == 'success' ? 'check-circle' : runtime.tone == 'idle' ? 'pause-circle' : 'warning'",
+        },
         size: 'sm',
-        color: { $: "runtime.ok ? 'success-text' : 'warning-text'" },
+        color: {
+          $: "runtime.tone == 'success' ? 'success-text' : runtime.tone == 'idle' ? 'text-muted' : 'warning-text'",
+        },
       },
     },
     {
@@ -847,7 +870,7 @@ const runtimeRow: SchemaNode = {
       props: { gap: '0', minWidth: '0' },
       children: [
         { type: 'we-text', props: { variant: 'label' }, children: [{ $: 'runtime.label' }] },
-        footnote({ $: 'runtime.stateText' }, { $: "runtime.ok ? 'text-muted' : 'warning-text'" }),
+        footnote({ $: 'runtime.stateText' }, { $: "runtime.tone == 'warning' ? 'warning-text' : 'text-muted'" }),
       ],
     },
   ],
@@ -944,11 +967,12 @@ const removeLocalModal: SchemaNode = confirmModal({
   children: [
     {
       type: 'we-checkbox',
+      // The visible text is the slot; `label` only names the control for assistive technology.
       props: {
-        label: 'Also delete the downloaded models and programs',
         checked: { $: 'local.removeLocalFiles' },
         onChange: { $setLocal: 'removeLocalFiles', value: { $: 'event.detail' } },
       },
+      children: ['Also delete the downloaded models and programs'],
     },
     footnote('Kept, they are not downloaded again if you install local AI later.'),
   ],
