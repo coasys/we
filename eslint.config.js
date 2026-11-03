@@ -243,12 +243,11 @@ export default [
     name: 'typescript/recommended',
     files: ['**/*.ts', '**/*.tsx'],
     plugins: { '@typescript-eslint': tsPlugin, 'simple-import-sort': simpleImportSortPlugin },
+    // Parsed without type information: no rule here reads types. Turning on `projectService`
+    // builds a TypeScript program per tsconfig, which takes lint from about 1 GB to 7 GB. It
+    // belongs with the first type-aware rule (`recommended-type-checked`), as a choice of its own.
     languageOptions: {
       parser: tsParser,
-      parserOptions: {
-        projectService: true,
-        tsconfigRootDir: import.meta.dirname,
-      },
     },
     rules: {
       ...tsPlugin.configs.recommended.rules,
