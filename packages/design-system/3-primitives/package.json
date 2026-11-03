@@ -101,7 +101,7 @@
     "tslib": "2.9.1"
   },
   "peerDependencies": {
-    "solid-js": "^1.9.15"
+    "solid-js": "^1.9.18"
   },
   "peerDependenciesMeta": {
     "solid-js": {
