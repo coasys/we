@@ -1,5 +1,5 @@
 /**
- * Whether a model made a record: its own `generatedBy`, or the call an extraction pass made it from.
+ * Whether a model made a record: the run its own `generatedBy` names, and nothing else.
  */
 import { describe, expect, it } from 'vitest';
 
@@ -11,19 +11,12 @@ describe('generatedRun', () => {
     expect(generatedRun({ generatedBy: { id: 'we://run/1' } })).toEqual({ by: 'run', run: 'we://run/1' });
   });
 
-  it('names the call for what an extraction pass made', () => {
-    expect(generatedRun({ extractedFrom: 'we://call/1' })).toEqual({ by: 'extraction', from: 'we://call/1' });
-  });
-
-  it('prefers the run where a record carries both', () => {
-    expect(generatedRun({ generatedBy: 'we://run/1', extractedFrom: 'we://call/1' })).toEqual({
-      by: 'run',
-      run: 'we://run/1',
-    });
+  it('reads lineage as lineage: coming from a call is not being written by a model', () => {
+    expect(generatedRun({ extractedFrom: 'we://call/1' } as never)).toBeUndefined();
   });
 
   it('says nothing for what a person made', () => {
     expect(generatedRun({})).toBeUndefined();
-    expect(generatedRun({ generatedBy: '', extractedFrom: null })).toBeUndefined();
+    expect(generatedRun({ generatedBy: '' })).toBeUndefined();
   });
 });

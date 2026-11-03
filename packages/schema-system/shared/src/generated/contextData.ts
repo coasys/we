@@ -2004,7 +2004,7 @@ export const contextData: ContextData = {
         { name: 'trigger', type: 'string', predicate: 'we://trigger', required: false, default: "'manual'" },
         { name: 'outcome', type: 'string', predicate: 'we://outcome', required: false, default: "'done'" },
         { name: 'error', type: 'string', predicate: 'we://error', required: false },
-        { name: 'created', type: 'number', predicate: 'we://model_run_created', required: false },
+        { name: 'recordCount', type: 'number', predicate: 'we://model_run_record_count', required: false },
         { name: 'detail', type: 'string', predicate: 'we://model_run_detail', required: false },
         { name: 'prompt', type: 'string', predicate: 'we://prompt', required: false },
         { name: 'output', type: 'string', predicate: 'we://model_run_output', required: false },
@@ -3812,7 +3812,7 @@ export const contextData: ContextData = {
     {
       name: 'generatedRun',
       params: ['options'],
-      doc: 'Whether a model made a record, and how: { by: "run", run } for one a model wrote (a reply in the editor’s chat, a record an agent created), { by: "extraction", from } for one an extraction pass made from a call, or null for what a person made. Reads the record’s own generatedBy and extractedFrom, as ids or included records, so it needs no query. Ask this rather than reading either relation. Options: record.',
+      doc: 'Whether a model made a record: { by: "run", run } naming the run that wrote it (a transcribed line, a record an extraction pass or an agent made, a reply in the editor’s chat), or null for what a person made. Reads the record’s own generatedBy, as an id or an included record, so it needs no query. Ask this rather than reading the relation. Options: record.',
       example: "generatedRun({ record: post }) ? 'Written by AI' : ''",
     },
   ],
