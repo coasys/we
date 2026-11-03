@@ -454,7 +454,7 @@ export interface ModelRunRecord extends RecordInstance {
   trigger: string;
   outcome: string;
   error: string;
-  created: number;
+  recordCount: number;
   detail: string;
   prompt: string;
   output: string;

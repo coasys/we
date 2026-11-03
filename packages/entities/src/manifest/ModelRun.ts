@@ -12,7 +12,8 @@ import type { CoreEntityDef } from './defs';
  *
  * ## One entity for every kind of run
  *
- * `kind` says what the model was doing (`extraction`, `chat`, `agent`, more as writers appear),
+ * `kind` says what the model was doing (`extraction`, `transcription`, `chat`, `agent`, more as
+ * writers appear),
  * and everything else is common: the model, what started it, how it ended. What only one kind
  * carries goes in {@link detail}, read whole by the surface that knows that kind. So a new writer
  * adds a kind, not an entity, and "everything a model did here" is one query.
@@ -21,9 +22,10 @@ import type { CoreEntityDef } from './defs';
  *
  * - What a run was about, a call or a template, holds it in its `runs` (`WeNode.runs`), so a
  *   panel open on one record reads its runs with the subject it reads everything else with.
- * - What a run made carries `generatedBy` (`WeNode.generatedBy`). A record an extraction pass made
- *   is the exception, marked by the call's `extracted` link instead, because the pass is run where
- *   the records are written and the client never learns which ones it made.
+ * - What a run made carries `generatedBy` (`WeNode.generatedBy`), written by whoever wrote the
+ *   record, in the same write. For an extraction pass that is the backend, which alone knows which
+ *   records the pass made rather than matched: the run is opened before the pass and named to it
+ *   (`run` on the interpretation port).
  * - A change a run made to a record that already existed, and somebody kept, is an
  *   {@link Amendment}.
  *
@@ -42,7 +44,7 @@ export const ModelRun: CoreEntityDef = {
   entity: {
     flag: { predicate: 'we://flag', value: 'we://model_run' },
     properties: {
-      /** What the model was doing: `extraction`, `chat`, `agent`. */
+      /** What the model was doing: `extraction`, `transcription`, `chat`, `agent`. */
       kind: { type: 'string', predicate: 'we://model_run_kind', default: '' },
       /** The model, by the name the backend reports. Empty where it reported none. */
       model: { type: 'string', predicate: 'we://model_run_model', default: '' },
@@ -67,7 +69,7 @@ export const ModelRun: CoreEntityDef = {
        * them: a second extraction pass updates what the first found rather than duplicating it, so
        * counting attributes every record to whichever pass ran last.
        */
-      created: { type: 'number', predicate: 'we://model_run_created', default: 0 },
+      recordCount: { type: 'number', predicate: 'we://model_run_record_count', default: 0 },
       /**
        * What only this kind of run carries, as JSON read whole: an extraction's `targets` (the
        * entity names it looked for), a chat reply's `steps`. A blob because it is never filtered

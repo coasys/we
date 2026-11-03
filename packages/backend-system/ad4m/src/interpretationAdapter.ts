@@ -37,7 +37,7 @@ import { getEntity, getEntityForDataset, getEntityTargetClass, getRegisteredEnti
 
 import { recordMissingMethod } from './missingMethods';
 import { readShapeProperties } from './perspectiveHelpers';
-import { parentPredicate } from './relationPredicates';
+import { parentPredicate, predicateOfRelation } from './relationPredicates';
 
 const proxy = (dataset: DatasetHandle) => dataset as PerspectiveProxy;
 
@@ -115,6 +115,21 @@ export function provenanceLink(
 ): { id: string; predicate: string } | undefined {
   if (!provenance) return undefined;
   return recognised && !id.startsWith(prefix) ? recognised : provenance;
+}
+
+/**
+ * Mark a record as written by a run, unless a run already says so.
+ *
+ * The check is what keeps the first run's claim: a pass reports every record it made *or updated*,
+ * and a record an earlier pass of this conversation made is inside the conversation's namespace
+ * too, so without it a second pass would add a second `generatedBy` to a record it only revised.
+ */
+async function markGenerated(perspective: PerspectiveProxy, id: string, run: string): Promise<void> {
+  // `WeNode.generatedBy`, by its stored predicate.
+  const predicate = predicateOfRelation('generatedBy', 'WeNode');
+  const already = await perspective.get(new LinkQuery({ source: id, predicate }));
+  if (already.length) return;
+  await perspective.add(new Link({ source: id, predicate, target: run }));
 }
 
 /**
@@ -1142,6 +1157,9 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
             // recognised one, for a record this pass matched rather than made.
             const made = provenanceLink(id, basePrefix, request.provenance, request.recognised);
             if (made) await perspective.add(new Link({ source: made.id, predicate: made.predicate, target: id }));
+            // And the run that wrote it, where it was made here and nothing names a run yet — see
+            // `run` on the port.
+            if (request.run && made && made === request.provenance) await markGenerated(perspective, id, request.run);
           }
         }
 

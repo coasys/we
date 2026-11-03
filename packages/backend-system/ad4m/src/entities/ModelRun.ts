@@ -18,7 +18,8 @@ import { Ad4mModel, Flag, Model, Property } from '@coasys/ad4m';
  *
  * ## One entity for every kind of run
  *
- * `kind` says what the model was doing (`extraction`, `chat`, `agent`, more as writers appear),
+ * `kind` says what the model was doing (`extraction`, `transcription`, `chat`, `agent`, more as
+ * writers appear),
  * and everything else is common: the model, what started it, how it ended. What only one kind
  * carries goes in {@link detail}, read whole by the surface that knows that kind. So a new writer
  * adds a kind, not an entity, and "everything a model did here" is one query.
@@ -27,9 +28,10 @@ import { Ad4mModel, Flag, Model, Property } from '@coasys/ad4m';
  *
  * - What a run was about, a call or a template, holds it in its `runs` (`WeNode.runs`), so a
  *   panel open on one record reads its runs with the subject it reads everything else with.
- * - What a run made carries `generatedBy` (`WeNode.generatedBy`). A record an extraction pass made
- *   is the exception, marked by the call's `extracted` link instead, because the pass is run where
- *   the records are written and the client never learns which ones it made.
+ * - What a run made carries `generatedBy` (`WeNode.generatedBy`), written by whoever wrote the
+ *   record, in the same write. For an extraction pass that is the backend, which alone knows which
+ *   records the pass made rather than matched: the run is opened before the pass and named to it
+ *   (`run` on the interpretation port).
  * - A change a run made to a record that already existed, and somebody kept, is an
  *   {@link Amendment}.
  *
@@ -48,7 +50,7 @@ export class ModelRun extends Ad4mModel {
   @Flag({ through: 'we://flag', value: 'we://model_run' })
   flag: string = '';
 
-  /** What the model was doing: `extraction`, `chat`, `agent`. */
+  /** What the model was doing: `extraction`, `transcription`, `chat`, `agent`. */
   @Property({ through: 'we://model_run_kind' })
   kind: string = '';
 
@@ -83,8 +85,8 @@ export class ModelRun extends Ad4mModel {
    * them: a second extraction pass updates what the first found rather than duplicating it, so
    * counting attributes every record to whichever pass ran last.
    */
-  @Property({ through: 'we://model_run_created' })
-  created: number = 0;
+  @Property({ through: 'we://model_run_record_count' })
+  recordCount: number = 0;
 
   /**
    * What only this kind of run carries, as JSON read whole: an extraction's `targets` (the

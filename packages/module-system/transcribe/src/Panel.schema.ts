@@ -1866,14 +1866,17 @@ const historyRow: SchemaNode = {
 
       The template's own version of this list drew a green check on every settled row because it
       never read the outcome — so a pass that failed and one that wrote nine records looked
-      identical, which is the whole reason a failure is worth storing.
+      identical, which is the whole reason a failure is worth storing. `running` is a pass still
+      reading, whose run is opened before it starts — or one that never came back.
     */
     {
       type: 'we-icon',
       props: {
         size: 'sm',
         name: {
-          $: "pass.outcome == 'failed' ? 'warning' : pass.outcome == 'skipped' ? 'minus-circle' : 'check-circle'",
+          $:
+            "pass.outcome == 'failed' ? 'warning' : pass.outcome == 'skipped' ? 'minus-circle' : " +
+            "pass.outcome == 'running' ? 'hourglass' : 'check-circle'",
         },
         color: {
           $: "pass.outcome == 'failed' ? 'danger-text' : pass.outcome == 'done' ? 'success-text' : 'text-muted'",
@@ -1907,7 +1910,8 @@ const historyRow: SchemaNode = {
           $:
             "pass.outcome == 'failed' ? pass.error : " +
             "pass.outcome == 'skipped' ? 'Nothing was being looked for' : " +
-            "pass.created ? `${pass.created} ${plural(pass.created, 'thing', 'things')} found` : " +
+            "pass.outcome == 'running' ? 'Reading the call' : " +
+            "pass.recordCount ? `${pass.recordCount} ${plural(pass.recordCount, 'thing', 'things')} found` : " +
             "'Nothing found'",
         },
       ],
@@ -1915,7 +1919,7 @@ const historyRow: SchemaNode = {
     {
       type: 'we-timestamp',
       props: {
-        value: { $: 'pass.createdAt' },
+        value: { $: 'pass.recordCountAt' },
         relative: true,
         /*
           Relative here and not on a transcript row, because these *are* the feed of unrelated items

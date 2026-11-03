@@ -86,7 +86,7 @@ describe('the extraction log', () => {
             author: 'did:key:anna',
             trigger: 'manual',
             outcome: 'done',
-            created: 1,
+            recordCount: 1,
             detail: '{"targets":["TaskBlock"]}',
             prompt: 'first prompt',
             output: '{"records":[]}',

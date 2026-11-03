@@ -1854,9 +1854,9 @@ describe('the history of what was read', () => {
       as a pass that looked and found nothing, which is an ordinary outcome and the one this line
       reports most often.
     */
-    expect(json).toContain("plural(pass.created, 'thing', 'things')} found");
+    expect(json).toContain("plural(pass.recordCount, 'thing', 'things')} found");
     expect(json).toContain("'Nothing found'");
-    expect(json).not.toContain("plural(pass.created, 'record', 'records')");
+    expect(json).not.toContain("plural(pass.recordCount, 'record', 'records')");
   });
 
   it('indents the stored exchange, which a query cannot do on its own', () => {

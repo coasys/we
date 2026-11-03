@@ -343,6 +343,29 @@ export function DatasetStoreProvider(props: ParentProps) {
    * a model since deleted, or a call list naming one whose `extractable` was withdrawn, has to
    * narrow the request rather than break it.
    */
+  /** What a pass is written down with — see {@link recordPass}. */
+  type PassRecord = {
+    outcome: string;
+    recordCount: number;
+    targets: string[];
+    error?: string;
+    /** What started it. Defaults to a press, which is what the only writer used to be. */
+    trigger?: 'manual' | 'auto';
+    prompt?: string;
+    response?: string;
+  };
+
+  const passFields = (pass: PassRecord) => ({
+    kind: 'extraction',
+    outcome: pass.outcome,
+    recordCount: pass.recordCount,
+    detail: JSON.stringify({ targets: pass.targets }),
+    error: pass.error ?? '',
+    trigger: pass.trigger ?? 'manual',
+    prompt: pass.prompt ?? '',
+    output: pass.response ?? '',
+  });
+
   /**
    * Write down that a pass happened, as a `ModelRun` of kind `extraction` — see {@link ModelRun}.
    *
@@ -352,38 +375,39 @@ export function DatasetStoreProvider(props: ParentProps) {
    *
    * Written by the host rather than by the module for the same reason `interpretCollection` is: where
    * a pass is filed is the host's to say, and a module names a collection and nothing else.
+   *
+   * With `run`, the pass's run already exists — {@link openPass} made it so the pass could mark what
+   * it wrote — and this completes it rather than writing a second.
    */
-  async function recordPass(
-    handle: DatasetProxy,
-    collectionId: string,
-    pass: {
-      outcome: string;
-      recordCount: number;
-      targets: string[];
-      error?: string;
-      /** What started it. Defaults to a press, which is what the only writer used to be. */
-      trigger?: 'manual' | 'auto';
-      prompt?: string;
-      response?: string;
-    },
-  ): Promise<void> {
+  async function recordPass(handle: DatasetProxy, collectionId: string, pass: PassRecord, run?: string): Promise<void> {
     try {
-      await ModelRun.create(
-        handle,
-        {
-          kind: 'extraction',
-          outcome: pass.outcome,
-          created: pass.recordCount,
-          detail: JSON.stringify({ targets: pass.targets }),
-          error: pass.error ?? '',
-          trigger: pass.trigger ?? 'manual',
-          prompt: pass.prompt ?? '',
-          output: pass.response ?? '',
-        },
-        { parent: { id: collectionId, relation: 'runs', entity: 'CollectionBlock' } },
-      );
+      if (run) await ModelRun.update(handle, run, passFields(pass));
+      else
+        await ModelRun.create(handle, passFields(pass), {
+          parent: { id: collectionId, relation: 'runs', entity: 'CollectionBlock' },
+        });
     } catch (error) {
       console.warn('[interpretation] could not record that a pass ran', error);
+    }
+  }
+
+  /**
+   * The run a pass is about to be, written before it starts so the pass can mark what it makes with
+   * it — `generatedBy`, in the same writes that make them. `running` until {@link recordPass}
+   * completes it, which is also what a pass that never returns is left saying.
+   *
+   * `undefined` where the write fails: the pass still runs, unmarked, and is written down afterwards
+   * as before. A history entry is not worth an extraction.
+   */
+  async function openPass(handle: DatasetProxy, collectionId: string, targets: string[]): Promise<string | undefined> {
+    try {
+      const run = await ModelRun.create(handle, passFields({ outcome: 'running', recordCount: 0, targets }), {
+        parent: { id: collectionId, relation: 'runs', entity: 'CollectionBlock' },
+      });
+      return run.id;
+    } catch (error) {
+      console.warn('[interpretation] could not open a run for this pass', error);
+      return undefined;
     }
   }
 
@@ -518,25 +542,32 @@ export function DatasetStoreProvider(props: ParentProps) {
         // space's default, this call's own — are all host state. A module names a collection and
         // nothing else, exactly as it does for the watch id and where a pass is filed.
         const classes = targetsForCollection(collectionId);
+        const run = await openPass(dataset.handle, collectionId, classes);
         try {
           const result = await port.interpret(dataset.handle, turns, {
             classes,
             parent: await filedUnder(dataset.handle, collectionId),
             provenance: extractedFrom(collectionId),
             recognised: recognisedBy(collectionId),
+            ...(run ? { run } : {}),
           });
-          await recordPass(dataset.handle, collectionId, {
-            // Nothing to look for is not a failure and not a quiet meeting — it is a call whose
-            // targets are all switched off, which reads as "0 records" and blames the conversation
-            // unless it is said.
-            outcome: classes.length === 0 ? 'skipped' : 'done',
-            recordCount: result.ids.length,
-            targets: classes,
-            // Handed back by the run rather than found on the progress feed afterwards, so one
-            // write holds the whole pass — see `prompt` on the result.
-            prompt: result.prompt,
-            response: result.response,
-          });
+          await recordPass(
+            dataset.handle,
+            collectionId,
+            {
+              // Nothing to look for is not a failure and not a quiet meeting — it is a call whose
+              // targets are all switched off, which reads as "0 records" and blames the conversation
+              // unless it is said.
+              outcome: classes.length === 0 ? 'skipped' : 'done',
+              recordCount: result.ids.length,
+              targets: classes,
+              // Handed back by the run rather than found on the progress feed afterwards, so one
+              // write holds the whole pass — see `prompt` on the result.
+              prompt: result.prompt,
+              response: result.response,
+            },
+            run,
+          );
           return result;
         } catch (error) {
           /*
@@ -547,12 +578,17 @@ export function DatasetStoreProvider(props: ParentProps) {
             the pair somebody reviewing a meeting most needs told apart, and it is the one the live
             feed cannot keep.
           */
-          await recordPass(dataset.handle, collectionId, {
-            outcome: 'failed',
-            recordCount: 0,
-            targets: classes,
-            error: error instanceof Error ? error.message : String(error),
-          });
+          await recordPass(
+            dataset.handle,
+            collectionId,
+            {
+              outcome: 'failed',
+              recordCount: 0,
+              targets: classes,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            run,
+          );
           throw error;
         }
       },

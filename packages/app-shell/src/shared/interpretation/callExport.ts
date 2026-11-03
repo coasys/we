@@ -102,7 +102,7 @@ export interface PassEntry {
   author?: string;
   trigger?: string;
   outcome?: string;
-  created?: number;
+  recordCount?: number;
   /** The run's per-kind JSON; an extraction's holds `targets`, the entity names it looked for. */
   detail?: string;
   error?: string;
@@ -216,7 +216,7 @@ export function formatExtractionLog(input: ExtractionLogInput): string {
       `- Trigger: ${pass.trigger || 'manual'}`,
       `- Run by: ${pass.author ? `${input.nameFor(pass.author)} (\`${pass.author}\`)` : 'unknown'}`,
       `- Outcome: ${pass.outcome || 'done'}`,
-      `- Records written: ${pass.created ?? 0}`,
+      `- Records written: ${pass.recordCount ?? 0}`,
       `- Looking for: ${list(targets)}`,
       ...(pass.error ? [`- Error: ${pass.error}`] : []),
       '',
