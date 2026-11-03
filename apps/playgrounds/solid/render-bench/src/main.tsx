@@ -19,7 +19,7 @@
  * built from the thing it measures. The status text updates before every sample — as a plain span
  * that is a synchronous text write costing microseconds and landing before the clock starts, but as
  * a Lit element it is an async microtask update that can land *inside* the measured window. An
- * animating `we-spinner` in the previous harness did exactly that, inflating every result in
+ * animating spinner in the previous harness did exactly that, inflating every result in
  * proportion to DOM size until it was found and removed.
  *
  * The element counts depend on this too: `runner.ts` counts the whole document and subtracts a
