@@ -1422,7 +1422,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       if (previousValue === newValue) continue;
       try {
         await createEntity(
-          'ExtractionAmendment',
+          'Amendment',
           {
             property: name,
             previousValue,

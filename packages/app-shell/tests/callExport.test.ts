@@ -80,16 +80,16 @@ describe('the extraction log', () => {
     const log = formatExtractionLog(
       input({
         passes: [
-          { createdAt: '2026-09-14T11:30:00.000Z', trigger: 'auto', prompt: 'second prompt', response: 'plain' },
+          { createdAt: '2026-09-14T11:30:00.000Z', trigger: 'auto', prompt: 'second prompt', output: 'plain' },
           {
             createdAt: '2026-09-14T11:10:00.000Z',
             author: 'did:key:anna',
             trigger: 'manual',
             outcome: 'done',
-            recordCount: 1,
-            targets: '["TaskBlock"]',
+            created: 1,
+            detail: '{"targets":["TaskBlock"]}',
             prompt: 'first prompt',
-            response: '{"records":[]}',
+            output: '{"records":[]}',
           },
         ],
       }),

@@ -28,11 +28,11 @@ import type { SessionAnswer, SessionTool, SessionToolset } from '../core/convers
 /** Core entities that are the app's configuration rather than what a space is about. */
 const CONFIGURATION = new Set([
   'AgentSettings',
+  'Amendment',
   'ChatMessage',
   'ChatSession',
   'EdgeRoute',
-  'ExtractionAmendment',
-  'ExtractionPass',
+  'ModelRun',
   'MutedAgent',
   'Placement',
   'Policy',

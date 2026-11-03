@@ -274,18 +274,6 @@ export const CollectionBlock: CoreEntityDef = {
       // ── Extraction ────────────────────────────────────────────────────────────────────
       // What reading this collection produced — a collection somebody has extracted from.
       /**
-       * Every time a model was asked to read this collection — see {@link ExtractionPass}.
-       *
-       * Its own relation rather than `children`, which holds a collection's *content*: a pass is a
-       * fact about the collection, not something in it, and in `children` it would be loaded by the
-       * board and drawn as a card.
-       */
-      extractionPasses: {
-        target: 'ExtractionPass',
-        cardinality: 'many',
-        predicate: 'we://extraction_pass_record',
-      },
-      /**
        * What a model wrote from reading this collection — the provenance of an extracted record.
        *
        * ## Why this is not a subset of `children` doing double duty
@@ -331,7 +319,7 @@ export const CollectionBlock: CoreEntityDef = {
       recognised: { target: '', cardinality: 'many', predicate: 'we://recognised' },
       /**
        * Changes a pass suggested to records that already existed, and somebody kept — see
-       * {@link ExtractionAmendment}.
+       * {@link Amendment}.
        *
        * The counterpart to {@link extracted} for the other kind of suggestion a pass makes, and it
        * is a separate relation rather than more entries in that one because the two are about
@@ -349,9 +337,9 @@ export const CollectionBlock: CoreEntityDef = {
        * itself points at.
        */
       amendments: {
-        target: 'ExtractionAmendment',
+        target: 'Amendment',
         cardinality: 'many',
-        predicate: 'we://extraction_amendment',
+        predicate: 'we://amendment',
       },
     },
   },

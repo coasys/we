@@ -7,8 +7,7 @@
 import { Flag, HasMany, HasManyMethods, HasOne, Model, Property } from '@coasys/ad4m';
 import { FILE_STORAGE_LANGUAGE } from '@we/entities';
 
-import { ExtractionAmendment } from './ExtractionAmendment';
-import { ExtractionPass } from './ExtractionPass';
+import { Amendment } from './Amendment';
 import { WeNode } from './WeNode';
 
 @Model({ name: 'CollectionBlock' })
@@ -268,16 +267,6 @@ export class CollectionBlock extends WeNode {
   board?: CollectionBlock;
 
   /**
-   * Every time a model was asked to read this collection — see {@link ExtractionPass}.
-   *
-   * Its own relation rather than `children`, which holds a collection's *content*: a pass is a
-   * fact about the collection, not something in it, and in `children` it would be loaded by the
-   * board and drawn as a card.
-   */
-  @HasMany(() => ExtractionPass, { through: 'we://extraction_pass_record' })
-  extractionPasses: string[] = [];
-
-  /**
    * What a model wrote from reading this collection — the provenance of an extracted record.
    *
    * ## Why this is not a subset of `children` doing double duty
@@ -327,7 +316,7 @@ export class CollectionBlock extends WeNode {
 
   /**
    * Changes a pass suggested to records that already existed, and somebody kept — see
-   * {@link ExtractionAmendment}.
+   * {@link Amendment}.
    *
    * The counterpart to {@link extracted} for the other kind of suggestion a pass makes, and it
    * is a separate relation rather than more entries in that one because the two are about
@@ -344,7 +333,7 @@ export class CollectionBlock extends WeNode {
    * open vocabulary here, only whatever the amended record happens to be, which the amendment
    * itself points at.
    */
-  @HasMany(() => ExtractionAmendment, { through: 'we://extraction_amendment' })
+  @HasMany(() => Amendment, { through: 'we://amendment' })
   amendments: string[] = [];
 }
 

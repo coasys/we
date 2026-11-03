@@ -96,21 +96,21 @@ export function plainFields(record: unknown): Record<string, unknown> {
   return out;
 }
 
-/** One stored `ExtractionPass`, as the log needs it. */
+/** One stored extraction `ModelRun`, as the log needs it. */
 export interface PassEntry {
   createdAt: unknown;
   author?: string;
   trigger?: string;
   outcome?: string;
-  recordCount?: number;
-  /** A JSON array of entity names, as stored. */
-  targets?: string;
+  created?: number;
+  /** The run's per-kind JSON; an extraction's holds `targets`, the entity names it looked for. */
+  detail?: string;
   error?: string;
   prompt?: string;
-  response?: string;
+  output?: string;
 }
 
-/** One stored `ExtractionAmendment` — a change to an agreed record that somebody kept. */
+/** One stored `Amendment` — a change to an agreed record that somebody kept. */
 export interface AmendmentEntry {
   createdAt: unknown;
   /** Who accepted it, which is not who wrote the record. */
@@ -153,11 +153,12 @@ export interface ExtractionLogInput {
 
 const list = (items: string[]) => (items.length ? items.join(', ') : '(none)');
 
-function parseTargets(raw: string | undefined): string[] {
-  if (!raw) return [];
+/** The entity names an extraction run looked for, out of its `detail`. */
+function parseTargets(detail: string | undefined): string[] {
+  if (!detail) return [];
   try {
-    const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
+    const targets: unknown = (JSON.parse(detail) as { targets?: unknown } | null)?.targets;
+    return Array.isArray(targets) ? targets.filter((item): item is string => typeof item === 'string') : [];
   } catch {
     return [];
   }
@@ -208,14 +209,14 @@ export function formatExtractionLog(input: ExtractionLogInput): string {
   if (!passes.length) out.push('_No extraction pass has run on this call._', '');
 
   passes.forEach((pass, index) => {
-    const targets = parseTargets(pass.targets);
+    const targets = parseTargets(pass.detail);
     out.push(
       `### Pass ${index + 1}: ${isoOf(pass.createdAt) || 'unknown time'}`,
       '',
       `- Trigger: ${pass.trigger || 'manual'}`,
       `- Run by: ${pass.author ? `${input.nameFor(pass.author)} (\`${pass.author}\`)` : 'unknown'}`,
       `- Outcome: ${pass.outcome || 'done'}`,
-      `- Records written: ${pass.recordCount ?? 0}`,
+      `- Records written: ${pass.created ?? 0}`,
       `- Looking for: ${list(targets)}`,
       ...(pass.error ? [`- Error: ${pass.error}`] : []),
       '',
@@ -229,10 +230,10 @@ export function formatExtractionLog(input: ExtractionLogInput): string {
         Pretty-printed where it parses, since a model's structured answer is one line as returned.
         Fenced as JSON only when it did parse — labelling prose `json` misleads a reader.
       */
-      pass.response
+      pass.output
         ? (() => {
-            const pretty = formatJson({ text: pass.response });
-            return fenced(pretty, pretty === pass.response ? '' : 'json');
+            const pretty = formatJson({ text: pass.output });
+            return fenced(pretty, pretty === pass.output ? '' : 'json');
           })()
         : '_Not recorded._',
       '',

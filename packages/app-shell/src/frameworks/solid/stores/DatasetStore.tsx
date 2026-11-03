@@ -33,7 +33,7 @@ import {
   trace,
 } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
-import { AgentSettings, type DatasetProxy, ExtractionPass, getEntityForDataset } from '@we/entities';
+import { AgentSettings, type DatasetProxy, getEntityForDataset, ModelRun } from '@we/entities';
 import {
   Accessor,
   batch,
@@ -52,7 +52,7 @@ import { useSessionStore } from './SessionStore';
   Where a pass files what it read, by the relations of `CollectionBlock` that hold each — named, not
   stored: how a relation is stored is the backend's business.
 
-  - `extractionPasses` — a record of each pass, hung off the collection it read.
+  - `runs` — a `ModelRun` for each pass, `kind: 'extraction'`, hung off the collection it read.
   - `extracted` — a record a model proposed from reading the collection. Written beside containment
     rather than instead of it: `children` is ownership, and the call's board gathers through it, so a
     record that stopped being a child would vanish from the board it exists to appear on. This is the
@@ -216,7 +216,7 @@ export interface DatasetStore {
    * the record has to be written by whoever is watching the report — and that is
    * InterpretationStore, which is the one place subscribed to it.
    *
-   * Here rather than there because this is where an `ExtractionPass` is written and where a call's
+   * Here rather than there because this is where an extraction run is written and where a call's
    * target list is resolved, and neither is worth a second copy. Called only for this agent's own
    * passes: every peer sees the same event, and a row per peer would be a history of who was
    * watching rather than of what ran.
@@ -344,7 +344,7 @@ export function DatasetStoreProvider(props: ParentProps) {
    * narrow the request rather than break it.
    */
   /**
-   * Write down that a pass happened — see {@link ExtractionPass}.
+   * Write down that a pass happened, as a `ModelRun` of kind `extraction` — see {@link ModelRun}.
    *
    * Best effort, and deliberately so: the pass is the thing that mattered and it has already run,
    * so a failed *note* about it must not turn a successful extraction into a rejected one. Logged
@@ -368,18 +368,19 @@ export function DatasetStoreProvider(props: ParentProps) {
     },
   ): Promise<void> {
     try {
-      await ExtractionPass.create(
+      await ModelRun.create(
         handle,
         {
+          kind: 'extraction',
           outcome: pass.outcome,
-          recordCount: pass.recordCount,
-          targets: JSON.stringify(pass.targets),
+          created: pass.recordCount,
+          detail: JSON.stringify({ targets: pass.targets }),
           error: pass.error ?? '',
           trigger: pass.trigger ?? 'manual',
           prompt: pass.prompt ?? '',
-          response: pass.response ?? '',
+          output: pass.response ?? '',
         },
-        { parent: { id: collectionId, relation: 'extractionPasses', entity: 'CollectionBlock' } },
+        { parent: { id: collectionId, relation: 'runs', entity: 'CollectionBlock' } },
       );
     } catch (error) {
       console.warn('[interpretation] could not record that a pass ran', error);

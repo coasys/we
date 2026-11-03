@@ -119,6 +119,23 @@ export const WE_NODE_RELATIONS: EntitySchema['relations'] = {
    * subclass.
    */
   extractedFrom: { target: '', cardinality: 'one', predicate: 'we://extracted', reverseOf: 'extracted' },
+  /**
+   * Every time a model was asked to do something about this record — read a call, edit a template.
+   * See `ModelRun`.
+   *
+   * Its own relation rather than `children`, which holds a record's *content*: a run is a fact about
+   * the record, not something in it, and in `children` a board would load it and draw it as a card.
+   */
+  runs: { target: 'ModelRun', cardinality: 'many', predicate: 'we://model_run' },
+  /**
+   * The run that wrote this record, where a model wrote it on somebody's behalf. Empty on anything a
+   * person made, and on what an extraction pass made, which `extractedFrom` marks instead (see
+   * `ModelRun`). `generatedRun` in `@we/entities` answers both ways at once.
+   *
+   * The author stays the person: who a record was made for is `author`, and this says that a model
+   * did the writing.
+   */
+  generatedBy: { target: 'ModelRun', cardinality: 'one', predicate: 'we://generated_by' },
   signals: { target: 'Signal', cardinality: 'many', predicate: 'we://signal' },
   participants: { target: '', cardinality: 'many', predicate: 'we://participant', polymorphic: false },
   mentions: { target: '', cardinality: 'many', predicate: 'we://mention', polymorphic: false },

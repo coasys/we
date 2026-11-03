@@ -2141,7 +2141,7 @@ describe('staged suggestions', () => {
     const withRecord = (i: ReturnType<typeof interpreterWith>, rows: Record<string, unknown>[] = [held]) =>
       harness(inCall, { interpretation: i.port, records: { find: async () => rows } });
 
-    const amendments = (h: ReturnType<typeof harness>) => h.created.filter((c) => c.entity === 'ExtractionAmendment');
+    const amendments = (h: ReturnType<typeof harness>) => h.created.filter((c) => c.entity === 'Amendment');
 
     it('records the property, both values and the record it was to', async () => {
       const i = interpreterWith([change]);
