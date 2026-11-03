@@ -666,7 +666,18 @@ export function EditorStoreProvider(props: ParentProps) {
   const [isEditingTemplate, setIsEditingTemplate] = createSignal(false);
   const [editAction, setEditAction] = createSignal<'edit' | 'fork' | 'fresh' | null>(null);
 
+  /*
+    A built-in template is never edited in place: changing one means a copy of your own, so asking to
+    edit one offers the fork instead. Here rather than at each way in, because the ways in include
+    the editor chord and anything a template can `$invoke`, none of which can be relied on to check
+    first — and a session opened over a template that cannot be saved would hold edits nobody could
+    keep.
+  */
   function enterTemplateEditing(action: 'edit' | 'fork' | 'fresh' = 'edit') {
+    if (action === 'edit' && edit.isBuiltIn()) {
+      startFork();
+      return;
+    }
     setEditAction(action);
     setIsEditingTemplate(true);
     setIsOpen(true);
@@ -682,16 +693,26 @@ export function EditorStoreProvider(props: ParentProps) {
     with no page node to select first.
   */
   async function editApp(id?: string) {
-    if (id && id !== templateStore.appTemplateId()) await templateStore.setAppTemplate(id);
+    await pointAtApp(id);
+    // A built-in app is forked, never edited: the picker opens and the copy is what gets edited.
+    if (edit.isBuiltIn()) {
+      startFork();
+      return;
+    }
     // In preview, as a template's session starts: visual editing is a step the person takes, and
     // starting in it would make the chrome inert under whatever opened this.
     if (!isEditingTemplate()) enterTemplateEditing('edit');
-    edit.enterApp(templateStore.appTemplate());
   }
 
   async function forkApp(id?: string) {
-    await editApp(id);
+    await pointAtApp(id);
     startFork();
+  }
+
+  /** Make the app the thing edited — the target a fork copies — without opening a session on it. */
+  async function pointAtApp(id?: string) {
+    if (id && id !== templateStore.appTemplateId()) await templateStore.setAppTemplate(id);
+    edit.enterApp(templateStore.appTemplate());
   }
 
   function exitTemplateEditing() {
@@ -934,6 +955,8 @@ export function EditorStoreProvider(props: ParentProps) {
       await templateStore.setAppTemplate(templateId);
       const copy = templateStore.allTemplates().find((t) => t.id === templateId && !t._fromSpace);
       if (copy) edit.enterApp(copy);
+      // The fork was asked for from outside a session; the copy is the thing to edit now.
+      if (!isEditingTemplate()) enterTemplateEditing('fork');
       setMessages((prev) => [
         ...prev,
         createMessage('assistant', `Forked the app as "${name}". It is the app you are in now.`),
@@ -984,6 +1007,9 @@ export function EditorStoreProvider(props: ParentProps) {
 
   function cancelPicker() {
     setPickerOpen(false);
+    // A fork asked for from outside a session pointed the editor at the app it would copy; with no
+    // fork, nothing is being edited, so the chrome goes back to being drawn from the saved app.
+    if (!isEditingTemplate()) edit.leave();
   }
 
   // ----------------------------------------------------------------
