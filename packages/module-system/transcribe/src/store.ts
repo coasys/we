@@ -1745,21 +1745,25 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    */
   function pollModels(): void {
     if (modelPoll) return;
-    modelPoll = setTimeout(async () => {
-      const models = await readModels();
-      modelPoll = null;
-      const waiting = () => enabled() && !context && (status() === 'no-model' || status() === 'model-unready');
-      if (waiting() && models?.some((m) => m.ready)) {
-        const audio = audioInput?.() ?? null;
-        if (audio) {
-          void start(audio);
-          return;
-        }
-      }
-      // A panel showing "no model" keeps asking too, so a model added in settings clears the note —
-      // and hides the connect button — without the panel being closed and opened again.
-      if (modelState() === 'unready' || waiting() || (open() && modelState() === 'none')) pollModels();
-    }, MODEL_POLL_MS);
+    modelPoll = setTimeout(
+      () =>
+        void (async () => {
+          const models = await readModels();
+          modelPoll = null;
+          const waiting = () => enabled() && !context && (status() === 'no-model' || status() === 'model-unready');
+          if (waiting() && models?.some((m) => m.ready)) {
+            const audio = audioInput?.() ?? null;
+            if (audio) {
+              void start(audio);
+              return;
+            }
+          }
+          // A panel showing "no model" keeps asking too, so a model added in settings clears the note —
+          // and hides the connect button — without the panel being closed and opened again.
+          if (modelState() === 'unready' || waiting() || (open() && modelState() === 'none')) pollModels();
+        })(),
+      MODEL_POLL_MS,
+    );
   }
 
   /**

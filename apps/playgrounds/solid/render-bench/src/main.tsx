@@ -170,7 +170,7 @@ function ResultRow(props: { fixtureKey: string; label: string }) {
         {/* Plain <button>, deliberately. The harness chrome must not be built from the design
             system it measures: a we-button updates on a microtask and could land inside a measured
             window, which is the class of contamination an animating spinner already caused once. */}
-        <button onClick={() => runSingle(props.fixtureKey)} disabled={busy()} style="font-size:11px">
+        <button onClick={() => void runSingle(props.fixtureKey)} disabled={busy()} style="font-size:11px">
           Run
         </button>{' '}
         <button onClick={() => show(props.fixtureKey)} disabled={busy()} style="font-size:11px">
@@ -240,7 +240,7 @@ function App() {
       </p>
 
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
-        <button onClick={runAll} disabled={!!status()} style="padding:6px 14px;font-size:14px">
+        <button onClick={() => void runAll()} disabled={!!status()} style="padding:6px 14px;font-size:14px">
           {status() ? 'Running…' : 'Run all'}
         </button>
         <button onClick={clearResults} disabled={!!status()} style="padding:6px 14px;font-size:14px">

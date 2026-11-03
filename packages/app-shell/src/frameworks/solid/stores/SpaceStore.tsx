@@ -5667,7 +5667,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   async function applyTheme(themeId: string): Promise<void> {
     const uuid = datasetStore.currentDataset()?.id;
     if (uuid) await setSpaceThemeOverride(themeId, uuid);
-    else themeStore.setDefaultTheme(themeId);
+    else await themeStore.setDefaultTheme(themeId);
   }
 
   /**
@@ -6275,7 +6275,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         const allDids = myDid ? [...new Set([myDid, ...dids])] : dids;
         setMemberDids(allDids);
         for (const did of allDids) {
-          profileStore.fetchProfile(did);
+          void profileStore.fetchProfile(did);
         }
       })
       .catch(() => {

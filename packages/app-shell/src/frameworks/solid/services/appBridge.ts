@@ -277,7 +277,7 @@ export function startAppBridge(deps: AppBridgeDeps) {
       // Replace the placeholder origin with the real executor base URL.
       const realUrl = url.replace(PROXY_PLACEHOLDER, base);
 
-      (async () => {
+      void (async () => {
         try {
           const response = await fetch(realUrl, { method, headers, body: body ?? undefined });
           const responseBody = await response.arrayBuffer();

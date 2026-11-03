@@ -38,9 +38,8 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
 
-      # The heap the whole-monorepo walk needs lives in the `lint` script itself, so CI and a developer's
-      # own `pnpm lint` cannot disagree about it. It used to be set here only, which meant the command
-      # passed in CI and died locally — a gate nobody could reproduce a failure of.
+      # How lint runs (one process per package, for the type-aware rules) lives in the `lint` script
+      # itself, scripts/lint.mjs, so CI and a developer's own `pnpm lint` cannot disagree about it.
       - name: Lint
         run: pnpm lint
 

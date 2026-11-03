@@ -111,7 +111,7 @@ export function AudioInput(props: AudioInputProps) {
             label="Add audio"
             hint="Drop here or click to browse"
             accept="audio/*"
-            onFileDrop={receiveFile}
+            onFileDrop={(file: File) => void receiveFile(file).catch(console.error)}
             onClick={() => setShowModal(true)}
           />
         }
@@ -188,7 +188,7 @@ export function AudioInput(props: AudioInputProps) {
                 <we-button variant="ghost" onClick={closeModal}>
                   Cancel
                 </we-button>
-                <we-button variant="solid" onClick={() => saveFile().catch(console.error)}>
+                <we-button variant="solid" onClick={() => void saveFile().catch(console.error)}>
                   Save
                 </we-button>
               </Row>

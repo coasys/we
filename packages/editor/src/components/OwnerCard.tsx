@@ -484,10 +484,16 @@ function ViewCard(props: { id: string }) {
   const fork = async () => {
     setStep('busy');
     setFailed(false);
-    const id = (await host.owners?.forkView?.(props.id)) ?? null;
-    setMade(id);
-    setFailed(!id);
-    setStep('idle');
+    try {
+      const id = (await host.owners?.forkView?.(props.id)) ?? null;
+      setMade(id);
+      setFailed(!id);
+    } catch (error) {
+      console.error('Could not copy the view', error);
+      setFailed(true);
+    } finally {
+      setStep('idle');
+    }
   };
 
   /*
@@ -571,7 +577,7 @@ function ViewCard(props: { id: string }) {
                       original.
                     </we-text>
                     <Row gap="200">
-                      <we-button size="xs" variant="solid" loading={step() === 'busy'} onClick={fork}>
+                      <we-button size="xs" variant="solid" loading={step() === 'busy'} onClick={() => void fork()}>
                         Make the copy
                       </we-button>
                       <we-button size="xs" variant="ghost" disabled={step() === 'busy'} onClick={() => setStep('idle')}>

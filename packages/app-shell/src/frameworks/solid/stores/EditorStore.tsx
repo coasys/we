@@ -95,8 +95,8 @@ export interface EditorStore {
   /** The saved sessions, to name and address — never to read messages off. See the signal's note. */
   sessions: Accessor<NewRecord<ChatSessionRecord>[]>;
   activeSessionId: Accessor<string | null>;
-  newChat: () => void;
-  switchSession: (sessionId: string) => void;
+  newChat: () => Promise<void>;
+  switchSession: (sessionId: string) => Promise<void>;
   deleteSession: (sessionId: string) => Promise<void>;
 
   // --- Content mode (preview / visual) ---
@@ -186,7 +186,7 @@ export interface EditorStore {
 
   // --- Chat actions ---
   sendMessage: (text: string) => Promise<void>;
-  clearHistory: () => void;
+  clearHistory: () => Promise<void>;
 }
 
 /**
@@ -592,7 +592,11 @@ export function EditorStoreProvider(props: ParentProps) {
 
     activeSessionRecord = target;
     setActiveSessionId(sessionId);
-    setMessages(await messagesFor(sessionId));
+    try {
+      setMessages(await messagesFor(sessionId));
+    } catch (err) {
+      console.error('Failed to load the chat’s messages', err);
+    }
   }
 
   /** Delete a session and its messages */
@@ -1002,7 +1006,7 @@ export function EditorStoreProvider(props: ParentProps) {
 
     // Persist user message to AD4M (custom templates only)
     if (activeSessionRecord) {
-      persistMessage('user', text);
+      void persistMessage('user', text);
     }
 
     setIsStreaming(true);
@@ -1221,7 +1225,7 @@ export function EditorStoreProvider(props: ParentProps) {
 
     // Persist to AD4M (fire-and-forget for custom templates)
     if (activeSessionRecord) {
-      persistMessage('assistant', content);
+      void persistMessage('assistant', content);
     }
   }
 
@@ -1311,7 +1315,7 @@ export function EditorStoreProvider(props: ParentProps) {
   // Chats are about what is being edited, which is not always the template on screen.
   createEffect(() => {
     const templateId = edit.template().id;
-    if (templateId && datasetStore.rootDataset()) loadSessionsForTemplate(templateId);
+    if (templateId && datasetStore.rootDataset()) void loadSessionsForTemplate(templateId);
   });
 
   // Save/restore undo/redo stacks per edited template — keyed with its origin, see `EditTargetPort.key`.

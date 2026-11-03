@@ -90,7 +90,7 @@ export async function timeRender(
   // raw elapsed time.
   const pending = Array.from(container.querySelectorAll('*'))
     .map((el) => (el as LitElement).updateComplete)
-    .filter(Boolean);
+    .filter((done): done is Promise<unknown> => !!done);
   const collected = performance.now();
   await Promise.all(pending);
   await microtask();
@@ -169,7 +169,7 @@ export async function timeUpdates(container: HTMLElement, bump: () => void): Pro
     // Same exclusion as timeRender: the walk is instrumentation, not update cost.
     const pending = Array.from(container.querySelectorAll('*'))
       .map((el) => (el as LitElement).updateComplete)
-      .filter(Boolean);
+      .filter((done): done is Promise<unknown> => !!done);
     const collected = performance.now();
     await Promise.all(pending);
     await microtask();

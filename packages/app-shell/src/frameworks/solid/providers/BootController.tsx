@@ -85,7 +85,7 @@ export function BootController() {
 
     // Seed own profile into the cache from the public dataset
     const ownDid = session.me()?.did;
-    if (ownDid) profileStore.fetchProfile(ownDid);
+    if (ownDid) void profileStore.fetchProfile(ownDid);
 
     /*
       Somebody arrived on a guest invite link.
