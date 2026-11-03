@@ -891,8 +891,11 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
       });
     });
 
-    perspective.on('auto-processor-event', async (event) => {
-      /*
+    perspective.on(
+      'auto-processor-event',
+      (event) =>
+        void (async () => {
+          /*
         Every step, not only the one this listener acts on.
 
         The engine names precisely what it is doing — `emptyTranscript` when the scope query
@@ -901,15 +904,15 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
         which makes those the only evidence there is. Filtering them out at the listener was the
         difference between a diagnosable failure and a shrug.
       */
-      trace('interpretation', event.step, {
-        processor: event.processorId,
-        agent: event.agentDid,
-        items: event.itemIds?.length ?? 0,
-        bases: event.bases?.length ?? 0,
-        detail: event.detail,
-      });
+          trace('interpretation', event.step, {
+            processor: event.processorId,
+            agent: event.agentDid,
+            items: event.itemIds?.length ?? 0,
+            bases: event.bases?.length ?? 0,
+            detail: event.detail,
+          });
 
-      /*
+          /*
         Keep a one-shot's exchange where the run that started it can reach it.
 
         Outside the `phase` gate below, because the two steps carrying the exchange have no phase of
@@ -917,32 +920,32 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
         gate would drop exactly the events this needs. Keyed on the observation id, which is the
         pass id the run minted, so nothing here touches a watch's passes.
       */
-      const exchangeId = passIdOf(event);
-      if (oneShotParents.has(exchangeId) && (event.llmInput || event.llmOutput)) {
-        const held = oneShotExchange.get(exchangeId) ?? {};
-        if (event.llmInput) held.prompt = event.llmInput;
-        if (event.llmOutput) held.response = event.llmOutput;
-        oneShotExchange.set(exchangeId, held);
-      }
+          const exchangeId = passIdOf(event);
+          if (oneShotParents.has(exchangeId) && (event.llmInput || event.llmOutput)) {
+            const held = oneShotExchange.get(exchangeId) ?? {};
+            if (event.llmInput) held.prompt = event.llmInput;
+            if (event.llmOutput) held.response = event.llmOutput;
+            oneShotExchange.set(exchangeId, held);
+          }
 
-      const phase = phaseOf(event.step);
-      if (phase) {
-        const passId = passIdOf(event);
-        stream.ownPasses.add(passId);
-        publish({
-          passId,
-          watchId: event.processorId,
-          runner: event.agentDid ?? undefined,
-          // This stream is DID-filtered to the pass owner, so anything arriving here is this
-          // agent's own work — but `agentDid` is checked rather than assumed, because a hosted
-          // executor running passes for several managed users would deliver more than one DID's
-          // events to a client holding the right credential.
-          mine: !event.agentDid || event.agentDid === selfId?.(),
-          phase,
-          at: Date.now(),
-          ids: event.step === 'processed' ? (event.bases ?? []) : undefined,
-          detail: event.detail ?? undefined,
-          /*
+          const phase = phaseOf(event.step);
+          if (phase) {
+            const passId = passIdOf(event);
+            stream.ownPasses.add(passId);
+            publish({
+              passId,
+              watchId: event.processorId,
+              runner: event.agentDid ?? undefined,
+              // This stream is DID-filtered to the pass owner, so anything arriving here is this
+              // agent's own work — but `agentDid` is checked rather than assumed, because a hosted
+              // executor running passes for several managed users would deliver more than one DID's
+              // events to a client holding the right credential.
+              mine: !event.agentDid || event.agentDid === selfId?.(),
+              phase,
+              at: Date.now(),
+              ids: event.step === 'processed' ? (event.bases ?? []) : undefined,
+              detail: event.detail ?? undefined,
+              /*
             What this pass read, and what started it — the two facts a durable history needs and the
             only two only this side can supply.
 
@@ -951,8 +954,8 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
             which the run itself fills in. Absent for a pass this client did not start and is not
             watching, which is the honest answer — there is nothing to write it against.
           */
-          ...passOrigin(event.processorId),
-          /*
+              ...passOrigin(event.processorId),
+              /*
             Only the field this event actually carries.
 
             Writing both and letting one be `undefined` looks equivalent and is not: the merge on the
@@ -961,23 +964,23 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
             response, so the both-keys version deleted the prompt at the moment the response arrived
             to be read against it.
           */
-          llm: event.llmInput
-            ? { prompt: event.llmInput }
-            : event.llmOutput
-              ? { response: event.llmOutput }
-              : undefined,
-        });
-      }
+              llm: event.llmInput
+                ? { prompt: event.llmInput }
+                : event.llmOutput
+                  ? { response: event.llmOutput }
+                  : undefined,
+            });
+          }
 
-      if (event.step !== 'processed') return;
-      const parent = watchParents.get(event.processorId);
-      const me = selfId?.();
-      if (!parent || !me || event.agentDid !== me) return;
+          if (event.step !== 'processed') return;
+          const parent = watchParents.get(event.processorId);
+          const me = selfId?.();
+          if (!parent || !me || event.agentDid !== me) return;
 
-      for (const base of event.bases ?? []) {
-        try {
-          await perspective.add(new Link({ source: parent.id, predicate: parent.predicate, target: base }));
-          /*
+          for (const base of event.bases ?? []) {
+            try {
+              await perspective.add(new Link({ source: parent.id, predicate: parent.predicate, target: base }));
+              /*
             And the second link, saying this record was *produced* here rather than merely put here.
 
             Written in the same try as the containment one and after it, because containment is the
@@ -985,14 +988,15 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
             loses its provenance, where one marked but unparented would be invisible to every surface
             that reaches content by traversal.
           */
-          const made = provenanceLink(base, parent.prefix, parent.provenance, parent.recognised);
-          if (made) await perspective.add(new Link({ source: made.id, predicate: made.predicate, target: base }));
-        } catch (error) {
-          // One failed link should not cost the rest of the batch its parent.
-          console.warn('[interpretation] could not parent an auto-extracted record', base, error);
-        }
-      }
-    });
+              const made = provenanceLink(base, parent.prefix, parent.provenance, parent.recognised);
+              if (made) await perspective.add(new Link({ source: made.id, predicate: made.predicate, target: base }));
+            } catch (error) {
+              // One failed link should not cost the rest of the batch its parent.
+              console.warn('[interpretation] could not parent an auto-extracted record', base, error);
+            }
+          }
+        })(),
+    );
 
     return stream;
   }

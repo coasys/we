@@ -449,7 +449,7 @@ export function InterpretationStoreProvider(props: ParentProps) {
     moment later, which is the same degradation every other agent-facing surface here accepts.
   */
   createEffect(() => {
-    for (const row of rows()) if (row.runner) profileStore.fetchProfile(row.runner);
+    for (const row of rows()) if (row.runner) void profileStore.fetchProfile(row.runner);
   });
 
   /*

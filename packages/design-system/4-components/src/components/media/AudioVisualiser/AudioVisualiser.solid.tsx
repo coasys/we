@@ -102,7 +102,7 @@ export function AudioVisualiser(props: AudioVisualiserProps) {
       A `finally` is the whole fix. The context is created outside the `try` for the same reason: it
       has to be reachable from there.
     */
-    (async () => {
+    void (async () => {
       const decodeCtx = new AudioContext();
       try {
         const response = await fetch(src);
@@ -235,7 +235,8 @@ export function AudioVisualiser(props: AudioVisualiserProps) {
   onCleanup(() => {
     stopDynamic();
     source?.disconnect();
-    audioCtx?.close();
+    // Closing a context that is already closed rejects, and there is nothing left to do about it.
+    audioCtx?.close().catch(() => {});
   });
 
   function formatTime(s: number): string {

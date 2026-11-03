@@ -200,7 +200,7 @@ export function ImageInput(props: ImageInputProps) {
               <we-button variant="soft" onClick={handleCropBack}>
                 Back
               </we-button>
-              <we-button onClick={handleCropSave}>Save</we-button>
+              <we-button onClick={() => void handleCropSave().catch(console.error)}>Save</we-button>
             </Row>
           </we-modal>
         </Portal>

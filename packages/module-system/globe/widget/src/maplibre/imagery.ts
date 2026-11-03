@@ -37,7 +37,10 @@ const loadImage = async (url: string): Promise<ImageBitmap> => {
 
 const encode = (canvas: HTMLCanvasElement, type: 'image/png' | 'image/jpeg') =>
   new Promise<ArrayBuffer>((resolve, reject) =>
-    canvas.toBlob((blob) => (blob ? blob.arrayBuffer().then(resolve, reject) : reject(new Error('no tile'))), type),
+    canvas.toBlob((blob) => {
+      if (blob) blob.arrayBuffer().then(resolve, reject);
+      else reject(new Error('no tile'));
+    }, type),
   );
 
 const tileCanvas = () => {

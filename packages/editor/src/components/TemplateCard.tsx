@@ -38,7 +38,7 @@ export function TemplateCard(props: Props) {
   const mode = () => props.mode ?? 'marketplace';
 
   onMount(() => {
-    if (props.template.author) identity.fetchAgent(props.template.author);
+    if (props.template.author) void identity.fetchAgent(props.template.author);
   });
 
   const author = createMemo<AgentProfileSummary | undefined>(() =>
@@ -69,7 +69,7 @@ export function TemplateCard(props: Props) {
     if (props.onInstall) {
       props.onInstall();
     } else if (props.template.id) {
-      templateStore.installFromMarketplace(props.template.id);
+      void templateStore.installFromMarketplace(props.template.id);
     }
   };
 
@@ -155,9 +155,10 @@ export function TemplateCard(props: Props) {
             variant="ghost"
             size="sm"
             square
-            onClick={() =>
-              props.onDelete ? props.onDelete!() : templateStore.deleteMarketplaceTemplate(props.template.id!)
-            }
+            onClick={() => {
+              if (props.onDelete) props.onDelete();
+              else void templateStore.deleteMarketplaceTemplate(props.template.id!);
+            }}
           >
             <we-icon name="trash" />
           </we-button>

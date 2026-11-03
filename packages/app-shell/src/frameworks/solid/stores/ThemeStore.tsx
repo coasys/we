@@ -865,12 +865,12 @@ export function ThemeStoreProvider(props: ParentProps) {
 
   // Load installed themes when root perspective is ready
   createEffect(() => {
-    if (datasetStore.rootDataset()) loadInstalledThemes();
+    if (datasetStore.rootDataset()) void loadInstalledThemes();
   });
 
   // Load space themes when the current space perspective changes
   createEffect(() => {
-    if (datasetStore.currentDataset()) loadSpaceThemes();
+    if (datasetStore.currentDataset()) void loadSpaceThemes();
     else setSpaceThemes([]);
   });
 
