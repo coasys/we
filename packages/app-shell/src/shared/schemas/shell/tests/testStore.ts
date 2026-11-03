@@ -191,7 +191,7 @@ export function createTestStore(
 
     const p = ref.handle as any;
 
-    (async () => {
+    void (async () => {
       try {
         await p.ensureSDNASubjectClass(TestItem);
         await p.ensureSDNASubjectClass(TestChild);

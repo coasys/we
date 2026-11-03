@@ -243,9 +243,8 @@ export default [
     name: 'typescript/recommended',
     files: ['**/*.ts', '**/*.tsx'],
     plugins: { '@typescript-eslint': tsPlugin, 'simple-import-sort': simpleImportSortPlugin },
-    // Parsed without type information: no rule here reads types. Turning on `projectService`
-    // builds a TypeScript program per tsconfig, which takes lint from about 1 GB to 7 GB. It
-    // belongs with the first type-aware rule (`recommended-type-checked`), as a choice of its own.
+    // Parsed without type information: no rule here reads types. Those that do are in
+    // "typescript/type-aware" below, which turns it on for the files they cover.
     languageOptions: {
       parser: tsParser,
     },
@@ -262,6 +261,36 @@ export default [
       ],
     },
   },
+  /*
+    Rules that need TypeScript's types, from typescript-eslint's `recommended-type-checked` set. These
+    three ask what happens when a promise fails: one nobody handles (`no-floating-promises`), an async
+    function where a plain callback is expected, whose failure the caller never sees
+    (`no-misused-promises`), and an `await` on something that is not a promise (`await-thenable`).
+    The rest of the set comes in a few rules at a time; once all of it passes, this list becomes the
+    set itself.
+
+    Types cost a TypeScript program per package, so this covers the packages' own `src` only, never
+    tests or generated files, and `pnpm lint` runs one process per package (scripts/lint.mjs): one
+    process over the whole repository would hold about 15 GB. The commit hook sets
+    WE_LINT_TYPES=off, so a commit is not a 20-second, 3 GB wait; CI and `pnpm lint` run these.
+  */
+  ...(process.env.WE_LINT_TYPES === 'off'
+    ? []
+    : [
+        {
+          name: 'typescript/type-aware',
+          files: ['{packages,apps}/**/src/**/*.{ts,tsx}'],
+          ignores: ['**/*.test.{ts,tsx}', '**/*.generated.ts', '**/generated/**'],
+          languageOptions: {
+            parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
+          },
+          rules: {
+            '@typescript-eslint/no-floating-promises': 'error',
+            '@typescript-eslint/no-misused-promises': 'error',
+            '@typescript-eslint/await-thenable': 'error',
+          },
+        },
+      ]),
   // Turn off any rules that conflict with prettier
   eslintConfigPrettier,
   {

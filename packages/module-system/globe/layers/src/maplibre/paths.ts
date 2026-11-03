@@ -99,7 +99,8 @@ export function renderPaths(context: MapLibreRendererContext, initial: PathsOpti
     0;
   const onClick = async (event: MapMouseEvent) => {
     if (flatAt(event)) return;
-    const hit = await raised.pick(event.point.x, event.point.y);
+    // A pick that fails is a pick that found nothing.
+    const hit = await raised.pick(event.point.x, event.point.y).catch(() => null);
     if (hit) select(hit);
   };
   let asking = false;
@@ -107,17 +108,21 @@ export function renderPaths(context: MapLibreRendererContext, initial: PathsOpti
   const onMove = async (event: MapMouseEvent) => {
     if (asking || flatAt(event)) return;
     asking = true;
-    const hit = await raised.pick(event.point.x, event.point.y);
+    const hit = await raised.pick(event.point.x, event.point.y).catch(() => null);
     asking = false;
     if (!!hit === pointing) return;
     pointing = !!hit;
     map.getCanvas().style.cursor = pointing ? 'pointer' : '';
   };
-  map.on('click', onClick);
-  map.on('mousemove', onMove);
+  // MapLibre calls a listener and drops what it returns, so these are wrapped once and the same
+  // wrappers taken off again.
+  const click = (event: MapMouseEvent) => void onClick(event);
+  const move = (event: MapMouseEvent) => void onMove(event);
+  map.on('click', click);
+  map.on('mousemove', move);
   context.onCleanup(() => {
-    map.off('click', onClick);
-    map.off('mousemove', onMove);
+    map.off('click', click);
+    map.off('mousemove', move);
   });
 
   update(initial);

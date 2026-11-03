@@ -319,7 +319,7 @@ export function EditableImage(allProps: EditableImageProps) {
               <we-button variant="soft" onClick={changePhoto}>
                 Change photo
               </we-button>
-              <we-button onClick={confirm}>Save</we-button>
+              <we-button onClick={() => void confirm().catch(console.error)}>Save</we-button>
             </Row>
           </Column>
         </we-modal>
