@@ -2114,7 +2114,9 @@ const extractionHistory: SchemaNode = {
                           ': `Reading this call`',
                       },
                     },
-                    children: [{ type: 'we-spinner', props: { size: 'xs', color: 'text-faint' } }],
+                    children: [
+                      { type: 'we-animated-icon', props: { name: 'spinner', size: 'xs', color: 'text-faint' } },
+                    ],
                   },
                 },
               },
@@ -2756,7 +2758,7 @@ const extract: SchemaNode = {
           type: 'Row',
           props: { gap: '200', ay: 'center' },
           children: [
-            { type: 'we-spinner', props: { size: 'sm' } },
+            { type: 'we-animated-icon', props: { name: 'spinner', size: 'sm' } },
             {
               type: 'we-text',
               props: { variant: 'footnote', color: 'text-muted' },
@@ -3102,7 +3104,7 @@ const moreComing = (end: 'start' | 'end', words: string | { $: string }): Schema
   */
   props: { 'data-we-more': end, ay: 'center', gap: '300', py: '200' },
   children: [
-    { type: 'we-spinner', props: { size: 'xs', color: 'text-faint' } },
+    { type: 'we-animated-icon', props: { name: 'spinner', size: 'xs', color: 'text-faint' } },
     { type: 'we-text', props: { variant: 'footnote', color: 'text-faint' }, children: [words] },
   ],
 });
@@ -3318,7 +3320,9 @@ export const transcriptLines: SchemaNode = {
                     else: {
                       type: 'Column',
                       props: { ax: 'center', ay: 'center', py: '800', width: '100%' },
-                      children: [{ type: 'we-spinner', props: { size: 'md', color: 'text-faint' } }],
+                      children: [
+                        { type: 'we-animated-icon', props: { name: 'spinner', size: 'md', color: 'text-faint' } },
+                      ],
                     },
                   },
                 },
@@ -3646,7 +3650,7 @@ export const pendingUtterance: SchemaNode = {
                   type: '$if',
                   props: {
                     condition: { $: 'modules.transcribe.transcribing' },
-                    then: { type: 'we-spinner', props: { size: 'xs', color: 'text-muted' } },
+                    then: { type: 'we-animated-icon', props: { name: 'spinner', size: 'xs', color: 'text-muted' } },
                   },
                 },
               ],

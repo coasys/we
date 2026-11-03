@@ -4802,7 +4802,7 @@ export function GraphView(props: GraphViewProps) {
               px="300"
               py="200"
             >
-              <we-spinner size="xs" />
+              <we-animated-icon name="spinner" size="xs" />
               <we-text variant="footnote" color="text-muted">
                 Loading…
               </we-text>
@@ -4887,7 +4887,7 @@ export function GraphView(props: GraphViewProps) {
               worse than none at all.
             */}
             <Column class="we-graph__loading" ax="center" ay="center" gap="200">
-              <we-spinner size="lg" />
+              <we-animated-icon name="spinner" size="lg" />
               <we-text variant="footnote" color="text-muted">
                 Loading graph…
               </we-text>
