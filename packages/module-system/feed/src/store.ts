@@ -40,6 +40,7 @@ export function createFeedStore(deps: ModuleStoreDeps) {
     action,
     onDispose,
     dataset,
+    spaceRoot: deps.spaceRoot,
     records,
     interpretation,
     write: (collection, text, marks) =>

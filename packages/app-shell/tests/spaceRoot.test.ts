@@ -16,7 +16,7 @@ vi.mock('@we/entities', () => ({
   SpaceLandmark: {},
 }));
 
-const { readSpaceRoot } = await import('../src/shared/spaceLandmarks');
+const { readSpaceRoot, seedSpaceRoot } = await import('../src/shared/spaceLandmarks');
 
 const dataset = () => ({}) as never;
 
@@ -82,5 +82,59 @@ describe('readSpaceRoot', () => {
     expect(await readSpaceRoot(here)).toEqual({ id: 'space', root: 'root' });
     expect(await readSpaceRoot(here)).toEqual({ id: 'space', root: 'root' });
     expect(findOne).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('seedSpaceRoot', () => {
+  /*
+    The space list reads every space's record before a space is opened, and a record read without an
+    include still carries its collection's id. Opening the space paid for a second read of the same
+    record — 1.9 s on a busy executor, on the path to the Feed's first rows — to learn what that
+    row already said.
+  */
+  it('answers from a row already read, with no read of its own', async () => {
+    const here = dataset();
+    seedSpaceRoot(here, { id: 'space', root: 'root' });
+
+    expect(await readSpaceRoot(here)).toEqual({ id: 'space', root: 'root' });
+    expect(findOne).not.toHaveBeenCalled();
+  });
+
+  it('reads the collection however the row carries it', async () => {
+    const asId = dataset();
+    const asList = dataset();
+    const asRecord = dataset();
+    seedSpaceRoot(asId, { id: 'a', root: 'a-root' });
+    seedSpaceRoot(asList, { id: 'b', root: ['b-root'] });
+    seedSpaceRoot(asRecord, { id: 'c', root: { id: 'c-root' } });
+
+    expect(await readSpaceRoot(asId)).toEqual({ id: 'a', root: 'a-root' });
+    expect(await readSpaceRoot(asList)).toEqual({ id: 'b', root: 'b-root' });
+    expect(await readSpaceRoot(asRecord)).toEqual({ id: 'c', root: 'c-root' });
+    expect(findOne).not.toHaveBeenCalled();
+  });
+
+  it('keeps nothing for a row without a collection, so the space is read', async () => {
+    // A space made before spaces had a collection, or a row read in the moment before its root.
+    findOne.mockResolvedValue({ id: 'space', root: { id: 'root' } });
+    const here = dataset();
+    seedSpaceRoot(here, { id: 'space' });
+    seedSpaceRoot(here, null);
+
+    expect(await readSpaceRoot(here)).toEqual({ id: 'space', root: 'root' });
+    expect(findOne).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves an answer already kept, or a read in flight, alone', async () => {
+    let answer!: (space: unknown) => void;
+    findOne.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    const here = dataset();
+
+    const reading = readSpaceRoot(here);
+    seedSpaceRoot(here, { id: 'other', root: 'other-root' });
+    answer({ id: 'space', root: { id: 'root' } });
+
+    expect(await reading).toEqual({ id: 'space', root: 'root' });
+    expect(await readSpaceRoot(here)).toEqual({ id: 'space', root: 'root' });
   });
 });
