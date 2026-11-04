@@ -37,8 +37,8 @@ export function createTemplateDrafts(opts: { onInvalid?: (message: string) => vo
   function updateDraft(draft: TemplateSchema, next: TemplateSchema) {
     const open = drafts.get(keyOf(draft));
     if (!open) return;
-    const clone = deepClone(next) as TemplateSchema;
-    ensureNodeIds(clone as SchemaNode, undefined, open.draft as SchemaNode);
+    const clone = deepClone<TemplateSchema>(next);
+    ensureNodeIds(clone, undefined, open.draft);
     // Where it came from is part of which record it is, so an edit cannot drop it.
     if (open.draft._fromSpace) clone._fromSpace = true;
     const result = updateSchema(open.draft, clone, open.set);

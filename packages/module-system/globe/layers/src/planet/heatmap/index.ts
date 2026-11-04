@@ -139,14 +139,14 @@ export function renderHeatmap(context: CesiumRendererContext, initial: HeatmapOp
       image: canvases[current],
       color: new Color(1, 1, 1, heatOpacity(options)),
     });
-    const primitive = primitives.add(
+    const primitive = primitives.add<GroundPrimitive>(
       new GroundPrimitive({
         geometryInstances: new GeometryInstance({
           geometry: new RectangleGeometry({ rectangle, vertexFormat: EllipsoidSurfaceAppearance.VERTEX_FORMAT }),
         }),
         appearance: new EllipsoidSurfaceAppearance({ material, aboveGround: false }),
       }),
-    ) as GroundPrimitive;
+    );
     if (pending) primitives.remove(pending.primitive);
     pending = { primitive, material };
   };
@@ -187,8 +187,10 @@ export function renderHeatmap(context: CesiumRendererContext, initial: HeatmapOp
     const tint = new Color(1, 1, 1, heatOpacity(options));
     for (const entry of [shown, pending]) {
       if (!entry) continue;
-      entry.material.uniforms.image = canvas;
-      entry.material.uniforms.color = tint;
+      // Cesium types a material's uniforms as `any`; an 'Image' material has these two.
+      const uniforms = entry.material.uniforms as Record<string, unknown>;
+      uniforms.image = canvas;
+      uniforms.color = tint;
     }
     viewer.scene.requestRender();
   }

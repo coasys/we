@@ -77,15 +77,16 @@ export function createInMemoryLifecycle(initial: InMemoryDatasetSeed[] = []): In
   const emit = (fn: (h: DatasetChangeHandlers) => void) => subscribers.forEach(fn);
 
   return {
-    async list() {
-      return [...datasets.values()].map(toRef);
+    list() {
+      return Promise.resolve([...datasets.values()].map(toRef));
     },
 
-    async get(id) {
+    get(id) {
       const e = datasets.get(id);
-      return e ? toRef(e) : null;
+      return Promise.resolve(e ? toRef(e) : null);
     },
 
+    // eslint-disable-next-line @typescript-eslint/require-await -- Kept async so a subscriber that throws reaches the caller as a rejection, as the port promises.
     async create(name) {
       const entry: Entry = { id: `ds-${++datasetCounter}`, name, tables: {} };
       datasets.set(entry.id, entry);
@@ -94,11 +95,13 @@ export function createInMemoryLifecycle(initial: InMemoryDatasetSeed[] = []): In
       return ref;
     },
 
+    // eslint-disable-next-line @typescript-eslint/require-await -- Kept async so a subscriber that throws reaches the caller as a rejection, as the port promises.
     async remove(id) {
       if (!datasets.delete(id)) return;
       emit((h) => h.onRemoved?.(id));
     },
 
+    // eslint-disable-next-line @typescript-eslint/require-await -- Kept async so a subscriber that throws reaches the caller as a rejection, as the port promises.
     async publish(id) {
       const e = datasets.get(id);
       if (!e) throw new Error(`publish: no dataset with id ${id}`);
@@ -114,6 +117,7 @@ export function createInMemoryLifecycle(initial: InMemoryDatasetSeed[] = []): In
       return { uri: e.sharedUri, sharedId: e.sharedUri.replace('inmemory://', '') };
     },
 
+    // eslint-disable-next-line @typescript-eslint/require-await -- Kept async so a subscriber that throws reaches the caller as a rejection, as the port promises.
     async join(idOrUri) {
       const uri = idOrUri.includes('://') ? idOrUri : `inmemory://${idOrUri}`;
       const e = joinable.get(uri);
@@ -126,8 +130,8 @@ export function createInMemoryLifecycle(initial: InMemoryDatasetSeed[] = []): In
       return toRef(e);
     },
 
-    async members() {
-      return [];
+    members() {
+      return Promise.resolve([]);
     },
 
     subscribe(handlers) {
@@ -164,8 +168,8 @@ export function createInMemoryAgentSession(opts: InMemoryAgentOptions = {}): Age
   let signedInHere = false;
 
   return {
-    async status() {
-      return { hasAgent, unlocked };
+    status() {
+      return Promise.resolve({ hasAgent, unlocked });
     },
 
     /**
@@ -174,30 +178,32 @@ export function createInMemoryAgentSession(opts: InMemoryAgentOptions = {}): Age
      * already exists mirrors a real backend, where signing up over a live identity is a caller error
      * rather than a silent key replacement.
      */
-    async signUp(credentials) {
-      if (hasAgent) throw new Error('an agent already exists');
+    signUp(credentials) {
+      if (hasAgent) return Promise.reject(new Error('an agent already exists'));
       password = credentials.password;
       hasAgent = true;
       unlocked = true;
       signedInHere = true;
+      return Promise.resolve();
     },
 
-    async signIn(credentials) {
-      if (credentials.password !== password) throw new Error('invalid password');
+    signIn(credentials) {
+      if (credentials.password !== password) return Promise.reject(new Error('invalid password'));
       unlocked = true;
       signedInHere = true;
+      return Promise.resolve();
     },
 
-    async signOut() {
-      if (!signedInHere) return false;
+    signOut() {
+      if (!signedInHere) return Promise.resolve(false);
       unlocked = false;
       signedInHere = false;
-      return true;
+      return Promise.resolve(true);
     },
 
-    async me() {
-      if (!unlocked) throw new Error('agent is locked');
-      return { id, did: id } as AgentIdentity;
+    me() {
+      if (!unlocked) return Promise.reject(new Error('agent is locked'));
+      return Promise.resolve({ id, did: id } as AgentIdentity);
     },
   };
 }
@@ -243,14 +249,14 @@ export function createInMemorySchemaPort(runtime: EntityRuntime): SchemaPort {
     installModules: async () => {},
     // Nothing to bring up to date: entities here are compiled from the manifest this build ships,
     // so a stored shape can never predate the declared one.
-    refreshSpace: async () => [],
+    refreshSpace: () => Promise.resolve([]),
     ensure: async () => {},
     // The default store: the manifest kept as a document on a `Shape` record, which is all a
     // backend with no schema language of its own has to keep it in.
     shapes: createJsonShapeStore(async () => {}),
-    hasCoreSchema: async () => true,
-    hasAnySchema: async () => true,
-    foreignSchemas: async () => [],
+    hasCoreSchema: () => Promise.resolve(true),
+    hasAnySchema: () => Promise.resolve(true),
+    foreignSchemas: () => Promise.resolve([]),
     declare: (manifest) => {
       seedDeclaredHints(manifest);
       const compiled = compileEntities(manifest, runtime);
@@ -272,26 +278,28 @@ export function createInMemorySchemaPort(runtime: EntityRuntime): SchemaPort {
       return compiled;
     },
 
-    async interpretationHints(dataset, entity) {
+    interpretationHints(dataset, entity) {
       const declared = declaredHints.get(entity);
-      if (!declared) return null;
+      if (!declared) return Promise.resolve(null);
       const custom = customized.get(key(dataset, entity));
-      return custom
-        ? {
-            ...(custom.classHint !== undefined ? { classHint: custom.classHint } : {}),
-            propHints: custom.propHints,
-            customized: true,
-          }
-        : {
-            ...(declared.classHint !== undefined ? { classHint: declared.classHint } : {}),
-            propHints: { ...declared.propHints },
-            customized: false,
-          };
+      return Promise.resolve(
+        custom
+          ? {
+              ...(custom.classHint !== undefined ? { classHint: custom.classHint } : {}),
+              propHints: custom.propHints,
+              customized: true,
+            }
+          : {
+              ...(declared.classHint !== undefined ? { classHint: declared.classHint } : {}),
+              propHints: { ...declared.propHints },
+              customized: false,
+            },
+      );
     },
 
-    async setInterpretationHints(dataset, entity, hints) {
+    setInterpretationHints(dataset, entity, hints) {
       const declared = declaredHints.get(entity);
-      if (!declared) throw new Error(`setInterpretationHints: no declared entity "${entity}"`);
+      if (!declared) return Promise.reject(new Error(`setInterpretationHints: no declared entity "${entity}"`));
       const k = key(dataset, entity);
       const current = customized.get(k) ?? {
         ...(declared.classHint !== undefined ? { classHint: declared.classHint } : {}),
@@ -306,10 +314,12 @@ export function createInMemorySchemaPort(runtime: EntityRuntime): SchemaPort {
         else delete current.propHints[name];
       }
       customized.set(k, current);
+      return Promise.resolve();
     },
 
-    async resetInterpretationHints(dataset, entity) {
+    resetInterpretationHints(dataset, entity) {
       customized.delete(key(dataset, entity));
+      return Promise.resolve();
     },
   };
 }
@@ -333,12 +343,12 @@ export function createInMemoryProfileDirectory(
   const blank = (did: string): AgentProfileSummary => ({ did, firstName: '', lastName: '', handle: '', bio: '' });
 
   return {
-    async get(id) {
-      return profiles.get(id) ?? blank(id);
+    get(id) {
+      return Promise.resolve(profiles.get(id) ?? blank(id));
     },
-    async publish(fields) {
+    publish(fields) {
       const id = ctx.selfId();
-      if (!id) throw new Error('publish: no authenticated agent');
+      if (!id) return Promise.reject(new Error('publish: no authenticated agent'));
       const current = profiles.get(id) ?? blank(id);
       const next = { ...current };
       if ('firstName' in fields) next.firstName = fields.firstName ?? '';
@@ -349,9 +359,10 @@ export function createInMemoryProfileDirectory(
       if ('coverImageUrl' in fields) next.coverImage = fields.coverImageUrl;
       if ('location' in fields) next.location = fields.location ?? undefined;
       profiles.set(id, next);
+      return Promise.resolve();
     },
-    async uploadFile() {
-      return `inmemory://file-${++uploadCounter}`;
+    uploadFile() {
+      return Promise.resolve(`inmemory://file-${++uploadCounter}`);
     },
   };
 }
@@ -486,10 +497,10 @@ export function createInMemoryBackendPorts(
   // URI itself, which the resolve pass recognises as already-renderable and leaves alone. Nothing
   // is stored out-of-band because there is no out-of-band here — the honest in-memory answer.
   registerFileStore({
-    store: async (_dataset, file) => `data:${file.file_type};base64,${file.data_base64}`,
-    fetch: async (_dataset, address) => {
+    store: (_dataset, file) => Promise.resolve(`data:${file.file_type};base64,${file.data_base64}`),
+    fetch: (_dataset, address) => {
       const match = /^data:([^;]+);base64,(.*)$/.exec(address);
-      return match ? { file_type: match[1], data_base64: match[2] } : null;
+      return Promise.resolve(match ? { file_type: match[1], data_base64: match[2] } : null);
     },
   });
 
@@ -535,7 +546,7 @@ export function createInMemoryBackendPorts(
         getEntityForDataset(name, dataset) as ReturnType<NonNullable<RendererDataBindings['$getEntityForDataset']>>,
       $queryAdapter: inMemoryQueryAdapter,
       $identities: {
-        get: (id) => deps.profiles().find((p) => p.did === id) as Record<string, unknown> | undefined,
+        get: (id) => deps.profiles().find((p) => p.did === id),
         fetch: (id) => void deps.fetchProfile(id),
       },
       $ephemeral: deps.ephemeral,

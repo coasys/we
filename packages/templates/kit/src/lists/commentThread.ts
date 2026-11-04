@@ -202,7 +202,9 @@ function anchorExpr(anchorId: AnchorId): string {
     const token = (anchorId as { $?: unknown }).$;
     if (typeof token === 'string') return `(${token})`;
   }
-  return typeof anchorId === 'number' ? String(anchorId) : `'${String(anchorId)}'`;
+  if (typeof anchorId === 'number') return String(anchorId);
+  if (typeof anchorId === 'string') return `'${anchorId}'`;
+  throw new Error('commentThread: anchorId must be a string, a number or an expression token ({ $: "…" }).');
 }
 
 /** What every row carries, whichever way the thread is read. */

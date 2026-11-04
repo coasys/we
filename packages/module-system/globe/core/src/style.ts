@@ -39,7 +39,10 @@ export function computeMetrics<T extends object>(
       const key = metricKey(value);
       if (values.has(key)) continue;
       const metric = METRICS.get(value.metric);
-      values.set(key, metric ? metric.compute({ nodes: subjects, edges: [] }, value.options) : new Map());
+      values.set(
+        key,
+        metric ? metric.compute({ nodes: subjects, edges: [] }, value.options) : new Map<string, number>(),
+      );
     }
   }
   return values;

@@ -31,11 +31,11 @@ export const POPOVER_RESETS = [
 
 /** Put a body-appended overlay into the browser's top layer, where one exists. */
 export function promoteToTopLayer(el: HTMLElement): void {
-  const showPopover = (el as HTMLElement & { showPopover?: () => void }).showPopover;
-  if (typeof showPopover !== 'function') return;
+  const popover = el as HTMLElement & { showPopover?: () => void };
+  if (typeof popover.showPopover !== 'function') return;
   el.setAttribute('popover', 'manual');
   try {
-    showPopover.call(el);
+    popover.showPopover();
   } catch {
     // A popover that cannot be shown (already open, detached) simply stays where it was.
   }

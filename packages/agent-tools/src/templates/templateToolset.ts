@@ -83,7 +83,7 @@ function readRecord(record: RecordInput | undefined): { template: SchemaNode; ve
   // Who saved it last is the app's bookkeeping, not part of the design: the model is not shown it,
   // and a write records whoever this one goes out as.
   const { author: _previous, ...template } = stored;
-  return { template: template as SchemaNode, version: Number(record.properties.version) || 1 };
+  return { template: template, version: Number(record.properties.version) || 1 };
 }
 
 const strings = (value: unknown): string[] => (Array.isArray(value) ? value.map(String) : []);
@@ -191,7 +191,7 @@ function referenceFor(reference: string, about: string, sent: unknown): string {
   ].join('\n\n');
 }
 
-async function update({ record, args, models = [], author }: ToolCall) {
+function update({ record, args, models = [], author }: ToolCall) {
   const parsed = readArguments(args);
   if (!parsed) return { text: `Error: The arguments to ${TEMPLATE_UPDATE} must be a JSON object.` };
   const { template, version } = readRecord(record);
@@ -204,7 +204,7 @@ async function update({ record, args, models = [], author }: ToolCall) {
     return {
       text:
         `Error: The template has changed since it was read — it is version ${version} now, and these patches ` +
-        `were written against version ${parsed.version}. Read it again with ${TEMPLATE_READ}: its node ids ` +
+        `were written against version ${JSON.stringify(parsed.version)}. Read it again with ${TEMPLATE_READ}: its node ids ` +
         'may have changed. Then write the patches against what it says now.',
     };
   if (Array.isArray(parsed.patches) && parsed.patches.length === 0)
@@ -331,7 +331,7 @@ function create({ record, args, models = [], author }: ToolCall): ToolAnswer {
 
   const slug = newSlug(name);
   const base = (given ? structuredClone(given) : starterTemplate(role, name, segmentOf(name))) as TemplateSchema;
-  const { author: _previous, ...design } = base as TemplateSchema & { author?: string };
+  const { author: _previous, ...design } = base;
   // Description and icon are required of every template; a schema written without them gets them blank.
   const meta = {
     description: '',
@@ -342,7 +342,7 @@ function create({ record, args, models = [], author }: ToolCall): ToolAnswer {
     ...(text(parsed.icon) !== undefined ? { icon: text(parsed.icon) } : {}),
   };
   const template = {
-    ...(ensureNodeIds(design as SchemaNode) as TemplateSchema),
+    ...(ensureNodeIds(design) as TemplateSchema),
     id: slug,
     meta,
     ...(author ? { author } : {}),
@@ -351,7 +351,7 @@ function create({ record, args, models = [], author }: ToolCall): ToolAnswer {
   // A fork answers only for what it changed: issues its source already had are not held against it.
   const { context } = validation(models);
   const baseline = fork ? templateIssues(fork, context) : undefined;
-  const verdict = judgeTemplate(template as SchemaNode, context, baseline);
+  const verdict = judgeTemplate(template, context, baseline);
   if (verdict) return { text: `Error: ${verdict.message}` };
 
   const where = place === 'library' ? 'the person’s library' : 'this space';

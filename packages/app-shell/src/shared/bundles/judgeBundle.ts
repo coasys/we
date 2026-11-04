@@ -12,7 +12,7 @@
  *
  * Pure apart from what is passed in, so the decisions are testable without an app.
  */
-import { type EntityManifest, validateManifest } from '@we/backend-shared';
+import { validateManifest } from '@we/backend-shared';
 import { type Bundle, bundleThemes, type SchemaNode, type TemplateSchema } from '@we/schema-shared';
 
 import { type CapabilityGroup, CHROME_TIER, SPACE_TIER } from '../registries/templateSurface';
@@ -142,7 +142,7 @@ export function judgeBundle(bundle: Bundle, deps: BundleJudgeDeps): BundleJudgem
       refusals.push(`Its record type "${type.name}" has the name of one WE already has`);
       continue;
     }
-    const gate = validateManifest(type.manifest as EntityManifest, {
+    const gate = validateManifest(type.manifest, {
       externalEntities: [...deps.knownEntities, ...recordNames.filter((name) => name !== type.name)],
     });
     if (!gate.valid)
@@ -186,7 +186,7 @@ export function bootScreenTemplate(bundle: Pick<Bundle, 'bootScreen' | 'name'>):
   return {
     ...(bundle.bootScreen as SchemaNode),
     meta: { name: `${bundle.name} sign-in`, description: 'The sign-in screen', icon: 'sign-in', role: 'app' },
-  } as TemplateSchema;
+  };
 }
 
 /**

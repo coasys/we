@@ -227,7 +227,12 @@ export function ContentEditor(props: {
           <Column border={`1px solid ${tokenVar('color', 'border')}`} r="200" overflow="hidden" maxHeight="250px">
             <CodeViewer
               json={JSON.stringify(props.content ?? [], null, 2)}
-              onSave={(json) => props.onChildrenChange(JSON.parse(json))}
+              onSave={(json) => {
+                // The text shown is the children array, but nothing stops it being edited into a single
+                // value; that value is one child, never the children list itself.
+                const parsed: unknown = JSON.parse(json);
+                props.onChildrenChange(Array.isArray(parsed) ? parsed : [parsed]);
+              }}
             />
           </Column>
         </Column>

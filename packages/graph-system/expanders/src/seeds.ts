@@ -164,6 +164,7 @@ export function schemaSeed(): SeedSource {
   return {
     id: 'schema',
     description: "Maps the dataset's own entity types and the relations between them.",
+    // eslint-disable-next-line @typescript-eslint/require-await -- Kept async: the engine attaches `.catch` to the result, so a failure reading the context must arrive as a rejection, not a synchronous throw.
     async seed(rawOptions, context) {
       const options = (rawOptions ?? {}) as SchemaSeedOptions;
       const dataset = options.dataset ?? context.defaultDataset() ?? '';
@@ -216,6 +217,7 @@ export function datasetSeed(): SeedSource {
   return {
     id: 'dataset',
     description: 'Seeds the graph with a dataset node, as the starting point for exploring spaces.',
+    // eslint-disable-next-line @typescript-eslint/require-await -- Kept async: the engine attaches `.catch` to the result, so a failure reading the context must arrive as a rejection, not a synchronous throw.
     async seed(rawOptions, context) {
       const options = (rawOptions ?? {}) as { dataset?: string; label?: string };
       const dataset = options.dataset ?? context.defaultDataset();

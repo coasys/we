@@ -176,7 +176,7 @@ export function LiveViewHost() {
   /** The whole address, query included — see `ViewFrame.path` for why the query is not optional. */
   const address = () => {
     const path = routeStore.currentPath();
-    const params = new URLSearchParams(routeStore.params() as Record<string, string>).toString();
+    const params = new URLSearchParams(routeStore.params()).toString();
     return params ? `${path}?${params}` : path;
   };
 

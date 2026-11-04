@@ -152,6 +152,11 @@ class CustomBlockView extends SolidNodeView {
   }
 }
 
+/** A collection node's layout props. The converter writes the block's own props into this attr, so it has that shape. */
+function layoutOf(node: PMNode): Partial<CollectionContentBlock> {
+  return (node.attrs.props ?? {}) as Partial<CollectionContentBlock>;
+}
+
 class CollectionView extends SolidNodeView {
   contentDOM: HTMLElement;
   private toolbarHost: HTMLElement;
@@ -168,7 +173,7 @@ class CollectionView extends SolidNodeView {
     this.toolbarHost.contentEditable = 'false';
     this.dom.append(this.contentDOM, this.toolbarHost);
 
-    const [layout, setLayout] = createSignal<Partial<CollectionContentBlock>>(node.attrs.props ?? {});
+    const [layout, setLayout] = createSignal<Partial<CollectionContentBlock>>(layoutOf(node));
     this.layout = layout;
     this.setLayout = setLayout;
     this.applyLayout(node);
@@ -201,7 +206,7 @@ class CollectionView extends SolidNodeView {
   };
 
   private applyLayout(node: PMNode): void {
-    const props = (node.attrs.props ?? {}) as Partial<CollectionContentBlock>;
+    const props = layoutOf(node);
     this.dom.setAttribute('data-layout', String(props.layout ?? 'grid'));
     this.dom.setAttribute('style', collectionStyle(props));
   }
@@ -210,7 +215,7 @@ class CollectionView extends SolidNodeView {
     if (node.type !== this.node.type) return false;
     this.node = node;
     this.applyLayout(node);
-    this.setLayout(node.attrs.props ?? {});
+    this.setLayout(layoutOf(node));
     return true;
   }
 

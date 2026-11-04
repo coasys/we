@@ -1,5 +1,5 @@
 import type { BlockDataset, MentionCandidate } from '@we/block-shared';
-import { createContext, type JSX, useContext } from 'solid-js';
+import { createContext, type JSX, untrack, useContext } from 'solid-js';
 
 import type { CollabSession, CollabUser } from '../editor/collab';
 
@@ -102,9 +102,11 @@ export function BlockHostProvider(props: {
     mentions: () => (props.mentions ? props.mentions() : parent.mentions()),
     collab: (nodeId) => (props.collab ? props.collab(nodeId) : parent.collab(nodeId)),
     collabUser: () => (props.collabUser ? props.collabUser() : parent.collabUser()),
-    openRef: props.openRef ?? parent.openRef,
-    personName: props.personName ?? parent.personName,
-    person: props.person ?? parent.person,
+    // Taken as given rather than wrapped like the accessors above: a consumer tests these for
+    // presence, so they stay absent where nobody provides them. The host provides them once.
+    openRef: untrack(() => props.openRef) ?? parent.openRef,
+    personName: untrack(() => props.personName) ?? parent.personName,
+    person: untrack(() => props.person) ?? parent.person,
   };
   return <BlockHostContext.Provider value={value}>{props.children}</BlockHostContext.Provider>;
 }

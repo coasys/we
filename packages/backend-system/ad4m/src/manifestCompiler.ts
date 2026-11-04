@@ -122,7 +122,7 @@ export function buildEntityFromEntry(
   if (flag) {
     proto.flag = '';
     fieldDefaults.flag = '';
-    Flag({ through: flag.through, value: flag.value })(proto as never, 'flag' as never);
+    Flag({ through: flag.through, value: flag.value })(proto as never, 'flag');
   }
 
   for (const p of entry.properties) {
@@ -152,7 +152,7 @@ export function buildEntityFromEntry(
         // As for a property below: a declared entity's relation hints reach the stored shape by the
         // same decorator option a hand-written model would use.
         ...(p.interpretationHint !== undefined ? { interpretationHint: p.interpretationHint } : {}),
-      })(proto as never, p.name as never);
+      })(proto, p.name);
     } else {
       // Only what the declaration states. `null` is itself a declared default (an unset file
       // reference), which is why absence is tested rather than falsiness — and a property with no
@@ -248,6 +248,7 @@ export function manifestToEntries(manifest: EntityManifest, opts: CompileManifes
           ...(spec.identity ? { identity: true } : {}),
           // datetime/json have no SHACL datatype of their own — stored as strings, like the
           // hand-written models store timestamps.
+          // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- this callback's return has no contextual type, so without it the literals widen to string
           type: (spec.type === 'number' ? 'number' : spec.type === 'boolean' ? 'boolean' : 'string') as
             'string' | 'number' | 'boolean',
           isCollection: false,

@@ -131,6 +131,17 @@ interface CEMManifest {
 }
 
 /**
+ * The parsed manifest, checked as far as its top level. The analyzer writes the rest in the published
+ * Custom Elements Manifest schema, which the interfaces above mirror.
+ */
+function asCEMManifest(value: unknown, path: string): CEMManifest {
+  if (typeof value === 'object' && value !== null && Array.isArray((value as { modules?: unknown }).modules)) {
+    return value as CEMManifest;
+  }
+  throw new Error(`[ai-context] ${path} is not a Custom Elements Manifest: it has no modules list.`);
+}
+
+/**
  * Resolve a raw type string, expanding opaque names via the alias map
  * (from types.ts) or the hand-maintained typeExpansions fallback.
  * Handles compound types like "Foo | undefined" by resolving each part.
@@ -184,7 +195,7 @@ function resolveType(rawType: string, typeAliases: Map<string, string>): string 
 export function extractPrimitives(cemPath?: string): PrimitiveEntry[] {
   const resolvedPath = cemPath ?? resolve(__dirname, '../../../../design-system/3-primitives/custom-elements.json');
 
-  const manifest: CEMManifest = JSON.parse(readFileSync(resolvedPath, 'utf-8'));
+  const manifest = asCEMManifest(JSON.parse(readFileSync(resolvedPath, 'utf-8')), resolvedPath);
   const typeAliases = buildTypeAliasMap(resolvedPath);
   const entries: PrimitiveEntry[] = [];
 

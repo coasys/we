@@ -72,6 +72,10 @@ merges for releases; how a release is made, and which ad4m each build uses, is i
 
 ### Before you open a PR
 
+`pnpm typecheck` and `pnpm lint` read each package's built types, so build first (`pnpm build`, or
+`pnpm setup-workspace` after a clone). Without them, lint reports every type from another package as
+unresolved.
+
 ```sh
 pnpm typecheck
 pnpm lint

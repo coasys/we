@@ -59,12 +59,12 @@ const accessorName = (verb: string, relation: string) =>
  */
 function writableRelations(record: object): string[] {
   const names = new Set<string>();
-  for (let level = Object.getPrototypeOf(record); level && level !== Object.prototype;) {
+  for (let level = Object.getPrototypeOf(record) as object | null; level && level !== Object.prototype;) {
     for (const key of Object.getOwnPropertyNames(level)) {
       const match = /^set([A-Z].*)$/.exec(key);
       if (match) names.add(match[1].charAt(0).toLowerCase() + match[1].slice(1));
     }
-    level = Object.getPrototypeOf(level);
+    level = Object.getPrototypeOf(level) as object | null;
   }
   return [...names].sort();
 }

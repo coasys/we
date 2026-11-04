@@ -47,7 +47,7 @@ export default function App() {
   });
 
   return (
-    <ErrorBoundary fallback={(error) => <AppFailure error={error} />}>
+    <ErrorBoundary fallback={(error: unknown) => <AppFailure error={error} />}>
       <StoreProvider>
         <TemplateProvider />
         {/*

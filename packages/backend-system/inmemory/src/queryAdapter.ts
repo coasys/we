@@ -54,7 +54,7 @@ export const inMemoryQueryAdapter: QueryAdapter = {
     // Lowered around `irToFlatQuery` rather than through it: it throws on `scope` by design, since
     // resolving `via` to a predicate is adapter work it cannot do. Here there is nothing to resolve.
     const { scope, ...rest } = ir;
-    const { entity: _entity, ...opts } = irToFlatQuery(rest as QueryIR);
+    const { entity: _entity, ...opts } = irToFlatQuery(rest);
     void _entity;
     return scope ? { ...opts, scope } : opts;
   },

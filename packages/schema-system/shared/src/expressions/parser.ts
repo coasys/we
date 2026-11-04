@@ -207,7 +207,7 @@ class Parser {
       return {
         kind: 'macro',
         name: callee as MacroName,
-        receiver: receiver!,
+        receiver: receiver,
         variable: variable.value,
         body,
         span: [start, this.absolute(close.span)[1]],

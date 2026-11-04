@@ -146,7 +146,7 @@ export function polygonDrawer(context: CesiumRendererContext) {
     set(shapes: readonly Shape[]) {
       // A build still pending is superseded: drop it, keep what is on screen until this one is ready.
       for (const batch of pending) primitives.remove(batch);
-      pending = build(shapes).map((batch) => primitives.add(batch) as Batch);
+      pending = build(shapes).map((batch) => primitives.add<Batch>(batch));
       // Nothing to wait for: an empty set clears at once.
       if (!pending.length) {
         for (const batch of shown) primitives.remove(batch);

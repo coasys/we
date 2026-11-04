@@ -77,7 +77,7 @@ const nodes: Record<string, NodeSpec> = {
     content: 'inline*',
     group: 'block',
     attrs: { ...textBlockAttrs },
-    parseDOM: [{ tag: 'p', getAttrs: (dom) => readTextBlockAttrs(dom as HTMLElement) }],
+    parseDOM: [{ tag: 'p', getAttrs: (dom) => readTextBlockAttrs(dom) }],
     toDOM: (node) => ['p', textBlockDomAttrs(node.attrs), 0] as DOMOutputSpec,
   },
 
@@ -98,7 +98,7 @@ const nodes: Record<string, NodeSpec> = {
     group: 'block',
     defining: true,
     attrs: { ...textBlockAttrs },
-    parseDOM: [{ tag: 'blockquote', getAttrs: (dom) => readTextBlockAttrs(dom as HTMLElement) }],
+    parseDOM: [{ tag: 'blockquote', getAttrs: (dom) => readTextBlockAttrs(dom) }],
     toDOM: (node) => ['blockquote', textBlockDomAttrs(node.attrs), 0] as DOMOutputSpec,
   },
 
@@ -111,7 +111,7 @@ const nodes: Record<string, NodeSpec> = {
       {
         tag: 'div.we-list-item',
         getAttrs: (dom) => {
-          const el = dom as HTMLElement;
+          const el = dom;
           return {
             ...readTextBlockAttrs(el),
             listType: el.getAttribute('data-list-type') ?? 'bullet',
@@ -121,7 +121,7 @@ const nodes: Record<string, NodeSpec> = {
       },
       // Pasted HTML lists: each <li> becomes a flat item; nesting depth is lost on paste, which is
       // the honest reading of markup that arrives without our attributes.
-      { tag: 'li', getAttrs: (dom) => ({ listType: (dom as HTMLElement).closest('ol') ? 'number' : 'bullet' }) },
+      { tag: 'li', getAttrs: (dom) => ({ listType: dom.closest('ol') ? 'number' : 'bullet' }) },
     ],
     toDOM: (node) =>
       [
@@ -148,7 +148,7 @@ const nodes: Record<string, NodeSpec> = {
       {
         tag: 'div[data-block-type="collection"]',
         contentElement: '.we-collection-content',
-        getAttrs: (dom) => ({ props: readProps(dom as HTMLElement) }),
+        getAttrs: (dom) => ({ props: readProps(dom) }),
       },
     ],
     toDOM: (node) => {
@@ -213,8 +213,8 @@ const nodes: Record<string, NodeSpec> = {
       {
         tag: 'span.we-mention',
         getAttrs: (dom) => ({
-          did: (dom as HTMLElement).getAttribute('data-did') ?? '',
-          text: (dom as HTMLElement).textContent ?? '',
+          did: dom.getAttribute('data-did') ?? '',
+          text: dom.textContent ?? '',
         }),
       },
     ],
@@ -251,9 +251,7 @@ const marks: Record<string, MarkSpec> = {
   link: {
     attrs: { href: {} },
     inclusive: false,
-    parseDOM: [
-      { tag: 'a[href]:not(.we-node-link)', getAttrs: (dom) => ({ href: (dom as HTMLElement).getAttribute('href') }) },
-    ],
+    parseDOM: [{ tag: 'a[href]:not(.we-node-link)', getAttrs: (dom) => ({ href: dom.getAttribute('href') }) }],
     /*
       `safeHref`, because this href is a peer's string.
 
@@ -278,16 +276,16 @@ const marks: Record<string, MarkSpec> = {
   nodeLink: {
     attrs: { node: {} },
     inclusive: false,
-    parseDOM: [
-      { tag: 'a.we-node-link', getAttrs: (dom) => ({ node: (dom as HTMLElement).getAttribute('data-node') }) },
-    ],
+    parseDOM: [{ tag: 'a.we-node-link', getAttrs: (dom) => ({ node: dom.getAttribute('data-node') }) }],
     toDOM: (mark) => ['a', { class: 'we-node-link', 'data-node': String(mark.attrs.node) }, 0] as DOMOutputSpec,
   },
 };
 
 function readProps(dom: HTMLElement): Record<string, unknown> {
   try {
-    return JSON.parse(dom.getAttribute('data-props') ?? '{}');
+    // Pasted HTML can carry any `data-props`, so only a plain object is taken as props.
+    const parsed: unknown = JSON.parse(dom.getAttribute('data-props') ?? '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
   } catch {
     return {};
   }
@@ -323,9 +321,7 @@ function customBlockSpec(type: string): NodeSpec {
     selectable: true,
     draggable: false,
     attrs: { id: { default: null as string | null }, props: { default: {} as Record<string, unknown> } },
-    parseDOM: [
-      { tag: `div[data-block-type="${type}"]`, getAttrs: (dom) => ({ props: readProps(dom as HTMLElement) }) },
-    ],
+    parseDOM: [{ tag: `div[data-block-type="${type}"]`, getAttrs: (dom) => ({ props: readProps(dom) }) }],
     toDOM: (node) =>
       [
         'div',
