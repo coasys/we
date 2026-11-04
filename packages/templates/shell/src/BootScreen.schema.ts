@@ -1,6 +1,7 @@
 import type { OperatorToken, SchemaNode, SchemaProp } from '@we/schema-shared';
 import { field } from '@we/template-kit';
 
+import { aiForms, aiModelsSection, aiSetupFlow, aiSetupHeading } from './AiSettings.schema.ts';
 import { brandMark } from './brandMark';
 
 /**
@@ -529,6 +530,107 @@ const settingUpState: SchemaNode = {
 };
 
 /**
+ * A first run's last step: where the new account's AI runs. Asked once the identity exists and its
+ * profile is published, while the app waits behind this screen — and only where there is something
+ * to choose (`runtimeStore.openAiStep`): a node with a model already, or a connection that may not
+ * change the node's AI, goes straight on to the app.
+ *
+ * The choice and what each answer opens are the AI settings' own (`aiSetupFlow`), so the step and
+ * Settings cannot ask two different questions. The cards are those this connection can act on —
+ * "This device" only where it may install on the node's machine — and Skip is always there. Wider
+ * than the other steps, since it holds a plan and a list of servers, and scrolled inside itself so
+ * its buttons stay in reach on a short window.
+ */
+const aiSetupStep: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: "sessionStore.signInStep == 'setUpAi'" },
+    enterTransition: { type: 'fade', duration: 300 },
+    exitTransition: { type: 'fade', duration: 0 },
+    then: {
+      type: 'Column',
+      props: { width: '100%', maxWidth: '680px', gap: '500', px: '400' },
+      $localState: {
+        // The first card offered is chosen to begin with: this device where it can be used.
+        aiSetup: { type: 'string', initial: { $: 'first(runtimeStore.aiSetupOptions)' } },
+      },
+      children: [
+        aiSetupHeading('step'),
+        {
+          type: 'we-scroll-area',
+          props: { maxHeight: '58vh' },
+          children: [
+            {
+              type: 'Column',
+              props: { gap: '500', pr: '200' },
+              children: [
+                ...aiSetupFlow('false', false),
+                {
+                  type: '$if',
+                  props: { condition: { $: "local.aiSetup == 'server'" }, then: aiModelsSection },
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: 'Row',
+          props: { gap: '300', ay: 'center', ax: 'end', wrap: true },
+          children: [
+            {
+              type: '$if',
+              props: {
+                condition: { $: 'runtimeStore.localAi.installing' },
+                then: {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'text-muted', flex: '1 1 200px' },
+                  children: ['The install carries on after you continue.'],
+                },
+              },
+            },
+            {
+              type: '$if',
+              props: {
+                condition: { $: "local.aiSetup == 'skip'" },
+                then: {
+                  type: 'we-button',
+                  props: { variant: 'solid', onClick: { $invoke: 'runtimeStore.skipAiSetup' } },
+                  children: ['Continue without AI'],
+                },
+                else: {
+                  type: 'Row',
+                  props: { gap: '200', ay: 'center' },
+                  children: [
+                    {
+                      type: 'we-button',
+                      props: { variant: 'ghost', onClick: { $invoke: 'runtimeStore.skipAiSetup' } },
+                      children: ['Skip for now'],
+                    },
+                    {
+                      type: 'we-button',
+                      props: {
+                        variant: 'solid',
+                        // Something to continue with: a model, or local AI on its way.
+                        disabled: {
+                          $: '!(count(runtimeStore.aiModels) || runtimeStore.localAi.installing || runtimeStore.localAi.installed)',
+                        },
+                        onClick: { $invoke: 'runtimeStore.finishAiSetup' },
+                      },
+                      children: ['Continue'],
+                    },
+                  ],
+                },
+              },
+            },
+          ],
+        },
+        ...aiForms,
+      ],
+    },
+  },
+};
+
+/**
  * A switch in progress, whichever screen it was started from.
  *
  * Switching runs entirely before the reload — kill the executor, respawn it against the other
@@ -605,7 +707,7 @@ const bootFailure: SchemaNode = {
 
 /**
  * The centre of the sign-in screen: whoever is signing in and the step they are on — switching,
- * setting up, starting, preparing, unlocking, creating, or why it failed. Published as
+ * setting up, choosing AI, starting, preparing, unlocking, creating, or why it failed. Published as
  * `host.signIn.form`, so an app's sign-in screen places this rather than redrawing it, and every step
  * and every fix to one arrives in WE's screen and the app's alike.
  *
@@ -621,6 +723,7 @@ export const signInForm: SchemaNode = {
   children: [
     switchingState,
     settingUpState,
+    aiSetupStep,
     // Hoisted per rule 1: it must survive `initialising` becoming `createAgent`, so the
     // form materialises underneath it rather than replacing it with a second copy.
     {

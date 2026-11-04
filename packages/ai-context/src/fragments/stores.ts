@@ -197,6 +197,7 @@ export const storeEntries: StoreEntry[] = [
           'canInstall',
         ],
       },
+      aiSetupOptions: { type: 'array' },
       languages: { type: 'array', properties: ['address', 'name', 'system'] },
       trustedAgents: { type: 'array' },
       authorizedApps: {
@@ -246,6 +247,8 @@ export const storeEntries: StoreEntry[] = [
       'startLocalAi',
       'stopLocalAi',
       'removeLocalAi',
+      'skipAiSetup',
+      'finishAiSetup',
       'loadLanguages',
       'installLanguage',
       'removeLanguage',
@@ -798,7 +801,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       me: 'Agent | undefined — the authenticated identity; prefer the $me token in schemas',
       bootState: "string — 'initialising' | 'login' | 'createAgent' | 'finishing' | 'ready' | 'error'",
       signInStep:
-        "string — which step of signing in the screen is on: 'switching' | 'settingUp' | 'starting' | 'preparing' | 'unlock' | 'create' | 'failed' | 'ready'. One answer, in that order of precedence — a sign-in screen draws the step this names rather than working it out from bootState and the account flags",
+        "string — which step of signing in the screen is on: 'switching' | 'setUpAi' | 'settingUp' | 'starting' | 'preparing' | 'unlock' | 'create' | 'failed' | 'ready'. One answer, in that order of precedence — a sign-in screen draws the step this names rather than working it out from bootState and the account flags",
       bootError: "string — why the boot failed, when bootState is 'error'. Empty otherwise",
       passwordError:
         'boolean — true after an unlock the backend refused. Not set when it merely timed out; see loginError',
@@ -926,6 +929,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         'boolean — local AI can be installed, started, stopped and removed from here. Gate those controls on it',
       localAi:
         'LocalAiView — the "This device" section, already in words: device (processor and memory), gpus (string[]), compute (what the models would run on), budget, notes, items ({ key, label, name, sizeText, done }[] — the models and server programs an install brings), unavailable and reasons (string[]), planNotes (string[] — how the plan was chosen where not by measurement: the kinds nothing was measured for on this class of device, which take the smallest model, and the backend the settings of the node hold it to), fits, summary ("Downloads 3.1 GB · fits this device"), installLabel, installed, installing, running (every server runs), anyRunning, runtimes ({ key, label, stateText, ok, tone }[] — phase, on the GPU or not, restarts; tone is success, idle (never started or stopped on purpose) or warning), progress ({ percent, text, failed } while an install runs, and after one fails) and canInstall. loaded is false until the machine and the plan have been read',
+      aiSetupOptions:
+        "('local' | 'server' | 'skip')[] — the ways to get AI this connection can choose between, in order: 'local' where it may install local AI on the node's machine, 'server' where it may add model servers and models, and always 'skip'. Gate each card of a Set up AI choice on it, as 'local' in runtimeStore.aiSetupOptions. Only 'skip' means there is nothing this connection can set up",
       aiDetectedEndpoints:
         "{ kind, baseUrl, capabilities, models, label, detail }[] — model servers running on the node's machine that are not added yet, found when settings open or by detectAiEndpoints(). One press from use: addDetectedEndpoint(baseUrl)",
       aiInstallLinks:
@@ -986,7 +991,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       setDefaultAiModel: '(id: string): makes this the model apps get when they ask for its kind',
       removeAiTask: '(id: string): deletes a registered prompt',
       detectAiEndpoints: "(): looks for model servers running on the node's machine. Saves nothing",
-      addDetectedEndpoint: '(baseUrl: string): adds a server detectAiEndpoints found, as it was found',
+      addDetectedEndpoint:
+        '(baseUrl: string): adds a server detectAiEndpoints found, as it was found, and registers on it a model for each role nothing fills yet: the recommended model where the server serves it, else the first it serves for that role. The first model of a role becomes its default',
       newAiEndpoint: '(): opens the server form empty, on Ollama at its default address',
       editAiEndpoint: '(id: string): opens the server form on an existing server',
       setAiEndpointField:
@@ -1005,6 +1011,10 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       stopLocalAi: '(): stops them. Their models stay registered and answer again once started',
       removeLocalAi:
         '(deleteFiles: boolean): unregisters and stops local AI; deleteFiles true deletes the downloaded models and programs as well',
+      skipAiSetup:
+        "(): leaves a first run's AI step (sessionStore.signInStep 'setUpAi') with nothing set up, and keeps that answer so the step is not asked again for this account",
+      finishAiSetup:
+        "(): leaves a first run's AI step with what was set up on it, and keeps that answer. Offer it once something is set up: a model, or local AI installing or installed",
       loadLanguages: '(): fetches the installed languages',
       installLanguage: '(address: string): installs a language by content address, then reloads the list',
       removeLanguage: '(address: string): removes an installed language. Refuses the backend own system languages',

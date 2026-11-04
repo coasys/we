@@ -32,8 +32,25 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 let ports: Partial<BackendPorts> | null = null;
 
+/** What the AI step reads of the session, and what it asks of it. */
+const session = vi.hoisted(() => ({
+  step: 'ready',
+  held: 0,
+  finished: 0,
+}));
+
 vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
-  useSessionStore: () => ({ backendPorts: () => ports }),
+  useSessionStore: () => ({
+    backendPorts: () => ports,
+    signInStep: () => session.step,
+    me: () => ({ id: 'did:test:new-account' }),
+    holdForAiSetup: () => {
+      session.held += 1;
+    },
+    finishSetup: () => {
+      session.finished += 1;
+    },
+  }),
 }));
 
 // Never 'settings', so the on-demand load effect stays dormant and each test drives the store
@@ -133,6 +150,10 @@ beforeEach(() => {
   ports = null;
   activeShellView = null;
   executorHost = undefined;
+  session.step = 'ready';
+  session.held = 0;
+  session.finished = 0;
+  localStorage.clear();
 });
 
 describe('how the backend is started', () => {
@@ -439,6 +460,21 @@ describe('AI models and the servers they run on', () => {
 
     await store.addDetectedEndpoint('http://127.0.0.1:8000');
     expect(calls).toContain('addEndpoint:Speech server 8000:openai-audio:http://127.0.0.1:8000:-');
+  });
+
+  it('gives a server it found the models it serves for each role nothing fills yet', async () => {
+    const { port, calls } = aiPort();
+    ports = { models: port };
+    const store = mount();
+    await store.loadAiModels();
+    await store.detectAiEndpoints();
+
+    await store.addDetectedEndpoint('http://127.0.0.1:8000');
+    // The node has a language model already (`qwen`), so only the embeddings role is filled.
+    expect(calls).toContain('discover:e9');
+    expect(calls.filter((c) => c.startsWith('add:'))).toEqual([
+      'add:nomic-embed-text:latest:e9:nomic-embed-text:latest',
+    ]);
   });
 
   it('says where to get a server', () => {
@@ -917,6 +953,127 @@ describe('local AI on this device', () => {
     const store = mount();
     expect(store.canUseLocalAi()).toBe(false);
     expect(store.localAi().loaded).toBe(false);
+  });
+});
+
+describe('a first run’s AI step', () => {
+  const notInstalled: LocalAiStatus = {
+    installed: false,
+    installing: false,
+    autostart: true,
+    runtimes: [],
+    models: [],
+  };
+
+  /** A node as its operator sees it, with whatever models and local AI the test gives it. */
+  function node(options: { models?: AiModel[]; local?: Partial<LocalAiStatus>; operator?: boolean } = {}) {
+    const operator = options.operator ?? true;
+    const local: LocalAiPort = {
+      plan: async () => {
+        throw new Error('not read here');
+      },
+      status: async () => ({ ...notInstalled, ...options.local }),
+      ...(operator ? { install: async () => notInstalled } : {}),
+    };
+    const models: ModelAdminPort = {
+      list: async () => options.models ?? [],
+      ...(operator
+        ? {
+            add: async () => {},
+            endpoints: async () => [],
+            detectEndpoints: async () => [],
+            local,
+          }
+        : {}),
+    };
+    return models;
+  }
+
+  const model: AiModel = {
+    id: 'm1',
+    name: 'Test chat',
+    kind: 'llm',
+    endpointId: 'e1',
+    remoteModel: 'test-chat',
+    status: { state: 'ready' },
+    isDefault: true,
+  };
+
+  it('holds a first run on the step where the node has no AI and its operator can set it up', async () => {
+    ports = { models: node() };
+    const store = mount();
+    expect(store.aiSetupOptions()).toEqual(['local', 'server', 'skip']);
+    expect(await store.openAiStep()).toBe(true);
+    expect(session.held).toBe(1);
+  });
+
+  it('goes straight on where the node has a model already', async () => {
+    ports = { models: node({ models: [model] }) };
+    expect(await mount().openAiStep()).toBe(false);
+    expect(session.held).toBe(0);
+  });
+
+  it('goes straight on where local AI is installed already', async () => {
+    ports = { models: node({ local: { installed: true } }) };
+    expect(await mount().openAiStep()).toBe(false);
+  });
+
+  it('goes straight on for a managed user, who could only skip', async () => {
+    ports = { models: node({ operator: false }) };
+    const store = mount();
+    expect(store.aiSetupOptions()).toEqual(['skip']);
+    expect(await store.openAiStep()).toBe(false);
+    expect(session.held).toBe(0);
+  });
+
+  it('goes straight on where the backend has no AI at all', async () => {
+    ports = {};
+    expect(await mount().openAiStep()).toBe(false);
+  });
+
+  it('finishes setting up on skip, and is not asked again for that account', async () => {
+    ports = { models: node() };
+    const store = mount();
+    expect(await store.openAiStep()).toBe(true);
+    store.skipAiSetup();
+    expect(session.finished).toBe(1);
+    expect(localStorage.getItem('we.aiSetup.answer:did:test:new-account')).toBe('skipped');
+
+    expect(await mount().openAiStep()).toBe(false);
+    expect(session.held).toBe(1);
+  });
+
+  it('keeps a set-up answer too, and closes a form left open', async () => {
+    ports = { models: node() };
+    const store = mount();
+    await store.openAiStep();
+    store.newAiEndpoint();
+    store.finishAiSetup();
+    expect(session.finished).toBe(1);
+    expect(store.aiEndpointForm()).toBeNull();
+    expect(localStorage.getItem('we.aiSetup.answer:did:test:new-account')).toBe('set-up');
+  });
+
+  it('reads the AI sections while the step is up, as it does while the settings are open', async () => {
+    let listed = 0;
+    let detected = 0;
+    ports = {
+      models: {
+        ...node(),
+        list: async () => {
+          listed += 1;
+          return [];
+        },
+        detectEndpoints: async () => {
+          detected += 1;
+          return [];
+        },
+      },
+    };
+    session.step = 'setUpAi';
+    mount();
+    await vi.waitFor(() => expect(listed).toBeGreaterThan(0));
+    expect(detected).toBe(1);
   });
 });
 

@@ -228,6 +228,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     createAgent: WIRING,
     clearPasswordError: ambient('session'),
     finishSetup: action('session'),
+    // Decided by the runtime store from what the node has; a template leaves the step, never enters it.
+    holdForAiSetup: WIRING,
     logout: action('session'),
     retryBoot: action('session'),
 
@@ -307,6 +309,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     canUseLocalAi: state('runtime-admin'),
     canConfigureLocalAi: state('runtime-admin'),
     localAi: state('runtime-admin'),
+    aiSetupOptions: state('runtime-admin'),
     languages: state('runtime-admin'),
     trustedAgents: state('runtime-admin'),
     authorizedApps: state('runtime-admin'),
@@ -350,6 +353,10 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     startLocalAi: action('runtime-admin'),
     stopLocalAi: action('runtime-admin'),
     removeLocalAi: destructive('runtime-admin'),
+    // Called by setting up an account, once its profile is published: host code only.
+    openAiStep: WIRING,
+    skipAiSetup: action('runtime-admin'),
+    finishAiSetup: action('runtime-admin'),
     loadLanguages: ambient('runtime-admin'),
     installLanguage: action('runtime-admin'),
     removeLanguage: destructive('runtime-admin'),

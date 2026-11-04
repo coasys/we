@@ -2762,6 +2762,7 @@ export const contextData: ContextData = {
             'canInstall',
           ],
         },
+        aiSetupOptions: { type: 'array' },
         languages: { type: 'array', properties: ['address', 'name', 'system'] },
         trustedAgents: { type: 'array' },
         authorizedApps: {
@@ -2810,6 +2811,8 @@ export const contextData: ContextData = {
         'startLocalAi',
         'stopLocalAi',
         'removeLocalAi',
+        'skipAiSetup',
+        'finishAiSetup',
         'loadLanguages',
         'installLanguage',
         'removeLanguage',

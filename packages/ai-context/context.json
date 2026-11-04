@@ -7026,6 +7026,9 @@
             "canInstall"
           ]
         },
+        "aiSetupOptions": {
+          "type": "array"
+        },
         "languages": {
           "type": "array",
           "properties": ["address", "name", "system"]
@@ -7109,6 +7112,8 @@
         "startLocalAi",
         "stopLocalAi",
         "removeLocalAi",
+        "skipAiSetup",
+        "finishAiSetup",
         "loadLanguages",
         "installLanguage",
         "removeLanguage",

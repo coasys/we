@@ -3312,6 +3312,7 @@ RuntimeStore:
   - canUseLocalAi: boolean — the backend can install and run models on its own machine, and shows this connection that machine and what an install would do. The operator only. Gate the "This device" section on it
   - canConfigureLocalAi: boolean — local AI can be installed, started, stopped and removed from here. Gate those controls on it
   - localAi: LocalAiView — the "This device" section, already in words: device (processor and memory), gpus (string[]), compute (what the models would run on), budget, notes, items ({ key, label, name, sizeText, done }[] — the models and server programs an install brings), unavailable and reasons (string[]), planNotes (string[] — how the plan was chosen where not by measurement: the kinds nothing was measured for on this class of device, which take the smallest model, and the backend the settings of the node hold it to), fits, summary ("Downloads 3.1 GB · fits this device"), installLabel, installed, installing, running (every server runs), anyRunning, runtimes ({ key, label, stateText, ok, tone }[] — phase, on the GPU or not, restarts; tone is success, idle (never started or stopped on purpose) or warning), progress ({ percent, text, failed } while an install runs, and after one fails) and canInstall. loaded is false until the machine and the plan have been read
+  - aiSetupOptions: ('local' | 'server' | 'skip')[] — the ways to get AI this connection can choose between, in order: 'local' where it may install local AI on the node's machine, 'server' where it may add model servers and models, and always 'skip'. Gate each card of a Set up AI choice on it, as 'local' in runtimeStore.aiSetupOptions. Only 'skip' means there is nothing this connection can set up
   - languages: InstalledLanguage[] — language plugins installed in this backend (address, name, system). Empty until loadLanguages() runs
   - trustedAgents: string[] — trusted peer ids. Empty until loadTrustedAgents() runs
   - authorizedApps: AuthorizedApp[] — external apps holding credentials (id, name, description, url, iconUrl, capabilities, revoked). Empty until loadAuthorizedApps() runs
@@ -3343,7 +3344,7 @@ RuntimeStore:
   - setDefaultAiModel(id: string): makes this the model apps get when they ask for its kind
   - removeAiTask(id: string): deletes a registered prompt
   - detectAiEndpoints(): looks for model servers running on the node's machine. Saves nothing
-  - addDetectedEndpoint(baseUrl: string): adds a server detectAiEndpoints found, as it was found
+  - addDetectedEndpoint(baseUrl: string): adds a server detectAiEndpoints found, as it was found, and registers on it a model for each role nothing fills yet: the recommended model where the server serves it, else the first it serves for that role. The first model of a role becomes its default
   - newAiEndpoint(): opens the server form empty, on Ollama at its default address
   - editAiEndpoint(id: string): opens the server form on an existing server
   - setAiEndpointField(field: string, value: string | boolean): sets one field of the open server form. Takes the field name so one action serves every input
@@ -3356,6 +3357,8 @@ RuntimeStore:
   - startLocalAi(): starts the local model servers
   - stopLocalAi(): stops them. Their models stay registered and answer again once started
   - removeLocalAi(deleteFiles: boolean): unregisters and stops local AI; deleteFiles true deletes the downloaded models and programs as well
+  - skipAiSetup(): leaves a first run's AI step (sessionStore.signInStep 'setUpAi') with nothing set up, and keeps that answer so the step is not asked again for this account
+  - finishAiSetup(): leaves a first run's AI step with what was set up on it, and keeps that answer. Offer it once something is set up: a model, or local AI installing or installed
   - loadLanguages(): fetches the installed languages
   - installLanguage(address: string): installs a language by content address, then reloads the list
   - removeLanguage(address: string): removes an installed language. Refuses the backend own system languages
@@ -3385,7 +3388,7 @@ RuntimeStore:
 SessionStore:
 - State:
   - bootState: string — 'initialising' | 'login' | 'createAgent' | 'finishing' | 'ready' | 'error'
-  - signInStep: string — which step of signing in the screen is on: 'switching' | 'settingUp' | 'starting' | 'preparing' | 'unlock' | 'create' | 'failed' | 'ready'. One answer, in that order of precedence — a sign-in screen draws the step this names rather than working it out from bootState and the account flags
+  - signInStep: string — which step of signing in the screen is on: 'switching' | 'setUpAi' | 'settingUp' | 'starting' | 'preparing' | 'unlock' | 'create' | 'failed' | 'ready'. One answer, in that order of precedence — a sign-in screen draws the step this names rather than working it out from bootState and the account flags
   - bootError: string — why the boot failed, when bootState is 'error'. Empty otherwise
   - passwordError: boolean — true after an unlock the backend refused. Not set when it merely timed out; see loginError
   - loginError: string — why the last sign-in failed when the password was not the problem (the backend took too long to finish), ready to display. Empty otherwise, and never set together with passwordError. Show it where passwordError’s message goes: { $: "sessionStore.passwordError ? 'Incorrect password' : sessionStore.loginError" }
