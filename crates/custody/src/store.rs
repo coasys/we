@@ -404,9 +404,9 @@ mod keychain_store {
     /// name, readable only after the user is present (Touch ID or the login password).
     ///
     /// Needs an app signed with a `keychain-access-groups` entitlement. A build without one gets
-    /// `errSecMissingEntitlement` from every call; [`system_store`](super::system_store) probes for
-    /// that once and gives such a build no platform store, so its items rest in the
-    /// [`FileStore`].
+    /// `errSecMissingEntitlement` from every write (a read finds nothing);
+    /// [`system_store`](super::system_store) probes with one write at start and gives such a build
+    /// no platform store, so its items rest in the [`FileStore`].
     pub struct KeychainStore;
 
     const SERVICE: &str = "org.coasys.app";
@@ -479,11 +479,24 @@ mod keychain_store {
         }
     }
 
+    /// Whether this build may write to the data-protection keychain: the raw `OSStatus` of adding
+    /// `name` as an empty item with no access control (so no prompt), which is deleted again at
+    /// once. Only a write shows a missing entitlement: an unsigned build's read answers
+    /// errSecItemNotFound, and its first add errSecMissingEntitlement.
+    pub(super) fn write_status(name: &str) -> i32 {
+        match set_generic_password_options(&[], item(name)) {
+            Ok(()) => {
+                let _ = delete_generic_password_options(item(name));
+                0
+            }
+            Err(e) => e.code(),
+        }
+    }
+
     /// What the keychain answers when asked whether `name` is kept: the raw `OSStatus` of an
     /// attributes-only, no-UI `SecItemCopyMatching`. Never the data, and never a prompt: an item
     /// that exists but would need the person to read even this much answers
-    /// errSecInteractionNotAllowed. Also how [`system_store`](super::system_store) finds out
-    /// whether this build may use the data-protection keychain at all.
+    /// errSecInteractionNotAllowed.
     pub(super) fn probe_status(name: &str) -> i32 {
         let pairs: Vec<(CFString, CFType)> = unsafe {
             vec![
@@ -533,8 +546,8 @@ mod keychain_store {
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 const ERR_SEC_MISSING_ENTITLEMENT: i32 = -34018;
 
-/// An item name no identity can have (a scid is base58, never `probe`), asked about once to learn
-/// whether the keychain answers this build at all.
+/// An item name no identity can have (a scid is base58, never `probe`), written and deleted once
+/// at start to learn whether the keychain takes this build's writes at all.
 #[cfg(target_os = "macos")]
 const PROBE_NAME: &str = "coasys.identity/probe";
 
@@ -665,7 +678,7 @@ pub fn system_store(fallback_dir: PathBuf) -> Box<dyn SecretStore> {
 fn platform_store() -> Option<Box<dyn SecretStore>> {
     #[cfg(target_os = "macos")]
     {
-        if keychain_usable(keychain_store::probe_status(PROBE_NAME)) {
+        if keychain_usable(keychain_store::write_status(PROBE_NAME)) {
             return Some(Box::new(KeychainStore));
         }
         log::warn!(
