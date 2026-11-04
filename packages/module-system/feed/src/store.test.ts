@@ -47,7 +47,7 @@ function harness(proposals: { id: string; kind: string }[] = []) {
   const updated: { entity: string; id: string; fields: Record<string, unknown> }[] = [];
   const subscriptions: string[] = [];
   const records = {
-    find: async (entity: string) => (entity === 'Space' ? [{ id: 'space-1', root: { id: 'root-1' } }] : []),
+    find: async () => [],
     subscribe: (entity: string) => {
       subscriptions.push(entity);
       return () => {};
@@ -72,6 +72,7 @@ function harness(proposals: { id: string; kind: string }[] = []) {
     action: markAction,
     onDispose: () => {},
     dataset: () => 'space-1',
+    spaceRoot: () => 'root-1',
     settings: () => ({}),
     kernels: { records, interpretation },
   } as never) as Record<string, (...args: unknown[]) => unknown>;

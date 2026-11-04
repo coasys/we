@@ -1777,9 +1777,9 @@ export function taskBoard(opts: TaskBoardOptions): SchemaNode {
       // without `onlyFrom` never asks it anything.
       boardOnlySource: {
         entity: 'CollectionBlock',
-        where: { id: (opts.onlyFrom?.record ?? '') as Record<string, unknown> },
+        where: { id: opts.onlyFrom?.record ?? '' },
         limit: 1,
-        when: (opts.onlyFrom?.record ?? { $: 'false' }) as Record<string, unknown>,
+        when: opts.onlyFrom?.record ?? { $: 'false' },
       },
       /*
         The board, hydrated one level. A second hop through a polymorphic relation cannot be

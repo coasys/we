@@ -83,7 +83,7 @@ export function readIdentityStatus(value: unknown): IdentityStatusView {
  */
 export function readKeyLog(value: unknown): KeyLogView {
   const log = record(value);
-  const raw = Array.isArray(log.events) ? log.events : [];
+  const raw: unknown[] = Array.isArray(log.events) ? log.events : [];
   const head = readHead(log.head);
   const events = raw.map((event, i) => {
     const next = raw[i + 1];

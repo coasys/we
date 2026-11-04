@@ -9,7 +9,7 @@
  */
 import type { DatasetHandle, EntityManifest, ShapeInput, ShapeStore, StoredShape } from '@we/backend-shared';
 
-import { type DatasetProxy, Shape } from './index';
+import { Shape } from './index';
 import { decodeFileAsJson, encodeJsonFileData } from './utils/fileTransforms';
 import { asFileField } from './utils/imageHelpers';
 
@@ -18,7 +18,7 @@ import { asFileField } from './utils/imageHelpers';
  *   every reader of a space's vocabulary does first. A read in the common case.
  */
 export function createJsonShapeStore(ensure: (dataset: DatasetHandle) => Promise<void>): ShapeStore {
-  const proxy = (dataset: DatasetHandle) => dataset as DatasetProxy;
+  const proxy = (dataset: DatasetHandle) => dataset;
   /**
    * The stored document, as a backend hands a file property back: the data URI the file is read as,
    * or — where the backend keeps what was written as written — the file value itself.

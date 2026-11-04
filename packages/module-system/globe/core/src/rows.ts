@@ -63,7 +63,7 @@ export function subjectOf(
   extra: Record<string, GraphValue> = {},
   label?: string,
 ): GraphNode {
-  return { id, kind: 'entity', type, ...(label ? { label } : {}), data: { ...flattenRow(row), ...extra } } as GraphNode;
+  return { id, kind: 'entity', type, ...(label ? { label } : {}), data: { ...flattenRow(row), ...extra } };
 }
 
 /** The id a row is known by: its own field when it has one, its position otherwise. */

@@ -43,20 +43,20 @@
   },
   "peerDependencies": {
     "@we/primitives": "^0.1.0",
-    "solid-js": "^1.9.17"
+    "solid-js": "^1.9.18"
   },
   "devDependencies": {
-    "@types/node": "^26.6.5",
+    "@types/node": "^26.6.6",
     "@we/cli": "workspace:*",
     "@we/design-types": "workspace:*",
     "@we/primitives": "workspace:*",
     "@we/tokens": "workspace:*",
     "esbuild-plugin-solid": "^0.6.0",
     "jsdom": "~30.0.1",
-    "sass": "^1.105.2",
-    "solid-js": "^1.9.17",
+    "sass": "^1.107.1",
+    "solid-js": "^1.9.18",
     "tsup": "^9.0.0",
-    "vite-plugin-solid": "^2.11.14",
+    "vite-plugin-solid": "^2.11.15",
     "vitest": "^5.0.5"
   },
   "publishConfig": {

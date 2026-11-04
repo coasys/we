@@ -98,14 +98,14 @@ export function TaskInput(props: TaskInputProps) {
                 <we-input
                   type="text"
                   value={title()}
-                  on:input={(e: CustomEvent) => setTitle(e.detail)}
+                  on:input={(e: CustomEvent<string>) => setTitle(e.detail)}
                   placeholder="Task title"
                 />
               </we-form-field>
               <we-form-field label="Description">
                 <we-textarea
                   value={description()}
-                  on:input={(e: CustomEvent) => setDescription(e.detail)}
+                  on:input={(e: CustomEvent<string>) => setDescription(e.detail)}
                   placeholder="Description (optional)"
                   rows={2}
                 />
@@ -115,26 +115,26 @@ export function TaskInput(props: TaskInputProps) {
                   <we-select
                     value={status()}
                     options={STATUS_OPTIONS}
-                    onChange={(e: CustomEvent) => setStatus(e.detail)}
+                    onChange={(e: CustomEvent<string>) => setStatus(e.detail)}
                   />
                 </we-form-field>
                 <we-form-field label="Priority" flex="1">
                   <we-select
                     value={priority()}
                     options={PRIORITY_OPTIONS}
-                    onChange={(e: CustomEvent) => setPriority(e.detail)}
+                    onChange={(e: CustomEvent<string>) => setPriority(e.detail)}
                   />
                 </we-form-field>
               </Row>
               <Row gap="200">
                 <we-form-field label="Due Date" flex="1">
-                  <we-input type="date" value={dueDate()} on:input={(e: CustomEvent) => setDueDate(e.detail)} />
+                  <we-input type="date" value={dueDate()} on:input={(e: CustomEvent<string>) => setDueDate(e.detail)} />
                 </we-form-field>
                 <we-form-field label="Assignee" flex="1">
                   <we-input
                     type="text"
                     value={assignee()}
-                    on:input={(e: CustomEvent) => setAssignee(e.detail)}
+                    on:input={(e: CustomEvent<string>) => setAssignee(e.detail)}
                     placeholder="Assignee"
                   />
                 </we-form-field>

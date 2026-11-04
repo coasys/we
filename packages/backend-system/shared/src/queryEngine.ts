@@ -38,6 +38,17 @@ export interface InMemoryDataset {
 /** No value: never written, or cleared — a cleared property is removed, not stored as `''`. */
 const isAbsent = (value: unknown) => value == null;
 
+/**
+ * A field's value as the text operators search it: text as written, a number, boolean or list as it
+ * prints. A record has no text to search; printed, it would be `[object Object]`, which `contains`
+ * would find "object" in.
+ */
+function searchText(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean' || Array.isArray(value)) return String(value);
+  return '';
+}
+
 function compareOp(actual: unknown, op: Op, value: Scalar | Scalar[], caseSensitive?: boolean): boolean {
   switch (op) {
     case 'eq':
@@ -62,7 +73,7 @@ function compareOp(actual: unknown, op: Op, value: Scalar | Scalar[], caseSensit
     case 'contains':
     case 'startsWith':
     case 'endsWith': {
-      let a = String(actual ?? '');
+      let a = searchText(actual);
       let v = String(value ?? '');
       if (!caseSensitive) {
         a = a.toLowerCase();
@@ -334,7 +345,10 @@ function hydrate(row: Row, entity: string, include: IncludeMap, data: InMemoryDa
     if (spec !== true) {
       // Below an untyped relation each member is read as its own class, which is what decides the
       // relations its counts and includes can follow.
-      const classOf = (r: Row) => resolved.rel.target || String(r[RECORD_TYPE_KEY] ?? '');
+      const classOf = (r: Row) => {
+        const type = r[RECORD_TYPE_KEY];
+        return resolved.rel.target || (typeof type === 'string' ? type : '');
+      };
       if (spec.filter) rows = rows.filter((r) => matchesFilter(r, spec.filter!, resolved.rel.target, data));
       // Before the sort, as at the top level, so the included records can be ordered by a count.
       if (spec.aggregate) rows = rows.map((r) => withAggregates(r, classOf(r), spec.aggregate!, data));

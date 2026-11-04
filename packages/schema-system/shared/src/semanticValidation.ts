@@ -9,7 +9,6 @@ import { HOST_PART_IDS, isHostPartId } from './hostPartIds';
 import { isRelativePath } from './navigationPaths';
 import { parseRecordViewKey } from './recordViews';
 import { isTemplateElement } from './templateElements';
-import type { SchemaNode } from './types';
 import type { ValidationError, ValidationResult } from './validators';
 import { validateStructure } from './validators';
 
@@ -245,7 +244,7 @@ export function buildValidationContext(data: ContextData): ValidationContext {
   const dsPropToLayer = new Map<string, string>();
 
   // Build dsPropToLayer reverse map
-  for (const [layer, keys] of Object.entries(layerKeyMap) as [string, readonly string[]][]) {
+  for (const [layer, keys] of Object.entries<readonly string[]>(layerKeyMap)) {
     for (const key of keys) {
       if (!dsPropToLayer.has(key)) {
         dsPropToLayer.set(key, layer);
@@ -437,7 +436,9 @@ export function buildValidationContext(data: ContextData): ValidationContext {
     if (!catalog.placements?.length) continue;
     const names = new Map<string, string[]>();
     for (const plugin of catalog.plugins) names.set(plugin.id, [...(names.get(plugin.id) ?? []), plugin.category]);
-    const byProp = pluginPlacements.get(catalog.component) ?? new Map();
+    const byProp =
+      pluginPlacements.get(catalog.component) ??
+      new Map<string, { key: string; categories: string[]; names: Map<string, string[]>; bare?: boolean }>();
     for (const { prop, key, categories, bare } of catalog.placements)
       byProp.set(prop, { key, categories, names, bare });
     pluginPlacements.set(catalog.component, byProp);
@@ -1131,7 +1132,7 @@ function updateLocalScope(n: Record<string, unknown>, state: WalkState): WalkSta
   for (const key of newQueries) newFields.add(key);
   const newIncludes = new Map(state.queryIncludes);
   if (hasQueries)
-    for (const [key, query] of Object.entries(queries as Record<string, unknown>)) {
+    for (const [key, query] of Object.entries(queries)) {
       const include = (query as { include?: unknown } | null)?.include;
       const relations =
         include && typeof include === 'object' ? Object.keys(include).filter((name) => !name.startsWith('$')) : [];
@@ -2449,9 +2450,8 @@ function checkRoutes(
     contextScope: new Set<string>(),
   };
   for (let i = 0; i < routes.length; i++) {
-    const own = String((routes[i] as { path?: unknown } | undefined)?.path ?? '')
-      .split('/')
-      .filter(Boolean).length;
+    const routePath = (routes[i] as { path?: unknown } | undefined)?.path;
+    const own = (typeof routePath === 'string' ? routePath : '').split('/').filter(Boolean).length;
     walkNode(
       routes[i],
       `${path}.routes[${i}]`,
@@ -2764,8 +2764,7 @@ export function validateSchema(schema: unknown, context: ValidationContext): Val
     round: the author is told where the problem shows, and five identical messages are themselves
     the clue that the shape is shared.
   */
-  const expanded =
-    schema && typeof schema === 'object' && !Array.isArray(schema) ? expandDefinitions(schema as SchemaNode) : schema;
+  const expanded = schema && typeof schema === 'object' && !Array.isArray(schema) ? expandDefinitions(schema) : schema;
 
   const structural = validateStructure(expanded);
   if (!structural.valid) return structural;

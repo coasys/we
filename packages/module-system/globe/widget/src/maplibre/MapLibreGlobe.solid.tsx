@@ -56,6 +56,7 @@ export function MapLibreGlobe(props: MapLibreGlobeProps) {
   const [ready, setReady] = createSignal(false);
   /** The clock the layers follow, from the `clock` prop. See `../clock.ts`. */
   const clock = new ClockLink();
+  // eslint-disable-next-line solid/reactivity -- followClock reads the accessor inside its own effect
   followClock(props, clock, ready);
 
   onMount(() => {

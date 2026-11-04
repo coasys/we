@@ -41,7 +41,9 @@ export class LandOnlyImageryProvider extends UrlTemplateImageryProvider {
     const maskX = x >> shift;
     const maskY = y >> shift;
     // Asked without a Request, so the mask is never throttled out from under a tile that was not.
-    const mask = (this.mask.requestImage(maskX, maskY, level - shift) ?? Promise.reject()).catch(() => undefined);
+    const mask = (this.mask.requestImage(maskX, maskY, level - shift) ?? Promise.resolve(undefined)).catch(
+      () => undefined,
+    );
 
     return Promise.all([image, mask]).then(([tile, maskTile]) => {
       if (!maskTile) return tile;
@@ -52,7 +54,7 @@ export class LandOnlyImageryProvider extends UrlTemplateImageryProvider {
       canvas.height = height;
       const context = canvas.getContext('2d');
       if (!context) return tile;
-      context.drawImage(tile as CanvasImageSource, 0, 0, width, height);
+      context.drawImage(tile, 0, 0, width, height);
       // Keep only what the mask covers. The mask tile spans 2^shift tiles a side; this tile is one.
       context.globalCompositeOperation = 'destination-in';
       context.imageSmoothingEnabled = true;

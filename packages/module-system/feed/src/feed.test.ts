@@ -10,7 +10,7 @@ import { lineContent, threadLines } from '@we/messages';
 import type { RecordQuery } from '@we/module-shared';
 import { describe, expect, it } from 'vitest';
 
-import { groupActivity, nounFor, readFeedWindow } from './feed';
+import { type FeedActivity, FeedReadStopped, groupActivity, markPending, nounFor, readFeedWindow } from './feed';
 
 const ROOT = 'root';
 const t = (minute: number) => new Date(Date.UTC(2026, 9, 8, 10, minute)).toISOString();
@@ -70,6 +70,21 @@ describe('the feed window', () => {
     expect(drawn.map((r) => r.id)).toEqual(['s2', 'typed', 'm2', 's1', 'm1']);
     expect(drawn[0]).toMatchObject({ call: 'standup', callTitle: 'Standup' });
     expect(drawn[1]).toMatchObject({ call: '', source: 'typed' });
+  });
+
+  it('stops between call pages once its answer is no longer wanted, rather than reading the rest', async () => {
+    const { find, asked } = store(rows);
+    const callPages = () => asked.filter((a) => a.entity === 'TextBlock' && a.query.within !== ROOT).length;
+    const read = readFeedWindow(find, {
+      root: ROOT,
+      shown: 10,
+      fromStart: false,
+      activityTypes: [],
+      // The window moves while the first call's page is being read.
+      stopped: () => callPages() >= 1,
+    });
+    await expect(read).rejects.toBeInstanceOf(FeedReadStopped);
+    expect(callPages()).toBe(1);
   });
 
   it('reads the same from the start, oldest first', async () => {
@@ -276,5 +291,25 @@ describe('grouping and naming', () => {
     ]);
     expect(lineContent({ text: 'plain' })).toBeNull();
     expect(lineContent({ text: 'broken', marks: '[{' })).toBeNull();
+  });
+});
+
+describe('marking what is still a suggestion', () => {
+  const activity = groupActivity(
+    [
+      { row: { id: 'task-1', title: 'Book a room', author: 'did:ann', createdAt: t(1) }, entity: 'TaskBlock' },
+      { row: { id: 'task-2', title: 'Order lunch', author: 'did:ann', createdAt: t(1) }, entity: 'TaskBlock' },
+    ],
+    new Map(),
+  );
+
+  it('re-marks the rows on screen as the suggestions settle, with no read', () => {
+    const marked = markPending(activity, new Set(['task-2']));
+    expect(marked[0]).toMatchObject({ suggested: 1 });
+    expect((marked[0] as FeedActivity).items.map((i) => i.pending)).toEqual([false, true]);
+  });
+
+  it('hands back the same rows when no mark moved, so nothing redraws', () => {
+    expect(markPending(activity, new Set())).toBe(activity);
   });
 });

@@ -19,7 +19,7 @@ const derived = new WeakMap<object, Map<string, TemplateSchema>>();
 
 export function withDerivedIds<T extends TemplateSchema>(template: T, seed: string): T {
   let bySeed = derived.get(template);
-  if (!bySeed) derived.set(template, (bySeed = new Map()));
+  if (!bySeed) derived.set(template, (bySeed = new Map<string, TemplateSchema>()));
   let out = bySeed.get(seed);
   if (!out) {
     out = deriveNodeIds(deepClone(template) as SchemaNode, seed) as TemplateSchema;

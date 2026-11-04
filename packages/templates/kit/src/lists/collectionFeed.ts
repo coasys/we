@@ -101,7 +101,7 @@ export function collectionFeed(opts: CollectionFeedOptions): SchemaNode {
     ...(opts.anchorId !== undefined && {
       scope: { anchor: 'CollectionBlock', via: 'children', anchorId: opts.anchorId },
     }),
-  } as QueryStateField;
+  };
 
   const rows: SchemaNode = {
     type: '$if',

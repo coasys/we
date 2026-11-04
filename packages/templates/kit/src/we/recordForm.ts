@@ -586,7 +586,7 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
                     condition: { $: '!recordStore.pendingLink' },
                     then: {
                       // Through the guard, so Discard finishes going back rather than only closing.
-                      ...backButton(guard.back!),
+                      ...backButton(guard.back),
                       slot: 'start-button',
                     },
                   },

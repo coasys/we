@@ -68,11 +68,9 @@ export async function renderPoints(
 ): Promise<LayerRenderer<PointsOptions>> {
   const { viewer, id: layer } = context;
   const colors = cesiumColors(context, () => repaint());
-  const points = viewer.scene.primitives.add(new PointPrimitiveCollection()) as PointPrimitiveCollection;
-  const billboards = viewer.scene.primitives.add(
-    new BillboardCollection({ scene: viewer.scene }),
-  ) as BillboardCollection;
-  const labels = viewer.scene.primitives.add(new LabelCollection({ scene: viewer.scene })) as LabelCollection;
+  const points = viewer.scene.primitives.add<PointPrimitiveCollection>(new PointPrimitiveCollection());
+  const billboards = viewer.scene.primitives.add<BillboardCollection>(new BillboardCollection({ scene: viewer.scene }));
+  const labels = viewer.scene.primitives.add<LabelCollection>(new LabelCollection({ scene: viewer.scene }));
 
   let options = initial;
   let features: PointFeature[] = [];

@@ -160,7 +160,7 @@ export function nodeToBlock(node: PMNode): ContentBlock | null {
     });
     return {
       _type: 'collection',
-      ...(node.attrs.id ? { _key: node.attrs.id } : {}),
+      ...keyOf(node),
       ...(node.attrs.props as Record<string, unknown>),
       content,
     };
@@ -169,7 +169,7 @@ export function nodeToBlock(node: PMNode): ContentBlock | null {
   if (name === UNKNOWN_NODE) {
     return {
       _type: String(node.attrs.blockType),
-      ...(node.attrs.id ? { _key: node.attrs.id } : {}),
+      ...keyOf(node),
       ...(node.attrs.props as Record<string, unknown>),
     };
   }
@@ -177,17 +177,24 @@ export function nodeToBlock(node: PMNode): ContentBlock | null {
   if (node.type.isAtom) {
     return {
       _type: blockTypeOf(node.type),
-      ...(node.attrs.id ? { _key: node.attrs.id } : {}),
+      ...keyOf(node),
       ...(node.attrs.props as Record<string, unknown>),
     };
   }
   return null;
 }
 
+/** A node's id as a block's `_key`. Ids are strings or null in the schema; ProseMirror types attrs as `any`. */
+function keyOf(node: PMNode): { _key?: string } {
+  const id: unknown = node.attrs.id;
+  return typeof id === 'string' && id ? { _key: id } : {};
+}
+
 function textNodeToBlock(node: PMNode): TextContentBlock {
   const { text, marks } = inlineToStandoff(node);
   const block: TextContentBlock = { _type: 'block', text };
-  if (node.attrs.id) block._key = node.attrs.id;
+  const { _key } = keyOf(node);
+  if (_key) block._key = _key;
   switch (node.type.name) {
     case 'heading':
       block.style = `h${node.attrs.headingLevel}` as TextContentBlock['style'];

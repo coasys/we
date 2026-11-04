@@ -490,7 +490,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
           );
         }
         const data: InMemoryDataset = { tables: dataset.tables as Record<string, Row[]>, relations: engineRelations };
-        return executeQueryIR(ir, data) as AnyRow[];
+        return executeQueryIR(ir, data);
       }
 
       /**
@@ -507,6 +507,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         });
       }
 
+      // eslint-disable-next-line @typescript-eslint/require-await -- Kept async so a handle the lifecycle port did not mint reaches the caller as a rejection, not a synchronous throw.
       static async findAll(handle: unknown, query: Record<string, unknown> = {}): Promise<Entity[]> {
         const dataset = datasetOf(handle);
         return Entity.read(dataset, query);
@@ -675,6 +676,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         const dataset = datasetOf(handle);
         let stop: (() => void) | undefined;
         return {
+          // eslint-disable-next-line @typescript-eslint/require-await -- Kept async so a callback that throws reaches the caller as a rejection, as a live query's would.
           async subscribe(callback: (rows: unknown[]) => void) {
             const run = () => {
               const rows = Entity.read(dataset, q);
@@ -732,6 +734,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         notify(dataset);
       };
 
+      // eslint-disable-next-line @typescript-eslint/require-await -- Kept async so a failure hydrating a related row reaches the caller as a rejection, as the ORM's would.
       proto[`get${suffix}`] = async function (this: AnyRow): Promise<unknown> {
         const dataset = homes.get(this);
         if (!dataset || !relation.target) return relation.cardinality === 'one' ? null : [];

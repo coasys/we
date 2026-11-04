@@ -7,14 +7,7 @@
  * Cesium. Dashed lines are their own layer, since a dash pattern is not something MapLibre lets each
  * feature choose; an arc is drawn solid.
  */
-import {
-  arcPositions,
-  followTime,
-  type LonLat,
-  type PathFeature,
-  pathFeatures,
-  type PathsOptions,
-} from '@we/globe-core';
+import { arcPositions, followTime, type PathFeature, pathFeatures, type PathsOptions } from '@we/globe-core';
 import type { LineLayerSpecification, MapMouseEvent } from 'maplibre-gl';
 
 import type { LayerRenderer, MapLibreRendererContext } from '../types';
@@ -25,7 +18,7 @@ import { addSource, continuous, maplibreColors, pickFeatures } from './shared';
 function line(feature: PathFeature): [number, number][] {
   const out: (readonly [number, number])[] = [];
   for (let i = 1; i < feature.positions.length; i++) {
-    const segment = arcPositions(feature.positions[i - 1] as LonLat, feature.positions[i] as LonLat, 0, 24);
+    const segment = arcPositions(feature.positions[i - 1], feature.positions[i], 0, 24);
     segment.forEach(([lon, lat], index) => {
       if (i === 1 || index > 0) out.push([lon, lat]);
     });
@@ -99,7 +92,8 @@ export function renderPaths(context: MapLibreRendererContext, initial: PathsOpti
     0;
   const onClick = async (event: MapMouseEvent) => {
     if (flatAt(event)) return;
-    const hit = await raised.pick(event.point.x, event.point.y);
+    // A pick that fails is a pick that found nothing.
+    const hit = await raised.pick(event.point.x, event.point.y).catch(() => null);
     if (hit) select(hit);
   };
   let asking = false;
@@ -107,17 +101,21 @@ export function renderPaths(context: MapLibreRendererContext, initial: PathsOpti
   const onMove = async (event: MapMouseEvent) => {
     if (asking || flatAt(event)) return;
     asking = true;
-    const hit = await raised.pick(event.point.x, event.point.y);
+    const hit = await raised.pick(event.point.x, event.point.y).catch(() => null);
     asking = false;
     if (!!hit === pointing) return;
     pointing = !!hit;
     map.getCanvas().style.cursor = pointing ? 'pointer' : '';
   };
-  map.on('click', onClick);
-  map.on('mousemove', onMove);
+  // MapLibre calls a listener and drops what it returns, so these are wrapped once and the same
+  // wrappers taken off again.
+  const click = (event: MapMouseEvent) => void onClick(event);
+  const move = (event: MapMouseEvent) => void onMove(event);
+  map.on('click', click);
+  map.on('mousemove', move);
   context.onCleanup(() => {
-    map.off('click', onClick);
-    map.off('mousemove', onMove);
+    map.off('click', click);
+    map.off('mousemove', move);
   });
 
   update(initial);

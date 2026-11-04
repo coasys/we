@@ -56,7 +56,7 @@ export function defineEntity(name: string): EntityClass {
   // `function(){}` as the target: `apply`/`construct` stay available, so `new Space(...)` and any
   // callable use forward too rather than throwing an unrelated proxy error.
   return new Proxy(function entityStandIn() {} as unknown as EntityClass, {
-    get: (_target, prop, receiver) => Reflect.get(resolve() as object, prop, receiver),
+    get: (_target, prop, receiver): unknown => Reflect.get(resolve() as object, prop, receiver),
     set: (_target, prop, value) => Reflect.set(resolve() as object, prop, value),
     has: (_target, prop) => Reflect.has(resolve() as object, prop),
     ownKeys: () => Reflect.ownKeys(resolve() as object),
@@ -67,7 +67,7 @@ export function defineEntity(name: string): EntityClass {
       return descriptor ? { ...descriptor, configurable: true } : undefined;
     },
     getPrototypeOf: () => Reflect.getPrototypeOf(resolve() as object),
-    construct: (_target, args) => Reflect.construct(resolve() as unknown as new () => object, args),
+    construct: (_target, args) => Reflect.construct(resolve() as unknown as new () => object, args) as object,
     apply: (_target, thisArg, args) =>
       Reflect.apply(resolve() as unknown as (...a: unknown[]) => unknown, thisArg, args),
   });

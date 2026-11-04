@@ -88,9 +88,11 @@ function relationCheck(model: ModelInternals, kind: 'add' | 'remove', relation: 
 }
 
 const idsOf = (value: unknown): string[] =>
-  (Array.isArray(value) ? value : value == null ? [] : [value]).map((v) =>
-    typeof v === 'string' ? v : String((v as { id?: unknown })?.id ?? ''),
-  );
+  (Array.isArray(value) ? value : value == null ? [] : [value]).map((v) => {
+    if (typeof v === 'string') return v;
+    const id = (v as { id?: unknown })?.id;
+    return typeof id === 'string' ? id : '';
+  });
 
 /**
  * Install the checks on `Ad4mModel.prototype`. Idempotent.
@@ -108,7 +110,7 @@ export function installWriteChecks(model: typeof Ad4mModel): void {
     prototype[name] = async function checked(this: ModelInternals, ...args: unknown[]) {
       await before(this, args);
       return original.apply(this, args);
-    } as Method;
+    };
   };
 
   const save = prototype.save as Method | undefined;
@@ -143,7 +145,7 @@ export function installWriteChecks(model: typeof Ad4mModel): void {
       } finally {
         this[SAVING] = false;
       }
-    } as Method;
+    };
   }
 
   wrap('delete', (self) =>

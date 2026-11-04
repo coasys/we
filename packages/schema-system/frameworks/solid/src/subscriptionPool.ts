@@ -137,9 +137,9 @@ export function acquireSubscription(
     entry = created;
     if (key !== null) {
       let byDataset = pool.get(kind);
-      if (!byDataset) pool.set(kind, (byDataset = new Map()));
+      if (!byDataset) pool.set(kind, (byDataset = new Map<unknown, Map<string, Entry>>()));
       let byQuestion = byDataset.get(at);
-      if (!byQuestion) byDataset.set(at, (byQuestion = new Map()));
+      if (!byQuestion) byDataset.set(at, (byQuestion = new Map<string, Entry>()));
       byQuestion.set(key, created);
     }
     let pushed = false;
