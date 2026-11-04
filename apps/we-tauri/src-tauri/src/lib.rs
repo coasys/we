@@ -45,6 +45,20 @@ fn identity_store_setting(runtime: Option<String>, built: Option<&str>) -> Optio
         .or_else(|| built.map(str::to_string).filter(|s| !s.trim().is_empty()))
 }
 
+/// Whether the executor, started with this identity store URL and these keys, trusts any store
+/// key — asked of the executor's own rule (`IdentitySettings::from_config`) rather than restated
+/// here. With neither set it trusts the default store's key; a URL without keys trusts none.
+fn executor_trusts_a_store(url: Option<String>, keys: Option<Vec<String>>) -> bool {
+    let config = Ad4mConfig {
+        identity_store_url: url,
+        identity_store_keys: keys,
+        ..Default::default()
+    };
+    !rust_executor::identity::IdentitySettings::from_config(&config)
+        .store_keys
+        .is_empty()
+}
+
 fn config_dir() -> PathBuf {
     dirs::config_dir()
         .expect("Failed to get config directory")
@@ -189,9 +203,10 @@ pub fn run() {
     // trusts: `AD4M_IDENTITY_STORE_URL` and `AD4M_IDENTITY_STORE_KEYS` (comma-separated), the
     // names the executor's own CLI reads. A build carries them when they are set while it is
     // compiled (DEVELOPMENT.md, "The identity store"); the same variables at run time override
-    // that. Without a URL the agent language keeps its own setting and no offer link can be made.
-    // Without a key the executor accepts no head from the store, so the custody service refuses
-    // every identity step before it starts, and the app says why rather than offering it.
+    // that. With neither set the executor uses the agent language's default store and trusts that
+    // store's key. A URL without keys trusts no key: the executor then accepts no head from the
+    // store, so the custody service refuses every identity step before it starts, and the app says
+    // why rather than offering it.
     let identity_store_url = identity_store_setting(
         std::env::var("AD4M_IDENTITY_STORE_URL").ok(),
         option_env!("AD4M_IDENTITY_STORE_URL"),
@@ -207,8 +222,12 @@ pub fn run() {
             .collect::<Vec<_>>()
     })
     .filter(|keys| !keys.is_empty());
-    if identity_store_keys.is_none() {
-        log.host("No identity store key: making or changing an identity is off in this build");
+    let store_trusted =
+        executor_trusts_a_store(identity_store_url.clone(), identity_store_keys.clone());
+    if !store_trusted {
+        log.host(
+            "An identity store URL without its key: making or changing an identity is off in this build",
+        );
     }
 
     // The custody service: the person's master key, behind the OS unlock, in this process but never
@@ -231,7 +250,7 @@ pub fn run() {
             url: format!("http://127.0.0.1:{graphql_port}"),
             admin_credential: std::sync::Arc::from(req_credential.as_str()),
             store_url: identity_store_url.clone(),
-            store_trusted: identity_store_keys.is_some(),
+            store_trusted,
         },
     );
 
@@ -348,7 +367,24 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::identity_store_setting;
+    use super::{executor_trusts_a_store, identity_store_setting};
+
+    /// The executor's own rule decides: the default config trusts the default store's key, a
+    /// named store without keys trusts none, and configured keys are trusted with or without a URL.
+    #[test]
+    fn only_a_named_store_without_keys_is_untrusted() {
+        let keys = || Some(vec!["z6MkA".to_string()]);
+        assert!(executor_trusts_a_store(None, None));
+        assert!(!executor_trusts_a_store(
+            Some("https://store.example".into()),
+            None
+        ));
+        assert!(executor_trusts_a_store(
+            Some("https://store.example".into()),
+            keys()
+        ));
+        assert!(executor_trusts_a_store(None, keys()));
+    }
 
     #[test]
     fn the_run_time_store_setting_overrides_the_built_one_and_empty_is_none() {

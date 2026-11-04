@@ -38,6 +38,7 @@ const status = (did: string | null) => ({
   revoked: null,
   head: null,
   fork: null,
+  storeBehind: null,
 });
 
 const incept: KeyLogView['events'][number] = {
@@ -196,9 +197,10 @@ describe('identityStore', () => {
     expect(deviceStore.devices().map((d) => d.label)).toEqual(['This computer']);
   });
 
-  it('on a build with no identity store, asks the question but opens no window, and says why', async () => {
+  it('on a build naming a store without its key, asks the question but opens no window, and says why', async () => {
     setPorts({ identity: backend({ did: null, events: [], devices: [] }).port });
-    const why = 'This build of Coasys has no identity store set up, so it cannot make or change an identity yet.';
+    const why =
+      "This build of Coasys names an identity store without that store's key, so it cannot make or change an identity.";
     const opened: IdentityStep[] = [];
     identityHost = {
       async open(step) {
