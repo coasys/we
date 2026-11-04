@@ -277,7 +277,7 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
       return { pushes, dispose };
     };
 
-    const test = (id: ConformanceCase, title: string, body: () => Promise<void>) => {
+    const test = (id: ConformanceCase, title: string, body: () => void | Promise<void>) => {
       const gap = harness.knownGaps?.[id];
       const intermittent = harness.knownIntermittent?.[id];
       if (gap) it.fails(`${title} [known gap: ${gap}]`, body, timeout);
@@ -287,7 +287,7 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
     };
 
     describe('the binding surface', () => {
-      test('bindings.surface', 'exposes every data-plane binding a template can depend on', async () => {
+      test('bindings.surface', 'exposes every data-plane binding a template can depend on', () => {
         // The renderer's data contract: a key missing here means "runs on this backend" quietly
         // means "boots on this backend". Not `model`: nothing reads it — record actions resolve the
         // registered class themselves — so a backend is free to leave it out.
@@ -303,7 +303,7 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
         }
       });
 
-      test('bindings.identities', '$identities reads the host profile cache and forwards fetches', async () => {
+      test('bindings.identities', '$identities reads the host profile cache and forwards fetches', () => {
         expect(bindings.$identities!.get(subject.agent)).toMatchObject({ handle: 'me' });
         expect(bindings.$identities!.get('did:test:unknown')).toBeUndefined();
         bindings.$identities!.fetch('did:test:other');
@@ -344,7 +344,7 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
         // Empty, however a backend spells it, and no longer findable by what it said.
         const rows = await reader('TaskBlock').findAll(subject.dataset, {});
         expect(rows.map((r) => r.title).sort()).toEqual(['First', 'Second']);
-        for (const row of rows) expect(row.description ?? '', `${row.title}'s description`).toBe('');
+        for (const row of rows) expect(row.description ?? '', `${row.title as string}'s description`).toBe('');
         expect(
           await reader('TaskBlock').findAll(subject.dataset, { where: { description: 'Something' } }),
         ).toHaveLength(0);
@@ -469,7 +469,7 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
       test(
         'schema.containment-predicate',
         'stores containment under the one containment predicate, for the core schema and a module alike',
-        async () => {
+        () => {
           const declared = {
             version: '1',
             entities: {

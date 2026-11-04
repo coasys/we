@@ -285,6 +285,7 @@ export type {
   KeyLogEvent,
   KeyLogFork,
   KeyLogHead,
+  KeyLogStoreBehind,
   KeyLogView,
 } from './identity';
 export type {

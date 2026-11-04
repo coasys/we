@@ -107,7 +107,7 @@ export function EditableImage(allProps: EditableImageProps) {
     dsProps.smUpProps ||
     dsProps.mdUpProps ||
     dsProps.lgUpProps;
-  const { style, attrs, checkSurface } = useStateProps(baseStyle, dsProps as EditableImageProps, 'column');
+  const { style, attrs, checkSurface } = useStateProps(baseStyle, dsProps, 'column');
 
   /**
    * Straight to the OS file picker. Clicking used to open a modal whose only content was a
@@ -303,7 +303,7 @@ export function EditableImage(allProps: EditableImageProps) {
 
       {/* Crop — the only step left in the modal. */}
       <Show when={modalOpen()}>
-        <we-modal close={closeModal} size={modalSize()}>
+        <we-modal close={() => closeModal()} size={modalSize()}>
           <Column width="100%" ax="center" gap="500">
             <we-text variant="heading-md">Crop image</we-text>
             <ImageCrop
@@ -319,7 +319,7 @@ export function EditableImage(allProps: EditableImageProps) {
               <we-button variant="soft" onClick={changePhoto}>
                 Change photo
               </we-button>
-              <we-button onClick={confirm}>Save</we-button>
+              <we-button onClick={() => void confirm().catch(console.error)}>Save</we-button>
             </Row>
           </Column>
         </we-modal>

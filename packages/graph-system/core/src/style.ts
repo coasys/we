@@ -43,7 +43,7 @@ export function readField(subject: GraphNode | GraphEdge, key: string): unknown 
 
 function isOperators(value: unknown): value is MatchOperators {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
-  return ['not', 'contains', 'exists', 'in', 'gt', 'lt'].some((k) => k in (value as object));
+  return ['not', 'contains', 'exists', 'in', 'gt', 'lt'].some((k) => k in value);
 }
 
 function matchesOperators(actual: unknown, ops: MatchOperators): boolean {

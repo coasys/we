@@ -44,7 +44,7 @@ export function composedContains(ancestor: Element, node: Element | null): boole
   for (let depth = 0; current && depth < MAX_DEPTH * 4; depth++) {
     if (current === ancestor) return true;
     const parent: Node | null =
-      (current as Element).parentElement ?? ((current.getRootNode() as ShadowRoot).host as Node | undefined) ?? null;
+      (current as Element).parentElement ?? (current.getRootNode() as ShadowRoot).host ?? null;
     if (parent === current) return false;
     current = parent;
   }

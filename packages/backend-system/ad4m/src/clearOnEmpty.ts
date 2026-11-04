@@ -143,7 +143,7 @@ export function installClearOnEmpty(model: typeof Ad4mModel): void {
       return;
     }
     return original.call(this, key, value, batchId);
-  } as SetProperty;
+  };
 
   /*
     And the path that never calls it. See "Wrapping `setProperty` was not enough" above: `save()`
@@ -163,7 +163,7 @@ export function installClearOnEmpty(model: typeof Ad4mModel): void {
         for (const key of emptiedProperties(this)) await clearProperty(this, key);
       }
       return originalInnerUpdate.call(this, setProperties, batchId);
-    } as InnerUpdate;
+    };
   }
 
   prototype[PATCHED] = true;

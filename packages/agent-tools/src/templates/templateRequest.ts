@@ -155,7 +155,8 @@ async function toolsetRequest(options: {
     patchTool: TEMPLATE_UPDATE,
     resolveTool: (call, current = tree.schema) => {
       if (call.name === DOCS_TOOL) {
-        const topic = String((call.arguments as { topic?: unknown }).topic ?? '');
+        const sent = (call.arguments as { topic?: unknown }).topic;
+        const topic = typeof sent === 'string' ? sent : '';
         return texts.get(topic) ?? `No topic "${topic}". The \`template\` topic lists them all.`;
       }
       if (call.name !== TEMPLATE_READ) return undefined;

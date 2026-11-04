@@ -21,6 +21,7 @@ export function schemaPropertiesExpander(): Expander {
     // Above `schema`, which claims the same nodes; a graph names whichever question it is asking.
     priority: 30,
     description: 'Opens a type node into its properties and relations, with a Records node for its instances.',
+    // eslint-disable-next-line @typescript-eslint/require-await -- Kept async: the engine attaches `.catch` to the result, so a failure reading the context must arrive as a rejection, not a synchronous throw.
     async expand(request, context) {
       const address = parseAddress(request.id);
       if (!address || address.kind !== 'entity' || !address.id || request.direction === 'in') {

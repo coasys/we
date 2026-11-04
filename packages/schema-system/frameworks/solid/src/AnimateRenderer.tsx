@@ -1,6 +1,6 @@
 import type { TransitionConfig } from '@we/schema-shared';
 import { resolveProp } from '@we/schema-shared';
-import { createEffect, createMemo, createSignal, onCleanup, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, onCleanup, Show, untrack } from 'solid-js';
 
 import {
   buildTransitionCSS,
@@ -64,14 +64,14 @@ export function AnimateRenderer({ node, stores, context, renderNode }: AnimateRe
   const hasCondition = node.props?.condition !== undefined;
   const conditionMet = createMemo(() => {
     const condition = resolveProp(node.props?.condition, stores, context, createMemo);
-    return !!(typeof condition === 'function' ? condition() : condition);
+    return !!(typeof condition === 'function' ? (condition as () => unknown)() : condition);
   });
 
   // Start in the hidden state; transitions will reveal / hide the element. Except under
   // `condition`, where the initial render has to already match its current value — otherwise a
   // node that starts open flashes closed-then-open on mount, and one that starts closed briefly
   // shows its content before the first effect run hides it.
-  const startOpen = hasCondition && conditionMet();
+  const startOpen = hasCondition && untrack(conditionMet);
   const initOpacity = !enterTransition || startOpen ? 1 : hiddenOpacity(enterTransition);
   const initTransform = !enterTransition || startOpen ? '' : hiddenTransform(enterTransition);
 

@@ -58,6 +58,12 @@ import {
  */
 const CACHE_KEY = 'we:accounts';
 
+function isCachedAccount(value: unknown): value is Account {
+  if (value === null || typeof value !== 'object') return false;
+  const { id, name } = value as { id?: unknown; name?: unknown };
+  return typeof id === 'string' && id !== '' && typeof name === 'string' && name !== '';
+}
+
 function readCachedAccounts(): Account[] {
   try {
     // Drop the key this used to be kept under, so an existing install stops carrying a cache that
@@ -66,8 +72,9 @@ function readCachedAccounts(): Account[] {
 
     const raw = sessionStorage.getItem(CACHE_KEY);
     if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((a) => a?.id && a?.name) : [];
+    const parsed: unknown = JSON.parse(raw);
+    // Written by `writeCachedAccounts`, so a row with an id and a name is an Account.
+    return Array.isArray(parsed) ? parsed.filter(isCachedAccount) : [];
   } catch {
     // Unavailable or corrupt — the screen simply starts empty, which is where it was before.
     return [];

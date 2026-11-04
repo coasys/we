@@ -147,15 +147,21 @@ AD4M_IDENTITY_STORE_URL=<store url> AD4M_IDENTITY_STORE_KEYS=<store key> pnpm ta
 AD4M_IDENTITY_STORE_URL=<store url> AD4M_IDENTITY_STORE_KEYS=<store key> pnpm tauri:dev
 ```
 
-No store is deployed for the app yet, so there are no values to give here; use those of the store
-you run (`custody/tests/live.rs` starts a local one).
+**With neither set, a build uses the default store, `https://store.ad4m.dev`** (the agent language's
+default, on the staging network), and the executor trusts that store's key by default
+(`identity::DEFAULT_STORE_KEY` in ad4m). So an ordinary build makes, links and revokes identities
+with no configuration, and Add a device names that store in its offer link. Set both only for a
+build on another network; `custody/tests/live.rs` starts a local store and sets both.
 
-**A build with no store key cannot make or change an identity, and says so.** The executor would
-refuse every publish (it trusts no head the store could answer), so the custody service refuses
-make, add-device and revoke before anything starts — before any words are made — and reports
-`blocked` in its public state. The first-run screen then draws "Make my identity here" disabled with
-the reason, and "Start now" is the way in. Without a URL the agent language keeps its own store
-setting, and Add a device cannot make an offer link.
+The executor decides which keys count (`IdentitySettings::from_config`): the keys given, else the
+default store's key when no URL is given either, else none. The app asks that same function rather
+than restating the rule (`executor_trusts_a_store` in `src-tauri/src/lib.rs`).
+
+**A build that names a store without its key cannot make or change an identity, and says so.** The
+executor would refuse every publish (it trusts no head the store could answer), so the custody
+service refuses make, add-device and revoke before anything starts — before any words are made —
+and reports `blocked` in its public state. The first-run screen then draws "Make my identity here"
+disabled with the reason, and "Start now" is the way in.
 
 ### Pending identities
 

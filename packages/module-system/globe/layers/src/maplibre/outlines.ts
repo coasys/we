@@ -7,7 +7,7 @@ import type { CountryOutlinesOptions } from '../planet/country-outlines';
 import type { MapLibreRendererContext } from '../types';
 
 export function renderOutlines(context: MapLibreRendererContext, options: CountryOutlinesOptions): void {
-  const { map, id, onCleanup } = context;
+  const { map, id } = context;
   const { color = '#ffffff', opacity = 0.5, width = 2 } = options;
   map.addSource(id, { type: 'geojson', data: outlinesUrl(options.dataUrl) });
   map.addLayer({
@@ -16,7 +16,7 @@ export function renderOutlines(context: MapLibreRendererContext, options: Countr
     source: id,
     paint: { 'line-color': color, 'line-opacity': opacity, 'line-width': width },
   });
-  onCleanup(() => {
+  context.onCleanup(() => {
     if (map.getLayer(`${id}:outlines`)) map.removeLayer(`${id}:outlines`);
     if (map.getSource(id)) map.removeSource(id);
   });

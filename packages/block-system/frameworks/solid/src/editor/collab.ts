@@ -42,6 +42,7 @@ export interface CollabSession {
 /** The plugins that bind a document to a session, in place of the local history plugin. */
 export function collabPlugins(session: CollabSession, user: CollabUser): Plugin[] {
   session.awareness.setLocalStateField('user', user);
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-return -- y-prosemirror declares ySyncPlugin as returning `any`; it builds a ProseMirror Plugin.
   return [
     ySyncPlugin(session.fragment),
     yCursorPlugin(session.awareness),
@@ -139,7 +140,7 @@ export function sessionKeys(session: CollabSession): string[] {
   const keys: string[] = [];
   const visit = (node: Y.XmlFragment | Y.XmlElement | Y.XmlText | Y.XmlHook) => {
     if (node instanceof Y.XmlElement) {
-      const id = node.getAttribute('id');
+      const id: unknown = node.getAttribute('id');
       if (typeof id === 'string' && id) keys.push(id);
     }
     if (node instanceof Y.XmlElement || node instanceof Y.XmlFragment) {

@@ -5,9 +5,8 @@
  * Split from SchemaMutations.schema.ts so the schema file remains a pure
  * data export that the validation CLI can load without runtime dependencies.
  */
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { toastService } from '@we/components/solid';
-import type { TemplateSchema } from '@we/schema-shared';
+import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { updateSchema } from '@we/schema-solid';
 import type { SetStoreFunction } from 'solid-js/store';
 
@@ -33,8 +32,39 @@ import { deepClone } from '../../../utils';
 // ---------------------------------------------------------------------------
 
 /** Get the mutations schema root — handles both standalone and nested-route scenarios */
-function getMutationsRoot(schema: any): any {
-  return schema.routes?.find((r: any) => r.path === '/mutations') ?? schema;
+function getMutationsRoot(schema: SchemaNode): SchemaNode {
+  return schema.routes?.find((r) => r.path === '/mutations') ?? schema;
+}
+
+type SchemaChild = NonNullable<SchemaNode['children']>[number];
+
+function isNode(child: SchemaChild | undefined): child is SchemaNode {
+  return typeof child === 'object' && 'type' in child;
+}
+
+/**
+ * The node reached by following child indices down from `node`. The harness wrote this tree
+ * itself (see the path reference above), so anything other than a node on the way means that
+ * layout changed and the mutation no longer knows where it is.
+ */
+function nodeAt(node: SchemaNode, ...path: number[]): SchemaNode {
+  let current = node;
+  for (const index of path) {
+    const next = current.children?.[index];
+    if (!isNode(next)) throw new Error(`Mutations schema has no node at children[${path.join('][')}]`);
+    current = next;
+  }
+  return current;
+}
+
+/** A node's children array, created when absent, so a mutation can push into or reorder it. */
+function childrenOf(node: SchemaNode): SchemaChild[] {
+  return (node.children ??= []);
+}
+
+/** A node's props object, created when absent, so a mutation can read and set props on it. */
+function propsOf(node: SchemaNode): NonNullable<SchemaNode['props']> {
+  return (node.props ??= {});
 }
 
 export function schemaMutationActions(
@@ -49,11 +79,11 @@ export function schemaMutationActions(
   }
 
   function addChild() {
-    const newSchema = deepClone(currentSchema) as any;
+    const newSchema = deepClone(currentSchema);
     const root = getMutationsRoot(newSchema);
-    const dynamicArea = root.children[0].children[4].children[1];
-    const count = dynamicArea.children.length;
-    dynamicArea.children.push({
+    const dynamicChildren = childrenOf(nodeAt(root, 0, 4, 1));
+    const count = dynamicChildren.length;
+    dynamicChildren.push({
       type: 'Row',
       props: { p: '300', gap: '200', bg: 'surface-sunken', r: '200', ay: 'center' },
       children: [
@@ -65,40 +95,41 @@ export function schemaMutationActions(
   }
 
   function removeChild() {
-    const newSchema = deepClone(currentSchema) as any;
+    const newSchema = deepClone(currentSchema);
     const root = getMutationsRoot(newSchema);
-    const dynamicArea = root.children[0].children[4].children[1];
-    if (dynamicArea.children.length > 0) {
-      dynamicArea.children.pop();
+    const dynamicChildren = childrenOf(nodeAt(root, 0, 4, 1));
+    if (dynamicChildren.length > 0) {
+      dynamicChildren.pop();
     }
     applyUpdate(newSchema);
   }
 
   function changeProp() {
-    const newSchema = deepClone(currentSchema) as any;
+    const newSchema = deepClone(currentSchema);
     const root = getMutationsRoot(newSchema);
-    const dynamicArea = root.children[0].children[4];
+    const dynamicProps = propsOf(nodeAt(root, 0, 4));
     // Toggle background between neutral-0 and neutral-900
-    dynamicArea.props.bg = dynamicArea.props.bg === 'neutral-0' ? 'neutral-900' : 'neutral-0';
+    dynamicProps.bg = dynamicProps.bg === 'neutral-0' ? 'neutral-900' : 'neutral-0';
     applyUpdate(newSchema);
   }
 
   function changeType() {
-    const newSchema = deepClone(currentSchema) as any;
+    const newSchema = deepClone(currentSchema);
     const root = getMutationsRoot(newSchema);
-    const dynamicArea = root.children[0].children[4].children[1];
+    const dynamicArea = nodeAt(root, 0, 4, 1);
     // Toggle between Column and Row
     dynamicArea.type = dynamicArea.type === 'Column' ? 'Row' : 'Column';
     applyUpdate(newSchema);
   }
 
   function addRouteChild() {
-    const newSchema = deepClone(currentSchema) as any;
+    const newSchema = deepClone(currentSchema);
     const root = getMutationsRoot(newSchema);
-    const homeRoute = root.routes?.find((r: any) => r.path === '/');
+    const homeRoute = root.routes?.find((r) => r.path === '/');
     if (homeRoute) {
-      const count = homeRoute.children.length;
-      homeRoute.children.push({
+      const homeChildren = childrenOf(homeRoute);
+      const count = homeChildren.length;
+      homeChildren.push({
         type: 'Row',
         props: { p: '300', gap: '200', bg: 'surface-sunken', r: '200', ay: 'center' },
         children: [
@@ -111,43 +142,42 @@ export function schemaMutationActions(
   }
 
   function removeFromMiddle() {
-    const newSchema = deepClone(currentSchema) as any;
+    const newSchema = deepClone(currentSchema);
     const root = getMutationsRoot(newSchema);
-    const dynamicArea = root.children[0].children[4].children[1];
-    if (dynamicArea.children.length >= 2) {
-      const midIndex = Math.floor(dynamicArea.children.length / 2);
-      dynamicArea.children.splice(midIndex, 1);
-    } else if (dynamicArea.children.length === 1) {
-      dynamicArea.children.splice(0, 1);
+    const dynamicChildren = childrenOf(nodeAt(root, 0, 4, 1));
+    if (dynamicChildren.length >= 2) {
+      const midIndex = Math.floor(dynamicChildren.length / 2);
+      dynamicChildren.splice(midIndex, 1);
+    } else if (dynamicChildren.length === 1) {
+      dynamicChildren.splice(0, 1);
     }
     applyUpdate(newSchema);
   }
 
   function reorderChildren() {
-    const newSchema = deepClone(currentSchema) as any;
+    const newSchema = deepClone(currentSchema);
     const root = getMutationsRoot(newSchema);
-    const dynamicArea = root.children[0].children[4].children[1];
-    if (dynamicArea.children.length >= 2) {
-      const first = dynamicArea.children[0];
-      const last = dynamicArea.children[dynamicArea.children.length - 1];
-      dynamicArea.children[0] = last;
-      dynamicArea.children[dynamicArea.children.length - 1] = first;
+    const dynamicChildren = childrenOf(nodeAt(root, 0, 4, 1));
+    if (dynamicChildren.length >= 2) {
+      const first = dynamicChildren[0];
+      const last = dynamicChildren[dynamicChildren.length - 1];
+      dynamicChildren[0] = last;
+      dynamicChildren[dynamicChildren.length - 1] = first;
     }
     applyUpdate(newSchema);
   }
 
   function deepNestedProp() {
-    const newSchema = deepClone(currentSchema) as any;
+    const newSchema = deepClone(currentSchema);
     const root = getMutationsRoot(newSchema);
-    const dynamicArea = root.children[0].children[4].children[1];
-    if (dynamicArea.children.length > 0) {
-      const firstChild = dynamicArea.children[0];
-      if (firstChild.children?.[0]?.props?.color) {
-        firstChild.children[0].props.color =
-          firstChild.children[0].props.color === 'success-500' ? 'danger-500' : 'success-500';
+    const firstChild = nodeAt(root, 0, 4, 1).children?.[0];
+    if (isNode(firstChild)) {
+      const icon = firstChild.children?.[0];
+      if (isNode(icon) && icon.props?.color) {
+        icon.props.color = icon.props.color === 'success-500' ? 'danger-500' : 'success-500';
       }
-      if (firstChild.children?.[1]) {
-        const textNode = firstChild.children[1];
+      const textNode = firstChild.children?.[1];
+      if (isNode(textNode)) {
         textNode.children = [`Modified at ${Date.now() % 10000}`];
       }
     }
@@ -155,14 +185,14 @@ export function schemaMutationActions(
   }
 
   function multiMutate() {
-    const newSchema = deepClone(currentSchema) as any;
+    const newSchema = deepClone(currentSchema);
     const root = getMutationsRoot(newSchema);
-    const mainContent = root.children[0];
-    const dynamicArea = mainContent.children[4];
-    const innerColumn = dynamicArea.children[1];
+    const dynamicArea = nodeAt(root, 0, 4);
+    const innerColumn = nodeAt(dynamicArea, 1);
+    const innerChildren = childrenOf(innerColumn);
 
-    const count = innerColumn.children.length;
-    innerColumn.children.push({
+    const count = innerChildren.length;
+    innerChildren.push({
       type: 'Row',
       props: { p: '300', gap: '200', bg: 'accent-soft', r: '200', ay: 'center' },
       children: [
@@ -171,14 +201,15 @@ export function schemaMutationActions(
       ],
     });
 
-    dynamicArea.props.bg = dynamicArea.props.bg === 'neutral-0' ? 'accent-50' : 'neutral-0';
+    const dynamicProps = propsOf(dynamicArea);
+    dynamicProps.bg = dynamicProps.bg === 'neutral-0' ? 'accent-50' : 'neutral-0';
     innerColumn.type = innerColumn.type === 'Column' ? 'Row' : 'Column';
 
     applyUpdate(newSchema);
   }
 
   function noopMutate() {
-    const newSchema = deepClone(currentSchema) as any;
+    const newSchema = deepClone(currentSchema);
     const result = updateSchema(currentSchema, newSchema, setCurrentSchema);
     if (result.applied) {
       toastService.success('No-op: schema unchanged (0 mutations)');
@@ -186,12 +217,11 @@ export function schemaMutationActions(
   }
 
   function changeText() {
-    const newSchema = deepClone(currentSchema) as any;
+    const newSchema = deepClone(currentSchema);
     const root = getMutationsRoot(newSchema);
-    const dynamicArea = root.children[0].children[4];
-    const placeholder = dynamicArea.children[0];
-    const current = placeholder.children[0];
-    placeholder.children[0] =
+    const placeholderChildren = childrenOf(nodeAt(root, 0, 4, 0));
+    const current = placeholderChildren[0];
+    placeholderChildren[0] =
       current === 'Dynamic children appear here. Click "Add child" above.'
         ? 'Text has been changed! Click again to revert.'
         : 'Dynamic children appear here. Click "Add child" above.';
@@ -199,14 +229,14 @@ export function schemaMutationActions(
   }
 
   function addProp() {
-    const newSchema = deepClone(currentSchema) as any;
+    const newSchema = deepClone(currentSchema);
     const root = getMutationsRoot(newSchema);
-    const dynamicArea = root.children[0].children[4];
-    if (!dynamicArea.props.border) {
-      dynamicArea.props.border = '2px solid var(--we-color-accent-300)';
+    const dynamicProps = propsOf(nodeAt(root, 0, 4));
+    if (!dynamicProps.border) {
+      dynamicProps.border = '2px solid var(--we-color-accent-300)';
     } else {
-      dynamicArea.props.border =
-        dynamicArea.props.border === '2px solid var(--we-color-accent-300)'
+      dynamicProps.border =
+        dynamicProps.border === '2px solid var(--we-color-accent-300)'
           ? '2px dashed var(--we-color-danger-300)'
           : '2px solid var(--we-color-accent-300)';
     }
@@ -214,21 +244,21 @@ export function schemaMutationActions(
   }
 
   function removeProp() {
-    const newSchema = deepClone(currentSchema) as any;
+    const newSchema = deepClone(currentSchema);
     const root = getMutationsRoot(newSchema);
-    const dynamicArea = root.children[0].children[4];
-    if (dynamicArea.props.border) {
-      delete dynamicArea.props.border;
-    } else if (dynamicArea.props.r) {
-      delete dynamicArea.props.r;
+    const dynamicProps = propsOf(nodeAt(root, 0, 4));
+    if (dynamicProps.border) {
+      delete dynamicProps.border;
+    } else if (dynamicProps.r) {
+      delete dynamicProps.r;
     }
     applyUpdate(newSchema);
   }
 
   function toggleTheme() {
-    const newSchema = deepClone(currentSchema) as any;
+    const newSchema = deepClone(currentSchema);
     const root = getMutationsRoot(newSchema);
-    const dynamicArea = root.children[0].children[4];
+    const dynamicArea = nodeAt(root, 0, 4);
     if (dynamicArea.theme) {
       delete dynamicArea.theme;
     } else {
@@ -238,9 +268,9 @@ export function schemaMutationActions(
   }
 
   function invalidMutate() {
-    const newSchema = deepClone(currentSchema) as any;
+    const newSchema = deepClone(currentSchema);
     const root = getMutationsRoot(newSchema);
-    root.children[0].children[4].children[1].children.push({
+    childrenOf(nodeAt(root, 0, 4, 1)).push({
       type: '$each',
       props: {},
       children: [],

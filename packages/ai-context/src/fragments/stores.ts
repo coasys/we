@@ -420,6 +420,7 @@ export const storeEntries: StoreEntry[] = [
       taskStatesLoaded: { type: 'boolean' },
       root: { type: 'string' },
       landmarks: { type: 'object' },
+      landmarksLoaded: { type: 'boolean' },
       starterChoices: { type: 'array' },
       taskWorkflowEnabled: { type: 'boolean' },
       archivedWorkflows: { type: 'array' },
@@ -1259,6 +1260,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       root: "string — the id of this space's collection: the one CollectionBlock (kind 'space') everything top-level hangs off — calls, loose messages, posts, channels, extracted items, the canvas. Scope a top-level read through it: { anchor: 'CollectionBlock', via: 'children', anchorId: spaceStore.root }. Empty outside a space, and in a space made before spaces had one",
       landmarks:
         "Record<name, id> — the records this space names as its landmarks, e.g. spaceStore.landmarks.canvas is the space's canvas. Written by the space's starter at creation. A landmark can be absent — a space can switch template and a template must never assume what another set up — so guard every read",
+      landmarksLoaded:
+        "boolean — the landmarks have answered for the space on screen. Until then an absent landmark is not yet an answer, so gate a 'there is no board yet' on it: { $: 'spaceStore.landmarksLoaded && !spaceStore.landmarks.board' }. Not on `root`, which arrives first",
       starterChoices:
         "{ id, name, description, icon, includes, app? }[] — what a space made now can start with, the default first: the app's kit when the app in use came built in and brings one (app is its name), otherwise the deployment's own starter, then id '$none' (an empty space: no task states, reactions, canvas or board, drawn with the agent's own default template and theme). includes is what it writes, counted from its records (\"3 task states · a canvas · a board\"), empty for an empty space. Pass an id to createSpace; show the default as chosen while nothing is — { $: \"local.starter ? find(spaceStore.starterChoices, { id: local.starter }) : first(spaceStore.starterChoices)\" }. Installed apps' starters are never listed",
       autoInterpret:
@@ -2002,9 +2005,9 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       canChange:
         'boolean — this app keeps master keys (the desktop app’s custody service), so the identity can be changed from here. False on the web and in Electron: Settings shows the log and devices and offers no change. False too where changeBlocked says why',
       changeBlocked:
-        'string — why the identity cannot be made or changed on this computer although the app keeps master keys (a build with no identity store set up), ready to show; empty when it can. Show it beside a disabled "Make my identity here" rather than hiding the door',
+        'string — why the identity cannot be made or changed on this computer although the app keeps master keys (a build naming an identity store without that store’s key), ready to show; empty when it can. Show it beside a disabled "Make my identity here" rather than hiding the door',
       status:
-        '{ did, deviceKey, keyId, revoked, head, fork } | null — what this device’s key speaks for, as the executor reports it',
+        '{ did, deviceKey, keyId, revoked, head, fork, storeBehind } | null — what this device’s key speaks for, as the executor reports it. `storeBehind` ({ since, seq }) is set while the shared store answers the log behind what the executor has checked, which then answers from its own copy',
       statusLoaded: 'boolean — the backend has answered `status` once. Gate a "no identity yet" sentence on it',
       did: 'string — the person’s `did:scid:coasys:1:…`, or empty while this device speaks for nobody',
       keyId: 'string — this device’s id in the key log (`d1`), or empty',

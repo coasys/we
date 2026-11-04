@@ -963,14 +963,14 @@ export interface GraphHostBindings {
    * mark means comes from a capability, and the host is the only thing that can turn one into
    * something renderable.
    */
-  decorations?(): GraphDecoration[];
+  decorations?: () => GraphDecoration[];
   /**
    * Furniture of the host's own, stacked above the controls in the graph's lower right corner and clear of whatever
    * `obscured` says is covering it — for a control about how this graph is being read that belongs
    * to no template, such as a development tool. Screen-anchored, unlike a decoration, and inert to
    * the canvas's gestures, which it sits outside.
    */
-  overlay?(): JSX.Element;
+  overlay?: () => JSX.Element;
   /**
    * Fields to lay over a node's own data, keyed by the record id the node stands for.
    *
@@ -987,7 +987,7 @@ export interface GraphHostBindings {
    *
    * Reactive: read inside the render, so a host signal here re-draws the nodes it names.
    */
-  pendingData?(): Record<string, Record<string, GraphValue>>;
+  pendingData?: () => Record<string, Record<string, GraphValue>>;
   /**
    * The parts of the graph's own box something else is drawn over, in screen pixels per edge.
    *
@@ -1004,7 +1004,7 @@ export interface GraphHostBindings {
    * Reactive, read inside an effect, so a panel being dragged or resized is followed. Omitted by a
    * host with nothing over its graph, which is every host but an app shell.
    */
-  obscured?(): { top: number; right: number; bottom: number; left: number };
+  obscured?: () => { top: number; right: number; bottom: number; left: number };
   /**
    * These records' pending fields are now carried by the graph's own data, so the host can forget
    * them.
@@ -1014,7 +1014,7 @@ export interface GraphHostBindings {
    * second early: the edit flashes to its new value, snaps back for the rest of the seed, and
    * arrives again — which is exactly the flicker optimism was added to remove.
    */
-  confirmPending?(recordIds: string[]): void;
+  confirmPending?: (recordIds: string[]) => void;
   /**
    * Connections the host has written and not yet seen come back, in records rather than nodes — see
    * {@link PendingConnections}. Drawn at once: a line somebody just drew, one they just deleted, an end
@@ -1023,21 +1023,21 @@ export interface GraphHostBindings {
    *
    * Reactive: read inside an effect, so a host signal here redraws the lines it names.
    */
-  pendingConnections?(): PendingConnections;
+  pendingConnections?: () => PendingConnections;
   /**
    * The connections the graph is now drawing from its own data, in records — for the host to judge
    * which of its pending ones the data has overtaken. The counterpart of {@link confirmPending}, and
    * reported from what is drawn for the same reason. Only called while something is pending.
    */
-  observeConnections?(connections: ObservedConnection[]): void;
-  query(request: Record<string, unknown>): Promise<Record<string, unknown>[]>;
+  observeConnections?: (connections: ObservedConnection[]) => void;
+  query: (request: Record<string, unknown>) => Promise<Record<string, unknown>[]>;
   /**
    * Report changes to records of a type, and return a function that stops reporting.
    *
    * Optional: a host with no change notification omits it and the graph stays as loaded. The engine
    * decides what to watch from the reads its seeds performed — nothing calls this directly.
    */
-  watch?(request: { entity: string | string[]; dataset?: string }, onChange: () => void): () => void;
+  watch?: (request: { entity: string | string[]; dataset?: string }, onChange: () => void) => () => void;
   /**
    * Say what happened inside a load, for whoever is debugging an empty canvas.
    *
@@ -1047,9 +1047,9 @@ export interface GraphHostBindings {
    * that read nothing, a seed that read rows and dropped them, and a graph whose nodes are all off
    * screen are the same blank rectangle.
    */
-  trace?(event: string, detail?: Record<string, unknown>): void;
-  defaultDataset(): string | null;
-  models(dataset?: string): {
+  trace?: (event: string, detail?: Record<string, unknown>) => void;
+  defaultDataset: () => string | null;
+  models: (dataset?: string) => {
     name: string;
     properties: { name: string; type: 'string' | 'number' | 'boolean' | 'uri'; required?: boolean }[];
     relations: { name: string; target: string; cardinality: 'one' | 'many' }[];

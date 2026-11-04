@@ -106,8 +106,8 @@ const ROLES = {
 const encode = (value: unknown): string => Literal.from(JSON.stringify(value)).toUrl();
 const decode = (target: string): unknown => {
   try {
-    const raw = Literal.fromUrl(target).get();
-    return typeof raw === 'string' ? JSON.parse(raw) : raw;
+    const raw: unknown = Literal.fromUrl(target).get();
+    return typeof raw === 'string' ? (JSON.parse(raw) as unknown) : raw;
   } catch {
     return undefined;
   }
@@ -405,7 +405,7 @@ export function readShape(links: readonly LinkLike[]): ReadShape | null {
         ? { vocabulary: value(node, ANNOTATION.vocabulary) as string }
         : {}),
       ...(control ? { control: control as never } : {}),
-    } as EntitySchema['properties'][string];
+    };
   }
 
   if (whole !== undefined) entity.display = whole as EntitySchema['display'];
@@ -415,18 +415,22 @@ export function readShape(links: readonly LinkLike[]): ReadShape | null {
   }
 
   const manifestVersion = value(shapeUri, ANNOTATION.manifestVersion);
+  const text = (predicate: string) => {
+    const held = value(shapeUri, predicate);
+    return typeof held === 'string' ? held : '';
+  };
   return {
     shapeUri,
     name,
-    description: String(value(shapeUri, ANNOTATION.recordDescription) ?? ''),
-    icon: String(value(shapeUri, ANNOTATION.icon) ?? ''),
+    description: text(ANNOTATION.recordDescription),
+    icon: text(ANNOTATION.icon),
     shapeId,
     version: Number(value(shapeUri, ANNOTATION.version) ?? 1),
-    forkedFrom: String(value(shapeUri, ANNOTATION.forkedFrom) ?? ''),
+    forkedFrom: text(ANNOTATION.forkedFrom),
     manifest: {
       version: typeof manifestVersion === 'string' ? manifestVersion : '1',
       entities: { [name]: entity },
-    } as EntityManifest,
+    },
   };
 }
 

@@ -122,6 +122,20 @@ export interface IdentityStatusView {
   revoked: number | null;
   head: KeyLogHead | null;
   fork: KeyLogFork | null;
+  /**
+   * Set while the shared store answers this log behind what the backend has already checked (a
+   * store restored from a backup, or not caught up): the backend answers from what it holds
+   * meanwhile. `null` once the store catches up, and on a backend that does not say.
+   */
+  storeBehind: KeyLogStoreBehind | null;
+}
+
+/** The shared store answering a log behind the backend's own copy. */
+export interface KeyLogStoreBehind {
+  /** When the backend first saw it behind, in unix seconds. */
+  since: number;
+  /** The seq of the store's head at its last answer; `null` when it answered no log. */
+  seq: number | null;
 }
 
 /** One device key a log event names. */
@@ -177,7 +191,10 @@ export function readKeyLogEvent(raw: unknown, hash: string | null = null): KeyLo
     hash,
     added: devices
       .filter((d): d is Record<string, unknown> => !!d && typeof d === 'object')
-      .map((d) => ({ id: String(d.id ?? ''), sign: String(d.sign ?? '') })),
+      .map((d) => ({
+        id: typeof d.id === 'string' ? d.id : '',
+        sign: typeof d.sign === 'string' ? d.sign : '',
+      })),
     revoked: Array.isArray(event.revoke) ? event.revoke.map(String) : [],
   };
 }

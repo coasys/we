@@ -54,7 +54,7 @@ export interface RendererContext {
   /** The moment to draw. Always present; reads `null` when there is no clock. */
   clock: LayerClock;
   /** Register something to undo when the layer unmounts. Everything a renderer adds goes here. */
-  onCleanup(cleanup: () => void): void;
+  onCleanup: (cleanup: () => void) => void;
 }
 
 /** A Cesium renderer's context: the shared one, and the viewer. */

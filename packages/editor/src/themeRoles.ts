@@ -60,7 +60,7 @@ function roleLabel(role: string): string {
  */
 export function roleTierLabel(value: string | undefined, role?: ThemeRole): string {
   const tier = roleTier(value);
-  if (tier === 'auto' && role && DERIVED_FROM[role]) return `follows ${roleLabel(DERIVED_FROM[role]!)}`;
+  if (tier === 'auto' && role && DERIVED_FROM[role]) return `follows ${roleLabel(DERIVED_FROM[role])}`;
   if (tier === 'token') return /var\(--we-color-([a-z]+-\d+)\)/.exec(value!)![1];
   if (tier === 'lightness') return 'theme tint';
   if (tier === 'relative') return 'relative to another role';

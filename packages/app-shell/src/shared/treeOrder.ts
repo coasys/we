@@ -50,7 +50,7 @@ export function seatInRow(
 ): Map<string, number> {
   const at = Math.max(0, Math.min(index, row.length));
   const clean = row.every(
-    (entry, position) => isRank(entry.rank) && (position === 0 || entry.rank! > row[position - 1].rank!),
+    (entry, position) => isRank(entry.rank) && (position === 0 || entry.rank > row[position - 1].rank!),
   );
   if (clean) {
     const before = row[at - 1]?.rank;

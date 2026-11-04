@@ -85,6 +85,7 @@ describe('the AD4M identity port', () => {
           revoked: null,
           head,
           fork: null,
+          storeBehind: { since: 1_700_000_000, seq: 0 },
         } satisfies IdentityStatus,
         devices: [
           { keyId: 'd1', sign: 'z6MkOne', bot: null, expires: null, addedSeq: 0, revokedSeq: null, thisDevice: true },
@@ -92,7 +93,12 @@ describe('the AD4M identity port', () => {
         ] satisfies DeviceView[],
       }),
     );
-    expect(await port.status!()).toMatchObject({ did: DID, keyId: 'd1', revoked: null });
+    expect(await port.status!()).toMatchObject({
+      did: DID,
+      keyId: 'd1',
+      revoked: null,
+      storeBehind: { since: 1_700_000_000, seq: 0 },
+    });
     const devices = await port.devices!();
     expect(devices.map((d) => [d.keyId, d.thisDevice, d.revokedSeq])).toEqual([
       ['d1', true, null],

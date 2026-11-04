@@ -17,6 +17,7 @@ import {
   type IdentityPort,
   type IdentityStatusView,
   type KeyLogHead,
+  type KeyLogStoreBehind,
   type KeyLogView,
   NO_IDENTITY_CAPABILITIES,
   readKeyLogEvent,
@@ -57,6 +58,12 @@ function readFork(value: unknown) {
   return { seq: count(fork.seq) ?? 0, ours: text(fork.ours) ?? '', theirs: text(fork.theirs) ?? '' };
 }
 
+function readStoreBehind(value: unknown): KeyLogStoreBehind | null {
+  if (!value || typeof value !== 'object') return null;
+  const behind = value as Raw;
+  return { since: count(behind.since) ?? 0, seq: count(behind.seq) };
+}
+
 export function readIdentityStatus(value: unknown): IdentityStatusView {
   const status = record(value);
   return {
@@ -66,6 +73,7 @@ export function readIdentityStatus(value: unknown): IdentityStatusView {
     revoked: count(status.revoked),
     head: readHead(status.head),
     fork: readFork(status.fork),
+    storeBehind: readStoreBehind(status.storeBehind),
   };
 }
 
@@ -75,7 +83,7 @@ export function readIdentityStatus(value: unknown): IdentityStatusView {
  */
 export function readKeyLog(value: unknown): KeyLogView {
   const log = record(value);
-  const raw = Array.isArray(log.events) ? log.events : [];
+  const raw: unknown[] = Array.isArray(log.events) ? log.events : [];
   const head = readHead(log.head);
   const events = raw.map((event, i) => {
     const next = raw[i + 1];
