@@ -88,12 +88,18 @@ with the Tauri app, which links the same crate.
   asking again focuses it and starts nothing; closing it mid-step cancels the step. `ipcSender.js`
   answers each channel for its own window only. No word, passphrase or key reaches the main window.
 
-The identity store comes from the environment, which this app passes to the executor and the
-sidecar alike:
+With no identity store configured the app uses the default store, `https://store.ad4m.dev`, whose
+key the executor trusts by default, so identity works with no configuration. To use another store,
+set it in the environment, which this app passes to the executor and the sidecar alike:
 
 ```bash
 AD4M_IDENTITY_STORE_URL=<store url> AD4M_IDENTITY_STORE_KEYS=<store key> pnpm electron:dev
 ```
+
+A store URL without its keys leaves the executor trusting no key, so the sidecar reports identity
+`blocked` and the first-run screen says why. The sidecar decides that by the executor's rule
+(`StoreSettings::trusted` in `crates/custody/src/host.rs`, which names
+`IdentitySettings::from_config`; see `crates/custody/README.md`, "The identity store").
 
 Linux and macOS only. On Windows the app starts without identity: the preload exposes none, so the
 shell treats it as an app that keeps no master key, as it does the web. On macOS the sidecar is a separate executable, so a signed build

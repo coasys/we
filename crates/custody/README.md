@@ -71,15 +71,24 @@ AD4M_IDENTITY_STORE_URL=<store url> AD4M_IDENTITY_STORE_KEYS=<store key> pnpm ta
 AD4M_IDENTITY_STORE_URL=<store url> AD4M_IDENTITY_STORE_KEYS=<store key> pnpm electron:dev
 ```
 
-No store is deployed for the apps yet, so there are no values to give here; use those of the store
-you run (`tests/live.rs` starts a local one).
+**With neither set, both apps use the default store, `https://store.ad4m.dev`** (the agent
+language's default, on the staging network), and the executor trusts that store's key by default
+(`identity::DEFAULT_STORE_KEY` in ad4m). So an ordinary build makes, links and revokes identities
+with no configuration, and Add a device names that store in its offer link (`DEFAULT_STORE_URL`,
+`offer_store` in `src/service.rs`). Set both only for a store on another network; `tests/live.rs`
+starts a local store and sets both.
 
-**A build with no store key cannot make or change an identity, and says so.** The executor would
-refuse every publish (it trusts no head the store could answer), so the custody service refuses
-make, add-device and revoke before anything starts — before any words are made — and reports
-`blocked` in its public state. The first-run screen then draws "Make my identity here" disabled with
-the reason, and "Start now" is the way in. Without a URL the agent language keeps its own store
-setting, and Add a device cannot make an offer link.
+The executor decides which keys count (`IdentitySettings::from_config`): the keys given, else the
+default store's key when no URL is given either, else none. The Tauri app links the executor and asks
+that function itself. This crate must not link the executor, and the executor reports no such fact
+over its RPC, so the sidecar the Electron app runs restates the rule in `StoreSettings::trusted`
+(`src/host.rs`); the Tauri test `the_custody_store_rule_is_the_executors` fails if the two disagree.
+
+**A build that names a store without its key cannot make or change an identity, and says so.** The
+executor would refuse every publish (it trusts no head the store could answer), so the custody
+service refuses make, add-device and revoke before anything starts — before any words are made —
+and reports `blocked` in its public state. The first-run screen then draws "Make my identity here"
+disabled with the reason, and "Start now" is the way in.
 
 The executor's agent language has to serve identity: the default mainnet agent language answers a
 publish with "the agent language does not serve identity-append". ad4m's identity suite, and
