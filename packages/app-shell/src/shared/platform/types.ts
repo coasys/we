@@ -256,10 +256,10 @@ export interface CustodyPublic {
   /** How the custody is unlocked on this computer: the OS prompt, or a passphrase it asks for. */
   unlock: 'touch-id-or-password' | 'passphrase' | null;
   /**
-   * Why no identity step can run on this computer, in words a person reads — a build naming an
-   * identity store without that store's key, whose executor would refuse everything it publishes.
-   * (A build naming neither uses the default store, whose key the executor trusts.) Absent or null
-   * when steps can run.
+   * Why no identity step can run on this computer, in words a person reads — the executor reports
+   * no identity store (`identity.status.store` is null: its network names none), or one it trusts
+   * no key for (a store URL given without its key), so it would refuse everything it publishes.
+   * Absent or null when steps can run, and while the executor is not answering yet.
    */
   blocked?: string | null;
 }

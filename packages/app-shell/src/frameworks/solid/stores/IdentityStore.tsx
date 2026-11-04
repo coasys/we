@@ -43,9 +43,9 @@ export interface IdentityStore {
   /** This computer's shell keeps master keys, so the identity can be changed from here. */
   canChange: Accessor<boolean>;
   /**
-   * Why the identity cannot be made or changed here although the shell keeps master keys (a build
-   * naming an identity store without that store's key, so its executor trusts none), in words a
-   * person reads; empty when it can.
+   * Why the identity cannot be made or changed here although the shell keeps master keys (the
+   * executor reports no identity store, or one it trusts no key for), in words a person reads;
+   * empty when it can.
    */
   changeBlocked: Accessor<string>;
   status: Accessor<IdentityStatusView | null>;

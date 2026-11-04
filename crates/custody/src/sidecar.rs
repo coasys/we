@@ -32,7 +32,7 @@ use serde_json::{json, Value};
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::sync::mpsc;
 
-use crate::host::{custody_dir, StoreSettings};
+use crate::host::custody_dir;
 use crate::service::{
     spawn, CustodyHandle, ExecutorAddress, IdentityStep, Screen, StepInput, StepOutcome,
 };
@@ -54,8 +54,9 @@ pub struct Config {
 }
 
 impl Config {
-    /// Reads `--executor-port <port>` and `--custody-dir <dir>` from `args`, and the credential and
-    /// the identity store settings from `env`.
+    /// Reads `--executor-port <port>` and `--custody-dir <dir>` from `args`, and the credential from
+    /// `env`. The identity store is not configured here: custody asks the executor which one it
+    /// uses (`identity.status`), as in the Tauri app.
     pub fn parse(
         args: impl IntoIterator<Item = String>,
         env: impl Fn(&str) -> Option<String>,
@@ -85,18 +86,10 @@ impl Config {
             Some(dir) => dir,
             None => custody_dir(&dirs::home_dir().ok_or("no home folder")?),
         };
-        let store = StoreSettings::resolve(
-            env("AD4M_IDENTITY_STORE_URL"),
-            None,
-            env("AD4M_IDENTITY_STORE_KEYS"),
-            None,
-        );
         Ok(Config {
             executor: ExecutorAddress {
                 url: format!("http://127.0.0.1:{port}"),
                 admin_credential: Arc::from(credential.as_str()),
-                store_trusted: store.trusted(),
-                store_url: store.url,
             },
             custody_dir,
         })
@@ -264,15 +257,13 @@ mod tests {
     use super::*;
     use crate::store::MemoryStore;
 
-    fn custody(store_trusted: bool) -> CustodyHandle {
+    fn custody() -> CustodyHandle {
         // No executor answers on port 9, so nothing here reaches one.
         spawn(
             DesktopVault::new(Box::new(MemoryStore::new()), PendingIncepts::memory()),
             ExecutorAddress {
                 url: "http://127.0.0.1:9".into(),
                 admin_credential: Arc::from("x"),
-                store_url: None,
-                store_trusted,
             },
         )
     }
@@ -299,7 +290,7 @@ mod tests {
     #[tokio::test]
     async fn every_request_is_answered_under_its_id_and_stdin_closing_ends_the_service() {
         let answers = exchange(
-            custody(true),
+            custody(),
             &[
                 r#"{"id":1,"method":"publicState"}"#,
                 r#"{"id":2,"method":"step","params":{"input":{"kind":"confirm"}}}"#,
@@ -319,13 +310,17 @@ mod tests {
     #[tokio::test]
     async fn a_step_runs_through_the_service() {
         let answers = exchange(
-            custody(false),
+            custody(),
             &[r#"{"id":"a","method":"start","params":{"step":{"kind":"create"}}}"#],
         )
         .await;
         let shown = &by_id(&answers, json!("a"))["result"];
+        // No executor answers, so the step cannot learn its store and stops before it starts.
         assert_eq!(shown["screen"]["screen"], "failed");
-        assert_eq!(shown["screen"]["message"], crate::service::NO_STORE);
+        assert_eq!(
+            shown["screen"]["message"],
+            "Coasys is starting on this computer. Try again in a moment."
+        );
         // The last screen of the step: the host learns how it ended without reading the screen.
         assert_eq!(shown["outcome"], "failed");
     }
@@ -333,7 +328,7 @@ mod tests {
     #[tokio::test]
     async fn a_malformed_line_is_answered_with_an_error_and_never_echoed() {
         let answers = exchange(
-            custody(true),
+            custody(),
             &[
                 "not json",
                 r#"{"id":7}"#,
@@ -379,18 +374,14 @@ mod tests {
             args(&["--executor-port", "12001", "--custody-dir", "/tmp/custody"]),
             env(&[
                 (CREDENTIAL_VAR, "the-credential"),
+                // Read by the executor, never by custody.
                 ("AD4M_IDENTITY_STORE_URL", "https://store.example"),
-                ("AD4M_IDENTITY_STORE_KEYS", "z6MkA"),
             ]),
         )
         .unwrap();
         assert_eq!(config.executor.url, "http://127.0.0.1:12001");
         assert_eq!(&*config.executor.admin_credential, "the-credential");
-        assert_eq!(
-            config.executor.store_url.as_deref(),
-            Some("https://store.example")
-        );
-        assert!(config.executor.store_trusted);
+        assert!(!format!("{config:?}").contains("store.example"));
         assert_eq!(config.custody_dir, PathBuf::from("/tmp/custody"));
         // The credential never shows in a debug print either.
         assert!(!format!("{config:?}").contains("the-credential"));
@@ -425,22 +416,5 @@ mod tests {
             with(&["--executor-port"]).unwrap_err(),
             "--executor-port needs a value"
         );
-        // With no store named the executor trusts the default store's key.
-        assert!(
-            with(&["--executor-port", "1", "--custody-dir", "/tmp/c"])
-                .unwrap()
-                .executor
-                .store_trusted
-        );
-        // A store named without its key: every step is refused before it starts.
-        let named = Config::parse(
-            args(&["--executor-port", "1", "--custody-dir", "/tmp/c"]),
-            env(&[
-                (CREDENTIAL_VAR, "x"),
-                ("AD4M_IDENTITY_STORE_URL", "https://store.example"),
-            ]),
-        )
-        .unwrap();
-        assert!(!named.executor.store_trusted);
     }
 }

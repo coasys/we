@@ -339,12 +339,13 @@ async fn make_link_and_revoke_through_the_custody_service() {
         ExecutorAddress {
             url: a.url(),
             admin_credential: Arc::from(credential),
-            store_url: Some(world.store_url.clone()),
-            // The executors here are started with the store's key (`AD4M_IDENTITY_STORE_KEYS`).
-            store_trusted: true,
         },
     );
     let mut shown = Shown::default();
+    // The executors are started with the store and its key (`AD4M_IDENTITY_STORE_URL`/`KEYS`),
+    // which win over the seed's: custody learns the store from `identity.status`, and is not
+    // blocked.
+    assert_eq!(custody.public_state().await.unwrap().blocked, None);
 
     // ─── 1. Make my identity here ───
     let Screen::ShowWords { words } =

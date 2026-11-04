@@ -9,8 +9,8 @@
 //! - [`service`] runs the identity client's flows — create, add a device, revoke — for the identity
 //!   window, and reaches the executor only over its RPC with the admin credential.
 //! - [`window`] says which Tauri window may call which command.
-//! - [`host`] is what every desktop host starts the service with: the custody folder and the
-//!   identity store settings.
+//! - [`host`] is what every desktop host starts the service with: the custody folder. Which
+//!   identity store the executor uses, and whether it trusts it, the service asks the executor.
 //! - [`sidecar`] serves the service over stdin and stdout, as the `we-custody` binary, for the
 //!   Electron app.
 //!

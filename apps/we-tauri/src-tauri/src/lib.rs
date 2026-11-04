@@ -27,18 +27,12 @@ fn seed_data_path(home: &std::path::Path) -> PathBuf {
     expand_home(seed_runtime::AD4M_DATA_PATH, home)
 }
 
-/// Whether the executor, started with these identity store settings, trusts any store key — asked
-/// of the executor's own rule (`IdentitySettings::from_config`) rather than restated here. With
-/// neither set it trusts the default store's key; a URL without keys trusts none.
-fn executor_trusts_a_store(store: &we_custody::host::StoreSettings) -> bool {
-    let config = Ad4mConfig {
-        identity_store_url: store.url.clone(),
-        identity_store_keys: store.keys.clone(),
-        ..Default::default()
-    };
-    !rust_executor::identity::IdentitySettings::from_config(&config)
-        .store_keys
-        .is_empty()
+/// One identity store setting: the run-time variable when set and not empty, else the value the
+/// build was compiled with, else none.
+fn identity_store_setting(runtime: Option<String>, built: Option<&str>) -> Option<String> {
+    runtime
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| built.map(str::to_string).filter(|s| !s.trim().is_empty()))
 }
 
 /// This app's own configuration directory.
@@ -186,25 +180,27 @@ pub fn run() {
         .expect("Failed to initialize AD4M");
     }
 
-    // The identity store the executor's agent language uses, and the store keys whose heads it
-    // trusts: `AD4M_IDENTITY_STORE_URL` and `AD4M_IDENTITY_STORE_KEYS` (comma-separated), the
-    // names the executor's own CLI reads. A build carries them when they are set while it is
-    // compiled (DEVELOPMENT.md, "The identity store"); the same variables at run time override
-    // that. With neither set the executor uses the agent language's default store and trusts that
-    // store's key. A URL without keys trusts no key: the executor then accepts no head from the
-    // store, so the custody service refuses every identity step before it starts, and the app says
-    // why rather than offering it.
-    let store = we_custody::host::StoreSettings::from_env(
+    // An identity store for the executor other than its network's: `AD4M_IDENTITY_STORE_URL` and
+    // `AD4M_IDENTITY_STORE_KEYS` (comma-separated), the names the executor's own CLI reads. A
+    // build carries them when they are set while it is compiled (`crates/custody/README.md`, "The
+    // identity store"); the same variables at run time override that. They are only passed on:
+    // with neither set the executor uses the store its network seed names, and what it uses and
+    // whether it trusts it the custody service asks of it (`identity.status`), never of these.
+    let identity_store_url = identity_store_setting(
+        std::env::var("AD4M_IDENTITY_STORE_URL").ok(),
         option_env!("AD4M_IDENTITY_STORE_URL"),
-        option_env!("AD4M_IDENTITY_STORE_KEYS"),
     );
-    let store_trusted = executor_trusts_a_store(&store);
-    let (identity_store_url, identity_store_keys) = (store.url, store.keys);
-    if !store_trusted {
-        log.host(
-            "An identity store URL without its key: making or changing an identity is off in this build",
-        );
-    }
+    let identity_store_keys = identity_store_setting(
+        std::env::var("AD4M_IDENTITY_STORE_KEYS").ok(),
+        option_env!("AD4M_IDENTITY_STORE_KEYS"),
+    )
+    .map(|keys| {
+        keys.split(',')
+            .map(|k| k.trim().to_string())
+            .filter(|k| !k.is_empty())
+            .collect::<Vec<_>>()
+    })
+    .filter(|keys| !keys.is_empty());
 
     // The custody service: the person's master key, behind the OS unlock, in this process but never
     // in the executor's code (it is its own crate, `crates/custody`, and reaches the executor over RPC with
@@ -220,8 +216,6 @@ pub fn run() {
         we_custody::ExecutorAddress {
             url: format!("http://127.0.0.1:{graphql_port}"),
             admin_credential: std::sync::Arc::from(req_credential.as_str()),
-            store_url: identity_store_url.clone(),
-            store_trusted,
         },
     );
 
@@ -314,48 +308,21 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::executor_trusts_a_store;
-    use we_custody::host::StoreSettings;
+    use super::identity_store_setting;
 
-    fn store(url: Option<&str>, keys: Option<&str>) -> StoreSettings {
-        StoreSettings::resolve(
-            url.map(str::to_string),
-            None,
-            keys.map(str::to_string),
-            None,
-        )
-    }
-
-    /// The executor's own rule decides: the default config trusts the default store's key, a
-    /// named store without keys trusts none, and configured keys are trusted with or without a URL.
     #[test]
-    fn only_a_named_store_without_keys_is_untrusted() {
-        assert!(executor_trusts_a_store(&store(None, None)));
-        assert!(!executor_trusts_a_store(&store(
-            Some("https://store.example"),
-            None
-        )));
-        assert!(executor_trusts_a_store(&store(
-            Some("https://store.example"),
-            Some("z6MkA")
-        )));
-        assert!(executor_trusts_a_store(&store(None, Some("z6MkA"))));
-    }
-
-    /// The custody sidecar the Electron app runs cannot link the executor, so
-    /// `StoreSettings::trusted` restates the executor's rule; this is where a drift between the
-    /// two would show.
-    #[test]
-    fn the_custody_store_rule_is_the_executors() {
-        for url in [None, Some("https://store.example"), Some(" ")] {
-            for keys in [None, Some("z6MkA"), Some("z6MkA,z6MkB"), Some(" , ")] {
-                let settings = store(url, keys);
-                assert_eq!(
-                    settings.trusted(),
-                    executor_trusts_a_store(&settings),
-                    "url {url:?}, keys {keys:?}"
-                );
-            }
-        }
+    fn the_run_time_store_setting_overrides_the_built_one_and_empty_is_none() {
+        let built = Some("https://store.built");
+        assert_eq!(
+            identity_store_setting(Some("https://store.run".into()), built).as_deref(),
+            Some("https://store.run")
+        );
+        assert_eq!(identity_store_setting(None, built).as_deref(), built);
+        assert_eq!(
+            identity_store_setting(Some(" ".into()), built).as_deref(),
+            built
+        );
+        assert_eq!(identity_store_setting(None, Some("")), None);
+        assert_eq!(identity_store_setting(None, None), None);
     }
 }

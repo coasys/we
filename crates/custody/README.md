@@ -3,7 +3,7 @@
 The person's master key never rests in the executor or in a web view. Both desktop apps keep it
 here: the Tauri app links this crate into its main process, and the Electron app runs it as the
 `we-custody` sidecar beside the executor. One implementation of everything that matters — the vault,
-the flows, the identity store settings — for both shells.
+the flows, reading the identity store from the executor — for both shells.
 
 `DesktopVault` keeps master keys over the macOS keychain, or sealed under a passphrase (Argon2id,
 XChaCha20-Poly1305) in the Linux Secret Service, or in `<data dir>/coasys/custody/<scid>.bin`
@@ -31,8 +31,8 @@ ended — never a screen. See each app's `DEVELOPMENT.md`.
 ## The sidecar
 
 `we-custody --executor-port <port> [--custody-dir <dir>]`, with the executor's admin credential in
-`AD4M_ADMIN_CREDENTIAL` (never an argument: `ps` shows arguments to every user) and the identity
-store settings in the environment, as below. It speaks lines of JSON on stdin and stdout
+`AD4M_ADMIN_CREDENTIAL` (never an argument: `ps` shows arguments to every user). It takes no
+identity store setting: it asks the executor which store it uses, as below. It speaks lines of JSON on stdin and stdout
 (`src/sidecar.rs`):
 
 ```text
@@ -56,12 +56,20 @@ Log lines go to stderr and carry no secret.
 
 ## The identity store
 
-The executor's identity store is two settings, named as the executor's own CLI names them:
-`AD4M_IDENTITY_STORE_URL` (where the store is) and `AD4M_IDENTITY_STORE_KEYS` (the store's signing
-keys, comma-separated multikeys — the executor accepts a head from the store only when one of these
-signed it). `host::StoreSettings` reads them for both apps. The Tauri app also takes the values the
-build was compiled with (`option_env!`), so a build handed to somebody carries them; the Electron
-app passes its environment to the executor and the sidecar alike.
+**The network names its identity store, not WE.** The executor's bootstrap seed carries
+`identityStore: { url, keys }` — the store's URL and the keys that sign its heads — and the
+executor uses that store unless it is given another. WE holds no store URL or key of its own; the
+mainnet seed names `https://store.ad4m.dev` and its key, so an ordinary build makes, links and
+revokes identities with no configuration.
+
+A build on another store passes it to the executor as two settings, named as the executor's own CLI
+names them: `AD4M_IDENTITY_STORE_URL` (where the store is) and `AD4M_IDENTITY_STORE_KEYS` (its
+signing keys, comma-separated multikeys — the executor accepts a head from the store only when one
+of these signed it). Given, they win over the seed's store. The Tauri app reads each from its
+run-time environment, and otherwise from the value the build was compiled with (`option_env!` in
+`apps/we-tauri/src-tauri/src/lib.rs`), so a build handed to somebody carries them; the Electron app
+passes its environment to the executor it starts. Either app only passes them on: nothing in WE —
+this crate and the sidecar included — reads them to decide anything.
 
 ```sh
 # A demo Tauri build that carries its store. Set both while compiling; cargo rebuilds when they change.
@@ -72,24 +80,21 @@ AD4M_IDENTITY_STORE_URL=<store url> AD4M_IDENTITY_STORE_KEYS=<store key> pnpm ta
 AD4M_IDENTITY_STORE_URL=<store url> AD4M_IDENTITY_STORE_KEYS=<store key> pnpm electron:dev
 ```
 
-**With neither set, both apps use the default store, `https://store.ad4m.dev`** (the agent
-language's default, on the staging network), and the executor trusts that store's key by default
-(`identity::DEFAULT_STORE_KEY` in ad4m). So an ordinary build makes, links and revokes identities
-with no configuration, and Add a device names that store in its offer link (`DEFAULT_STORE_URL`,
-`offer_store` in `src/service.rs`). Set both only for a store on another network; `tests/live.rs`
-starts a local store and sets both.
+`tests/live.rs` starts a local store and sets both.
 
-The executor decides which keys count (`IdentitySettings::from_config`): the keys given, else the
-default store's key when no URL is given either, else none. The Tauri app links the executor and asks
-that function itself. This crate must not link the executor, and the executor reports no such fact
-over its RPC, so the sidecar the Electron app runs restates the rule in `StoreSettings::trusted`
-(`src/host.rs`); the Tauri test `the_custody_store_rule_is_the_executors` fails if the two disagree.
+**What store the executor uses, and whether it trusts it, is the executor's answer:**
+`identity.status` reports `store: { url, trusted } | null`. The custody service asks it before every
+step and for its public state (`status_and_store`, `trusted_store` in `src/service.rs`), in the Tauri
+app and the sidecar alike; it restates no rule of the executor's. Add a device names `store.url` in
+its offer link, which the claiming device publishes through.
 
-**A build that names a store without its key cannot make or change an identity, and says so.** The
-executor would refuse every publish (it trusts no head the store could answer), so the custody
-service refuses make, add-device and revoke before anything starts — before any words are made —
-and reports `blocked` in its public state. The first-run screen then draws "Make my identity here"
-disabled with the reason, and "Start now" is the way in.
+**With no store, or one the executor trusts no key for, nothing can make or change an identity, and
+the app says so.** That is a network whose seed names no store, or a build that names a store URL
+without its key: the executor would refuse every publish (`no-store-keys`). So the custody service
+refuses make, add-device and revoke before anything starts — before any words are made — and
+reports `blocked` in its public state. The first-run screen then draws "Make my identity here"
+disabled with the reason, and "Start now" is the way in. While the executor is not answering yet,
+nothing is known and nothing is reported blocked; the step itself asks again.
 
 The executor's agent language has to serve identity: the default mainnet agent language answers a
 publish with "the agent language does not serve identity-append". ad4m's identity suite, and
