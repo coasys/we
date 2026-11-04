@@ -24,8 +24,8 @@ export function CodePanel() {
       onKeyDown={(e: KeyboardEvent) => {
         if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
           e.preventDefault();
-          if (e.shiftKey) session.redo();
-          else session.undo();
+          if (e.shiftKey) void session.redo();
+          else void session.undo();
         }
       }}
       tabIndex={0}

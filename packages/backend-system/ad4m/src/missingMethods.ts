@@ -109,7 +109,9 @@ function methodNamed(message: string): string {
  */
 export function recordMissingMethod(error: unknown): boolean {
   const status = (error as { status?: unknown; code?: unknown })?.status ?? (error as { code?: unknown })?.code;
-  const message = error instanceof Error ? error.message : String(error ?? '');
+  const text = (error as { message?: unknown })?.message;
+  const message =
+    error instanceof Error ? error.message : typeof error === 'string' ? error : typeof text === 'string' ? text : '';
   if (status !== 404 && !/unknown type/i.test(message)) return false;
 
   /*

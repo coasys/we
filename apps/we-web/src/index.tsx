@@ -7,7 +7,7 @@ import './platform/randomUuidPolyfill';
 import '@we/app-shell/shared/index.scss';
 
 import { writeGuestBootTarget } from '@we/app-shell/shared';
-import { App, PlatformProvider, type WeSeedFile } from '@we/app-shell/solid';
+import { App, PlatformProvider } from '@we/app-shell/solid';
 import weSeed from '@we/seed-file';
 import { render } from 'solid-js/web';
 
@@ -43,7 +43,7 @@ if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
 
 render(
   () => (
-    <PlatformProvider seed={weSeed as unknown as WeSeedFile} platform={webPlatform} backend={connector}>
+    <PlatformProvider seed={weSeed} platform={webPlatform} backend={connector}>
       <App />
     </PlatformProvider>
   ),

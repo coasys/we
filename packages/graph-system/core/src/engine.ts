@@ -939,10 +939,10 @@ export class GraphEngine {
    * A seed with no `derive` is its fragment as fetched.
    */
   private derived(source: string, fragment: GraphFragment, options: unknown): GraphFragment {
-    const derive = this.registry.seed(source)?.derive;
-    if (!derive) return fragment;
+    const seed = this.registry.seed(source);
+    if (!seed?.derive) return fragment;
     try {
-      const { summary, ...finished } = derive(fragment, options ?? {});
+      const { summary, ...finished } = seed.derive(fragment, options ?? {});
       if (summary) {
         const said = JSON.stringify(summary);
         if (this.seedSummaries.get(source) !== said) {
@@ -2096,7 +2096,7 @@ export class GraphEngine {
         edge.id,
         from,
         to,
-        normaliseCurve(style.curve as string | undefined),
+        normaliseCurve(style.curve),
         0,
         looseTo ? 0 : this.clearanceFor(this.store.node(targetId)),
         looseFrom ? 0 : this.clearanceFor(this.store.node(sourceId), 0),

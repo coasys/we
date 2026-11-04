@@ -103,7 +103,7 @@ export function createOwnersPort(deps: {
     const [moduleId, dock] = dockId.split(':');
     const registered = moduleRegistry.get(moduleId ?? '');
     const panel = registered?.definition.contributes?.panels?.find((p) => p.name === dock);
-    return registered && panel ? { registered, panel, moduleId: moduleId!, dock: dock! } : null;
+    return registered && panel ? { registered, panel, moduleId: moduleId, dock: dock } : null;
   };
 
   return {
@@ -137,7 +137,7 @@ export function createOwnersPort(deps: {
 
     panelNode: (dockId) => {
       const node = panelOf(dockId)?.panel.node;
-      return node ? (copyOf(node) as SchemaNode) : null;
+      return node ? copyOf<SchemaNode>(node) : null;
     },
 
     view: (id) => {
@@ -169,7 +169,7 @@ export function createOwnersPort(deps: {
       const resolved = space.routableViews().find((view) => view.id === id);
       if (!resolved || !space.canAdministerCurrentSpace()) return null;
       const before = new Set(template.spaceTemplates().map((t) => t.id));
-      const copy = copyOf(resolved.schema) as TemplateSchema;
+      const copy = copyOf<TemplateSchema>(resolved.schema);
       copy.forkedFrom = id;
       // Saved without becoming the template on screen: the copy takes the section's place in the
       // shell, and making it current would replace the whole shell with one section.

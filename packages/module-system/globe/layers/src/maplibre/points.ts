@@ -41,7 +41,7 @@ const HOVER_EASE = 0.2;
 /** Space between a marker and the name below it, in pixels. */
 const LABEL_GAP = 8;
 
-export async function renderPoints(
+export function renderPoints(
   context: MapLibreRendererContext,
   initial: PointsOptions,
 ): Promise<LayerRenderer<PointsOptions>> {
@@ -142,7 +142,7 @@ export async function renderPoints(
         },
       ];
     });
-    (map.getSource(grownId) as GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features: grown });
+    void map.getSource<GeoJSONSource>(grownId)?.setData({ type: 'FeatureCollection', features: grown });
   };
   const images = mountImages(context);
   const colors = maplibreColors(context, () => draw());
@@ -323,5 +323,5 @@ export async function renderPoints(
   };
 
   rebuild(initial);
-  return { update: rebuild };
+  return Promise.resolve({ update: rebuild });
 }

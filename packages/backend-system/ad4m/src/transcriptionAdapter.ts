@@ -208,7 +208,7 @@ export function createAd4mTranscriptionPort(
           name: OFFERED_MODEL.name,
           local: { fileName: OFFERED_PRESET },
           modelType: TRANSCRIPTION_MODEL_TYPE,
-        } as Parameters<Ad4mClient['ai']['addModel']>[0])
+        })
         .catch((cause: unknown) => {
           refused = cause;
         });
@@ -217,7 +217,10 @@ export function createAd4mTranscriptionPort(
       while (Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, REGISTER_POLL_MS));
         if ((await transcriptionModels()).length > 0) return;
-        if (refused) throw refused;
+        if (refused)
+          throw refused instanceof Error
+            ? refused
+            : new Error('transcription: the model was refused', { cause: refused });
       }
       throw new Error('transcription: the model was not registered');
     },

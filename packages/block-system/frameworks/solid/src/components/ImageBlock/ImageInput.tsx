@@ -164,7 +164,7 @@ export function ImageInput(props: ImageInputProps) {
               <we-input
                 type="text"
                 value={imageUrl()}
-                on:input={(e: CustomEvent) => setImageUrl(e.detail)}
+                on:input={(e: CustomEvent<string>) => setImageUrl(e.detail)}
                 placeholder="Or paste an image URL…"
                 flex="1"
               />
@@ -176,7 +176,7 @@ export function ImageInput(props: ImageInputProps) {
             <we-input
               type="text"
               value={altText()}
-              on:input={(e: CustomEvent) => setAltText(e.detail)}
+              on:input={(e: CustomEvent<string>) => setAltText(e.detail)}
               placeholder="Alt text (optional)"
               width="100%"
             />
@@ -187,7 +187,7 @@ export function ImageInput(props: ImageInputProps) {
       {/* Crop modal — portalled to escape the editor's contenteditable context. */}
       <Show when={rawUrl()}>
         <Portal>
-          <we-modal close={handleCropBack} size="md">
+          <we-modal close={() => handleCropBack()} size="md">
             <we-text variant="heading-md">Crop Image</we-text>
             <ImageCrop
               src={rawUrl()!}
@@ -200,7 +200,7 @@ export function ImageInput(props: ImageInputProps) {
               <we-button variant="soft" onClick={handleCropBack}>
                 Back
               </we-button>
-              <we-button onClick={handleCropSave}>Save</we-button>
+              <we-button onClick={() => void handleCropSave().catch(console.error)}>Save</we-button>
             </Row>
           </we-modal>
         </Portal>

@@ -1,4 +1,5 @@
 import { surfaceStyles } from '@we/schema-shared';
+import { For, untrack } from 'solid-js';
 
 import { createSurface } from './createSurface';
 import type { RendererOutput, SchemaNode } from './types';
@@ -39,16 +40,24 @@ export function SurfaceRenderer(props: {
   context: Record<string, unknown>;
   renderNode: (node: SchemaNode, context: Record<string, unknown>) => RendererOutput;
 }): RendererOutput {
-  const asKey = String(props.node.props?.as ?? 'surface');
+  // A mounted node and its context are fixed for the renderer's life; see `renderChildren`.
+  const as = untrack(() => props.node.props?.as);
+  const asKey = typeof as === 'string' ? as : 'surface';
   const { surface, outerRef, tierRef, outerAttrs, tierAttrs } = createSurface();
 
-  const childContext = { ...props.context, [asKey]: surface };
-  const style = { ...FILL, ...surfaceStyles(), ...((props.node.props?.styles as Record<string, string>) ?? {}) };
+  const childContext = { ...untrack(() => props.context), [asKey]: surface };
+  const style = {
+    ...FILL,
+    ...surfaceStyles(),
+    ...((untrack(() => props.node.props?.styles) as Record<string, string>) ?? {}),
+  };
 
   return (
     <div {...outerAttrs} style={style} ref={outerRef}>
       <div {...tierAttrs} ref={tierRef} />
-      {(props.node.children as SchemaNode[] | undefined)?.map((child) => props.renderNode(child, childContext))}
+      <For each={props.node.children as SchemaNode[] | undefined}>
+        {(child) => props.renderNode(child, childContext)}
+      </For>
     </div>
   );
 }

@@ -158,7 +158,7 @@ export function ghostOutline(visual: NodeVisual, at: Point): string {
     const [rx, ry] = [width / 2, height / 2];
     return `M ${left} ${at.y} a ${rx} ${ry} 0 1 0 ${width} 0 a ${rx} ${ry} 0 1 0 ${-width} 0 Z`;
   }
-  const cut = cardSilhouette(visual.cardShape as CardShape | undefined);
+  const cut = cardSilhouette(visual.cardShape);
   if (cut) return `M ${cut.map(([x, y]) => `${left + x * width} ${top + y * height}`).join(' L ')} Z`;
   const r = Math.min(width, height) / 12;
   return (
@@ -577,7 +577,7 @@ export function GraphView(props: GraphViewProps) {
   // Read once: expanders are constructed with their options, so changing `reified` needs a remount —
   // which is what a template does anyway when it swaps one graph for another.
   const registry = new PluginRegistry({
-    ...defaultExpanders({ reified: props.reified ?? DEFAULT_REIFIED_EDGES }),
+    ...defaultExpanders({ reified: untrack(() => props.reified) ?? DEFAULT_REIFIED_EDGES }),
     layouts: defaultLayouts(),
     behaviours: defaultBehaviours(),
     metrics: defaultMetrics(),
@@ -595,7 +595,7 @@ export function GraphView(props: GraphViewProps) {
       // Present only when the host can actually report changes: the engine tests for the method to
       // decide whether a live graph is possible at all, so passing a no-op stub would tell it yes
       // and leave it waiting for notifications nothing will ever send.
-      ...(props.host?.watch && {
+      ...(untrack(() => props.host?.watch) && {
         watch: (request, onChange) => props.host!.watch!(request, onChange),
       }),
       defaultDataset: () => props.host?.defaultDataset() ?? null,
@@ -603,7 +603,7 @@ export function GraphView(props: GraphViewProps) {
       warn: () => undefined,
       // Spread like `watch`, so an expander asking whether it can trace gets the honest answer
       // rather than a stub that swallows everything.
-      ...(props.host?.trace && { trace: (event, detail) => props.host!.trace!(event, detail) }),
+      ...(untrack(() => props.host?.trace) && { trace: (event, detail) => props.host!.trace!(event, detail) }),
     },
     onEvent: (event) => {
       switch (event.type) {
@@ -788,7 +788,7 @@ export function GraphView(props: GraphViewProps) {
     // The fold's and the layout's question: somebody who asked for less movement gets the jump.
     reduced: () => foldTravel() === 0,
   });
-
+  // eslint-disable-next-line solid/reactivity -- the engine calls this on each change; props are read then
   engine.subscribe((reason) => {
     batch(() => {
       if (reason === 'viewport') {

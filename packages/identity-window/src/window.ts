@@ -46,9 +46,10 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
-function button(label: string, onClick: () => void, kind: 'primary' | 'danger' | '' = ''): HTMLButtonElement {
+/** A button whose handler may be a step: `run` draws its outcome, failures included. */
+function button(label: string, onClick: () => unknown, kind: 'primary' | 'danger' | '' = ''): HTMLButtonElement {
   const b = el('button', { className: kind, type: 'button', textContent: label });
-  b.addEventListener('click', onClick);
+  b.addEventListener('click', () => void onClick());
   return b;
 }
 
@@ -149,9 +150,11 @@ function body(screen: Screen): Child[] {
       offerTimer = window.setInterval(tick, 1000);
       // The claim can come at any moment: ask the custody service to wait for it now, leaving the
       // buttons live so the person can still copy the link or cancel while it waits.
-      queueMicrotask(() =>
-        host.step({ kind: 'wait-claim' }).then(draw, (error) => draw({ screen: 'failed', message: String(error) })),
-      );
+      queueMicrotask(() => {
+        void host
+          .step({ kind: 'wait-claim' })
+          .then(draw, (error: unknown) => draw({ screen: 'failed', message: String(error) }));
+      });
       return [
         qr,
         el('div', { className: 'link', textContent: screen.link }),

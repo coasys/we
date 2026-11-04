@@ -191,7 +191,10 @@ export function readKeyLogEvent(raw: unknown, hash: string | null = null): KeyLo
     hash,
     added: devices
       .filter((d): d is Record<string, unknown> => !!d && typeof d === 'object')
-      .map((d) => ({ id: String(d.id ?? ''), sign: String(d.sign ?? '') })),
+      .map((d) => ({
+        id: typeof d.id === 'string' ? d.id : '',
+        sign: typeof d.sign === 'string' ? d.sign : '',
+      })),
     revoked: Array.isArray(event.revoke) ? event.revoke.map(String) : [],
   };
 }

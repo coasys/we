@@ -145,7 +145,7 @@ export function vocabularyPlugins(): { seed: SeedSource; expander: Expander; rec
           bucket: bucket.key,
           // Its place among the categories, for a layout to keep — a node id sorts alphabetically.
           order: rank.indexOf(index),
-          ...(counts[index] !== undefined ? { count: counts[index]! } : {}),
+          ...(counts[index] !== undefined ? { count: counts[index] } : {}),
         },
         ...(counts[index] === 0 ? { leaf: true } : {}),
         source: 'vocabulary',

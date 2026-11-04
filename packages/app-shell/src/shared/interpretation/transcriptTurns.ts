@@ -107,12 +107,12 @@ export async function gatherTranscriptTurns(
       thread too; it carries no text, so the checks below leave it out.
     */
     const rows = withThreads(
-      (await model.findAll(deps.handle, {
+      await model.findAll(deps.handle, {
         // The collection's own parts, by the relation's name; the backend knows how it stores them.
         parent: { id: collectionId, relation: 'children', entity: 'CollectionBlock' },
         include: { thread: true },
         ...(options.limit !== undefined ? { limit: options.limit } : {}),
-      })) as Record<string, unknown>[],
+      }),
     );
 
     for (const row of rows) {

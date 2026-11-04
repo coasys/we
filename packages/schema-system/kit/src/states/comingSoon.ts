@@ -35,7 +35,7 @@ export interface ComingSoonOptions {
  * it cannot be tabbed to and pressed, which a faded control that still worked would invite.
  */
 export function comingSoon(opts: ComingSoonOptions): SchemaNode {
-  const available = opts.available as SchemaProp;
+  const available = opts.available;
   return {
     type: 'Card',
     props: { bg: 'surface', gap: '300' },

@@ -18,7 +18,7 @@ interface CliOptions {
   verbose?: boolean;
 }
 
-async function parseArgs(): Promise<CliOptions> {
+function parseArgs(): CliOptions {
   const args = process.argv.slice(2);
 
   const options: CliOptions = {
@@ -88,7 +88,7 @@ Examples:
 
 async function run() {
   try {
-    const options = await parseArgs();
+    const options = parseArgs();
 
     if (options.verbose) {
       console.log('Loading seed file:', options.seedPath);
@@ -177,4 +177,4 @@ async function run() {
 }
 
 // Run CLI
-run();
+void run();

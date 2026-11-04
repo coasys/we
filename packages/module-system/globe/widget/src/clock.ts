@@ -23,7 +23,7 @@ const SETTINGS = ['from', 'to', 'speed', 'duration', 'rate', 'loop'] as const;
 function settingsOf(options: GlobeClockOptions): ClockSettings {
   const settings: Record<string, unknown> = {};
   for (const key of SETTINGS) if (options[key] !== undefined) settings[key] = options[key];
-  return settings as ClockSettings;
+  return settings;
 }
 
 export function followClock(

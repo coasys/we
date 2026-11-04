@@ -65,7 +65,7 @@ function readRecord(record: RecordInput | undefined) {
   if (!themeToolset.appliesTo.includes(record.className))
     throw new Error(`The theme tools work on Theme records, not ${record.className}.`);
   return {
-    name: String(record.properties.name ?? ''),
+    name: typeof record.properties.name === 'string' ? record.properties.name : '',
     version: Number(record.properties.version) || 1,
     overrides: parseOverrides(fileText(record.properties.overrides) || null),
     css: fileText(record.properties.css),
@@ -83,7 +83,7 @@ export function mergeOverrides(stored: ThemeOverrides, given: Record<string, unk
   for (const [key, value] of Object.entries(given)) {
     if (value === null) delete next[key];
     else if (NESTED.has(key) && isObject(value) && isObject(next[key])) {
-      const inner: Record<string, unknown> = { ...(next[key] as Record<string, unknown>) };
+      const inner: Record<string, unknown> = { ...next[key] };
       for (const [k, v] of Object.entries(value)) {
         if (v === null) delete inner[k];
         else inner[k] = v;
@@ -91,7 +91,7 @@ export function mergeOverrides(stored: ThemeOverrides, given: Record<string, unk
       next[key] = inner;
     } else next[key] = value;
   }
-  return next as ThemeOverrides;
+  return next;
 }
 
 /** Why the settings cannot be saved, or undefined when they can. */
@@ -167,7 +167,7 @@ function update({ record, args }: ToolCall) {
     return {
       text:
         `Error: The theme has changed since it was read — it is version ${stored.version} now, and this edit ` +
-        `was written against version ${parsed.version}. Read it again with ${THEME_READ} and write the edit ` +
+        `was written against version ${JSON.stringify(parsed.version)}. Read it again with ${THEME_READ} and write the edit ` +
         'against what it says now.',
     };
   if (parsed.overrides !== undefined && !isObject(parsed.overrides))
@@ -217,6 +217,7 @@ export const themeToolset: RecordToolset = {
   appliesTo: ['Theme'],
   tools: [readTool, updateTool],
 
+  // eslint-disable-next-line @typescript-eslint/require-await -- the work is synchronous, but a malformed record must reject the call as RecordToolset promises, not throw.
   async call(name, input) {
     if (name === THEME_READ) return { text: read(input) };
     if (name === THEME_UPDATE) return update(input);
@@ -224,13 +225,14 @@ export const themeToolset: RecordToolset = {
   },
 
   docs: {
-    list: async () => [
-      {
-        path: DOC_PATH,
-        title: 'Theming',
-        summary: 'Every setting a theme can set, and how to edit one with these tools.',
-      },
-    ],
-    read: async (path) => (path === DOC_PATH ? docText() : undefined),
+    list: () =>
+      Promise.resolve([
+        {
+          path: DOC_PATH,
+          title: 'Theming',
+          summary: 'Every setting a theme can set, and how to edit one with these tools.',
+        },
+      ]),
+    read: (path) => Promise.resolve(path === DOC_PATH ? docText() : undefined),
   },
 };

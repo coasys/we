@@ -306,7 +306,7 @@ export const BODY_TYPE: Record<string, string> = {
 
 /** Drop absent keys so a spread cannot blank a preset value with an explicit `undefined`. */
 function stripUndefined(theme: ThemeOverrides): ThemeOverrides {
-  return Object.fromEntries(Object.entries(theme).filter(([, value]) => value !== undefined)) as ThemeOverrides;
+  return Object.fromEntries(Object.entries(theme).filter(([, value]) => value !== undefined));
 }
 
 /** A comma-separated list of CSS gradients and nothing else. */
@@ -1083,7 +1083,9 @@ export const LEGIBLE_FOREGROUNDS: { fg: ThemeRole; on: ThemeRole[]; level: Contr
   // Every family other than the accent, from the registry: its text on its own tint and on a card.
   ...CHROMATIC_FAMILIES.filter((family) => family !== 'accent').map((family) => ({
     fg: `${family}Text` as ThemeRole,
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- this callback's return has no contextual type, so without it 'surface' widens to string
     on: [`${family}Soft` as ThemeRole, 'surface' as ThemeRole],
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- likewise, 'body' would widen to string
     level: 'body' as ContrastLevel,
   })),
 ];

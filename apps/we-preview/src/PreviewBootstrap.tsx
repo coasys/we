@@ -50,8 +50,8 @@ export function PreviewBootstrap(props: { datasetId: string; route: string }) {
       // for a host whose whole output is a photograph of one template: shell chrome in the *agent's*
       // theme puts a second design in the frame, and the palette sampled off that frame then averages
       // two themes together.
-      themeStore.setThemeScopeGlobal(true);
-    })();
+      await themeStore.setThemeScopeGlobal(true);
+    })().catch((error) => console.error('Preview: could not open the space', error));
   });
 
   return null;

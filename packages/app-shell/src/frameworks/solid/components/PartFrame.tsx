@@ -22,7 +22,7 @@ import { isHostPart } from '@shared/registries/hostParts';
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import { Row } from '@we/components/solid';
 import { PART_ATTR, PART_NODE_ATTR } from '@we/schema-shared';
-import { createEffect, createMemo, createSignal, type JSX, onCleanup, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, type JSX, onCleanup, Show, untrack } from 'solid-js';
 
 import { useDatasetStore } from '../stores/DatasetStore';
 import { useEditorStore } from '../stores/EditorStore';
@@ -98,10 +98,12 @@ export function PresentPart(props: { part: string; at?: string; editing: boolean
   /*
     A part fed by its module's store says it is on screen — see `ModulePart.whileShown`. Once as it is
     drawn and once as it is taken down, so a part drawn twice keeps its module working until both go.
+    Settled at mount and not followed: the show and hide calls must pair up, one each per frame.
   */
-  const whileShown = moduleRegistry.parts()[props.part]?.whileShown;
-  if (whileShown) {
-    const store = moduleRegistry.get(props.part.split('.')[0] ?? '')?.store as Record<string, unknown> | undefined;
+  untrack(() => {
+    const whileShown = moduleRegistry.parts()[props.part]?.whileShown;
+    if (!whileShown) return;
+    const store = moduleRegistry.get(props.part.split('.')[0] ?? '')?.store;
     const call = (key: string) => {
       const member = store?.[key];
       if (typeof member === 'function') (member as () => void)();
@@ -109,7 +111,7 @@ export function PresentPart(props: { part: string; at?: string; editing: boolean
     };
     call(whileShown.show);
     onCleanup(() => call(whileShown.hide));
-  }
+  });
 
   createEffect(() => {
     if (!props.editing || !frame) {
@@ -147,8 +149,8 @@ export function PresentPart(props: { part: string; at?: string; editing: boolean
   );
 }
 
-function frameAttrs(props: { part: string; at?: string }) {
-  return { [PART_ATTR]: props.part, ...(props.at ? { [PART_NODE_ATTR]: props.at } : {}) };
+function frameAttrs(of: { part: string; at?: string }) {
+  return { [PART_ATTR]: of.part, ...(of.at ? { [PART_NODE_ATTR]: of.at } : {}) };
 }
 
 /**

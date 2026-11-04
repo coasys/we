@@ -30,6 +30,12 @@ type DatasetProxy = unknown;
 
 type NodeRow = { id: string; inThread?: unknown };
 
+/** The statics this file calls on a registered entity. */
+type NodeStatics = {
+  findOne?: (dataset: DatasetProxy, query: { where: { id: string } }) => Promise<unknown>;
+  addRelation: (dataset: DatasetProxy, id: string, relation: string, target: string) => Promise<unknown>;
+};
+
 const idOf = (value: unknown): string => {
   if (typeof value === 'string') return value;
   if (Array.isArray(value)) return idOf(value[0]);
@@ -59,7 +65,7 @@ async function readNode(
   hint?: string,
 ): Promise<{ row: NodeRow; entity: string } | null> {
   for (const entity of candidateEntities(hint)) {
-    const Model = getEntityForDataset(entity, dataset);
+    const Model = getEntityForDataset(entity, dataset) as NodeStatics | undefined;
     if (!Model?.findOne) continue;
     try {
       const row = (await Model.findOne(dataset, { where: { id } })) as NodeRow | null;
@@ -89,7 +95,7 @@ export async function completeResponse(
     const root = rootId === subjectId ? subject : await readNode(dataset, rootId);
     if (!root) return;
 
-    const Root = getEntityForDataset(root.entity, dataset);
+    const Root = getEntityForDataset(root.entity, dataset) as NodeStatics | undefined;
     await Root?.addRelation(dataset, rootId, 'thread', responseId);
   } catch (error) {
     console.warn('responses: could not link a response into its thread', error);

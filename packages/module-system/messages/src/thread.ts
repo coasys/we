@@ -53,7 +53,7 @@ const timeOf = (row: Row): number => {
 
 /** Who and what a reply answers, from its included parent — or from the page, where the parent is a bare id on it. */
 function quoteOf(row: Row, byId: Map<string, Row>): ReplyQuote | null {
-  const parent = Array.isArray(row.respondsTo) ? row.respondsTo[0] : row.respondsTo;
+  const parent: unknown = Array.isArray(row.respondsTo) ? row.respondsTo[0] : row.respondsTo;
   const found: Row | undefined =
     parent && typeof parent === 'object'
       ? (parent as Row)
@@ -136,5 +136,5 @@ export const threadLinesFunction: ModuleFunction = {
   params: ['options'],
   doc: 'A page of a conversation’s lines with every reply to them, each once, in time order — newest first when `newestFirst` is true. A reply is a child of nothing: it is in the `thread` of the line it answers, so read the page with `include: { thread: true }` and this flattens each line’s thread in beside it, leaving out any call held about a line. Each reply carries `replyTo: { id, author, text }`, its direct parent, for the quote drawn above it, and a line with marks carries `content` — the one block a BlockRenderer draws it from. Options: rows (the page), newestFirst (boolean).',
   example: 'threadLines({ rows: local.utterances, newestFirst: !modules.transcribe.transcriptFromStart })',
-  fn: threadLines as (...args: never[]) => unknown,
+  fn: threadLines,
 };
