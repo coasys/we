@@ -425,12 +425,22 @@ mod tests {
             with(&["--executor-port"]).unwrap_err(),
             "--executor-port needs a value"
         );
-        // Without a store key every step is refused before it starts.
+        // With no store named the executor trusts the default store's key.
         assert!(
-            !with(&["--executor-port", "1", "--custody-dir", "/tmp/c"])
+            with(&["--executor-port", "1", "--custody-dir", "/tmp/c"])
                 .unwrap()
                 .executor
                 .store_trusted
         );
+        // A store named without its key: every step is refused before it starts.
+        let named = Config::parse(
+            args(&["--executor-port", "1", "--custody-dir", "/tmp/c"]),
+            env(&[
+                (CREDENTIAL_VAR, "x"),
+                ("AD4M_IDENTITY_STORE_URL", "https://store.example"),
+            ]),
+        )
+        .unwrap();
+        assert!(!named.executor.store_trusted);
     }
 }

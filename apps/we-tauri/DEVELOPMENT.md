@@ -70,6 +70,14 @@ carries it:
 AD4M_IDENTITY_STORE_URL=<store url> AD4M_IDENTITY_STORE_KEYS=<store key> pnpm tauri:build
 ```
 
+With neither set, a build uses the default store, `https://store.ad4m.dev`, whose key the executor
+trusts by default; only a build that names a store without its key cannot make or change an
+identity (`crates/custody/README.md`, "The identity store"). This app links the executor, so it asks
+the executor's own rule (`IdentitySettings::from_config`) whether any key is trusted
+(`executor_trusts_a_store` in `src-tauri/src/lib.rs`) rather than restating it; its test
+`the_custody_store_rule_is_the_executors` checks that the custody crate's restatement, which the
+Electron sidecar uses, agrees.
+
 In the app build the generated `Cargo.toml` patches the custody crate's ad4m crates to the seed's
 checkout (`Cargo.toml.template`), so there is one ad4m in the binary.
 

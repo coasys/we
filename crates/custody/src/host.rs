@@ -17,10 +17,11 @@ pub fn custody_dir(home: &Path) -> PathBuf {
 /// `AD4M_IDENTITY_STORE_URL` and `AD4M_IDENTITY_STORE_KEYS` (comma-separated multikeys).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct StoreSettings {
-    /// Where the store is. Without one the agent language keeps its own setting and no offer link
-    /// can be made.
+    /// Where the store is. Without one the agent language uses its default store,
+    /// [`crate::service::DEFAULT_STORE_URL`], and an offer link names that.
     pub url: Option<String>,
-    /// The keys whose heads the executor accepts. Without one every identity step is refused.
+    /// The keys whose heads the executor accepts. Without them the executor trusts the default
+    /// store's key when no URL is given either, and no key when one is ([`Self::trusted`]).
     pub keys: Option<Vec<String>>,
 }
 
@@ -57,9 +58,16 @@ impl StoreSettings {
         )
     }
 
-    /// The executor trusts at least one store key, so an identity step can publish.
+    /// The executor started with these settings trusts at least one store key, so an identity step
+    /// can publish: keys given, or neither a URL nor keys (it then trusts the default store's key,
+    /// `identity::DEFAULT_STORE_KEY`). Only a URL without keys trusts none.
+    ///
+    /// This restates the executor's own rule, `identity::IdentitySettings::from_config` in its
+    /// crate, because this crate must not link the executor (`tests/boundary.rs`) and the executor reports
+    /// no such fact over its RPC. The Tauri app, which links the executor, asks `from_config` itself
+    /// and its test `the_custody_store_rule_is_the_executors` fails if the two disagree.
     pub fn trusted(&self) -> bool {
-        self.keys.is_some()
+        self.keys.is_some() || self.url.is_none()
     }
 }
 
@@ -90,17 +98,35 @@ mod tests {
     }
 
     #[test]
-    fn store_keys_are_a_comma_separated_list_and_none_means_untrusted() {
+    fn store_keys_are_a_comma_separated_list() {
         let keys = |runtime: &str| StoreSettings::resolve(None, None, Some(runtime.into()), None);
         assert_eq!(
             keys(" z6MkA, ,z6MkB ").keys,
             Some(vec!["z6MkA".to_string(), "z6MkB".to_string()])
         );
-        assert!(keys("z6MkA").trusted());
-        assert!(!keys(" , ").trusted());
-        assert!(!StoreSettings::resolve(None, None, None, None).trusted());
+        assert_eq!(keys(" , ").keys, None);
         let built = StoreSettings::resolve(None, None, None, Some("z6MkC"));
         assert_eq!(built.keys, Some(vec!["z6MkC".to_string()]));
+    }
+
+    /// The executor's rule: the default config trusts the default store's key, a named store
+    /// without keys trusts none, and keys are trusted with or without a URL.
+    #[test]
+    fn only_a_named_store_without_keys_is_untrusted() {
+        let store = |url: Option<&str>, keys: Option<&str>| {
+            StoreSettings::resolve(
+                url.map(str::to_string),
+                None,
+                keys.map(str::to_string),
+                None,
+            )
+        };
+        assert!(store(None, None).trusted());
+        assert!(store(None, Some(" , ")).trusted(), "blank keys are no keys");
+        assert!(!store(Some("https://store.example"), None).trusted());
+        assert!(!store(Some("https://store.example"), Some(" , ")).trusted());
+        assert!(store(Some("https://store.example"), Some("z6MkA")).trusted());
+        assert!(store(None, Some("z6MkA")).trusted());
     }
 
     #[test]

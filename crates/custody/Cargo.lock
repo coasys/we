@@ -4,8 +4,8 @@ version = 4
 
 [[package]]
 name = "ad4m-client"
-version = "0.13.1-staging.5"
-source = "git+https://github.com/coasys/ad4m?rev=e980cf7638fd21f8d018af470803daae2e6bb327#e980cf7638fd21f8d018af470803daae2e6bb327"
+version = "0.13.1-staging.6"
+source = "git+https://github.com/coasys/ad4m?rev=67f3c22fc3713c70aa4d6610b548750f0bf495d8#67f3c22fc3713c70aa4d6610b548750f0bf495d8"
 dependencies = [
  "anyhow",
  "chrono",
@@ -25,7 +25,7 @@ dependencies = [
 [[package]]
 name = "ad4m-hash-chain"
 version = "0.1.0"
-source = "git+https://github.com/coasys/ad4m?rev=e980cf7638fd21f8d018af470803daae2e6bb327#e980cf7638fd21f8d018af470803daae2e6bb327"
+source = "git+https://github.com/coasys/ad4m?rev=67f3c22fc3713c70aa4d6610b548750f0bf495d8#67f3c22fc3713c70aa4d6610b548750f0bf495d8"
 dependencies = [
  "bs58",
  "ed25519-dalek",
@@ -38,7 +38,7 @@ dependencies = [
 [[package]]
 name = "ad4m-identity-client"
 version = "0.1.0"
-source = "git+https://github.com/coasys/ad4m?rev=e980cf7638fd21f8d018af470803daae2e6bb327#e980cf7638fd21f8d018af470803daae2e6bb327"
+source = "git+https://github.com/coasys/ad4m?rev=67f3c22fc3713c70aa4d6610b548750f0bf495d8#67f3c22fc3713c70aa4d6610b548750f0bf495d8"
 dependencies = [
  "ad4m-client",
  "ad4m-hash-chain",
@@ -58,7 +58,7 @@ dependencies = [
 [[package]]
 name = "ad4m-identity-core"
 version = "0.1.0"
-source = "git+https://github.com/coasys/ad4m?rev=e980cf7638fd21f8d018af470803daae2e6bb327#e980cf7638fd21f8d018af470803daae2e6bb327"
+source = "git+https://github.com/coasys/ad4m?rev=67f3c22fc3713c70aa4d6610b548750f0bf495d8#67f3c22fc3713c70aa4d6610b548750f0bf495d8"
 dependencies = [
  "ad4m-hash-chain",
  "bip39",
@@ -79,7 +79,7 @@ dependencies = [
 [[package]]
 name = "ad4m-ldk"
 version = "0.13.0-test-1"
-source = "git+https://github.com/coasys/ad4m?rev=e980cf7638fd21f8d018af470803daae2e6bb327#e980cf7638fd21f8d018af470803daae2e6bb327"
+source = "git+https://github.com/coasys/ad4m?rev=67f3c22fc3713c70aa4d6610b548750f0bf495d8#67f3c22fc3713c70aa4d6610b548750f0bf495d8"
 dependencies = [
  "futures",
  "js-sys",
