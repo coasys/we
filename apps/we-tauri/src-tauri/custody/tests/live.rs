@@ -455,7 +455,7 @@ async fn make_link_and_revoke_through_the_custody_service() {
     let Screen::Offer { link, qr_svg, .. } = offer else {
         panic!("no offer: {offer:?}")
     };
-    assert!(link.starts_with("https://coasys.id/o#coasys:offer:1:"));
+    assert!(link.starts_with("https://id.coasys.org/o#coasys:offer:1:"));
     assert!(qr_svg.contains("<svg"));
 
     let mut claim_cmd = Command::new(world.executor());

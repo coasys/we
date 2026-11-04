@@ -167,7 +167,8 @@ pub struct CustodyPublic {
     pub holds_master: Option<HoldsMaster>,
     pub unlock: &'static str,
     /// Why no identity step can run on this computer, in words a person reads; `None` when they
-    /// can. Set when the executor trusts no identity store key, so nothing it publishes could take.
+    /// can. Set when the executor trusts no identity store key (a build naming a store without its
+    /// key), so nothing it publishes could take.
     pub blocked: Option<&'static str>,
 }
 
@@ -182,10 +183,13 @@ pub struct ExecutorAddress {
     /// `http://127.0.0.1:<port>`
     pub url: String,
     pub admin_credential: Arc<str>,
-    /// The identity store the executor's agent language uses: the offer link names it.
+    /// The identity store the executor's agent language uses (`identity.storeUrl`): the offer link
+    /// names it. `None`: the language's default, [`DEFAULT_STORE_URL`].
     pub store_url: Option<String>,
-    /// The executor was started with at least one identity store key (`identity.storeKeys`). With
-    /// none it accepts no head from the store, so every step that publishes is refused up front.
+    /// The executor trusts at least one identity store key, as it decides from its config
+    /// (`IdentitySettings::from_config`: `identity.storeKeys`, else the default store's key when
+    /// `identity.storeUrl` is unset too). With none it accepts no head from the store, so every
+    /// step that publishes is refused up front.
     pub store_trusted: bool,
 }
 
@@ -278,11 +282,25 @@ async fn connect(address: &ExecutorAddress) -> Result<ViaExecutor<WsRpcClient>, 
         .map_err(|_| "Coasys is starting on this computer. Try again in a moment.".to_string())
 }
 
-/// What a build with no identity store key says, before any step starts and whenever the executor
-/// refuses for that reason.
+/// What a build whose executor trusts no identity store key says, before any step starts and
+/// whenever the executor refuses for that reason. Only a build that names its own store without
+/// that store's key gets here: with neither set, the executor trusts the default store's key.
 pub const NO_STORE: &str =
-    "This build of Coasys has no identity store set up, so it cannot make or \
-     change an identity yet. Nothing was changed.";
+    "This build of Coasys names an identity store without that store's key, so it cannot \
+     make or change an identity. Nothing was changed.";
+
+/// The store the executor's agent language uses when `identity.storeUrl` is unset
+/// (`DEFAULT_STORE_URL` in the agent language): an offer link names it when the build names none.
+pub const DEFAULT_STORE_URL: &str = "https://store.ad4m.dev";
+
+/// The store an offer names, which the claiming device publishes through: the build's, else the
+/// agent language's own default, whose key the executor then trusts.
+fn offer_store(address: &ExecutorAddress) -> String {
+    address
+        .store_url
+        .clone()
+        .unwrap_or_else(|| DEFAULT_STORE_URL.to_string())
+}
 
 /// The step's refusal on a build whose executor trusts no store key: before words are made, an
 /// offer is opened or a key is unlocked. `None` where the store is trusted.
@@ -603,7 +621,15 @@ async fn create_on<R: ExecutorRpc>(
             }),
         );
     };
-    answer(reply, Ok(Screen::ShowWords { words }));
+    // The client hands the words over as a `Secret`, wiped when `words` drops below; the screen is
+    // the one place they leave it, to be drawn in the identity window.
+    answer(
+        reply,
+        Ok(Screen::ShowWords {
+            words: words.expose().clone(),
+        }),
+    );
+    drop(words);
 
     let mut positions = [0usize; 2];
     loop {
@@ -775,16 +801,7 @@ async fn run_link(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, 
     if let Some(refused) = no_store(address) {
         return answer(reply, Ok(refused));
     }
-    let Some(store_url) = address.store_url.clone() else {
-        return answer(
-            reply,
-            Ok(Screen::Failed {
-                message:
-                    "This computer has no identity store configured, so it cannot make an offer."
-                        .into(),
-            }),
-        );
-    };
+    let store_url = offer_store(address);
     let executor = match connect(address).await {
         Ok(e) => e,
         Err(message) => return answer(reply, Ok(Screen::Failed { message })),
@@ -1293,9 +1310,26 @@ mod tests {
         );
     }
 
+    /// A build naming no store makes offers on the agent language's default store, which the
+    /// executor trusts by default; a build naming one makes them there.
+    #[test]
+    fn an_offer_names_the_builds_store_or_the_default_one() {
+        let address = |store_url: Option<&str>| ExecutorAddress {
+            url: "http://127.0.0.1:9".into(),
+            admin_credential: Arc::from("x"),
+            store_url: store_url.map(str::to_string),
+            store_trusted: true,
+        };
+        assert_eq!(offer_store(&address(None)), "https://store.ad4m.dev");
+        assert_eq!(
+            offer_store(&address(Some("https://store.example"))),
+            "https://store.example"
+        );
+    }
+
     #[test]
     fn an_offer_link_becomes_a_qr_code() {
-        let svg = qr_svg("https://coasys.id/o#coasys:offer:1:abc");
+        let svg = qr_svg("https://id.coasys.org/o#coasys:offer:1:abc");
         assert!(svg.starts_with("<?xml") || svg.starts_with("<svg"));
     }
 

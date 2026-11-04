@@ -13,9 +13,9 @@ import type { OperatorToken, SchemaNode, SchemaProp } from '@we/schema-shared';
  * - **Start now** uses the app with no identity, remembered on this computer; Settings → Security
  *   offers "Make my identity here" again.
  *
- * On a build that cannot make an identity yet (`identityStore.changeBlocked`: no identity store is
- * set up), the first door is drawn disabled with that reason in place of its detail, and "Start now"
- * is the way in.
+ * On a build that cannot make an identity (`identityStore.changeBlocked`: it names an identity store
+ * without that store's key), the first door is drawn disabled with that reason in place of its
+ * detail, and "Start now" is the way in.
  *
  * The three other doors — log in with a Coasys account, link to an identity from another app,
  * restore from the 12 words — need flows that later changes add, and are drawn as "Coming soon"

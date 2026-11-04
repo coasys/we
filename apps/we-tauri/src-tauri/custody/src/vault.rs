@@ -160,8 +160,11 @@ impl Vault for Unlocking<'_> {
 
     fn unlock(&self, scid: &str, why: MasterUse, now: u64) -> Result<Unlocked, VaultError> {
         let item = self.vault.read(scid, self.passphrase(), why)?;
+        // `why` sets how long the unlock lasts (`MasterUse::ttl_s`): a link's runs to the end of the
+        // store's confirm grace, so the `add` can still be signed while the store would take it.
         Ok(Unlocked::new(
             Box::new(KeySigner::new(&item.master, item.index)),
+            why,
             now,
         ))
     }
