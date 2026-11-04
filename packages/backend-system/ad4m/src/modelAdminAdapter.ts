@@ -188,6 +188,8 @@ export function toLocalPlan(plan: Ad4mLocalPlan): LocalAiPlan {
       memoryBytes: model.memoryBytes,
       license: model.license,
       installed: model.installed,
+      basis: model.basis,
+      fromClass: model.fromClass,
     })),
     unavailable: plan.unavailable.map(({ service, reason }) => ({ kind: SERVICE_TO_KIND[service], reason })),
     downloadBytes: plan.downloadBytes,
@@ -197,6 +199,7 @@ export function toLocalPlan(plan: Ad4mLocalPlan): LocalAiPlan {
     ...optional('diskFreeBytes', plan.diskFreeBytes),
     fits: plan.fits,
     reasons: [...plan.reasons],
+    ...(plan.device ? { device: plan.device } : {}),
   };
 }
 

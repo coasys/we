@@ -266,13 +266,14 @@ const plan = {
   models: [
     {
       service: 'stt',
-      modelId: 'whisper-small',
-      provider: 'whisper-server',
+      modelId: 'parakeet-tdt-0.6b-v3',
+      provider: 'nemo-speech',
       sizeBytes: 480e6,
       memoryBytes: 600e6,
-      license: 'MIT',
+      license: 'CC-BY-4.0',
       installed: true,
-      fromClass: 'x',
+      basis: 'default',
+      fromClass: 'linux-x64-igpu-amd',
       evidence: [],
       metrics: {},
       serverFlags: [],
@@ -287,6 +288,7 @@ const plan = {
   fits: true,
   reasons: [],
   recommendationsGeneratedAt: '2026-10-01',
+  device: null,
 };
 
 const status = {
@@ -352,14 +354,25 @@ describe('local AI', () => {
     expect(read.runtimes[0]).toMatchObject({ id: 'llama-server', kinds: ['llm', 'embedding'], installed: false });
     expect(read.models[0]).toEqual({
       kind: 'transcription',
-      model: 'whisper-small',
+      model: 'parakeet-tdt-0.6b-v3',
       sizeBytes: 480e6,
       memoryBytes: 600e6,
-      license: 'MIT',
+      license: 'CC-BY-4.0',
       installed: true,
+      basis: 'default',
+      fromClass: 'linux-x64-igpu-amd',
     });
     expect(read.unavailable).toEqual([{ kind: 'speech', reason: 'Nothing measured' }]);
     expect(read).toMatchObject({ downloadBytes: 30e6, fits: true, diskFreeBytes: 100e9 });
+    // No device in the settings: the plan follows detection, and says nothing about one.
+    expect(read).not.toHaveProperty('device');
+  });
+
+  it('reads the device the settings hold the plan to', async () => {
+    const { client, ai } = localClient();
+    ai.localPlan.mockResolvedValueOnce({ ...plan, device: 'cpu' } as never);
+    const read = await createAd4mModelAdmin(client, { capabilities: null }).local!.plan!();
+    expect(read.device).toBe('cpu');
   });
 
   it('reads the running state, with the managed server it registered as', async () => {

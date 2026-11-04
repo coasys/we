@@ -26,6 +26,32 @@
       ]
     },
     {
+      "tagName": "we-animated-icon",
+      "className": "AnimatedIcon",
+      "description": "A small drawing that moves, for something happening now: loading, a call that is live, somebody\ntyping, somebody speaking.\n\n`name` picks the drawing:\n\n- `spinner` — a turning ring, for waiting on something.\n- `live` — a dot with a ring going out from it, for something running now: a live call, a\n  recording (in the danger tone), somebody online.\n- `typing` — three dots rising in turn, for somebody writing, or the assistant thinking.\n- `speaking` — bars moving out of step, for whoever is talking, or audio playing.\n\nSized and coloured as `we-icon` is, so one can take an icon's place: `size` is a size token or any\nCSS length, and with none it is the icon size its container publishes. Its colour is the accent\nunless `color` names a role, a palette token or any CSS colour — so `tone` re-points it, a live\ndot inside a success badge is the success colour, and `color: 'currentColor'` makes it the text's.\n\nEvery copy of a drawing is at the same point in its cycle at the same moment, wherever and\nwhenever it mounted: the live dots in a sidebar and on a page pulse together, and a spinner that\nreappears after the window reloads picks up where the last left off.\n\nFor somebody who asked for less motion, the dot and the bars stand still, the typing dots fade in\nturn rather than rise, and the spinner keeps turning, since a still spinner looks stuck.",
+      "superclass": "LayoutElement",
+      "ownProps": [
+        {
+          "name": "name",
+          "type": "'spinner' | 'live' | 'typing' | 'speaking'",
+          "optional": false,
+          "default": "'spinner'"
+        },
+        {
+          "name": "size",
+          "type": "'xs' | 'sm' | 'md' | 'lg' | 'xl' | '{css-length}'",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "color",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        }
+      ]
+    },
+    {
       "tagName": "we-audio",
       "className": "Audio",
       "superclass": "LayoutVisualElement",
@@ -1649,25 +1675,6 @@
           "type": "boolean",
           "optional": false,
           "default": "false"
-        }
-      ]
-    },
-    {
-      "tagName": "we-spinner",
-      "className": "Spinner",
-      "superclass": "LayoutElement",
-      "ownProps": [
-        {
-          "name": "size",
-          "type": "'xs' | 'sm' | 'md' | 'lg' | 'xl' | (string & {})",
-          "optional": false,
-          "default": "'md'"
-        },
-        {
-          "name": "color",
-          "type": "string",
-          "optional": false,
-          "default": "''"
         }
       ]
     },
@@ -7876,6 +7883,9 @@
         },
         "landmarks": {
           "type": "object"
+        },
+        "landmarksLoaded": {
+          "type": "boolean"
         },
         "extractionTargets": {
           "type": "array"

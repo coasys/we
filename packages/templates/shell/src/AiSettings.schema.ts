@@ -1034,6 +1034,7 @@ const localSection: SchemaNode = {
                           props: { items: { $: 'runtimeStore.localAi.items' }, as: 'item' },
                           children: [planRow],
                         },
+                        lines('runtimeStore.localAi.planNotes', 'text-muted'),
                         lines('runtimeStore.localAi.unavailable', 'warning-text'),
                         lines('runtimeStore.localAi.reasons', {
                           $: "runtimeStore.localAi.fits ? 'text-muted' : 'danger-text'",

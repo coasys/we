@@ -2,13 +2,14 @@
  * Local AI's sentences, and the one piece of logic in them: folding progress events into a bar that
  * starts over with each install and never moves back within one.
  */
-import type { LocalAiHardware, LocalAiProgress, LocalAiRuntimeStatus } from '@we/backend-shared';
+import type { LocalAiHardware, LocalAiPlan, LocalAiProgress, LocalAiRuntimeStatus } from '@we/backend-shared';
 import { describe, expect, it } from 'vitest';
 
 import {
   computeText,
   describeLocalAi,
   gpuText,
+  planNotes,
   progressView,
   reduceProgress,
   runtimeView,
@@ -27,7 +28,7 @@ const event = (overrides: Partial<LocalAiProgress> = {}): LocalAiProgress => ({
 });
 
 const runtime = (overrides: Partial<LocalAiRuntimeStatus> = {}): LocalAiRuntimeStatus => ({
-  id: 'whisper-server',
+  id: 'nemo-speech',
   version: 'v1',
   build: 'linux-x64-cpu',
   kinds: ['transcription'],
@@ -92,7 +93,7 @@ describe('sentences', () => {
 
   it('says how a server runs: on the CPU against its build, and how often it restarted', () => {
     expect(runtimeView(runtime())).toMatchObject({
-      label: 'Transcription · whisper-server v1 · the CPU',
+      label: 'Transcription · nemo-speech v1 · the CPU',
       stateText: 'Running',
       ok: true,
     });
@@ -145,5 +146,55 @@ describe('describeLocalAi', () => {
       installingHere: false,
     });
     expect(view.progress).toBeNull();
+  });
+});
+
+describe('planNotes', () => {
+  const model = (overrides: Partial<LocalAiPlan['models'][number]>): LocalAiPlan['models'][number] => ({
+    kind: 'llm',
+    model: 'm',
+    sizeBytes: 1e9,
+    memoryBytes: 1e9,
+    license: 'MIT',
+    installed: false,
+    basis: 'measured',
+    fromClass: 'linux-x64-cpu',
+    ...overrides,
+  });
+  const plan = (overrides: Partial<LocalAiPlan>): LocalAiPlan => ({
+    hardwareClass: 'linux-x64-dgpu-intel',
+    runtimes: [],
+    models: [],
+    unavailable: [],
+    downloadBytes: 0,
+    totalBytes: 0,
+    memoryBytes: 0,
+    memoryBudgetBytes: 0,
+    fits: true,
+    reasons: [],
+    ...overrides,
+  });
+
+  it('says nothing for a plan measured on this class of device, held to no backend', () => {
+    expect(planNotes(plan({ models: [model({})] }))).toEqual([]);
+  });
+
+  it('names the kinds nothing was measured for, which take the smallest model', () => {
+    const notes = planNotes(
+      plan({
+        models: [
+          model({}),
+          model({ kind: 'transcription', basis: 'default' }),
+          model({ kind: 'embedding', basis: 'default' }),
+        ],
+      }),
+    );
+    expect(notes).toEqual([
+      'No measurements exist for this class of device (linux-x64-dgpu-intel), so the plan takes the smallest model for transcription, embeddings',
+    ]);
+  });
+
+  it('says which backend the settings hold it to', () => {
+    expect(planNotes(plan({ device: 'vulkan' }))).toEqual(["The node's settings hold local AI to Vulkan"]);
   });
 });

@@ -1313,6 +1313,29 @@ Most @we/primitives also accept Design System Props (see next section for detail
 @we/primitives:
 - we-alert (DesignSystemElement)
   Props: variant: 'soft' | 'edge' = 'soft', dismissible: boolean = false, icon: string = ''
+- we-animated-icon (LayoutElement) — A small drawing that moves, for something happening now: loading, a call that is live, somebody
+typing, somebody speaking.
+
+`name` picks the drawing:
+
+- `spinner` — a turning ring, for waiting on something.
+- `live` — a dot with a ring going out from it, for something running now: a live call, a
+  recording (in the danger tone), somebody online.
+- `typing` — three dots rising in turn, for somebody writing, or the assistant thinking.
+- `speaking` — bars moving out of step, for whoever is talking, or audio playing.
+
+Sized and coloured as `we-icon` is, so one can take an icon's place: `size` is a size token or any
+CSS length, and with none it is the icon size its container publishes. Its colour is the accent
+unless `color` names a role, a palette token or any CSS colour — so `tone` re-points it, a live
+dot inside a success badge is the success colour, and `color: 'currentColor'` makes it the text's.
+
+Every copy of a drawing is at the same point in its cycle at the same moment, wherever and
+whenever it mounted: the live dots in a sidebar and on a page pulse together, and a spinner that
+reappears after the window reloads picks up where the last left off.
+
+For somebody who asked for less motion, the dot and the bars stand still, the typing dots fade in
+turn rather than rise, and the spinner keeps turning, since a still spinner looks stuck.
+  Props: name: 'spinner' | 'live' | 'typing' | 'speaking' = 'spinner', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '{css-length}' = '', color: string = ''
 - we-audio (LayoutVisualElement)
   Props: src: string = '', controls: boolean = false, preload: 'none' | 'metadata' | 'auto' = 'metadata', autoplay: boolean = false, loop: boolean = false, muted: boolean = false, stream?: MediaStream | null | undefined
 - we-avatar (LayoutVisualElement)
@@ -1591,8 +1614,6 @@ Same principle as nested zones, one layer up: the innermost thing under the poin
 gesture. A sortable *inside* an overlay is unaffected — only the path between the press and the
 item is considered.
   Props: direction: 'vertical' | 'horizontal' = 'vertical', gap: string = '', zone: string = '', group: string = '', locked: boolean = false
-- we-spinner (LayoutElement)
-  Props: size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | (string & {}) = 'md', color: string = ''
 - we-switch (DesignSystemElement)
   Props: checked: boolean = false, disabled: boolean = false, name: string = '', label: string = '', value: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', labelOff: string = '', labelOn: string = ''
 - we-tab (DesignSystemElement)
@@ -2228,7 +2249,7 @@ seven roles every family has. So `"red"` as a colour is the theme's red, not CSS
 for that.
 
 **Layout-only primitives** — these accept only Layout props (not Visual, Flex, Typography, or State):
-we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
+we-animated-icon, we-divider, we-icon, we-menu-group, we-popover, we-tooltip
 
 ### Layout
 
@@ -3290,7 +3311,7 @@ RuntimeStore:
   - aiServiceOptions: { label, value }[] — the kinds of server an endpoint can be (Ollama, llama-server, vLLM, a speech server, Anthropic, OpenAI, OpenRouter…) plus 'custom', for a we-select bound to aiEndpointForm.service. Pass the value to setAiService, which sets the kind and a starting address
   - canUseLocalAi: boolean — the backend can install and run models on its own machine, and shows this connection that machine and what an install would do. The operator only. Gate the "This device" section on it
   - canConfigureLocalAi: boolean — local AI can be installed, started, stopped and removed from here. Gate those controls on it
-  - localAi: LocalAiView — the "This device" section, already in words: device (processor and memory), gpus (string[]), compute (what the models would run on), budget, notes, items ({ key, label, name, sizeText, done }[] — the models and server programs an install brings), unavailable and reasons (string[]), fits, summary ("Downloads 3.1 GB · fits this device"), installLabel, installed, installing, running (every server runs), anyRunning, runtimes ({ key, label, stateText, ok, tone }[] — phase, on the GPU or not, restarts; tone is success, idle (never started or stopped on purpose) or warning), progress ({ percent, text, failed } while an install runs, and after one fails) and canInstall. loaded is false until the machine and the plan have been read
+  - localAi: LocalAiView — the "This device" section, already in words: device (processor and memory), gpus (string[]), compute (what the models would run on), budget, notes, items ({ key, label, name, sizeText, done }[] — the models and server programs an install brings), unavailable and reasons (string[]), planNotes (string[] — how the plan was chosen where not by measurement: the kinds nothing was measured for on this class of device, which take the smallest model, and the backend the settings of the node hold it to), fits, summary ("Downloads 3.1 GB · fits this device"), installLabel, installed, installing, running (every server runs), anyRunning, runtimes ({ key, label, stateText, ok, tone }[] — phase, on the GPU or not, restarts; tone is success, idle (never started or stopped on purpose) or warning), progress ({ percent, text, failed } while an install runs, and after one fails) and canInstall. loaded is false until the machine and the plan have been read
   - languages: InstalledLanguage[] — language plugins installed in this backend (address, name, system). Empty until loadLanguages() runs
   - trustedAgents: string[] — trusted peer ids. Empty until loadTrustedAgents() runs
   - authorizedApps: AuthorizedApp[] — external apps holding credentials (id, name, description, url, iconUrl, capabilities, revoked). Empty until loadAuthorizedApps() runs
@@ -3588,6 +3609,7 @@ SpaceStore:
   - autoInterpret: boolean — whether a NEW collection here (a call, a channel) starts out extracted into records as it grows. A community default, copied onto each collection when it is made — a conversation already under way keeps its own answer, read with autoExtractFor. Readable by every member; writing it is space-settings
   - root: string — the id of this space's collection: the one CollectionBlock (kind 'space') everything top-level hangs off — calls, loose messages, posts, channels, extracted items, the canvas. Scope a top-level read through it: { anchor: 'CollectionBlock', via: 'children', anchorId: spaceStore.root }. Empty outside a space, and in a space made before spaces had one
   - landmarks: Record<name, id> — the records this space names as its landmarks, e.g. spaceStore.landmarks.canvas is the space's canvas. Written by the space's starter at creation. A landmark can be absent — a space can switch template and a template must never assume what another set up — so guard every read
+  - landmarksLoaded: boolean — the landmarks have answered for the space on screen. Until then an absent landmark is not yet an answer, so gate a 'there is no board yet' on it: { $: 'spaceStore.landmarksLoaded && !spaceStore.landmarks.board' }. Not on `root`, which arrives first
   - extractionTargets: string[] — the models a NEW collection here starts out extracting. The middle of three layers: shapeStore.extractionCandidates says what COULD be extracted, this says which of them a new conversation begins with, and each collection then holds its own list, which its participants change (modules.transcribe.extractionFor[id].targets). A default, copied when a collection is made. Unset falls back to the two classes that were hardcoded before the setting existed, so no space silently stops extracting. Writing it is space-settings
   - taskWorkflowRule: '' | 'next' | 'next-and-back' — how a task may move between this space's states, in their order: anywhere, on to the next only, or on and back one. Anything but '' runs the states as a workflow, so a move the rule does not allow is refused on the board — say so beside a picker of states
   - taskWorkflowEnabled: boolean — this space’s task states ask for agreement: some state needs more than one approval, or names whose approval counts. Where true, a card dragged into such a state waits instead of moving, and arrangedBoard(…).workflow[card.id] describes what it is waiting on. Gate an explanation of the waiting on it; the board needs nothing else
@@ -5623,7 +5645,7 @@ WRONG icon names (Heroicons/Material — do NOT use):
 - Size a template root with `minHeight`, never `height`. `height: '100%'` makes the root exactly as tall as the viewport, so a route with more content than that overflows the *box* — and the root's background stops at the fold while the content keeps scrolling. `minHeight: '100%'` fills the viewport when a route is short and grows when it is long, which is what a page background needs. The same applies to `'100vh'` — and prefer `'100dvh'` to `'100vh'` anywhere a full-viewport height is meant: on a phone the address bar makes `vh` taller than what is actually visible, so the last rows of the page sit under the browser chrome. Identical on a desktop.
 
 Most @we/primitives inherit all Design System Props documented above (layout, visual, flex, typography, state).
-Some layout-only primitives (we-avatar, we-icon, we-image, we-spinner, etc.) only accept Layout props — see the Design System Props section for the full list.
+Some layout-only primitives (we-avatar, we-icon, we-image, we-animated-icon, etc.) only accept Layout props — see the Design System Props section for the full list.
 
 Native HTML elements (lowercase tags render directly without registry entries):
 - Layout: div, section, article, aside, main, nav, header, footer

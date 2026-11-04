@@ -88,6 +88,24 @@ export function planSummary(plan: LocalAiPlan): string {
 }
 
 /**
+ * What the plan was chosen by, where a reader would otherwise assume it was measured: the kinds
+ * nothing was measured for on this class of device, which take the smallest model there is; and the
+ * backend the node's settings hold it to, which the plan follows rather than the best one found.
+ */
+export function planNotes(plan: LocalAiPlan): string[] {
+  const notes: string[] = [];
+  const defaults = plan.models.filter((model) => model.basis === 'default');
+  if (defaults.length) {
+    const kinds = defaults.map((model) => MODEL_KIND_LABELS[model.kind].toLowerCase()).join(', ');
+    notes.push(
+      `No measurements exist for this class of device (${plan.hardwareClass}), so the plan takes the smallest model for ${kinds}`,
+    );
+  }
+  if (plan.device) notes.push(`The node's settings hold local AI to ${backendLabel(plan.device)}`);
+  return notes;
+}
+
+/**
  * Folds one progress event into the install's progress so far.
  *
  * A `plan` event starts an install over; otherwise the bytes done never go backwards within one
@@ -189,6 +207,8 @@ export interface LocalAiView {
   items: LocalAiPlanItem[];
   unavailable: string[];
   reasons: string[];
+  /** How the plan was chosen, where it was not by measurement on this class of device. */
+  planNotes: string[];
   fits: boolean;
   summary: string;
   installLabel: string;
@@ -226,6 +246,7 @@ export function describeLocalAi(input: {
     items: plan ? planItems(plan) : [],
     unavailable: plan?.unavailable.map((u) => `${MODEL_KIND_LABELS[u.kind]}: ${u.reason}`) ?? [],
     reasons: plan?.reasons ?? [],
+    planNotes: plan ? planNotes(plan) : [],
     fits: !!plan?.fits,
     summary: plan ? planSummary(plan) : '',
     installLabel: plan && plan.downloadBytes > 0 ? `Install (${sizeText(plan.downloadBytes)})` : 'Install',

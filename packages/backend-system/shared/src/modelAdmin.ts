@@ -273,6 +273,13 @@ export interface LocalAiPlannedModel {
   memoryBytes: number;
   license: string;
   installed: boolean;
+  /**
+   * `measured`: what the backend measured for this class of machine (or the nearest smaller one).
+   * `default`: nothing was measured for this kind here, so the plan takes the smallest model it has.
+   */
+  basis: 'measured' | 'default';
+  /** The class of machine the choice comes from — for a default, this machine's own. */
+  fromClass: string;
 }
 
 /** What an install would do on this machine. */
@@ -294,6 +301,11 @@ export interface LocalAiPlan {
   fits: boolean;
   /** Why it does not fit, and what was stepped down or runs on the CPU. */
   reasons: string[];
+  /**
+   * The backend the node's settings hold the plan to (`cpu`, `metal`, `vulkan`, `cuda`, `rocm`), or
+   * absent when it plans for the best one detection found.
+   */
+  device?: string;
 }
 
 /** Where an install is, as the backend reports it while one runs. */
