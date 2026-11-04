@@ -55,7 +55,8 @@ passphrase (Argon2id, XChaCha20-Poly1305) in the Linux Secret Service, or in
 `<data dir>/coasys/custody/<scid>.bin` (mode 0600) — on Linux where there is no Secret Service
 (`$XDG_DATA_HOME`), and on macOS where the build lacks the `keychain-access-groups` entitlement
 (`~/Library/Application Support`), which the data-protection keychain requires: an unsigned or
-ad-hoc-signed build, as a dev build is (the app asks the keychain once at start, and a file holds
+ad-hoc-signed build, as a dev build is (the app writes and deletes a test item once at start: only
+a write shows the missing entitlement, a read finds nothing; then a file holds
 a new key behind a passphrase). The place is decided per identity, not for the whole app: the
 folder is shared by every account on the computer, so each key is used wherever it already rests
 — a `<scid>.bin` stays in the file, opened with its passphrase, while another identity's key in
