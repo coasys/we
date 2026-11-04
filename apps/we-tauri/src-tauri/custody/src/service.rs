@@ -15,11 +15,12 @@
 use std::sync::Arc;
 
 use ad4m_client::ws_rpc::WsRpcClient;
+use ad4m_identity_client::executor::IdentityStatus;
 use ad4m_identity_client::flows::create::{resume, CreateFlow, CreateScreen, Created};
 use ad4m_identity_client::flows::link::{Claimed, LinkFlow};
 use ad4m_identity_client::flows::revoke::revoke;
 use ad4m_identity_client::{
-    ClientError, ExecutorRpc, OsRandom, Secret, SystemClock, VaultError, ViaExecutor,
+    ClientError, ExecutorRpc, OsRandom, RpcError, Secret, SystemClock, VaultError, ViaExecutor,
 };
 use ad4m_identity_core::link::OfferKind;
 use ad4m_identity_core::{Event, Op};
@@ -167,8 +168,9 @@ pub struct CustodyPublic {
     pub holds_master: Option<HoldsMaster>,
     pub unlock: &'static str,
     /// Why no identity step can run on this computer, in words a person reads; `None` when they
-    /// can. Set when the executor trusts no identity store key (a build naming a store without its
-    /// key), so nothing it publishes could take.
+    /// can. Set when the executor answers `identity.status` with no identity store, or with one it
+    /// trusts no key for, so nothing it publishes could take; `None` too while the executor does
+    /// not answer, since nothing is known then (a step asks again).
     pub blocked: Option<&'static str>,
 }
 
@@ -177,28 +179,19 @@ pub struct HoldsMaster {
     pub index: u32,
 }
 
-/// Where the executor's RPC is, and the admin credential for it. Nothing else of the executor.
+/// Where the executor's RPC is, and the admin credential for it. Nothing else of the executor: the
+/// identity store it uses, and whether it trusts it, are asked of it (`identity.status`).
 #[derive(Clone)]
 pub struct ExecutorAddress {
     /// `http://127.0.0.1:<port>`
     pub url: String,
     pub admin_credential: Arc<str>,
-    /// The identity store the executor's agent language uses (`identity.storeUrl`): the offer link
-    /// names it. `None`: the language's default, [`DEFAULT_STORE_URL`].
-    pub store_url: Option<String>,
-    /// The executor trusts at least one identity store key, as it decides from its config
-    /// (`IdentitySettings::from_config`: `identity.storeKeys`, else the default store's key when
-    /// `identity.storeUrl` is unset too). With none it accepts no head from the store, so every
-    /// step that publishes is refused up front.
-    pub store_trusted: bool,
 }
 
 impl std::fmt::Debug for ExecutorAddress {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ExecutorAddress")
             .field("url", &self.url)
-            .field("store_url", &self.store_url)
-            .field("store_trusted", &self.store_trusted)
             .finish_non_exhaustive()
     }
 }
@@ -282,32 +275,56 @@ async fn connect(address: &ExecutorAddress) -> Result<ViaExecutor<WsRpcClient>, 
         .map_err(|_| "Coasys is starting on this computer. Try again in a moment.".to_string())
 }
 
-/// What a build whose executor trusts no identity store key says, before any step starts and
-/// whenever the executor refuses for that reason. Only a build that names its own store without
-/// that store's key gets here: with neither set, the executor trusts the default store's key.
+/// What a step says when the executor has no identity store it can use — its network names none,
+/// or it was given a store URL without that store's key — before the step starts and whenever the
+/// executor refuses for that reason (`no-store-keys`).
 pub const NO_STORE: &str =
-    "This build of Coasys names an identity store without that store's key, so it cannot \
-     make or change an identity. Nothing was changed.";
+    "This network has no identity store, or a store URL without its key, so Coasys on this \
+     computer cannot make or change an identity. Nothing was changed.";
 
-/// The store the executor's agent language uses when `identity.storeUrl` is unset
-/// (`DEFAULT_STORE_URL` in the agent language): an offer link names it when the build names none.
-pub const DEFAULT_STORE_URL: &str = "https://store.ad4m.dev";
-
-/// The store an offer names, which the claiming device publishes through: the build's, else the
-/// agent language's own default, whose key the executor then trusts.
-fn offer_store(address: &ExecutorAddress) -> String {
-    address
-        .store_url
-        .clone()
-        .unwrap_or_else(|| DEFAULT_STORE_URL.to_string())
+/// The identity store the executor uses, as `identity.status` reports it: the config's, else its
+/// network seed's. `trusted` says it trusts a key for that store; without one it accepts no head
+/// from it, and every publish is refused.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoreInfo {
+    pub url: String,
+    pub trusted: bool,
 }
 
-/// The step's refusal on a build whose executor trusts no store key: before words are made, an
-/// offer is opened or a key is unlocked. `None` where the store is trusted.
-fn no_store(address: &ExecutorAddress) -> Option<Screen> {
-    (!address.store_trusted).then(|| Screen::Failed {
-        message: NO_STORE.into(),
-    })
+/// `identity.status` as custody reads it: the identity client's fields, and the executor's store,
+/// which that client does not carry.
+async fn status_and_store<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+) -> Result<(IdentityStatus, Option<StoreInfo>), RpcError> {
+    #[derive(Deserialize)]
+    struct Store {
+        #[serde(default)]
+        store: Option<StoreInfo>,
+    }
+    let value = executor
+        .rpc()
+        .call("identity.status", serde_json::json!({}))
+        .await?;
+    let unreadable = |e: serde_json::Error| RpcError {
+        code: 502,
+        message: format!("identity.status answered {e}"),
+    };
+    let store = serde_json::from_value::<Store>(value.clone()).map_err(unreadable)?;
+    let status = serde_json::from_value::<IdentityStatus>(value).map_err(unreadable)?;
+    Ok((status, store.store))
+}
+
+/// The store a step publishes through, which an offer names: the executor's, when it trusts it.
+/// Else the step's refusal, before words are made, an offer is opened or a key is unlocked.
+async fn trusted_store<R: ExecutorRpc>(executor: &ViaExecutor<R>) -> Result<String, Screen> {
+    match status_and_store(executor).await {
+        Ok((_, Some(store))) if store.trusted => Ok(store.url),
+        Ok(_) => Err(Screen::Failed {
+            message: NO_STORE.into(),
+        }),
+        Err(e) => Err(failed(&ClientError::Rpc(e))),
+    }
 }
 
 /// The executor refused because it trusts no identity store key (`identity.storeKeys`).
@@ -451,12 +468,29 @@ async fn finish_pending_quietly<R: ExecutorRpc>(executor: &ViaExecutor<R>, vault
 }
 
 async fn public_state(vault: &DesktopVault, address: &ExecutorAddress) -> CustodyPublic {
-    let did = match connect(address).await {
-        Ok(executor) => {
-            finish_pending_quietly(&executor, vault).await;
-            executor.status().await.ok().and_then(|s| s.did)
+    match connect(address).await {
+        Ok(executor) => public_state_on(Some(&executor), vault).await,
+        Err(_) => public_state_on::<WsRpcClient>(None, vault).await,
+    }
+}
+
+/// [`public_state`] with the executor, when it answers.
+async fn public_state_on<R: ExecutorRpc>(
+    executor: Option<&ViaExecutor<R>>,
+    vault: &DesktopVault,
+) -> CustodyPublic {
+    let (did, blocked) = match executor {
+        Some(executor) => {
+            finish_pending_quietly(executor, vault).await;
+            match status_and_store(executor).await {
+                Ok((status, store)) => (
+                    status.did,
+                    (!store.is_some_and(|s| s.trusted)).then_some(NO_STORE),
+                ),
+                Err(_) => (None, None),
+            }
         }
-        Err(_) => None,
+        None => (None, None),
     };
     // Whether this identity's key is held here and, if so, whether it is sealed.
     let sealed = did
@@ -483,7 +517,7 @@ async fn public_state(vault: &DesktopVault, address: &ExecutorAddress) -> Custod
         did,
         holds_master,
         unlock,
-        blocked: (!address.store_trusted).then_some(NO_STORE),
+        blocked,
     }
 }
 
@@ -561,10 +595,6 @@ async fn run_create(
     rx: &mut Rx,
     reply: &mut Reply,
 ) {
-    // Before anything: words shown for an identity the store could never take would be a lie.
-    if let Some(refused) = no_store(address) {
-        return answer(reply, Ok(refused));
-    }
     let executor = match connect(address).await {
         Ok(e) => e,
         Err(message) => return answer(reply, Ok(Screen::Failed { message })),
@@ -580,6 +610,10 @@ async fn create_on<R: ExecutorRpc>(
     rx: &mut Rx,
     reply: &mut Reply,
 ) {
+    // Before anything: words shown for an identity the store could never take would be a lie.
+    if let Err(refused) = trusted_store(executor).await {
+        return answer(reply, Ok(refused));
+    }
     // An identity made here earlier whose publish was not confirmed is finished, never replaced:
     // its master key is already kept, and its words are the ones the person wrote down.
     match finish_pending(executor, vault).await {
@@ -798,13 +832,14 @@ fn passphrase_for(vault: &DesktopVault, did: &str) -> Result<bool, ClientError> 
 }
 
 async fn run_link(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, reply: &mut Reply) {
-    if let Some(refused) = no_store(address) {
-        return answer(reply, Ok(refused));
-    }
-    let store_url = offer_store(address);
     let executor = match connect(address).await {
         Ok(e) => e,
         Err(message) => return answer(reply, Ok(Screen::Failed { message })),
+    };
+    // The offer names the store the executor uses, and the claiming device publishes through it.
+    let store_url = match trusted_store(&executor).await {
+        Ok(url) => url,
+        Err(refused) => return answer(reply, Ok(refused)),
     };
     finish_pending_quietly(&executor, vault).await;
     let did = match executor.status().await {
@@ -962,13 +997,13 @@ async fn run_revoke(
     reply: &mut Reply,
     key_id: String,
 ) {
-    if let Some(refused) = no_store(address) {
-        return answer(reply, Ok(refused));
-    }
     let executor = match connect(address).await {
         Ok(e) => e,
         Err(message) => return answer(reply, Ok(Screen::Failed { message })),
     };
+    if let Err(refused) = trusted_store(&executor).await {
+        return answer(reply, Ok(refused));
+    }
     finish_pending_quietly(&executor, vault).await;
     let (did, own) = match executor.status().await {
         Ok(status) => match status.did {
@@ -1076,6 +1111,8 @@ mod tests {
         /// A refusal every publish answers with, as a store that never takes this incept.
         refuse_for_good: RefCell<Option<(u16, String)>>,
         refuse_cosign: Cell<bool>,
+        /// What `identity.status` answers as `store`: a trusted one unless a test says otherwise.
+        store: RefCell<Value>,
         publishes: Cell<u32>,
         calls: Cell<u32>,
     }
@@ -1088,6 +1125,7 @@ mod tests {
                 refuse_publish: Cell::new(false),
                 refuse_for_good: RefCell::new(None),
                 refuse_cosign: Cell::new(false),
+                store: RefCell::new(json!({ "url": "https://store.example", "trusted": true })),
                 publishes: Cell::new(0),
                 calls: Cell::new(0),
             }
@@ -1109,6 +1147,7 @@ mod tests {
                         "revoked": null,
                         "head": null,
                         "fork": null,
+                        "store": self.store.borrow().clone(),
                     }))
                 }
                 "identity.cosignIncept" => {
@@ -1310,20 +1349,70 @@ mod tests {
         );
     }
 
-    /// A build naming no store makes offers on the agent language's default store, which the
-    /// executor trusts by default; a build naming one makes them there.
-    #[test]
-    fn an_offer_names_the_builds_store_or_the_default_one() {
-        let address = |store_url: Option<&str>| ExecutorAddress {
-            url: "http://127.0.0.1:9".into(),
-            admin_credential: Arc::from("x"),
-            store_url: store_url.map(str::to_string),
-            store_trusted: true,
-        };
-        assert_eq!(offer_store(&address(None)), "https://store.ad4m.dev");
+    /// An offer names the store the executor reports it uses; with none, or one it trusts no key
+    /// for, the step is refused in the same words the executor's own refusal reads as.
+    #[tokio::test]
+    async fn a_step_publishes_through_the_store_the_executor_reports_or_is_refused() {
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        *executor.rpc().store.borrow_mut() =
+            json!({ "url": "https://store.network.example", "trusted": true });
         assert_eq!(
-            offer_store(&address(Some("https://store.example"))),
-            "https://store.example"
+            trusted_store(&executor).await,
+            Ok("https://store.network.example".to_string())
+        );
+        let no_store = Screen::Failed {
+            message: NO_STORE.into(),
+        };
+        for store in [
+            Value::Null,
+            json!({ "url": "https://store.network.example", "trusted": false }),
+        ] {
+            *executor.rpc().store.borrow_mut() = store;
+            assert_eq!(trusted_store(&executor).await, Err(no_store.clone()));
+        }
+        // An executor that predates `store` has none to report, and is refused the same way.
+        assert_eq!(
+            status_and_store(&ViaExecutor::new(OldExecutor))
+                .await
+                .unwrap()
+                .1,
+            None
+        );
+    }
+
+    /// `identity.status` as an executor answered it before it reported its store.
+    struct OldExecutor;
+
+    #[async_trait::async_trait(?Send)]
+    impl ExecutorRpc for OldExecutor {
+        async fn call(&self, _: &str, _: Value) -> Result<Value, RpcError> {
+            Ok(json!({ "did": null, "deviceKey": "z6Mk", "deviceEnc": "z6LS" }))
+        }
+    }
+
+    /// The first-run screen draws "Make my identity here" disabled from `blocked`: set from the
+    /// executor's store, and not set while nothing is known.
+    #[tokio::test]
+    async fn the_public_state_is_blocked_when_the_executor_has_no_store_it_trusts() {
+        let vault = DesktopVault::new(
+            Box::new(crate::store::MemoryStore::new()),
+            PendingIncepts::memory(),
+        );
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        assert_eq!(public_state_on(Some(&executor), &vault).await.blocked, None);
+        for store in [
+            Value::Null,
+            json!({ "url": "https://store.example", "trusted": false }),
+        ] {
+            *executor.rpc().store.borrow_mut() = store;
+            assert_eq!(
+                public_state_on(Some(&executor), &vault).await.blocked,
+                Some(NO_STORE)
+            );
+        }
+        assert_eq!(
+            public_state_on::<FakeExecutor>(None, &vault).await.blocked,
+            None
         );
     }
 
@@ -1344,8 +1433,6 @@ mod tests {
             ExecutorAddress {
                 url: "http://127.0.0.1:9".into(),
                 admin_credential: Arc::from("x"),
-                store_url: None,
-                store_trusted: true,
             },
         );
         assert_eq!(
@@ -1369,34 +1456,31 @@ mod tests {
         );
     }
 
+    /// With no store the executor trusts, making an identity stops before any words are made,
+    /// and asks nothing more of the executor than its status.
     #[tokio::test]
-    async fn a_build_with_no_store_key_refuses_every_step_before_words_are_made() {
-        let pending = PendingIncepts::memory();
-        let vault = DesktopVault::new(Box::new(crate::store::MemoryStore::new()), pending);
-        let handle = spawn(
-            vault,
-            ExecutorAddress {
-                url: "http://127.0.0.1:9".into(),
-                admin_credential: Arc::from("x"),
-                store_url: Some("https://store.example".into()),
-                store_trusted: false,
-            },
-        );
-        let no_store = Screen::Failed {
-            message: NO_STORE.into(),
-        };
-        // The refusal comes before the executor is asked anything: port 9 would answer
-        // "Coasys is starting" instead.
-        for step in [
-            IdentityStep::Create,
-            IdentityStep::AddDevice,
-            IdentityStep::Revoke {
-                key_id: "d2".into(),
-            },
+    async fn a_create_with_no_trusted_store_is_refused_before_words_are_made() {
+        for store in [
+            Value::Null,
+            json!({ "url": "https://store.example", "trusted": false }),
         ] {
-            assert_eq!(handle.start(step).await.unwrap(), no_store);
+            let executor = ViaExecutor::new(FakeExecutor::new());
+            *executor.rpc().store.borrow_mut() = store;
+            let vault = DesktopVault::new(
+                Box::new(crate::store::MemoryStore::new()),
+                PendingIncepts::memory(),
+            );
+            let screens =
+                run_create_on(&executor, &vault, |_, first| async move { vec![first] }).await;
+            assert_eq!(
+                screens,
+                vec![Screen::Failed {
+                    message: NO_STORE.into()
+                }]
+            );
+            assert_eq!(executor.rpc().calls.get(), 1);
+            assert_eq!(executor.rpc().publishes.get(), 0);
         }
-        assert_eq!(handle.public_state().await.unwrap().blocked, Some(NO_STORE));
     }
 
     #[test]
@@ -1605,8 +1689,6 @@ mod tests {
         let address = ExecutorAddress {
             url: "http://127.0.0.1:9".into(),
             admin_credential: Arc::from("x"),
-            store_url: None,
-            store_trusted: true,
         };
         let (tx, mut rx) = mpsc::unbounded_channel();
         let (first_tx, first_rx) = oneshot::channel();
