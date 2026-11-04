@@ -123,7 +123,7 @@ export interface EphemeralChannel {
    * Subscribe to this channel. `from` is the sender's id — see
    * {@link EphemeralCapabilities.authenticatedSender} before trusting it. Returns an unsubscribe.
    */
-  onMessage(cb: (from: string, payload: unknown) => void): () => void;
+  onMessage: (cb: (from: string, payload: unknown) => void) => () => void;
 
   /**
    * Observe what happens to published messages. Returns an unsubscribe.

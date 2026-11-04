@@ -147,7 +147,7 @@ export function parseCallMessage(payload: unknown): CallMessage | null {
   if (msg.kind === 'ice') {
     const candidate = (msg as { candidate?: unknown }).candidate;
     if (typeof candidate !== 'object' || candidate === null) return null;
-    return { ...envelope, kind: 'ice', candidate: candidate as RTCIceCandidateInit };
+    return { ...envelope, kind: 'ice', candidate: candidate };
   }
 
   if (msg.kind === 'reset') return { ...envelope, kind: 'reset' };

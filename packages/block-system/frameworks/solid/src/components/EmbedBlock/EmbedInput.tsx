@@ -69,7 +69,7 @@ export function EmbedInput(props: EmbedInputProps) {
                 <we-input
                   type="text"
                   value={url()}
-                  on:input={(e: CustomEvent) => setUrl(e.detail)}
+                  on:input={(e: CustomEvent<string>) => setUrl(e.detail)}
                   placeholder="https://example.com"
                 />
               </we-form-field>
@@ -77,7 +77,7 @@ export function EmbedInput(props: EmbedInputProps) {
                 <we-select
                   value={displayMode()}
                   options={DISPLAY_MODE_OPTIONS}
-                  onChange={(e: CustomEvent) => setDisplayMode(e.detail)}
+                  onChange={(e: CustomEvent<string>) => setDisplayMode(e.detail)}
                 />
               </we-form-field>
               <Row ax="end" gap="200">

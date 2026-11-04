@@ -29,8 +29,8 @@ export function rangeCompare(actual: unknown, op: RangeOp, bound: unknown): bool
     (typeof actual === 'number' && typeof bound === 'number' && !Number.isNaN(actual) && !Number.isNaN(bound)) ||
     (typeof actual === 'string' && typeof bound === 'string');
   if (!comparable) return false;
-  const a = actual as number | string;
-  const b = bound as number | string;
+  const a = actual;
+  const b = bound;
   switch (op) {
     case 'lt':
       return a < b;

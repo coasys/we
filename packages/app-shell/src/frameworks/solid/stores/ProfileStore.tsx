@@ -327,7 +327,7 @@ export function ProfileStoreProvider(props: ParentProps) {
     });
 
     const publishKey = field === 'avatar' ? 'avatarUrl' : 'coverImageUrl';
-    await profilePort.publish({ [publishKey]: expressionUrl } as PublishProfileFields);
+    await profilePort.publish({ [publishKey]: expressionUrl });
 
     // Mirror the picture onto the account so the locked sign-in screen stays current. Avatar only
     // — a cover image is not what identifies someone in a list.
@@ -354,7 +354,7 @@ export function ProfileStoreProvider(props: ParentProps) {
     });
 
     const publishKey = field === 'avatar' ? 'avatarUrl' : 'coverImageUrl';
-    await profilePort.publish({ [publishKey]: '' } as PublishProfileFields);
+    await profilePort.publish({ [publishKey]: '' });
 
     // The sign-in screen caches the avatar so a locked session has something to show; clearing the
     // profile has to clear that too, or the old face outlives the profile it came from.
@@ -548,7 +548,7 @@ export function ProfileStoreProvider(props: ParentProps) {
       return [...prev.filter((a) => a.did !== myDid), { ...base, avatar: dataUri }];
     });
 
-    await profilePort.publish({ avatarUrl: expressionUrl } as PublishProfileFields);
+    await profilePort.publish({ avatarUrl: expressionUrl });
     void cacheAvatarOnAccount(dataUri);
   }
 

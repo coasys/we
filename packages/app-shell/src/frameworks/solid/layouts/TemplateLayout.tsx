@@ -48,7 +48,7 @@ import { lazy } from 'solid-js';
 const EditorOverlay = lazy(() => import('@we/editor').then((m) => ({ default: m.EditorOverlay })));
 import { createSurface, RenderSchema } from '@we/schema-solid';
 import type { ParentProps } from 'solid-js';
-import { createEffect, createMemo, onCleanup, Show } from 'solid-js';
+import { createEffect, createMemo, onCleanup, Show, untrack } from 'solid-js';
 
 import { buildRoutes, RouteSurface } from '../utils/buildRoutes';
 import { createLiveSchema } from '../utils/liveSchema';
@@ -102,11 +102,7 @@ export function computeBottomOffset(stores: Stores): string {
 // Shell overlay inner — rendered inside ShellRouteStoreProvider + MemoryRouter
 // ---------------------------------------------------------------------------
 
-function ShellOverlayInner({
-  stores,
-  chromeStores,
-  view,
-}: {
+function ShellOverlayInner(props: {
   /** The host's own handle. A view's store factory is host code and reads wiring through it. */
   stores: Stores;
   /** What the overlay's schema renders against — chrome tier, because these views are chrome. */
@@ -119,10 +115,14 @@ function ShellOverlayInner({
   const overlaySurface = createSurface();
   // Shell views name themes too — the schema-tests page demonstrates a scoped `cyberpunk` section —
   // and they are mounted on demand, so the template's own pass never sees them.
-  stores.themeStore.requestNamedThemes(view.schema);
+  //
+  // Everything this setup reads from props is fixed for the overlay's life: the bags are made once by
+  // the host, and the overlay is mounted keyed on its view, so another view is another overlay.
+  untrack(() => props.stores.themeStore.requestNamedThemes(props.view.schema));
   // Built from the raw stores (the schema-tests view reaches for `testDataset` and `backendPorts`,
   // both host wiring), then merged into the *chrome* bag, which is what actually gets rendered.
-  const { $schema: reactiveSchema, ...storeEntries } = view.stores?.(stores, shellRouteStore) ?? {};
+  const { $schema: reactiveSchema, ...storeEntries } =
+    untrack(() => props.view.stores?.(props.stores, shellRouteStore)) ?? {};
   /*
     The overlay's router, put through the same bag as everything else it renders against.
 
@@ -134,7 +134,11 @@ function ShellOverlayInner({
     call and no schema's.
   */
   const shellRouteBag = buildTemplateBag({ routeStore: shellRouteStore }, { grants: CHROME_TIER }).routeStore;
-  const shellStores: Stores = { ...chromeStores, routeStore: shellRouteBag, ...(storeEntries as Partial<Stores>) };
+  const shellStores: Stores = {
+    ...untrack(() => props.chromeStores),
+    routeStore: shellRouteBag,
+    ...(storeEntries as Partial<Stores>),
+  };
   /*
     `$part` expanded here too, because a shell view is chrome and chrome may place a module's pieces.
 
@@ -153,8 +157,8 @@ function ShellOverlayInner({
     any overlay can be opened, and `resolveParts` returns by identity when there is nothing to
     expand — so a view that places none pays nothing.
   */
-  const resolved = resolveParts((reactiveSchema ?? view.schema) as SchemaNode);
-  const schema = (Array.isArray(resolved) ? resolved[0] : resolved) as typeof view.schema;
+  const resolved = resolveParts(reactiveSchema ?? untrack(() => props.view.schema));
+  const schema = (Array.isArray(resolved) ? resolved[0] : resolved) as typeof props.view.schema;
 
   return (
     <MemoryRouter
@@ -222,8 +226,9 @@ export function TemplateLayout(
   // `stores` is the *template* bag and is used for exactly one thing: rendering the template.
   // Everything else here — route wiring, panel geometry, theme resolution — is host work and reads
   // `host`, which still has the members a bag deliberately withholds.
-  const stores = props.hostStores;
-  const templateStores = props.stores;
+  // Both bags are made once by the host and never replaced.
+  const stores = untrack(() => props.hostStores);
+  const templateStores = untrack(() => props.stores);
 
   // Wire useNavigate/useLocation (available here because we're inside <Router>) into routeStore
   const navigate = useNavigate();
@@ -290,7 +295,7 @@ export function TemplateLayout(
    */
   const templateWithParts = (): SchemaNode => {
     const expanded = resolveParts(stores.templateStore.currentTemplate);
-    return ((Array.isArray(expanded) ? expanded[0] : expanded) ?? stores.templateStore.currentTemplate) as SchemaNode;
+    return (Array.isArray(expanded) ? expanded[0] : expanded) ?? stores.templateStore.currentTemplate;
   };
 
   // Taken back on unmount. A template switch unmounts this layout, and without the cleanup the
@@ -408,7 +413,7 @@ export function TemplateLayout(
     const td = stores.themeStore.activeTemplateTheme();
     if (!td) return undefined;
     const overrides = parseOverrides(td.overrides);
-    return (overrides.themeName as string | undefined) ?? (isValidThemeKey(td.id) ? td.id : undefined);
+    return overrides.themeName ?? (isValidThemeKey(td.id) ? td.id : undefined);
   });
 
   const rightOffset = () => computeRightOffset(stores);
@@ -587,10 +592,12 @@ export function TemplateLayout(
                 >
                   {/* The overlay's box is painted while the chunk arrives, so a lazy view opens
                       onto the surface it is about to fill rather than onto the template behind it. */}
-                  <Show when={view()}>
+                  {/* Keyed: the overlay is built for one view, so another view is a new overlay rather than
+                      the last one's schema and stores under a new name. */}
+                  <Show when={view()} keyed>
                     {(entry) => (
                       <ShellRouteStoreProvider>
-                        <ShellOverlayInner stores={stores} chromeStores={props.chromeStores} view={entry()} />
+                        <ShellOverlayInner stores={stores} chromeStores={props.chromeStores} view={entry} />
                       </ShellRouteStoreProvider>
                     )}
                   </Show>

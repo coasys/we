@@ -18,7 +18,7 @@ import type { TemplateSchema } from '@we/schema-shared';
  */
 export function sameTemplateContent(a: TemplateSchema, b: TemplateSchema): boolean {
   const bare = (t: TemplateSchema) => {
-    const { templateVersion: _v, author: _a, _fromSpace: _s, ...rest } = t as TemplateSchema & { author?: string };
+    const { templateVersion: _v, author: _a, _fromSpace: _s, ...rest } = t;
     return JSON.stringify(rest);
   };
   return bare(a) === bare(b);
@@ -47,7 +47,11 @@ export interface TemplateChanges {
   removed: string[];
 }
 
-const stampOf = (row: TemplateStamp) => `${String(row.version ?? '')}|${String(row.updatedAt ?? '')}`;
+/** A version or a time as text: the ORM hands back a number or a string; anything else counts as none. */
+export const stampText = (value: unknown): string =>
+  typeof value === 'string' || typeof value === 'number' ? String(value) : '';
+
+const stampOf = (row: TemplateStamp) => `${stampText(row.version)}|${stampText(row.updatedAt)}`;
 
 /**
  * Compare a push with the last one.
@@ -72,7 +76,7 @@ export function templateChanges(
   for (const row of rows) {
     const stamp = next.get(row.id)!;
     if (previous.get(row.id) === stamp) continue;
-    if (ownSaves.get(row.id) === String(row.version ?? '')) {
+    if (ownSaves.get(row.id) === stampText(row.version)) {
       ownSaves.delete(row.id);
       continue;
     }

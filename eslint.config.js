@@ -4,6 +4,7 @@ import tsParser from '@typescript-eslint/parser';
 import eslintConfigPrettier from 'eslint-config-prettier';
 import prettierPlugin from 'eslint-plugin-prettier';
 import simpleImportSortPlugin from 'eslint-plugin-simple-import-sort';
+import solidPlugin from 'eslint-plugin-solid';
 
 import prettierConfig from './.prettierrc.json' with { type: 'json' };
 
@@ -243,9 +244,8 @@ export default [
     name: 'typescript/recommended',
     files: ['**/*.ts', '**/*.tsx'],
     plugins: { '@typescript-eslint': tsPlugin, 'simple-import-sort': simpleImportSortPlugin },
-    // Parsed without type information: no rule here reads types. Turning on `projectService`
-    // builds a TypeScript program per tsconfig, which takes lint from about 1 GB to 7 GB. It
-    // belongs with the first type-aware rule (`recommended-type-checked`), as a choice of its own.
+    // Parsed without type information: no rule here reads types. Those that do are in
+    // "typescript/type-aware" below, which turns it on for the files they cover.
     languageOptions: {
       parser: tsParser,
     },
@@ -261,6 +261,85 @@ export default [
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
       ],
     },
+  },
+  /*
+    Rules that need TypeScript's types: typescript-eslint's `recommended-type-checked` set, whole, so
+    a rule the set gains arrives with the upgrade. They catch what syntax and `tsc` do not: a promise
+    nobody handles, an object printed as "[object Object]", a method that loses `this`, and a value
+    typed `any` switching checking off for everything it touches. One rule is off, below, with why.
+
+    Types cost a TypeScript program per package, so this covers the packages' own `src` only, never
+    tests or generated files, and `pnpm lint` runs one process per package (scripts/lint.mjs): one
+    process over the whole repository would hold about 15 GB. The commit hook sets
+    WE_LINT_TYPES=off, so a commit is not a 20-second, 3 GB wait; CI and `pnpm lint` run these.
+  */
+  ...(process.env.WE_LINT_TYPES === 'off'
+    ? [
+        {
+          // Without types, a disable for a type-aware rule looks unused. Reporting it would fail the
+          // commit, and `--fix` would delete it.
+          name: 'typescript/type-aware-off',
+          linterOptions: { reportUnusedDisableDirectives: 'off' },
+        },
+      ]
+    : [
+        {
+          name: 'typescript/type-aware',
+          files: ['{packages,apps}/**/src/**/*.{ts,tsx}'],
+          ignores: ['**/*.test.{ts,tsx}', '**/*.generated.ts', '**/generated/**'],
+          languageOptions: {
+            parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
+          },
+          rules: {
+            ...tsPlugin.configs['recommended-type-checked-only'].rules,
+            /*
+              Off on purpose. The opaque handle types (`DatasetHandle`, `DatasetProxy`, `BlockDataset`,
+              `ComposedDocument`) are `unknown` so that no package can look inside one, which makes
+              `Handle | null` collapse to `unknown`. The rule calls the `| null` redundant, but it is
+              there for the reader: it says null means "none". Every report was one of these.
+            */
+            '@typescript-eslint/no-redundant-type-constituents': 'off',
+          },
+        },
+      ]),
+  /*
+    Solid's own mistakes, which TypeScript cannot see: a prop destructured out of reactivity, a signal
+    read where nothing tracks it, a list mapped where <For> keeps its rows. Every .tsx here is Solid
+    (the Lit primitives are .ts).
+  */
+  {
+    ...solidPlugin.configs['flat/typescript'],
+    name: 'solid/recommended',
+    files: ['{packages,apps}/**/src/**/*.tsx'],
+    // The playgrounds are benchmarks and probes, each written at a chosen layer on purpose: the render
+    // bench measures "what a developer writes today", `.map()` and all.
+    ignores: ['apps/playgrounds/**'],
+    rules: {
+      ...solidPlugin.configs['flat/typescript'].rules,
+    },
+  },
+  {
+    /*
+      `reactivity` reads app-shell's stores and providers wrong. They hand accessors to registries and
+      to helpers that read them in their own tracked scopes, which the rule cannot follow: across all
+      of them it reported 56 places and none was a bug. A store's genuine read-once is still written
+      with `untrack`, which says so to the next reader.
+    */
+    name: 'solid/app-shell-stores',
+    files: ['packages/app-shell/src/frameworks/solid/{stores,providers}/**/*.tsx'],
+    rules: { 'solid/reactivity': 'off' },
+  },
+  {
+    /*
+      The schema renderer dispatches on a node once and returns the renderer for its type, so it
+      destructures and returns early by design. A node never changes under a mounted renderer:
+      children render through <For>, which keys by object, so a changed node is a new object and a
+      new mount (see `renderChildren` in SchemaRenderer.tsx). Reading it through `props` would cost
+      the hottest path in the app and buy nothing.
+    */
+    name: 'solid/schema-renderer',
+    files: ['packages/schema-system/frameworks/solid/src/**/*.tsx'],
+    rules: { 'solid/no-destructure': 'off', 'solid/components-return-once': 'off' },
   },
   // Turn off any rules that conflict with prettier
   eslintConfigPrettier,

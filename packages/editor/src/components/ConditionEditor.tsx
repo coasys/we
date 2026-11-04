@@ -46,7 +46,7 @@ export function ConditionEditor(props: {
   /** Label above the editor — e.g. "Show when". */
   label?: string;
 }) {
-  const [draft, setDraft] = createSignal<ConditionExpr | null>(parseCondition(props.condition));
+  const [draft, setDraft] = createSignal<ConditionExpr | null>(untrack(() => parseCondition(props.condition)));
   const [rawMode, setRawMode] = createSignal(false);
 
   // Adopt external edits (undo/redo, AI changes, selecting another node) but ignore the
@@ -234,7 +234,7 @@ function ConditionRow(props: {
         ? cmp.right?.kind === 'list'
           ? cmp.right
           : ({ kind: 'list', value: [] } as ConditionOperand)
-        : (cmp.right ?? ({ kind: 'literal', value: '' } as ConditionOperand));
+        : (cmp.right ?? { kind: 'literal', value: '' });
     props.onChange({ type: 'comparison', operator, left: cmp.left, right });
   };
 

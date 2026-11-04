@@ -96,9 +96,9 @@ export function textBlockToRecord(block: TextContentBlock): Record<string, unkno
 export function recordToTextBlock(record: Record<string, unknown>): TextContentBlock {
   const block: TextContentBlock = { _type: 'block', text: typeof record.text === 'string' ? record.text : '' };
   if (typeof record.id === 'string' && record.id) block._key = record.id;
-  const style = String(record.style ?? '');
+  const style = typeof record.style === 'string' ? record.style : '';
   block.style = style === 'h1' || style === 'h2' || style === 'h3' || style === 'blockquote' ? style : 'normal';
-  const listItem = String(record.listItem ?? '');
+  const listItem = typeof record.listItem === 'string' ? record.listItem : '';
   if (listItem === 'bullet' || listItem === 'number' || listItem === 'check') block.listItem = listItem;
   const level = typeof record.level === 'number' ? record.level : Number(record.level ?? 0);
   if (level > 0) block.level = level;
@@ -346,7 +346,7 @@ async function preUploadFileAssets(perspective: BlockDataset, blocks: ContentBlo
       }
     }
     if (isCollectionBlock(patched)) {
-      (patched as CollectionContentBlock).content = await preUploadFileAssets(perspective, patched.content ?? []);
+      patched.content = await preUploadFileAssets(perspective, patched.content ?? []);
     }
     out.push(patched);
   }
@@ -394,10 +394,7 @@ export async function resolveExpressionAddresses(
       }
     }
     if (isCollectionBlock(patched)) {
-      (patched as CollectionContentBlock).content = await resolveExpressionAddresses(
-        perspective,
-        patched.content ?? [],
-      );
+      patched.content = await resolveExpressionAddresses(perspective, patched.content ?? []);
     }
     out.push(patched);
   }
@@ -437,7 +434,7 @@ function findByKey(blocks: readonly ContentBlock[], key: string): ContentBlock[]
   for (const block of blocks) {
     if (block._key === key) return [block];
     if (isCollectionBlock(block)) {
-      const inner = findByKey((block as CollectionContentBlock).content ?? [], key);
+      const inner = findByKey(block.content ?? [], key);
       if (inner) return inner;
     }
   }
@@ -447,11 +444,7 @@ function findByKey(blocks: readonly ContentBlock[], key: string): ContentBlock[]
 function withoutKeys(blocks: readonly ContentBlock[]): ContentBlock[] {
   return blocks.map((block) => {
     const { _key: _dropped, ...rest } = block;
-    return (
-      isCollectionBlock(block)
-        ? { ...rest, content: withoutKeys((block as CollectionContentBlock).content ?? []) }
-        : rest
-    ) as ContentBlock;
+    return isCollectionBlock(block) ? { ...rest, content: withoutKeys(block.content ?? []) } : rest;
   });
 }
 
@@ -975,7 +968,7 @@ export async function reconcileBlocks(
         }
       }
       if (!model) {
-        model = (await registration.model.create(perspective, data, { batchId: tx.batchId })) as BlockRecord;
+        model = await registration.model.create(perspective, data, { batchId: tx.batchId });
       }
       block._key = model.id;
       if (uploaded) uploaded._key = model.id;

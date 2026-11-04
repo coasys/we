@@ -215,7 +215,7 @@ export function createTabCoordinator(deps: TabCoordinatorDeps = {}): TabCoordina
   let timeoutTimer: ReturnType<typeof setTimeout> | null = null;
   let disposed = false;
 
-  const post = (type: Message['type']) => channel.post({ type, tabId } as Message);
+  const post = (type: Message['type']) => channel.post({ type, tabId });
 
   /**
    * Pinned tabs this pinned leader turned away, newest last.

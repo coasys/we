@@ -18,6 +18,7 @@ import {
   applyThemeVars,
   basePolarity,
   fontFaceProblem,
+  parseOverrides,
   previewDisplay,
   roleVar,
   setThemeLive,
@@ -650,10 +651,7 @@ export function ThemePanel() {
 
   const editing = () => themeStore.editingTheme();
   /** The theme as stored: its base, and a `light` or `dark` block when it has two sides. */
-  const stored = createMemo<ThemeOverrides>(() => {
-    const raw = editing()?.overrides;
-    return raw ? JSON.parse(raw) : {};
-  });
+  const stored = createMemo<ThemeOverrides>(() => parseOverrides(editing()?.overrides));
 
   /*
     Sides. A theme is light, dark, or both — a base, and a block holding what differs on the other
@@ -680,18 +678,18 @@ export function ThemePanel() {
 
   function saveTheme() {
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => themeStore.saveEditingTheme(), SAVE_DEBOUNCE_MS);
+    saveTimer = setTimeout(() => void themeStore.saveEditingTheme(), SAVE_DEBOUNCE_MS);
   }
 
   function saveThemeNow() {
     clearTimeout(saveTimer);
-    themeStore.saveEditingTheme();
+    void themeStore.saveEditingTheme();
   }
 
   onCleanup(() => {
     if (saveTimer !== undefined) {
       clearTimeout(saveTimer);
-      themeStore.saveEditingTheme();
+      void themeStore.saveEditingTheme();
     }
   });
 
@@ -701,7 +699,7 @@ export function ThemePanel() {
   }
 
   function setOverride<K extends keyof ThemeOverrides>(key: K, value: ThemeOverrides[K] | undefined) {
-    write({ [key]: value } as Partial<ThemeOverrides>);
+    write({ [key]: value });
   }
 
   function setOverrides(partial: Partial<ThemeOverrides>) {
@@ -766,7 +764,7 @@ export function ThemePanel() {
 
   /** Pin the fill to exactly what was picked, past the correction — the label may then not read. */
   function keepPicked(family: ChromaticFamily) {
-    write({ roles: { ...overrides().roles, [family]: picked()[family] } as ThemeOverrides['roles'] });
+    write({ roles: { ...overrides().roles, [family]: picked()[family] } });
     saveTheme();
   }
 
@@ -1072,7 +1070,7 @@ export function ThemePanel() {
   function setTypeStyle(role: TypeRole, key: keyof TypeStyle, value: string | undefined) {
     const current = overrides().typeStyles ?? {};
     const next = pruned({ ...current, [role]: pruned({ ...current[role], [key]: value }) });
-    setOverride('typeStyles', next as ThemeOverrides['typeStyles']);
+    setOverride('typeStyles', next);
   }
 
   const [component, setComponent] = createSignal('button');
@@ -1085,7 +1083,7 @@ export function ThemePanel() {
   function resetComponent(name: string) {
     const next = { ...overrides().components };
     delete next[name];
-    setOverride('components', pruned(next) as ThemeOverrides['components']);
+    setOverride('components', pruned<NonNullable<ThemeOverrides['components']>>(next));
     saveTheme();
   }
 
@@ -1109,7 +1107,8 @@ export function ThemePanel() {
         .replace(/\.(woff2?|ttf|otf)$/i, '')
         .replace(/[^\p{L}\p{N} _-]/gu, ' ')
         .trim();
-      const face: FontFaceSetting = { family, src: String(reader.result) };
+      // `readAsDataURL` always yields a string.
+      const face: FontFaceSetting = { family, src: reader.result as string };
       const problem = fontFaceProblem(face);
       setFontProblem(problem ?? '');
       if (problem) return;
@@ -1179,11 +1178,13 @@ export function ThemePanel() {
   ) {
     return (
       <Row gap="100">
-        {(Object.keys(labels) as T[]).map((p) => (
-          <we-button size="sm" variant={isActive(p) ? 'soft' : 'ghost'} onClick={() => onSelect(p)} flex="1">
-            {labels[p]}
-          </we-button>
-        ))}
+        <For each={Object.keys(labels) as T[]}>
+          {(p) => (
+            <we-button size="sm" variant={isActive(p) ? 'soft' : 'ghost'} onClick={() => onSelect(p)} flex="1">
+              {labels[p]}
+            </we-button>
+          )}
+        </For>
       </Row>
     );
   }
@@ -1259,7 +1260,7 @@ export function ThemePanel() {
   const [roleColors, setRoleColors] = createSignal<Record<string, string>>({});
   const [familyColors, setFamilyColors] = createSignal<Record<string, FamilySample>>({});
   const [effectiveSaturation, setEffectiveSaturation] = createSignal({ theme: 50, palette: 50 });
-  const probeStyle = createMemo(() => themeParametersToStyle(overrides()) as Record<string, string>);
+  const probeStyle = createMemo(() => themeParametersToStyle(overrides()));
 
   /**
    * True from the moment a pointer goes down in this panel until it comes back up.
@@ -1476,6 +1477,7 @@ export function ThemePanel() {
    * than what it stores.
    */
   const measureElevation = (): string[] => {
+    // eslint-disable-next-line solid/reactivity -- `lum` is only called straight away below, never kept
     const colors = roleColors();
     const lum = (r: ThemeRole) => {
       const c = parseColor(colors[r] ?? '');
@@ -1581,11 +1583,13 @@ export function ThemePanel() {
     */
     const badgeRow = (variant: 'soft' | 'solid') => (
       <Row gap="100" wrap ay="center">
-        {(['neutral', 'accent', 'success', 'warning', 'danger'] as const).map((tone) => (
-          <we-badge variant={variant} tone={tone} size="xs">
-            {tone}
-          </we-badge>
-        ))}
+        <For each={['neutral', 'accent', 'success', 'warning', 'danger'] as const}>
+          {(tone) => (
+            <we-badge variant={variant} tone={tone} size="xs">
+              {tone}
+            </we-badge>
+          )}
+        </For>
       </Row>
     );
     return (
@@ -1830,7 +1834,7 @@ export function ThemePanel() {
                 <we-icon-picker
                   value={editing()!.icon}
                   size="sm"
-                  on:change={(e: CustomEvent) => {
+                  on:change={(e: CustomEvent<string>) => {
                     themeStore.updateEditingMeta({ icon: e.detail });
                     saveTheme();
                   }}
@@ -1840,7 +1844,7 @@ export function ThemePanel() {
                   placeholder="Theme name"
                   size="sm"
                   flex="1"
-                  on:input={(e: CustomEvent) => themeStore.updateEditingMeta({ name: e.detail })}
+                  on:input={(e: CustomEvent<string>) => themeStore.updateEditingMeta({ name: e.detail })}
                   on:blur={() => saveTheme()}
                 />
               </Row>
@@ -2210,10 +2214,7 @@ export function ThemePanel() {
               <Column gap="200">
                 <Subheading>Overall</Subheading>
                 {presetRow(
-                  { sharp: 'Sharp', default: 'Default', rounded: 'Rounded', pill: 'Pill' } as Record<
-                    ShapePreset,
-                    string
-                  >,
+                  { sharp: 'Sharp', default: 'Default', rounded: 'Rounded', pill: 'Pill' },
                   (p) => activeShapePreset() === p,
                   (p) => setOverrides(SHAPE_PRESETS[p]),
                 )}
@@ -2293,10 +2294,7 @@ export function ThemePanel() {
                   Size
                 </we-text>
                 {presetRow(
-                  { sm: 'Small', default: 'Default', lg: 'Large', xl: 'Extra large' } as Record<
-                    FontScalePreset,
-                    string
-                  >,
+                  { sm: 'Small', default: 'Default', lg: 'Large', xl: 'Extra large' },
                   (p) => activeFontScalePreset() === p,
                   (p) => {
                     const scale = FONT_SCALE_PRESETS[p];
@@ -2377,7 +2375,7 @@ export function ThemePanel() {
               <Column gap="200">
                 <Subheading>Overall</Subheading>
                 {presetRow(
-                  { compact: 'Compact', comfortable: 'Normal', spacious: 'Roomy' } as Record<SpacingPreset, string>,
+                  { compact: 'Compact', comfortable: 'Normal', spacious: 'Roomy' },
                   (p) => activeSpacingPreset() === p,
                   (p) => setOverrides(SPACING_PRESETS[p]),
                 )}
@@ -2401,10 +2399,7 @@ export function ThemePanel() {
               <Column gap="200">
                 <Subheading>Strength</Subheading>
                 {presetRow(
-                  { flat: 'Flat', subtle: 'Subtle', elevated: 'Elevated', dramatic: 'Dramatic' } as Record<
-                    NonNullable<ThemeOverrides['shadowIntensity']>,
-                    string
-                  >,
+                  { flat: 'Flat', subtle: 'Subtle', elevated: 'Elevated', dramatic: 'Dramatic' },
                   (p) => overrides().shadowIntensity === p,
                   (p) => {
                     setOverride('shadowIntensity', p);
@@ -2416,10 +2411,7 @@ export function ThemePanel() {
                 <Subheading>Glow</Subheading>
                 {/* What shadow: 'glow' draws — the accent as light, coloured by an element's tone. */}
                 {presetRow(
-                  { none: 'None', subtle: 'Subtle', medium: 'Medium', strong: 'Strong' } as Record<
-                    NonNullable<ThemeOverrides['glowIntensity']>,
-                    string
-                  >,
+                  { none: 'None', subtle: 'Subtle', medium: 'Medium', strong: 'Strong' },
                   (p) => (overrides().glowIntensity ?? 'medium') === p,
                   (p) => {
                     setOverride('glowIntensity', p === 'medium' ? undefined : p);
@@ -2477,10 +2469,7 @@ export function ThemePanel() {
               <Column gap="200">
                 <Subheading>Animation speed</Subheading>
                 {presetRow(
-                  { none: 'None', fast: 'Fast', normal: 'Normal', slow: 'Slow' } as Record<
-                    NonNullable<ThemeOverrides['animationSpeed']>,
-                    string
-                  >,
+                  { none: 'None', fast: 'Fast', normal: 'Normal', slow: 'Slow' },
                   (p) => (overrides().animationSpeed ?? 'normal') === p,
                   (p) => {
                     setOverride('animationSpeed', p === 'normal' ? undefined : p);

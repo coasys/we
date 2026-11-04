@@ -143,16 +143,14 @@ export function createLayoutComponent<P extends LayoutProps, H = unknown>(
   return function LayoutComponent(allProps: P) {
     const [designSystemProps, rest] = splitProps(allProps, keys as (keyof P)[]);
     const direction = () =>
-      typeof config.direction === 'function'
-        ? config.direction(designSystemProps as P)
-        : (config.direction ?? 'column');
+      typeof config.direction === 'function' ? config.direction(designSystemProps) : (config.direction ?? 'column');
 
     const baseStyle = createMemo(() => {
-      const usedProps = filterProps(designSystemProps as Record<string, unknown>, styleKeys);
+      const usedProps = filterProps(designSystemProps, styleKeys);
       const merged = mergeProps(usedProps, { ...LAYOUT_DEFAULTS, ...family, ...config.defaults }) as P;
       const style = buildLayoutStyles(merged, direction());
       if (config.name) themeComponent(config.name, style, usedProps);
-      return config.finalizeStyle ? config.finalizeStyle(style, designSystemProps as P) : style;
+      return config.finalizeStyle ? config.finalizeStyle(style, designSystemProps) : style;
     });
 
     // Both axes of variance route through the same var indirection, so either one is reason enough
@@ -164,8 +162,8 @@ export function createLayoutComponent<P extends LayoutProps, H = unknown>(
       designSystemProps.disabledProps ||
       tierKeys.some((key) => (designSystemProps as Record<string, unknown>)[key]);
 
-    const { style, attrs, checkSurface } = useStateProps(baseStyle, designSystemProps as P, direction());
-    const extras = config.hook?.(designSystemProps as P);
+    const { style, attrs, checkSurface } = useStateProps(baseStyle, designSystemProps, direction());
+    const extras = config.hook?.(designSystemProps);
 
     const composedRef = (el: HTMLElement) => {
       checkSurface(el);
@@ -185,7 +183,7 @@ export function createLayoutComponent<P extends LayoutProps, H = unknown>(
         ref={composedRef}
       >
         {config.wrapChildren
-          ? config.wrapChildren(() => designSystemProps.children, designSystemProps as P, extras?.extra)
+          ? config.wrapChildren(() => designSystemProps.children, designSystemProps, extras?.extra)
           : designSystemProps.children}
       </div>
     );

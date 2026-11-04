@@ -195,7 +195,7 @@ export const solarSystemLayer: LayerKind<SolarSystemLayerOptions> = {
   ...SOLAR_SYSTEM,
   renderers: {
     cesium: (context: CesiumRendererContext, options: SolarSystemLayerOptions) => {
-      const { viewer, onCleanup } = context;
+      const { viewer } = context;
       const {
         planets = ['mercury', 'venus', 'mars', 'jupiter', 'saturn'],
         showOrbits = true,
@@ -328,7 +328,7 @@ export const solarSystemLayer: LayerKind<SolarSystemLayerOptions> = {
       });
 
       // Cleanup function
-      onCleanup(() => {
+      context.onCleanup(() => {
         // Remove orbit entities
         orbitEntities.forEach((entity) => {
           viewer.entities.remove(entity);

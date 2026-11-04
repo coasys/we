@@ -16,7 +16,7 @@ const noRows: SchemaNode = emptyState({ icon: 'chats-circle', label: 'Flux conve
 
 /** Merges extra $localState fields onto a node that may already declare some (e.g. cardShell's own). */
 function withLocalState(node: SchemaNode, extra: Record<string, LocalStateField>): SchemaNode {
-  return { ...node, $localState: { ...(node.$localState as Record<string, LocalStateField> | undefined), ...extra } };
+  return { ...node, $localState: { ...node.$localState, ...extra } };
 }
 
 const caretIcon = (openField: string): SchemaNode => ({

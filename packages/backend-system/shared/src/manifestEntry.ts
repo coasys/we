@@ -115,6 +115,7 @@ export function manifestEntries(
           .map(([propName, spec]) => ({
             name: propName,
             predicate: spec.predicate!,
+            // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- this callback's return has no contextual type, so without it the literals widen to string
             type: (spec.type === 'number' ? 'number' : spec.type === 'boolean' ? 'boolean' : 'string') as
               'string' | 'number' | 'boolean',
             isCollection: false,

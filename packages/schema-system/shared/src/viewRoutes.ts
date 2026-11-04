@@ -158,7 +158,7 @@ function markBoundary(node: Record<string, unknown>, view: ResolvedView): Record
 
   // The renderer's own test for a custom element — see `isWebComponent` in SchemaRenderer.
   if (!(typeof node.type === 'string' && node.type.includes('-'))) {
-    return { ...node, props: { ...((node.props as Record<string, unknown>) ?? {}), ...marks } };
+    return { ...node, props: { ...(node.props ?? {}), ...marks } };
   }
 
   return { type: 'Column', props: { styles: { display: 'contents' }, ...marks }, children: [node] };
@@ -261,7 +261,7 @@ function indexRoute(gate?: ViewGate): RouteSchema {
   // Without a gate there is nothing to draw and no list to consult, so the route exists purely to be
   // matched. `display: contents` generates no box.
   const body: SchemaNode = gate?.notInSpace ?? { type: 'Column', props: { styles: { display: 'contents' } } };
-  return { ...(body as Record<string, unknown>), path: '/' } as RouteSchema;
+  return { ...(body as Record<string, unknown>), path: '/' };
 }
 
 /**
@@ -284,8 +284,8 @@ function indexRoute(gate?: ViewGate): RouteSchema {
  * means by a page that is not here, and two would be a duplicate path.
  */
 function deepRoute(gate?: ViewGate): RouteSchema {
-  if (gate?.notHere) return { ...(gate.notHere as Record<string, unknown>), path: '/*' } as RouteSchema;
-  return { ...indexRoute(gate), path: '/*' } as RouteSchema;
+  if (gate?.notHere) return { ...(gate.notHere as Record<string, unknown>), path: '/*' };
+  return { ...indexRoute(gate), path: '/*' };
 }
 
 const isCatchAll = (route: RouteSchema): boolean => route.path === '/*' || route.path === '*';

@@ -102,7 +102,7 @@ export function FileInput(props: FileInputProps) {
             icon="paperclip"
             label="Add a file"
             hint="Drop here or click to browse"
-            onFileDrop={receiveFile}
+            onFileDrop={(file: File) => void receiveFile(file).catch(console.error)}
             onClick={() => setShowModal(true)}
           />
         }
@@ -144,7 +144,7 @@ export function FileInput(props: FileInputProps) {
             <we-input
               type="text"
               value={pendingTitle()}
-              on:input={(e: CustomEvent) => setPendingTitle(e.detail)}
+              on:input={(e: CustomEvent<string>) => setPendingTitle(e.detail)}
               placeholder="Title (optional)"
               width="100%"
             />
@@ -153,7 +153,7 @@ export function FileInput(props: FileInputProps) {
                 <we-button variant="ghost" onClick={closeModal}>
                   Cancel
                 </we-button>
-                <we-button variant="solid" onClick={() => saveFile().catch(console.error)}>
+                <we-button variant="solid" onClick={() => void saveFile().catch(console.error)}>
                   Save
                 </we-button>
               </Row>
