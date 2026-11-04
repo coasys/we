@@ -99,10 +99,11 @@ function renderingNow(): RenderRecord[] {
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (r): r is RenderRecord =>
-        !!r && typeof r.id === 'string' && typeof r.tab === 'string' && typeof r.at === 'number',
-    );
+    return (parsed as unknown[]).filter((r): r is RenderRecord => {
+      if (!r || typeof r !== 'object') return false;
+      const { id, tab, at } = r as { id?: unknown; tab?: unknown; at?: unknown };
+      return typeof id === 'string' && typeof tab === 'string' && typeof at === 'number';
+    });
   } catch {
     return [];
   }

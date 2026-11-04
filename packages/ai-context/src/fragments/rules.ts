@@ -65,7 +65,7 @@ WRONG icon names (Heroicons/Material — do NOT use):
 - Size a template root with \`minHeight\`, never \`height\`. \`height: '100%'\` makes the root exactly as tall as the viewport, so a route with more content than that overflows the *box* — and the root's background stops at the fold while the content keeps scrolling. \`minHeight: '100%'\` fills the viewport when a route is short and grows when it is long, which is what a page background needs. The same applies to \`'100vh'\` — and prefer \`'100dvh'\` to \`'100vh'\` anywhere a full-viewport height is meant: on a phone the address bar makes \`vh\` taller than what is actually visible, so the last rows of the page sit under the browser chrome. Identical on a desktop.
 
 Most @we/primitives inherit all Design System Props documented above (layout, visual, flex, typography, state).
-Some layout-only primitives (we-avatar, we-icon, we-image, we-spinner, etc.) only accept Layout props — see the Design System Props section for the full list.
+Some layout-only primitives (we-avatar, we-icon, we-image, we-animated-icon, etc.) only accept Layout props — see the Design System Props section for the full list.
 
 Native HTML elements (lowercase tags render directly without registry entries):
 - Layout: div, section, article, aside, main, nav, header, footer

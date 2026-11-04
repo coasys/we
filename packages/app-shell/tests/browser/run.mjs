@@ -472,6 +472,13 @@ async function main() {
         note: (text) => notes.push(text),
         /** Run a function in the page, for a probe no helper covers. */
         evaluate: (fn, arg) => page.evaluate(fn, arg),
+        /**
+          Ask the way an operating system asks: the reduced-motion media query, which a case cannot
+          set from inside the page. The app's own Motion setting is the attribute on the document
+          root, and a case sets that with `evaluate` and puts it back itself. The media query is put
+          back after every case.
+        */
+        reducedMotion: (on) => page.emulateMedia({ reducedMotion: on ? 'reduce' : 'no-preference' }),
         themePanel: async (overrides) => {
           await page.evaluate((o) => window.__harness.themePanelProbe(o), overrides);
           await page.waitForTimeout(300);
@@ -499,6 +506,7 @@ async function main() {
         await cdp.send('Profiler.start');
       }
       const problems = (await mod.check(api, width, scale)) ?? [];
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
       if (cdp) {
         const { profile } = await cdp.send('Profiler.stop');
         const self = new Map();

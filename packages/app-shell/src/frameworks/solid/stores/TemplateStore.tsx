@@ -40,7 +40,7 @@ import {
   SpaceTemplatePreference,
   Template,
 } from '@we/entities';
-import type { RouteSchema, SchemaNode, TemplateMeta, TemplateSchema } from '@we/schema-shared';
+import type { SchemaNode, TemplateMeta, TemplateSchema } from '@we/schema-shared';
 import { ensureNodeIds, hasViewsMarker, templateThemeIds } from '@we/schema-shared';
 import { updateSchema } from '@we/schema-solid';
 import {
@@ -68,6 +68,7 @@ import {
 import {
   remoteUpdateFor,
   sameTemplateContent,
+  stampText,
   TEMPLATE_WATCH_FIELDS,
   templateChanges,
 } from '../../../shared/templateSync';
@@ -402,7 +403,7 @@ export function TemplateStoreProvider(props: ParentProps) {
   const writingElsewhere = new Set<string>();
   /** Note a write this agent made to a template record, so its echo is not taken for news. */
   function noteOwnWrite(record: { id: string; version?: unknown }): void {
-    ownSaves.set(record.id, String(record.version ?? ''));
+    ownSaves.set(record.id, stampText(record.version));
   }
 
   /**
@@ -494,7 +495,7 @@ export function TemplateStoreProvider(props: ParentProps) {
   const initialTemplate = deepClone(
     builtInTemplates.find((t) => t.id === 'launcher') || builtInTemplates[0] || emptyTemplate,
   );
-  ensureNodeIds(initialTemplate as SchemaNode);
+  ensureNodeIds(initialTemplate);
 
   // State
   const [allTemplates, setAllTemplates] = createSignal<TemplateSchema[]>([...builtInTemplates]);
@@ -730,7 +731,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       });
       if (accepted.schema) {
         const { meta: _meta, ...screen } = accepted.schema;
-        node = screen as SchemaNode;
+        node = screen;
       }
     }
     if (node && slotRegistry.get('core:bootScreen')?.node !== node) slotRegistry.replace('core:bootScreen', node);
@@ -963,7 +964,7 @@ export function TemplateStoreProvider(props: ParentProps) {
   // Load saved templates when root perspective becomes available
   createEffect(() => {
     if (datasetStore.rootDataset()) {
-      loadSavedTemplates().finally(() => setLoading(false));
+      void loadSavedTemplates().finally(() => setLoading(false));
     }
   });
 
@@ -1305,7 +1306,7 @@ export function TemplateStoreProvider(props: ParentProps) {
   function updateTemplate(newTemplate: TemplateSchema) {
     const clone = deepClone(newTemplate) as SchemaNode;
     // Against the template it replaces, so a node pasted with an id already in use is the one renewed.
-    ensureNodeIds(clone, undefined, currentTemplate as SchemaNode);
+    ensureNodeIds(clone, undefined, currentTemplate);
     const result = updateSchema(currentTemplate, clone as TemplateSchema, setCurrentTemplate);
     if (!result.applied && result.errors?.length) {
       toastService.error(`Schema validation failed: ${result.errors[0].message}`);
@@ -1356,18 +1357,18 @@ export function TemplateStoreProvider(props: ParentProps) {
       const p = datasetStore.currentDataset();
       if (!p) {
         routeStore.navigate('/');
-        datasetStore.updateAgentSettings({ currentTemplateId: realId });
+        void datasetStore.updateAgentSettings({ currentTemplateId: realId });
         return;
       }
       const base = `/space/${canonicalSpaceId(p)}`;
-      if (!hasViewsMarker(newTemplate.routes as RouteSchema[] | undefined)) {
+      if (!hasViewsMarker(newTemplate.routes)) {
         routeStore.navigate(base);
       } else {
         const segs = routeStore.segments();
         const currentView = segs[0] === 'space' && segs[2] ? segs[2] : 'globe';
         routeStore.navigate(`${base}/${lastViewByTemplate.get(realId) ?? currentView}`);
       }
-      datasetStore.updateAgentSettings({ currentTemplateId: realId });
+      void datasetStore.updateAgentSettings({ currentTemplateId: realId });
     } else {
       console.error(`TemplateStore: switchTemplate - Invalid templateId "${newTemplateId}"`);
     }
@@ -1557,7 +1558,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       if (!id) continue;
       // The space's copy carries nothing of where it was read from but the bundle it came in.
       const { _fromSpace: _ignored, ...clean } = template;
-      const schema = asFileField(encodeTemplateFile(clean as TemplateSchema));
+      const schema = asFileField(encodeTemplateFile(clean));
       const existing = records.get(id);
       if (existing) {
         existing.schema = schema;
@@ -1834,7 +1835,7 @@ export function TemplateStoreProvider(props: ParentProps) {
         }),
       );
 
-      await loadSpaceTemplates(spaceDs!);
+      await loadSpaceTemplates(spaceDs);
       toastService.success(`"${schemaToInstall.meta.name}" installed to space`);
     } catch (error) {
       toastService.error(explain(error, 'Could not install that template into this space'));
@@ -2049,7 +2050,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       change to this one.
     */
     const schemaToSave: TemplateSchema = {
-      ...(ensureNodeIds(deepClone(schema) as SchemaNode) as TemplateSchema),
+      ...(ensureNodeIds(deepClone(schema)) as TemplateSchema),
       id: templateId,
       author: session.me()?.did,
       meta: { ...schema.meta, name },
@@ -2090,7 +2091,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       }
 
       if (isSpace) {
-        await loadSpaceTemplates(targetDs!);
+        await loadSpaceTemplates(targetDs);
       } else {
         await loadSavedTemplates();
       }
@@ -2123,7 +2124,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       } else {
         routeStore.navigate('/');
       }
-      datasetStore.updateAgentSettings({ currentTemplateId: templateId });
+      void datasetStore.updateAgentSettings({ currentTemplateId: templateId });
       setOperationLoading(null);
       return true;
     } catch (error) {
@@ -2561,7 +2562,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     clearSpaceTemplates,
     spaceTemplatePending,
     awaitingSpaceRecord: spaceRecord.waiting,
-    choosingSpaceTemplate: choosing.choosing,
+    choosingSpaceTemplate: () => choosing.choosing(),
     safeMode: () => safe,
     leaveSafeMode,
     leaveSafeModeInto,

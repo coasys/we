@@ -5,6 +5,7 @@ import { register } from 'node:module';
 import { relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import type { ContextData } from '../contextTypes.js';
 import { asHostChrome, buildValidationContext, validateSemantic, withOwnModule } from '../semanticValidation.js';
 import { validateStructure } from '../validators.js';
 
@@ -126,7 +127,8 @@ try {
   console.error(`  Run "pnpm --filter @we/ai-context generate-context" first.`);
   process.exit(1);
 }
-const contextData = JSON.parse(contextJson);
+// context.json is written by @we/ai-context's generator from the same ContextData type.
+const contextData = JSON.parse(contextJson) as ContextData;
 const validationContext = buildValidationContext(contextData);
 
 /**

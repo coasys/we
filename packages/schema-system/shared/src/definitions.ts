@@ -148,7 +148,7 @@ function childPositions(node: SchemaNode): SchemaNode[] {
   const out: SchemaNode[] = [];
   const push = (v: unknown) => {
     if (Array.isArray(v)) v.forEach(push);
-    else if (isSchemaChild(v) || isPropsSchemaNode(v)) out.push(v as SchemaNode);
+    else if (isSchemaChild(v) || isPropsSchemaNode(v)) out.push(v);
   };
   if (Array.isArray(node.children)) node.children.forEach(push);
   if (Array.isArray(node.routes)) node.routes.forEach(push);
@@ -162,7 +162,7 @@ function childPositions(node: SchemaNode): SchemaNode[] {
 function mapChildren(node: SchemaNode, map: (child: SchemaNode) => SchemaNode): SchemaNode {
   const walk = (v: unknown): unknown => {
     if (Array.isArray(v)) return v.map(walk);
-    if (isSchemaChild(v) || isPropsSchemaNode(v)) return map(v as SchemaNode);
+    if (isSchemaChild(v) || isPropsSchemaNode(v)) return map(v);
     return v;
   };
   const out: SchemaNode = { ...node };
@@ -200,7 +200,7 @@ function namedPositions(node: SchemaNode): [string, SchemaNode][] {
   const out: [string, SchemaNode][] = [];
   const push = (name: string, v: unknown) => {
     if (Array.isArray(v)) v.forEach((one, i) => push(`${name}.${i}`, one));
-    else if (isSchemaChild(v) || isPropsSchemaNode(v)) out.push([name, v as SchemaNode]);
+    else if (isSchemaChild(v) || isPropsSchemaNode(v)) out.push([name, v]);
   };
   if (Array.isArray(node.children)) push('c', node.children);
   if (Array.isArray(node.routes)) push('r', node.routes);
@@ -324,7 +324,7 @@ export function compactDefinitions(schema: SchemaNode, options: CompactOptions =
   if (!Object.keys(defs).length) return { schema, hoisted: 0, saved: 0, uses: {} };
 
   const uses = rememberUses(schema, rewritten, defs, options.mint ?? newNodeId);
-  const out: SchemaNode = { ...rewritten, $defs: { ...definitionsOf(schema), ...defs } } as SchemaNode;
+  const out: SchemaNode = { ...rewritten, $defs: { ...definitionsOf(schema), ...defs } };
   return { schema: out, hoisted: Object.keys(defs).length, saved: before - JSON.stringify(out).length, uses };
 }
 
@@ -488,7 +488,7 @@ export function useCountOf(root: SchemaNode, targetId: string): number {
     if (cached !== undefined) return cached;
     if (open.has(name)) return 0;
     const deeper = new Set([...open, name]);
-    let total = refsTo({ ...root, $defs: undefined } as SchemaNode, name);
+    let total = refsTo({ ...root, $defs: undefined }, name);
     for (const [other, def] of Object.entries(defs)) {
       if (other === name) continue;
       const within = refsTo(def, name);

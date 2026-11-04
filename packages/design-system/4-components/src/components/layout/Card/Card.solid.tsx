@@ -15,6 +15,7 @@ const render = createLayoutComponent<CardProps>({
     shadow: 'var(--we-theme-shadow, none)',
   },
   ownKeys: ['direction'],
+  // eslint-disable-next-line solid/reactivity -- a callback the layout factory calls with the props, not a component
   direction: (props) => props.direction ?? 'column',
   finalizeStyle: (style, props) => {
     // Apply surface opacity to background only (not element content) when bg is set

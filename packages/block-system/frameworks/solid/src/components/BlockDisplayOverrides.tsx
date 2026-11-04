@@ -1,5 +1,5 @@
 import type { Component, JSX } from 'solid-js';
-import { createContext, useContext } from 'solid-js';
+import { createContext, untrack, useContext } from 'solid-js';
 
 type DisplayOverrideMap = Record<string, Component<Record<string, unknown>>>;
 
@@ -20,7 +20,8 @@ export const DisplayOverridesContext = BlockDisplayOverridesContext;
  */
 export function BlockDisplayOverrides(props: { overrides: DisplayOverrideMap; children: JSX.Element }) {
   return (
-    <BlockDisplayOverridesContext.Provider value={props.overrides}>
+    // Read once: a consumer looks its override up once, when its block mounts.
+    <BlockDisplayOverridesContext.Provider value={untrack(() => props.overrides)}>
       {props.children}
     </BlockDisplayOverridesContext.Provider>
   );

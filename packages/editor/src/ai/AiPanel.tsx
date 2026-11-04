@@ -25,7 +25,7 @@ export function AiPanel() {
   function handleSend() {
     const text = inputValue().trim();
     if (!text || session.isStreaming() || !session.assistantAvailable()) return;
-    session.sendMessage(text);
+    void session.sendMessage(text);
     setInputValue('');
   }
 
@@ -46,8 +46,8 @@ export function AiPanel() {
       onKeyDown={(e: KeyboardEvent) => {
         if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
           e.preventDefault();
-          if (e.shiftKey) session.redo();
-          else session.undo();
+          if (e.shiftKey) void session.redo();
+          else void session.undo();
         }
       }}
       tabIndex={0}
@@ -60,7 +60,7 @@ export function AiPanel() {
         </Row>
         <Row ay="center" gap="100" flexShrink="0">
           <we-tooltip content="New chat session">
-            <we-button variant="ghost" size="sm" onClick={() => session.newChat()}>
+            <we-button variant="ghost" size="sm" onClick={() => void session.newChat()}>
               <we-icon name="file-plus" size="sm" />
             </we-button>
           </we-tooltip>
@@ -112,7 +112,7 @@ export function AiPanel() {
                     fontSize="300"
                     prop:fontWeight={isActive() ? '600' : '400'}
                     color={isActive() ? 'text' : 'text-muted'}
-                    onClick={() => session.switchSession(chat.id)}
+                    onClick={() => void session.switchSession(chat.id)}
                     cursor="pointer"
                   >
                     {chat.name || 'Chat'}
@@ -123,7 +123,7 @@ export function AiPanel() {
                       size="xs"
                       onClick={(e: MouseEvent) => {
                         e.stopPropagation();
-                        session.deleteSession(chat.id);
+                        void session.deleteSession(chat.id);
                       }}
                       mr="-8px"
                       square
@@ -171,7 +171,7 @@ export function AiPanel() {
           submitOnEnter
           flex="1"
           minWidth="0"
-          on:input={(e: CustomEvent) => setInputValue(e.detail)}
+          on:input={(e: CustomEvent<string>) => setInputValue(e.detail)}
           on:submit={handleSend}
         />
         <we-button

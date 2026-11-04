@@ -117,15 +117,15 @@ export function buildRoutes(
             </>
           ),
         });
-        return parentStack.reduceRight((child, meta) => {
+        return parentStack.reduceRight<JSX.Element>((child, meta) => {
           return RenderSchema({
             node: meta.node,
             stores,
             registry,
             context: routeContext(meta.baseDepth),
-            children: child as JSX.Element,
+            children: child,
           });
-        }, layout) as JSX.Element;
+        }, layout);
       };
 
       // Emit stub Routes for keepAlive children so the router matches their paths
@@ -143,15 +143,15 @@ export function buildRoutes(
     // Normal leaf route
     const component = () => {
       const leaf = RenderSchema({ node: route, stores, registry, context: routeContext(baseDepth) });
-      return parentStack.reduceRight((child, meta) => {
+      return parentStack.reduceRight<JSX.Element>((child, meta) => {
         return RenderSchema({
           node: meta.node,
           stores,
           registry,
           context: routeContext(meta.baseDepth),
-          children: child as JSX.Element,
+          children: child,
         });
-      }, leaf) as JSX.Element;
+      }, leaf);
     };
     return <Route path={route.path} component={component} />;
   });

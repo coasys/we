@@ -91,7 +91,7 @@ export function parseSettings(raw: string | null | undefined, describe = 'module
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
     const out: SettingValues = {};
     for (const [group, values] of Object.entries(parsed as Record<string, unknown>)) {
-      if (values && typeof values === 'object' && !Array.isArray(values)) out[group] = { ...(values as object) };
+      if (values && typeof values === 'object' && !Array.isArray(values)) out[group] = { ...values };
     }
     return out;
   } catch {

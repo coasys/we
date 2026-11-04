@@ -208,10 +208,13 @@ function onVisibilityChange() {
 
 function watchInterruptions(on: boolean): void {
   if (typeof window === 'undefined') return;
-  const bind = on ? window.addEventListener : window.removeEventListener;
-  bind.call(window, 'blur', onWindowBlur);
-  const bindDoc = on ? document.addEventListener : document.removeEventListener;
-  bindDoc.call(document, 'visibilitychange', onVisibilityChange);
+  if (on) {
+    window.addEventListener('blur', onWindowBlur);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+  } else {
+    window.removeEventListener('blur', onWindowBlur);
+    document.removeEventListener('visibilitychange', onVisibilityChange);
+  }
 }
 
 export const dragSession = {

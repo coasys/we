@@ -10,10 +10,16 @@
  * the churn this was meant to end. The unit tests use a fake that stores values exactly as written,
  * so they cannot see that. This asks the executor.
  *
- * Counted from the client: `addAutoProcessor` and `remove` on the perspective are what `watch`
- * writes through. The class links on the config node are counted too, as what the executor holds.
+ * Counted from the client: `addAutoProcessor`, `removeAutoProcessor` and `remove` on the perspective
+ * are what `watch` and `unwatch` write through. The class links on the config node are counted too,
+ * as what the executor holds.
+ *
+ * Stopping the watch is one `removeAutoProcessor`, never a `remove` per link: leaving a call used to
+ * be a dozen sequential round trips. What it must leave is the processor's runs — they point AT the
+ * config node and are the processed-turn cursor. A real run needs a language model, so this stands
+ * one in with the link a run carries (`interp/processor`, which `cursor.rs` reads).
  */
-import { Ad4mClient, LinkQuery, type PerspectiveProxy } from '@coasys/ad4m';
+import { Ad4mClient, Link, LinkQuery, type PerspectiveProxy } from '@coasys/ad4m';
 import type { BackendPorts, WatchRequest } from '@we/backend-shared';
 import { CollectionBlock } from '@we/entities';
 import { afterAll, describe, expect, inject, it } from 'vitest';
@@ -23,6 +29,7 @@ import { createAd4mBackendPorts } from '../../src/backendPortsAdapter';
 const WATCH = 'we-live-watch';
 const NODE = `ad4m://autoprocessor/${WATCH}`;
 const CLASS = 'ad4m://interpretation_class';
+const RUN_PROCESSOR = 'ad4m://interp/processor';
 
 let opened: { client: Ad4mClient; ports: BackendPorts; space: string } | undefined;
 
@@ -34,8 +41,8 @@ afterAll(async () => {
 
 /** Counts what `watch` writes through, without changing what it writes. */
 function counted(perspective: PerspectiveProxy) {
-  const calls = { addAutoProcessor: 0, remove: 0 };
-  for (const method of ['addAutoProcessor', 'remove'] as const) {
+  const calls = { addAutoProcessor: 0, removeAutoProcessor: 0, remove: 0 };
+  for (const method of ['addAutoProcessor', 'removeAutoProcessor', 'remove'] as const) {
     const original = (perspective[method] as (...args: unknown[]) => Promise<unknown>).bind(perspective);
     (perspective as unknown as Record<string, unknown>)[method] = (...args: unknown[]) => {
       calls[method] += 1;
@@ -77,25 +84,38 @@ describe('a standing watch, against a real executor', () => {
       const calls = counted(perspective);
 
       await watch(ref.handle, request());
-      expect(calls).toEqual({ addAutoProcessor: 1, remove: 0 });
+      expect(calls).toEqual({ addAutoProcessor: 1, removeAutoProcessor: 0, remove: 0 });
       const registered = await classLinks();
       expect(registered).toBeGreaterThan(0);
 
       // The same request again: every setting reads back as written, so nothing is written.
       await watch(ref.handle, request());
-      expect(calls).toEqual({ addAutoProcessor: 1, remove: 0 });
+      expect(calls).toEqual({ addAutoProcessor: 1, removeAutoProcessor: 0, remove: 0 });
       expect(await classLinks()).toBe(registered);
 
       // One setting changed: registered again over the config, never deleted first.
       await watch(ref.handle, request({ batchMax: 40 }));
-      expect(calls).toEqual({ addAutoProcessor: 2, remove: 0 });
+      expect(calls).toEqual({ addAutoProcessor: 2, removeAutoProcessor: 0, remove: 0 });
 
       // And the rewritten setting reads back too, so the call after it is a no-op again.
       await watch(ref.handle, request({ batchMax: 40 }));
-      expect(calls).toEqual({ addAutoProcessor: 2, remove: 0 });
+      expect(calls).toEqual({ addAutoProcessor: 2, removeAutoProcessor: 0, remove: 0 });
 
+      // A run the processor wrote, standing in for one a pass would.
+      const run = `ad4m://interp/run-live-${Date.now()}`;
+      await perspective.add(new Link({ source: run, predicate: RUN_PROCESSOR, target: NODE }));
+
+      // Stopping it: one request, and the whole config goes — every link from the node.
       await ports.interpretation!.unwatch!(ref.handle, WATCH);
+      expect(calls).toEqual({ addAutoProcessor: 2, removeAutoProcessor: 1, remove: 0 });
       expect(await classLinks()).toBe(0);
+      expect(await perspective.get(new LinkQuery({ source: NODE }))).toHaveLength(0);
+      // The run stays: it is the cursor a watch registered again under this id resumes from.
+      expect(await perspective.get(new LinkQuery({ source: run, predicate: RUN_PROCESSOR }))).toHaveLength(1);
+
+      // Stopping it again is quiet: there is nothing left to remove.
+      await ports.interpretation!.unwatch!(ref.handle, WATCH);
+      expect(calls).toEqual({ addAutoProcessor: 2, removeAutoProcessor: 2, remove: 0 });
     },
   );
 });

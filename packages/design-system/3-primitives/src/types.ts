@@ -28,6 +28,8 @@ export type TagVariant = 'soft' | 'solid';
 export type AlertVariant = 'soft' | 'edge';
 export type IconSize = '' | ComponentSize | (string & {}); // '' = inherit from parent context, semantic sizes, or raw CSS values
 export type IconWeight = 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone';
+/** The drawings `we-animated-icon` knows — see that element for what each one is for. */
+export type AnimatedIconName = 'spinner' | 'live' | 'typing' | 'speaking';
 /*
   Four sizes, deliberately fewer than the control scale.
 

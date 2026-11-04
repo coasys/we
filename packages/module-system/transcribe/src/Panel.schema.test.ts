@@ -548,7 +548,7 @@ describe('what belongs to the live microphone only', () => {
 
     expect(meter).toContain("modules.transcribe.speaking ? 'hearing you' : 'quiet'");
     expect(meter).not.toContain('starting');
-    expect(JSON.stringify(captureStatus)).not.toContain('we-spinner');
+    expect(JSON.stringify(captureStatus)).not.toContain('we-animated-icon');
   });
 
   it('gates the unsaved line itself, rather than leaving that to whoever places it', () => {
@@ -2089,7 +2089,7 @@ describe('a pass that is running is part of the log', () => {
   it('spins in the heading while the section is folded over it', () => {
     // From the heading rather than from the top: the panel has a spinner of its own further up —
     // searching the whole document finds that one and says nothing about this section.
-    const spinner = json.indexOf('"we-spinner"', logs);
+    const spinner = json.indexOf('"we-animated-icon"', logs);
     const exportButton = json.indexOf('"Export the extraction log"', logs);
     expect(spinner, 'the Logs heading has a spinner').toBeGreaterThan(-1);
     expect(spinner, 'the spinner comes before the export button, not after it').toBeLessThan(exportButton);

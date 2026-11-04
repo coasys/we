@@ -25,7 +25,7 @@ const mount = async (props: Record<string, unknown> = {}): Promise<Mounted> => {
   return el;
 };
 
-const spinner = (el: Mounted) => el.shadowRoot!.querySelector('we-spinner');
+const spinner = (el: Mounted) => el.shadowRoot!.querySelector('we-animated-icon[name="spinner"]');
 const slots = (el: Mounted) => el.shadowRoot!.querySelectorAll('slot');
 
 describe('a square button while it is loading', () => {

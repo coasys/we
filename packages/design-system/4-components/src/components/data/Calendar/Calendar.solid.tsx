@@ -1,4 +1,4 @@
-import { createSignal, For } from 'solid-js';
+import { createSignal, For, untrack } from 'solid-js';
 
 export type * from './Calendar.types';
 import type { CalendarProps } from './Calendar.types';
@@ -9,8 +9,10 @@ export function Calendar(props: CalendarProps) {
   const today = new Date();
   const todayStr = formatDate(today.getFullYear(), today.getMonth(), today.getDate());
 
-  const [viewYear, setViewYear] = createSignal(props.value ? new Date(props.value).getFullYear() : today.getFullYear());
-  const [viewMonth, setViewMonth] = createSignal(props.value ? new Date(props.value).getMonth() : today.getMonth());
+  // The month shown first; after that it is the reader's to move.
+  const initial = untrack(() => (props.value ? new Date(props.value) : today));
+  const [viewYear, setViewYear] = createSignal(initial.getFullYear());
+  const [viewMonth, setViewMonth] = createSignal(initial.getMonth());
 
   const prevMonth = () => {
     if (viewMonth() === 0) {

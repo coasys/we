@@ -66,7 +66,7 @@ const more = (end: 'start' | 'end'): SchemaNode => ({
       type: 'Row',
       props: { 'data-we-more': end, ay: 'center', gap: '300', py: '200' },
       children: [
-        { type: 'we-spinner', props: { size: 'xs', color: 'text-faint' } },
+        { type: 'we-animated-icon', props: { name: 'spinner', size: 'xs', color: 'text-faint' } },
         { type: 'we-text', props: { variant: 'footnote', color: 'text-faint' }, children: [MORE_WORDS] },
       ],
     },
@@ -276,7 +276,7 @@ const feedTimeline: SchemaNode = timeline({
                   props: { variant: 'footnote', color: 'text-muted' },
                   children: ['Nothing said here yet. Calls, messages and what is found in them appear here.'],
                 },
-                else: { type: 'we-spinner', props: { size: 'sm' } },
+                else: { type: 'we-animated-icon', props: { name: 'spinner', size: 'sm' } },
               },
             },
           },

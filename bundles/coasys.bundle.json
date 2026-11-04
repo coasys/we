@@ -844,18 +844,7 @@
                       "type": "Row",
                       "props": { "gap": "200", "ay": "center", "px": "300", "pb": "300" },
                       "children": [
-                        {
-                          "type": "Column",
-                          "props": {
-                            "width": "7px",
-                            "height": "7px",
-                            "r": "full",
-                            "bg": "success",
-                            "tone": "success",
-                            "shadow": "glow",
-                            "flex": "0 0 auto"
-                          }
-                        },
+                        { "type": "we-animated-icon", "props": { "name": "live", "color": "success", "size": "xs" } },
                         {
                           "type": "we-text",
                           "props": {
@@ -1247,16 +1236,8 @@
                                               "props": { "tone": "success", "size": "xs" },
                                               "children": [
                                                 {
-                                                  "type": "Column",
-                                                  "props": {
-                                                    "width": "7px",
-                                                    "height": "7px",
-                                                    "r": "full",
-                                                    "bg": "success",
-                                                    "tone": "success",
-                                                    "shadow": "glow",
-                                                    "flex": "0 0 auto"
-                                                  }
+                                                  "type": "we-animated-icon",
+                                                  "props": { "name": "live", "color": "success" }
                                                 },
                                                 "Live"
                                               ]
@@ -17564,9 +17545,9 @@
                                                                           "$": "local.topReplies > count(local.threadRows.filter(r, r.respondsTo.id == (local.discussionRoot ? local.discussionRoot : row.id) && r.kind == 'reply'))"
                                                                         },
                                                                         "then": {
-                                                                          "type": "we-spinner",
+                                                                          "type": "we-animated-icon",
                                                                           "slot": "end",
-                                                                          "props": { "size": "xs" }
+                                                                          "props": { "name": "spinner", "size": "xs" }
                                                                         }
                                                                       }
                                                                     }
@@ -18259,24 +18240,33 @@
                       "condition": { "$": "find(modules.call.liveCalls, { recordId: routeStore.params.id })" },
                       "then": {
                         "type": "we-badge",
-                        "props": { "tone": "success" },
+                        "props": { "tone": "success", "size": "sm" },
                         "children": [
-                          {
-                            "type": "Column",
-                            "props": {
-                              "width": "7px",
-                              "height": "7px",
-                              "r": "full",
-                              "bg": "success",
-                              "tone": "success",
-                              "shadow": "glow",
-                              "flex": "0 0 auto"
-                            }
-                          },
+                          { "type": "we-animated-icon", "props": { "name": "live", "color": "success" } },
                           "Live"
                         ]
                       }
                     }
+                  },
+                  {
+                    "type": "we-tooltip",
+                    "props": { "content": "Export the transcript", "placement": "bottom" },
+                    "children": [
+                      {
+                        "type": "we-button",
+                        "props": {
+                          "variant": "ghost",
+                          "size": "md",
+                          "square": true,
+                          "label": "Export the transcript",
+                          "onClick": {
+                            "$invoke": "spaceStore.exportCallTranscript",
+                            "args": [{ "$": "routeStore.params.id" }]
+                          }
+                        },
+                        "children": [{ "type": "we-icon", "props": { "name": "download-simple" } }]
+                      }
+                    ]
                   },
                   {
                     "type": "Row",
@@ -18321,30 +18311,8 @@
               {
                 "type": "$if",
                 "props": {
-                  "condition": { "$": "modules.call.callRecordId == routeStore.params.id" },
+                  "condition": { "$": "!(modules.call.callRecordId == routeStore.params.id)" },
                   "then": {
-                    "type": "Column",
-                    "props": { "p": "500" },
-                    "children": [
-                      {
-                        "type": "Grid",
-                        "props": {
-                          "minChildWidth": "220px",
-                          "gap": "300",
-                          "childAspect": "16 / 9",
-                          "maxHeight": "50vh"
-                        },
-                        "children": [
-                          {
-                            "type": "$each",
-                            "props": { "items": { "$": "modules.call.tiles" }, "as": "tile" },
-                            "children": [{ "type": "$part", "props": { "id": "call.tile" } }]
-                          }
-                        ]
-                      }
-                    ]
-                  },
-                  "else": {
                     "type": "Row",
                     "props": { "gap": "300", "p": "500", "ay": "center" },
                     "children": [
@@ -25566,16 +25534,8 @@
                                           "props": { "tone": "success", "size": "xs" },
                                           "children": [
                                             {
-                                              "type": "Column",
-                                              "props": {
-                                                "width": "7px",
-                                                "height": "7px",
-                                                "r": "full",
-                                                "bg": "success",
-                                                "tone": "success",
-                                                "shadow": "glow",
-                                                "flex": "0 0 auto"
-                                              }
+                                              "type": "we-animated-icon",
+                                              "props": { "name": "live", "color": "success" }
                                             },
                                             "Live"
                                           ]

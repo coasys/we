@@ -4,7 +4,7 @@ import { PlatformAdapter } from '@shared/platform/types';
 import { createModuleStoreDeps } from '@shared/registries/moduleHostServices';
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import { provideFileSaver } from '@we/design-utils';
-import { createContext, createEffect, createSignal, onCleanup, ParentComponent, useContext } from 'solid-js';
+import { createContext, createEffect, createSignal, onCleanup, ParentComponent, untrack, useContext } from 'solid-js';
 
 import type { WeSeedFile } from '../../../types/seed';
 import { registerModuleComponents } from '../registries/componentRegistry';
@@ -28,11 +28,17 @@ export const PlatformProvider: ParentComponent<{
    *  apps are the deployments — the shell has no business knowing where one lives on disk. */
   seed: WeSeedFile;
 }> = (props) => {
+  // The host contracts and the seed are handed over once, at the app's entry point, and never
+  // replaced: integrations are initialised from them a single time, so they are read once here.
+  const platform = untrack(() => props.platform);
+  const backend = untrack(() => props.backend);
+  const seed = untrack(() => props.seed);
+
   // Initialize integrations with platform adapter BEFORE rendering children
   // This must run synchronously so the launcher template is ready when TemplateStoreProvider reads the registry
   // Components are handed over here, where the framework is known — `initializeIntegrations` itself
   // stays framework-neutral.
-  initializeIntegrations(props.platform, props.seed, {
+  initializeIntegrations(platform, seed, {
     // The framework halves of the modules that have one, lent so their packages never import Solid.
     components: moduleHostComponents,
     // Reactivity lent to module stores. Solid's primitives already have the shapes the port asks
@@ -43,7 +49,7 @@ export const PlatformProvider: ParentComponent<{
       signal: <T,>(initial: T) => createSignal(initial) as [() => T, (next: T) => void],
       effect: (fn) => createEffect(fn),
     }),
-    host: { backend: props.backend.id ?? 'ad4m', framework: 'solid' },
+    host: { backend: backend.id ?? 'ad4m', framework: 'solid' },
   });
   // What the modules contributed becomes vocabulary a template may name — one list, from the
   // registry, rather than a second hand-kept in the component registry.
@@ -51,11 +57,11 @@ export const PlatformProvider: ParentComponent<{
 
   // Every download in the app goes through `saveFile`; a host with its own save dialog lends it here,
   // once, rather than to each of the packages that offer a download.
-  if (props.platform.saveFile) onCleanup(provideFileSaver(props.platform.saveFile));
+  if (platform.saveFile) onCleanup(provideFileSaver(platform.saveFile));
 
   return (
-    <PlatformContext.Provider value={props.platform}>
-      <BackendContext.Provider value={props.backend}>{props.children}</BackendContext.Provider>
+    <PlatformContext.Provider value={platform}>
+      <BackendContext.Provider value={backend}>{props.children}</BackendContext.Provider>
     </PlatformContext.Provider>
   );
 };

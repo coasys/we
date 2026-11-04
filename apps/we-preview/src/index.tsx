@@ -159,7 +159,7 @@ const routeOverride = params.get('route');
 const bare = params.get('bare') === '1' && externalTemplate !== undefined;
 
 if (bare) {
-  const { node, path } = bareNode(externalTemplate!, routeOverride);
+  const { node, path } = bareNode(externalTemplate, routeOverride);
   if (routeOverride && path !== routeOverride)
     console.warn(`no route ${routeOverride} in the template; rendered ${path}`);
   // The app pins html/body/#root to the viewport and scrolls inside; a mockup should grow with its
@@ -180,7 +180,7 @@ if (bare) {
     ),
     document.getElementById('root')!,
   );
-  (window as unknown as Record<string, unknown>).__wePreview = { templateId: externalTemplate!.id, path, bare: true };
+  (window as unknown as Record<string, unknown>).__wePreview = { templateId: externalTemplate.id, path, bare: true };
 } else {
   render(
     () => (

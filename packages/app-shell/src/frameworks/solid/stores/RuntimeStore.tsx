@@ -836,7 +836,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
   function setAiFormField(field: string, value: string): void {
     const before = aiForm();
     if (!before) return;
-    const form = { ...before, [field]: value } as AiModelForm;
+    const form = { ...before, [field]: value };
     if (field === 'kind') {
       const fits = aiEndpointRecords()
         .find((e) => e.id === form.endpointId)
@@ -1307,7 +1307,7 @@ export function parsePeerInfos(text: string): string[] {
   const trimmed = text.trim();
   if (!trimmed) return [];
   try {
-    const parsed = JSON.parse(trimmed);
+    const parsed: unknown = JSON.parse(trimmed);
     if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
   } catch {
     // Not JSON — fall through to the line-separated reading.

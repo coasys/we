@@ -156,7 +156,7 @@ const list = (items: string[]) => (items.length ? items.join(', ') : '(none)');
 function parseTargets(raw: string | undefined): string[] {
   if (!raw) return [];
   try {
-    const parsed = JSON.parse(raw);
+    const parsed: unknown = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
   } catch {
     return [];

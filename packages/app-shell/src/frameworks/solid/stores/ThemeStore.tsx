@@ -3,7 +3,6 @@ import { readDeviceApp } from '@shared/bundles/deviceApp';
 import { offeredInPickers } from '@shared/devOnlyOffers';
 import { appTemplateRegistry } from '@shared/registries/appTemplates';
 import { seedBundleAppId, seedBundleApps } from '@shared/registries/seedBundles';
-import type { ThemeKey } from '@shared/registries/themeRegistry';
 import { devOnlyThemeIds, isValidThemeKey, themeRegistry } from '@shared/registries/themeRegistry';
 import { getSeed } from '@shared/seedRegistry';
 import { explain } from '@shared/userMessage';
@@ -78,7 +77,7 @@ function parseDisplay(raw: string | null | undefined): DisplayPreferences {
   if (!raw) return {};
   try {
     const parsed: unknown = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' ? (parsed as DisplayPreferences) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
   } catch {
     return {};
   }
@@ -295,7 +294,7 @@ export interface ThemeStore {
 const ThemeContext = createContext<ThemeStore>();
 
 function registryToThemeData(key: string): ThemeData {
-  const t = themeRegistry[key as ThemeKey] ?? { name: key, icon: 'palette', css: null, overrides: null };
+  const t = themeRegistry[key] ?? { name: key, icon: 'palette', css: null, overrides: null };
   return {
     id: key,
     slug: key,
@@ -622,7 +621,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     screen when they change — a space's and a node's as well as this store's. Set once now, from the
     cache, so the first paint already has them.
   */
-  setDisplayPreferences(displayPreferences());
+  setDisplayPreferences(untrack(displayPreferences));
   createEffect(() => setDisplayPreferences(displayPreferences()));
   function setDisplayPreference<K extends keyof DisplayPreferences>(
     key: K,
@@ -865,12 +864,12 @@ export function ThemeStoreProvider(props: ParentProps) {
 
   // Load installed themes when root perspective is ready
   createEffect(() => {
-    if (datasetStore.rootDataset()) loadInstalledThemes();
+    if (datasetStore.rootDataset()) void loadInstalledThemes();
   });
 
   // Load space themes when the current space perspective changes
   createEffect(() => {
-    if (datasetStore.currentDataset()) loadSpaceThemes();
+    if (datasetStore.currentDataset()) void loadSpaceThemes();
     else setSpaceThemes([]);
   });
 
@@ -1625,7 +1624,7 @@ export function ThemeStoreProvider(props: ParentProps) {
         existingRecord.css = sourceCss ? asFileField(encodeToFileData(sourceCss, 'theme.css', 'text/css')) : null;
         await existingRecord.save();
         const updated = modelToThemeData(existingRecord);
-        setInstalledThemes((prev) => prev.map((t) => (t.id === existingRecord!.id ? updated : t)));
+        setInstalledThemes((prev) => prev.map((t) => (t.id === existingRecord.id ? updated : t)));
         toastService.success(`Theme "${source.name}" updated to v${source.version}`);
         return;
       }

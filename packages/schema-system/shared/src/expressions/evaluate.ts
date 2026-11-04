@@ -29,6 +29,7 @@ import { REACTIVE_ACCESSOR } from '../propResolvers/reactive';
 import type { Expr } from './ast';
 import { DENIED_PROPERTIES } from './ast';
 import { readField } from './reach';
+import { asText } from './where';
 
 /**
  * A root whose members are read through a getter rather than as an object's own properties —
@@ -109,7 +110,7 @@ export function readValue(value: unknown): unknown {
 function settle(value: unknown): unknown {
   const read = readValue(value);
   if (!isNamespace(read)) return read;
-  return RAW in read ? (read as CallbackNamespace)[RAW] : undefined;
+  return RAW in read ? read[RAW] : undefined;
 }
 
 function readProperty(object: unknown, property: string): unknown {
@@ -120,7 +121,7 @@ function readProperty(object: unknown, property: string): unknown {
   if (base === null || base === undefined) return undefined;
   if (typeof base === 'string') return property === 'length' ? base.length : undefined;
   if (typeof base !== 'object') return undefined;
-  return readValue(readField(base as object, property));
+  return readValue(readField(base, property));
 }
 
 /**
@@ -165,8 +166,7 @@ function evaluate(expr: Expr, env: EvaluationEnv, scope: Map<string, unknown>): 
       return expr.parts
         .map((part) => {
           if (typeof part === 'string') return part;
-          const value = settle(evaluate(part, env, scope));
-          return value == null ? '' : String(value);
+          return asText(settle(evaluate(part, env, scope)));
         })
         .join('');
 
@@ -227,7 +227,7 @@ function evaluate(expr: Expr, env: EvaluationEnv, scope: Map<string, unknown>): 
           return Array.isArray(right) && right.includes(left);
         case '+':
           if (typeof left === 'number' && typeof right === 'number') return left + right;
-          if (typeof left === 'string' || typeof right === 'string') return `${left ?? ''}${right ?? ''}`;
+          if (typeof left === 'string' || typeof right === 'string') return asText(left) + asText(right);
           return toNumber(left) + toNumber(right);
         case '-':
           return toNumber(left) - toNumber(right);

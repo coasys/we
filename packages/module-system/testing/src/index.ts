@@ -76,11 +76,14 @@ export type FakeRow = Record<string, unknown> & { id: string; author: string };
 function matches(row: Record<string, unknown>, where: Record<string, unknown> | undefined): boolean {
   return Object.entries(where ?? {}).every(([key, value]) => {
     if (Array.isArray(value)) return value.includes(row[key]);
-    if (value && typeof value === 'object' && 'not' in (value as object))
-      return row[key] !== (value as { not: unknown }).not;
+    if (value && typeof value === 'object' && 'not' in value) return row[key] !== value.not;
     return row[key] === value;
   });
 }
+
+/** A field as the text rows are ordered by: a scalar as it prints, anything else as nothing. */
+const sortText = (value: unknown): string =>
+  typeof value === 'string' ? value : typeof value === 'number' || typeof value === 'boolean' ? String(value) : '';
 
 function select(rows: FakeRow[], query: RecordQuery | undefined): FakeRow[] {
   let out = rows.filter((row) => matches(row, query?.where) && (!query?.within || row.__parent === query.within));
@@ -88,8 +91,8 @@ function select(rows: FakeRow[], query: RecordQuery | undefined): FakeRow[] {
   if (order) {
     const [field, direction] = order;
     out = [...out].sort((a, b) => {
-      const x = String(a[field] ?? '');
-      const y = String(b[field] ?? '');
+      const x = sortText(a[field]);
+      const y = sortText(b[field]);
       return direction === 'desc' ? y.localeCompare(x) : x.localeCompare(y);
     });
   }
@@ -116,23 +119,25 @@ export function fakeDocuments(options: { datasetKey?: string } = {}) {
   const writes: { op: 'create' | 'update' | 'remove'; id: string }[] = [];
   let next = 0;
   const access: DocumentAccess = {
-    create: async (document, opts) => {
+    create: (document, opts) => {
       const id = `doc-${++next}`;
       const ref = `we:${key}/CollectionBlock/${id}`;
       documents.set(id, { id, kind: opts?.kind ?? 'post', document, ref });
       writes.push({ op: 'create', id });
-      return { id, ref };
+      return Promise.resolve({ id, ref });
     },
-    update: async (id, document) => {
+    update: (id, document) => {
       const existing = documents.get(id);
       if (existing) documents.set(id, { ...existing, document });
       writes.push({ op: 'update', id });
+      return Promise.resolve();
     },
-    remove: async (id) => {
+    remove: (id) => {
       documents.delete(id);
       writes.push({ op: 'remove', id });
+      return Promise.resolve();
     },
-    read: async (id) => documents.get(id)?.document ?? null,
+    read: (id) => Promise.resolve(documents.get(id)?.document ?? null),
   };
   return { documents, writes, access };
 }
@@ -161,6 +166,7 @@ export function fakeRecords(options: { author?: string; datasetKey?: string } = 
   const copiedIn = new Set<(event: CopiedIn) => void>();
 
   const kernel: RecordsKernel = {
+    // eslint-disable-next-line @typescript-eslint/require-await -- a subscriber that throws must reject the write, as it would through a real kernel, not throw from it.
     create: async (entity, fields, options) => {
       const id = `${entity}-${++next}`;
       rows.push({
@@ -174,34 +180,44 @@ export function fakeRecords(options: { author?: string; datasetKey?: string } = 
       notify();
       return id;
     },
+
+    // eslint-disable-next-line @typescript-eslint/require-await -- a subscriber that throws must reject the write, as it would through a real kernel, not throw from it.
     link: async (entity, id, relation, value, target) => {
       const row = rows.find((r) => r.id === id);
       if (row) row[relation] = [...((row[relation] as unknown[]) ?? []), value];
       writes.push({ op: 'link', entity, id, dataset: target?.dataset });
       notify();
     },
+
+    // eslint-disable-next-line @typescript-eslint/require-await -- a subscriber that throws must reject the write, as it would through a real kernel, not throw from it.
     unlink: async (entity, id, relation, value, target) => {
       const row = rows.find((r) => r.id === id);
       if (row) row[relation] = ((row[relation] as unknown[]) ?? []).filter((v) => v !== value);
       writes.push({ op: 'unlink', entity, id, dataset: target?.dataset });
       notify();
     },
+
+    // eslint-disable-next-line @typescript-eslint/require-await -- a subscriber that throws must reject the write, as it would through a real kernel, not throw from it.
     update: async (entity, id, fields, target) => {
       const row = rows.find((r) => r.id === id);
       if (row) Object.assign(row, fields);
       writes.push({ op: 'update', entity, id, dataset: target?.dataset });
       notify();
     },
+
+    // eslint-disable-next-line @typescript-eslint/require-await -- a subscriber that throws must reject the write, as it would through a real kernel, not throw from it.
     remove: async (entity, id, target) => {
       const at = rows.findIndex((r) => r.id === id);
       if (at >= 0) rows.splice(at, 1);
       writes.push({ op: 'remove', entity, id, dataset: target?.dataset });
       notify();
     },
-    find: async (entity, query) =>
-      select(
-        rows.filter((r) => r.__entity === entity),
-        query,
+    find: (entity, query) =>
+      Promise.resolve(
+        select(
+          rows.filter((r) => r.__entity === entity),
+          query,
+        ),
       ),
     subscribe: (entity, query, cb) => {
       const fire = () =>

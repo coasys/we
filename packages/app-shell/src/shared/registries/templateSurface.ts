@@ -513,6 +513,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // shows the space at all, so `content` for the reason the space's vocabulary is.
     root: state('content'),
     landmarks: state('content'),
+    landmarksLoaded: state('content'),
     taskWorkflowEnabled: state('content'),
     offeredTaskStates: state('content'),
     taskStatesLoaded: state('content'),

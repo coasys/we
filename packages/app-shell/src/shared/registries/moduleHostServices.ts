@@ -71,6 +71,8 @@ export interface ModuleHostServices {
    * the address is what survives a reload. So the one thing that reads routes publishes it, once.
    */
   callOnScreen?: () => string | null;
+  /** The space on screen's collection — `spaceStore.root`. Forwarded as `spaceRoot`; see there. */
+  spaceRoot?: () => string;
   /**
    * Name a call record in the address — the write half of `callOnScreen`, bound by the same store.
    * Forwarded to a module as `showCallOnScreen`; see there for when it writes.
@@ -539,9 +541,9 @@ export function createModuleStoreDeps(framework: {
       },
       setup: async () => (await services.transcription?.setup?.()) ?? null,
       connectFound: async () => {
-        const connect = services.transcription?.connectFound;
-        if (!connect) throw new Error('transcription: this backend cannot set transcription up');
-        return connect();
+        const port = services.transcription;
+        if (!port?.connectFound) throw new Error('transcription: this backend cannot set transcription up');
+        return port.connectFound();
       },
     },
 
@@ -666,6 +668,7 @@ export function createModuleStoreDeps(framework: {
 
     dataset: tracked(() => services.dataset?.() ?? null),
     datasetUri: tracked(() => services.datasetUri?.() ?? null),
+    spaceRoot: tracked(() => services.spaceRoot?.() ?? ''),
     callOnScreen: tracked(() => services.callOnScreen?.() ?? null),
     showCallOnScreen: (recordId, datasetUri) => services.showCallOnScreen?.(recordId, datasetUri),
     datasetRefKey: tracked(() => services.datasetRefKey?.() ?? ''),

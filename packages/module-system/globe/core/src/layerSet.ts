@@ -223,7 +223,7 @@ export function forwardingHandlers<T>(options: T, latest: { current: unknown }):
     if (typeof value !== 'function') continue;
     out[key] = (...args: unknown[]) => {
       const current = (latest.current as Record<string, unknown> | undefined)?.[key];
-      return typeof current === 'function' ? current(...args) : undefined;
+      return typeof current === 'function' ? (current as (...a: unknown[]) => unknown)(...args) : undefined;
     };
   }
   return out as T;

@@ -36,6 +36,14 @@ const REFUSED = ['unauthorized', 'unauthenticated', 'not authorized', 'capabilit
 /** Messages that mean "it took too long", which is the one class worth suggesting a retry for. */
 const TIMEOUT = ['timeout', 'timed out', 'deadline exceeded'];
 
+/** What an error says: a thrown Error, a bare string, or an object carrying a `message` (as GraphQL errors do). */
+function messageOf(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  const message = (error as { message?: unknown } | null | undefined)?.message;
+  return typeof message === 'string' ? message : '';
+}
+
 /**
  * A sentence for a person, and the whole error for the console.
  *
@@ -46,7 +54,7 @@ export function explain(error: unknown, fallback: string): string {
   // Always, and before anything else: whatever this returns, the real error must still be reachable.
   console.error(fallback, error);
 
-  const text = (error instanceof Error ? error.message : String(error ?? '')).toLowerCase();
+  const text = messageOf(error).toLowerCase();
   if (!text) return fallback;
 
   if (OFFLINE.some((needle) => text.includes(needle))) return `${fallback} — this device could not reach the node.`;

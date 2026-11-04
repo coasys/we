@@ -76,7 +76,7 @@ function fieldEntries(def: CoreDefLike): EntityFieldEntry[] {
 function formatDefault(value: unknown): string | undefined {
   if (value === undefined || value === '' || value === 0) return undefined;
   if (value === null) return 'null';
-  return typeof value === 'string' ? `'${value}'` : String(value);
+  return typeof value === 'string' ? `'${value}'` : JSON.stringify(value);
 }
 
 function relationEntries(relations: Record<string, RelationLike>): EntityRelationEntry[] {

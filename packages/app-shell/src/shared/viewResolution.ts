@@ -51,7 +51,7 @@ export function resolveEnabledViews(
 ): string[] {
   if (raw) {
     try {
-      const parsed = JSON.parse(raw);
+      const parsed: unknown = JSON.parse(raw);
       if (Array.isArray(parsed)) {
         return parsed.filter((id): id is string => typeof id === 'string').filter(known);
       }
@@ -100,7 +100,7 @@ export function preserveUnknownViews(next: string[], stored: string[], known: (i
 export function parseIdList(raw: string | undefined): string[] {
   if (!raw) return [];
   try {
-    const parsed = JSON.parse(raw);
+    const parsed: unknown = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
   } catch {
     return [];

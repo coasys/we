@@ -184,7 +184,7 @@ describe('call module — contributions', () => {
     const tile = JSON.stringify(moduleRegistry.parts()['call.tile'] ?? callModule.contributes?.parts?.tile);
     expect(tile).toContain('find(modules.call.tileStates, { id: tile.id }).connecting');
     expect(tile).toContain('find(modules.call.tileStates, { id: tile.id }).failed');
-    expect(tile).toContain('we-spinner');
+    expect(tile).toContain('we-animated-icon');
     expect(tile).toContain("Couldn't connect");
   });
 

@@ -327,7 +327,7 @@ export function createAd4mModelAdmin(backendClient: unknown, options: Ad4mRuntim
     async list() {
       const models = await client.ai.getModels();
       const defaults = await Promise.all(
-        (Object.values(KIND_TO_AD4M) as ModelType[]).map((type) =>
+        Object.values<ModelType>(KIND_TO_AD4M).map((type) =>
           // A kind with no default answers null, and an older refusal is no default either.
           client.ai.getDefaultModel(type).catch(() => null),
         ),

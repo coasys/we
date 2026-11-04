@@ -58,7 +58,7 @@ export function getRegisteredEntityNames(): string[] {
 
 const perspectiveEntityRegistry: Map<string, Record<string, EntityClass>> = (globalRegistries[
   REGISTRY_BY_DATASET_KEY
-] ??= new Map());
+] ??= new Map<string, Record<string, EntityClass>>());
 
 /** Register a batch of synthesised Ad4mModel classes for a specific perspective UUID. */
 export function registerDynamicEntities(perspectiveUuid: string, models: Record<string, EntityClass>): void {

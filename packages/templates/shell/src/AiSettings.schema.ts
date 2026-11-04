@@ -353,7 +353,10 @@ const modelForm: SchemaNode = {
             then: {
               type: 'Row',
               props: { gap: '200', ay: 'center' },
-              children: [{ type: 'we-spinner', props: { size: 'sm' } }, footnote({ $: 'runtimeStore.aiPullText' })],
+              children: [
+                { type: 'we-animated-icon', props: { name: 'spinner', size: 'sm' } },
+                footnote({ $: 'runtimeStore.aiPullText' }),
+              ],
             },
             else: {
               type: '$if',
