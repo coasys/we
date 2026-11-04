@@ -19,7 +19,10 @@ export function installPinnedFetch(pairing: Pairing): void {
 
   globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const request = input instanceof Request ? input : null;
-    const url = new URL(request ? request.url : String(input), location.href);
+    const url = new URL(
+      input instanceof Request ? input.url : input instanceof URL ? input.href : input,
+      location.href,
+    );
     if (url.protocol !== 'https:' || `${url.hostname}:${url.port || '443'}` !== origin) {
       return native(input, init);
     }

@@ -55,7 +55,7 @@ export function Select(allProps: SelectProps) {
   const [search, setSearch] = createSignal('');
 
   const wrapperStyle = createMemo(() =>
-    buildLayoutStyles({ ...layoutProps, display: layoutProps.display ?? 'inline-block' } as LayoutProps, 'column'),
+    buildLayoutStyles({ ...layoutProps, display: layoutProps.display ?? 'inline-block' }, 'column'),
   );
 
   const size = createMemo(() => props.size ?? 'md');
@@ -138,7 +138,7 @@ export function Select(allProps: SelectProps) {
             prop:borderLeft={props.label ? 'none' : undefined}
           >
             <Show when={selectedOption()?.icon}>
-              <we-icon name={selectedOption()!.icon!} />
+              <we-icon name={selectedOption()!.icon} />
             </Show>
             <we-text>{selectedOption()?.label ?? props.placeholder ?? 'Select…'}</we-text>
             <we-icon name="caret-down" color="text-muted" size="xs" />
@@ -177,7 +177,7 @@ export function Select(allProps: SelectProps) {
                           on:select={() => handleSelect(opt)}
                         >
                           <Show when={opt.icon}>
-                            <we-icon name={opt.icon!} size="sm" />
+                            <we-icon name={opt.icon} size="sm" />
                           </Show>
                           <we-text>{opt.label}</we-text>
                           <Show when={opt.value === props.value}>

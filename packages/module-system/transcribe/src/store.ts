@@ -992,7 +992,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * has not reached this agent yet, which is a presence round trip. The words are still good, so the
    * caller re-buffers rather than dropping them.
    */
-  async function ensureCollection(): Promise<CollectionSlot> {
+  function ensureCollection(): CollectionSlot {
     const call = myCall();
     if (!call) return { state: 'nowhere' };
 
@@ -1359,7 +1359,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     if (!findEntity || !proposal.entity) return null;
     try {
       const rows = await findEntity(proposal.entity, { where: { id: proposal.id }, limit: 1 }, callTarget());
-      return (rows?.[0] as Record<string, unknown> | undefined) ?? null;
+      return rows?.[0] ?? null;
     } catch (error) {
       console.warn('transcribe: could not read the record a change is about —', error);
       return null;
@@ -1408,8 +1408,16 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       if (!field) continue;
       const held = before[name];
       // Absent and empty are one case here: both read as "nothing there before", which is what a
-      // property being filled in for the first time is, and it is the common amendment.
-      const previousValue = held === undefined || held === null ? '' : String(held);
+      // property being filled in for the first time is, and it is the common amendment. A scalar is
+      // logged as it prints and anything structured as JSON, never as `[object Object]`.
+      const previousValue =
+        held === undefined || held === null
+          ? ''
+          : typeof held === 'string'
+            ? held
+            : typeof held === 'number' || typeof held === 'boolean'
+              ? String(held)
+              : (JSON.stringify(held) ?? '');
       const newValue = edited?.[name] ?? field.value;
       if (previousValue === newValue) continue;
       try {
@@ -1626,7 +1634,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     setSettling(text);
 
     try {
-      const slot = await ensureCollection();
+      const slot = ensureCollection();
 
       /*
         The call's record has not arrived yet. Put the words back and come round again — dropping
@@ -1738,21 +1746,25 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    */
   function pollModels(): void {
     if (modelPoll) return;
-    modelPoll = setTimeout(async () => {
-      const models = await readModels();
-      modelPoll = null;
-      const waiting = () => enabled() && !context && (status() === 'no-model' || status() === 'downloading');
-      if (waiting() && models?.some((m) => m.ready)) {
-        const audio = audioInput?.() ?? null;
-        if (audio) {
-          void start(audio);
-          return;
-        }
-      }
-      // A panel showing "no model" keeps asking too, so a model added in settings clears the note —
-      // and hides the install button — without the panel being closed and opened again.
-      if (modelState() === 'downloading' || waiting() || (open() && modelState() === 'none')) pollModels();
-    }, MODEL_POLL_MS);
+    modelPoll = setTimeout(
+      () =>
+        void (async () => {
+          const models = await readModels();
+          modelPoll = null;
+          const waiting = () => enabled() && !context && (status() === 'no-model' || status() === 'downloading');
+          if (waiting() && models?.some((m) => m.ready)) {
+            const audio = audioInput?.() ?? null;
+            if (audio) {
+              void start(audio);
+              return;
+            }
+          }
+          // A panel showing "no model" keeps asking too, so a model added in settings clears the note —
+          // and hides the install button — without the panel being closed and opened again.
+          if (modelState() === 'downloading' || waiting() || (open() && modelState() === 'none')) pollModels();
+        })(),
+      MODEL_POLL_MS,
+    );
   }
 
   /**
@@ -3732,8 +3744,8 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
           typeof line?.id === 'string' && line.id
             ? {
                 id: line.id,
-                text: String(line.text ?? ''),
-                author: String(line.author ?? ''),
+                text: typeof line.text === 'string' ? line.text : '',
+                author: typeof line.author === 'string' ? line.author : '',
                 surface: 'transcript',
               }
             : null,

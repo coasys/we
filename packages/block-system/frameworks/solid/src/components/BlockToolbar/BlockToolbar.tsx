@@ -1,5 +1,6 @@
 import { Row } from '@we/components/solid';
 import type { JSX } from 'solid-js';
+import { untrack } from 'solid-js';
 
 export type BlockToolbarPlacement = 'inside' | 'above';
 
@@ -40,7 +41,8 @@ function stop(e: MouseEvent) {
  * </Show>
  */
 export function BlockToolbar(props: BlockToolbarProps) {
-  const placement = props.placement ?? 'inside';
+  // A layout choice made by the block that renders the toolbar, fixed for its life.
+  const placement = untrack(() => props.placement) ?? 'inside';
 
   const positionProps =
     placement === 'above'

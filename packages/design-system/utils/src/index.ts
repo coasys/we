@@ -494,7 +494,7 @@ function warnUnknownToken(prefix: string, token: string, axis?: SemanticAxis): v
   warnedTokens.add(key);
 
   const known = Object.keys(SEMANTIC[prefix === 'radius' ? 'radius' : (axis ?? '')] ?? {});
-  const steps = unknownStep ? ` The ${prefix} scale is ${[...SCALE_NAMES[prefix]!].join(', ')}.` : '';
+  const steps = unknownStep ? ` The ${prefix} scale is ${[...SCALE_NAMES[prefix]].join(', ')}.` : '';
   const suffix = (known.length ? ` Known names here: ${known.join(', ')}.` : '') + steps;
   console.warn(
     `[DS] "${token}" is not a ${prefix} token or theme family, so it resolves to ` +
@@ -805,7 +805,7 @@ export function withBoxSidesFilled(
       }
       if (resolved !== undefined) filled[side] = resolved;
     }
-    out = filled as Partial<DesignSystemProps>;
+    out = filled;
   }
   return out;
 }
@@ -1471,7 +1471,7 @@ export function withBorderSides(style: CSSStyleObject, beneath: CSSStyleObject =
   for (const side of BORDER_SIDES) {
     if (out[side] === undefined && below[side] === undefined) out[side] = `${width} ${parts.style} ${color}`;
   }
-  return out as CSSStyleObject;
+  return out;
 }
 
 export function toInteractiveVars(prefix: string, computed: CSSStyleObject): CSSStyleObject {
@@ -1496,7 +1496,7 @@ export function buildStateFragmentStyles(
   stateProps: Partial<DesignSystemProps>,
   direction: 'row' | 'column',
 ): CSSStyleObject {
-  const computed = buildLayoutStyles({ ...stateProps, styles: undefined } as LayoutStyleProps, direction);
+  const computed = buildLayoutStyles({ ...stateProps, styles: undefined }, direction);
   delete computed['flex-direction'];
   if (!('display' in stateProps)) delete computed['display'];
   if (!('wrap' in stateProps)) delete computed['flex-wrap'];

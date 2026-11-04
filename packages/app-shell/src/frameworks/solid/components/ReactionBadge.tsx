@@ -126,12 +126,9 @@ export function ReactionBadge(props: {
     const dataset = datasetStore.currentDataset();
     if (!dataset || !record()) return;
     const muted = new Set(spaceStore.mutedDids());
-    const found = (await Signal.findAll(
-      dataset.handle as never,
-      {
-        parent: { id: record(), relation: 'signals' },
-      } as never,
-    )) as unknown as ReactionRow[];
+    const found = (await Signal.findAll(dataset.handle, {
+      parent: { id: record(), relation: 'signals' },
+    } as never)) as unknown as ReactionRow[];
     setRows(
       found
         .filter((row) => row.signalTypeId === typeId() && !muted.has(row.author))

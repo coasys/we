@@ -211,7 +211,7 @@ export function reifiedEdgeFrom(
       source: from.node.id,
       target: to.node.id,
       type: spec.type ?? entity,
-      label: labelKey && typeof row[labelKey] === 'string' ? (row[labelKey] as string) : undefined,
+      label: labelKey && typeof row[labelKey] === 'string' ? row[labelKey] : undefined,
       data,
       // Keeps the record reachable: the edge is a view of an entity, and clicking it should be able
       // to open that entity rather than dead-ending.

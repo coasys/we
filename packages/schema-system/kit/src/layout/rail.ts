@@ -653,7 +653,7 @@ export interface RailGroupOptions {
  * the whole union. `icon` belongs to exactly one of the two.
  */
 const isIconAction = (action: NonNullable<RailGroupOptions['action']>): action is RailGroupIconAction =>
-  'icon' in action && typeof (action as RailGroupIconAction).icon === 'string';
+  'icon' in action && typeof action.icon === 'string';
 
 function actionNode(action: NonNullable<RailGroupOptions['action']>): SchemaNode {
   if (!isIconAction(action)) return action;

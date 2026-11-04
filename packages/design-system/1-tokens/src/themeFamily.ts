@@ -138,7 +138,7 @@ export function semanticValues(axis: 'radius' | 'padding' | 'gap'): Record<strin
     Object.entries(themeFamily)
       .filter(([, axes]) => axis in axes)
       .map(([name, axes]) => {
-        const { var: themeVar, fallback } = (axes as Record<string, ThemeFamilyAxis>)[axis]!;
+        const { var: themeVar, fallback } = (axes as Record<string, ThemeFamilyAxis>)[axis];
         return [name, `var(${themeVar}, ${fallback})`];
       }),
   );

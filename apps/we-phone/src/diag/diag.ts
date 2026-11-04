@@ -132,7 +132,7 @@ $<HTMLTextAreaElement>('pairing').addEventListener('input', (e) => {
   if (p) fill(p);
 });
 
-$('scan').addEventListener('click', async () => {
+async function scan() {
   try {
     const { CapacitorBarcodeScanner, CapacitorBarcodeScannerTypeHint } = await import('@capacitor/barcode-scanner');
     const result = await CapacitorBarcodeScanner.scanBarcode({ hint: CapacitorBarcodeScannerTypeHint.QR_CODE });
@@ -142,9 +142,9 @@ $('scan').addEventListener('click', async () => {
   } catch (e) {
     log(`Scan failed: ${e instanceof Error ? e.message : String(e)}`);
   }
-});
+}
 
-$('test').addEventListener('click', async () => {
+async function test() {
   const p = current();
   if (!p) return log('Give a URL and a pin first.');
   log(`Connecting to ${p.url}…`);
@@ -157,7 +157,11 @@ $('test').addEventListener('click', async () => {
   } catch (e) {
     log(`Failed: ${e instanceof Error ? e.message : String(e)}`);
   }
-});
+}
+
+// Each handler catches and logs its own failure.
+$('scan').addEventListener('click', () => void scan());
+$('test').addEventListener('click', () => void test());
 
 $('save').addEventListener('click', () => {
   const p = current();

@@ -1577,6 +1577,133 @@ describe('following a space from the rows its live queries push', () => {
   }, 10000);
 });
 
+describe('entering a space: its collection and its landmarks', () => {
+  /*
+    The Feed waits for `root`: until it is known the template cannot tell that `?channel=<root>` is
+    the Feed. Entering a space read the Space record again to learn its collection — though the space
+    list had read that record already, and a row read without an include carries the collection's id
+    — and only then read the landmarks, one after the other. On a busy executor that was 1.9 s and
+    then 0.85 s, end to end before the Feed could start.
+  */
+  type Held<T> = { release: () => void; promise: Promise<T> };
+  /** Holds every call to `entity.method` until released, passing it on to the real one then. */
+  function hold(entity: string, method: 'findAll' | 'findOne') {
+    const target = getEntity(entity) as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>;
+    const real = target[method].bind(target);
+    const held: Held<unknown>[] = [];
+    let open = false;
+    const spy = vi.spyOn(target, method).mockImplementation((...args: unknown[]) => {
+      if (open) return real(...args);
+      let release!: () => void;
+      const promise = new Promise<void>((resolve) => (release = resolve)).then(() => real(...args));
+      held.push({ release, promise });
+      return promise;
+    });
+    return {
+      spy,
+      release: () => {
+        open = true;
+        for (const h of held.splice(0)) h.release();
+      },
+    };
+  }
+  const isRootRead = (call: unknown[]) =>
+    Boolean((call[1] as { include?: { root?: unknown } } | undefined)?.include?.root);
+
+  /** A space made and listed, not yet entered — the shape a boot is in when it navigates. */
+  async function listedSpace(name: string) {
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace(name, 'x', 'personal', 'hidden');
+    const ref = (await lifecycle.list()).find((d) => d.name === name)!;
+    return { stores, ref };
+  }
+
+  it('takes the collection from the space row it already has, reading no Space for it', async () => {
+    const { stores, ref } = await listedSpace('Row Root');
+    // What the list holds for this space carries its collection.
+    const row = stores.spaces.mySpaces().find((s) => s.name === 'Row Root') as unknown as { root?: unknown };
+    expect(row?.root).toBeTruthy();
+    const spaceReads = vi.spyOn(getEntity('Space') as unknown as { findOne: (...a: unknown[]) => unknown }, 'findOne');
+
+    await stores.datasets.switchDataset(ref.id);
+    await vi.waitFor(() => expect(stores.spaces.root()).not.toBe(''));
+
+    expect(spaceReads.mock.calls.filter(isRootRead)).toEqual([]);
+    spaceReads.mockRestore();
+  }, 10000);
+
+  it('sets the collection without waiting for the landmarks, which say for themselves when they have answered', async () => {
+    const { stores, ref } = await listedSpace('Parallel Structure');
+    const [space] = await Space.findAll(ref.handle as never);
+    const board = await CollectionBlock.create(ref.handle as never, { kind: 'board', title: 'Board' } as never);
+    await writeSpaceLandmark(ref.handle as never, space.id, 'board', board.id);
+    const landmarks = hold('SpaceLandmark', 'findAll');
+
+    await stores.datasets.switchDataset(ref.id);
+    await vi.waitFor(() => expect(landmarks.spy).toHaveBeenCalled());
+    // The landmarks are still out, and the collection is known regardless.
+    await vi.waitFor(() => expect(stores.spaces.root()).not.toBe(''));
+    expect(stores.spaces.landmarksLoaded()).toBe(false);
+
+    landmarks.release();
+    await vi.waitFor(() => expect(stores.spaces.landmarksLoaded()).toBe(true));
+    expect(stores.spaces.landmarks().board).toBe(board.id);
+    landmarks.spy.mockRestore();
+  }, 10000);
+
+  it('asks for the collection and the landmarks at once when it has to read the collection', async () => {
+    // A space whose row did not carry its collection — read in the moment before it was written.
+    const { stores, ref } = await listedSpace('Both At Once');
+    const spaceRow = stores.spaces.mySpaces().find((s) => s.name === 'Both At Once') as unknown as {
+      root?: unknown;
+    };
+    const carried = spaceRow.root;
+    spaceRow.root = undefined;
+    const spaceReads = hold('Space', 'findOne');
+    const landmarks = hold('SpaceLandmark', 'findAll');
+
+    await stores.datasets.switchDataset(ref.id);
+    // Both issued while neither has answered.
+    await vi.waitFor(() => expect(spaceReads.spy.mock.calls.some(isRootRead)).toBe(true));
+    await vi.waitFor(() => expect(landmarks.spy).toHaveBeenCalled());
+
+    spaceReads.release();
+    landmarks.release();
+    await vi.waitFor(() => expect(stores.spaces.root()).not.toBe(''));
+    await vi.waitFor(() => expect(stores.spaces.landmarksLoaded()).toBe(true));
+    spaceRow.root = carried;
+    spaceReads.spy.mockRestore();
+    landmarks.spy.mockRestore();
+  }, 10000);
+
+  it('never says "no board" before the landmarks have answered', async () => {
+    /*
+      A template asks "is there a board?" by `landmarksLoaded && !landmarks.board`. Root used to be
+      that signal, set after the landmarks; now it arrives first, so the frames are watched for a
+      moment that says loaded without the board.
+    */
+    const { stores, ref } = await listedSpace('Board Gate');
+    const [space] = await Space.findAll(ref.handle as never);
+    const board = await CollectionBlock.create(ref.handle as never, { kind: 'board', title: 'Board' } as never);
+    await writeSpaceLandmark(ref.handle as never, space.id, 'board', board.id);
+    const frames: { loaded: boolean; board: string | undefined }[] = [];
+    const stop = createRoot((dispose) => {
+      createEffect(() =>
+        frames.push({ loaded: stores.spaces.landmarksLoaded(), board: stores.spaces.landmarks().board }),
+      );
+      return dispose;
+    });
+
+    await stores.datasets.switchDataset(ref.id);
+    await vi.waitFor(() => expect(stores.spaces.landmarks().board).toBe(board.id));
+    stop();
+
+    expect(frames.some((f) => f.loaded)).toBe(true);
+    expect(frames.filter((f) => f.loaded && f.board !== board.id)).toEqual([]);
+  }, 10000);
+});
+
 describe('a record form with something typed in it', () => {
   it('knows it has changed as soon as a field is typed into, not only when the draft is replaced', async () => {
     const stores = mountShell();

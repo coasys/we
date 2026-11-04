@@ -92,7 +92,7 @@ export function resolveInvokeProp(
     owner = (owner as Props | undefined)?.[segment];
   }
   const store = owner as Props | undefined;
-  const method = store?.[methodName];
+  const method: unknown = store?.[methodName];
 
   // Return a callable function if the method exists
   if (typeof method === 'function') {
@@ -136,7 +136,7 @@ export function resolveInvokeProp(
         unwrappedArgs[1] = { ...(given && typeof given === 'object' ? given : {}), base: { depth: baseDepth } };
       }
 
-      const result = method.apply(store, unwrappedArgs);
+      const result = (method as (...a: unknown[]) => unknown).apply(store, unwrappedArgs);
 
       /*
         Attach lifecycle callbacks if the action returned a Promise.

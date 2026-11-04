@@ -552,7 +552,7 @@ export function referenceDocs(start: string, reference: string, root = 'template
     ...Object.entries(LOOKUP_SECTIONS).map(([key, title]) => ({
       path: `${root}/sections/${key}`,
       title,
-      summary: LOOKUP_SUMMARIES[key as keyof typeof LOOKUP_SECTIONS],
+      summary: LOOKUP_SUMMARIES[key],
       text: section(title),
     })),
   ];
@@ -571,7 +571,7 @@ export function referenceDocs(start: string, reference: string, root = 'template
     `Stores, as \`${root}/stores/<name>\`: ${[...stores.entries.keys()].join(', ')}`,
     '',
     `Sections, as \`${root}/sections/<name>\`:`,
-    ...Object.keys(LOOKUP_SECTIONS).map((key) => `- ${key} — ${LOOKUP_SUMMARIES[key as keyof typeof LOOKUP_SECTIONS]}`),
+    ...Object.keys(LOOKUP_SECTIONS).map((key) => `- ${key} — ${LOOKUP_SUMMARIES[key]}`),
   ].join('\n');
 
   return [

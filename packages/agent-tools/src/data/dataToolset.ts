@@ -117,7 +117,7 @@ export function textToBlocks(text: string): ContentBlock[] {
     if (!joined) return [];
     const heading = /^(#{1,3})\s+(.*)$/s.exec(joined);
     if (heading) return [{ _type: 'block', style: `h${heading[1].length}` as 'h1', text: heading[2] }];
-    return [{ _type: 'block', text: joined } as TextContentBlock];
+    return [{ _type: 'block', text: joined }];
   });
 }
 
@@ -144,7 +144,10 @@ export function createDataToolset(options: DataToolsetOptions): SessionToolset {
 
   async function spaceRoot(): Promise<{ id: string; name: string }> {
     const space = await spaceRecord();
-    return { id: (space?.root as { id?: string } | undefined)?.id ?? '', name: String(space?.name ?? '') };
+    return {
+      id: (space?.root as { id?: string } | undefined)?.id ?? '',
+      name: typeof space?.name === 'string' ? space.name : '',
+    };
   }
 
   function row(entry: EntityManifestEntry, record: Record<string, unknown>): Record<string, unknown> {
@@ -216,12 +219,12 @@ export function createDataToolset(options: DataToolsetOptions): SessionToolset {
     const placed = placement(args);
     if (placed.error) return { text: placed.error };
     const limit = Math.min(Math.max(Number(args.limit) || DEFAULT_LIMIT, 1), MAX_LIMIT);
-    const rows = (await Model.findAll(dataset, {
+    const rows = await Model.findAll(dataset, {
       ...(where ? { where } : {}),
       ...(isObject(args.order) ? { order: args.order } : {}),
       ...(placed.parent ? { parent: placed.parent } : {}),
       limit: limit + 1,
-    })) as Record<string, unknown>[];
+    });
     const more = rows.length > limit;
     const list = rows.slice(0, limit).map((r) => row(entry, r));
     return {
@@ -239,7 +242,7 @@ export function createDataToolset(options: DataToolsetOptions): SessionToolset {
     const Model = entry && model(name);
     if (!entry || !Model) return { text: unknownEntity(name) };
     if (!id) return { text: 'Error: Give the `id` of the record to read.' };
-    const record = (await Model.findOne(dataset, { where: { id } })) as Record<string, unknown> | null;
+    const record = await Model.findOne(dataset, { where: { id } });
     return { text: record ? JSON.stringify(row(entry, record)) : `Error: There is no ${name} with the id ${id}.` };
   };
 
@@ -264,7 +267,7 @@ export function createDataToolset(options: DataToolsetOptions): SessionToolset {
     // A new feed starts with its space's extraction defaults, as the app's own `record.create` writes it.
     const stamped =
       name === 'CollectionBlock' && fields.mode === 'feed'
-        ? withExtractionDefaults(name, fields, (await spaceRecord()) as Parameters<typeof withExtractionDefaults>[2])
+        ? withExtractionDefaults(name, fields, await spaceRecord())
         : fields;
     const created = await Model.create(dataset, stamped, placed.parent ? { parent: placed.parent } : undefined);
     if (placed.parent?.relation === 'responses') await completeResponse(dataset, created.id, String(placed.parent.id));
@@ -421,7 +424,8 @@ export function createDataToolset(options: DataToolsetOptions): SessionToolset {
         required: ['entity', 'id'],
       },
       writes: true,
-      confirm: (args) => `Delete this ${String(args.entity ?? 'record')}? It cannot be brought back.`,
+      confirm: (args) =>
+        `Delete this ${typeof args.entity === 'string' ? args.entity : 'record'}? It cannot be brought back.`,
       run: deleteRecord,
     },
     {
@@ -467,7 +471,7 @@ export function createDataToolset(options: DataToolsetOptions): SessionToolset {
             },
             writes: true,
             confirm: (args: Record<string, unknown>) =>
-              `Add a new kind of record, ${String(args.name ?? '')}, to this space for everyone in it?`,
+              `Add a new kind of record, ${typeof args.name === 'string' ? args.name : ''}, to this space for everyone in it?`,
             run: defineModel,
           },
         ]

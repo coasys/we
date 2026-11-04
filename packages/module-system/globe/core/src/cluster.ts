@@ -130,7 +130,7 @@ export class ClusterLevels<T extends { id: string; position: LonLat }> {
 
   constructor(points: readonly T[]) {
     this.single = points.map((point) => ({ id: point.id, members: [point], position: point.position }));
-    const levels: Cluster<T>[][] = new Array(LEVELS);
+    const levels: Cluster<T>[][] = new Array<Cluster<T>[]>(LEVELS);
     let below = this.single;
     for (let level = LEVELS - 1; level >= 0; level--) {
       below = mergeLevel(below, COARSEST / 2 ** level);

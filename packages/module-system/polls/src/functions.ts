@@ -82,5 +82,5 @@ export const tallyFunction: ModuleFunction = {
   params: ['options'],
   doc: 'Votes counted per choice — { option, count, share, leading }[] — one row per choice the poll offers, in its order, plus a row for any choice a vote names that the poll no longer does. Options: votes (a Vote query), options (the poll’s comma-separated choices), pending (modules.polls.pendingVote[<poll id>] — this agent’s vote written and not yet read back, counted in place of their stored one so the bars move on the press).',
   example: 'tally({ votes: local.votes, options: block.options, pending: modules.polls.pendingVote[block.id] })',
-  fn: tally as (...args: never[]) => unknown,
+  fn: tally,
 };

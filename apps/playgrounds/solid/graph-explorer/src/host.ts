@@ -13,6 +13,10 @@ import type { GraphHostBindings } from '@we/graph-solid';
 
 import { DATASET, type Row, SHAPES, TABLES } from './fixture';
 
+/** A fixture value as the text it sorts by: fixture cells are strings and numbers. */
+const sortText = (value: unknown): string =>
+  typeof value === 'string' ? value : typeof value === 'number' ? String(value) : '';
+
 interface ScopeRequest {
   anchor: string;
   via: string;
@@ -92,6 +96,7 @@ export function createHost(log?: QueryLog): GraphHostBindings {
 
     models: () => SHAPES,
 
+    // eslint-disable-next-line @typescript-eslint/require-await -- answers synchronously, but a malformed request must still reject as the async port it stands in for would, not throw.
     async query(request) {
       const { entity, where, order, limit, offset, include, scope } = request as unknown as QueryRequest;
       const table = TABLES[entity] ?? [];
@@ -128,8 +133,8 @@ export function createHost(log?: QueryLog): GraphHostBindings {
         const [key, direction] = Object.entries(order)[0] ?? [];
         if (key) {
           rows = [...rows].sort((a, b) => {
-            const left = String(a[key] ?? '');
-            const right = String(b[key] ?? '');
+            const left = sortText(a[key]);
+            const right = sortText(b[key]);
             return direction === 'desc' ? right.localeCompare(left) : left.localeCompare(right);
           });
         }

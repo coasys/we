@@ -81,7 +81,7 @@ export function familyPatch(
     [`${family}Saturation`]: colour.saturation,
     [`${family}Lightness`]: colour.lightness,
     roles,
-  } as Partial<ThemeOverrides>;
+  };
 }
 
 /** Back to what the theme and its preset say for the family, with no pick and no pin of its own. */
@@ -101,7 +101,7 @@ export function familyResetPatch(theme: ThemeOverrides, family: ChromaticFamily)
     [`${family}Saturation`]: undefined,
     [`${family}Lightness`]: undefined,
     roles: keptRoles,
-  } as Partial<ThemeOverrides>;
+  };
 }
 
 /** Whether two colours are far enough apart to say so — a distance in OKLab, about two shades. */
@@ -154,5 +154,5 @@ export function scaledSaturations(
     const own = start.palette.saturation;
     patch.palette = { ...start.palette, ...(own !== undefined && { saturation: scale(own) }), ...(hues && { hues }) };
   }
-  return patch as Partial<ThemeOverrides>;
+  return patch;
 }

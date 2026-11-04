@@ -8,7 +8,6 @@ import {
   CSS_PROP_TO_VAR_SUFFIX,
   type CSSStyleObject,
   getBgImageAttrs as getBgImageAttrsNeutral,
-  type LayoutStyleProps,
   TIER_PROP_KEYS,
   tierBagOf,
   tierKeys,
@@ -55,7 +54,7 @@ export type LayoutProps = Omit<DesignSystemProps, 'direction'> & {
 // Solid's JSX.CSSProperties so consuming .solid.tsx components keep their exact prior types.
 // A React/Vue binding is the same one-liner over the same core function.
 export function buildLayoutStyles(props: LayoutProps, direction: 'row' | 'column'): JSX.CSSProperties {
-  return buildLayoutStylesNeutral(props as unknown as LayoutStyleProps, direction) as JSX.CSSProperties;
+  return buildLayoutStylesNeutral(props, direction);
 }
 
 export function getBgImageAttrs(

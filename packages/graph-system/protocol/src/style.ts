@@ -58,7 +58,7 @@ export function metricKey(ref: { metric: string; options?: Record<string, unknow
       ? value.map(sorted)
       : value && typeof value === 'object'
         ? Object.fromEntries(
-            Object.keys(value as object)
+            Object.keys(value)
               .sort()
               .map((key) => [key, sorted((value as Record<string, unknown>)[key])]),
           )

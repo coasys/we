@@ -287,7 +287,7 @@ export function createLiveStore(deps: ModuleStoreDeps) {
     held.clear();
     bumpCursors();
 
-    const scope = handle && ephemeral ? ephemeral(handle as never) : null;
+    const scope = handle && ephemeral ? ephemeral(handle) : null;
     // A personal space has no neighbourhood, so there is nobody to signal. Degrade deliberately: the
     // switch stops being offered rather than being offered and doing nothing.
     if (!scope) return;

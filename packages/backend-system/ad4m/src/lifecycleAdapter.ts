@@ -6,7 +6,6 @@
  */
 import { Ad4mClient, Perspective, PerspectiveHandle, type PerspectiveProxy, PerspectiveState } from '@coasys/ad4m';
 import {
-  type AgentIdentity,
   type AgentSessionPort,
   type DatasetChangeHandlers,
   type DatasetLifecyclePort,
@@ -454,7 +453,7 @@ export function createAd4mDatasetLifecycle(
       return new Promise<void>((resolve, reject) => {
         const finish = (error?: unknown) => {
           release();
-          if (error) reject(error);
+          if (error) reject(error instanceof Error ? error : new Error('The space did not sync', { cause: error }));
           else resolve();
         };
         const settle = (state: string | null | undefined) => {
@@ -601,7 +600,7 @@ export function createAd4mAgentSession(backendClient: unknown): AgentSessionPort
      */
     async me() {
       const agent = await client.agent.me();
-      return { ...(agent as unknown as Record<string, unknown>), id: agent.did } as AgentIdentity;
+      return { ...(agent as unknown as Record<string, unknown>), id: agent.did };
     },
   };
 }

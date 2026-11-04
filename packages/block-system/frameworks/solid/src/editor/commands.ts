@@ -36,15 +36,23 @@ export function menuTypeOf(node: PMNode): string {
   }
 }
 
+/**
+ * A node's attrs with their values as `unknown`. ProseMirror types them `any`; reading them through this
+ * keeps a value copied from one node into another from passing unchecked into anything typed.
+ */
+function attrsOf(node: PMNode): Readonly<Record<string, unknown>> {
+  return node.attrs;
+}
+
 /** The attrs a text container keeps when it changes kind. */
 function carriedAttrs(node: PMNode): Attrs {
-  const { id, align, direction, level } = node.attrs;
+  const { id, align, direction, level } = attrsOf(node);
   return { id: id ?? null, align: align ?? null, direction: direction ?? null, level: level ?? 0 };
 }
 
 /** What a menu type means as a node type and attrs, or null for a custom block. */
 function textTarget(schema: Schema, menuType: string, from: PMNode): { type: NodeType; attrs: Attrs } | null {
-  const base = from.type.isTextblock ? carriedAttrs(from) : { id: from.attrs.id ?? null };
+  const base = from.type.isTextblock ? carriedAttrs(from) : { id: attrsOf(from).id ?? null };
   switch (menuType) {
     case 'p':
       return { type: schema.nodes.paragraph, attrs: base };
@@ -95,7 +103,7 @@ export function transformBlock(view: EditorView, pos: number, menuType: string):
       : schema.nodes.paragraph.create();
     const collection = schema.nodes[COLLECTION_NODE].create(
       {
-        id: node.type.isTextblock ? null : (node.attrs.id ?? null),
+        id: node.type.isTextblock ? null : (attrsOf(node).id ?? null),
         props: { layout, columnCount: layout === 'grid' ? 2 : 1 },
       },
       inner,
@@ -215,9 +223,9 @@ export const splitListItem: Command = (state, dispatch) => {
       level > 0
         ? state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, level: level - 1 })
         : state.tr.setNodeMarkup(pos, state.schema.nodes.paragraph, {
-            id: node.attrs.id,
-            align: node.attrs.align,
-            direction: node.attrs.direction,
+            id: attrsOf(node).id,
+            align: attrsOf(node).align,
+            direction: attrsOf(node).direction,
             level: 0,
           });
     dispatch(tr.scrollIntoView());
@@ -240,7 +248,7 @@ export const liftToParagraph: Command = (state, dispatch) => {
   if (!node.type.isTextblock || node.type.name === 'paragraph' || $from.parentOffset > 0) return false;
   if (dispatch) {
     const pos = $from.before();
-    const { id, align, direction } = node.attrs;
+    const { id, align, direction } = attrsOf(node);
     dispatch(
       state.tr.setNodeMarkup(pos, state.schema.nodes.paragraph, {
         id: id ?? null,

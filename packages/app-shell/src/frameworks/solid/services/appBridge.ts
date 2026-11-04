@@ -55,6 +55,30 @@ export interface AppBridgeDeps {
 /** The stand-in origin an embedded app addresses the executor by. */
 const PROXY_PLACEHOLDER = /^http:\/\/proxy(?=\/|$)/;
 
+/**
+ * A message from an embedded frame, read as the object it should be. It arrives from code we do not
+ * control, so every field is checked where it is used rather than trusted for its shape.
+ */
+function asMessage(data: unknown): Record<string, unknown> | null {
+  return data !== null && typeof data === 'object' && !Array.isArray(data) ? (data as Record<string, unknown>) : null;
+}
+
+/** Headers as a plain object of strings, or null when they are anything else. */
+function asHeaders(value: unknown): Record<string, string> | null {
+  if (value === undefined || value === null) return {};
+  const record = asMessage(value);
+  if (!record) return null;
+  return Object.values(record).every((v) => typeof v === 'string') ? (record as Record<string, string>) : null;
+}
+
+/**
+ * A request or frame body a proxied fetch or WebSocket can send — text, an ArrayBuffer or a Blob, the
+ * forms the proxy protocol carries — or null when it is anything else.
+ */
+function asBody(value: unknown): string | ArrayBuffer | Blob | null {
+  return typeof value === 'string' || value instanceof ArrayBuffer || value instanceof Blob ? value : null;
+}
+
 /** The origin of a URL, or null if it has none we could compare against. */
 function originOf(url: string | null | undefined): string | null {
   if (!url) return null;
@@ -114,9 +138,9 @@ export function startAppBridge(deps: AppBridgeDeps) {
     if (port === undefined || token === undefined) return;
 
     // Send to ALL mounted we-iframe elements (there may be multiple apps)
-    const weIframes = document.querySelectorAll('we-iframe') as NodeListOf<
+    const weIframes = document.querySelectorAll<
       HTMLElement & { postMessage: (data: Record<string, unknown>, origin: string) => void }
-    >;
+    >('we-iframe');
 
     // On desktop, pass the raw port/token so the embedded app can open its own WebSocket.
     // On web, the embedded app cannot reach localhost directly (browser PNA enforcement),
@@ -161,12 +185,14 @@ export function startAppBridge(deps: AppBridgeDeps) {
   // credentials are available (e.g. during the web auth flow on first load).
   const handleMessage = (event: MessageEvent) => {
     const source = event.source as Window | null;
+    const data = asMessage(event.data);
+    if (!data) return;
 
     // ── AD4M_PROXY_WS_* protocol ─────────────────────────────────────────
     // Embedded apps that receive proxy:true open no WebSocket themselves;
     // instead they send these messages and we proxy frames via a real WebSocket.
 
-    if (event.data?.type === 'AD4M_PROXY_WS_CONNECT' && source) {
+    if (data.type === 'AD4M_PROXY_WS_CONNECT' && source) {
       // The proxy opens a WebSocket to the executor carrying WE's own auth token, so serving one is
       // the same act as handing over the token. Gated identically: a frame this document mounted,
       // pointed at a registered app. `event.origin` empty fails the check, which is what we want —
@@ -199,7 +225,8 @@ export function startAppBridge(deps: AppBridgeDeps) {
       proxyConnections.set(source, { ws, origin: iframeOrigin });
 
       ws.onopen = () => source.postMessage({ type: 'AD4M_PROXY_WS_OPEN' }, iframeOrigin);
-      ws.onmessage = (e) => source.postMessage({ type: 'AD4M_PROXY_WS_MESSAGE', data: e.data }, iframeOrigin);
+      ws.onmessage = (e: MessageEvent<unknown>) =>
+        source.postMessage({ type: 'AD4M_PROXY_WS_MESSAGE', data: e.data }, iframeOrigin);
       ws.onerror = () => source.postMessage({ type: 'AD4M_PROXY_WS_ERROR' }, iframeOrigin);
       ws.onclose = (e) => {
         proxyConnections.delete(source);
@@ -208,18 +235,22 @@ export function startAppBridge(deps: AppBridgeDeps) {
       return;
     }
 
-    if (event.data?.type === 'AD4M_PROXY_WS_SEND' && source) {
+    if (data.type === 'AD4M_PROXY_WS_SEND' && source) {
       const entry = proxyConnections.get(source);
-      if (entry && entry.ws.readyState === WebSocket.OPEN) {
-        entry.ws.send(event.data.data as string);
+      const frame = asBody(data.data);
+      if (entry && frame !== null && entry.ws.readyState === WebSocket.OPEN) {
+        entry.ws.send(frame);
       }
       return;
     }
 
-    if (event.data?.type === 'AD4M_PROXY_WS_CLOSE' && source) {
+    if (data.type === 'AD4M_PROXY_WS_CLOSE' && source) {
       const entry = proxyConnections.get(source);
       if (entry) {
-        entry.ws.close(event.data.code as number | undefined, event.data.reason as string | undefined);
+        entry.ws.close(
+          typeof data.code === 'number' ? data.code : undefined,
+          typeof data.reason === 'string' ? data.reason : undefined,
+        );
         proxyConnections.delete(source);
       }
       return;
@@ -229,24 +260,27 @@ export function startAppBridge(deps: AppBridgeDeps) {
     // Embedded apps that received proxy:true cannot make direct HTTP requests
     // to the executor (cross-origin / PNA). They send AD4M_PROXY_HTTP_REQUEST
     // and we make the real fetch from our privileged origin, then reply.
-    if (event.data?.type === 'AD4M_PROXY_HTTP_REQUEST' && source) {
+    if (data.type === 'AD4M_PROXY_HTTP_REQUEST' && source) {
       if (!credentialedFrameFor(source, event.origin)) {
         console.warn('appBridge: rejected AD4M_PROXY_HTTP_REQUEST from an unregistered source');
         return;
       }
 
-      const { id, url, method, headers, body } = event.data as {
-        id: string;
-        url: string;
-        method: string;
-        headers: Record<string, string>;
-        body: ArrayBuffer | null;
-      };
+      // `id` is only echoed back so the app can match the reply, so it stays whatever it sent.
+      const { id, url, method } = data;
+      const headers = asHeaders(data.headers);
+      const rawBody = data.body ?? null;
+      const body = rawBody === null ? null : asBody(rawBody);
       // Verified above, so never '*'.
       const iframeOrigin = event.origin;
 
       if (typeof url !== 'string' || typeof method !== 'string') {
         console.warn('appBridge: rejected AD4M_PROXY_HTTP_REQUEST with invalid url/method type');
+        return;
+      }
+      if (!headers || (rawBody !== null && body === null)) {
+        console.warn('appBridge: rejected AD4M_PROXY_HTTP_REQUEST with invalid headers/body');
+        source.postMessage({ type: 'AD4M_PROXY_HTTP_ERROR', id, message: 'Invalid headers or body' }, iframeOrigin);
         return;
       }
 
@@ -277,7 +311,7 @@ export function startAppBridge(deps: AppBridgeDeps) {
       // Replace the placeholder origin with the real executor base URL.
       const realUrl = url.replace(PROXY_PLACEHOLDER, base);
 
-      (async () => {
+      void (async () => {
         try {
           const response = await fetch(realUrl, { method, headers, body: body ?? undefined });
           const responseBody = await response.arrayBuffer();
@@ -304,7 +338,7 @@ export function startAppBridge(deps: AppBridgeDeps) {
 
     // ─────────────────────────────────────────────────────────────────────
 
-    if (event.data?.type === 'REQUEST_AD4M_CONFIG') {
+    if (data.type === 'REQUEST_AD4M_CONFIG') {
       // Immediately acknowledge so the embedded app knows the parent window is alive and
       // its "parent not found" timeout can be safely cancelled. The actual AD4M_CONFIG
       // follows as soon as credentials are available (possibly much later, after auth).

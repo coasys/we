@@ -914,7 +914,7 @@ function stripLegacyThickness(placements: Record<string, FloatPlacement>): Recor
     Object.entries(placements).map(([id, placement]) => {
       if (!placement || typeof placement !== 'object' || !('thickness' in placement)) return [id, placement];
       const { thickness: _legacy, ...rest } = placement as FloatPlacement & { thickness?: number };
-      return [id, rest as FloatPlacement];
+      return [id, rest];
     }),
   );
 }
@@ -1347,7 +1347,7 @@ export function ShellStoreProvider(props: ParentProps) {
     panelsAway() ? 'away' : 'shown',
   );
   let awayTimer: ReturnType<typeof setTimeout> | undefined;
-  let wasAway = panelsAway();
+  let wasAway = untrack(panelsAway);
   createEffect(() => {
     const away = panelsAway();
     if (away === wasAway) return;
@@ -1397,7 +1397,7 @@ export function ShellStoreProvider(props: ParentProps) {
   const [activation, setActivation] = createSignal<Record<string, number>>(loadActivation());
   // Seeded from what was stored, so the first raise after a reload lands above everything that was
   // raised before it rather than restarting the count underneath.
-  let activationClock = Math.max(0, ...Object.values(activation()));
+  let activationClock = Math.max(0, ...Object.values(untrack(activation)));
   /** Bring a panel to the front. See `layerOrder`. */
   const raise = (id: string) => {
     const key = placementKey(id);
@@ -1862,7 +1862,7 @@ export function ShellStoreProvider(props: ParentProps) {
         Object.entries(merged).filter(([, value]) => value !== undefined && value !== false),
       );
       const next = { ...prev };
-      if (Object.keys(cleaned).length) next[key] = cleaned as LaneState;
+      if (Object.keys(cleaned).length) next[key] = cleaned;
       else delete next[key];
       saveLanes(next);
       return next;

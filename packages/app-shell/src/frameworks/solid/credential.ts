@@ -58,7 +58,7 @@ export const credential = {
    * button the field belongs to — the counterpart of `$touch: '$all'` for the fields it cannot reach.
    */
   touched,
-  touch(): void {
+  touch: (): void => {
     setTouched(true);
   },
 
