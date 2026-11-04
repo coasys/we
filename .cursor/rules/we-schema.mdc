@@ -3179,7 +3179,7 @@ IdentityStore:
 - State:
   - available: boolean — the backend keeps a key log, so it can say who this device speaks for
   - canChange: boolean — this app keeps master keys (the desktop app’s custody service), so the identity can be changed from here. False on the web and in Electron: Settings shows the log and devices and offers no change. False too where changeBlocked says why
-  - changeBlocked: string — why the identity cannot be made or changed on this computer although the app keeps master keys (a build naming an identity store without that store’s key), ready to show; empty when it can. Show it beside a disabled "Make my identity here" rather than hiding the door
+  - changeBlocked: string — why the identity cannot be made or changed on this computer although the app keeps master keys (the executor reports no identity store, or one it trusts no key for), ready to show; empty when it can. Show it beside a disabled "Make my identity here" rather than hiding the door
   - status: { did, deviceKey, keyId, revoked, head, fork, storeBehind } | null — what this device’s key speaks for, as the executor reports it. `storeBehind` ({ since, seq }) is set while the shared store answers the log behind what the executor has checked, which then answers from its own copy
   - statusLoaded: boolean — the backend has answered `status` once. Gate a "no identity yet" sentence on it
   - did: string — the person’s `did:scid:coasys:1:…`, or empty while this device speaks for nobody

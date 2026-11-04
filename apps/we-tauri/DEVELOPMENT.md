@@ -51,7 +51,7 @@ and lines marked `HOST` from `src/lib.rs`. A bare `println!` reaches the termina
 
 The person's master key never rests in the executor or in a web view. This app links the custody
 crate (`crates/custody`, crate `we-custody`) into its main process: where keys rest, the flows, the
-identity store settings, pending identities and how to test it are in `crates/custody/README.md`,
+identity store, pending identities and how to test it are in `crates/custody/README.md`,
 shared with the Electron app, which runs the same crate as a sidecar.
 
 Only the **identity window** runs a flow. Its page is the shared window (`packages/identity-window`)
@@ -61,22 +61,21 @@ The main window may only open it on a step and read public custody state (`ident
 `identity_public_state`); `build.rs` declares every command in an app manifest so none is callable
 without a capability.
 
-The identity store reaches this app from its run-time environment, and otherwise from the value the
-build was compiled with (`option_env!` in `src-tauri/src/lib.rs`), so a build handed to somebody
-carries it:
+The network names the identity store, not WE: the executor's bootstrap seed carries it, and the
+mainnet seed's store serves an ordinary build with no configuration. A build on another store passes
+`AD4M_IDENTITY_STORE_URL` and `AD4M_IDENTITY_STORE_KEYS` to the executor, from this app's run-time
+environment or else from the value the build was compiled with (`option_env!` in
+`src-tauri/src/lib.rs`), so a build handed to somebody carries them:
 
 ```sh
 # A demo build that carries its store. Set both while compiling; cargo rebuilds when they change.
 AD4M_IDENTITY_STORE_URL=<store url> AD4M_IDENTITY_STORE_KEYS=<store key> pnpm tauri:build
 ```
 
-With neither set, a build uses the default store, `https://store.ad4m.dev`, whose key the executor
-trusts by default; only a build that names a store without its key cannot make or change an
-identity (`crates/custody/README.md`, "The identity store"). This app links the executor, so it asks
-the executor's own rule (`IdentitySettings::from_config`) whether any key is trusted
-(`executor_trusts_a_store` in `src-tauri/src/lib.rs`) rather than restating it; its test
-`the_custody_store_rule_is_the_executors` checks that the custody crate's restatement, which the
-Electron sidecar uses, agrees.
+They are only passed on. Which store the executor uses, and whether it trusts it, the custody
+service asks the executor (`identity.status`); with no store, or a store without its key, it
+refuses every identity step and the app says why (`crates/custody/README.md`, "The identity
+store").
 
 In the app build the generated `Cargo.toml` patches the custody crate's ad4m crates to the seed's
 checkout (`Cargo.toml.template`), so there is one ad4m in the binary.

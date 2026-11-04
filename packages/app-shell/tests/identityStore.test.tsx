@@ -197,10 +197,11 @@ describe('identityStore', () => {
     expect(deviceStore.devices().map((d) => d.label)).toEqual(['This computer']);
   });
 
-  it('on a build naming a store without its key, asks the question but opens no window, and says why', async () => {
+  it('where the executor has no identity store it trusts, asks the question but opens no window, and says why', async () => {
     setPorts({ identity: backend({ did: null, events: [], devices: [] }).port });
+    // As the custody service words `NO_STORE` (custody/src/service.rs).
     const why =
-      "This build of Coasys names an identity store without that store's key, so it cannot make or change an identity.";
+      'This network has no identity store, or a store URL without its key, so Coasys on this computer cannot make or change an identity. Nothing was changed.';
     const opened: IdentityStep[] = [];
     identityHost = {
       async open(step) {
