@@ -83,8 +83,14 @@ export async function chatsAbout(
 export async function chatMessages(dataset: DatasetProxy, chatId: string): Promise<StoredChatMessage[]> {
   const chat = (await CollectionBlock.findOne(dataset, {
     where: { id: chatId },
-    include: { children: true },
-  })) as unknown as Row | null;
+    /*
+      `polymorphic` said here, not left to the declaration: `children` names no target class, and
+      AD4M refuses to hydrate one asked for as `true` ("the relation declares no target class"). The
+      `$query` layer adds it for a template; a model read has to say it. SpaceStore's read of a
+      call's `extracted` is the same case.
+    */
+    include: { children: { polymorphic: true } },
+  } as never)) as unknown as Row | null;
   return chat ? messagesIn(chat.children) : [];
 }
 
@@ -131,10 +137,8 @@ export async function appendMessage(
  * record of a conversation the person asked to forget.
  */
 export async function clearChat(dataset: DatasetProxy, chatId: string): Promise<void> {
-  const chat = (await CollectionBlock.findOne(dataset, {
-    where: { id: chatId },
-    include: { children: true, runs: true },
-  })) as unknown as Row | null;
+  // Ids only, which an un-included relation already is: nothing here needs a message's text.
+  const chat = (await CollectionBlock.findOne(dataset, { where: { id: chatId } })) as unknown as Row | null;
   if (!chat) return;
   for (const child of Array.isArray(chat.children) ? (chat.children as unknown[]) : []) {
     const id = idOf(child);
