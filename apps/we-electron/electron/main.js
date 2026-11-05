@@ -535,7 +535,8 @@ function identitySession() {
 
 function openIdentityWindow({ onClosed }) {
   const win = new BrowserWindow({
-    title: 'Coasys Identity',
+    // The app's own name, whichever build this is (WE, or a white-labelled one); the page names none.
+    title: `${app.getName()} — your identity`,
     icon: windowIcon(),
     width: 480,
     height: 640,
@@ -554,6 +555,8 @@ function openIdentityWindow({ onClosed }) {
     },
   });
   win.removeMenu();
+  // Keep the title above: the page's own is generic, and would replace the app's name on load.
+  win.on('page-title-updated', (event) => event.preventDefault());
   // Its own page only: no link, script or redirect takes it anywhere else, and it opens no window.
   const stay = (event, url) => {
     if (!isIdentityPage(event.url ?? url)) event.preventDefault();

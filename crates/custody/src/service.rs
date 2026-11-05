@@ -272,15 +272,18 @@ async fn connect(address: &ExecutorAddress) -> Result<ViaExecutor<WsRpcClient>, 
     WsRpcClient::connect(&address.url, &address.admin_credential)
         .await
         .map(ViaExecutor::new)
-        .map_err(|_| "Coasys is starting on this computer. Try again in a moment.".to_string())
+        .map_err(|_| {
+            "The identity service on this computer is still starting. Try again in a moment."
+                .to_string()
+        })
 }
 
 /// What a step says when the executor has no identity store it can use — its network names none,
 /// or it was given a store URL without that store's key — before the step starts and whenever the
 /// executor refuses for that reason (`no-store-keys`).
 pub const NO_STORE: &str =
-    "This network has no identity store, or a store URL without its key, so Coasys on this \
-     computer cannot make or change an identity. Nothing was changed.";
+    "This network has no identity store, or a store URL without its key, so this computer cannot \
+     make or change an identity. Nothing was changed.";
 
 /// The store a step publishes through, which an offer names: the one `identity.status` reports the
 /// executor uses (its config's, else its network seed's), when it trusts a key for it. Else the
@@ -324,7 +327,10 @@ fn failed(e: &ClientError) -> Screen {
         ClientError::OfferEnded(state) => {
             format!("The offer ended ({state}) before it was confirmed. Nothing was added.")
         }
-        ClientError::Rpc(e) => format!("Coasys on this computer answered: {}", e.message),
+        ClientError::Rpc(e) => format!(
+            "The identity service on this computer answered: {}",
+            e.message
+        ),
         other => other.to_string(),
     };
     Screen::Failed { message }
