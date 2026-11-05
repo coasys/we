@@ -67,6 +67,8 @@ export const ROOT_MODELS = [
   ModelRun,
   // The editor's chats: a `CollectionBlock` of kind `chat`, its messages `TextBlock`s.
   CollectionBlock,
+  // Those messages, and the person's messages in an agent session the executor keeps here
+  // (`agentConversations.ts`), which the executor reads as `TextContent`.
   TextBlock,
 ] as const;
 

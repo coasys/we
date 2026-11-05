@@ -6464,9 +6464,6 @@
         "isReadOnly": {
           "type": "boolean"
         },
-        "hasPendingChanges": {
-          "type": "boolean"
-        },
         "pickerOpen": {
           "type": "boolean"
         },
@@ -6487,6 +6484,9 @@
         },
         "activeSessionId": {
           "type": "string"
+        },
+        "replyRunning": {
+          "type": "boolean"
         },
         "contentMode": {
           "type": "object"
@@ -6539,6 +6539,7 @@
       },
       "actions": [
         "refreshAssistant",
+        "cancelReply",
         "newChat",
         "switchSession",
         "deleteSession",

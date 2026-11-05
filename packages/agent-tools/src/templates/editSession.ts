@@ -65,12 +65,16 @@ export interface EditSessionOptions {
   accept: (template: TemplateSchema) => Promise<string> | string;
   /**
    * The line shown after a run of accepted patches, given how many that run has applied so far —
-   * a run being consecutive turns with nothing said between them, which the caller may name. A
-   * read-only template says its changes await a fork.
+   * a run being consecutive turns with nothing said between them, which the caller may name.
    */
   acceptedLine?: (patches: number) => string;
   /** Called whenever what the conversation panel should show changes: the transcript so far, then a live tail. */
   onDisplay?: (display: string) => void;
+  /**
+   * Called once for each tool call, once its answer is settled: the tool, and whether it worked.
+   * Never what the call sent or got back, so a caller can show it beside the reply as it goes.
+   */
+  onStep?: (step: { tool: string; outcome: 'ok' | 'error'; error?: string }) => void;
   /** Development diagnostics — what the model asked for and why it was refused. */
   debug?: (...args: unknown[]) => void;
 }
@@ -271,6 +275,11 @@ export async function runEditSession(options: EditSessionOptions): Promise<EditS
         watching while testing is only observable by inferring it from what the model then says.
       */
       debug(`[editSession] → ${r.callId}: ${r.isError ? 'Error: ' : ''}${r.content}`);
+      options.onStep?.({
+        tool: call?.name ?? 'unknown',
+        outcome: r.isError ? 'error' : 'ok',
+        ...(r.isError ? { error: r.content.slice(0, 300) } : {}),
+      });
     }
 
     const failed = results.some((r) => r.isError);

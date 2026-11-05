@@ -52,6 +52,93 @@ export interface AgentRunReply {
 export interface AgentPort {
   /** Run an agent to its answer. */
   run(request: AgentRunRequest): Promise<AgentRunReply>;
+  /**
+   * Conversations the backend keeps and runs: the backend holds the history, runs each reply
+   * where it lives (so it survives the client going away), and records what the agent did as it
+   * does it. Absent where the backend only runs an agent on request ({@link run}); a caller then
+   * keeps the conversation itself. (Not `BackendPorts.agentSession`, which is who is signed in.)
+   */
+  conversations?: AgentConversationsPort;
+}
+
+/** A conversation the backend keeps: the dataset it is kept in, and its id there. */
+export interface AgentConversationRef {
+  dataset: DatasetHandle;
+  id: string;
+}
+
+/** Where a reply is. Only `running` changes. `interrupted`: the backend stopped while it ran. */
+export type AgentReplyStatus = 'running' | 'done' | 'failed' | 'cancelled' | 'interrupted';
+
+/**
+ * One tool call the agent made while writing a reply: the tool, the record it acted on (by id),
+ * and how it went. Never what the call sent or got back. `stopped`: the reply ended (stopped,
+ * failed, cut off by a restart) before the call returned, so it never got an outcome. A backend
+ * reports that itself; a step is only ever `running` under a reply that still is.
+ */
+export interface AgentStep {
+  tool: string;
+  target?: string;
+  outcome: 'running' | 'ok' | 'error' | 'stopped';
+  error?: string;
+}
+
+/** One turn of a kept conversation. The agent's carry how their reply went, and its steps. */
+export interface AgentConversationMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+  /** When it was written, in ms since the epoch. */
+  createdAt: number;
+  status?: AgentReplyStatus;
+  error?: string;
+  steps?: AgentStep[];
+}
+
+export interface AgentConversationSummary {
+  ref: AgentConversationRef;
+  title: string;
+  /** The record the conversation is about, by id. */
+  about?: string;
+  createdAt: number;
+}
+
+export interface AgentConversationsPort {
+  /**
+   * Start a conversation kept in `keepIn`. Its replies' agent works in `workIn` and, with
+   * `mayEdit`, may change it there; the backend keeps those settings with the conversation.
+   */
+  create(input: {
+    keepIn: DatasetHandle;
+    workIn: DatasetHandle;
+    title?: string;
+    about?: string;
+    mayEdit?: boolean;
+    model?: string;
+  }): Promise<AgentConversationRef>;
+  /** The conversations kept in `keepIn`, newest first; those about one record when `about` is given. */
+  list(input: { keepIn: DatasetHandle; about?: string }): Promise<AgentConversationSummary[]>;
+  /** Delete a conversation, with its messages, stopping a reply that is running. */
+  delete(session: AgentConversationRef): Promise<void>;
+  /**
+   * Write the person's message and start the agent's reply. Resolves once both exist; the reply
+   * then runs on its own, and {@link follow} reports it.
+   * `about` is the record the person is looking at, a hint the agent starts from.
+   */
+  send(
+    session: AgentConversationRef,
+    text: string,
+    options?: { about?: { entity: string; id: string } },
+  ): Promise<void>;
+  /** Stop the reply that is running. False when none was. */
+  cancel(session: AgentConversationRef): Promise<boolean>;
+  /** The conversation, oldest first. */
+  messages(session: AgentConversationRef): Promise<AgentConversationMessage[]>;
+  /**
+   * Be told the conversation whenever it changes (a message, a reply's status, a step). Called with
+   * the whole conversation, oldest first. Returns the way to stop.
+   */
+  follow(session: AgentConversationRef, onChange: (messages: AgentConversationMessage[]) => void): () => void;
 }
 
 /**

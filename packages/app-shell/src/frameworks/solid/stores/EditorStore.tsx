@@ -1,7 +1,8 @@
 /**
  * EditorStore — the editor's state: chat sessions and messages per template,
- * panel visibility and widths, preview/visual mode, unified template+theme undo/redo, pending
- * (buffered) changes for read-only templates, and the fork/fresh picker.
+ * panel visibility and widths, preview/visual mode, unified template+theme undo/redo, and the
+ * fork/fresh picker. A built-in template is forked, never edited (`enterTemplateEditing`), so
+ * every session is over a template that saves in place.
  *
  * The AI half of a session is deliberately elsewhere: the model runs on the node, reached through
  * `LanguageModelPort.converse`; prompt assembly, the tool definitions, patch application and the
@@ -23,7 +24,16 @@ import {
   useThemeStore,
 } from '@solid/stores';
 import { countedPatches, prepareTemplateRequest, runEditSession } from '@we/agent-tools';
-import type { ConversationTurn, LanguageModelStatus } from '@we/backend-shared';
+import type {
+  AgentConversationMessage,
+  AgentConversationRef,
+  AgentConversationsPort,
+  AgentConversationSummary,
+  AgentReplyStatus,
+  AgentStep,
+  ConversationTurn,
+  LanguageModelStatus,
+} from '@we/backend-shared';
 import { AgentUnavailableError } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import type { DockEdge, DockSize } from '@we/module-shared';
@@ -59,6 +69,12 @@ export interface ChatMessage {
   content: string;
   createdAt?: string;
   status?: 'sending' | 'streaming' | 'sent' | 'error';
+  /** How a reply the backend ran went: `running` until it settles. Absent on the editor's own replies. */
+  replyStatus?: AgentReplyStatus;
+  /** Why such a reply failed. */
+  replyError?: string;
+  /** The tool calls the agent made for this reply, as it made them. */
+  steps?: AgentStep[];
 }
 
 type HistoryEntry = { type: 'template'; snapshot: TemplateSchema } | { type: 'theme'; snapshot: EditingTheme };
@@ -89,8 +105,8 @@ export interface EditorStore {
   // --- Template context ---
   templateName: Accessor<string>;
   templateIcon: Accessor<string>;
+  /** The thing edited is built in. Never true in a session, which opens only on a saved template; controls disable on it anyway. */
   isReadOnly: Accessor<boolean>;
-  hasPendingChanges: Accessor<boolean>;
 
   // --- Picker state ---
   pickerOpen: Accessor<boolean>;
@@ -103,6 +119,10 @@ export interface EditorStore {
   /** This template's saved chats, to name and address — newest first. See `shared/editorChats.ts`. */
   sessions: Accessor<ChatSummary[]>;
   activeSessionId: Accessor<string | null>;
+  /** A reply the backend runs is in progress in the conversation on screen. */
+  replyRunning: Accessor<boolean>;
+  /** Stop that reply. What the agent changed before it stopped stays changed. */
+  cancelReply: () => Promise<void>;
   newChat: () => Promise<void>;
   switchSession: (sessionId: string) => Promise<void>;
   deleteSession: (sessionId: string) => Promise<void>;
@@ -119,16 +139,7 @@ export interface EditorStore {
   undo: () => Promise<void>;
   redo: () => Promise<void>;
   pushSnapshot: () => void;
-  /**
-   * Keep the edit just made — persisted where it can be, buffered where it cannot.
-   *
-   * The visual editor and the code panel called `templateStore.persistCurrentTemplate` directly,
-   * which no-ops on a template with no record of its own. So editing a built-in in the visual editor
-   * changed the canvas, wrote nothing, buffered nothing, and lost the lot on the next switch —
-   * silently, since a no-op has nothing to report. `isReadOnly` says those edits should become
-   * pending changes, which the AI path and undo/redo both already do; this is the same branch, in
-   * one place, for the surfaces that were missing it.
-   */
+  /** Keep the edit just made: save the working copy to its record. */
   commitEdit: () => Promise<void>;
 
   // --- Template actions ---
@@ -331,6 +342,188 @@ export function EditorStoreProvider(props: ParentProps) {
   const [sessions, setSessions] = createSignal<ChatSummary[]>([]);
   const [activeSessionId, setActiveSessionId] = createSignal<string | null>(null);
 
+  // ----------------------------------------------------------------
+  // Conversations the node keeps
+  // ----------------------------------------------------------------
+  /*
+    A chat is a conversation the node keeps (`AgentPort.conversations`): it holds the history, runs
+    each reply itself, so a reply finishes with the editor closed, and records the agent's tool
+    calls as steps. The editor follows the conversation rather than holding it. On a node that
+    predates conversations, or for a template with no record to talk about, the chat is the
+    editor's own, as below, and the two never mix within one chat.
+  */
+  const [keptConversations, setKeptConversations] = createSignal<AgentConversationSummary[]>([]);
+  const [activeConversation, setActiveConversation] = createSignal<AgentConversationRef | null>(null);
+  let stopFollowing: (() => void) | undefined;
+  /** Set once the node answers that it keeps no conversations: the editor's own chats from then on. */
+  let conversationsRefused = false;
+  /** The send waiting for its reply to settle, told each time the conversation changes. */
+  let onConversation: ((messages: AgentConversationMessage[]) => void) | undefined;
+  onCleanup(() => stopFollowing?.());
+
+  /** The backend's conversations, when it keeps them and what is edited has a record to be about. */
+  function kept(): { port: AgentConversationsPort; stored: { dataset: unknown; recordId: string } } | undefined {
+    const port = session.backendPorts()?.agents?.conversations;
+    if (!port || conversationsRefused || !datasetStore.rootDataset()) return undefined;
+    const stored = isReadOnly() ? undefined : templateStore.storedAt(edit.template());
+    return stored ? { port, stored } : undefined;
+  }
+
+  function chatMessageOf(message: AgentConversationMessage): ChatMessage {
+    const base = {
+      id: message.id,
+      role: message.role,
+      content: message.text,
+      createdAt: new Date(message.createdAt).toISOString(),
+    };
+    if (message.role !== 'assistant') return base;
+    return {
+      ...base,
+      // A running reply is drawn as the streaming bubble, with its steps under it.
+      ...(message.status === 'running' ? { status: 'streaming' as const } : {}),
+      replyStatus: message.status,
+      ...(message.error ? { replyError: message.error } : {}),
+      steps: message.steps ?? [],
+    };
+  }
+
+  const replyRunning = () =>
+    !!activeConversation() && messages().some((m) => m.role === 'assistant' && m.replyStatus === 'running');
+
+  function followConversation(port: AgentConversationsPort, ref: AgentConversationRef | null) {
+    stopFollowing?.();
+    stopFollowing = undefined;
+    setActiveConversation(ref);
+    setActiveSessionId(ref?.id ?? null);
+    setMessages([]);
+    if (!ref) return;
+    stopFollowing = port.follow(ref, (conversation) => {
+      if (activeConversation()?.id !== ref.id) return;
+      setMessages(conversation.map(chatMessageOf));
+      const running = conversation.some((m) => m.role === 'assistant' && m.status === 'running');
+      setIsStreaming(running);
+      setStreamingContent(running ? '<span class="shimmer">*Working on it…*</span>' : '');
+      onConversation?.(conversation);
+    });
+  }
+
+  async function loadKeptConversations(port: AgentConversationsPort, recordId: string) {
+    const keepIn = datasetStore.rootDataset()?.handle;
+    if (!keepIn) return;
+    try {
+      const found = await port.list({ keepIn, about: recordId });
+      setKeptConversations(found);
+      followConversation(port, found[0]?.ref ?? null);
+    } catch (err) {
+      console.error('Failed to load the conversations for this template', err);
+      setKeptConversations([]);
+      followConversation(port, null);
+    }
+  }
+
+  /** Start a conversation the backend keeps, about what is edited. False when it keeps none after all. */
+  async function newKeptConversation(port: AgentConversationsPort, stored: { dataset: unknown; recordId: string }) {
+    const keepIn = datasetStore.rootDataset()?.handle;
+    if (!keepIn) return false;
+    try {
+      const ref = await port.create({
+        keepIn,
+        workIn: stored.dataset,
+        title: `Chat ${keptConversations().length + 1}`,
+        about: stored.recordId,
+        mayEdit: true,
+      });
+      setKeptConversations((prev) => [
+        { ref, title: `Chat ${prev.length + 1}`, about: stored.recordId, createdAt: Date.now() },
+        ...prev,
+      ]);
+      followConversation(port, ref);
+      return true;
+    } catch (err) {
+      if (err instanceof AgentUnavailableError) {
+        conversationsRefused = true;
+        return false;
+      }
+      console.error('Failed to start a conversation', err);
+      toastService.error('Could not start a new chat');
+      return true;
+    }
+  }
+
+  /**
+   * Send in a conversation the backend keeps, and wait for its reply to settle, so the agent's
+   * write to the template lands in the editor as one undo, as an edit of the editor's own does.
+   * False when the backend turned out to keep none, and the editor's own chat should answer.
+   */
+  async function sendKept(
+    port: AgentConversationsPort,
+    stored: { dataset: unknown; recordId: string },
+    text: string,
+  ): Promise<boolean> {
+    if (!activeConversation() && !(await newKeptConversation(port, stored))) return false;
+    const ref = activeConversation();
+    if (!ref) return true;
+
+    const template = edit.template();
+    const before = deepClone<TemplateSchema>(template);
+    const peopleBefore = messages().filter((m) => m.role === 'user').length;
+    setIsStreaming(true);
+    setStreamingContent('<span class="shimmer">*Working on it…*</span>');
+    try {
+      const { stored: after } = await templateStore.writtenElsewhere(template, async () => {
+        // Settled: the person's new message is there, and the reply after it is no longer running.
+        const settled = new Promise<void>((resolve) => {
+          const giveUp = setTimeout(resolve, 16 * 60_000);
+          onConversation = (conversation) => {
+            const people = conversation.filter((m) => m.role === 'user').length;
+            const last = conversation[conversation.length - 1];
+            if (people > peopleBefore && last?.role === 'assistant' && last.status !== 'running') {
+              clearTimeout(giveUp);
+              onConversation = undefined;
+              resolve();
+            }
+          };
+        });
+        await port.send(ref, text, { about: { entity: 'Template', id: stored.recordId } });
+        await settled;
+      });
+      const changed = !!after && !sameTemplateContent(after, before);
+      if (after && changed) {
+        pushSnapshot();
+        edit.update(after);
+      }
+      return true;
+    } catch (err) {
+      onConversation = undefined;
+      if (err instanceof AgentUnavailableError) {
+        conversationsRefused = true;
+        return false;
+      }
+      throw err;
+    } finally {
+      setIsStreaming(replyRunning());
+      if (!replyRunning()) setStreamingContent('');
+    }
+  }
+
+  async function cancelReply() {
+    const port = session.backendPorts()?.agents?.conversations;
+    const ref = activeConversation();
+    if (!port || !ref) return;
+    try {
+      await port.cancel(ref);
+    } catch (err) {
+      console.error('Failed to stop the reply', err);
+      toastService.error('Could not stop the reply');
+    }
+  }
+
+  /** The chats to choose between: the backend's conversations, or the editor's own. */
+  const chatList = (): { id: string; name: string }[] =>
+    activeConversation() || keptConversations().length
+      ? keptConversations().map((c) => ({ id: c.ref.id, name: c.title || 'Chat' }))
+      : sessions().map((s) => ({ id: s.id, name: s.name }));
+
   // --- Content mode (preview / visual / code) ---
   const [contentMode, setContentModeSignal] = createSignal<'preview' | 'visual'>('preview');
   /*
@@ -345,10 +538,6 @@ export function EditorStoreProvider(props: ParentProps) {
   const templateIcon = () => edit.template().meta?.icon || 'cube';
   const isReadOnly = () => edit.isBuiltIn();
 
-  // --- Pending changes (buffered edits for read-only templates) ---
-  const [pendingTemplate, setPendingTemplate] = createSignal<TemplateSchema | null>(null);
-  const hasPendingChanges = () => pendingTemplate() !== null;
-
   // --- Unified Undo / Redo (covers template and theme edits in chronological order) ---
   const MAX_UNDO = 50;
   const [undoStack, setUndoStack] = createSignal<HistoryEntry[]>([]);
@@ -359,7 +548,7 @@ export function EditorStoreProvider(props: ParentProps) {
   const canRedo: Accessor<boolean> = () => redoStack().length > 0;
 
   function pushSnapshot() {
-    const current = isReadOnly() ? (pendingTemplate() ?? deepClone(edit.template())) : deepClone(edit.template());
+    const current = deepClone(edit.template());
     setUndoStack((prev) => {
       const next = [...prev, { type: 'template' as const, snapshot: current }];
       return next.length > MAX_UNDO ? next.slice(next.length - MAX_UNDO) : next;
@@ -367,20 +556,10 @@ export function EditorStoreProvider(props: ParentProps) {
     setRedoStack([]);
   }
 
-  /**
-   * See `commitEdit` on the interface.
-   *
-   * Deliberately *not* the AI path's shape. That one buffers **instead of** updating, so a proposed
-   * patch does not silently alter what is on screen — but the visual editor's caller has already
-   * applied the edit to the working copy, because direct manipulation that does not move the thing
-   * being manipulated is not an edit at all. So the working copy is what gets buffered.
-   */
+  /** See `commitEdit` on the interface. A built-in has nothing to save into, and no session opens on one. */
   async function commitEdit() {
-    if (!isReadOnly()) {
-      await edit.persist();
-      return;
-    }
-    setPendingTemplate(deepClone<TemplateSchema>(edit.template()));
+    if (isReadOnly()) return;
+    await edit.persist();
   }
 
   async function undo() {
@@ -390,17 +569,12 @@ export function EditorStoreProvider(props: ParentProps) {
     setUndoStack((prev) => prev.slice(0, -1));
 
     if (entry.type === 'template') {
-      const currentSnap = isReadOnly() ? (pendingTemplate() ?? deepClone(edit.template())) : deepClone(edit.template());
-      setRedoStack((prev) => [...prev, { type: 'template' as const, snapshot: currentSnap }]);
-      if (isReadOnly()) {
-        setPendingTemplate(entry.snapshot);
-      } else {
-        edit.update(entry.snapshot);
-        try {
-          await edit.persist();
-        } catch {
-          /* key may already exist */
-        }
+      setRedoStack((prev) => [...prev, { type: 'template' as const, snapshot: deepClone(edit.template()) }]);
+      edit.update(entry.snapshot);
+      try {
+        await edit.persist();
+      } catch {
+        /* key may already exist */
       }
     } else {
       const current = themeStore.editingTheme();
@@ -416,17 +590,12 @@ export function EditorStoreProvider(props: ParentProps) {
     setRedoStack((prev) => prev.slice(0, -1));
 
     if (entry.type === 'template') {
-      const currentSnap = isReadOnly() ? (pendingTemplate() ?? deepClone(edit.template())) : deepClone(edit.template());
-      setUndoStack((prev) => [...prev, { type: 'template' as const, snapshot: currentSnap }]);
-      if (isReadOnly()) {
-        setPendingTemplate(entry.snapshot);
-      } else {
-        edit.update(entry.snapshot);
-        try {
-          await edit.persist();
-        } catch {
-          /* key may already exist */
-        }
+      setUndoStack((prev) => [...prev, { type: 'template' as const, snapshot: deepClone(edit.template()) }]);
+      edit.update(entry.snapshot);
+      try {
+        await edit.persist();
+      } catch {
+        /* key may already exist */
       }
     } else {
       const current = themeStore.editingTheme();
@@ -484,6 +653,19 @@ export function EditorStoreProvider(props: ParentProps) {
 
   /** Load the chats about a template and open the most recent one */
   async function loadSessionsForTemplate(templateId: string) {
+    const fromBackend = kept();
+    if (fromBackend) {
+      setSessions([]);
+      await loadKeptConversations(fromBackend.port, fromBackend.stored.recordId);
+      return;
+    }
+    // Not the backend's: forget any conversation followed for the template before.
+    if (activeConversation() || keptConversations().length) {
+      stopFollowing?.();
+      stopFollowing = undefined;
+      setActiveConversation(null);
+      setKeptConversations([]);
+    }
     // A built-in template is never edited in place, so a conversation about one is not kept: it is
     // forked first, and the fork's chats are kept from then on.
     if (templateStore.isBuiltInTemplateId(templateId) || !templateStore.getTemplateRecord(templateId)) {
@@ -507,6 +689,8 @@ export function EditorStoreProvider(props: ParentProps) {
 
   /** Start a new chat about the current template */
   async function newChat() {
+    const fromBackend = kept();
+    if (fromBackend && (await newKeptConversation(fromBackend.port, fromBackend.stored))) return;
     const templateId = edit.template().id;
     if (!templateId || templateStore.isBuiltInTemplateId(templateId)) {
       // For a built-in, the conversation is only in memory; a new one just clears it.
@@ -534,6 +718,12 @@ export function EditorStoreProvider(props: ParentProps) {
   /** Switch to an existing chat */
   async function switchSession(sessionId: string) {
     if (sessionId === activeSessionId()) return;
+    const port = session.backendPorts()?.agents?.conversations;
+    const keptOne = keptConversations().find((c) => c.ref.id === sessionId);
+    if (port && keptOne) {
+      followConversation(port, keptOne.ref);
+      return;
+    }
     if (!sessions().some((s) => s.id === sessionId)) return;
 
     setActiveSessionId(sessionId);
@@ -542,6 +732,20 @@ export function EditorStoreProvider(props: ParentProps) {
 
   /** Delete a chat and everything in it */
   async function deleteSession(sessionId: string) {
+    const port = session.backendPorts()?.agents?.conversations;
+    const keptOne = keptConversations().find((c) => c.ref.id === sessionId);
+    if (port && keptOne) {
+      try {
+        await port.delete(keptOne.ref);
+        const remaining = keptConversations().filter((c) => c.ref.id !== sessionId);
+        setKeptConversations(remaining);
+        if (activeSessionId() === sessionId) followConversation(port, remaining[0]?.ref ?? null);
+      } catch (err) {
+        console.error('Failed to delete the conversation', err);
+        toastService.error('Could not delete that chat');
+      }
+      return;
+    }
     const perspective = datasetStore.rootDataset()?.handle;
     if (!perspective || !sessions().some((s) => s.id === sessionId)) return;
 
@@ -584,7 +788,18 @@ export function EditorStoreProvider(props: ParentProps) {
   const [isEditingTemplate, setIsEditingTemplate] = createSignal(false);
   const [editAction, setEditAction] = createSignal<'edit' | 'fork' | 'fresh' | null>(null);
 
+  /*
+    A built-in template is never edited in place: changing one means a copy of your own, so asking to
+    edit one offers the fork instead. Here rather than at each way in, because the ways in include
+    the editor chord and anything a template can `$invoke`, none of which can be relied on to check
+    first — and a session opened over a template that cannot be saved would hold edits nobody could
+    keep.
+  */
   function enterTemplateEditing(action: 'edit' | 'fork' | 'fresh' = 'edit') {
+    if (action === 'edit' && edit.isBuiltIn()) {
+      startFork();
+      return;
+    }
     setEditAction(action);
     setIsEditingTemplate(true);
     setIsOpen(true);
@@ -600,16 +815,26 @@ export function EditorStoreProvider(props: ParentProps) {
     with no page node to select first.
   */
   async function editApp(id?: string) {
-    if (id && id !== templateStore.appTemplateId()) await templateStore.setAppTemplate(id);
+    await pointAtApp(id);
+    // A built-in app is forked, never edited: the picker opens and the copy is what gets edited.
+    if (edit.isBuiltIn()) {
+      startFork();
+      return;
+    }
     // In preview, as a template's session starts: visual editing is a step the person takes, and
     // starting in it would make the chrome inert under whatever opened this.
     if (!isEditingTemplate()) enterTemplateEditing('edit');
-    edit.enterApp(templateStore.appTemplate());
   }
 
   async function forkApp(id?: string) {
-    await editApp(id);
+    await pointAtApp(id);
     startFork();
+  }
+
+  /** Make the app the thing edited — the target a fork copies — without opening a session on it. */
+  async function pointAtApp(id?: string) {
+    if (id && id !== templateStore.appTemplateId()) await templateStore.setAppTemplate(id);
+    edit.enterApp(templateStore.appTemplate());
   }
 
   function exitTemplateEditing() {
@@ -836,7 +1061,7 @@ export function EditorStoreProvider(props: ParentProps) {
       making it the page would draw the sidebar as content.
     */
     if (action !== 'fresh' && edit.target().kind === 'app') {
-      const base = pendingTemplate() ?? edit.template();
+      const base = edit.template();
       const forked = {
         ...deepClone(base),
         id: templateId,
@@ -848,10 +1073,11 @@ export function EditorStoreProvider(props: ParentProps) {
         setMessages((prev) => [...prev, createMessage('assistant', `Failed to save the app "${name}".`)]);
         return;
       }
-      setPendingTemplate(null);
       await templateStore.setAppTemplate(templateId);
       const copy = templateStore.allTemplates().find((t) => t.id === templateId && !t._fromSpace);
       if (copy) edit.enterApp(copy);
+      // The fork was asked for from outside a session; the copy is the thing to edit now.
+      if (!isEditingTemplate()) enterTemplateEditing('fork');
       setMessages((prev) => [
         ...prev,
         createMessage('assistant', `Forked the app as "${name}". It is the app you are in now.`),
@@ -867,8 +1093,7 @@ export function EditorStoreProvider(props: ParentProps) {
         meta: { name, icon, description: '' },
       };
     } else {
-      // Fork: clone current state (with any pending changes)
-      const base = pendingTemplate() ?? edit.template();
+      const base = edit.template();
       schema = {
         ...deepClone(base),
         id: templateId,
@@ -890,10 +1115,7 @@ export function EditorStoreProvider(props: ParentProps) {
         createMessage('assistant', `Created new template "${name}". Start chatting to build your interface!`),
       ]);
     } else {
-      const hadPending = pendingTemplate() !== null;
-      setPendingTemplate(null);
-      const suffix = hadPending ? ' Pending changes have been applied.' : '';
-      setMessages((prev) => [...prev, createMessage('assistant', `Forked as "${name}".${suffix}`)]);
+      setMessages((prev) => [...prev, createMessage('assistant', `Forked as "${name}".`)]);
     }
 
     // Enter template editing on the newly created template
@@ -902,12 +1124,30 @@ export function EditorStoreProvider(props: ParentProps) {
 
   function cancelPicker() {
     setPickerOpen(false);
+    // A fork asked for from outside a session pointed the editor at the app it would copy; with no
+    // fork, nothing is being edited, so the chrome goes back to being drawn from the saved app.
+    if (!isEditingTemplate()) edit.leave();
   }
 
   // ----------------------------------------------------------------
   // Chat — send message
   // ----------------------------------------------------------------
   async function sendMessage(text: string) {
+    const fromBackend = kept();
+    if (fromBackend) {
+      try {
+        if (await sendKept(fromBackend.port, fromBackend.stored, text)) return;
+      } catch (err) {
+        console.error('[EditorStore] sendMessage caught error:', err);
+        const errorText = err instanceof Error ? err.message : 'Unknown error';
+        setMessages((prev) => [...prev, createMessage('assistant', `Error: ${errorText}`)]);
+        return;
+      }
+      // The node keeps no conversations after all: the editor's own chat answers.
+      const templateId = edit.template().id;
+      if (templateId) await loadSessionsForTemplate(templateId);
+    }
+
     // Lazy session creation for custom templates: if no active session, create one
     const templateId = edit.template().id;
     if (templateId && !templateStore.isBuiltInTemplateId(templateId) && !activeSessionId()) {
@@ -966,14 +1206,13 @@ export function EditorStoreProvider(props: ParentProps) {
    * Answers false when this request is not one to hand over — no such backend, or a template the
    * agent could not save in place — and the editor's own loop then does the work.
    *
-   * Only a template this agent owns and has saved: the agent writes the stored record, as the
-   * editor's own save does, so a built-in (whose edits wait for a fork) or anything with buffered
-   * changes stays with the loop that understands buffering.
+   * Only a template that has a record: the agent writes the stored record, as the editor's own save
+   * does. Every template a session opens on has one, since a built-in is forked first.
    */
   async function sendViaAgent(text: string): Promise<boolean> {
     const agents = session.backendPorts()?.agents;
     const template = edit.template();
-    const stored = agents && !isReadOnly() && !hasPendingChanges() ? templateStore.storedAt(template) : undefined;
+    const stored = agents && !isReadOnly() ? templateStore.storedAt(template) : undefined;
     if (!agents || !stored) return false;
 
     const streamMsg = createMessage('assistant', '', 'streaming');
@@ -1031,11 +1270,10 @@ export function EditorStoreProvider(props: ParentProps) {
     /*
       The template prepared once for this request — the tree the model is shown and its ids are
       resolved against, the reference chosen for it, and the template bounded to its budget. See
-      `prepareTemplateRequest`. Buffered changes if there are any, so a conversation resumed against
-      a read-only template continues from them rather than reverting them.
+      `prepareTemplateRequest`.
     */
     const prepared = await prepareTemplateRequest({
-      template: deepClone(pendingTemplate() ?? edit.template()),
+      template: deepClone(edit.template()),
       request: text,
       models: datasetStore.currentDatasetEntities(),
     });
@@ -1054,6 +1292,11 @@ export function EditorStoreProvider(props: ParentProps) {
       uses: modelTree.uses,
       validationContext: getValidationCtx(),
       onDisplay: setStreamingContent,
+      // The same steps a backend's reply carries, kept on the reply while this loop runs it.
+      onStep: (step) =>
+        setMessages((prev) =>
+          prev.map((m) => (m.id === streamMsg.id ? { ...m, steps: [...(m.steps ?? []), step] } : m)),
+        ),
       debug: devLog,
       accept: async (merged) => {
         pushSnapshot();
@@ -1067,22 +1310,14 @@ export function EditorStoreProvider(props: ParentProps) {
           in with, and one it made gets a new one. See `nodeAliases.ts`.
         */
         const authored = modelTree.restore(merged) as TemplateSchema;
-        if (isReadOnly()) {
-          setPendingTemplate(authored);
-          return 'Schema changes validated and buffered. Template is read-only — user must fork to apply.';
-        }
         edit.update({
           ...authored,
           id: edit.template().id,
         });
         await edit.persist();
-        setPendingTemplate(null);
         return prepared.accepted;
       },
-      acceptedLine: (patches) =>
-        isReadOnly() && pendingTemplate() !== null
-          ? `<span class="warning">⚠ ${countedPatches(patches)} ready — fork this template to apply them.</span>`
-          : `<span class="success">✓ Template updated (${countedPatches(patches)})</span>`,
+      acceptedLine: (patches) => `<span class="success">✓ Template updated (${countedPatches(patches)})</span>`,
     });
 
     /*
@@ -1165,6 +1400,12 @@ export function EditorStoreProvider(props: ParentProps) {
   // Clear chat
   // ----------------------------------------------------------------
   async function clearHistory() {
+    // A conversation the backend keeps is cleared by deleting it: its history is the backend's.
+    const keptOne = activeConversation();
+    if (keptOne) {
+      await deleteSession(keptOne.id);
+      return;
+    }
     const chatId = activeSessionId();
     const perspective = datasetStore.rootDataset()?.handle;
     if (chatId && perspective) {
@@ -1175,7 +1416,6 @@ export function EditorStoreProvider(props: ParentProps) {
       }
     }
     setMessages([]);
-    setPendingTemplate(null);
   }
 
   // ----------------------------------------------------------------
@@ -1278,7 +1518,8 @@ export function EditorStoreProvider(props: ParentProps) {
     templateName,
     templateIcon,
     isReadOnly,
-    hasPendingChanges,
+    replyRunning,
+    cancelReply,
 
     // Picker state
     pickerOpen,
@@ -1288,7 +1529,7 @@ export function EditorStoreProvider(props: ParentProps) {
     pickerShowDestination,
 
     // Session management
-    sessions,
+    sessions: chatList,
     activeSessionId,
     newChat,
     switchSession,

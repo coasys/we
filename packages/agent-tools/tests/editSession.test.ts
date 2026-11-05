@@ -74,6 +74,26 @@ function session(replies: ConversationReply[], extra: Partial<Parameters<typeof 
 const children = (schema: SchemaNode) => (schema.children ?? []) as SchemaNode[];
 
 describe('an edit session', () => {
+  it('reports each tool call as a step once its answer is settled, never what it sent', async () => {
+    const steps: unknown[] = [];
+    const { run } = session(
+      [
+        {
+          text: 'Trying.',
+          calls: [patch('c1', [addText('World')]), { id: 'c2', name: 'no_such_tool', arguments: { secret: 'x' } }],
+          finish: 'tool_calls',
+        },
+        { text: 'Done.', calls: [], finish: 'done' },
+      ],
+      { onStep: (step) => steps.push(step) },
+    );
+    await run;
+    expect(steps).toEqual([
+      { tool: 'update_schema', outcome: 'ok' },
+      { tool: 'no_such_tool', outcome: 'error', error: 'Unknown tool: no_such_tool' },
+    ]);
+  });
+
   it('accepts a patch that validates, tells the model so, and finishes on its closing text', async () => {
     const { run, accepted, turns } = session([
       { text: 'Adding it.', calls: [patch('c1', [addText('World')])], finish: 'tool_calls' },

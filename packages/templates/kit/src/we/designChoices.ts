@@ -68,8 +68,8 @@ export function templateChoice(after: SchemaProp[] = []): Choice {
         /*
           Any row that can be edited, not just the one already on screen. `editable` rather than
           `editorStore.isReadOnly`, because that answers for whatever is currently rendered and every
-          row would have got the same answer; `enterTemplateEditing` has no guard of its own, so
-          offering this on a built-in would open a session over something that cannot be saved.
+          row would have got the same answer. A built-in row offers Fork instead (asked to edit one,
+          `enterTemplateEditing` opens the fork picker anyway).
         */
         when: { $: 'template.editable' },
         // Switch first: an editing session is opened over whatever is current.

@@ -141,11 +141,13 @@ export function AiPanel() {
       {/* Messages */}
       <Column gap="400" p="400" pr="300" flex="1" overflow="auto">
         <For each={session.messages()}>
-          {(msg) => (
+          {(msg, index) => (
             <MessageBubble
               message={msg}
               isStreaming={session.isStreaming() && msg.status === 'streaming'}
               streamingContent={msg.status === 'streaming' ? session.streamingContent() : undefined}
+              // What the person asked, for "Send again" on a reply that did not finish.
+              askedFor={[...session.messages().slice(0, index())].reverse().find((m) => m.role === 'user')?.content}
             />
           )}
         </For>
@@ -174,13 +176,24 @@ export function AiPanel() {
           on:input={(e: CustomEvent<string>) => setInputValue(e.detail)}
           on:submit={handleSend}
         />
-        <we-button
-          size="sm"
-          onClick={handleSend}
-          disabled={session.isStreaming() || !session.assistantAvailable() || inputValue().trim() === ''}
+        <Show
+          when={session.replyRunning()}
+          fallback={
+            <we-button
+              size="sm"
+              onClick={handleSend}
+              disabled={session.isStreaming() || !session.assistantAvailable() || inputValue().trim() === ''}
+            >
+              <we-icon name="paper-plane-tilt" size="sm" />
+            </we-button>
+          }
         >
-          <we-icon name="paper-plane-tilt" size="sm" />
-        </we-button>
+          <we-tooltip content="Stop the reply. What it has changed stays changed.">
+            <we-button size="sm" variant="soft" onClick={() => void session.cancelReply()}>
+              <we-icon name="stop" size="sm" />
+            </we-button>
+          </we-tooltip>
+        </Show>
       </Row>
     </Column>
   );
@@ -236,8 +249,113 @@ function AssistantStatus() {
   );
 }
 
-function MessageBubble(props: { message: ChatMessage; isStreaming?: boolean; streamingContent?: string }) {
+/** A step as the chat reads it: the shape both a backend's replies and the editor's own carry. */
+interface ChatStep {
+  tool: string;
+  target?: string;
+  outcome: 'running' | 'ok' | 'error' | 'stopped';
+  error?: string;
+}
+
+/**
+ * What a tool call does, in the chat's words: while it runs, then once it has. The backend records
+ * only the tool's name, so the wording is the editor's own, and an unknown tool is shown by name.
+ */
+const STEP_WORDS: Record<string, [doing: string, done: string]> = {
+  template_read: ['Reading the template', 'Read the template'],
+  template_update: ['Updating the template', 'Updated the template'],
+  update_schema: ['Updating the template', 'Updated the template'],
+  get_documentation: ['Reading the documentation', 'Read the documentation'],
+  describe_perspective: ['Looking at what this space holds', 'Looked at what this space holds'],
+  instance_query: ['Looking up records', 'Looked up records'],
+  instance_get: ['Reading a record', 'Read a record'],
+  instance_create: ['Creating a record', 'Created a record'],
+  instance_update: ['Updating a record', 'Updated a record'],
+  instance_remove: ['Removing a record', 'Removed a record'],
+  instance_transcript: ['Reading a conversation', 'Read a conversation'],
+  get_children: ['Reading what a record holds', 'Read what a record holds'],
+  query_links: ['Reading links', 'Read links'],
+};
+
+function stepWords(step: ChatStep) {
+  const [doing, done] = STEP_WORDS[step.tool] ?? [`Using ${step.tool}`, `Used ${step.tool}`];
+  if (step.outcome === 'stopped') return `${doing} (stopped)`;
+  // A failed call did not do what its past tense says.
+  if (step.outcome === 'error') return `${doing} failed`;
+  return step.outcome === 'running' ? doing : done;
+}
+
+/**
+ * A finished step's mark: how its call went, or that the reply ended before it did, all faint.
+ * A done step, by far the most common, is a plain tick, so a reply that worked reads quietly; the
+ * rarer outcomes are circled, which is what makes them stand out from it.
+ * A stopped step is a minus rather than an x: somebody chose to stop it, so it should not read as
+ * a second kind of failure beside the warning.
+ * A failed step is not red: when the whole reply failed the line under the steps already says so
+ * in red, and when it did not, the agent got past the failure and it is not news.
+ */
+const STEP_MARK: Record<Exclude<ChatStep['outcome'], 'running'>, string> = {
+  ok: 'check',
+  error: 'warning-circle',
+  stopped: 'minus-circle',
+};
+
+/** The tool calls behind a reply: open while it runs, folded to a count once it has settled. */
+function ReplySteps(props: { steps: ChatStep[]; running: boolean }) {
+  const [unfolded, setUnfolded] = createSignal<boolean | null>(null);
+  const open = () => unfolded() ?? props.running;
+  return (
+    <Column gap="100">
+      <Show when={!props.running}>
+        <we-button variant="bare" size="xs" alignSelf="flex-start" onClick={() => setUnfolded(!open())}>
+          <Row ay="center" gap="100">
+            <we-icon name={open() ? 'caret-down' : 'caret-right'} size="xs" color="text-muted" />
+            <we-text variant="footnote" color="text-muted">
+              {props.steps.length === 1 ? '1 step' : `${props.steps.length} steps`}
+            </we-text>
+          </Row>
+        </we-button>
+      </Show>
+      <Show when={open()}>
+        <For each={props.steps}>
+          {(step) => (
+            <Row ay="center" gap="200" minWidth="0">
+              {/* One slot for every mark, so the text lines up whichever is drawn. The spinner is a
+                  size smaller: its ring fills its box, where a glyph leaves a margin round itself. */}
+              <Row width="var(--we-size-xs)" height="var(--we-size-xs)" ax="center" ay="center" flexShrink="0">
+                <Show when={step.outcome !== 'running'} fallback={<we-animated-icon name="spinner" size="xxs" />}>
+                  <we-icon name={STEP_MARK[step.outcome as keyof typeof STEP_MARK]} size="xs" color="text-faint" />
+                </Show>
+              </Row>
+              <we-text variant="footnote" color="text-faint" truncate>
+                {step.error ? `${stepWords(step)}: ${step.error}` : stepWords(step)}
+              </we-text>
+            </Row>
+          )}
+        </For>
+      </Show>
+    </Column>
+  );
+}
+
+/** How a reply that did not finish ended, and the way to ask again. */
+const UNFINISHED: Record<string, string> = {
+  failed: 'The reply failed',
+  cancelled: 'Stopped',
+  interrupted: 'Stopped when the node restarted',
+};
+
+function MessageBubble(props: {
+  message: ChatMessage;
+  isStreaming?: boolean;
+  streamingContent?: string;
+  askedFor?: string;
+}) {
+  const session = useEditorHost().session;
   const isUser = () => props.message.role === 'user';
+  const steps = () => (props.message.steps as ChatStep[] | undefined) ?? [];
+  const replyStatus = () => props.message.replyStatus as string | undefined;
+  const unfinished = () => UNFINISHED[replyStatus() ?? ''];
 
   const displayContent = () => {
     if (props.isStreaming) return props.streamingContent || '';
@@ -261,8 +379,30 @@ function MessageBubble(props: { message: ChatMessage; isStreaming?: boolean; str
       maxWidth={isUser() ? '90%' : '100%'}
       alignSelf={isUser() ? 'flex-end' : 'flex-start'}
     >
+      {/* The steps first: they ran before the text was written, and the text then lands under them
+          rather than pushing them down as they fold. */}
+      <Show when={steps().length > 0}>
+        <ReplySteps steps={steps()} running={replyStatus() === 'running' || !!props.isStreaming} />
+      </Show>
       <Show when={displayContent()}>
         <we-markdown content={displayContent()} markdownGap="400" />
+      </Show>
+      <Show when={unfinished()}>
+        <Row ay="center" gap="200" wrap>
+          <we-text variant="footnote" color={replyStatus() === 'failed' ? 'danger-text' : 'text-muted'}>
+            {props.message.replyError ? `${unfinished()}: ${props.message.replyError as string}` : unfinished()}
+          </we-text>
+          <Show when={props.askedFor}>
+            <we-button
+              variant="ghost"
+              size="xs"
+              disabled={session.isStreaming()}
+              onClick={() => void session.sendMessage(props.askedFor!)}
+            >
+              Send again
+            </we-button>
+          </Show>
+        </Row>
       </Show>
       <Show when={props.message.status === 'error'}>
         <we-text fontSize="300" color="danger-text" mt="4px">

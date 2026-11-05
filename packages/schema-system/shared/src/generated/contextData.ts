@@ -2377,7 +2377,6 @@ export const contextData: ContextData = {
         templateName: { type: 'string' },
         templateIcon: { type: 'string' },
         isReadOnly: { type: 'boolean' },
-        hasPendingChanges: { type: 'boolean' },
         pickerOpen: { type: 'boolean' },
         pickerAction: { type: 'string' },
         pickerDefaultName: { type: 'string' },
@@ -2385,6 +2384,7 @@ export const contextData: ContextData = {
         pickerShowDestination: { type: 'boolean' },
         sessions: { type: 'array' },
         activeSessionId: { type: 'string' },
+        replyRunning: { type: 'boolean' },
         contentMode: { type: 'object' },
         schemaJson: { type: 'string' },
         canUndo: { type: 'boolean' },
@@ -2404,6 +2404,7 @@ export const contextData: ContextData = {
       },
       actions: [
         'refreshAssistant',
+        'cancelReply',
         'newChat',
         'switchSession',
         'deleteSession',
