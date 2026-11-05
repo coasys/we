@@ -21869,6 +21869,7 @@ dependencies = [
  "argon2 0.5.3",
  "chacha20poly1305",
  "core-foundation 0.10.1",
+ "dirs 5.0.1",
  "log",
  "qrcode",
  "rand_core 0.6.4",

@@ -3,7 +3,7 @@
  * words each one says: the recovery phrase, the identity being ready, the passphrase fallback where
  * there is no keychain, linking a device, and revoking one.
  *
- * Pure, so the wording is tested without a window (`screens.test.ts`). `main.ts` draws them.
+ * Pure, so the wording is tested without a window (`screens.test.ts`). `window.ts` draws them.
  */
 
 export type Screen =

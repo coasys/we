@@ -29,11 +29,6 @@ fn seed_data_path(home: &std::path::Path) -> PathBuf {
     expand_home(seed_runtime::AD4M_DATA_PATH, home)
 }
 
-/// This app's own configuration directory.
-///
-/// No longer where accounts or the registry live — both moved into the data path's container, so
-/// that one `mv` resets everything and every host reads the same list. All that is left here is
-/// the pre-container layout, which `AccountRegistry` migrates out of on first run.
 /// One identity store setting: the run-time variable when set and not empty, else the value the
 /// build was compiled with, else none.
 fn identity_store_setting(runtime: Option<String>, built: Option<&str>) -> Option<String> {
@@ -42,6 +37,11 @@ fn identity_store_setting(runtime: Option<String>, built: Option<&str>) -> Optio
         .or_else(|| built.map(str::to_string).filter(|s| !s.trim().is_empty()))
 }
 
+/// This app's own configuration directory.
+///
+/// No longer where accounts or the registry live — both moved into the data path's container, so
+/// that one `mv` resets everything and every host reads the same list. All that is left here is
+/// the pre-container layout, which `AccountRegistry` migrates out of on first run.
 fn config_dir() -> PathBuf {
     dirs::config_dir()
         .expect("Failed to get config directory")
@@ -243,9 +243,9 @@ fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 
     // An identity store for the executor other than its network's: `AD4M_IDENTITY_STORE_URL` and
     // `AD4M_IDENTITY_STORE_KEYS` (comma-separated), the names the executor's own CLI reads. A
-    // build carries them when they are set while it is compiled (DEVELOPMENT.md, "The identity
-    // store"); the same variables at run time override that. They are only passed on: with
-    // neither set the executor uses the store its network seed names, and what it uses and
+    // build carries them when they are set while it is compiled (`crates/custody/README.md`, "The
+    // identity store"); the same variables at run time override that. They are only passed on:
+    // with neither set the executor uses the store its network seed names, and what it uses and
     // whether it trusts it the custody service asks of it (`identity.status`), never of these.
     let identity_store_url = identity_store_setting(
         std::env::var("AD4M_IDENTITY_STORE_URL").ok(),
@@ -264,12 +264,11 @@ fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     .filter(|keys| !keys.is_empty());
 
     // The custody service: the person's master key, behind the OS unlock, in this process but never
-    // in the executor's code (it is its own crate, `custody/`, and reaches the executor over RPC with
+    // in the executor's code (it is its own crate, `crates/custody`, and reaches the executor over RPC with
     // the admin credential only). The sealed file is the fallback for Linux without a Secret Service,
     // and for a macOS build without the keychain entitlement.
     // The same folder keeps the incept of an identity made here until its publish is confirmed.
-    let custody_dir =
-        data_folder::custody_dir(&dirs::data_dir().unwrap_or_else(|| home.join(".local/share")));
+    let custody_dir = we_custody::host::custody_dir(&home);
     let custody = we_custody::spawn(
         we_custody::DesktopVault::new(
             we_custody::store::system_store(custody_dir.clone()),

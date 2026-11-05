@@ -1,13 +1,16 @@
-//! The shell's build settings that keep the web inspector out of a packaged build. The app crate
-//! is not compiled in CI, so these read its manifest template here.
+//! The Tauri shell's build settings that keep the web inspector out of a packaged build. The app
+//! crate is not compiled in CI, so these read its manifest template (`apps/we-tauri/src-tauri`)
+//! from here.
 
 use std::path::PathBuf;
 
+/// `apps/we-tauri`, from this crate at `crates/custody`.
+fn tauri_app() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../apps/we-tauri")
+}
+
 fn template() -> String {
-    std::fs::read_to_string(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../Cargo.toml.template"),
-    )
-    .unwrap()
+    std::fs::read_to_string(tauri_app().join("src-tauri/Cargo.toml.template")).unwrap()
 }
 
 /// The value of `key` in the `[section]` of the template, as written.
@@ -37,13 +40,9 @@ fn the_devtools_feature_is_off_unless_asked_for() {
 
 #[test]
 fn only_the_dev_script_asks_for_devtools() {
-    let package: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../package.json"),
-        )
-        .unwrap(),
-    )
-    .unwrap();
+    let package: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(tauri_app().join("package.json")).unwrap())
+            .unwrap();
     for (name, script) in package["scripts"].as_object().unwrap() {
         let script = script.as_str().unwrap();
         let asks = script.contains("devtools");

@@ -10,7 +10,7 @@
 //!
 //! - the executor's data is where `ad4m.dataPath` or the account registry says;
 //! - the custody service keeps its sealed files and `pending-incepts.json` in
-//!   `<data dir>/coasys/custody` ([`custody_dir`]), and names its keychain items by the service
+//!   `<data dir>/coasys/custody` ([`we_custody::host::custody_dir`]), and names its keychain items by the service
 //!   `org.coasys.app` (macOS) or the attribute `coasys-identity` (Secret Service), both constants of
 //!   `we-custody`. A master key kept before the move is where it was after it.
 //!
@@ -19,12 +19,6 @@
 
 use std::io;
 use std::path::{Path, PathBuf};
-
-/// Where the custody service keeps its files: `<data dir>/coasys/custody`. Named by a constant, not
-/// by the app's identifier, so a new identifier cannot move a person's master key.
-pub fn custody_dir(data_dir: &Path) -> PathBuf {
-    data_dir.join("coasys").join("custody")
-}
 
 /// What [`move_webview_data`] did.
 #[derive(Debug)]
@@ -96,7 +90,8 @@ mod tests {
         let storage = Path::new("localstorage/tauri_localhost_0.localstorage");
         write(&base.0.join(FORMER).join(storage), b"settings");
         // What the custody service holds: a sealed master key and an incept not yet published.
-        let custody = custody_dir(&base.0);
+        // Where `we_custody::host::custody_dir` puts them, under the same data dir.
+        let custody = base.0.join("coasys").join("custody");
         let key = custody.join("did-scid-example.bin");
         let pending = custody.join("pending-incepts.json");
         write(&key, b"sealed master key");
@@ -121,10 +116,11 @@ mod tests {
 
     #[test]
     fn the_custody_folder_is_named_by_no_identifier() {
-        let base = Path::new("/data");
-        assert_eq!(custody_dir(base), Path::new("/data/coasys/custody"));
+        // The custody service's folder is the shared crate's, the same for the Electron sidecar.
+        let dir = we_custody::host::custody_dir(Path::new("/home/someone"));
+        assert!(dir.ends_with("coasys/custody"), "{dir:?}");
         for identifier in [FORMER, NEW, "io.weco.we.tauri"] {
-            assert!(!custody_dir(base).starts_with(base.join(identifier)));
+            assert!(!dir.iter().any(|part| part == identifier), "{dir:?}");
         }
     }
 

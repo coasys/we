@@ -7,7 +7,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { describe, expect, it } from 'vitest';
 
-import { executorSpawnEnv, handleFromMainWindow, isFromMainWindow } from './ipcSender.js';
+import { executorSpawnEnv, handleFromWindow, isFromWindow } from './ipcSender.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const APP = 'http://localhost:9080';
@@ -27,42 +27,42 @@ function window({ destroyed = false } = {}) {
 
 const from = (win, frame = win.webContents.mainFrame) => ({ sender: win.webContents, senderFrame: frame });
 
-describe('isFromMainWindow', () => {
+describe('isFromWindow', () => {
   it('answers the main window’s top frame on the app’s origin', () => {
     const win = window();
-    expect(isFromMainWindow(from(win), win, isAppUrl)).toBe(true);
+    expect(isFromWindow(from(win), win, isAppUrl)).toBe(true);
   });
 
   it('refuses an iframe inside the main window — an embedded app', () => {
     const win = window();
     const iframe = { processId: 4, routingId: 7, url: `${APP}/` };
-    expect(isFromMainWindow(from(win, iframe), win, isAppUrl)).toBe(false);
+    expect(isFromWindow(from(win, iframe), win, isAppUrl)).toBe(false);
     const otherProcess = { processId: 9, routingId: 1, url: 'http://localhost:9081/' };
-    expect(isFromMainWindow(from(win, otherProcess), win, isAppUrl)).toBe(false);
+    expect(isFromWindow(from(win, otherProcess), win, isAppUrl)).toBe(false);
   });
 
   it('refuses the top frame once it shows another origin', () => {
     const win = window();
     const navigated = { ...win.webContents.mainFrame, url: 'https://example.org/' };
-    expect(isFromMainWindow(from(win, navigated), win, isAppUrl)).toBe(false);
+    expect(isFromWindow(from(win, navigated), win, isAppUrl)).toBe(false);
   });
 
   it('refuses another window, a destroyed window, and no window', () => {
     const win = window();
     const other = window();
-    expect(isFromMainWindow(from(other), win, isAppUrl)).toBe(false);
+    expect(isFromWindow(from(other), win, isAppUrl)).toBe(false);
     const gone = window({ destroyed: true });
-    expect(isFromMainWindow(from(gone), gone, isAppUrl)).toBe(false);
-    expect(isFromMainWindow(from(win), null, isAppUrl)).toBe(false);
-    expect(isFromMainWindow({ sender: win.webContents }, win, isAppUrl)).toBe(false);
+    expect(isFromWindow(from(gone), gone, isAppUrl)).toBe(false);
+    expect(isFromWindow(from(win), null, isAppUrl)).toBe(false);
+    expect(isFromWindow({ sender: win.webContents }, win, isAppUrl)).toBe(false);
   });
 });
 
-describe('handleFromMainWindow', () => {
+describe('handleFromWindow', () => {
   function registered(win) {
     const handlers = new Map();
     const ipc = { handle: (channel, fn) => handlers.set(channel, fn) };
-    handleFromMainWindow(
+    handleFromWindow(
       ipc,
       () => win,
       isAppUrl,
@@ -81,6 +81,58 @@ describe('handleFromMainWindow', () => {
     const win = window();
     const iframe = { processId: 4, routingId: 7, url: `${APP}/` };
     expect(() => registered(win)(from(win, iframe))).toThrow(/refused/);
+  });
+});
+
+describe('the identity window’s channels', () => {
+  const IDENTITY_PAGE = 'we-identity://window/index.html';
+  const isIdentityUrl = (url) => url === IDENTITY_PAGE;
+  const identityWindow = () => {
+    const mainFrame = { processId: 8, routingId: 1, url: IDENTITY_PAGE };
+    return { isDestroyed: () => false, webContents: { mainFrame } };
+  };
+
+  it('answers each window on its own channels and refuses it the other’s', () => {
+    const main = window();
+    const identity = identityWindow();
+    const handlers = new Map();
+    const ipc = { handle: (channel, fn) => handlers.set(channel, fn) };
+    handleFromWindow(
+      ipc,
+      () => main,
+      isAppUrl,
+      'identity-open',
+      () => 'opened',
+    );
+    handleFromWindow(
+      ipc,
+      () => identity,
+      isIdentityUrl,
+      'identity-flow-step',
+      () => 'screen',
+    );
+
+    expect(handlers.get('identity-open')(from(main))).toBe('opened');
+    expect(() => handlers.get('identity-open')(from(identity))).toThrow(/refused/);
+    expect(handlers.get('identity-flow-step')(from(identity))).toBe('screen');
+    expect(() => handlers.get('identity-flow-step')(from(main))).toThrow(/refused/);
+  });
+
+  it('main.js gives the flow to the identity window and the rest to the main window', () => {
+    const main = readFileSync(join(here, 'main.js'), 'utf8');
+    for (const channel of [
+      'identity-flow-start',
+      'identity-flow-step',
+      'identity-flow-cancel',
+      'identity-flow-finish',
+    ]) {
+      expect(main).toMatch(new RegExp(`handleIdentity\\('${channel}'`));
+      expect(main).not.toMatch(new RegExp(`\\bhandle\\('${channel}'`));
+    }
+    for (const channel of ['identity-open', 'identity-public-state']) {
+      expect(main).toMatch(new RegExp(`\\bhandle\\('${channel}'`));
+      expect(main).not.toMatch(new RegExp(`handleIdentity\\('${channel}'`));
+    }
   });
 });
 

@@ -1,5 +1,7 @@
 /**
- * Which renderer may call the main process: the main window's own top frame, on the app's origin.
+ * Which renderer may call the main process: each channel answers one window's own top frame, on
+ * that window's own origin. Almost every channel is the main window's; the identity flow channels
+ * are the identity window's (`identityWindow.js`), and neither window may call the other's.
  *
  * ## Why every handler checks
  *
@@ -24,7 +26,7 @@
  */
 
 /** Whether `event` came from `window`'s top frame, showing a document `isAppUrl` accepts. */
-export function isFromMainWindow(event, window, isAppUrl) {
+export function isFromWindow(event, window, isAppUrl) {
   if (!event || !window || window.isDestroyed?.()) return false;
   const contents = window.webContents;
   if (!contents || event.sender !== contents) return false;
@@ -36,13 +38,14 @@ export function isFromMainWindow(event, window, isAppUrl) {
 }
 
 /**
- * `ipcMain.handle(channel, handler)`, answering only the main window. `getWindow` is read at call
- * time: the window is made after the handlers are registered, and is replaced if it is ever re-made.
+ * `ipcMain.handle(channel, handler)`, answering only `getWindow()`'s top frame on a page `isAppUrl`
+ * accepts. `getWindow` is read at call time: the window is made after the handlers are registered,
+ * and is replaced if it is ever re-made.
  */
-export function handleFromMainWindow(ipcMain, getWindow, isAppUrl, channel, handler) {
+export function handleFromWindow(ipcMain, getWindow, isAppUrl, channel, handler) {
   ipcMain.handle(channel, (event, ...args) => {
-    if (!isFromMainWindow(event, getWindow(), isAppUrl)) {
-      throw new Error(`[we] ${channel} refused: the sender is not the app's main window`);
+    if (!isFromWindow(event, getWindow(), isAppUrl)) {
+      throw new Error(`[we] ${channel} refused: the sender is not the window it belongs to`);
     }
     return handler(event, ...args);
   });

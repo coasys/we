@@ -63,7 +63,7 @@ fn custody_depends_on_no_executor_crate() {
 /// (`docs/contributing/ad4m-and-deploys.md`): one ad4m per WE build, Rust included.
 #[test]
 fn custody_builds_against_the_ad4m_commit_we_pins() {
-    let root = crate_dir().join("../../../..");
+    let root = crate_dir().join("../..");
     let package: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(root.join("package.json")).unwrap()).unwrap();
     let pin = package["pnpm"]["overrides"]["@coasys/ad4m"]

@@ -70,7 +70,7 @@ export default {
     That needs the file on disk at runtime, so it is copied in beside the executor and the renderer
     bundle — see `windowIcon()` in electron/main.js, which reads it from `process.resourcesPath`.
   */
-  extraResources: [...extraResources, { from: appIcon, to: 'icon.png' }],
+  extraResources: [...extraResources, { from: appIcon, to: 'icon.png' }, ...custodySidecar()],
   /*
     Without this the artifact is `WE-0.1.0.AppImage`, naming neither platform nor architecture —
     which stops being merely untidy the moment a second target sits beside it in a release.
@@ -97,6 +97,17 @@ export default {
     syncDesktopName: true,
   },
 };
+
+/**
+ * The custody sidecar, beside the executor (`custodyBinary` in electron/main.js), built by
+ * `scripts/build-custody.mjs` before packaging. None on Windows, where the app runs without identity.
+ */
+function custodySidecar() {
+  if (process.platform === 'win32') return [];
+  return [
+    { from: join(__dirname, '..', '..', 'crates', 'custody', 'target', 'release', 'we-custody'), to: 'we-custody' },
+  ];
+}
 
 /** The spelling a machine reads — `WE` → `we`, `Coasys` → `coasys`. */
 function machineName(productName) {
