@@ -490,7 +490,7 @@ To target another dataset: { "$invoke": "record.update", "args": ["EntityName", 
 record.delete — deletes one record:
 { "$invoke": "record.delete", "args": ["EntityName", { "$": "item.id" }] }
 
-Use dataset: 'datasetStore.rootDataset' for we-root entities (AgentSettings, ChatSession, etc.), and
+Use dataset: 'datasetStore.rootDataset' for we-root entities (AgentSettings, Template, etc.), and
 'datasetStore.personalDataset' for the agent's own content (a note, a Pocket folder). Both are chrome-tier.
 Use the default (no dataset) for space-scoped entities (Space, Signal, etc.). The same key $query
 takes, and it names the same accessors.
@@ -2593,18 +2593,6 @@ CalloutBlock extends WeNode:
   - icon: string [we://icon]
   - version: number [we://version]
 
-ChatMessage extends WeNode:
-  Fields:
-  - role: string [we://role]
-  - content: string [we://content]
-
-ChatSession extends WeNode:
-  Fields:
-  - name: string [we://name]
-  - templateId: string [we://template_id]
-  Relations:
-  - messages: HasMany → ChatMessage [we://chat_message]
-
 CodeBlock extends WeNode:
   Fields:
   - code: string (required) [we://code]
@@ -3115,7 +3103,7 @@ DeviceStore:
 
 EditorStore:
 - State:
-  - messages: ChatMessage[] — the active AI session's messages (id, role: 'user' | 'assistant' | 'system', content, createdAt, status). Empty for a new chat
+  - messages: the active chat's messages (id, role: 'user' | 'assistant' | 'system', content, createdAt, status). Empty for a new chat
   - isOpen: boolean — the AI chat panel is open
   - isStreaming: boolean — an assistant reply is arriving; streamingContent holds what has arrived so far
   - streamingContent: string — the partial assistant reply while isStreaming, empty otherwise
@@ -3130,7 +3118,7 @@ EditorStore:
   - pickerDefaultName: string — what the picker’s name field starts with
   - pickerDefaultIcon: string — what its icon field starts with
   - pickerShowDestination: boolean — the picker offers a personal-or-space destination, which it can only do while a space is open to save into
-  - sessions: ChatSession[] — this template's saved AI sessions (id, name, templateId), newest first
+  - sessions: this template's saved chats (id, name), newest first
   - activeSessionId: string | null — the session whose messages are shown
   - contentMode: 'preview' | 'visual' — whether the editor shows the rendered template or the visual editing surface
   - schemaJson: string — the template being edited, serialised with its node ids — what the code panel shows and edits. Ids are permanent, so a save keeps them

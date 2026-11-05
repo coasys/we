@@ -26,8 +26,6 @@ import { VideoBlock } from './VideoBlock';
 export * from './types';
 import { AgentSettings } from './AgentSettings';
 import { Amendment } from './Amendment';
-import { ChatMessage } from './ChatMessage';
-import { ChatSession } from './ChatSession';
 import { EdgeRoute } from './EdgeRoute';
 import { ModelRun } from './ModelRun';
 import { MutedAgent } from './MutedAgent';
@@ -62,8 +60,6 @@ export const CORE_DEFS: Record<string, CoreEntityDef> = {
   AgentSettings,
   AudioBlock,
   CalloutBlock,
-  ChatMessage,
-  ChatSession,
   CodeBlock,
   CollectionBlock,
   DividerBlock,

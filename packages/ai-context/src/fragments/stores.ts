@@ -1715,7 +1715,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       canUndo: 'boolean (true when there are schema edits that can be undone)',
       canRedo: 'boolean (true when there are undone schema edits that can be redone)',
       messages:
-        "ChatMessage[] — the active AI session's messages (id, role: 'user' | 'assistant' | 'system', content, createdAt, status). Empty for a new chat",
+        "the active chat's messages (id, role: 'user' | 'assistant' | 'system', content, createdAt, status). Empty for a new chat",
       isOpen: 'boolean — the AI chat panel is open',
       isStreaming: 'boolean — an assistant reply is arriving; streamingContent holds what has arrived so far',
       streamingContent: 'string — the partial assistant reply while isStreaming, empty otherwise',
@@ -1734,7 +1734,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       pickerDefaultIcon: 'string — what its icon field starts with',
       pickerShowDestination:
         'boolean — the picker offers a personal-or-space destination, which it can only do while a space is open to save into',
-      sessions: "ChatSession[] — this template's saved AI sessions (id, name, templateId), newest first",
+      sessions: "this template's saved chats (id, name), newest first",
       activeSessionId: 'string | null — the session whose messages are shown',
       contentMode:
         "'preview' | 'visual' — whether the editor shows the rendered template or the visual editing surface",
