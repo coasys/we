@@ -10,6 +10,7 @@ import { Ad4mClient, type AgentStatus } from '@coasys/ad4m';
 import type { BackendPortsContext } from '@we/backend-shared';
 
 import { createAd4mBackendPorts } from './backendPortsAdapter';
+import type { Ad4mCustodyHost } from './identityPort';
 import type { Ad4mLifecycleOptions } from './lifecycleAdapter';
 
 /** Poll the executor until it answers — it is spawned alongside the window and needs a moment. */
@@ -56,7 +57,11 @@ export interface LocalExecutorConnection {
  */
 export function createLocalAd4mConnector(
   getConnection: () => Promise<LocalExecutorConnection>,
-  options: { startupDelayMs?: number } & Ad4mLifecycleOptions = {},
+  options: {
+    startupDelayMs?: number;
+    /** The host's custody service, where it runs one beside the executor. See `identityPort.ts`. */
+    custody?: Ad4mCustodyHost;
+  } & Ad4mLifecycleOptions = {},
 ) {
   return {
     async initialize(ctx: BackendPortsContext) {
@@ -77,6 +82,7 @@ export function createLocalAd4mConnector(
           linkServerUrl: options.linkServerUrl,
           devLinkLanguageBundle: options.devLinkLanguageBundle,
           connection: () => ({ url: `http://localhost:${port}`, token }),
+          custody: options.custody,
         }),
         // Forwarded to hosted app iframes by the embed bridge.
         connection: { port, token },

@@ -34,6 +34,7 @@ import { createAd4mCallPort } from './callPort';
 import { installClearOnEmpty } from './clearOnEmpty';
 import { installContainmentPredicate } from './containment';
 import { Space } from './entities';
+import { type Ad4mCustodyHost, createAd4mIdentityPort } from './identityPort';
 import { createAd4mInterpretationPort } from './interpretationAdapter';
 import { readInterpretationHints, resetInterpretationHints, writeInterpretationHints } from './interpretationHints';
 import { type Ad4mHttpConnection, createAd4mLanguageModelPort } from './languageModelPort';
@@ -162,6 +163,11 @@ export function createAd4mProfileDirectory(backendClient: unknown): ProfileDirec
  */
 export interface Ad4mConnectionOptions {
   connection?: () => Ad4mHttpConnection | null;
+  /**
+   * The custody service that keeps the person's master key, where the host runs one beside the
+   * executor. The identity port signs changes through it; without it, the identity is read-only.
+   */
+  custody?: Ad4mCustodyHost;
 }
 
 export function createAd4mBackendPorts(
@@ -234,6 +240,9 @@ export function createAd4mBackendPorts(
     interpretation: createAd4mInterpretationPort(ctx.selfId),
     workflows: createAd4mWorkflowPort(ctx.selfId),
     references: createAd4mReferencePort(),
+    // The key log and the device list, as the executor's identity module holds them, and changes to
+    // them through the host's custody service where it runs one.
+    identity: createAd4mIdentityPort(backendClient, options.custody),
     // Per-dataset like interpretation: every operation names the space the call is in.
     call: createAd4mCallPort(),
     ephemeral,

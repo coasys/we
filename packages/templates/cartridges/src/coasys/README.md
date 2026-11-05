@@ -14,6 +14,7 @@ file in Settings.
 | `themes.ts`                             | Coasys, Josh's theme, with a light and a dark side; Coasys Glow, Nico's, dark only                   |
 | `assets/BricolageGrotesque-latin.woff2` | Glow's typeface (SIL OFL 1.1), carried in its `fontFaces` as a `data:` URL                           |
 | `app.ts`                                | The chrome around every space: one rail, no module rail                                              |
+| `firstRun.ts`                           | "Welcome to Coasys": make your identity here, or start without one                                   |
 | `space/shell.ts`                        | A space as one tree and one view, on a home lane                                                     |
 | `space/tree.ts`                         | The tree: channels, calls, workflows, people, Social DNA                                             |
 | `space/views.ts`                        | The pages: the Feed, the workflows, and a call's own page                                            |
@@ -66,6 +67,11 @@ workshop.
 ## What is drawn and what waits
 
 The identity pages in Settings (security, devices, bots, plan) are WE's own, drawn as "Coming soon"
-until a backend reports it can do them. The Coasys way in — passkeys, a master key, linking a
-device — waits on the same backend and will arrive as more steps of WE's sign-in form, which `boot.ts`
-places.
+until a backend reports it can do them. Lit up so far: the key log (Security → Key log) and the
+device list, read from the executor's `identity.*` calls, and — on the desktop app, whose shell
+keeps the master key — Add a device and Revoke, which open the shell's identity window.
+
+Two screens come before a space. WE's sign-in form, which `boot.ts` places, gets a session. Then,
+once the session is ready, the first run (`firstRun.ts`) sits over the rail while
+`identityStore.needsFirstRun`. Its other doors (log in with a Coasys account, link to an identity,
+the 12 words) are drawn "Coming soon" until the flows behind them are added.

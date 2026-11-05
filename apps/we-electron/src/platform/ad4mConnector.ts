@@ -1,5 +1,5 @@
 import type { Account, BackendConnector, ExecutorSettings, ScreenSource } from '@we/app-shell/shared';
-import { createLocalAd4mConnector } from '@we/backend-ad4m';
+import { type Ad4mCustodyHost, createLocalAd4mConnector } from '@we/backend-ad4m';
 import weSeed from '@we/seed-file';
 
 // Electron IPC bridge - will be exposed by preload script
@@ -27,6 +27,8 @@ declare global {
       restartExecutor: () => Promise<void>;
       chooseFile: (options: { save: boolean; defaultName?: string }) => Promise<string | null>;
       saveFile: (file: { name: string; type: string; bytes: Uint8Array }) => Promise<boolean>;
+      // The custody sidecar's window and public state; absent where there is no custody service.
+      custody?: Ad4mCustodyHost;
     };
   }
 }
@@ -43,5 +45,11 @@ export const ad4mConnector: BackendConnector = createLocalAd4mConnector(
     linkServerUrl: (weSeed.ad4m as { linkServerUrl?: string }).linkServerUrl,
     // Null outside a development run, so a packaged app never publishes a language on its own.
     devLinkLanguageBundle: async () => (await window.electron?.getDevLinkLanguageBundle?.()) ?? null,
+    /*
+      The custody sidecar keeps the master key beside the executor and signs changes to the identity
+      against it, so it is part of reaching this backend: the main process opens its window, runs the
+      change and answers `open` with how it ended. Absent on Windows, where the identity is read-only.
+    */
+    custody: window.electron?.custody,
   },
 );
