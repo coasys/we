@@ -8,18 +8,21 @@
  */
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import type { CustodyPublic, IdentityHost, IdentityStep, IdentityStepOutcome } from '@we/app-shell/shared';
+import type { Ad4mCustodyHost, Ad4mCustodyState } from '@we/backend-ad4m';
+
+type IdentityChange = Parameters<Ad4mCustodyHost['open']>[0];
+type IdentityChangeOutcome = Awaited<ReturnType<Ad4mCustodyHost['open']>>;
 
 interface StepDone {
   step: string;
-  outcome: IdentityStepOutcome;
+  outcome: IdentityChangeOutcome;
 }
 
-export const tauriIdentityHost: IdentityHost = {
-  async open(step: IdentityStep): Promise<IdentityStepOutcome> {
+export const tauriIdentityHost: Ad4mCustodyHost = {
+  async open(step: IdentityChange): Promise<IdentityChangeOutcome> {
     // Listen first, so a window that ends at once cannot finish before anyone is listening.
-    let resolve!: (outcome: IdentityStepOutcome) => void;
-    const done = new Promise<IdentityStepOutcome>((r) => (resolve = r));
+    let resolve!: (outcome: IdentityChangeOutcome) => void;
+    const done = new Promise<IdentityChangeOutcome>((r) => (resolve = r));
     const unlisten = await listen<StepDone>('identity-step-done', (event) => resolve(event.payload.outcome));
     try {
       const { opened } = await invoke<{ opened: boolean }>('identity_open', { step });
@@ -31,5 +34,5 @@ export const tauriIdentityHost: IdentityHost = {
     }
   },
 
-  publicState: () => invoke<CustodyPublic>('identity_public_state'),
+  publicState: () => invoke<Ad4mCustodyState>('identity_public_state'),
 };
