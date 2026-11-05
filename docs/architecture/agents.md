@@ -98,3 +98,8 @@ write adds no authority: it only stops narrowing what the agent may do. In WE's 
 write goes through the same write path as any other, so the space's policy judges it
 ([space-policy.md](space-policy.md)). An agent the backend runs writes through the backend's own path,
 so policy has to be enforced there too before such an agent is given records to write.
+
+What an agent writes is marked as a model's (`packages/entities/CONVENTIONS.md`, "What a model
+made"). In WE's own conversation the host gives the data tools the conversation's `ModelRun`
+(`createDataToolset({ run })`): a record they create carries it as `generatedBy`, and a property they
+change on an existing record is kept as an `Amendment` naming it.

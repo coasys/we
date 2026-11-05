@@ -1,7 +1,7 @@
 /**
  * A module entity that extends the core vocabulary keeps the target of what it inherits.
  *
- * `WeNode` carries one typed relation — `signals`, pointing at `Signal` — and a module's manifest
+ * `WeNode` carries typed relations — `signals` to `Signal`, `runs` and `generatedBy` to `ModelRun` — and a module's manifest
  * holds only its own entities, so that target names a class the manifest cannot see. The compiler
  * resolves such a name through `resolveExternal`, and `declare` used not to pass one: the thunk
  * answered `undefined`, shacl-gen caught the throw and warned, and the emitted shape lost both
@@ -22,7 +22,7 @@ import { type EntityClass, registerEntity, unregisterEntity } from '@we/entities
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createAd4mSchemaPort } from '../src/backendPortsAdapter';
-import { Signal, SignalType } from '../src/entities';
+import { ModelRun, Signal, SignalType } from '../src/entities';
 
 const MANIFEST: EntityManifest = {
   version: '1',
@@ -42,11 +42,13 @@ describe('a module entity extending WeNode', () => {
     // What createBackendPorts does at boot, before any module compiles: the native classes are in
     // the global registry, which is where an inherited relation's target is found.
     registerEntity('Signal', Signal as unknown as EntityClass);
+    registerEntity('ModelRun', ModelRun as unknown as EntityClass);
   });
 
   afterEach(() => {
     unregisterEntity('Poll');
     unregisterEntity('Signal');
+    unregisterEntity('ModelRun');
   });
 
   it('resolves the target class of the relation it inherits', () => {

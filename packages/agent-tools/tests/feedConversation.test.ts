@@ -393,3 +393,62 @@ describe('a feed an agent makes', () => {
     expect(channel).toMatchObject({ autoExtract: true, extractionTargets: '["TaskBlock"]' });
   });
 });
+
+describe('what an agent writes, marked as a model’s', () => {
+  const relationId = (value: unknown) =>
+    typeof value === 'string' ? value : Array.isArray(value) ? ids(value)[0] : (value as { id?: string })?.id;
+
+  it('marks a record it creates with the run, and a post it writes', async () => {
+    const run = await model('ModelRun').create(dataset, { kind: 'agent' });
+    const toolset = createDataToolset({ dataset, run: run.id });
+
+    const made = await toolset.call('create_record', {
+      entity: 'TaskBlock',
+      fields: { title: 'Buy paint' },
+      in: rootId,
+    });
+    const task = await model('TaskBlock').findOne(dataset, { where: { id: madeId(made.text) } });
+    expect(relationId(task?.generatedBy)).toBe(run.id);
+
+    const wrote = await toolset.call('write_post', { text: 'The shed is painted.' });
+    const post = await model('CollectionBlock').findOne(dataset, { where: { id: madeId(wrote.text) } });
+    expect(relationId(post?.generatedBy)).toBe(run.id);
+  });
+
+  it('keeps what it changed on an existing record as amendments naming the run', async () => {
+    const task = await model('TaskBlock').create(dataset, { title: 'Buy paint', status: 'todo' });
+    const run = await model('ModelRun').create(dataset, { kind: 'agent' });
+    await createDataToolset({ dataset, run: run.id }).call('update_record', {
+      entity: 'TaskBlock',
+      id: task.id,
+      fields: { status: 'done', title: 'Buy paint' },
+    });
+
+    const amendments = await model('Amendment').findAll(dataset);
+    // The title did not change, so only the status is recorded.
+    expect(amendments).toHaveLength(1);
+    expect(amendments[0]).toMatchObject({
+      property: 'status',
+      previousValue: 'todo',
+      newValue: 'done',
+      nodeType: 'TaskBlock',
+    });
+    expect(relationId(amendments[0].node)).toBe(task.id);
+    expect(relationId(amendments[0].run)).toBe(run.id);
+    // The record a person made is not marked as a model's.
+    const after = await model('TaskBlock').findOne(dataset, { where: { id: task.id } });
+    expect(relationId(after?.generatedBy)).toBeFalsy();
+  });
+
+  it('marks nothing where the host keeps no run', async () => {
+    const made = await tools().call('create_record', {
+      entity: 'TaskBlock',
+      fields: { title: 'Buy paint' },
+      in: rootId,
+    });
+    const task = await model('TaskBlock').findOne(dataset, { where: { id: madeId(made.text) } });
+    expect(relationId(task?.generatedBy)).toBeFalsy();
+    await tools().call('update_record', { entity: 'TaskBlock', id: task!.id, fields: { status: 'done' } });
+    expect(await model('Amendment').findAll(dataset)).toHaveLength(0);
+  });
+});

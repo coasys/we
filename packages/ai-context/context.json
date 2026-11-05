@@ -3973,53 +3973,6 @@
       "relations": []
     },
     {
-      "name": "ChatMessage",
-      "className": "ChatMessage",
-      "extends": "WeNode",
-      "fields": [
-        {
-          "name": "role",
-          "type": "string",
-          "predicate": "we://role",
-          "required": false
-        },
-        {
-          "name": "content",
-          "type": "string",
-          "predicate": "we://content",
-          "required": false
-        }
-      ],
-      "relations": []
-    },
-    {
-      "name": "ChatSession",
-      "className": "ChatSession",
-      "extends": "WeNode",
-      "fields": [
-        {
-          "name": "name",
-          "type": "string",
-          "predicate": "we://name",
-          "required": false
-        },
-        {
-          "name": "templateId",
-          "type": "string",
-          "predicate": "we://template_id",
-          "required": false
-        }
-      ],
-      "relations": [
-        {
-          "name": "messages",
-          "kind": "HasMany",
-          "predicate": "we://chat_message",
-          "target": "ChatMessage"
-        }
-      ]
-    },
-    {
       "name": "CodeBlock",
       "className": "CodeBlock",
       "extends": "WeNode",
@@ -4153,12 +4106,6 @@
           "target": "CollectionBlock"
         },
         {
-          "name": "extractionPasses",
-          "kind": "HasMany",
-          "predicate": "we://extraction_pass_record",
-          "target": "ExtractionPass"
-        },
-        {
           "name": "extracted",
           "kind": "HasMany",
           "predicate": "we://extracted"
@@ -4171,8 +4118,8 @@
         {
           "name": "amendments",
           "kind": "HasMany",
-          "predicate": "we://extraction_amendment",
-          "target": "ExtractionAmendment"
+          "predicate": "we://amendment",
+          "target": "Amendment"
         }
       ]
     },
@@ -5738,8 +5685,8 @@
       ]
     },
     {
-      "name": "ExtractionAmendment",
-      "className": "ExtractionAmendment",
+      "name": "Amendment",
+      "className": "Amendment",
       "extends": "Ad4mModel",
       "fields": [
         {
@@ -5772,37 +5719,30 @@
           "name": "node",
           "kind": "HasOne",
           "predicate": "we://amended_node"
+        },
+        {
+          "name": "run",
+          "kind": "HasOne",
+          "predicate": "we://amendment_run",
+          "target": "ModelRun"
         }
       ]
     },
     {
-      "name": "ExtractionPass",
-      "className": "ExtractionPass",
+      "name": "ModelRun",
+      "className": "ModelRun",
       "extends": "Ad4mModel",
       "fields": [
         {
-          "name": "outcome",
+          "name": "kind",
           "type": "string",
-          "predicate": "we://outcome",
-          "required": false,
-          "default": "'done'"
-        },
-        {
-          "name": "recordCount",
-          "type": "number",
-          "predicate": "we://record_count",
+          "predicate": "we://model_run_kind",
           "required": false
         },
         {
-          "name": "targets",
+          "name": "model",
           "type": "string",
-          "predicate": "we://extraction_targets",
-          "required": false
-        },
-        {
-          "name": "error",
-          "type": "string",
-          "predicate": "we://error",
+          "predicate": "we://model_run_model",
           "required": false
         },
         {
@@ -5813,15 +5753,40 @@
           "default": "'manual'"
         },
         {
+          "name": "outcome",
+          "type": "string",
+          "predicate": "we://outcome",
+          "required": false,
+          "default": "'done'"
+        },
+        {
+          "name": "error",
+          "type": "string",
+          "predicate": "we://error",
+          "required": false
+        },
+        {
+          "name": "recordCount",
+          "type": "number",
+          "predicate": "we://model_run_record_count",
+          "required": false
+        },
+        {
+          "name": "detail",
+          "type": "string",
+          "predicate": "we://model_run_detail",
+          "required": false
+        },
+        {
           "name": "prompt",
           "type": "string",
           "predicate": "we://prompt",
           "required": false
         },
         {
-          "name": "response",
+          "name": "output",
           "type": "string",
-          "predicate": "we://response",
+          "predicate": "we://model_run_output",
           "required": false
         }
       ],
@@ -5944,6 +5909,18 @@
           "name": "extractedFrom",
           "kind": "HasOne",
           "predicate": "we://extracted"
+        },
+        {
+          "name": "runs",
+          "kind": "HasMany",
+          "predicate": "we://model_run",
+          "target": "ModelRun"
+        },
+        {
+          "name": "generatedBy",
+          "kind": "HasOne",
+          "predicate": "we://generated_by",
+          "target": "ModelRun"
         },
         {
           "name": "signals",
@@ -8573,6 +8550,12 @@
       "params": ["options"],
       "doc": "A JSON string indented for reading, or the text unchanged when it will not parse — which is the case worth showing rather than swallowing. Options: text. For displaying a stored blob (an extraction pass’s prompt and response); a schema has no JSON.stringify of its own.",
       "example": "formatJson({ text: pass.prompt })"
+    },
+    {
+      "name": "generatedRun",
+      "params": ["options"],
+      "doc": "Whether a model made a record: { by: \"run\", run } naming the run that wrote it (a transcribed line, a record an extraction pass or an agent made, a reply in the editor’s chat), or null for what a person made. Reads the record’s own generatedBy, as an id or an included record, so it needs no query. Ask this rather than reading the relation. Options: record.",
+      "example": "generatedRun({ record: post }) ? 'Written by AI' : ''"
     }
   ],
   "modules": [

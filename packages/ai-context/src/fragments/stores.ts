@@ -1715,7 +1715,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       canUndo: 'boolean (true when there are schema edits that can be undone)',
       canRedo: 'boolean (true when there are undone schema edits that can be redone)',
       messages:
-        "ChatMessage[] — the active AI session's messages (id, role: 'user' | 'assistant' | 'system', content, createdAt, status). Empty for a new chat",
+        "the active chat's messages (id, role: 'user' | 'assistant' | 'system', content, createdAt, status). Empty for a new chat",
       isOpen: 'boolean — the AI chat panel is open',
       isStreaming: 'boolean — an assistant reply is arriving; streamingContent holds what has arrived so far',
       streamingContent: 'string — the partial assistant reply while isStreaming, empty otherwise',
@@ -2170,7 +2170,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
   interpretationStore: {
     state: {
       activity:
-        'InterpretationActivityView[] — every extraction pass this agent knows about, its own and its peers’, running first then most recent. Each row carries display-ready strings: `label` is a whole clause ("Anna is waiting on the model", "Extracted 3 records"), `elapsed` is `m:ss` while running and empty once settled, `name`/`avatar`/`runner` identify who is running it, and `mine` says whether it is this agent’s. Only a row with `mine` carries `prompt`/`response` — a peer’s exchange is never sent live; read it from the call’s `ExtractionPass` records once the pass settles — so gate a details affordance on `hasDetail`',
+        'InterpretationActivityView[] — every extraction pass this agent knows about, its own and its peers’, running first then most recent. Each row carries display-ready strings: `label` is a whole clause ("Anna is waiting on the model", "Extracted 3 records"), `elapsed` is `m:ss` while running and empty once settled, `name`/`avatar`/`runner` identify who is running it, and `mine` says whether it is this agent’s. Only a row with `mine` carries `prompt`/`response` — a peer’s exchange is never sent live; read it from the call’s extraction runs (`ModelRun` records under `runs`) once the pass settles — so gate a details affordance on `hasDetail`',
       runningCount:
         'number — how many passes are still in flight. What a collapsed "N extractions running" summary counts',
       hasActivity:

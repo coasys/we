@@ -117,6 +117,16 @@ export interface InterpretationRequest {
    * recognised record is linked as `provenance`, as before.
    */
   recognised?: ParentRef;
+  /**
+   * The run this pass is — a `ModelRun` the caller wrote before asking. A record the pass *makes*
+   * says so as everything a model writes does: `generatedBy` this run, written with the pass's own
+   * writes. A record it recognised or updated keeps whatever it said before, and so does one an
+   * earlier pass made, so a record names the run that first wrote it.
+   *
+   * Only the backend can do this, which is why it is here rather than left to the caller: the pass
+   * reports what it made *or updated* as one list, so the caller cannot tell which to mark.
+   */
+  run?: string;
 }
 
 export interface InterpretationResult {
