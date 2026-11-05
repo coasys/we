@@ -22,7 +22,7 @@ import { fileURLToPath, pathToFileURL } from 'url';
 import { v4 as uuidv4 } from 'uuid';
 
 import { createAccountRegistry, expandHome } from './accounts.js';
-import { startCustody } from './custodySidecar.js';
+import { startCustody, superviseCustody } from './custodySidecar.js';
 import { openExecutorLog } from './executorLog.js';
 import {
   afterExecutorExit,
@@ -477,8 +477,9 @@ const rendererDir = () => (app.isPackaged ? join(process.resourcesPath, 'app', '
 // or a web page. Only the identity window runs a flow; the main window may open it on a step and
 // read public custody state. The crate has no Windows support, so there identity is off.
 
-/** The custody sidecar's client while it runs, else null. */
-let custody = null;
+/** The custody sidecar while it runs, started again if it stops on its own; else null. */
+let custodySupervisor = null;
+const custody = () => custodySupervisor?.current() ?? null;
 
 /** The `we-custody` binary: beside the executor when packaged, the crate's release build otherwise. */
 const custodyBinary = () =>
@@ -498,18 +499,21 @@ function startCustodyFor(port, credential) {
     );
     return;
   }
-  custody = startCustody({ binary, executorPort: port, credential });
+  // A new supervisor per executor start, so the restarts it allows are counted afresh.
+  custodySupervisor = superviseCustody({
+    start: ({ onExit }) => startCustody({ binary, executorPort: port, credential, onExit }),
+  });
 }
 
 /** Closes the identity window and stops the sidecar: its step cannot outlive the executor it runs against. */
 async function stopCustody() {
   identity.window()?.close();
-  const running = custody;
-  custody = null;
-  await running?.stop();
+  const supervisor = custodySupervisor;
+  custodySupervisor = null;
+  await supervisor?.stop();
 }
 
-const identity = createIdentity({ custody: () => custody, openWindow: openIdentityWindow });
+const identity = createIdentity({ custody, openWindow: openIdentityWindow });
 
 /**
  * The identity window's session: in memory, its own, so it shares no storage, cookies or
