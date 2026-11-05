@@ -83,6 +83,7 @@ import { toastService } from '@we/components/solid';
 import {
   type Accessor,
   batch,
+  createComputed,
   createContext,
   createEffect,
   createMemo,
@@ -91,6 +92,7 @@ import {
   type ParentProps,
   useContext,
 } from 'solid-js';
+import { createStore, reconcile } from 'solid-js/store';
 
 /**
  * How long a first run waits to hear what AI the node has before deciding whether to ask about it.
@@ -515,15 +517,33 @@ export function RuntimeStoreProvider(props: ParentProps) {
   const [localPlan, setLocalPlan] = createSignal<LocalAiPlan | null>(null);
   const [localStatus, setLocalStatus] = createSignal<LocalAiStatus | null>(null);
   const [localProgress, setLocalProgress] = createSignal<LocalAiProgress | null>(null);
-  const localAi = createMemo(() =>
-    describeLocalAi({
-      hardware: localHardware(),
-      plan: localPlan(),
-      status: localStatus(),
-      progress: localProgress(),
-      installingHere: pending().includes('installLocalAi'),
-    }),
+  /*
+    Held in a store and reconciled, rather than a memo handing out a new object each time.
+
+    An install's progress arrives many times a second, and every event re-derives the whole view.
+    As a fresh object, everything the page binds to it was asked again: the plan's rows and the
+    running servers' rows are lists of objects, so each event gave the list new ones and its `$each`
+    took every row down and drew new ones — under a reader who had scrolled down to watch the bar.
+    Reconciled by each row's `key`, an event changes the progress fields and nothing else.
+  */
+  const [localAiView, setLocalAiView] = createStore<LocalAiView>(
+    describeLocalAi({ hardware: null, plan: null, status: null, progress: null, installingHere: false }),
   );
+  createComputed(() =>
+    setLocalAiView(
+      reconcile(
+        describeLocalAi({
+          hardware: localHardware(),
+          plan: localPlan(),
+          status: localStatus(),
+          progress: localProgress(),
+          installingHere: pending().includes('installLocalAi'),
+        }),
+        { key: 'key' },
+      ),
+    ),
+  );
+  const localAi: Accessor<LocalAiView> = () => localAiView;
 
   const aiSetupOptions = createMemo(() =>
     aiSetupOptionsFor({

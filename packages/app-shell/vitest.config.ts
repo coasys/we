@@ -92,6 +92,8 @@ const SOLID_TESTS = [
   'tests/templateNavigation.test.tsx',
   // Drives the create-space modal's schema through the real renderer: what reaches createSpace.
   'tests/createSpaceServer.test.tsx',
+  // The AI settings schema through the real renderer: what an install's progress re-renders.
+  'tests/localAiProgressRender.test.tsx',
 ];
 
 export default defineConfig({
