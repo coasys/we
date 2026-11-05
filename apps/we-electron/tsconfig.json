@@ -26,5 +26,5 @@
       "@solid/*": ["../../packages/app-shell/src/frameworks/solid/*"]
     }
   },
-  "include": ["src", "scripts", "*.config.ts", "../../packages/app-shell/src/shared/global.d.ts"]
+  "include": ["src", "identity", "scripts", "*.config.ts", "../../packages/app-shell/src/shared/global.d.ts"]
 }

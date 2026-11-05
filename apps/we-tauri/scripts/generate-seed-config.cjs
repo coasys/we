@@ -265,9 +265,10 @@ function main() {
       const ad4mClientPath = path.join(relativeAd4mPath, 'rust-client');
       const ad4mExecutorPath = path.join(relativeAd4mPath, 'rust-executor');
 
+      // Every occurrence: the template names the client path in the custody `[patch]` too.
       cargoTemplate = cargoTemplate
-        .replace('{{AD4M_CLIENT_PATH}}', ad4mClientPath)
-        .replace('{{AD4M_EXECUTOR_PATH}}', ad4mExecutorPath);
+        .replace(/\{\{AD4M_CLIENT_PATH\}\}/g, ad4mClientPath)
+        .replace(/\{\{AD4M_EXECUTOR_PATH\}\}/g, ad4mExecutorPath);
 
       fs.writeFileSync(CARGO_TOML_OUTPUT, cargoTemplate, 'utf8');
       console.log(`✅ Cargo.toml generated from template`);

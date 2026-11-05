@@ -31,6 +31,11 @@ export const electronPlatform = createDesktopPlatform({
   },
   saveFile: (file) => window.electron.saveFile(file),
   /*
+    The preload's bridge is the host itself: the main process opens the identity window, runs the
+    step through the custody sidecar, and answers `open` with how it ended. Absent on Windows.
+  */
+  identity: window.electron.identity,
+  /*
     Only reached on a machine whose OS has no picker of its own — the main process asks, and it only
     asks where Electron did not use the system picker. See `askRendererForScreenSource` there.
   */
