@@ -7,6 +7,7 @@
  * business doing.
  */
 export * from './AgentSettings';
+export * from './Amendment';
 export * from './AudioBlock';
 export * from './CalloutBlock';
 export * from './ChatMessage';
@@ -17,14 +18,13 @@ export * from './DividerBlock';
 export * from './EdgeRoute';
 export * from './EmbedBlock';
 export * from './EventBlock';
-export * from './ExtractionAmendment';
-export * from './ExtractionPass';
 export * from './FileBlock';
 export * from './ImageBlock';
 export * from './Involvement';
 export * from './InvolvementType';
 export * from './LinkBlock';
 export * from './LocationBlock';
+export * from './ModelRun';
 export * from './MutedAgent';
 export * from './Placement';
 export * from './Policy';

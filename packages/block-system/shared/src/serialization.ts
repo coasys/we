@@ -573,6 +573,12 @@ export interface CreateBlocksOptions {
    * came from (`sourceRef`, `sourceName`). Only fields the root's model declares are written.
    */
   fields?: Record<string, string>;
+  /**
+   * Relations to set on the root as it is created, by name: a to-one as the single-entry list the
+   * model layer takes (`{ generatedBy: [runId] }`). In the create itself rather than after it, so
+   * the root is never seen without them.
+   */
+  relations?: Record<string, string[]>;
 }
 
 /**
@@ -595,7 +601,7 @@ export async function createBlocks(
   input: ContentInput,
   options: CreateBlocksOptions = {},
 ): Promise<BlockRecord | undefined> {
-  const { kind, mode = kind ? 'document' : undefined, anchor, batchId, fields } = options;
+  const { kind, mode = kind ? 'document' : undefined, anchor, batchId, fields, relations } = options;
   const { blocks } = normalizeInput(input);
   const registration = getBlockRegistration('root') ?? getBlockRegistration('collection');
   if (!registration) throw new Error('createBlocks: no collection model is registered');
@@ -608,7 +614,7 @@ export async function createBlocks(
       const uploaded = await preUploadFileAssets(perspective, blocks);
       const root = (await registration.model.create(
         perspective,
-        {},
+        { ...relations },
         {
           batchId: tx.batchId,
           ...(anchor && { parent: anchor }),

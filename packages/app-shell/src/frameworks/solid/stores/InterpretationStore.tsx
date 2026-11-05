@@ -78,7 +78,7 @@ export interface InterpretationActivityView {
   /** Why, for a pass that skipped or failed. Empty otherwise. */
   detail: string;
   /** The raw prompt and response — on this agent's own rows only. A peer's exchange is not sent
-   *  live; it arrives with the `ExtractionPass` record once the pass settles. */
+   *  live; it arrives with the extraction `ModelRun` once the pass settles. */
   prompt: string;
   response: string;
   /** Whether there is anything behind the disclosure triangle — so a UI can disable it with an
@@ -316,7 +316,7 @@ export function InterpretationStoreProvider(props: ParentProps) {
     };
 
     /*
-      Ask for the model exchange here, for this agent's own rows and for the `ExtractionPass` record.
+      Ask for the model exchange here, for this agent's own rows and for the extraction `ModelRun` record.
 
       The backend's `detail` is a subscription-time choice and the events carry the payload over a
       local socket regardless, so taking it costs nothing and is what makes the disclosure instant.

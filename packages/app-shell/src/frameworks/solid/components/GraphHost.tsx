@@ -232,6 +232,7 @@ function RecordCard(props: { node: GraphNode }) {
     lines: [],
     prose: [],
     pending: false,
+    generated: false,
     signals: 0,
     responses: 0,
   });

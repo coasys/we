@@ -25,11 +25,11 @@ import { VideoBlock } from './VideoBlock';
 // AD4M lane to it live beside that lane's generated classes (@we/backend-ad4m src/models).
 export * from './types';
 import { AgentSettings } from './AgentSettings';
+import { Amendment } from './Amendment';
 import { ChatMessage } from './ChatMessage';
 import { ChatSession } from './ChatSession';
 import { EdgeRoute } from './EdgeRoute';
-import { ExtractionAmendment } from './ExtractionAmendment';
-import { ExtractionPass } from './ExtractionPass';
+import { ModelRun } from './ModelRun';
 import { MutedAgent } from './MutedAgent';
 import { Placement } from './Placement';
 import { Policy } from './Policy';
@@ -98,8 +98,8 @@ export const CORE_DEFS: Record<string, CoreEntityDef> = {
   TextBlock,
   Topic,
   Theme,
-  ExtractionAmendment,
-  ExtractionPass,
+  Amendment,
+  ModelRun,
   TypeStyle,
   VideoBlock,
 };
