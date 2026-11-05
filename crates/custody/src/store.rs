@@ -15,6 +15,7 @@
 //! ([`StoreKind::unlocks_itself`]).
 
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 use ad4m_identity_client::VaultError;
 
@@ -54,6 +55,11 @@ pub trait SecretStore: Send + Sync {
     /// never leave the store.
     fn contains(&self, name: &str) -> Result<bool, VaultError>;
     fn delete(&self, name: &str) -> Result<(), VaultError>;
+    /// Whether the store can be reached now, so a new item may go to it. Always, for a store that
+    /// is not reached over a connection.
+    fn reachable(&self) -> bool {
+        true
+    }
 }
 
 /// The item's name for an identity.
@@ -619,9 +625,12 @@ impl PlacedStore {
         }
     }
 
-    /// The side a new item goes to.
+    /// The side a new item goes to: the platform's store while it can be reached, else the file.
     fn for_new(&self) -> &dyn SecretStore {
-        self.platform.as_deref().unwrap_or(self.file.as_ref())
+        match self.platform.as_deref() {
+            Some(platform) if platform.reachable() => platform,
+            _ => self.file.as_ref(),
+        }
     }
 
     /// The side that holds `name`, or the one it goes to when it is new.
@@ -662,20 +671,153 @@ impl SecretStore for PlacedStore {
     }
 }
 
+// ─── Reconnecting ───────────────────────────────────────────────────────────────
+
+/// Connects the platform store.
+pub type Connect = Box<dyn Fn() -> Result<Box<dyn SecretStore>, VaultError> + Send + Sync>;
+
+/// A platform store reached over a connection — the Linux Secret Service — connected when first
+/// needed and again whenever it was not reached, rather than once when the service starts.
+///
+/// Asked once, a keyring that was slow to start at login, or a session that gained one later,
+/// would leave the store absent for the life of the process, and a key kept there would look like
+/// no key at all. So every call connects if it is not connected, and a call that fails drops the
+/// connection for the next to make again.
+///
+/// While it cannot be reached, whether it holds an item is still answered, from a marker kept
+/// beside the sealed files (`<scid>.platform`) whenever an item is put there: with a marker, the
+/// call is refused, because the key is there and only the service is missing; without one, it does
+/// not hold the item, so a computer that has no Secret Service at all keeps working from its files.
+/// A new item goes to the file only while the service cannot be reached ([`PlacedStore`]).
+pub struct Reconnecting {
+    kind: StoreKind,
+    markers: PathBuf,
+    connect: Connect,
+    store: Mutex<Option<Arc<dyn SecretStore>>>,
+}
+
+impl Reconnecting {
+    pub fn new(kind: StoreKind, markers: impl Into<PathBuf>, connect: Connect) -> Self {
+        Reconnecting {
+            kind,
+            markers: markers.into(),
+            connect,
+            store: Mutex::new(None),
+        }
+    }
+
+    fn reach(&self) -> Result<Arc<dyn SecretStore>, VaultError> {
+        let mut store = self.store.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(connected) = store.as_ref() {
+            return Ok(connected.clone());
+        }
+        let connected: Arc<dyn SecretStore> = Arc::from((self.connect)()?);
+        *store = Some(connected.clone());
+        Ok(connected)
+    }
+
+    /// The answer of `call` on the connected store; a failure drops the connection, so the next
+    /// call connects again.
+    fn on<T>(
+        &self,
+        connected: &Arc<dyn SecretStore>,
+        call: impl FnOnce(&dyn SecretStore) -> Result<T, VaultError>,
+    ) -> Result<T, VaultError> {
+        let answer = call(connected.as_ref());
+        if answer.is_err() {
+            *self.store.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        }
+        answer
+    }
+
+    fn marker(&self, name: &str) -> PathBuf {
+        let file = name.rsplit('/').next().unwrap_or(name);
+        self.markers.join(format!("{file}.platform"))
+    }
+
+    fn marked(&self, name: &str) -> Result<bool, VaultError> {
+        match std::fs::metadata(self.marker(name)) {
+            Ok(_) => Ok(true),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(e) => Err(io(e)),
+        }
+    }
+
+    /// While the store cannot be reached: an item it was given is refused, anything else is absent.
+    fn unreached<T>(&self, name: &str, why: VaultError, absent: T) -> Result<T, VaultError> {
+        if self.marked(name)? {
+            Err(VaultError::Unavailable(format!(
+                "this master key is kept in the platform store, which is not answering: {why}"
+            )))
+        } else {
+            Ok(absent)
+        }
+    }
+}
+
+impl SecretStore for Reconnecting {
+    fn kind(&self) -> StoreKind {
+        self.kind
+    }
+
+    fn kind_of(&self, _: &str) -> Result<StoreKind, VaultError> {
+        Ok(self.kind)
+    }
+
+    fn put(&self, name: &str, bytes: &[u8]) -> Result<(), VaultError> {
+        let connected = self.reach()?;
+        self.on(&connected, |store| store.put(name, bytes))?;
+        std::fs::create_dir_all(&self.markers).map_err(io)?;
+        std::fs::write(self.marker(name), b"").map_err(io)
+    }
+
+    fn get(&self, name: &str) -> Result<Option<Vec<u8>>, VaultError> {
+        match self.reach() {
+            Ok(connected) => self.on(&connected, |store| store.get(name)),
+            Err(why) => self.unreached(name, why, None),
+        }
+    }
+
+    fn contains(&self, name: &str) -> Result<bool, VaultError> {
+        match self.reach() {
+            Ok(connected) => self.on(&connected, |store| store.contains(name)),
+            Err(why) => self.unreached(name, why, false),
+        }
+    }
+
+    fn delete(&self, name: &str) -> Result<(), VaultError> {
+        match self.reach() {
+            Ok(connected) => self.on(&connected, |store| store.delete(name))?,
+            Err(why) => self.unreached(name, why, ())?,
+        }
+        match std::fs::remove_file(self.marker(name)) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(io(e)),
+            _ => Ok(()),
+        }
+    }
+
+    fn reachable(&self) -> bool {
+        self.reach().is_ok()
+    }
+}
+
 /// The store this computer offers: a [`PlacedStore`] over the sealed files in `fallback_dir` and
 /// the platform's store. An item already kept on one side stays there. A new item goes, on macOS,
 /// to the keychain, unless this build lacks the keychain entitlement (an unsigned or
 /// ad-hoc-signed build), then to that file, sealed under a passphrase; on Linux, to the Secret
 /// Service, else to that file.
 pub fn system_store(fallback_dir: PathBuf) -> Box<dyn SecretStore> {
+    let platform = platform_store(&fallback_dir);
     Box::new(PlacedStore::new(
         Box::new(FileStore::new(fallback_dir)),
-        platform_store(),
+        platform,
     ))
 }
 
-/// The keychain or the Secret Service, when this build and this session can use it.
-fn platform_store() -> Option<Box<dyn SecretStore>> {
+/// The keychain, when this build can use it; the Secret Service, reached whenever it answers
+/// ([`Reconnecting`], its markers beside the sealed files in `dir`).
+#[cfg_attr(not(target_os = "linux"), allow(unused_variables))]
+fn platform_store(dir: &std::path::Path) -> Option<Box<dyn SecretStore>> {
     #[cfg(target_os = "macos")]
     {
         if keychain_usable(keychain_store::write_status(PROBE_NAME)) {
@@ -688,13 +830,21 @@ fn platform_store() -> Option<Box<dyn SecretStore>> {
     }
     #[cfg(target_os = "linux")]
     {
-        match SecretServiceStore::connect() {
-            Ok(store) => return Some(Box::new(store)),
-            Err(e) => {
-                log::warn!("custody: no Secret Service ({e}); keeping the sealed item in a file")
-            }
+        if let Err(e) = SecretServiceStore::connect() {
+            log::warn!(
+                "custody: no Secret Service yet ({e}); a new key goes to a sealed file until one \
+                 answers"
+            );
         }
+        return Some(Box::new(Reconnecting::new(
+            StoreKind::SecretService,
+            dir.to_path_buf(),
+            Box::new(|| {
+                SecretServiceStore::connect().map(|store| Box::new(store) as Box<dyn SecretStore>)
+            }),
+        )));
     }
+    #[allow(unreachable_code)]
     None
 }
 
@@ -779,5 +929,114 @@ mod tests {
         assert!(!store.contains(&item_name("QmOther")).unwrap());
         store.delete(&name).unwrap();
         assert!(!store.contains(&name).unwrap());
+    }
+
+    /// One keyring behind a connection that can be down: every connect reaches the same items.
+    struct Keyring {
+        items: Arc<MemoryStore>,
+        up: Arc<std::sync::atomic::AtomicBool>,
+    }
+
+    struct Session(Arc<MemoryStore>);
+
+    impl SecretStore for Session {
+        fn kind(&self) -> StoreKind {
+            StoreKind::SecretService
+        }
+        fn kind_of(&self, _: &str) -> Result<StoreKind, VaultError> {
+            Ok(StoreKind::SecretService)
+        }
+        fn put(&self, name: &str, bytes: &[u8]) -> Result<(), VaultError> {
+            self.0.put(name, bytes)
+        }
+        fn get(&self, name: &str) -> Result<Option<Vec<u8>>, VaultError> {
+            self.0.get(name)
+        }
+        fn contains(&self, name: &str) -> Result<bool, VaultError> {
+            self.0.contains(name)
+        }
+        fn delete(&self, name: &str) -> Result<(), VaultError> {
+            self.0.delete(name)
+        }
+    }
+
+    impl Keyring {
+        fn new(up: bool) -> Self {
+            Keyring {
+                items: Arc::new(MemoryStore::new()),
+                up: Arc::new(std::sync::atomic::AtomicBool::new(up)),
+            }
+        }
+        fn set_up(&self, up: bool) {
+            self.up.store(up, std::sync::atomic::Ordering::SeqCst);
+        }
+        fn store(&self, markers: &std::path::Path) -> Reconnecting {
+            let (items, up) = (self.items.clone(), self.up.clone());
+            Reconnecting::new(
+                StoreKind::SecretService,
+                markers,
+                Box::new(move || {
+                    if up.load(std::sync::atomic::Ordering::SeqCst) {
+                        Ok(Box::new(Session(items.clone())) as Box<dyn SecretStore>)
+                    } else {
+                        Err(VaultError::Unavailable("no Secret Service".into()))
+                    }
+                }),
+            )
+        }
+    }
+
+    #[test]
+    fn a_secret_service_that_was_down_at_start_is_used_once_it_answers() {
+        let dir = tempfile::tempdir().unwrap();
+        let keyring = Keyring::new(false);
+        let placed = PlacedStore::new(
+            Box::new(FileStore::new(dir.path())),
+            Some(Box::new(keyring.store(dir.path()))),
+        );
+        // Down: a new item would go to the file.
+        assert_eq!(placed.kind(), StoreKind::File);
+        keyring.set_up(true);
+        // Up: it goes to the Secret Service, and is found there.
+        assert_eq!(placed.kind(), StoreKind::SecretService);
+        let name = item_name("QmScid");
+        placed.put(&name, b"sealed").unwrap();
+        assert!(keyring.items.contains(&name).unwrap());
+        assert!(!FileStore::new(dir.path()).contains(&name).unwrap());
+        assert_eq!(placed.get(&name).unwrap().as_deref(), Some(&b"sealed"[..]));
+    }
+
+    #[test]
+    fn a_key_in_a_secret_service_that_stops_answering_is_refused_not_taken_as_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        let keyring = Keyring::new(true);
+        let placed = PlacedStore::new(
+            Box::new(FileStore::new(dir.path())),
+            Some(Box::new(keyring.store(dir.path()))),
+        );
+        let name = item_name("QmScid");
+        placed.put(&name, b"sealed").unwrap();
+
+        // A fresh process, while the keyring is down: the key is not "absent", and no second one
+        // can be put in the file beside it.
+        keyring.set_up(false);
+        let later = PlacedStore::new(
+            Box::new(FileStore::new(dir.path())),
+            Some(Box::new(keyring.store(dir.path()))),
+        );
+        assert!(matches!(
+            later.contains(&name),
+            Err(VaultError::Unavailable(_))
+        ));
+        assert!(matches!(later.get(&name), Err(VaultError::Unavailable(_))));
+        assert!(later.put(&name, b"another").is_err());
+        // An identity it never held is still absent, so a computer without a keyring keeps working.
+        assert!(!later.contains(&item_name("QmOther")).unwrap());
+
+        keyring.set_up(true);
+        assert_eq!(later.get(&name).unwrap().as_deref(), Some(&b"sealed"[..]));
+        later.delete(&name).unwrap();
+        keyring.set_up(false);
+        assert!(!later.contains(&name).unwrap());
     }
 }
