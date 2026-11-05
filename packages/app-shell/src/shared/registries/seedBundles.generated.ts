@@ -684,6 +684,329 @@ export const seedBundles: Bundle[] = [
                     },
                   ],
                 },
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: 'identityStore.needsFirstRun' },
+                    then: {
+                      type: 'Column',
+                      props: {
+                        position: 'fixed',
+                        top: '0',
+                        left: '0',
+                        width: '100vw',
+                        height: '100dvh',
+                        zIndex: 'modal',
+                        bg: 'page',
+                        overflowY: 'auto',
+                        p: '600',
+                        gap: '800',
+                      },
+                      children: [
+                        {
+                          type: 'Row',
+                          props: { gap: '200', ay: 'center' },
+                          children: [
+                            {
+                              type: 'we-image',
+                              props: {
+                                src: { $: 'templateStore.brand.mark' },
+                                alt: 'Coasys',
+                                width: '28px',
+                                height: '28px',
+                              },
+                            },
+                            { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Coasys'] },
+                            { type: 'we-text', props: { color: 'text-muted' }, children: ['Identity'] },
+                          ],
+                        },
+                        {
+                          type: 'Column',
+                          props: { width: '100%', maxWidth: '720px', mx: 'auto', gap: '600' },
+                          children: [
+                            {
+                              type: 'we-text',
+                              props: { variant: 'heading-xl', tag: 'h1' },
+                              children: ['Welcome to Coasys'],
+                            },
+                            {
+                              type: 'Column',
+                              props: { bg: 'surface', r: 'surface', border: '1px solid border', overflow: 'hidden' },
+                              children: [
+                                {
+                                  type: 'we-button',
+                                  props: {
+                                    variant: 'bare',
+                                    width: '100%',
+                                    disabled: { $: "identityStore.busy || identityStore.changeBlocked != ''" },
+                                    onClick: { $invoke: 'identityStore.makeIdentity' },
+                                  },
+                                  children: [
+                                    {
+                                      type: 'Row',
+                                      props: {
+                                        width: '100%',
+                                        gap: '400',
+                                        ay: 'center',
+                                        px: '400',
+                                        py: '400',
+                                        borderBottom: '1px solid border',
+                                        opacity: { $: "identityStore.changeBlocked != '' ? 0.55 : 1" },
+                                        hoverProps: { bg: 'surface-hover' },
+                                      },
+                                      children: [
+                                        {
+                                          type: 'Row',
+                                          props: {
+                                            width: '44px',
+                                            height: '44px',
+                                            r: 'full',
+                                            bg: 'surface-sunken',
+                                            ax: 'center',
+                                            ay: 'center',
+                                            flexShrink: '0',
+                                          },
+                                          children: [
+                                            { type: 'we-icon', props: { name: 'sparkle', color: 'accent-text' } },
+                                          ],
+                                        },
+                                        {
+                                          type: 'Column',
+                                          props: { gap: '100', flex: '1', minWidth: '0', textAlign: 'left' },
+                                          children: [
+                                            { type: 'we-text', children: ['Make my identity here'] },
+                                            {
+                                              type: 'we-text',
+                                              props: { variant: 'footnote', color: 'text-muted' },
+                                              children: [
+                                                {
+                                                  $: "identityStore.changeBlocked ? identityStore.changeBlocked : identityStore.custody.unlock == 'touch-id-or-password' ? 'Your 12 words, no email needed. This computer keeps your master key behind Touch ID' : 'Your 12 words, no email needed. This computer keeps your master key behind your passphrase'",
+                                                },
+                                              ],
+                                            },
+                                          ],
+                                        },
+                                        { type: 'we-icon', props: { name: 'caret-right', color: 'text-faint' } },
+                                      ],
+                                    },
+                                  ],
+                                },
+                                {
+                                  type: 'we-button',
+                                  props: {
+                                    variant: 'bare',
+                                    width: '100%',
+                                    disabled: { $: 'identityStore.busy' },
+                                    onClick: { $invoke: 'identityStore.startWithoutIdentity' },
+                                  },
+                                  children: [
+                                    {
+                                      type: 'Row',
+                                      props: {
+                                        width: '100%',
+                                        gap: '400',
+                                        ay: 'center',
+                                        px: '400',
+                                        py: '400',
+                                        borderBottom: '1px solid border',
+                                        opacity: 1,
+                                        hoverProps: { bg: 'surface-hover' },
+                                      },
+                                      children: [
+                                        {
+                                          type: 'Row',
+                                          props: {
+                                            width: '44px',
+                                            height: '44px',
+                                            r: 'full',
+                                            bg: 'surface-sunken',
+                                            ax: 'center',
+                                            ay: 'center',
+                                            flexShrink: '0',
+                                          },
+                                          children: [
+                                            { type: 'we-icon', props: { name: 'lightning', color: 'accent-text' } },
+                                          ],
+                                        },
+                                        {
+                                          type: 'Column',
+                                          props: { gap: '100', flex: '1', minWidth: '0', textAlign: 'left' },
+                                          children: [
+                                            { type: 'we-text', children: ['Start now'] },
+                                            {
+                                              type: 'we-text',
+                                              props: { variant: 'footnote', color: 'text-muted' },
+                                              children: [
+                                                'Use Coasys on this computer alone. Make your identity later, to share spaces',
+                                              ],
+                                            },
+                                          ],
+                                        },
+                                        { type: 'we-icon', props: { name: 'caret-right', color: 'text-faint' } },
+                                      ],
+                                    },
+                                  ],
+                                },
+                                {
+                                  type: 'we-button',
+                                  props: { variant: 'bare', width: '100%', disabled: true },
+                                  children: [
+                                    {
+                                      type: 'Row',
+                                      props: {
+                                        width: '100%',
+                                        gap: '400',
+                                        ay: 'center',
+                                        px: '400',
+                                        py: '400',
+                                        borderBottom: '1px solid border',
+                                        opacity: 0.55,
+                                        hoverProps: {},
+                                      },
+                                      children: [
+                                        {
+                                          type: 'Row',
+                                          props: {
+                                            width: '44px',
+                                            height: '44px',
+                                            r: 'full',
+                                            bg: 'surface-sunken',
+                                            ax: 'center',
+                                            ay: 'center',
+                                            flexShrink: '0',
+                                          },
+                                          children: [
+                                            {
+                                              type: 'we-icon',
+                                              props: { name: 'envelope-simple', color: 'accent-text' },
+                                            },
+                                          ],
+                                        },
+                                        {
+                                          type: 'Column',
+                                          props: { gap: '100', flex: '1', minWidth: '0', textAlign: 'left' },
+                                          children: [
+                                            { type: 'we-text', children: ['Log in with your Coasys account'] },
+                                            {
+                                              type: 'we-text',
+                                              props: { variant: 'footnote', color: 'text-muted' },
+                                              children: ['Email and password'],
+                                            },
+                                          ],
+                                        },
+                                        { type: 'we-tag', props: { tone: 'neutral' }, children: ['Coming soon'] },
+                                      ],
+                                    },
+                                  ],
+                                },
+                                {
+                                  type: 'we-button',
+                                  props: { variant: 'bare', width: '100%', disabled: true },
+                                  children: [
+                                    {
+                                      type: 'Row',
+                                      props: {
+                                        width: '100%',
+                                        gap: '400',
+                                        ay: 'center',
+                                        px: '400',
+                                        py: '400',
+                                        borderBottom: '1px solid border',
+                                        opacity: 0.55,
+                                        hoverProps: {},
+                                      },
+                                      children: [
+                                        {
+                                          type: 'Row',
+                                          props: {
+                                            width: '44px',
+                                            height: '44px',
+                                            r: 'full',
+                                            bg: 'surface-sunken',
+                                            ax: 'center',
+                                            ay: 'center',
+                                            flexShrink: '0',
+                                          },
+                                          children: [
+                                            { type: 'we-icon', props: { name: 'qr-code', color: 'accent-text' } },
+                                          ],
+                                        },
+                                        {
+                                          type: 'Column',
+                                          props: { gap: '100', flex: '1', minWidth: '0', textAlign: 'left' },
+                                          children: [
+                                            { type: 'we-text', children: ['Link to my identity'] },
+                                            {
+                                              type: 'we-text',
+                                              props: { variant: 'footnote', color: 'text-muted' },
+                                              children: ['From an app that holds your master key'],
+                                            },
+                                          ],
+                                        },
+                                        { type: 'we-tag', props: { tone: 'neutral' }, children: ['Coming soon'] },
+                                      ],
+                                    },
+                                  ],
+                                },
+                                {
+                                  type: 'we-button',
+                                  props: { variant: 'bare', width: '100%', disabled: true },
+                                  children: [
+                                    {
+                                      type: 'Row',
+                                      props: {
+                                        width: '100%',
+                                        gap: '400',
+                                        ay: 'center',
+                                        px: '400',
+                                        py: '400',
+                                        borderBottom: '1px solid border',
+                                        opacity: 0.55,
+                                        hoverProps: {},
+                                      },
+                                      children: [
+                                        {
+                                          type: 'Row',
+                                          props: {
+                                            width: '44px',
+                                            height: '44px',
+                                            r: 'full',
+                                            bg: 'surface-sunken',
+                                            ax: 'center',
+                                            ay: 'center',
+                                            flexShrink: '0',
+                                          },
+                                          children: [{ type: 'we-icon', props: { name: 'key', color: 'accent-text' } }],
+                                        },
+                                        {
+                                          type: 'Column',
+                                          props: { gap: '100', flex: '1', minWidth: '0', textAlign: 'left' },
+                                          children: [{ type: 'we-text', children: ['Use my 12 words'] }],
+                                        },
+                                        { type: 'we-tag', props: { tone: 'neutral' }, children: ['Coming soon'] },
+                                      ],
+                                    },
+                                  ],
+                                },
+                              ],
+                            },
+                            {
+                              type: '$if',
+                              props: {
+                                condition: { $: "identityStore.lastOutcome == 'failed'" },
+                                then: {
+                                  type: 'we-alert',
+                                  props: { tone: 'danger' },
+                                  children: ['Your identity was not made. Nothing was published; try again.'],
+                                },
+                              },
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  },
+                },
               ],
             },
           },

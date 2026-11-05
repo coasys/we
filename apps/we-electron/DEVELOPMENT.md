@@ -62,6 +62,49 @@ damaged. Clear the quarantine flag after moving the app to Applications:
 xattr -cr /Applications/WE.app
 ```
 
+## The identity: custody and the identity window
+
+The person's master key never rests in the executor or in a web view. This app runs the custody
+crate (`crates/custody`) as the `we-custody` sidecar: where keys rest, the flows, the sidecar's
+protocol, the identity store settings and how to test it are in `crates/custody/README.md`, shared
+with the Tauri app, which links the same crate.
+
+- **The sidecar** (`electron/custodySidecar.js`) starts once the executor answers, against its port,
+  with the admin credential in its environment and never on its command line. It stops with the
+  executor (an account switch, a settings restart, quitting), and exits on its own when this process
+  goes, because its stdin closes. In development it is the crate's release build
+  (`crates/custody/target/release/we-custody`); packaged, `resources/we-custody` beside the executor.
+  `pnpm electron:dev` and `pnpm electron:build` build it (`scripts/build-custody.mjs`, which needs
+  Rust; in development a failed build only turns identity off).
+- **The identity window** (`electron/identityWindow.js`, opened by `main.js`) is the only page that
+  runs a flow. Its page is the shared window (`packages/identity-window`) built from `identity/` by
+  `vite.identity.config.ts` into `dist/identity/`, under the window's strict CSP. It is served on its
+  own scheme (`we-identity://window/`) in its own in-memory session, from the built bundle in
+  development too, so it shares nothing with the app. It is sandboxed, has its own preload
+  (`electron/identityPreload.js`) exposing only its four calls, may not navigate or open windows,
+  and has no inspector in a packaged build.
+- **The main window** may only open it on a step (`identity-open`, which resolves with how the step
+  ended) and read public custody state (`identity-public-state`). One identity window at a time:
+  asking again focuses it and starts nothing; closing it mid-step cancels the step. `ipcSender.js`
+  answers each channel for its own window only. No word, passphrase or key reaches the main window.
+
+The network names the identity store, not WE: the executor's bootstrap seed carries it, and the
+mainnet seed's store serves the app with no configuration. To use another store, set it in the
+environment, which this app passes on to the executor it starts:
+
+```bash
+AD4M_IDENTITY_STORE_URL=<store url> AD4M_IDENTITY_STORE_KEYS=<store key> pnpm electron:dev
+```
+
+The sidecar reads neither. Which store the executor uses, and whether it trusts it, the sidecar asks
+the executor (`identity.status`), as the Tauri app does; with no store, or a store URL without its
+key, it reports identity `blocked` and the first-run screen says why (`crates/custody/README.md`,
+"The identity store").
+
+Linux and macOS only. On Windows the app starts without identity: the preload exposes none, so the
+shell treats it as an app that keeps no master key, as it does the web. On macOS the sidecar is a separate executable, so a signed build
+needs the keychain entitlement on it too; an unsigned one keeps keys in the sealed file.
+
 ## Optional: Embedding External Apps (e.g., Flux)
 
 The Electron launcher can embed external apps via iframe. Here's how to set up Flux as an example:
