@@ -150,6 +150,26 @@ const CSS_STYLES = css`
   }
 `;
 
+/**
+ * The text a node will show, including what its custom elements draw in their own shadow roots.
+ *
+ * `textContent` alone stops at a shadow boundary, and most of what a schema slots into `content` is
+ * primitives drawing their words there: a `we-text` given `text`, a `we-timestamp`. Read that way, a
+ * hovercard of a sentence and a time had nothing to say, and never opened.
+ */
+function shownText(node: Node): string {
+  let text = '';
+  for (const child of Array.from(node.childNodes)) {
+    if (child.nodeType === Node.TEXT_NODE) text += child.textContent ?? '';
+    else if (child.nodeType === Node.ELEMENT_NODE) {
+      const root = (child as Element).shadowRoot;
+      if (root) text += shownText(root);
+      text += shownText(child);
+    }
+  }
+  return text;
+}
+
 @customElement('we-tooltip')
 export default class Tooltip extends LayoutElement {
   static styles = [sharedStyles, CSS_STYLES];
@@ -370,7 +390,7 @@ export default class Tooltip extends LayoutElement {
   private _hasSomethingToSay(): boolean {
     if (this.content.trim()) return true;
     const slotted = this.querySelector('[slot="content"]');
-    return Boolean(slotted && (slotted.textContent ?? '').trim());
+    return Boolean(slotted && shownText(slotted).trim());
   }
 
   private hide = () => {
