@@ -27,6 +27,14 @@ fn seed_data_path(home: &std::path::Path) -> PathBuf {
     expand_home(seed_runtime::AD4M_DATA_PATH, home)
 }
 
+/// One identity store setting: the run-time variable when set and not empty, else the value the
+/// build was compiled with, else none.
+fn identity_store_setting(runtime: Option<String>, built: Option<&str>) -> Option<String> {
+    runtime
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| built.map(str::to_string).filter(|s| !s.trim().is_empty()))
+}
+
 /// This app's own configuration directory.
 ///
 /// No longer where accounts or the registry live — both moved into the data path's container, so
@@ -172,6 +180,45 @@ pub fn run() {
         .expect("Failed to initialize AD4M");
     }
 
+    // An identity store for the executor other than its network's: `AD4M_IDENTITY_STORE_URL` and
+    // `AD4M_IDENTITY_STORE_KEYS` (comma-separated), the names the executor's own CLI reads. A
+    // build carries them when they are set while it is compiled (`crates/custody/README.md`, "The
+    // identity store"); the same variables at run time override that. They are only passed on:
+    // with neither set the executor uses the store its network seed names, and what it uses and
+    // whether it trusts it the custody service asks of it (`identity.status`), never of these.
+    let identity_store_url = identity_store_setting(
+        std::env::var("AD4M_IDENTITY_STORE_URL").ok(),
+        option_env!("AD4M_IDENTITY_STORE_URL"),
+    );
+    let identity_store_keys = identity_store_setting(
+        std::env::var("AD4M_IDENTITY_STORE_KEYS").ok(),
+        option_env!("AD4M_IDENTITY_STORE_KEYS"),
+    )
+    .map(|keys| {
+        keys.split(',')
+            .map(|k| k.trim().to_string())
+            .filter(|k| !k.is_empty())
+            .collect::<Vec<_>>()
+    })
+    .filter(|keys| !keys.is_empty());
+
+    // The custody service: the person's master key, behind the OS unlock, in this process but never
+    // in the executor's code (it is its own crate, `crates/custody`, and reaches the executor over RPC with
+    // the admin credential only). The sealed file is the fallback for Linux without a Secret Service,
+    // and for a macOS build without the keychain entitlement.
+    // The same folder keeps the incept of an identity made here until its publish is confirmed.
+    let custody_dir = we_custody::host::custody_dir(&home);
+    let custody = we_custody::spawn(
+        we_custody::DesktopVault::new(
+            we_custody::store::system_store(custody_dir.clone()),
+            we_custody::PendingIncepts::file(custody_dir),
+        ),
+        we_custody::ExecutorAddress {
+            url: format!("http://127.0.0.1:{graphql_port}"),
+            admin_credential: std::sync::Arc::from(req_credential.as_str()),
+        },
+    );
+
     let state = AppState {
         graphql_port,
         req_credential: req_credential.clone(),
@@ -183,6 +230,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(state)
+        .manage(commands::identity::IdentityState::new(custody))
         .invoke_handler(tauri::generate_handler![
             commands::state::get_port,
             commands::state::request_credential,
@@ -195,7 +243,13 @@ pub fn run() {
             commands::accounts::get_executor_settings,
             commands::accounts::set_executor_settings,
             commands::accounts::restart_executor,
-            commands::accounts::choose_file
+            commands::accounts::choose_file,
+            commands::identity::identity_open,
+            commands::identity::identity_public_state,
+            commands::identity::identity_flow_start,
+            commands::identity::identity_flow_step,
+            commands::identity::identity_flow_cancel,
+            commands::identity::identity_flow_finish
         ])
         .setup(move |app| {
             // Start embedded app HTTP servers (in production only)
@@ -224,6 +278,8 @@ pub fn run() {
                 // configuration once, at startup.
                 enable_mcp: Some(executor_settings.mcp_enabled),
                 mcp_port: Some(executor_settings.mcp_port),
+                identity_store_url: identity_store_url.clone(),
+                identity_store_keys: identity_store_keys.clone(),
                 ..Default::default()
             };
 
@@ -248,4 +304,25 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::identity_store_setting;
+
+    #[test]
+    fn the_run_time_store_setting_overrides_the_built_one_and_empty_is_none() {
+        let built = Some("https://store.built");
+        assert_eq!(
+            identity_store_setting(Some("https://store.run".into()), built).as_deref(),
+            Some("https://store.run")
+        );
+        assert_eq!(identity_store_setting(None, built).as_deref(), built);
+        assert_eq!(
+            identity_store_setting(Some(" ".into()), built).as_deref(),
+            built
+        );
+        assert_eq!(identity_store_setting(None, Some("")), None);
+        assert_eq!(identity_store_setting(None, None), None);
+    }
 }
