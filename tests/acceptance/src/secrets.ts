@@ -82,22 +82,19 @@ export const WORD_RUN = 4;
  */
 export function wordRun(content: Buffer, words: string[]): number {
   const phrase = words.map((w) => w.toLowerCase());
-  // The places in the phrase the run so far could end at: more than one when a word repeats.
-  let ends: number[] = [];
-  let length = 0;
-  let start = -1;
+  // Every run the text could be in the middle of: where in the phrase it ends, where in the text it
+  // started, and how long it is. More than one when a word repeats, and each kept on its own: a
+  // word can extend one run and begin another at its other place in the phrase.
+  let runs: { end: number; start: number; length: number }[] = [];
   for (const token of content.toString('latin1').matchAll(/[A-Za-z]+/g)) {
     const word = token[0].toLowerCase();
-    const next = ends.map((i) => i + 1).filter((i) => phrase[i] === word);
-    if (next.length) {
-      ends = next;
-      length += 1;
-    } else {
-      ends = phrase.flatMap((w, i) => (w === word ? [i] : []));
-      length = ends.length ? 1 : 0;
-      start = token.index;
-    }
-    if (length >= WORD_RUN) return start;
+    const extended = runs
+      .filter((run) => phrase[run.end + 1] === word)
+      .map((run) => ({ end: run.end + 1, start: run.start, length: run.length + 1 }));
+    const fresh = phrase.flatMap((w, i) => (w === word ? [{ end: i, start: token.index, length: 1 }] : []));
+    runs = [...extended, ...fresh];
+    const found = runs.find((run) => run.length >= WORD_RUN);
+    if (found) return found.start;
   }
   return -1;
 }

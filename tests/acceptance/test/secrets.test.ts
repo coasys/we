@@ -111,6 +111,10 @@ describe('the secret ledger and its scanner', () => {
     expect(wordRun(Buffer.from('tray rebel tray arrive'), words)).toBe(0);
     expect(wordRun(Buffer.from('rebel tray arrive hill'), words)).toBe(0);
     expect(wordRun(Buffer.from('tray arrive hill review'), words)).toBe(0);
+    // A run that starts at the repeated word's second place, right after the word before its first.
+    const twice = ['member', 'tenant', 'urban', 'tray', 'tenant', 'arrive', 'hill', 'review', ...WORDS.slice(8)];
+    expect(wordRun(Buffer.from('tenant arrive hill review'), twice)).toBe(0);
+    expect(wordRun(Buffer.from('member tenant arrive hill review'), twice)).toBe(7);
   });
 
   it('lists a secret in a SPARQL store apart, where links are plain by design, without failing', async () => {
