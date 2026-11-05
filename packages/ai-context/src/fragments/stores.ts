@@ -2003,13 +2003,13 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
     state: {
       available: 'boolean — the backend keeps a key log, so it can say who this device speaks for',
       canChange:
-        'boolean — this app keeps master keys (the desktop app’s custody service), so the identity can be changed from here. False on the web and in Electron: Settings shows the log and devices and offers no change. False too where changeBlocked says why',
+        'boolean — this computer can sign changes to the identity, and has said so. False where the backend cannot change an identity from here (the web, and desktop builds without a custody service): Settings shows the log and devices and offers no change. False too while the backend has not answered, and where changeBlocked says why',
       changeBlocked:
-        'string — why the identity cannot be made or changed on this computer although the app keeps master keys (the executor reports no identity store, or one it trusts no key for), ready to show; empty when it can. Show it beside a disabled "Make my identity here" rather than hiding the door',
+        'string — why the identity cannot be made or changed on this computer although it could sign changes (the backend has nowhere to publish them, say), ready to show; empty when it can. Show it beside a disabled "Make my identity here" rather than hiding the door',
       status:
         '{ did, deviceKey, keyId, revoked, head, fork, storeBehind } | null — what this device’s key speaks for, as the executor reports it. `storeBehind` ({ since, seq }) is set while the shared store answers the log behind what the executor has checked, which then answers from its own copy',
       statusLoaded: 'boolean — the backend has answered `status` once. Gate a "no identity yet" sentence on it',
-      did: 'string — the person’s `did:scid:coasys:1:…`, or empty while this device speaks for nobody',
+      did: 'string — the person’s identifier, or empty while this device speaks for nobody',
       keyId: 'string — this device’s id in the key log (`d1`), or empty',
       thisDeviceRevoked: 'boolean — the key log revoked this device’s key: it no longer speaks for the person',
       keyLog:
@@ -2018,17 +2018,17 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       forked: 'boolean — the backend found two different logs for this identity',
       fork: '{ seq, ours, theirs } | null — where they part',
       custody:
-        "{ did, holdsMaster, unlock, blocked } | null — the custody service's public state: whether this computer keeps a master key (`holdsMaster.index`), how it unlocks ('touch-id-or-password' or 'passphrase'), and why no step can run, if one cannot (`blocked`). Null where the app keeps none",
+        "{ did, holdsMaster, unlock, blocked } | null — whether this computer can sign changes, as public facts: whether it keeps a master key (`holdsMaster`, a boolean), how that key unlocks ('os' for the computer's own prompt, or 'passphrase'), and why no change can run, if one cannot (`blocked`). Null where the backend cannot change an identity from here",
       needsFirstRun:
-        'boolean — ask the first-run question now: this app keeps master keys, this device speaks for nobody, and "Start now" was not chosen on this computer. Still true where changeBlocked is set, so the person learns why; offer "Start now" then',
-      busy: 'boolean — a step is open in the identity window',
-      lastOutcome: "'done' | 'cancelled' | 'failed' | '' — how the last step ended",
+        'boolean — ask the first-run question now: this computer can sign changes, this device speaks for nobody, and "Start now" was not chosen for this account on this computer. Still true where changeBlocked is set, so the person learns why; offer "Start now" then',
+      busy: 'boolean — a change is running',
+      lastOutcome: "'done' | 'cancelled' | 'failed' | '' — how the last change ended",
       error: 'string — why the last read failed, or empty',
     },
     actions: {
       refresh: '(): reads the status, the key log and the custody state again',
-      open: "(step: { kind: 'create' } | { kind: 'add-device' } | { kind: 'revoke', keyId }): opens the identity window on a step and resolves with its outcome once the window is done; everything is read again then. Words, passphrases and keys never reach the app",
-      makeIdentity: '(): "Make my identity here" — opens the identity window on `create`',
+      open: "(change: { kind: 'create' } | { kind: 'add-device' } | { kind: 'revoke', keyId }): runs a change and resolves with its outcome once it ends; the backend asks the person itself, wherever it keeps the master key, and everything is read again then. Words, passphrases and keys never reach the app",
+      makeIdentity: '(): "Make my identity here" — runs `create`',
       startWithoutIdentity:
         '(): "Start now" — use the app without an identity; remembered on this computer, so the first-run question stops',
     },
@@ -2045,9 +2045,9 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
     actions: {
       refresh: '(): reads the device list again',
       addDevice:
-        '(): opens the identity window on Add a device — the offer link and QR code, then the match code, then the confirmation that signs the `add`. Resolves with the outcome; the list is read again',
+        '(): adds a device — the backend asks the person wherever it keeps the master key (on the desktop: the offer link and QR code, then the match code, then the confirmation that signs it). Resolves with the outcome; the list is read again',
       revoke:
-        '(keyId: string): opens the identity window on revoking that key, which signs the `revoke`. Resolves with the outcome',
+        '(keyId: string): revokes that device key, once the person confirms it where the master key is kept. Resolves with the outcome',
     },
   },
   workflowStore: {

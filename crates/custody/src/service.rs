@@ -482,7 +482,9 @@ async fn public_state_on<R: ExecutorRpc>(
     let unlock = if sealed.unwrap_or_else(|| vault.needs_passphrase()) {
         "passphrase"
     } else {
-        "touch-id-or-password"
+        // The operating system's own prompt: Touch ID or the login password on macOS, the Secret
+        // Service's unlock on Linux. One word for every platform, so no caller names one.
+        "os"
     };
     CustodyPublic {
         did,

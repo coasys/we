@@ -780,7 +780,7 @@ export const seedBundles: Bundle[] = [
                                               props: { variant: 'footnote', color: 'text-muted' },
                                               children: [
                                                 {
-                                                  $: "identityStore.changeBlocked ? identityStore.changeBlocked : identityStore.custody.unlock == 'touch-id-or-password' ? 'Your 12 words, no email needed. This computer keeps your master key behind Touch ID' : 'Your 12 words, no email needed. This computer keeps your master key behind your passphrase'",
+                                                  $: "identityStore.changeBlocked ? identityStore.changeBlocked : identityStore.custody.unlock == 'os' ? 'Your 12 words, no email needed. This computer keeps your master key behind its own sign-in' : 'Your 12 words, no email needed. This computer keeps your master key behind your passphrase'",
                                                 },
                                               ],
                                             },

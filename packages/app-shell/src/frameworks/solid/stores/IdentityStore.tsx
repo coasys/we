@@ -1,14 +1,14 @@
 /**
  * IdentityStore — who this computer speaks for, and the log of every change to their keys.
  *
- * The Solid binding over two halves that never meet in the main window:
+ * The Solid binding over the backend's `IdentityPort`, which answers two kinds of question:
  *
- * - **The public half**, from the backend's `IdentityPort`: the `did:scid` this device's key speaks
- *   for, and the person's key log, which the executor checked event by event before answering.
- * - **The custody half**, from the host's `PlatformAdapter.identity`: whether this computer keeps a
- *   master key, and opening the host's identity window on a step (make the identity, add a device,
- *   revoke one). Words, passphrases and keys stay in that window and the host's main process; this
- *   store learns only how a step ended, and then reads the public half again.
+ * - **Reads**: the identity this device's key speaks for, and the person's key log, which the
+ *   backend checked event by event before answering.
+ * - **Changes**: whether this computer can sign one (`custody`), and running one (`change`: make the
+ *   identity, add a device, revoke one). Where the master key is kept, and what the person is shown
+ *   while a change runs, is the backend's; words, passphrases and keys never reach this store, which
+ *   learns only how a change ended and then reads everything again.
  *
  * Chrome tier only (`keys` in `templateSurface.ts`): a space template never sees who the person is
  * beyond their profile, or that a key log exists.
@@ -18,9 +18,14 @@
  * without one, which `startWithoutIdentity` remembers on this computer.
  */
 import { type KeyLogRow, keyLogRows } from '@shared/identityRows';
-import type { CustodyPublic, IdentityStep, IdentityStepOutcome } from '@shared/platform/types';
-import { usePlatform } from '@solid/providers/PlatformProvider';
-import type { IdentityStatusView, KeyLogEvent, KeyLogFork } from '@we/backend-shared';
+import type {
+  IdentityChange,
+  IdentityChangeOutcome,
+  IdentityCustodyView,
+  IdentityStatusView,
+  KeyLogEvent,
+  KeyLogFork,
+} from '@we/backend-shared';
 import {
   type Accessor,
   createContext,
@@ -40,18 +45,17 @@ export const START_NOW_KEY = 'coasys.identity.startNow';
 export interface IdentityStore {
   /** The backend can say who this device speaks for (it has a key log). */
   available: Accessor<boolean>;
-  /** This computer's shell keeps master keys, so the identity can be changed from here. */
+  /** This computer can sign changes to the identity, and nothing blocks them. */
   canChange: Accessor<boolean>;
   /**
-   * Why the identity cannot be made or changed here although the shell keeps master keys (the
-   * executor reports no identity store, or one it trusts no key for), in words a person reads;
-   * empty when it can.
+   * Why the identity cannot be made or changed here although this computer could sign changes (the
+   * backend has nowhere to publish them, say), in words a person reads; empty when it can.
    */
   changeBlocked: Accessor<string>;
   status: Accessor<IdentityStatusView | null>;
   /** The backend has answered `status` once. */
   statusLoaded: Accessor<boolean>;
-  /** The person's `did:scid`, or empty while this device speaks for nobody. */
+  /** The person's identifier, or empty while this device speaks for nobody. */
   did: Accessor<string>;
   /** This device's id in the log (`d1`), or empty. */
   keyId: Accessor<string>;
@@ -63,27 +67,27 @@ export interface IdentityStore {
   /** The backend found two logs for this identity. */
   forked: Accessor<boolean>;
   fork: Accessor<KeyLogFork | null>;
-  /** What the custody service says, public facts only; null where the host has none. */
-  custody: Accessor<CustodyPublic | null>;
+  /** Whether this computer can sign changes, public facts only; null where the backend says nothing. */
+  custody: Accessor<IdentityCustodyView | null>;
   /**
-   * The first-run question is due: a shell that keeps keys, a device speaking for nobody, no "Start
-   * now". Asked even where `changeBlocked` says the identity cannot be made yet, so the person
-   * learns why; the screen offers "Start now" then.
+   * The first-run question is due: a computer that can sign changes, a device speaking for nobody,
+   * no "Start now". Asked even where `changeBlocked` says the identity cannot be made yet, so the
+   * person learns why; the screen offers "Start now" then.
    */
   needsFirstRun: Accessor<boolean>;
-  /** A step is open in the identity window. */
+  /** A change is running. */
   busy: Accessor<boolean>;
-  /** How the last step ended, or empty. */
-  lastOutcome: Accessor<IdentityStepOutcome | ''>;
+  /** How the last change ended, or empty. */
+  lastOutcome: Accessor<IdentityChangeOutcome | ''>;
   /** Why the last read failed, or empty. */
   error: Accessor<string>;
 
   /** Reads the status, the log and the custody state again. */
   refresh: () => Promise<void>;
-  /** Opens the identity window on a step, waits for it, then reads everything again. */
-  open: (step: IdentityStep) => Promise<IdentityStepOutcome>;
+  /** Runs a change, waits for it to end, then reads everything again. */
+  open: (change: IdentityChange) => Promise<IdentityChangeOutcome>;
   /** "Make my identity here". */
-  makeIdentity: () => Promise<IdentityStepOutcome>;
+  makeIdentity: () => Promise<IdentityChangeOutcome>;
   /** "Start now": use the app without an identity on this computer; asked again from Settings. */
   startWithoutIdentity: () => void;
 }
@@ -99,9 +103,7 @@ function readStartNow(): boolean {
 }
 
 export function IdentityStoreProvider(props: ParentProps) {
-  const platform = usePlatform();
   const session = useSessionStore();
-  const host = platform.identity;
 
   const port = () => session.backendPorts()?.identity ?? null;
   const ready = () => session.bootState() === 'ready' || session.bootState() === 'finishing';
@@ -111,9 +113,9 @@ export function IdentityStoreProvider(props: ParentProps) {
   const [events, setEvents] = createSignal<KeyLogEvent[]>([]);
   const [keyLogLoaded, setKeyLogLoaded] = createSignal(false);
   const [fork, setFork] = createSignal<KeyLogFork | null>(null);
-  const [custody, setCustody] = createSignal<CustodyPublic | null>(null);
+  const [custody, setCustody] = createSignal<IdentityCustodyView | null>(null);
   const [busy, setBusy] = createSignal(false);
-  const [lastOutcome, setLastOutcome] = createSignal<IdentityStepOutcome | ''>('');
+  const [lastOutcome, setLastOutcome] = createSignal<IdentityChangeOutcome | ''>('');
   const [error, setError] = createSignal('');
   const [startNow, setStartNow] = createSignal(readStartNow());
 
@@ -124,11 +126,11 @@ export function IdentityStoreProvider(props: ParentProps) {
 
   async function refresh(): Promise<void> {
     const identity = port();
-    if (host) {
+    if (identity?.custody) {
       try {
-        setCustody(await host.publicState());
+        setCustody(await identity.custody());
       } catch (e) {
-        console.warn('IdentityStore: the custody service did not answer', e);
+        console.warn('IdentityStore: the backend did not say whether this computer can sign changes', e);
       }
     }
     if (!identity?.status) return;
@@ -163,21 +165,14 @@ export function IdentityStoreProvider(props: ParentProps) {
     onCleanup(off);
   });
 
-  if (host?.onCustodyChanged) {
-    const off = host.onCustodyChanged((state) => {
-      setCustody(state);
-      void refresh();
-    });
-    onCleanup(off);
-  }
-
-  async function open(step: IdentityStep): Promise<IdentityStepOutcome> {
-    if (!host) throw new Error('This app cannot change your identity: no app here keeps your master key.');
-    // Refused here as well as in the custody service, so no window opens on a step that cannot run.
+  async function open(change: IdentityChange): Promise<IdentityChangeOutcome> {
+    const identity = port();
+    if (!identity?.change) throw new Error('This computer cannot change your identity.');
+    // Refused here as well as by the backend, so nothing opens on a change that cannot run.
     if (changeBlocked()) throw new Error(changeBlocked());
     setBusy(true);
     try {
-      const outcome = await host.open(step);
+      const outcome = await identity.change(change);
       setLastOutcome(outcome);
       return outcome;
     } finally {
@@ -188,7 +183,7 @@ export function IdentityStoreProvider(props: ParentProps) {
 
   const store: IdentityStore = {
     available,
-    canChange: () => !!host && !changeBlocked(),
+    canChange: () => !!port()?.change && !changeBlocked(),
     changeBlocked,
     status,
     statusLoaded,
@@ -202,7 +197,7 @@ export function IdentityStoreProvider(props: ParentProps) {
     custody,
     needsFirstRun: createMemo(
       () =>
-        !!host &&
+        !!port()?.change &&
         custody() !== null &&
         available() &&
         statusLoaded() &&
