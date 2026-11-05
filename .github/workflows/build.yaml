@@ -307,6 +307,69 @@ jobs:
           echo "Checking $COUNT files"
           printf '%s\n' "$FILES" | xargs rustfmt --check --edition 2021
 
+  # The custody crate (`crates/custody`): the person's master key and the identity flows, which the
+  # desktop app ships as a sidecar. Unlike the Tauri app above, it resolves on its own — it names
+  # ad4m by git commit, not by a sibling checkout — so it is built and tested here, on both
+  # platforms it ships on: a crate that only the release workflow compiled had its tests run nowhere,
+  # and its macOS build never.
+  #
+  # The tests that need an executor or a real keychain skip themselves unless asked (`CUSTODY_LIVE`,
+  # `CUSTODY_SECRET_SERVICE`); the Secret Service ones are asked for on Linux, in a D-Bus session and
+  # keyring of their own. `tests/boundary.rs` checks the crate builds against the ad4m commit
+  # `package.json` pins, so a bump that moves one without the other fails here.
+  custody:
+    name: Custody crate (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: crates/custody
+    steps:
+      - uses: actions/checkout@v7
+
+      # rustup reads the channel from the crate's `rust-toolchain.toml`.
+      - name: Install the pinned toolchain
+        run: rustup toolchain install
+
+      - name: Restore the cargo cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            crates/custody/target
+          key: custody-${{ runner.os }}-${{ hashFiles('crates/custody/Cargo.lock', 'crates/custody/rust-toolchain.toml') }}
+          restore-keys: custody-${{ runner.os }}-
+
+      - name: Test
+        run: cargo test --locked
+
+      - name: Test against a real Secret Service
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y --no-install-recommends gnome-keyring dbus-daemon >/dev/null
+          export XDG_RUNTIME_DIR="$(mktemp -d)"
+          dbus-run-session -- sh -c 'K=$(mktemp -d);
+            printf secret | HOME=$K XDG_DATA_HOME=$K gnome-keyring-daemon --unlock --components=secrets >/dev/null &&
+            CUSTODY_SECRET_SERVICE=1 cargo test --locked --test secret_service --test secret_service_wipe'
+
+      # The release build the Electron package ships, so a failure shows here rather than at a tag.
+      - name: Build the sidecar
+        run: cargo build --release --locked --bin we-custody
+
+      - name: Save the cargo cache
+        if: github.ref == 'refs/heads/dev'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            crates/custody/target
+          key: custody-${{ runner.os }}-${{ hashFiles('crates/custody/Cargo.lock', 'crates/custody/rust-toolchain.toml') }}
+
   schemas:
     name: Validate schemas
     needs: build

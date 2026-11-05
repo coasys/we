@@ -2,7 +2,9 @@
  * The key log and the device list, in the words Settings draws.
  *
  * Kept apart from the stores so the wording is tested without mounting anything, and because a
- * schema cannot format: what a row says is decided here, once, and the template draws strings.
+ * schema cannot format: what a row says by default is decided here, once. Each row also carries what
+ * the words were made from (`op`, `keys`, the seqs), so a template that wants to say it differently
+ * can, without parsing a sentence.
  *
  * There is no private record of the person's devices yet, so a device has no name and no kind: the
  * log lists keys. This
@@ -14,6 +16,10 @@ import type { DeviceKeyView, KeyLogEvent } from '@we/backend-shared';
 /** One row of Security → Key log. */
 export interface KeyLogRow {
   seq: number;
+  /** `incept`, `add`, `revoke`, `rotate`, or whatever a later format adds. */
+  op: string;
+  /** The key ids the event adds or revokes. */
+  keys: string[];
   /** "#0" */
   position: string;
   /** A Phosphor icon name. */
@@ -32,6 +38,10 @@ export interface KeyLogRow {
 /** One row of Devices. */
 export interface DeviceRow {
   keyId: string;
+  /** The seq of the event that added it. */
+  addedSeq: number;
+  /** The seq of the event that revoked it, or `null` while it is valid. */
+  revokedSeq: number | null;
   /** "This computer", or "Device d2". */
   label: string;
   /** "d1 · added at #0" */
@@ -98,6 +108,8 @@ export function keyLogRows(events: KeyLogEvent[], thisKeyId: string | null): Key
       }
       return {
         seq: event.seq,
+        op: event.op,
+        keys,
         position: `#${event.seq}`,
         icon,
         title,
@@ -123,6 +135,8 @@ export function deviceRows(devices: DeviceKeyView[]): DeviceRow[] {
       const revoked = device.revokedSeq !== null;
       return {
         keyId: device.keyId,
+        addedSeq: device.addedSeq,
+        revokedSeq: device.revokedSeq,
         label: device.thisDevice ? THIS_COMPUTER : `Device ${device.keyId}`,
         subtitle: `${device.keyId} · added at #${device.addedSeq}`,
         // What kind of device a key is on will come with a private record of devices, not made yet.

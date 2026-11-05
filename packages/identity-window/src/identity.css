@@ -1,21 +1,23 @@
 /*
-  The identity window, in the Coasys identity palette: a deep indigo page and one mint accent for
-  the primary action.
-  Its own stylesheet, not the app's: this bundle loads nothing a template could influence.
+  The identity window, in WE's own theme: the token ramps (`@we/tokens`), and the light and dark
+  presets worked out at build time (`vite.js`), following the computer's setting. Static CSS only,
+  so nothing a template or a theme a person installed can reach this window.
 */
 :root {
-  color-scheme: dark;
-  --page: oklch(18.5% 0.04 278deg);
-  --surface: oklch(22% 0.04 278deg);
-  --sunken: oklch(16% 0.035 278deg);
-  --border: oklch(32% 0.04 278deg);
-  --text: oklch(93% 0.015 278deg);
-  --muted: oklch(74% 0.03 278deg);
-  --accent: oklch(85% 0.12 160deg);
-  --on-accent: oklch(22% 0.05 160deg);
-  --danger: oklch(72% 0.16 25deg);
+  color-scheme: light dark;
+  --page: var(--we-role-page);
+  --surface: var(--we-role-surface);
+  --sunken: var(--we-role-surface-sunken);
+  --border: var(--we-role-border);
+  --text: var(--we-role-text);
+  --muted: var(--we-role-text-muted);
+  --accent: var(--we-role-accent);
+  --on-accent: var(--we-role-on-accent);
+  --danger: var(--we-role-danger);
+  --on-danger: var(--we-role-on-danger);
+  --mono: var(--we-font-family-mono, ui-monospace, monospace);
 
-  font-family: system-ui, sans-serif;
+  font-family: var(--we-font-family-base, system-ui, sans-serif);
   background: var(--page);
   color: var(--text);
 }
@@ -87,13 +89,13 @@ p {
 
 .word .n,
 .mono {
-  font-family: ui-monospace, monospace;
+  font-family: var(--mono);
   color: var(--muted);
   font-size: 12px;
 }
 
 .code {
-  font-family: ui-monospace, monospace;
+  font-family: var(--mono);
   font-size: 34px;
   letter-spacing: 0.12em;
   text-align: center;
@@ -168,7 +170,7 @@ button.primary {
 
 button.danger {
   background: var(--danger);
-  color: oklch(20% 0.04 25deg);
+  color: var(--on-danger);
   border-color: var(--danger);
 }
 
@@ -179,7 +181,7 @@ button:disabled {
 
 .link {
   word-break: break-all;
-  font-family: ui-monospace, monospace;
+  font-family: var(--mono);
   font-size: 12px;
   padding: 10px;
   border-radius: 10px;
