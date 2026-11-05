@@ -19,8 +19,8 @@ export async function identityScreen(app: DesktopApp, title: string, timeoutMs =
 export async function createAccount(app: DesktopApp, ctx: ScenarioContext, name: string): Promise<void> {
   const password = `wallet password ${ctx.world.dir.slice(-6)}`;
   ctx.secrets.add('password', 'the account password', password);
-  await app.waitForText('main', 'Make your account', 180_000);
-  await app.type('main', 'What people call you', name);
+  await app.waitForText('main', 'Create an account to get started.', 180_000);
+  await app.type('main', 'Name...', name);
   await app.type('main', 'Password...', password);
   await app.type('main', 'Confirm password...', password);
   await app.press('main', 'Create account');

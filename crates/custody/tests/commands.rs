@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use we_custody::window::{COMMANDS, IDENTITY, MAIN};
 
 fn app_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../apps/we-tauri/src-tauri")
 }
 
 fn capability(file: &str) -> (Vec<String>, BTreeSet<String>) {

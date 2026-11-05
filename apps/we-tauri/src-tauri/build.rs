@@ -3,7 +3,7 @@
 //! every window call every command — and the identity window's commands, which run the master-key
 //! flows, must answer that window only.
 //!
-//! `custody/tests/commands.rs` reads this list and the capabilities, and checks them against the
+//! `crates/custody/tests/commands.rs` reads this list and the capabilities, and checks them against the
 //! custody crate's own table of which window may call what.
 fn main() {
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(

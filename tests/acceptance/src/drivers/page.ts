@@ -11,6 +11,7 @@
 export const HELPERS = String.raw`
 const h = (() => {
   const SKIP = new Set(['SCRIPT', 'STYLE', 'TEMPLATE', 'NOSCRIPT']);
+  const BLOCKS = /^(P|DIV|H[1-6]|LI|BUTTON|LABEL|TR|SECTION|HEADER|MAIN|FOOTER|NAV|ARTICLE|ASIDE|FORM|UL|OL)$/;
   const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
 
   function visible(el) {
@@ -56,8 +57,12 @@ const h = (() => {
         for (const child of assigned.length ? assigned : node.childNodes) walk(child);
         return;
       }
+      // A block starts and ends a line, as it does on screen: a header drawn beside a heading is
+      // not the heading's line (the identity window's brand, then its screen's title).
+      const block = Boolean(node.tagName && BLOCKS.test(node.tagName));
+      if (block) parts.push('\n');
       for (const child of node.childNodes) walk(child);
-      if (node.tagName && /^(P|DIV|H[1-6]|LI|BUTTON|LABEL|TR|SECTION)$/.test(node.tagName)) parts.push('\n');
+      if (block) parts.push('\n');
     };
     walk(root);
     return parts.join(' ').replace(/[ \t]+/g, ' ').replace(/ ?\n ?/g, '\n').replace(/\n+/g, '\n').trim();

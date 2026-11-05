@@ -83,7 +83,7 @@ export default defineScenario({
         await app.press('identity', 'Unlock');
         await identityScreen(app, 'Send this link to your device');
         link = await app.eval<string>('identity', `return document.querySelector('.link')?.textContent ?? '';`);
-        check(link.startsWith('https://coasys.id/o#coasys:offer:1:'), `the offer link is ${link.slice(0, 40)}…`);
+        check(link.startsWith('https://id.coasys.org/o#coasys:offer:1:'), `the offer link is ${link.slice(0, 40)}…`);
         ctx.secrets.add('offer-secret', 'the offer link', link);
         ctx.secrets.add('offer-secret', 'the offer', link.slice(link.indexOf('#') + 1));
       },

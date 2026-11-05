@@ -20,7 +20,7 @@ use ad4m_identity_client::flows::create::{resume, CreateFlow, CreateScreen, Crea
 use ad4m_identity_client::flows::link::{Claimed, LinkFlow};
 use ad4m_identity_client::flows::revoke::revoke;
 use ad4m_identity_client::{
-    ClientError, ExecutorRpc, OsRandom, RpcError, Secret, SystemClock, VaultError, ViaExecutor,
+    ClientError, ExecutorRpc, OsRandom, Secret, SystemClock, VaultError, ViaExecutor,
 };
 use ad4m_identity_core::link::OfferKind;
 use ad4m_identity_core::{Event, Op};
@@ -282,44 +282,15 @@ pub const NO_STORE: &str =
     "This network has no identity store, or a store URL without its key, so Coasys on this \
      computer cannot make or change an identity. Nothing was changed.";
 
-/// The identity store the executor uses, as `identity.status` reports it: the config's, else its
-/// network seed's. `trusted` says it trusts a key for that store; without one it accepts no head
-/// from it, and every publish is refused.
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StoreInfo {
-    pub url: String,
-    pub trusted: bool,
-}
-
-/// `identity.status` as custody reads it: the identity client's fields, and the executor's store,
-/// which that client does not carry.
-async fn status_and_store<R: ExecutorRpc>(
-    executor: &ViaExecutor<R>,
-) -> Result<(IdentityStatus, Option<StoreInfo>), RpcError> {
-    #[derive(Deserialize)]
-    struct Store {
-        #[serde(default)]
-        store: Option<StoreInfo>,
-    }
-    let value = executor
-        .rpc()
-        .call("identity.status", serde_json::json!({}))
-        .await?;
-    let unreadable = |e: serde_json::Error| RpcError {
-        code: 502,
-        message: format!("identity.status answered {e}"),
-    };
-    let store = serde_json::from_value::<Store>(value.clone()).map_err(unreadable)?;
-    let status = serde_json::from_value::<IdentityStatus>(value).map_err(unreadable)?;
-    Ok((status, store.store))
-}
-
-/// The store a step publishes through, which an offer names: the executor's, when it trusts it.
-/// Else the step's refusal, before words are made, an offer is opened or a key is unlocked.
+/// The store a step publishes through, which an offer names: the one `identity.status` reports the
+/// executor uses (its config's, else its network seed's), when it trusts a key for it. Else the
+/// step's refusal, before words are made, an offer is opened or a key is unlocked: without a
+/// trusted key the executor accepts no head from the store, and every publish is refused.
 async fn trusted_store<R: ExecutorRpc>(executor: &ViaExecutor<R>) -> Result<String, Screen> {
-    match status_and_store(executor).await {
-        Ok((_, Some(store))) if store.trusted => Ok(store.url),
+    match executor.status().await {
+        Ok(IdentityStatus {
+            store: Some(store), ..
+        }) if store.trusted => Ok(store.url),
         Ok(_) => Err(Screen::Failed {
             message: NO_STORE.into(),
         }),
@@ -482,10 +453,10 @@ async fn public_state_on<R: ExecutorRpc>(
     let (did, blocked) = match executor {
         Some(executor) => {
             finish_pending_quietly(executor, vault).await;
-            match status_and_store(executor).await {
-                Ok((status, store)) => (
+            match executor.status().await {
+                Ok(status) => (
                     status.did,
-                    (!store.is_some_and(|s| s.trusted)).then_some(NO_STORE),
+                    (!status.store.is_some_and(|s| s.trusted)).then_some(NO_STORE),
                 ),
                 Err(_) => (None, None),
             }
@@ -1372,11 +1343,12 @@ mod tests {
         }
         // An executor that predates `store` has none to report, and is refused the same way.
         assert_eq!(
-            status_and_store(&ViaExecutor::new(OldExecutor))
-                .await
-                .unwrap()
-                .1,
+            ViaExecutor::new(OldExecutor).status().await.unwrap().store,
             None
+        );
+        assert_eq!(
+            trusted_store(&ViaExecutor::new(OldExecutor)).await,
+            Err(no_store)
         );
     }
 

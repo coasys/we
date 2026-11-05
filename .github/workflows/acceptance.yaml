@@ -108,7 +108,7 @@ jobs:
       # The custody store against a real Secret Service, in a session of its own: the lower-layer
       # test of what the scenario with the session's Secret Service checks end to end.
       - name: Custody against a Secret Service
-        working-directory: apps/we-tauri/src-tauri/custody
+        working-directory: crates/custody
         run: |
           export XDG_RUNTIME_DIR="$(mktemp -d)"
           dbus-run-session -- bash -c 'K="$(mktemp -d)";
