@@ -60,6 +60,7 @@ export {
   withoutHiddenSuggestions,
 } from './we/suggestions.ts';
 export type { SuggestedChangesOptions, SuggestionsToggleOptions } from './we/suggestions.ts';
+export { modelMark } from './we/modelMark.ts';
 export { moveTaskMenu, PENDING, taskBoard, taskBoardLoading, taskCard } from './we/taskBoard.ts';
 export type { CardSelection, TaskBoardOptions, TaskCardOptions } from './we/taskBoard.ts';
 export { adminSection } from './we/adminSection.ts';
