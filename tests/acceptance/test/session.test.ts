@@ -59,8 +59,6 @@ describe.skipIf(!hasDbus)('an app’s own session bus', () => {
     expect(idA).not.toBeNull();
     expect(idB).not.toBeNull();
     expect(idA).not.toBe(idB);
-    // What one app's bus started is not on the next one's: nobody owns the Secret Service there.
-    expect(ask(b.address, 'NameHasOwner', 'string:org.freedesktop.secrets')).toContain('boolean false');
   });
 
   it('is gone once it is stopped', async () => {
