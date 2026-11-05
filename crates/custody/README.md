@@ -19,6 +19,13 @@ keychain beside it asks for none — and only a new key goes to the keychain or 
 when this build can use one. Nothing moves on its own; a key kept on both sides, or a store that
 cannot say whether it holds one, is refused rather than guessed at.
 
+The folder is shared; the macOS keychain is not, in practice. A key in the data-protection keychain
+is readable only by a build signed with the same `keychain-access-groups` entitlement. The Electron
+sidecar carries none, so it reads only the sealed files: a key a signed Tauri build put in the
+keychain is not usable from the Electron app, and the identity it belongs to cannot be changed
+there. A key in a sealed file opens from either app with its passphrase. On Linux both apps reach
+the same Secret Service.
+
 The crate runs the identity client's flows — make the identity, add a device, revoke one — and
 reaches the executor only over its RPC with the admin credential. It is its own crate so nothing of
 it links the executor; `tests/boundary.rs` keeps it so. No Windows: the desktop apps start there
