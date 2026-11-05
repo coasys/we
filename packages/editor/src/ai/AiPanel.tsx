@@ -253,7 +253,7 @@ function AssistantStatus() {
 interface ChatStep {
   tool: string;
   target?: string;
-  outcome: 'running' | 'ok' | 'error';
+  outcome: 'running' | 'ok' | 'error' | 'stopped';
   error?: string;
 }
 
@@ -278,10 +278,17 @@ const STEP_WORDS: Record<string, [doing: string, done: string]> = {
 };
 
 function stepWords(step: ChatStep) {
-  const words = STEP_WORDS[step.tool];
-  if (!words) return step.outcome === 'running' ? `Using ${step.tool}` : `Used ${step.tool}`;
-  return step.outcome === 'running' ? words[0] : words[1];
+  const [doing, done] = STEP_WORDS[step.tool] ?? [`Using ${step.tool}`, `Used ${step.tool}`];
+  if (step.outcome === 'stopped') return `${doing} (stopped)`;
+  return step.outcome === 'running' ? doing : done;
 }
+
+/** A finished step's mark: how its call went, or that the reply ended before it did. */
+const STEP_MARK: Record<Exclude<ChatStep['outcome'], 'running'>, [icon: string, color: string]> = {
+  ok: ['check-circle', 'success-text'],
+  error: ['warning-circle', 'danger-text'],
+  stopped: ['minus-circle', 'text-faint'],
+};
 
 /** The tool calls behind a reply: open while it runs, folded to a count once it has settled. */
 function ReplySteps(props: { steps: ChatStep[]; running: boolean }) {
@@ -308,9 +315,9 @@ function ReplySteps(props: { steps: ChatStep[]; running: boolean }) {
                 fallback={<we-animated-icon name="spinner" size="xs" flexShrink="0" />}
               >
                 <we-icon
-                  name={step.outcome === 'ok' ? 'check-circle' : 'warning-circle'}
+                  name={STEP_MARK[step.outcome as keyof typeof STEP_MARK][0]}
                   size="xs"
-                  color={step.outcome === 'ok' ? 'success-text' : 'danger-text'}
+                  color={STEP_MARK[step.outcome as keyof typeof STEP_MARK][1]}
                   flexShrink="0"
                 />
               </Show>

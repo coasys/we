@@ -1520,8 +1520,8 @@ function themePanelProbe(overrides = '{"themeName":"dark"}'): void {
 
 /**
  * The AI chat with a reply in every state a backend's reply can be in: done, its steps folded;
- * failed, with the error and a step that failed; interrupted by a restart; and one still running,
- * its steps open and Stop in place of Send.
+ * failed, with the error and a step that failed; interrupted by a restart; stopped part way, its
+ * last step cut off; and one still running, its steps open and Stop in place of Send.
  */
 function chatPanelProbe(): void {
   const at = (minutes: number) => new Date(Date.UTC(2026, 10, 3, 12, minutes)).toISOString();
@@ -1559,6 +1559,15 @@ function chatPanelProbe(): void {
     },
     { id: 'm3', role: 'user', content: 'Try again', createdAt: at(4) },
     { id: 'r3', role: 'assistant', content: '', createdAt: at(5), replyStatus: 'interrupted', steps: [] },
+    { id: 'm3b', role: 'user', content: 'Give every card a soft shadow', createdAt: at(5) },
+    {
+      id: 'r3b',
+      role: 'assistant',
+      content: '',
+      createdAt: at(5),
+      replyStatus: 'cancelled',
+      steps: [{ tool: 'template_update', target: 'ad4m://t/1', outcome: 'stopped' }],
+    },
     { id: 'm4', role: 'user', content: 'Move the subtitle above the heading', createdAt: at(6) },
     {
       id: 'r4',

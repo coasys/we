@@ -35,7 +35,7 @@ import { recordMissingMethod } from './missingMethods';
 const EDIT_TOOLS = ['template_update'];
 
 const STATUSES: readonly AgentReplyStatus[] = ['running', 'done', 'failed', 'cancelled', 'interrupted'];
-const OUTCOMES: readonly AgentStep['outcome'][] = ['running', 'ok', 'error'];
+const OUTCOMES: readonly string[] = ['running', 'ok', 'error'];
 
 /** What a row of the conversation carries, read from the executor's classes. */
 export interface TextRow {
@@ -66,26 +66,37 @@ export function conversationOf(texts: TextRow[], replies: ReplyRow[]): AgentConv
       turns.push({ id: row.id, role: 'user', text: row.text, createdAt: row.createdAt });
       continue;
     }
+    const status = (STATUSES as readonly string[]).includes(reply.status)
+      ? (reply.status as AgentReplyStatus)
+      : 'running';
     turns.push({
       id: reply.id,
       role: 'assistant',
       text: reply.text,
       createdAt: reply.createdAt,
-      status: (STATUSES as readonly string[]).includes(reply.status) ? (reply.status as AgentReplyStatus) : 'running',
+      status,
       ...(reply.error ? { error: reply.error } : {}),
       steps: [...reply.steps]
         .sort((a, b) => a.createdAt - b.createdAt)
         .map((step) => ({
           tool: step.tool,
           ...(step.target ? { target: step.target } : {}),
-          outcome: (OUTCOMES as readonly string[]).includes(step.outcome)
-            ? (step.outcome as AgentStep['outcome'])
-            : 'running',
+          outcome: stepOutcome(step.outcome, status),
           ...(step.error ? { error: step.error } : {}),
         })),
     });
   }
   return turns.sort((a, b) => a.createdAt - b.createdAt);
+}
+
+/**
+ * A step's outcome under its reply. The executor never writes one for a call the reply's end cut
+ * off (a cancel aborts the task mid-call): that step stays `running` under a reply that is not, and
+ * is reported as `stopped`.
+ */
+function stepOutcome(outcome: string, reply: AgentReplyStatus): AgentStep['outcome'] {
+  const known = OUTCOMES.includes(outcome) ? (outcome as AgentStep['outcome']) : 'running';
+  return known === 'running' && reply !== 'running' ? 'stopped' : known;
 }
 
 function textRow(row: { id: string; text?: string; createdAt?: number | string }): TextRow {

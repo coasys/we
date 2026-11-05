@@ -3,6 +3,7 @@
  *
  * - The conversation reads as neutral turns: the agent's replies with their status and steps,
  *   every other text child the person's, oldest first
+ * - A step still running under a reply that has ended was cut off, and reads as stopped
  * - A conversation is created with the executor's settings: where the agent works, and the
  *   template tool only when it may edit
  * - A node without agent sessions says so as `AgentUnavailableError`
@@ -101,6 +102,19 @@ describe('a conversation the executor keeps', () => {
       steps: [{ tool: 'template_update', outcome: 'error', error: 'the template changed' }],
     });
     expect(odd.status).toBe('running');
+  });
+
+  it('reports a step the reply’s end cut off as stopped, and a running reply’s as running', () => {
+    const steps = [step('template_read', 'ok', 2), step('template_update', 'running', 3)];
+    const [stopped, running] = conversationOf(
+      [],
+      [
+        { id: 'r/1', text: '', createdAt: 1, status: 'cancelled', error: '', steps },
+        { id: 'r/2', text: '', createdAt: 4, status: 'running', error: '', steps },
+      ],
+    );
+    expect(stopped.steps?.map((s) => s.outcome)).toEqual(['ok', 'stopped']);
+    expect(running.steps?.map((s) => s.outcome)).toEqual(['ok', 'running']);
   });
 
   it('creates a conversation with the settings the executor keeps', async () => {

@@ -72,13 +72,14 @@ export type AgentReplyStatus = 'running' | 'done' | 'failed' | 'cancelled' | 'in
 
 /**
  * One tool call the agent made while writing a reply: the tool, the record it acted on (by id),
- * and how it went. Never what the call sent or got back. A step `running` under a reply that is
- * not was cut off.
+ * and how it went. Never what the call sent or got back. `stopped`: the reply ended (stopped,
+ * failed, cut off by a restart) before the call returned, so it never got an outcome. A backend
+ * reports that itself; a step is only ever `running` under a reply that still is.
  */
 export interface AgentStep {
   tool: string;
   target?: string;
-  outcome: 'running' | 'ok' | 'error';
+  outcome: 'running' | 'ok' | 'error' | 'stopped';
   error?: string;
 }
 
