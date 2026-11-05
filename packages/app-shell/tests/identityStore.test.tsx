@@ -19,14 +19,24 @@ const [ports, setPorts] = createSignal<{ identity?: IdentityPort } | null>(null)
 const [bootState, setBootState] = createSignal('ready');
 
 vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
-  useSessionStore: () => ({ backendPorts: ports, bootState }),
+  useSessionStore: () => ({
+    backendPorts: ports,
+    bootState,
+    // As the session reads them from the port: linking a device needs a way to sign changes.
+    identityCapabilities: () => ({
+      ...NO_IDENTITY_CAPABILITIES,
+      keyLog: true,
+      devices: true,
+      linkDevice: !!ports()?.identity?.change,
+    }),
+  }),
 }));
 
 import { type DeviceStore, DeviceStoreProvider, useDeviceStore } from '../src/frameworks/solid/stores/DeviceStore';
 import {
   type IdentityStore,
   IdentityStoreProvider,
-  START_NOW_KEY,
+  startNowKey,
   useIdentityStore,
 } from '../src/frameworks/solid/stores/IdentityStore';
 
@@ -174,7 +184,7 @@ describe('identityStore', () => {
     await flush();
     expect(stores.identity.needsFirstRun()).toBe(false);
     expect(stores.identity.canChange()).toBe(false);
-    await expect(stores.identity.makeIdentity()).rejects.toThrow();
+    expect(await stores.identity.makeIdentity()).toBe('failed');
 
     setPorts({ identity: custody(b.port, () => {}).identity });
     stores = mount();
@@ -228,10 +238,112 @@ describe('identityStore', () => {
     expect(identity.changeBlocked()).toBe(why);
     expect(identity.canChange()).toBe(false);
     expect(deviceStore.canManage()).toBe(false);
-    await expect(identity.makeIdentity()).rejects.toThrow(why);
-    await expect(identity.open({ kind: 'add-device' })).rejects.toThrow(why);
+    // Refused without starting anything, and said where the screen can show it.
+    expect(await identity.makeIdentity()).toBe('failed');
+    expect(identity.error()).toBe(why);
+    expect(await identity.open({ kind: 'add-device' })).toBe('failed');
     expect(opened).toEqual([]);
     expect(identity.busy()).toBe(false);
+  });
+
+  it('offers no change while the backend has not said this computer can sign one', async () => {
+    const b = backend({ did: null, events: [], devices: [] });
+    setPorts({
+      identity: signing(b.port, {
+        custody: async () => {
+          throw new Error('the custody service is not running');
+        },
+        change: async () => 'done',
+      }),
+    });
+    const { identity } = mount();
+    await flush();
+    await flush();
+    expect(identity.custody()).toBeNull();
+    expect(identity.canChange()).toBe(false);
+    expect(identity.needsFirstRun()).toBe(false);
+  });
+
+  it('says why a change failed, after reading everything again', async () => {
+    const b = backend({ did: null, events: [], devices: [] });
+    setPorts({
+      identity: signing(b.port, {
+        custody: async () => NO_CUSTODY,
+        change: async () => {
+          throw new Error('the custody service stopped');
+        },
+      }),
+    });
+    const { identity } = mount();
+    await flush();
+    await flush();
+    const before = b.calls.length;
+    expect(await identity.makeIdentity()).toBe('failed');
+    expect(identity.lastOutcome()).toBe('failed');
+    expect(identity.error()).toBe('the custody service stopped');
+    expect(identity.busy()).toBe(false);
+    expect(b.calls.length).toBeGreaterThan(before);
+  });
+
+  it('draws nothing of one account after switching to another whose backend fails', async () => {
+    setPorts({ identity: backend({ did: DID, events: [incept, add], devices }).port });
+    const { identity, devices: deviceStore } = mount();
+    await flush();
+    await flush();
+    expect(identity.did()).toBe(DID);
+    expect(deviceStore.devices()).toHaveLength(2);
+
+    const broken: IdentityPort = {
+      capabilities: () => NO_IDENTITY_CAPABILITIES,
+      status: async () => {
+        throw new Error('no answer');
+      },
+    };
+    setPorts({ identity: broken });
+    await flush();
+    await flush();
+    expect(identity.did()).toBe('');
+    expect(identity.keyLog()).toEqual([]);
+    expect(identity.statusLoaded()).toBe(false);
+    expect(identity.error()).toBe('no answer');
+    expect(deviceStore.devices()).toEqual([]);
+  });
+
+  it('drops a reply from a backend the session has already left', async () => {
+    let answer!: (value: ReturnType<typeof status>) => void;
+    const slow: IdentityPort = {
+      capabilities: () => NO_IDENTITY_CAPABILITIES,
+      status: () => new Promise((resolve) => (answer = resolve)),
+    };
+    setPorts({ identity: slow });
+    const { identity } = mount();
+    await flush();
+    setPorts({ identity: backend({ did: null, events: [], devices: [] }).port });
+    await flush();
+    await flush();
+    answer(status(DID));
+    await flush();
+    expect(identity.did()).toBe('');
+  });
+
+  it('takes the fork banner down once the backend no longer reports one', async () => {
+    let forked = true;
+    const b = backend({ did: DID, events: [incept], devices });
+    setPorts({
+      identity: {
+        ...b.port,
+        async status() {
+          return { ...status(DID), fork: forked ? { seq: 1, ours: 'QmA', theirs: 'QmB' } : null };
+        },
+      },
+    });
+    const { identity } = mount();
+    await flush();
+    await flush();
+    expect(identity.forked()).toBe(true);
+    forked = false;
+    await identity.refresh();
+    expect(identity.forked()).toBe(false);
   });
 
   it('"Start now" puts the question away on this computer', async () => {
@@ -241,7 +353,16 @@ describe('identityStore', () => {
     await flush();
     identity.startWithoutIdentity();
     expect(identity.needsFirstRun()).toBe(false);
-    expect(localStorage.getItem(START_NOW_KEY)).toBe('1');
+    expect(localStorage.getItem(startNowKey('z6MkOne'))).toBe('1');
+  });
+
+  it('remembers "Start now" for the account it was chosen in, not every account here', async () => {
+    localStorage.setItem(startNowKey('z6MkSomeoneElse'), '1');
+    setPorts({ identity: custody(backend({ did: null, events: [], devices: [] }).port, () => {}).identity });
+    const { identity } = mount();
+    await flush();
+    await flush();
+    expect(identity.needsFirstRun()).toBe(true);
   });
 
   it('reports a change the person cancelled, and reads again all the same', async () => {

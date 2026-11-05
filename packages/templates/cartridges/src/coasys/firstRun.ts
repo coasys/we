@@ -10,7 +10,7 @@ import type { OperatorToken, SchemaNode, SchemaProp } from '@we/schema-shared';
  * - **Make my identity here** opens the identity window, which shows the 12 words, asks for two of
  *   them back and keeps master #0 on this computer. The question goes away by itself once the
  *   identity exists, because `needsFirstRun` reads the key log again when the window closes.
- * - **Start now** uses the app with no identity, remembered on this computer; Settings → Security
+ * - **Start now** uses the app with no identity, remembered for this account on this computer; Settings → Security
  *   offers "Make my identity here" again.
  *
  * Where no identity can be made (`identityStore.changeBlocked`: the executor reports no identity
@@ -174,7 +174,11 @@ export const coasysFirstRun: SchemaNode = {
                 then: {
                   type: 'we-alert',
                   props: { tone: 'danger' },
-                  children: ['Your identity was not made. Nothing was published; try again.'],
+                  children: [
+                    {
+                      $: "identityStore.error != '' ? `Your identity was not made: ${identityStore.error}` : 'Your identity was not made. Nothing was published; try again.'",
+                    },
+                  ],
                 },
               },
             },

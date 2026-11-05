@@ -16,6 +16,7 @@ import {
   createEffect,
   createMemo,
   createSignal,
+  on,
   type ParentProps,
   useContext,
 } from 'solid-js';
@@ -52,15 +53,31 @@ export function DeviceStoreProvider(props: ParentProps) {
   const [devicesLoaded, setDevicesLoaded] = createSignal(false);
   const [error, setError] = createSignal('');
 
+  // As in the identity store: a reply belongs to the port it was asked of and to the latest read.
+  let generation = 0;
+  createEffect(
+    on(port, () => {
+      generation++;
+      setRaw([]);
+      setDevicesLoaded(false);
+      setError('');
+    }),
+  );
+
   async function refresh(): Promise<void> {
     const p = port();
     if (!p?.devices) return;
+    const asked = ++generation;
+    const current = () => asked === generation && port() === p;
     try {
       // A device speaking for nobody has no log, so no devices; asking would only be refused.
-      setRaw(identity.did() ? await p.devices() : []);
+      const next = identity.did() ? await p.devices() : [];
+      if (!current()) return;
+      setRaw(next);
       setDevicesLoaded(true);
       setError('');
     } catch (e) {
+      if (!current()) return;
       setError(e instanceof Error ? e.message : String(e));
     }
   }
@@ -84,7 +101,11 @@ export function DeviceStoreProvider(props: ParentProps) {
     devices: rows,
     devicesLoaded,
     validCount: () => rows().filter((d) => !d.revoked).length,
-    canManage: () => identity.canChange() && !!identity.did() && !!identity.custody()?.holdsMaster,
+    canManage: () =>
+      session.identityCapabilities().linkDevice &&
+      identity.canChange() &&
+      !!identity.did() &&
+      !!identity.custody()?.holdsMaster,
     error,
     refresh,
     addDevice: () => step(() => identity.open({ kind: 'add-device' })),
