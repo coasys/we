@@ -121,6 +121,11 @@ pub enum StepOutcome {
 }
 
 /// One input from the identity window.
+///
+/// Words and passphrases arrive as plain `String`s: they have already crossed the window's DOM, the
+/// host's IPC and the sidecar's JSON line, and serde has made its own copies on the way, none of which
+/// this crate can wipe. Each is moved into a `Secret` as soon as it is read, and that copy is wiped
+/// when the step ends; the earlier ones are only as short-lived as their owners make them.
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum StepInput {
