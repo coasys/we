@@ -1,5 +1,16 @@
 import { spawn, spawnSync } from 'child_process';
-import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, Menu, shell } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  desktopCapturer,
+  dialog,
+  ipcMain,
+  Menu,
+  net as electronNet,
+  protocol,
+  session as electronSession,
+  shell,
+} from 'electron';
 import contextMenu from 'electron-context-menu';
 import express from 'express';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
@@ -7,10 +18,11 @@ import http from 'http';
 import net from 'net';
 import { homedir } from 'os';
 import { basename, dirname, extname, join } from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { v4 as uuidv4 } from 'uuid';
 
 import { createAccountRegistry, expandHome } from './accounts.js';
+import { startCustody, superviseCustody } from './custodySidecar.js';
 import { openExecutorLog } from './executorLog.js';
 import {
   afterExecutorExit,
@@ -20,6 +32,8 @@ import {
   stopProcess,
   waitUntilReady,
 } from './executorProcess.js';
+import { createIdentity, IDENTITY_PAGE, IDENTITY_SCHEME, identityFile, isIdentityPage } from './identityWindow.js';
+import { executorSpawnEnv, handleFromWindow, isFromWindow } from './ipcSender.js';
 import {
   allowMediaPermission,
   isExternallyOpenable,
@@ -39,6 +53,9 @@ contextMenu({
   showCopyImage: true,
   showCopyImageAddress: true,
 });
+
+// The identity window's own scheme (see `identitySession`). Declared before `ready`, as Electron requires.
+protocol.registerSchemesAsPrivileged([{ scheme: IDENTITY_SCHEME, privileges: { standard: true, secure: true } }]);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -359,8 +376,8 @@ async function startExecutor() {
         'run', // The 'run' subcommand
         '--port',
         ad4mPort.toString(),
-        '--admin-credential',
-        ad4mToken,
+        // The admin credential is in the environment (`executorSpawnEnv`), not here: an argument
+        // is visible to every user of the computer through `ps`.
         '--app-data-path',
         ad4mDataPath,
         '--run-dapp-server',
@@ -374,7 +391,7 @@ async function startExecutor() {
       {
         detached: true, // Create a new process group so we can kill the entire tree
         stdio: ['ignore', 'pipe', 'pipe'], // Capture stdout/stderr instead of inherit
-        env: executorEnv(executorSettings.logLevels),
+        env: executorSpawnEnv(executorEnv(executorSettings.logLevels), ad4mToken),
       },
     );
 
@@ -445,10 +462,116 @@ async function startExecutor() {
     await waitForGraphQL(ad4mPort, proc);
 
     console.log('AD4M executor ready');
+    startCustodyFor(ad4mPort, ad4mToken);
   } catch (error) {
     console.error('Error starting executor:', error);
     throw error;
   }
+}
+
+/** The renderer bundle: copied beside the app when packaged, built into `dist` otherwise. */
+const rendererDir = () => (app.isPackaged ? join(process.resourcesPath, 'app', 'dist') : join(__dirname, '..', 'dist'));
+
+// ── Identity ─────────────────────────────────────────────────────────────────────────────────────────
+// The person's master key is kept by the custody sidecar (`custodySidecar.js`), never by the executor
+// or a web page. Only the identity window runs a flow; the main window may open it on a step and
+// read public custody state. The crate has no Windows support, so there identity is off.
+
+/** The custody sidecar while it runs, started again if it stops on its own; else null. */
+let custodySupervisor = null;
+const custody = () => custodySupervisor?.current() ?? null;
+
+/** The `we-custody` binary: beside the executor when packaged, the crate's release build otherwise. */
+const custodyBinary = () =>
+  app.isPackaged
+    ? join(process.resourcesPath, 'we-custody')
+    : join(__dirname, '..', '..', '..', 'crates', 'custody', 'target', 'release', 'we-custody');
+
+/** Starts the sidecar against the executor on `port`, whose admin credential is `credential`. */
+function startCustodyFor(port, credential) {
+  if (process.platform === 'win32') return;
+  const binary = custodyBinary();
+  if (!existsSync(binary)) {
+    console.error(
+      '[main] No custody sidecar at',
+      binary,
+      '— identity is off. Build it: cargo build --release in crates/custody',
+    );
+    return;
+  }
+  // A new supervisor per executor start, so the restarts it allows are counted afresh.
+  custodySupervisor = superviseCustody({
+    start: ({ onExit }) => startCustody({ binary, executorPort: port, credential, onExit }),
+  });
+}
+
+/** Closes the identity window and stops the sidecar: its step cannot outlive the executor it runs against. */
+async function stopCustody() {
+  identity.window()?.close();
+  const supervisor = custodySupervisor;
+  custodySupervisor = null;
+  await supervisor?.stop();
+}
+
+const identity = createIdentity({ custody, openWindow: openIdentityWindow });
+
+/**
+ * The identity window's session: in memory, its own, so it shares no storage, cookies or
+ * permissions with the app. Its page is served on its own scheme from the built bundle, never from
+ * the app's server or a dev server. It may write the clipboard (the offer link) and nothing else.
+ */
+let identitySessionMade = null;
+function identitySession() {
+  if (identitySessionMade) return identitySessionMade;
+  const own = electronSession.fromPartition('identity');
+  const dir = join(rendererDir(), 'identity');
+  own.protocol.handle(IDENTITY_SCHEME, (request) => {
+    const file = identityFile(request.url, dir);
+    if (!file || !existsSync(file)) return new globalThis.Response('Not found', { status: 404 });
+    return electronNet.fetch(pathToFileURL(file).toString());
+  });
+  const mayUse = (permission) => permission === 'clipboard-sanitized-write';
+  own.setPermissionRequestHandler((_contents, permission, callback) => callback(mayUse(permission)));
+  own.setPermissionCheckHandler((_contents, permission) => mayUse(permission));
+  identitySessionMade = own;
+  return own;
+}
+
+function openIdentityWindow({ onClosed }) {
+  const win = new BrowserWindow({
+    // The app's own name, whichever build this is (WE, or a white-labelled one); the page names none.
+    title: `${app.getName()} — your identity`,
+    icon: windowIcon(),
+    width: 480,
+    height: 640,
+    resizable: false,
+    center: true,
+    webPreferences: {
+      preload: join(__dirname, 'identityPreload.js'),
+      session: identitySession(),
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+      webSecurity: true,
+      spellcheck: false,
+      // A packaged build has no inspector here: it would show the words to anything that opens it.
+      devTools: !app.isPackaged,
+    },
+  });
+  win.removeMenu();
+  // Keep the title above: the page's own is generic, and would replace the app's name on load.
+  win.on('page-title-updated', (event) => event.preventDefault());
+  // Its own page only: no link, script or redirect takes it anywhere else, and it opens no window.
+  const stay = (event, url) => {
+    if (!isIdentityPage(event.url ?? url)) event.preventDefault();
+  };
+  win.webContents.on('will-navigate', stay);
+  win.webContents.on('will-redirect', stay);
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  win.webContents.on('will-attach-webview', (event) => event.preventDefault());
+  win.on('closed', onClosed);
+  win.loadURL(IDENTITY_PAGE);
+  return win;
 }
 
 // Start HTTP servers to serve bundled apps (production only)
@@ -459,7 +582,7 @@ function startAppServer() {
   setupSeedServers();
 
   // Setup launcher (WE app itself) on port 9080
-  const launcherDir = app.isPackaged ? join(process.resourcesPath, 'app', 'dist') : join(__dirname, '..', 'dist');
+  const launcherDir = rendererDir();
 
   if (existsSync(launcherDir)) {
     console.log('📦 Starting WE launcher server on http://localhost:9080');
@@ -742,16 +865,23 @@ function appUrl() {
   return process.env.VITE_DEV_SERVER_URL || 'http://localhost:9080';
 }
 
+/**
+ * Every invoke handler answers the main window's own top frame on the app's origin, and nothing else
+ * — see `ipcSender.js`. `get-token` is the executor's admin credential, so this is not optional.
+ */
+const isAppUrl = (url) => safeOrigin(url) !== null && safeOrigin(url) === safeOrigin(appUrl());
+const handle = (channel, handler) => handleFromWindow(ipcMain, () => mainWindow, isAppUrl, channel, handler);
+
 // IPC handlers for AD4M connection details
-ipcMain.handle('get-port', () => {
+handle('get-port', () => {
   return ad4mPort;
 });
 
-ipcMain.handle('get-token', () => {
+handle('get-token', () => {
   return ad4mToken;
 });
 
-ipcMain.handle('get-is-development', () => {
+handle('get-is-development', () => {
   return !!process.env.VITE_DEV_SERVER_URL;
 });
 
@@ -768,7 +898,7 @@ ipcMain.handle('get-is-development', () => {
  * ever published by hand with different template parameters is therefore stuck with them. The
  * marker gives WE development its own address, the same one for everyone on the same build.
  */
-ipcMain.handle('get-dev-link-language-bundle', () => {
+handle('get-dev-link-language-bundle', () => {
   if (app.isPackaged || !process.env.VITE_DEV_SERVER_URL) return null;
   try {
     const runtime = JSON.parse(readFileSync(join(__dirname, 'seed-runtime.json'), 'utf8'));
@@ -790,15 +920,30 @@ ipcMain.handle('get-dev-link-language-bundle', () => {
   }
 });
 
+// ── Identity channels ────────────────────────────────────────────────────────
+// The main window may open the identity window on a step (answered with how the step ended, never a
+// screen) and read public custody state. Only the identity window runs the flow.
+
+handle('identity-open', (_event, step) => identity.open(step));
+handle('identity-public-state', () => identity.publicState());
+
+const handleIdentity = (channel, handler) =>
+  handleFromWindow(ipcMain, () => identity.window(), isIdentityPage, channel, handler);
+
+handleIdentity('identity-flow-start', () => identity.start());
+handleIdentity('identity-flow-step', (_event, input) => identity.step(input));
+handleIdentity('identity-flow-cancel', () => identity.cancel());
+handleIdentity('identity-flow-finish', () => identity.finish());
+
 // ── Account management ───────────────────────────────────────────────────────
 // Every mutation is registry-only; nothing takes effect until the app relaunches, because the
 // executor is configured with one data path at startup and holds it for its lifetime.
 
-ipcMain.handle('accounts-list', () => accounts.list());
-ipcMain.handle('accounts-create', () => accounts.create());
-ipcMain.handle('accounts-display', (_event, id, display) => accounts.setDisplay(id, display));
-ipcMain.handle('accounts-select', (_event, id) => accounts.select(id));
-ipcMain.handle('accounts-remove', (_event, id) => accounts.remove(id));
+handle('accounts-list', () => accounts.list());
+handle('accounts-create', () => accounts.create());
+handle('accounts-display', (_event, id, display) => accounts.setDisplay(id, display));
+handle('accounts-select', (_event, id) => accounts.select(id));
+handle('accounts-remove', (_event, id) => accounts.remove(id));
 
 /**
  * Make the newly selected account take effect.
@@ -818,10 +963,10 @@ ipcMain.handle('accounts-remove', (_event, id) => accounts.remove(id));
  * Tauri cannot do this: it runs the executor in-process, and the executor's own graceful shutdown
  * ends in `std::process::exit`, so stopping it takes the app with it. That host still relaunches.
  */
-ipcMain.handle('accounts-apply', () => restartExecutorAndReload());
+handle('accounts-apply', () => restartExecutorAndReload());
 
-ipcMain.handle('executor-settings-get', () => accounts.executorSettings());
-ipcMain.handle('executor-settings-set', (_event, settings) => accounts.setExecutorSettings(settings));
+handle('executor-settings-get', () => accounts.executorSettings());
+handle('executor-settings-set', (_event, settings) => accounts.setExecutorSettings(settings));
 /**
  * Restart the executor so changed settings take effect.
  *
@@ -830,7 +975,7 @@ ipcMain.handle('executor-settings-set', (_event, settings) => accounts.setExecut
  * a shortcut: two functions that both mean "start the executor over" would drift, and the second
  * one to be written would be the one that forgets to repaint the window.
  */
-ipcMain.handle('executor-restart', () => restartExecutorAndReload());
+handle('executor-restart', () => restartExecutorAndReload());
 
 /**
  * A path on this machine, for the backend to write to or read from.
@@ -850,7 +995,7 @@ ipcMain.handle('executor-restart', () => restartExecutorAndReload());
 
   Resolves true once written, false when the dialog was closed.
 */
-ipcMain.handle('save-file', async (_event, { name, bytes } = {}) => {
+handle('save-file', async (_event, { name, bytes } = {}) => {
   if (typeof name !== 'string' || !(bytes instanceof Uint8Array))
     throw new Error('save-file: a name and bytes are required');
   const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
@@ -871,7 +1016,7 @@ ipcMain.handle('save-file', async (_event, { name, bytes } = {}) => {
   return true;
 });
 
-ipcMain.handle('executor-choose-file', async (_event, { save, defaultName } = {}) => {
+handle('executor-choose-file', async (_event, { save, defaultName } = {}) => {
   const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
   const options = { defaultPath: defaultName, filters: [{ name: 'JSON', extensions: ['json'] }] };
   const result = save
@@ -1004,7 +1149,7 @@ function askRendererForScreenSource(window, sources) {
     // on the first anyway. A stale answer to a request that has already timed out is dropped by
     // `settled`.
     const onPicked = (event, id) => {
-      if (event.sender !== window.webContents) return;
+      if (!isFromWindow(event, window, isAppUrl)) return;
       finish(typeof id === 'string' ? id : '');
     };
 
@@ -1024,7 +1169,7 @@ function askRendererForScreenSource(window, sources) {
   });
 }
 
-ipcMain.handle('get-desktop-sources', async () => {
+handle('get-desktop-sources', async () => {
   const sources = await desktopCapturer.getSources({
     types: ['screen', 'window'],
   });
@@ -1041,6 +1186,7 @@ app.whenReady().then(async () => {
     ad4mPort = Number(process.env.WE_EXTERNAL_AD4M_PORT);
     ad4mToken = process.env.WE_EXTERNAL_AD4M_TOKEN;
     console.log('[main] External executor mode — port:', ad4mPort);
+    startCustodyFor(ad4mPort, ad4mToken);
   } else {
     try {
       await startExecutor();
@@ -1104,11 +1250,14 @@ function installApplicationMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+// Stop the executor and the custody sidecar beside it.
+const stopExecutor = () => Promise.all([stopCustody(), stopExecutorProcess()]);
+
 // Stop the executor and wait for it to exit: SIGTERM lets it shut the Holochain conductor down
 // cleanly; SIGKILL to its process group (spawned detached) only if it does not exit in time.
 // A second call while a stop is in progress waits for that same stop.
 let executorStopping = Promise.resolve();
-function stopExecutor() {
+function stopExecutorProcess() {
   const proc = executorProcess;
   executorProcess = null;
   if (!proc || proc.exitCode !== null || proc.signalCode !== null) return executorStopping;

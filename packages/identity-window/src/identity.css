@@ -1,0 +1,206 @@
+/*
+  The identity window, in WE's own theme: the token ramps (`@we/tokens`), and the light and dark
+  presets worked out at build time (`vite.js`), following the computer's setting. Static CSS only,
+  so nothing a template or a theme a person installed can reach this window.
+*/
+:root {
+  color-scheme: light dark;
+  --page: var(--we-role-page);
+  --surface: var(--we-role-surface);
+  --sunken: var(--we-role-surface-sunken);
+  --border: var(--we-role-border);
+  --text: var(--we-role-text);
+  --muted: var(--we-role-text-muted);
+  --accent: var(--we-role-accent);
+  --on-accent: var(--we-role-on-accent);
+  --danger: var(--we-role-danger);
+  --on-danger: var(--we-role-on-danger);
+  --mono: var(--we-font-family-mono, ui-monospace, monospace);
+
+  font-family: var(--we-font-family-base, system-ui, sans-serif);
+  background: var(--page);
+  color: var(--text);
+}
+
+body {
+  margin: 0;
+  padding: 20px 28px 28px;
+}
+
+.brand {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 15px;
+}
+
+.mark {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: var(--accent);
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 28px;
+}
+
+h1 {
+  font-size: 26px;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+p {
+  margin: 0;
+  line-height: 1.5;
+  color: var(--muted);
+
+  /* A DID in a sentence is one long word: let it wrap rather than widen the window. */
+  overflow-wrap: anywhere;
+}
+
+.words {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+
+  /* Not selectable, so a stray select-all and copy cannot put the words on a synced clipboard. */
+  user-select: none;
+}
+
+.word {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: var(--surface);
+}
+
+.word .n,
+.mono {
+  font-family: var(--mono);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.code {
+  font-family: var(--mono);
+  font-size: 34px;
+  letter-spacing: 0.12em;
+  text-align: center;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.note {
+  font-size: 13px;
+}
+
+.error {
+  color: var(--danger);
+  font-size: 14px;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+label.check {
+  flex-direction: row;
+  gap: 10px;
+  align-items: flex-start;
+  color: var(--text);
+}
+
+input[type='text'],
+input[type='password'] {
+  font: inherit;
+  color: var(--text);
+  background: var(--sunken);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+button {
+  font: inherit;
+  border-radius: 999px;
+  padding: 10px 20px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+input:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+button.primary {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent);
+}
+
+button.danger {
+  background: var(--danger);
+  color: var(--on-danger);
+  border-color: var(--danger);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.link {
+  word-break: break-all;
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--sunken);
+  border: 1px solid var(--border);
+}
+
+.qr {
+  width: 200px;
+  height: 200px;
+  align-self: center;
+  background: white;
+  border-radius: 12px;
+  padding: 8px;
+}
+
+ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  line-height: 1.6;
+}

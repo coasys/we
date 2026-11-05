@@ -709,6 +709,46 @@ export const storeEntries: StoreEntry[] = [
     ],
   },
   {
+    name: 'identityStore',
+    state: {
+      available: { type: 'boolean' },
+      canChange: { type: 'boolean' },
+      changeBlocked: { type: 'string' },
+      status: { type: 'object' },
+      statusLoaded: { type: 'boolean' },
+      did: { type: 'string' },
+      keyId: { type: 'string' },
+      thisDeviceRevoked: { type: 'boolean' },
+      keyLog: {
+        type: 'array',
+        properties: ['seq', 'position', 'icon', 'title', 'detail', 'hash', 'hashShort', 'thisComputer'],
+      },
+      keyLogLoaded: { type: 'boolean' },
+      forked: { type: 'boolean' },
+      fork: { type: 'object' },
+      custody: { type: 'object' },
+      needsFirstRun: { type: 'boolean' },
+      busy: { type: 'boolean' },
+      lastOutcome: { type: 'string' },
+      error: { type: 'string' },
+    },
+    actions: ['refresh', 'open', 'makeIdentity', 'startWithoutIdentity'],
+  },
+  {
+    name: 'deviceStore',
+    state: {
+      devices: {
+        type: 'array',
+        properties: ['keyId', 'label', 'subtitle', 'icon', 'thisDevice', 'revoked', 'status', 'canRevoke'],
+      },
+      devicesLoaded: { type: 'boolean' },
+      validCount: { type: 'number' },
+      canManage: { type: 'boolean' },
+      error: { type: 'string' },
+    },
+    actions: ['refresh', 'addDevice', 'revoke'],
+  },
+  {
     name: 'clockStore',
     state: { clocks: { type: 'object' } },
     actions: ['play', 'pause', 'toggle', 'seek', 'seekProgress', 'setSpeed', 'setLoop', 'configure'],
@@ -1957,6 +1997,58 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       update:
         '(entity: string, id: string, fields: object, options?: { dataset?: string }): updates the named fields of one record, leaving the rest',
       delete: '(entity: string, id: string, options?: { dataset?: string }): deletes one record. Irreversible',
+    },
+  },
+  identityStore: {
+    state: {
+      available: 'boolean — the backend keeps a key log, so it can say who this device speaks for',
+      canChange:
+        'boolean — this computer can sign changes to the identity, and has said so. False where the backend cannot change an identity from here (the web, and desktop builds without a custody service): Settings shows the log and devices and offers no change. False too while the backend has not answered, and where changeBlocked says why',
+      changeBlocked:
+        'string — why the identity cannot be made or changed on this computer although it could sign changes (the backend has nowhere to publish them, say), ready to show; empty when it can. Show it beside a disabled "Make my identity here" rather than hiding the door',
+      status:
+        '{ did, deviceKey, keyId, revoked, head, fork, storeBehind } | null — what this device’s key speaks for, as the executor reports it. `storeBehind` ({ since, seq }) is set while the shared store answers the log behind what the executor has checked, which then answers from its own copy',
+      statusLoaded: 'boolean — the backend has answered `status` once. Gate a "no identity yet" sentence on it',
+      did: 'string — the person’s identifier, or empty while this device speaks for nobody',
+      keyId: 'string — this device’s id in the key log (`d1`), or empty',
+      thisDeviceRevoked: 'boolean — the key log revoked this device’s key: it no longer speaks for the person',
+      keyLog:
+        '{ seq, op, keys, position, icon, title, detail, hash, hashShort, thisComputer }[] — the key log, newest first, with what each row says made from `op` and `keys` (reword from those where a template wants other words), already worded: `title` "Created your identity", "Added d2", "Revoked d2"; `detail` the keys it names with this computer’s marked "This computer"; `hashShort` the event’s hash for a monospace column',
+      keyLogLoaded: 'boolean — the log has been read once',
+      forked: 'boolean — the backend found two different logs for this identity',
+      fork: '{ seq, ours, theirs } | null — where they part',
+      custody:
+        "{ did, holdsMaster, unlock, blocked } | null — whether this computer can sign changes, as public facts: whether it keeps a master key (`holdsMaster`, a boolean), how that key unlocks ('os' for the computer's own prompt, or 'passphrase'), and why no change can run, if one cannot (`blocked`). Null where the backend cannot change an identity from here",
+      needsFirstRun:
+        'boolean — ask the first-run question now: this computer can sign changes, this device speaks for nobody, and "Start now" was not chosen for this account on this computer. Still true where changeBlocked is set, so the person learns why; offer "Start now" then',
+      busy: 'boolean — a change is running',
+      lastOutcome: "'done' | 'cancelled' | 'failed' | '' — how the last change ended",
+      error:
+        'string — why the last read or change failed, ready to show, or empty. A change never rejects: it resolves "failed" and the reason is here, so draw it beside the control that asked',
+    },
+    actions: {
+      refresh: '(): reads the status, the key log and the custody state again',
+      open: "(change: { kind: 'create' } | { kind: 'add-device' } | { kind: 'revoke', keyId }): runs a change and resolves with its outcome once it ends; the backend asks the person itself, wherever it keeps the master key, and everything is read again then. Words, passphrases and keys never reach the app",
+      makeIdentity: '(): "Make my identity here" — runs `create`',
+      startWithoutIdentity:
+        '(): "Start now" — use this account without an identity; remembered for it on this computer, so the first-run question stops',
+    },
+  },
+  deviceStore: {
+    state: {
+      devices:
+        "{ keyId, addedSeq, revokedSeq, label, subtitle, icon, thisDevice, revoked, status, canRevoke }[] — the device keys of the person's key log, valid first and this computer on top. `label` is 'This computer' or 'Device d2' (devices have no names yet); `status` 'Valid' or 'Revoked at #2'; `canRevoke` is a valid key that is not this computer's",
+      devicesLoaded: 'boolean — the list has been read once',
+      validCount: 'number — how many keys are valid',
+      canManage: 'boolean — Add a device and Revoke can be offered: this computer keeps the master key of the identity',
+      error: 'string — why the last read failed, or empty',
+    },
+    actions: {
+      refresh: '(): reads the device list again',
+      addDevice:
+        '(): adds a device — the backend asks the person wherever it keeps the master key (on the desktop: the offer link and QR code, then the match code, then the confirmation that signs it). Resolves with the outcome; the list is read again',
+      revoke:
+        '(keyId: string): revokes that device key, once the person confirms it where the master key is kept. Resolves with the outcome',
     },
   },
   workflowStore: {
