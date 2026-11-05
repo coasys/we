@@ -7,7 +7,15 @@
  * is generated. That transport is what each app supplies; everything else
  * lives here once.
  */
-import type { AccountHost, AppConfig, ExecutorHost, HostFileSaver, PlatformAdapter, ScreenSourceHost } from './types';
+import type {
+  AccountHost,
+  AppConfig,
+  ExecutorHost,
+  HostFileSaver,
+  IdentityHost,
+  PlatformAdapter,
+  ScreenSourceHost,
+} from './types';
 
 export interface DesktopPlatformOptions {
   platform: 'electron' | 'tauri';
@@ -21,6 +29,8 @@ export interface DesktopPlatformOptions {
   saveFile?: HostFileSaver;
   /** Choosing a screen to share where the OS will not ask. See `PlatformAdapter.screenSources`. */
   screenSources?: ScreenSourceHost;
+  /** The master-key custody service, where the shell has one. See `PlatformAdapter.identity`. */
+  identity?: IdentityHost;
 }
 
 export function createDesktopPlatform(options: DesktopPlatformOptions): PlatformAdapter {
@@ -52,5 +62,6 @@ export function createDesktopPlatform(options: DesktopPlatformOptions): Platform
     executor: options.executor,
     saveFile: options.saveFile,
     screenSources: options.screenSources,
+    identity: options.identity,
   };
 }

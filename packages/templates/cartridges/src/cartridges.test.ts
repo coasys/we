@@ -32,6 +32,7 @@ import {
 } from '@we/template-kit';
 import { describe, expect, it } from 'vitest';
 
+import { coasysFirstRun } from './coasys/firstRun.ts';
 import { canvasPane } from './coasys/space/canvas.ts';
 import { DNA_LISTS } from './coasys/space/dna.ts';
 import { callPath, groupPath, personPath, SELECTED_EXPR } from './coasys/space/paths.ts';
@@ -146,6 +147,25 @@ describe('the Coasys cartridge', () => {
     expect(faces.every((f) => f.src.startsWith('data:font/woff2;base64,'))).toBe(true);
     // Nothing in it reaches out: no stylesheet carrying a url(), and no face that is not data.
     expect(glow.css ?? '').not.toMatch(/url\(/);
+  });
+
+  it('draws "Make my identity here" disabled, with the reason, on a build that cannot make one', () => {
+    const doors: SchemaNode[] = [];
+    const walk = (node: unknown): void => {
+      if (!node || typeof node !== 'object') return;
+      if (Array.isArray(node)) return node.forEach(walk);
+      const n = node as SchemaNode;
+      if (n.type === 'we-button' && JSON.stringify(n.children ?? []).includes('identityStore.custody.unlock')) {
+        doors.push(n);
+      }
+      Object.values(n).forEach(walk);
+    };
+    walk(coasysFirstRun);
+    expect(doors).toHaveLength(1);
+    const [makeHere] = doors;
+    expect((makeHere.props?.disabled as { $: string }).$).toContain("identityStore.changeBlocked != ''");
+    // The detail line reads the reason first.
+    expect(JSON.stringify(makeHere.children)).toContain('identityStore.changeBlocked ? identityStore.changeBlocked');
   });
 
   /*
