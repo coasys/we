@@ -11,6 +11,13 @@ import { comingSoon, confirmModal } from '@we/template-kit';
 
 import { accountSettings } from './AccountSettings.schema.ts';
 import { hostCredits, hostSection } from './HostSettings.schema.ts';
+import {
+  addDeviceButton,
+  deviceList,
+  deviceListFootnote,
+  keyLogSummary,
+  makeIdentityCard,
+} from './IdentitySettingsPages.ts';
 import { profileEditor } from './Profile.schema.ts';
 import { mcpServer } from './RuntimeSettings.schema.ts';
 
@@ -52,7 +59,8 @@ const identifier: SchemaNode = {
         {
           type: 'we-text',
           props: { fontFamily: 'mono', truncate: true, flex: '1', minWidth: '0' },
-          children: [{ $: 'me.did' }],
+          // The person's `did:scid` once they have made one; the session's own key before then.
+          children: [{ $: 'identityStore.did ? identityStore.did : me.did' }],
         },
         {
           type: 'we-tooltip',
@@ -65,7 +73,10 @@ const identifier: SchemaNode = {
                 size: 'sm',
                 square: true,
                 label: 'Copy your identifier',
-                onClick: { $invoke: 'clipboard.copy', args: [{ $: 'me.did' }, 'Identifier'] },
+                onClick: {
+                  $invoke: 'clipboard.copy',
+                  args: [{ $: 'identityStore.did ? identityStore.did : me.did' }, 'Identifier'],
+                },
               },
               children: [{ type: 'we-icon', props: { name: 'copy' } }],
             },
@@ -76,7 +87,12 @@ const identifier: SchemaNode = {
     {
       type: 'we-text',
       props: { variant: 'footnote', color: 'text-muted' },
-      children: ['The same on every device you use. Anyone can check what it signed.'],
+      // Only what is true today: spaces still name each device by its own key, not the identity.
+      children: [
+        {
+          $: "identityStore.did ? 'The identity your devices speak for. Spaces still show each of your devices by its own key, for now.' : 'This device’s own key. Spaces show you by it.'",
+        },
+      ],
     },
   ],
 };
@@ -117,6 +133,7 @@ export const securityPage: SchemaNode = {
   props: { gap: '400' },
   children: [
     heading('Security', 'How you get in, and the key that is you.'),
+    makeIdentityCard,
     comingSoon({
       available: can('password'),
       icon: 'password',
@@ -152,6 +169,7 @@ export const securityPage: SchemaNode = {
       title: 'Key log',
       description: 'Every change to your keys, in order, so anyone can check a signature was yours when it was made.',
       preview: [actions('See the log', 'Export')],
+      children: keyLogSummary,
     }),
     comingSoon({
       available: can('export'),
@@ -312,13 +330,17 @@ export const devicesPage: SchemaNode = {
       title: 'Your other devices',
       description: 'Every device that holds a key of yours, and removing one you no longer have.',
       preview: [actions('Remove a device')],
+      children: [deviceList, deviceListFootnote],
     }),
     comingSoon({
-      available: can('linkDevice'),
+      // Linking needs the master key: offered where this app keeps it (the desktop app's custody),
+      // whatever the backend says, since no backend can sign one in by itself.
+      available: { $: 'deviceStore.canManage' },
       icon: 'qr-code',
       title: 'Link a device',
-      description: 'Sign another phone or computer in as you, by scanning a code from this one.',
+      description: 'Sign another computer in as you, with a link from this one. You confirm a match code on both.',
       preview: [actions('Link a device')],
+      children: [{ type: 'Row', children: [addDeviceButton] }],
     }),
     comingSoon({
       available: can('switchDevice'),

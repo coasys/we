@@ -40,4 +40,17 @@ contextBridge.exposeInMainWorld('electron', {
 
   // Every download in the app: the main process asks where, and writes it. See `save-file` in main.js.
   saveFile: (file) => ipcRenderer.invoke('save-file', file),
+
+  /*
+    The identity: open the identity window on a step, which resolves with how the step ended, and
+    read public custody state. No word, passphrase or key comes this way. Absent on Windows, where
+    there is no custody service.
+  */
+  identity:
+    process.platform === 'win32'
+      ? undefined
+      : {
+          open: (step) => ipcRenderer.invoke('identity-open', step),
+          publicState: () => ipcRenderer.invoke('identity-public-state'),
+        },
 });

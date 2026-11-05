@@ -3,6 +3,7 @@ import type { Account, ExecutorSettings } from '@we/app-shell/shared';
 import { createDesktopPlatform } from '@we/app-shell/shared';
 
 import portMap from '../generated/seed-port-map.json';
+import { tauriIdentityHost } from './identityHost';
 
 /**
  * The registry lives on the Rust side — it has to, because the data path is
@@ -29,4 +30,5 @@ export const tauriPlatform = createDesktopPlatform({
     restart: () => invoke<void>('restart_executor'),
     chooseFile: (options) => invoke<string | null>('choose_file', options),
   },
+  identity: tauriIdentityHost,
 });
