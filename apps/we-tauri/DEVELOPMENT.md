@@ -47,6 +47,39 @@ holds everything logged through the `log` crate (the executor, Holochain, JS `co
 and lines marked `HOST` from `src/lib.rs`. A bare `println!` reaches the terminal only. See
 `src/executor_log.rs`.
 
+## The identity: custody and the identity window
+
+The person's master key never rests in the executor or in a web view. This app links the custody
+crate (`crates/custody`, crate `we-custody`) into its main process: where keys rest, the flows, the
+identity store, pending identities and how to test it are in `crates/custody/README.md`,
+shared with the Electron app, which runs the same crate as a sidecar.
+
+Only the **identity window** runs a flow. Its page is the shared window (`packages/identity-window`)
+over the `identity_flow_*` commands, built from `identity/` by `vite.identity.config.ts` into
+`dist/identity/` under a strict CSP, with its own capability (`src-tauri/capabilities/identity.json`).
+The main window may only open it on a step and read public custody state (`identity_open`,
+`identity_public_state`); `build.rs` declares every command in an app manifest so none is callable
+without a capability.
+
+The network names the identity store, not WE: the executor's bootstrap seed carries it, and the
+mainnet seed's store serves an ordinary build with no configuration. A build on another store passes
+`AD4M_IDENTITY_STORE_URL` and `AD4M_IDENTITY_STORE_KEYS` to the executor, from this app's run-time
+environment or else from the value the build was compiled with (`option_env!` in
+`src-tauri/src/lib.rs`), so a build handed to somebody carries them:
+
+```sh
+# A demo build that carries its store. Set both while compiling; cargo rebuilds when they change.
+AD4M_IDENTITY_STORE_URL=<store url> AD4M_IDENTITY_STORE_KEYS=<store key> pnpm tauri:build
+```
+
+They are only passed on. Which store the executor uses, and whether it trusts it, the custody
+service asks the executor (`identity.status`); with no store, or a store without its key, it
+refuses every identity step and the app says why (`crates/custody/README.md`, "The identity
+store").
+
+In the app build the generated `Cargo.toml` patches the custody crate's ad4m crates to the seed's
+checkout (`Cargo.toml.template`), so there is one ad4m in the binary.
+
 ## Optional: Embedding External Apps
 
 The Tauri launcher can embed external apps via iframe. This section uses Flux as an example, but the pattern works for any app.
