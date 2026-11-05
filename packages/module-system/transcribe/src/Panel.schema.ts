@@ -1919,7 +1919,7 @@ const historyRow: SchemaNode = {
     {
       type: 'we-timestamp',
       props: {
-        value: { $: 'pass.recordCountAt' },
+        value: { $: 'pass.createdAt' },
         relative: true,
         /*
           Relative here and not on a transcript row, because these *are* the feed of unrelated items

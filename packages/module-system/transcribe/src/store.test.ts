@@ -2187,6 +2187,45 @@ describe('staged suggestions', () => {
       });
     });
 
+    it('hangs it off the call the suggestion was on, when nobody is in a call', async () => {
+      /*
+        The usual case: a call has ended and somebody reviews what it found from a panel open on it.
+        The store's own call is empty then, and the account of the decision used to be written
+        nowhere, with no error, while the change itself went in.
+      */
+      const i = interpreterWith([change]);
+      const h = harness([], { interpretation: i.port, records: { find: async () => [held] } });
+      const byId = h.store.proposalsFor() as { get: (key: string) => unknown[] };
+      byId.get('call-past');
+      await Promise.resolve();
+      await Promise.resolve();
+
+      await h.store.applyChange('task-1', 'status');
+
+      expect(amendments(h)).toHaveLength(1);
+      expect(amendments(h)[0].options?.parent).toEqual({
+        id: 'call-past',
+        relation: 'amendments',
+        entity: 'CollectionBlock',
+      });
+    });
+
+    it('falls back to the call the record came out of, for a suggestion only known space-wide', async () => {
+      const i = interpreterWith([change]);
+      const h = harness([], {
+        interpretation: i.port,
+        records: { find: async () => [{ ...held, extractedFrom: 'call-origin' }] },
+      });
+      // What a card's marker loads: the space's suggestions, with no conversation named.
+      (h.store.changedIds as () => string[])();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      await h.store.applyChange('task-1', 'status');
+
+      expect(amendments(h)[0]?.options?.parent).toMatchObject({ id: 'call-origin' });
+    });
+
     it('writes nothing for a value equal to what the record already held', async () => {
       /*
         A staged update carries every value the pass proposed, including the ones that change
