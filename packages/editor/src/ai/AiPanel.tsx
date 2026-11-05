@@ -280,14 +280,24 @@ const STEP_WORDS: Record<string, [doing: string, done: string]> = {
 function stepWords(step: ChatStep) {
   const [doing, done] = STEP_WORDS[step.tool] ?? [`Using ${step.tool}`, `Used ${step.tool}`];
   if (step.outcome === 'stopped') return `${doing} (stopped)`;
+  // A failed call did not do what its past tense says.
+  if (step.outcome === 'error') return `${doing} failed`;
   return step.outcome === 'running' ? doing : done;
 }
 
-/** A finished step's mark: how its call went, or that the reply ended before it did. */
-const STEP_MARK: Record<Exclude<ChatStep['outcome'], 'running'>, [icon: string, color: string]> = {
-  ok: ['check-circle', 'success-text'],
-  error: ['warning-circle', 'danger-text'],
-  stopped: ['minus-circle', 'text-faint'],
+/**
+ * A finished step's mark: how its call went, or that the reply ended before it did, all faint.
+ * A done step, by far the most common, is a plain tick, so a reply that worked reads quietly; the
+ * rarer outcomes are circled, which is what makes them stand out from it.
+ * A stopped step is a minus rather than an x: somebody chose to stop it, so it should not read as
+ * a second kind of failure beside the warning.
+ * A failed step is not red: when the whole reply failed the line under the steps already says so
+ * in red, and when it did not, the agent got past the failure and it is not news.
+ */
+const STEP_MARK: Record<Exclude<ChatStep['outcome'], 'running'>, string> = {
+  ok: 'check',
+  error: 'warning-circle',
+  stopped: 'minus-circle',
 };
 
 /** The tool calls behind a reply: open while it runs, folded to a count once it has settled. */
@@ -299,7 +309,7 @@ function ReplySteps(props: { steps: ChatStep[]; running: boolean }) {
       <Show when={!props.running}>
         <we-button variant="bare" size="xs" alignSelf="flex-start" onClick={() => setUnfolded(!open())}>
           <Row ay="center" gap="100">
-            <we-icon name={open() ? 'caret-down' : 'caret-right'} size="xs" color="text-faint" />
+            <we-icon name={open() ? 'caret-down' : 'caret-right'} size="xs" color="text-muted" />
             <we-text variant="footnote" color="text-muted">
               {props.steps.length === 1 ? '1 step' : `${props.steps.length} steps`}
             </we-text>
@@ -310,18 +320,14 @@ function ReplySteps(props: { steps: ChatStep[]; running: boolean }) {
         <For each={props.steps}>
           {(step) => (
             <Row ay="center" gap="200" minWidth="0">
-              <Show
-                when={step.outcome !== 'running'}
-                fallback={<we-animated-icon name="spinner" size="xs" flexShrink="0" />}
-              >
-                <we-icon
-                  name={STEP_MARK[step.outcome as keyof typeof STEP_MARK][0]}
-                  size="xs"
-                  color={STEP_MARK[step.outcome as keyof typeof STEP_MARK][1]}
-                  flexShrink="0"
-                />
-              </Show>
-              <we-text variant="footnote" color="text-muted" truncate>
+              {/* One slot for every mark, so the text lines up whichever is drawn. The spinner is a
+                  size smaller: its ring fills its box, where a glyph leaves a margin round itself. */}
+              <Row width="var(--we-size-xs)" height="var(--we-size-xs)" ax="center" ay="center" flexShrink="0">
+                <Show when={step.outcome !== 'running'} fallback={<we-animated-icon name="spinner" size="xxs" />}>
+                  <we-icon name={STEP_MARK[step.outcome as keyof typeof STEP_MARK]} size="xs" color="text-faint" />
+                </Show>
+              </Row>
+              <we-text variant="footnote" color="text-faint" truncate>
                 {step.error ? `${stepWords(step)}: ${step.error}` : stepWords(step)}
               </we-text>
             </Row>
@@ -373,11 +379,13 @@ function MessageBubble(props: {
       maxWidth={isUser() ? '90%' : '100%'}
       alignSelf={isUser() ? 'flex-end' : 'flex-start'}
     >
-      <Show when={displayContent()}>
-        <we-markdown content={displayContent()} markdownGap="400" />
-      </Show>
+      {/* The steps first: they ran before the text was written, and the text then lands under them
+          rather than pushing them down as they fold. */}
       <Show when={steps().length > 0}>
         <ReplySteps steps={steps()} running={replyStatus() === 'running' || !!props.isStreaming} />
+      </Show>
+      <Show when={displayContent()}>
+        <we-markdown content={displayContent()} markdownGap="400" />
       </Show>
       <Show when={unfinished()}>
         <Row ay="center" gap="200" wrap>
