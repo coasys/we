@@ -60,7 +60,10 @@ Log lines go to stderr and carry no secret.
 `identityStore: { url, keys }` — the store's URL and the keys that sign its heads — and the
 executor uses that store unless it is given another. WE holds no store URL or key of its own; the
 mainnet seed names `https://store.ad4m.dev` and its key, so an ordinary build makes, links and
-revokes identities with no configuration.
+revokes identities with no configuration. An account set up before seeds carried `identityStore`
+keeps its old `mainnet_seed.seed` (both apps run `init` only when there is none); the executor
+reads a seed without the field as its compiled-in network's store, so that account needs nothing
+either.
 
 A build on another store passes it to the executor as two settings, named as the executor's own CLI
 names them: `AD4M_IDENTITY_STORE_URL` (where the store is) and `AD4M_IDENTITY_STORE_KEYS` (its
