@@ -10,7 +10,7 @@
  * The vault (`vault`):
  * - `memory`, the default: the custody service keeps its items in memory, so the run leaves nothing
  *   in the session's keyring.
- * - `os`: the Secret Service, from a `gnome-keyring-daemon` the driver starts in the run's D-Bus
+ * - `os`: the Secret Service, from a `gnome-keyring-daemon` the driver starts on the app's own D-Bus
  *   session and unlocks, as a person's session is unlocked at login. On Linux the custody item is
  *   sealed under the passphrase the person types in the identity window either way: no OS prompt is
  *   shown, so there is nothing for the harness to answer.
@@ -19,6 +19,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { type AppBus, startAppBus, unmountUnder } from '../session.ts';
 import type { LocalWorld } from '../world/local.ts';
 import { Proc } from '../world/proc.ts';
 import type { Display } from './display.ts';
@@ -55,11 +56,13 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export class DesktopApp {
   private constructor(
     readonly name: string,
+    private readonly root: string,
     readonly home: string,
     readonly dataPath: string,
     private readonly link: HarnessLink,
     private readonly proc: Proc,
     private readonly keyring: Proc | null,
+    private readonly bus: AppBus,
   ) {}
 
   /** Starts the harness build with a fresh home and data folder, and waits for it to dial in. */
@@ -96,15 +99,27 @@ export class DesktopApp {
       COASYS_HARNESS_VAULT: vault,
     };
 
+    // A bus of the app's own: one shared by the run's apps hands the next app whatever the last
+    // one's bus started on demand — the portal starts a Secret Service, and then a keyring the
+    // driver starts for `vault: 'os'` finds the name taken and never serves it.
+    const bus = await startAppBus(world.spawn.bind(world), `dbus-${options.name}`, runtime, env);
+    env.DBUS_SESSION_BUS_ADDRESS = bus.address;
+
     let keyring: Proc | null = null;
-    if (vault === 'os') keyring = await startKeyring(world, env);
+    try {
+      if (vault === 'os') keyring = await startKeyring(world, env);
+    } catch (error) {
+      await bus.proc.stop();
+      unmountUnder(root);
+      throw error;
+    }
 
     const link = await HarnessLink.listen();
     const proc = world.spawn(`desktop-${options.name}`, world.checkout.app, [], {
       cwd: world.checkout.testsJs,
       env: { ...env, COASYS_HARNESS_URL: link.url, COASYS_HARNESS_TOKEN: link.token },
     });
-    const app = new DesktopApp(options.name, home, dataPath, link, proc, keyring);
+    const app = new DesktopApp(options.name, root, home, dataPath, link, proc, keyring, bus);
     try {
       await Promise.race([
         link.connected(120_000),
@@ -215,10 +230,14 @@ export class DesktopApp {
     await this.link.close();
     await this.proc.stop();
     await this.keyring?.stop();
+    await this.bus.proc.stop();
+    // The portal its bus started mounts `doc` in the app's runtime folder; the world's folder is
+    // removed after a pass.
+    unmountUnder(this.root);
   }
 }
 
-/** A Secret Service in the run's D-Bus session, unlocked as a login would unlock it. */
+/** A Secret Service on the app's own D-Bus session, unlocked as a login would unlock it. */
 async function startKeyring(world: LocalWorld, env: NodeJS.ProcessEnv): Promise<Proc> {
   if (!env.DBUS_SESSION_BUS_ADDRESS) {
     throw new Error('vault "os" needs a D-Bus session: run the acceptance world under dbus-run-session');

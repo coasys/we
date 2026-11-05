@@ -32,7 +32,9 @@ cli ─ runner ─┬─ local world: identity-store (temp database), executors,
   that is on needs two sites. The local edge (a TLS proxy with a test certificate authority) comes
   with the first web scenario.
 - **The session** (`src/session.ts`): a run is its own D-Bus session (`dbus-run-session`) with its
-  own runtime folder, so no service the bus starts finds the person's own keyring.
+  own runtime folder, so no service the bus starts finds the person's own keyring. Each app the
+  driver launches gets a session bus of its own inside it, in the app's runtime folder, so what one
+  app's bus starts on demand (the desktop portal, a Secret Service) is gone before the next app.
 - **The desktop driver** (`src/drivers/`): starts the desktop app's harness build on the run's X
   display, with a fresh home and data folder, and waits for it to dial the harness link. A scenario
   then acts in the main window and the identity window as a person: it reads the text on screen,
@@ -40,7 +42,7 @@ cli ─ runner ─┬─ local world: identity-store (temp database), executors,
   label. The harness build adds no command and no capability to the app; it reaches the windows
   through WebKitGTK from the app's own process.
 - **The vault**: the app keeps custody items in memory by default (`vault: 'memory'`), so a run
-  leaves nothing in a keyring; `vault: 'os'` uses the session's Secret Service, from a
+  leaves nothing in a keyring; `vault: 'os'` uses a Secret Service on the app's own bus, from a
   `gnome-keyring-daemon` the driver starts and unlocks. On Linux the person types the passphrase in
   the identity window either way; there is no OS prompt for the harness to answer.
 - **Scenarios** (`src/scenarios/`): each says what it proves, where it runs, and whether it is on or

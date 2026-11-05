@@ -3,11 +3,17 @@
  * (`XDG_RUNTIME_DIR`) made for the run. Every service the bus starts on demand (a keyring, a desktop
  * portal) starts in that folder, so none of them finds the person's own keyring and serves it to
  * the app under test.
+ *
+ * Each app a scenario launches gets a session bus of its own inside that (`startAppBus`), in the
+ * app's own runtime folder: what one app's bus starts on demand (the portal, a Secret Service) is
+ * gone with it, so the next app, or a keyring the driver starts, never meets it.
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+
+import type { Proc } from './world/proc.ts';
 
 const INSIDE = 'WE_ACCEPTANCE_SESSION';
 
@@ -40,7 +46,7 @@ export async function inSession(): Promise<boolean> {
  * `doc`, gvfs). They outlive the bus as stale mounts, and a removal through one fails, so this
  * detaches each mount under `dir` first.
  */
-function unmountUnder(dir: string): void {
+export function unmountUnder(dir: string): void {
   let mounts: string[];
   try {
     mounts = readFileSync('/proc/self/mounts', 'utf8')
@@ -53,4 +59,46 @@ function unmountUnder(dir: string): void {
   for (const point of mounts) {
     spawnSync('fusermount3', ['-u', '-z', point], { stdio: 'ignore' });
   }
+}
+
+/** What starts a process that stops with its owner: `LocalWorld.spawn`, or a `Proc` in a test. */
+export type SpawnProc = (
+  label: string,
+  command: string,
+  args: string[],
+  options: { cwd?: string; env?: NodeJS.ProcessEnv },
+) => Proc;
+
+export interface AppBus {
+  /** The bus's `DBUS_SESSION_BUS_ADDRESS`. */
+  address: string;
+  proc: Proc;
+}
+
+/**
+ * A D-Bus session bus of one app's own, listening in `runtime` and started with `env` — so the
+ * services it starts on demand get that app's home and runtime folder. Answers once it is accepting
+ * connections.
+ */
+export async function startAppBus(
+  spawnProc: SpawnProc,
+  label: string,
+  runtime: string,
+  env: NodeJS.ProcessEnv,
+): Promise<AppBus> {
+  const proc = spawnProc(
+    label,
+    'dbus-daemon',
+    [
+      '--session',
+      '--nofork',
+      '--nopidfile',
+      '--nosyslog',
+      `--address=unix:path=${join(runtime, 'bus')}`,
+      '--print-address=1',
+    ],
+    { env },
+  );
+  const address = (await proc.waitFor((line) => line.startsWith('unix:'), 10_000, 'bus address')).trim();
+  return { address, proc };
 }
