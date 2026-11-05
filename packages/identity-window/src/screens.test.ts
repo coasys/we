@@ -61,6 +61,10 @@ describe('the identity window', () => {
     expect(isLast({ screen: 'offer', link: '', qrSvg: '', expires: 0 })).toBe(false);
   });
 
+  it('names no app: the host titles the window, so a WE build and a Coasys build say their own name', () => {
+    for (const source of [windowSource, screensSource]) expect(source).not.toMatch(/Coasys/);
+  });
+
   it('runs under the strict policy: no remote content, no inline script, no string sinks', () => {
     expect(IDENTITY_CSP).toContain("default-src 'none'");
     expect(IDENTITY_CSP).toContain("script-src 'self'");
@@ -68,10 +72,12 @@ describe('the identity window', () => {
     expect(IDENTITY_CSP).toContain("require-trusted-types-for 'script'");
   });
 
-  it('imports nothing of WE: no template, store or module code reaches the window', () => {
+  it('imports no code of WE: no template, store or module code reaches the window', () => {
+    // Stylesheets only: the token ramps, and the themes `vite.js` works out at build time.
+    const styles = ['@we/tokens/css/color', 'virtual:we-identity-theme.css'];
     for (const source of [indexSource, windowSource, screensSource]) {
       const imports = [...source.matchAll(/(?:from|import) '([^']+)'/g)].map((m) => m[1]);
-      for (const name of imports) expect(name.startsWith('./')).toBe(true);
+      for (const name of imports) expect(name.startsWith('./') || styles.includes(name)).toBe(true);
       expect(source).not.toMatch(/\.(innerHTML|outerHTML|insertAdjacentHTML)\b|document\.write\(/);
     }
   });

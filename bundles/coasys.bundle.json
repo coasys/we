@@ -27,523 +27,429 @@
           "condition": { "$": "sessionStore.bootState == 'ready'" },
           "then": {
             "type": "Column",
-            "props": { "styles": { "$": "shellStore.panelMaximised ? { display: 'none' } : null" } },
+            "props": { "display": "contents" },
             "children": [
               {
                 "type": "Column",
-                "props": {
-                  "width": { "$": "local.expanded ? '256px' : '72px'" },
-                  "transition": "width 300 ease-in-out",
-                  "height": "100%",
-                  "overflow": "hidden",
-                  "bg": "chrome",
-                  "borderRight": "1px solid border",
-                  "position": "fixed",
-                  "zIndex": "chrome",
-                  "top": "0",
-                  "left": "0",
-                  "onMouseEnter": { "$setLocal": "expanded", "value": true },
-                  "onMouseLeave": { "$setLocal": "expanded", "value": false }
-                },
-                "$localState": {
-                  "expanded": { "type": "boolean", "initial": false },
-                  "collapsedGroups": { "type": "array", "initial": [] },
-                  "railInset": { "type": "string", "initial": "calc((72px - 1px - 2rem) / 2 - var(--we-space-200))" },
-                  "confirmGuestLogout": { "type": "boolean", "initial": false }
-                },
+                "props": { "display": { "$": "shellStore.panelMaximised ? 'none' : 'flex'" } },
                 "children": [
-                  {
-                    "type": "Row",
-                    "props": {
-                      "height": "72px",
-                      "flex": "0 0 auto",
-                      "ay": "center",
-                      "gap": "300",
-                      "pl": "calc((72px - 28px) / 2)",
-                      "minWidth": "0",
-                      "width": "100%",
-                      "cursor": "pointer",
-                      "onClick": { "$invoke": "shellStore.openShellView", "args": ["landing-page"] }
-                    },
-                    "children": [
-                      {
-                        "type": "we-image",
-                        "props": {
-                          "src": { "$": "templateStore.brand.mark" },
-                          "alt": "Coasys",
-                          "width": "28px",
-                          "height": "28px",
-                          "flexShrink": 0
-                        }
-                      },
-                      {
-                        "type": "$if",
-                        "props": {
-                          "condition": { "$": "local.expanded" },
-                          "enterTransition": [
-                            { "type": "reveal", "axis": "inline", "duration": 250 },
-                            { "type": "fade", "duration": 150 }
-                          ],
-                          "exitTransition": [
-                            { "type": "reveal", "axis": "inline", "duration": 250 },
-                            { "type": "fade", "duration": 150 }
-                          ],
-                          "then": {
-                            "type": "we-text",
-                            "props": {
-                              "variant": "body",
-                              "fontWeight": "semibold",
-                              "letterSpacing": "tight",
-                              "truncate": true
-                            },
-                            "children": [{ "$": "templateStore.brand.name" }]
-                          }
-                        }
-                      }
-                    ]
-                  },
                   {
                     "type": "Column",
                     "props": {
-                      "flex": "1",
-                      "width": "100%",
-                      "gap": "200",
-                      "px": "200",
-                      "py": "300",
-                      "ay": "center",
-                      "overflowY": "auto",
-                      "overflowX": "hidden"
+                      "width": { "$": "local.expanded ? '256px' : '72px'" },
+                      "transition": "width 300 ease-in-out",
+                      "height": "100%",
+                      "overflow": "hidden",
+                      "bg": "chrome",
+                      "borderRight": "1px solid border",
+                      "position": "fixed",
+                      "zIndex": "chrome",
+                      "top": "0",
+                      "left": "0",
+                      "onMouseEnter": { "$setLocal": "expanded", "value": true },
+                      "onMouseLeave": { "$setLocal": "expanded", "value": false }
+                    },
+                    "$localState": {
+                      "expanded": { "type": "boolean", "initial": false },
+                      "collapsedGroups": { "type": "array", "initial": [] },
+                      "railInset": {
+                        "type": "string",
+                        "initial": "calc((72px - 1px - 2rem) / 2 - var(--we-space-200))"
+                      },
+                      "confirmGuestLogout": { "type": "boolean", "initial": false }
                     },
                     "children": [
                       {
-                        "type": "Column",
-                        "key": "spaces",
-                        "props": { "width": "100%", "gap": "200" },
+                        "type": "Row",
+                        "props": {
+                          "height": "72px",
+                          "flex": "0 0 auto",
+                          "ay": "center",
+                          "gap": "300",
+                          "pl": "calc((72px - 28px) / 2)",
+                          "minWidth": "0",
+                          "width": "100%",
+                          "cursor": "pointer",
+                          "onClick": { "$invoke": "shellStore.openShellView", "args": ["landing-page"] }
+                        },
                         "children": [
                           {
-                            "type": "Row",
+                            "type": "we-image",
                             "props": {
-                              "width": "100%",
-                              "ay": "center",
-                              "gap": "100",
-                              "opacity": { "$": "local.expanded ? 1 : 0" },
-                              "pointerEvents": { "$": "local.expanded ? 'auto' : 'none'" },
-                              "transition": "opacity 300 ease-in-out"
-                            },
+                              "src": { "$": "templateStore.brand.mark" },
+                              "alt": "Coasys",
+                              "width": "28px",
+                              "height": "28px",
+                              "flexShrink": 0
+                            }
+                          },
+                          {
+                            "type": "$if",
+                            "props": {
+                              "condition": { "$": "local.expanded" },
+                              "enterTransition": [
+                                { "type": "reveal", "axis": "inline", "duration": 250 },
+                                { "type": "fade", "duration": 150 }
+                              ],
+                              "exitTransition": [
+                                { "type": "reveal", "axis": "inline", "duration": 250 },
+                                { "type": "fade", "duration": 150 }
+                              ],
+                              "then": {
+                                "type": "we-text",
+                                "props": {
+                                  "variant": "body",
+                                  "fontWeight": "semibold",
+                                  "letterSpacing": "tight",
+                                  "truncate": true
+                                },
+                                "children": [{ "$": "templateStore.brand.name" }]
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "type": "Column",
+                        "props": {
+                          "flex": "1",
+                          "width": "100%",
+                          "gap": "200",
+                          "px": "200",
+                          "py": "300",
+                          "ay": "center",
+                          "overflowY": "auto",
+                          "overflowX": "hidden"
+                        },
+                        "children": [
+                          {
+                            "type": "Column",
+                            "key": "spaces",
+                            "props": { "width": "100%", "gap": "200" },
                             "children": [
                               {
                                 "type": "Row",
                                 "props": {
-                                  "flex": "1",
-                                  "minWidth": "0",
-                                  "ax": "start",
-                                  "ay": "center",
-                                  "gap": "200",
-                                  "py": "200",
-                                  "px": { "$": "local.railInset" },
-                                  "color": "text-faint"
-                                },
-                                "children": [
-                                  {
-                                    "type": "we-text",
-                                    "props": { "fontSize": "200", "fontWeight": "600", "truncate": true },
-                                    "children": ["Spaces"]
-                                  }
-                                ]
-                              }
-                            ]
-                          },
-                          {
-                            "type": "Column",
-                            "props": { "width": "100%", "gap": "200" },
-                            "children": [
-                              {
-                                "type": "we-sortable",
-                                "props": {
-                                  "direction": "vertical",
-                                  "gap": "var(--we-space-200)",
                                   "width": "100%",
-                                  "onReorder": {
-                                    "$invoke": "datasetStore.reorderDatasets",
-                                    "args": [{ "$": "arg.detail" }]
-                                  }
+                                  "ay": "center",
+                                  "gap": "100",
+                                  "opacity": { "$": "local.expanded ? 1 : 0" },
+                                  "pointerEvents": { "$": "local.expanded ? 'auto' : 'none'" },
+                                  "transition": "opacity 300 ease-in-out"
                                 },
                                 "children": [
                                   {
-                                    "type": "$each",
-                                    "props": { "items": { "$": "spaceStore.orderedSidebarItems" }, "as": "space" },
+                                    "type": "Row",
+                                    "props": {
+                                      "flex": "1",
+                                      "minWidth": "0",
+                                      "ax": "start",
+                                      "ay": "center",
+                                      "gap": "200",
+                                      "py": "200",
+                                      "px": { "$": "local.railInset" },
+                                      "color": "text-faint"
+                                    },
                                     "children": [
                                       {
-                                        "type": "div",
-                                        "props": { "data-we-id": { "$": "space.uuid" }, "style": { "width": "100%" } },
+                                        "type": "we-text",
+                                        "props": { "fontSize": "200", "fontWeight": "600", "truncate": true },
+                                        "children": ["Spaces"]
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "Column",
+                                "props": { "width": "100%", "gap": "200" },
+                                "children": [
+                                  {
+                                    "type": "we-sortable",
+                                    "props": {
+                                      "direction": "vertical",
+                                      "gap": "var(--we-space-200)",
+                                      "width": "100%",
+                                      "onReorder": {
+                                        "$invoke": "datasetStore.reorderDatasets",
+                                        "args": [{ "$": "arg.detail" }]
+                                      }
+                                    },
+                                    "children": [
+                                      {
+                                        "type": "$each",
+                                        "props": { "items": { "$": "spaceStore.orderedSidebarItems" }, "as": "space" },
                                         "children": [
                                           {
-                                            "type": "we-button",
+                                            "type": "div",
                                             "props": {
-                                              "variant": "ghost",
-                                              "size": "lg",
-                                              "width": "100%",
-                                              "height": "auto",
-                                              "ax": "start",
-                                              "ay": "center",
-                                              "gap": "200",
-                                              "py": "300",
-                                              "px": { "$": "local.railInset" },
-                                              "label": { "$": "space.name" },
-                                              "onClick": {
-                                                "$invoke": "spaceStore.navigateToSpace",
-                                                "args": [{ "$": "space.spaceId" }]
-                                              },
-                                              "bg": {
-                                                "$": "(space.spaceId == routeStore.segments[1] && !shellStore.activeShellView) ? 'accent-soft' : ''"
-                                              },
-                                              "color": {
-                                                "$": "(space.spaceId == routeStore.segments[1] && !shellStore.activeShellView) ? 'accent-text' : 'text-muted'"
-                                              },
-                                              "hoverProps": {
-                                                "$": "(space.spaceId == routeStore.segments[1] && !shellStore.activeShellView) ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-hover', color: 'text' }"
-                                              },
-                                              "activeProps": {
-                                                "$": "(space.spaceId == routeStore.segments[1] && !shellStore.activeShellView) ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-active', color: 'text' }"
-                                              }
+                                              "data-we-id": { "$": "space.uuid" },
+                                              "style": { "width": "100%" }
                                             },
                                             "children": [
                                               {
-                                                "type": "$if",
+                                                "type": "we-button",
                                                 "props": {
-                                                  "condition": {
-                                                    "$": "modules.call.active && `neighbourhood://${space.spaceId}` == modules.call.callSpace.uri"
+                                                  "variant": "ghost",
+                                                  "size": "lg",
+                                                  "width": "100%",
+                                                  "height": "auto",
+                                                  "ax": "start",
+                                                  "ay": "center",
+                                                  "gap": "200",
+                                                  "py": "300",
+                                                  "px": { "$": "local.railInset" },
+                                                  "label": { "$": "space.name" },
+                                                  "onClick": {
+                                                    "$invoke": "spaceStore.navigateToSpace",
+                                                    "args": [{ "$": "space.spaceId" }]
                                                   },
-                                                  "then": {
-                                                    "type": "Column",
+                                                  "bg": {
+                                                    "$": "(space.spaceId == routeStore.segments[1] && !shellStore.activeShellView) ? 'accent-soft' : ''"
+                                                  },
+                                                  "color": {
+                                                    "$": "(space.spaceId == routeStore.segments[1] && !shellStore.activeShellView) ? 'accent-text' : 'text-muted'"
+                                                  },
+                                                  "hoverProps": {
+                                                    "$": "(space.spaceId == routeStore.segments[1] && !shellStore.activeShellView) ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-hover', color: 'text' }"
+                                                  },
+                                                  "activeProps": {
+                                                    "$": "(space.spaceId == routeStore.segments[1] && !shellStore.activeShellView) ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-active', color: 'text' }"
+                                                  }
+                                                },
+                                                "children": [
+                                                  {
+                                                    "type": "$if",
                                                     "props": {
-                                                      "position": "relative",
-                                                      "flex": "0 0 auto",
-                                                      "flexShrink": "0"
-                                                    },
-                                                    "children": [
-                                                      {
+                                                      "condition": {
+                                                        "$": "modules.call.active && `neighbourhood://${space.spaceId}` == modules.call.callSpace.uri"
+                                                      },
+                                                      "then": {
+                                                        "type": "Column",
+                                                        "props": {
+                                                          "position": "relative",
+                                                          "flex": "0 0 auto",
+                                                          "flexShrink": "0"
+                                                        },
+                                                        "children": [
+                                                          {
+                                                            "type": "we-avatar",
+                                                            "props": {
+                                                              "image": { "$": "space.avatar" },
+                                                              "initials": { "$": "space.name" },
+                                                              "hash": { "$": "space.uuid" },
+                                                              "size": "sm",
+                                                              "ringColor": "success",
+                                                              "ringWidth": "2.5px"
+                                                            }
+                                                          },
+                                                          {
+                                                            "type": "Column",
+                                                            "props": {
+                                                              "position": "absolute",
+                                                              "bottom": "calc(var(--we-avatar-size-sm) * -0.1348)",
+                                                              "right": "calc(var(--we-avatar-size-sm) * -0.1348)",
+                                                              "bg": "var(--we-role-success)",
+                                                              "r": "full",
+                                                              "p": "calc(var(--we-avatar-size-sm) * 0.125)",
+                                                              "ax": "center",
+                                                              "ay": "center"
+                                                            },
+                                                            "children": [
+                                                              {
+                                                                "type": "we-icon",
+                                                                "props": {
+                                                                  "name": "phone-call",
+                                                                  "size": "calc(var(--we-avatar-size-sm) * 0.3125)",
+                                                                  "color": "on-success"
+                                                                }
+                                                              }
+                                                            ]
+                                                          }
+                                                        ]
+                                                      },
+                                                      "else": {
                                                         "type": "we-avatar",
                                                         "props": {
                                                           "image": { "$": "space.avatar" },
                                                           "initials": { "$": "space.name" },
                                                           "hash": { "$": "space.uuid" },
                                                           "size": "sm",
-                                                          "ringColor": "success",
-                                                          "ringWidth": "2.5px"
+                                                          "flexShrink": "0"
                                                         }
-                                                      },
-                                                      {
-                                                        "type": "Column",
-                                                        "props": {
-                                                          "position": "absolute",
-                                                          "bottom": "calc(var(--we-avatar-size-sm) * -0.1348)",
-                                                          "right": "calc(var(--we-avatar-size-sm) * -0.1348)",
-                                                          "bg": "var(--we-role-success)",
-                                                          "r": "full",
-                                                          "p": "calc(var(--we-avatar-size-sm) * 0.125)",
-                                                          "ax": "center",
-                                                          "ay": "center"
-                                                        },
+                                                      }
+                                                    }
+                                                  },
+                                                  {
+                                                    "type": "$if",
+                                                    "props": {
+                                                      "condition": { "$": "local.expanded" },
+                                                      "enterTransition": [
+                                                        { "type": "reveal", "axis": "inline", "duration": 250 },
+                                                        { "type": "fade", "duration": 150 }
+                                                      ],
+                                                      "exitTransition": [
+                                                        { "type": "reveal", "axis": "inline", "duration": 250 },
+                                                        { "type": "fade", "duration": 150 }
+                                                      ],
+                                                      "then": {
+                                                        "type": "Row",
+                                                        "props": { "gap": "200", "ay": "center", "minWidth": "0" },
                                                         "children": [
                                                           {
-                                                            "type": "we-icon",
-                                                            "props": {
-                                                              "name": "phone-call",
-                                                              "size": "calc(var(--we-avatar-size-sm) * 0.3125)",
-                                                              "color": "on-success"
-                                                            }
+                                                            "type": "we-text",
+                                                            "props": { "truncate": true, "fontSize": "300" },
+                                                            "children": [{ "$": "space.name" }]
                                                           }
                                                         ]
                                                       }
-                                                    ]
-                                                  },
-                                                  "else": {
-                                                    "type": "we-avatar",
-                                                    "props": {
-                                                      "image": { "$": "space.avatar" },
-                                                      "initials": { "$": "space.name" },
-                                                      "hash": { "$": "space.uuid" },
-                                                      "size": "sm",
-                                                      "flexShrink": "0"
                                                     }
                                                   }
-                                                }
-                                              },
-                                              {
-                                                "type": "$if",
-                                                "props": {
-                                                  "condition": { "$": "local.expanded" },
-                                                  "enterTransition": [
-                                                    { "type": "reveal", "axis": "inline", "duration": 250 },
-                                                    { "type": "fade", "duration": 150 }
-                                                  ],
-                                                  "exitTransition": [
-                                                    { "type": "reveal", "axis": "inline", "duration": 250 },
-                                                    { "type": "fade", "duration": 150 }
-                                                  ],
-                                                  "then": {
-                                                    "type": "Row",
-                                                    "props": { "gap": "200", "ay": "center", "minWidth": "0" },
-                                                    "children": [
-                                                      {
-                                                        "type": "we-text",
-                                                        "props": { "truncate": true, "fontSize": "300" },
-                                                        "children": [{ "$": "space.name" }]
-                                                      }
-                                                    ]
-                                                  }
-                                                }
+                                                ]
                                               }
                                             ]
                                           }
                                         ]
                                       }
                                     ]
-                                  }
-                                ]
-                              },
-                              {
-                                "type": "we-button",
-                                "props": {
-                                  "variant": "ghost",
-                                  "size": "lg",
-                                  "width": "100%",
-                                  "height": "auto",
-                                  "ax": "start",
-                                  "ay": "center",
-                                  "gap": "200",
-                                  "py": "300",
-                                  "px": { "$": "local.railInset" },
-                                  "label": "Create a space",
-                                  "onClick": { "$invoke": "shellStore.setCreateSpaceOpen", "args": [true] },
-                                  "bg": { "$": "false ? 'accent-soft' : ''" },
-                                  "color": { "$": "false ? 'accent-text' : 'text-muted'" },
-                                  "hoverProps": {
-                                    "$": "false ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-hover', color: 'text' }"
                                   },
-                                  "activeProps": {
-                                    "$": "false ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-active', color: 'text' }"
-                                  }
-                                },
-                                "children": [
                                   {
-                                    "type": "Row",
+                                    "type": "we-button",
                                     "props": {
-                                      "width": "2rem",
-                                      "height": "2rem",
-                                      "ax": "center",
+                                      "variant": "ghost",
+                                      "size": "lg",
+                                      "width": "100%",
+                                      "height": "auto",
+                                      "ax": "start",
                                       "ay": "center",
-                                      "flexShrink": "0"
-                                    },
-                                    "children": [{ "type": "we-icon", "props": { "name": "plus", "size": "sm" } }]
-                                  },
-                                  {
-                                    "type": "$if",
-                                    "props": {
-                                      "condition": { "$": "local.expanded" },
-                                      "enterTransition": [
-                                        { "type": "reveal", "axis": "inline", "duration": 250 },
-                                        { "type": "fade", "duration": 150 }
-                                      ],
-                                      "exitTransition": [
-                                        { "type": "reveal", "axis": "inline", "duration": 250 },
-                                        { "type": "fade", "duration": 150 }
-                                      ],
-                                      "then": {
-                                        "type": "Row",
-                                        "props": { "gap": "200", "ay": "center", "minWidth": "0" },
-                                        "children": [
-                                          {
-                                            "type": "we-text",
-                                            "props": { "truncate": true, "fontSize": "300" },
-                                            "children": ["Create a space"]
-                                          }
-                                        ]
+                                      "gap": "200",
+                                      "py": "300",
+                                      "px": { "$": "local.railInset" },
+                                      "label": "Create a space",
+                                      "onClick": { "$invoke": "shellStore.setCreateSpaceOpen", "args": [true] },
+                                      "bg": { "$": "false ? 'accent-soft' : ''" },
+                                      "color": { "$": "false ? 'accent-text' : 'text-muted'" },
+                                      "hoverProps": {
+                                        "$": "false ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-hover', color: 'text' }"
+                                      },
+                                      "activeProps": {
+                                        "$": "false ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-active', color: 'text' }"
                                       }
-                                    }
-                                  }
-                                ]
-                              },
-                              {
-                                "type": "we-button",
-                                "props": {
-                                  "variant": "ghost",
-                                  "size": "lg",
-                                  "width": "100%",
-                                  "height": "auto",
-                                  "ax": "start",
-                                  "ay": "center",
-                                  "gap": "200",
-                                  "py": "300",
-                                  "px": { "$": "local.railInset" },
-                                  "label": "Join a space",
-                                  "onClick": { "$invoke": "shellStore.setJoinSpaceOpen", "args": [true] },
-                                  "bg": { "$": "false ? 'accent-soft' : ''" },
-                                  "color": { "$": "false ? 'accent-text' : 'text-muted'" },
-                                  "hoverProps": {
-                                    "$": "false ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-hover', color: 'text' }"
+                                    },
+                                    "children": [
+                                      {
+                                        "type": "Row",
+                                        "props": {
+                                          "width": "2rem",
+                                          "height": "2rem",
+                                          "ax": "center",
+                                          "ay": "center",
+                                          "flexShrink": "0"
+                                        },
+                                        "children": [{ "type": "we-icon", "props": { "name": "plus", "size": "sm" } }]
+                                      },
+                                      {
+                                        "type": "$if",
+                                        "props": {
+                                          "condition": { "$": "local.expanded" },
+                                          "enterTransition": [
+                                            { "type": "reveal", "axis": "inline", "duration": 250 },
+                                            { "type": "fade", "duration": 150 }
+                                          ],
+                                          "exitTransition": [
+                                            { "type": "reveal", "axis": "inline", "duration": 250 },
+                                            { "type": "fade", "duration": 150 }
+                                          ],
+                                          "then": {
+                                            "type": "Row",
+                                            "props": { "gap": "200", "ay": "center", "minWidth": "0" },
+                                            "children": [
+                                              {
+                                                "type": "we-text",
+                                                "props": { "truncate": true, "fontSize": "300" },
+                                                "children": ["Create a space"]
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      }
+                                    ]
                                   },
-                                  "activeProps": {
-                                    "$": "false ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-active', color: 'text' }"
-                                  }
-                                },
-                                "children": [
                                   {
-                                    "type": "Row",
+                                    "type": "we-button",
                                     "props": {
-                                      "width": "2rem",
-                                      "height": "2rem",
-                                      "ax": "center",
+                                      "variant": "ghost",
+                                      "size": "lg",
+                                      "width": "100%",
+                                      "height": "auto",
+                                      "ax": "start",
                                       "ay": "center",
-                                      "flexShrink": "0"
-                                    },
-                                    "children": [{ "type": "we-icon", "props": { "name": "link", "size": "sm" } }]
-                                  },
-                                  {
-                                    "type": "$if",
-                                    "props": {
-                                      "condition": { "$": "local.expanded" },
-                                      "enterTransition": [
-                                        { "type": "reveal", "axis": "inline", "duration": 250 },
-                                        { "type": "fade", "duration": 150 }
-                                      ],
-                                      "exitTransition": [
-                                        { "type": "reveal", "axis": "inline", "duration": 250 },
-                                        { "type": "fade", "duration": 150 }
-                                      ],
-                                      "then": {
-                                        "type": "Row",
-                                        "props": { "gap": "200", "ay": "center", "minWidth": "0" },
-                                        "children": [
-                                          {
-                                            "type": "we-text",
-                                            "props": { "truncate": true, "fontSize": "300" },
-                                            "children": ["Join a space"]
-                                          }
-                                        ]
+                                      "gap": "200",
+                                      "py": "300",
+                                      "px": { "$": "local.railInset" },
+                                      "label": "Join a space",
+                                      "onClick": { "$invoke": "shellStore.setJoinSpaceOpen", "args": [true] },
+                                      "bg": { "$": "false ? 'accent-soft' : ''" },
+                                      "color": { "$": "false ? 'accent-text' : 'text-muted'" },
+                                      "hoverProps": {
+                                        "$": "false ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-hover', color: 'text' }"
+                                      },
+                                      "activeProps": {
+                                        "$": "false ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-active', color: 'text' }"
                                       }
-                                    }
+                                    },
+                                    "children": [
+                                      {
+                                        "type": "Row",
+                                        "props": {
+                                          "width": "2rem",
+                                          "height": "2rem",
+                                          "ax": "center",
+                                          "ay": "center",
+                                          "flexShrink": "0"
+                                        },
+                                        "children": [{ "type": "we-icon", "props": { "name": "link", "size": "sm" } }]
+                                      },
+                                      {
+                                        "type": "$if",
+                                        "props": {
+                                          "condition": { "$": "local.expanded" },
+                                          "enterTransition": [
+                                            { "type": "reveal", "axis": "inline", "duration": 250 },
+                                            { "type": "fade", "duration": 150 }
+                                          ],
+                                          "exitTransition": [
+                                            { "type": "reveal", "axis": "inline", "duration": 250 },
+                                            { "type": "fade", "duration": 150 }
+                                          ],
+                                          "then": {
+                                            "type": "Row",
+                                            "props": { "gap": "200", "ay": "center", "minWidth": "0" },
+                                            "children": [
+                                              {
+                                                "type": "we-text",
+                                                "props": { "truncate": true, "fontSize": "300" },
+                                                "children": ["Join a space"]
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      }
+                                    ]
                                   }
                                 ]
                               }
                             ]
                           }
                         ]
-                      }
-                    ]
-                  },
-                  {
-                    "type": "Column",
-                    "props": { "width": "100%", "gap": "200", "px": "200", "py": "300" },
-                    "children": [
+                      },
                       {
                         "type": "Column",
-                        "props": { "width": "100%", "gap": "200" },
+                        "props": { "width": "100%", "gap": "200", "px": "200", "py": "300" },
                         "children": [
                           {
-                            "type": "we-button",
-                            "props": {
-                              "variant": "ghost",
-                              "size": "lg",
-                              "width": "100%",
-                              "height": "auto",
-                              "ax": "start",
-                              "ay": "center",
-                              "gap": "200",
-                              "py": "300",
-                              "px": { "$": "local.railInset" },
-                              "label": "Settings",
-                              "onClick": [
-                                { "$invoke": "appStore.deactivateApp" },
-                                { "$invoke": "shellStore.openShellView", "args": ["settings"] }
-                              ],
-                              "bg": { "$": "(shellStore.activeShellView == 'settings') ? 'accent-soft' : ''" },
-                              "color": {
-                                "$": "(shellStore.activeShellView == 'settings') ? 'accent-text' : 'text-muted'"
-                              },
-                              "hoverProps": {
-                                "$": "(shellStore.activeShellView == 'settings') ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-hover', color: 'text' }"
-                              },
-                              "activeProps": {
-                                "$": "(shellStore.activeShellView == 'settings') ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-active', color: 'text' }"
-                              }
-                            },
-                            "children": [
-                              {
-                                "type": "Row",
-                                "props": {
-                                  "width": "2rem",
-                                  "height": "2rem",
-                                  "ax": "center",
-                                  "ay": "center",
-                                  "flexShrink": "0"
-                                },
-                                "children": [{ "type": "we-icon", "props": { "name": "gear-six", "size": "sm" } }]
-                              },
-                              {
-                                "type": "$if",
-                                "props": {
-                                  "condition": { "$": "local.expanded" },
-                                  "enterTransition": [
-                                    { "type": "reveal", "axis": "inline", "duration": 250 },
-                                    { "type": "fade", "duration": 150 }
-                                  ],
-                                  "exitTransition": [
-                                    { "type": "reveal", "axis": "inline", "duration": 250 },
-                                    { "type": "fade", "duration": 150 }
-                                  ],
-                                  "then": {
-                                    "type": "Row",
-                                    "props": { "gap": "200", "ay": "center", "minWidth": "0" },
-                                    "children": [
-                                      {
-                                        "type": "we-text",
-                                        "props": { "truncate": true, "fontSize": "300" },
-                                        "children": ["Settings"]
-                                      }
-                                    ]
-                                  }
-                                }
-                              }
-                            ]
-                          },
-                          {
-                            "type": "DropdownMenu",
-                            "props": {
-                              "placement": "right-end",
-                              "items": [
-                                { "id": "profile", "label": "Profile", "icon": "user" },
-                                { "id": "about", "label": "About Coasys", "icon": "info" },
-                                { "id": "logout", "label": "Log out", "icon": "sign-out" }
-                              ],
-                              "onSelect": [
-                                {
-                                  "$if": {
-                                    "condition": { "$": "arg.id == 'profile'" },
-                                    "then": { "$invoke": "shellStore.openShellView", "args": ["profile"] }
-                                  }
-                                },
-                                {
-                                  "$if": {
-                                    "condition": { "$": "arg.id == 'about'" },
-                                    "then": { "$invoke": "shellStore.openShellView", "args": ["landing-page"] }
-                                  }
-                                },
-                                {
-                                  "$if": {
-                                    "condition": { "$": "arg.id == 'logout'" },
-                                    "then": {
-                                      "$if": {
-                                        "condition": { "$": "sessionStore.isGuest" },
-                                        "then": { "$setLocal": "confirmGuestLogout", "value": true },
-                                        "else": { "$invoke": "sessionStore.logout" }
-                                      }
-                                    }
-                                  }
-                                }
-                              ]
-                            },
+                            "type": "Column",
+                            "props": { "width": "100%", "gap": "200" },
                             "children": [
                               {
                                 "type": "we-button",
@@ -557,28 +463,33 @@
                                   "gap": "200",
                                   "py": "300",
                                   "px": { "$": "local.railInset" },
-                                  "label": { "$": "profileStore.ownProfile.name" },
-                                  "bg": { "$": "(shellStore.activeShellView == 'profile') ? 'accent-soft' : ''" },
+                                  "label": "Settings",
+                                  "onClick": [
+                                    { "$invoke": "appStore.deactivateApp" },
+                                    { "$invoke": "shellStore.openShellView", "args": ["settings"] }
+                                  ],
+                                  "bg": { "$": "(shellStore.activeShellView == 'settings') ? 'accent-soft' : ''" },
                                   "color": {
-                                    "$": "(shellStore.activeShellView == 'profile') ? 'accent-text' : 'text-muted'"
+                                    "$": "(shellStore.activeShellView == 'settings') ? 'accent-text' : 'text-muted'"
                                   },
                                   "hoverProps": {
-                                    "$": "(shellStore.activeShellView == 'profile') ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-hover', color: 'text' }"
+                                    "$": "(shellStore.activeShellView == 'settings') ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-hover', color: 'text' }"
                                   },
                                   "activeProps": {
-                                    "$": "(shellStore.activeShellView == 'profile') ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-active', color: 'text' }"
+                                    "$": "(shellStore.activeShellView == 'settings') ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-active', color: 'text' }"
                                   }
                                 },
                                 "children": [
                                   {
-                                    "type": "we-avatar",
+                                    "type": "Row",
                                     "props": {
-                                      "image": { "$": "profileStore.ownProfile.avatar" },
-                                      "initials": { "$": "profileStore.ownProfile.name" },
-                                      "hash": { "$": "me.did" },
-                                      "size": "sm",
+                                      "width": "2rem",
+                                      "height": "2rem",
+                                      "ax": "center",
+                                      "ay": "center",
                                       "flexShrink": "0"
-                                    }
+                                    },
+                                    "children": [{ "type": "we-icon", "props": { "name": "gear-six", "size": "sm" } }]
                                   },
                                   {
                                     "type": "$if",
@@ -599,87 +510,188 @@
                                           {
                                             "type": "we-text",
                                             "props": { "truncate": true, "fontSize": "300" },
-                                            "children": [{ "$": "profileStore.ownProfile.name" }]
+                                            "children": ["Settings"]
                                           }
                                         ]
                                       }
                                     }
                                   }
                                 ]
-                              }
-                            ]
-                          },
-                          {
-                            "type": "$if",
-                            "props": {
-                              "condition": { "$": "local.confirmGuestLogout" },
-                              "then": {
-                                "type": "we-modal",
+                              },
+                              {
+                                "type": "DropdownMenu",
                                 "props": {
-                                  "size": "sm",
-                                  "close": { "$setLocal": "confirmGuestLogout", "value": false }
+                                  "placement": "right-end",
+                                  "items": [
+                                    { "id": "profile", "label": "Profile", "icon": "user" },
+                                    { "id": "about", "label": "About Coasys", "icon": "info" },
+                                    { "id": "logout", "label": "Log out", "icon": "sign-out" }
+                                  ],
+                                  "onSelect": [
+                                    {
+                                      "$if": {
+                                        "condition": { "$": "arg.id == 'profile'" },
+                                        "then": { "$invoke": "shellStore.openShellView", "args": ["profile"] }
+                                      }
+                                    },
+                                    {
+                                      "$if": {
+                                        "condition": { "$": "arg.id == 'about'" },
+                                        "then": { "$invoke": "shellStore.openShellView", "args": ["landing-page"] }
+                                      }
+                                    },
+                                    {
+                                      "$if": {
+                                        "condition": { "$": "arg.id == 'logout'" },
+                                        "then": {
+                                          "$if": {
+                                            "condition": { "$": "sessionStore.isGuest" },
+                                            "then": { "$setLocal": "confirmGuestLogout", "value": true },
+                                            "else": { "$invoke": "sessionStore.logout" }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  ]
                                 },
                                 "children": [
                                   {
-                                    "type": "Row",
-                                    "slot": "header",
-                                    "props": { "gap": "300", "ay": "center" },
-                                    "children": [
-                                      { "type": "we-icon", "props": { "name": "warning", "color": "danger-text" } },
-                                      {
-                                        "type": "we-text",
-                                        "props": { "variant": "heading-sm" },
-                                        "children": ["Sign out of this guest account?"]
+                                    "type": "we-button",
+                                    "props": {
+                                      "variant": "ghost",
+                                      "size": "lg",
+                                      "width": "100%",
+                                      "height": "auto",
+                                      "ax": "start",
+                                      "ay": "center",
+                                      "gap": "200",
+                                      "py": "300",
+                                      "px": { "$": "local.railInset" },
+                                      "label": { "$": "profileStore.ownProfile.name" },
+                                      "bg": { "$": "(shellStore.activeShellView == 'profile') ? 'accent-soft' : ''" },
+                                      "color": {
+                                        "$": "(shellStore.activeShellView == 'profile') ? 'accent-text' : 'text-muted'"
+                                      },
+                                      "hoverProps": {
+                                        "$": "(shellStore.activeShellView == 'profile') ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-hover', color: 'text' }"
+                                      },
+                                      "activeProps": {
+                                        "$": "(shellStore.activeShellView == 'profile') ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-active', color: 'text' }"
                                       }
-                                    ]
-                                  },
-                                  {
-                                    "type": "Column",
-                                    "props": { "gap": "300" },
+                                    },
                                     "children": [
                                       {
-                                        "type": "we-text",
-                                        "children": [
-                                          "This identity was created by the invite link you followed. It has no password and no other way back in, so signing out ends it for good — along with anything you have posted from it."
-                                        ]
+                                        "type": "we-avatar",
+                                        "props": {
+                                          "image": { "$": "profileStore.ownProfile.avatar" },
+                                          "initials": { "$": "profileStore.ownProfile.name" },
+                                          "hash": { "$": "me.did" },
+                                          "size": "sm",
+                                          "flexShrink": "0"
+                                        }
                                       },
                                       {
-                                        "type": "we-text",
-                                        "props": { "color": "text-muted" },
-                                        "children": ["To keep it, stay signed in on this browser."]
-                                      }
-                                    ]
-                                  },
-                                  {
-                                    "type": "Row",
-                                    "slot": "footer",
-                                    "props": { "ax": "end", "gap": "300" },
-                                    "children": [
-                                      {
-                                        "type": "we-button",
+                                        "type": "$if",
                                         "props": {
-                                          "variant": "soft",
-                                          "onClick": { "$setLocal": "confirmGuestLogout", "value": false }
-                                        },
-                                        "children": ["Stay signed in"]
-                                      },
-                                      {
-                                        "type": "we-button",
-                                        "props": {
-                                          "variant": "solid",
-                                          "tone": "danger",
-                                          "onClick": {
-                                            "$invoke": "sessionStore.logout",
-                                            "onSuccess": [{ "$setLocal": "confirmGuestLogout", "value": false }]
+                                          "condition": { "$": "local.expanded" },
+                                          "enterTransition": [
+                                            { "type": "reveal", "axis": "inline", "duration": 250 },
+                                            { "type": "fade", "duration": 150 }
+                                          ],
+                                          "exitTransition": [
+                                            { "type": "reveal", "axis": "inline", "duration": 250 },
+                                            { "type": "fade", "duration": 150 }
+                                          ],
+                                          "then": {
+                                            "type": "Row",
+                                            "props": { "gap": "200", "ay": "center", "minWidth": "0" },
+                                            "children": [
+                                              {
+                                                "type": "we-text",
+                                                "props": { "truncate": true, "fontSize": "300" },
+                                                "children": [{ "$": "profileStore.ownProfile.name" }]
+                                              }
+                                            ]
                                           }
-                                        },
-                                        "children": ["Sign out anyway"]
+                                        }
                                       }
                                     ]
                                   }
                                 ]
+                              },
+                              {
+                                "type": "$if",
+                                "props": {
+                                  "condition": { "$": "local.confirmGuestLogout" },
+                                  "then": {
+                                    "type": "we-modal",
+                                    "props": {
+                                      "size": "sm",
+                                      "close": { "$setLocal": "confirmGuestLogout", "value": false }
+                                    },
+                                    "children": [
+                                      {
+                                        "type": "Row",
+                                        "slot": "header",
+                                        "props": { "gap": "300", "ay": "center" },
+                                        "children": [
+                                          { "type": "we-icon", "props": { "name": "warning", "color": "danger-text" } },
+                                          {
+                                            "type": "we-text",
+                                            "props": { "variant": "heading-sm" },
+                                            "children": ["Sign out of this guest account?"]
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "type": "Column",
+                                        "props": { "gap": "300" },
+                                        "children": [
+                                          {
+                                            "type": "we-text",
+                                            "children": [
+                                              "This identity was created by the invite link you followed. It has no password and no other way back in, so signing out ends it for good — along with anything you have posted from it."
+                                            ]
+                                          },
+                                          {
+                                            "type": "we-text",
+                                            "props": { "color": "text-muted" },
+                                            "children": ["To keep it, stay signed in on this browser."]
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "type": "Row",
+                                        "slot": "footer",
+                                        "props": { "ax": "end", "gap": "300" },
+                                        "children": [
+                                          {
+                                            "type": "we-button",
+                                            "props": {
+                                              "variant": "soft",
+                                              "onClick": { "$setLocal": "confirmGuestLogout", "value": false }
+                                            },
+                                            "children": ["Stay signed in"]
+                                          },
+                                          {
+                                            "type": "we-button",
+                                            "props": {
+                                              "variant": "solid",
+                                              "tone": "danger",
+                                              "onClick": {
+                                                "$invoke": "sessionStore.logout",
+                                                "onSuccess": [{ "$setLocal": "confirmGuestLogout", "value": false }]
+                                              }
+                                            },
+                                            "children": ["Sign out anyway"]
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                }
                               }
-                            }
+                            ]
                           }
                         ]
                       }
@@ -788,7 +800,7 @@
                                             "props": { "variant": "footnote", "color": "text-muted" },
                                             "children": [
                                               {
-                                                "$": "identityStore.changeBlocked ? identityStore.changeBlocked : identityStore.custody.unlock == 'touch-id-or-password' ? 'Your 12 words, no email needed. This computer keeps your master key behind Touch ID' : 'Your 12 words, no email needed. This computer keeps your master key behind your passphrase'"
+                                                "$": "identityStore.changeBlocked ? identityStore.changeBlocked : identityStore.custody.unlock == 'os' ? 'Your 12 words, no email needed. This computer keeps your master key behind its own sign-in' : 'Your 12 words, no email needed. This computer keeps your master key behind your passphrase'"
                                               }
                                             ]
                                           }
@@ -1010,7 +1022,11 @@
                               "then": {
                                 "type": "we-alert",
                                 "props": { "tone": "danger" },
-                                "children": ["Your identity was not made. Nothing was published; try again."]
+                                "children": [
+                                  {
+                                    "$": "identityStore.error != '' ? `Your identity was not made: ${identityStore.error}` : 'Your identity was not made. Nothing was published; try again.'"
+                                  }
+                                ]
                               }
                             }
                           }

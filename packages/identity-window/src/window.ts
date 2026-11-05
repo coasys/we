@@ -8,6 +8,8 @@
  * forbid every script but its own and every string sink (`require-trusted-types-for 'script'`).
  * Fields are cleared once their call returns.
  */
+import '@we/tokens/css/color';
+import 'virtual:we-identity-theme.css';
 import './identity.css';
 
 import { heading, isLast, remaining, type Screen, type StepInput, wordNumber } from './screens';
@@ -71,8 +73,21 @@ async function run(call: () => Promise<Screen>, clear: HTMLInputElement[] = []) 
 }
 
 const step = (input: StepInput, clear: HTMLInputElement[] = []) => run(() => host.step(input), clear);
-const cancel = () => void host.cancel();
-const finish = () => void host.finish();
+/*
+  Cancel and Done close the window through the host. Where the host cannot be reached (its custody
+  service has stopped), the window says so and closes itself, rather than leaving a button that does
+  nothing and a window the person has to close by hand.
+*/
+async function leave(call: () => Promise<void>) {
+  try {
+    await call();
+  } catch (error) {
+    draw({ screen: 'failed', message: String(error) });
+    window.close();
+  }
+}
+const cancel = () => void leave(() => host.cancel());
+const finish = () => void leave(() => host.finish());
 
 function errorLine(error: string | null): Child[] {
   return error ? [el('p', { className: 'error', textContent: error })] : [];
@@ -101,7 +116,7 @@ function body(screen: Screen): Child[] {
           'label',
           { className: 'check' },
           understood,
-          'I understand: without these words, nobody can recover my identity or change its keys. Not even Coasys.',
+          'I understand: without these words, nobody can recover my identity or change its keys. Not even the people who made this app.',
         ),
         el('div', { className: 'row' }, next, button('Cancel', cancel)),
       ];
@@ -241,9 +256,8 @@ export function runIdentityWindow(transport: IdentityTransport): void {
       'header',
       { className: 'brand' },
       mark,
-      el('strong', { textContent: 'Coasys' }),
-      ' ',
-      el('span', { className: 'muted', textContent: 'Identity' }),
+      // The app's own name is the window's title, which the host sets; the page names no app.
+      el('strong', { textContent: 'Your identity' }),
     ),
     root,
   );
