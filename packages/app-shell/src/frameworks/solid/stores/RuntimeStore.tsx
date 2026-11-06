@@ -1102,6 +1102,11 @@ export function RuntimeStoreProvider(props: ParentProps) {
       setLocalHardware(hardware ?? null);
       setLocalPlan(plan ?? null);
       setLocalStatus(status ?? null);
+      // A bar left under way when the settings closed mid-install is over if the backend says no
+      // install runs: the events that ended it were not heard.
+      if (status && !status.installing && !pending().includes('installLocalAi')) {
+        setLocalProgress((prev) => (prev && prev.phase !== 'done' && prev.phase !== 'failed' ? null : prev));
+      }
     });
   }
 
@@ -1143,6 +1148,26 @@ export function RuntimeStoreProvider(props: ParentProps) {
     setLocalProgress(null);
     const installed = await run('installLocalAi', () => port.install?.());
     if (installed.ok && installed.value) setLocalStatus(installed.value);
+    // The call has returned, so the install is over, whether or not its last event was heard.
+    if (installed.ok) setLocalProgress(null);
+    // Kept with the install, not only in the shared error: the person may have left the settings, and
+    // the next read clears that error as it starts.
+    if (!installed.ok) {
+      const why = error();
+      setLocalProgress((prev) =>
+        prev?.phase === 'failed'
+          ? prev
+          : {
+              phase: 'failed',
+              item: '',
+              itemDoneBytes: 0,
+              itemTotalBytes: 0,
+              doneBytes: prev?.doneBytes ?? 0,
+              totalBytes: prev?.totalBytes ?? 0,
+              detail: why,
+            },
+      );
+    }
     await refreshLocalAi();
   }
 
@@ -1177,10 +1202,11 @@ export function RuntimeStoreProvider(props: ParentProps) {
     if (!offersAiStep({ ...abilities, models: 0, localInstalled: false, answered })) return false;
     const port = modelAdmin();
     const read = Promise.all([port?.list?.() ?? Promise.resolve([]), localPort()?.status?.() ?? Promise.resolve(null)]);
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const known = await Promise.race([
       read.catch(() => null),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), AI_STEP_READ_MS)),
-    ]);
+      new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), AI_STEP_READ_MS))),
+    ]).finally(() => clearTimeout(timer));
     if (!known) return false;
     const [models, status] = known;
     if (!offersAiStep({ ...abilities, models: models.length, localInstalled: !!status?.installed, answered })) {

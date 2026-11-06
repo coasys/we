@@ -56,9 +56,14 @@ vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
 // Never 'settings', so the on-demand load effect stays dormant and each test drives the store
 // explicitly. The load-on-open behaviour is asserted separately below.
 let activeShellView: string | null = null;
-vi.mock('../src/frameworks/solid/stores/ShellStore', () => ({
-  useShellStore: () => ({ activeShellView: () => activeShellView }),
-}));
+/** Tells the store `activeShellView` changed, for a test that closes the settings under it. */
+const shellView = vi.hoisted(() => ({ changed: () => {} }));
+vi.mock('../src/frameworks/solid/stores/ShellStore', async () => {
+  const { createSignal } = await import('solid-js');
+  const [version, setVersion] = createSignal(0);
+  shellView.changed = () => setVersion((n) => n + 1);
+  return { useShellStore: () => ({ activeShellView: () => (version(), activeShellView) }) };
+});
 
 // Faked for the same reason as the stores above, and for one more: importing the real provider
 // pulls the whole app-shell provider graph (down to the block editor) into a test about a settings
@@ -826,8 +831,57 @@ describe('local AI on this device', () => {
           ...event,
         }),
       finish: () => finish?.(),
+      listening: () => emit !== null,
     };
   }
+
+  it('stops listening to install progress when the settings close', async () => {
+    activeShellView = 'settings';
+    const local = localPort();
+    ports = { models: local.models };
+    mount();
+    await vi.waitFor(() => expect(local.listening()).toBe(true));
+
+    activeShellView = null;
+    shellView.changed();
+    expect(local.listening()).toBe(false);
+  });
+
+  it('tracks an install started elsewhere, and drops its bar once a read says it is over', async () => {
+    activeShellView = 'settings';
+    const local = localPort();
+    ports = { models: local.models };
+    const store = mount();
+    await vi.waitFor(() => expect(store.localAi().loaded).toBe(true));
+
+    // Started from the launcher: only its progress says so.
+    local.progress({ phase: 'download', item: 'test-chat', doneBytes: 1e9, totalBytes: 2.54e9 });
+    expect(store.localAi()).toMatchObject({ installing: true, canInstall: false });
+    expect(store.localAi().progress?.percent).toBe(39);
+
+    // The settings closed before its end was heard; the next read says no install runs.
+    await store.loadLocalAi();
+    expect(store.localAi()).toMatchObject({ installing: false, progress: null });
+  });
+
+  it('still says an install failed after the settings were closed and opened again', async () => {
+    // The first-run step says the install carries on; a failure after that was in the shared error
+    // only, which the next read clears as it starts.
+    activeShellView = 'settings';
+    const local = localPort({
+      install: async () => {
+        throw new Error('disk full');
+      },
+    });
+    ports = { models: local.models };
+    const store = mount();
+    await vi.waitFor(() => expect(store.localAi().loaded).toBe(true));
+    await store.installLocalAi();
+
+    await store.loadLocalAi();
+    expect(store.error()).toBe('');
+    expect(store.localAi().progress).toMatchObject({ text: 'The install failed — disk full', failed: true });
+  });
 
   it('reads the machine and the plan when the settings open, in words', async () => {
     activeShellView = 'settings';
@@ -1041,6 +1095,19 @@ describe('a first run’s AI step', () => {
 
     expect(await mount().openAiStep()).toBe(false);
     expect(session.held).toBe(1);
+  });
+
+  it('clears its time limit once the node has answered', async () => {
+    ports = { models: node() };
+    const store = mount();
+    vi.useFakeTimers();
+    try {
+      const before = vi.getTimerCount();
+      expect(await store.openAiStep()).toBe(true);
+      expect(vi.getTimerCount()).toBe(before);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('keeps a set-up answer too, and closes a form left open', async () => {

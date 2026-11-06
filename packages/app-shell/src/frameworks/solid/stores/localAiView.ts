@@ -58,6 +58,8 @@ export interface LocalAiPlanItem {
   label: string;
   name: string;
   sizeText: string;
+  /** A model's licence and the memory it uses, which an install agrees to. Empty for a server program. */
+  detail: string;
   /** Already downloaded. */
   done: boolean;
 }
@@ -69,6 +71,7 @@ export function planItems(plan: LocalAiPlan): LocalAiPlanItem[] {
       label: MODEL_KIND_LABELS[model.kind],
       name: model.model,
       sizeText: model.installed ? 'Downloaded' : sizeText(model.sizeBytes),
+      detail: `${model.license} licence · uses ${sizeText(model.memoryBytes)} of memory`,
       done: model.installed,
     })),
     ...plan.runtimes.map((runtime) => ({
@@ -76,6 +79,7 @@ export function planItems(plan: LocalAiPlan): LocalAiPlanItem[] {
       label: 'Model server',
       name: `${runtime.id} ${runtime.version} · ${backendLabel(runtime.backend)}`,
       sizeText: runtime.installed ? 'Downloaded' : sizeText(runtime.sizeBytes),
+      detail: '',
       done: runtime.installed,
     })),
   ];
@@ -233,7 +237,9 @@ export function describeLocalAi(input: {
   installingHere: boolean;
 }): LocalAiView {
   const { hardware, plan, status, progress } = input;
-  const installing = input.installingHere || !!status?.installing;
+  // Progress still under way counts too: an install the launcher started after the status was read.
+  const underWay = !!progress && progress.phase !== 'done' && progress.phase !== 'failed';
+  const installing = input.installingHere || !!status?.installing || underWay;
   const runtimes = status?.runtimes ?? [];
   const runningCount = runtimes.filter((r) => r.phase === 'running').length;
   return {

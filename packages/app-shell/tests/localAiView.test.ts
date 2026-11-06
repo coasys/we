@@ -9,6 +9,7 @@ import {
   computeText,
   describeLocalAi,
   gpuText,
+  planItems,
   planNotes,
   progressView,
   reduceProgress,
@@ -137,6 +138,20 @@ describe('describeLocalAi', () => {
     expect(view.progress?.percent).toBe(50);
   });
 
+  it('counts an install it hears progress for, though the status read before it said none', () => {
+    // An install started from the launcher after the settings opened: the status was read before it.
+    const view = describeLocalAi({
+      hardware: null,
+      plan: null,
+      status: { installed: false, installing: false, autostart: true, runtimes: [], models: [] },
+      progress: event({ doneBytes: 50 }),
+      installingHere: false,
+    });
+    expect(view.installing).toBe(true);
+    expect(view.canInstall).toBe(false);
+    expect(view.progress?.percent).toBe(50);
+  });
+
   it('drops a finished install’s bar once it is over', () => {
     const view = describeLocalAi({
       hardware: null,
@@ -192,6 +207,26 @@ describe('planNotes', () => {
     expect(notes).toEqual([
       'No measurements exist for this class of device (linux-x64-dgpu-intel), so the plan takes the smallest model for transcription, embeddings',
     ]);
+  });
+
+  it('says each model’s licence and memory, which an install agrees to', () => {
+    const items = planItems(
+      plan({
+        models: [model({ license: 'Apache-2.0', memoryBytes: 3e9 })],
+        runtimes: [
+          {
+            id: 'llama-server',
+            version: 'b1',
+            build: 'linux-x64-cpu',
+            backend: 'cpu',
+            sizeBytes: 40e6,
+            installed: false,
+            kinds: ['llm'],
+          },
+        ],
+      }),
+    );
+    expect(items.map((item) => item.detail)).toEqual(['Apache-2.0 licence · uses 3.0 GB of memory', '']);
   });
 
   it('says which backend the settings hold it to', () => {

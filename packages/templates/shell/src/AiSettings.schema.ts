@@ -865,11 +865,19 @@ const planRow: SchemaNode = {
   props: { gap: '300', ay: 'center', ax: 'between' },
   children: [
     {
-      type: 'Row',
-      props: { gap: '200', ay: 'center', minWidth: '0' },
+      type: 'Column',
+      props: { gap: '0', minWidth: '0' },
       children: [
-        { type: 'we-text', props: { variant: 'label', color: 'text-muted' }, children: [{ $: 'item.label' }] },
-        { type: 'we-text', props: { truncate: true }, children: [{ $: 'item.name' }] },
+        {
+          type: 'Row',
+          props: { gap: '200', ay: 'center', minWidth: '0' },
+          children: [
+            { type: 'we-text', props: { variant: 'label', color: 'text-muted' }, children: [{ $: 'item.label' }] },
+            { type: 'we-text', props: { truncate: true }, children: [{ $: 'item.name' }] },
+          ],
+        },
+        // A model's licence and memory: part of what an install agrees to.
+        { type: '$if', props: { condition: { $: 'item.detail' }, then: footnote({ $: 'item.detail' }) } },
       ],
     },
     footnote({ $: 'item.sizeText' }, { $: "item.done ? 'success-text' : 'text-muted'" }),
@@ -975,7 +983,11 @@ const localActions: SchemaNode = {
                 size: 'sm',
                 variant: 'ghost',
                 tone: 'danger',
-                onClick: { $setLocal: 'confirmRemoveLocal', value: true },
+                // Each removal starts with the files kept: the last one's choice is not this one's.
+                onClick: [
+                  { $setLocal: 'removeLocalFiles', value: false },
+                  { $setLocal: 'confirmRemoveLocal', value: true },
+                ],
               },
               children: [{ type: 'we-icon', props: { name: 'trash' } }],
             },
@@ -1001,7 +1013,9 @@ const removeLocalModal: SchemaNode = confirmModal({
       },
       children: ['Also delete the downloaded models and programs'],
     },
-    footnote('Kept, they are not downloaded again if you install local AI later.'),
+    footnote(
+      'Kept, they are not downloaded again if you install local AI later. Other agents on this computer can use the same files: deleted, they download them again.',
+    ),
   ],
   confirmLabel: 'Remove',
   confirm: { $invoke: 'runtimeStore.removeLocalAi', args: [{ $: 'local.removeLocalFiles' }] },
@@ -1070,6 +1084,15 @@ const localSection = (shown: string): SchemaNode => ({
                             color: { $: "runtimeStore.localAi.fits ? 'text' : 'danger-text'" },
                           },
                           children: [{ $: 'runtimeStore.localAi.summary' }],
+                        },
+                        {
+                          type: '$if',
+                          props: {
+                            condition: { $: '!runtimeStore.localAi.installed' },
+                            then: footnote(
+                              'An install cannot be cancelled, and it continues if you close Settings. When it is installed, the model servers start each time the node starts.',
+                            ),
+                          },
                         },
                       ],
                     },
