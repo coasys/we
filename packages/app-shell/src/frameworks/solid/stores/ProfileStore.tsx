@@ -572,7 +572,12 @@ export function ProfileStoreProvider(props: ParentProps) {
         Wired here because this store already provides the other services a module reads about
         people, and because the host is what decides that "tell somebody" means a toast.
       */
-      notify: (tone, message) => toastService[tone](message),
+      notify: (tone, message, options) => {
+        // Only news and outcomes carry a button: a warning or an error says what went wrong.
+        if (tone === 'info') toastService.info(message, options?.duration, options?.action);
+        else if (tone === 'success') toastService.success(message, options?.duration, options?.action);
+        else toastService[tone](message, options?.duration);
+      },
       identities: {
         get: (agentId) => {
           // `profileFor` rather than a scan of `profiles()`: a module reading this in a derived

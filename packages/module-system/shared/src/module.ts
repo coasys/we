@@ -582,6 +582,17 @@ export interface ModuleIdentityAccess {
   fetch: (agentId: string) => void;
 }
 
+/** How a module's notice reads. */
+export type NotifyTone = 'info' | 'success' | 'warning' | 'error';
+
+/** What a notice may carry beside its sentence. */
+export interface NotifyOptions {
+  /** One thing the person can do about it, as a button on the notice. `info` and `success` only. */
+  action?: { label: string; run: () => void };
+  /** How long it stays, in ms. The host's default when absent. */
+  duration?: number;
+}
+
 /** What a module gets to know about an agent. */
 export interface ModuleIdentity {
   name?: string;
@@ -678,8 +689,12 @@ export interface ModuleStoreDeps {
    * spoke. Reactive. Secret-typed settings are absent here — read them through the `secrets` kernel.
    */
   settings?: () => Record<string, boolean | string | number>;
-  /** Say something to the person, outside this module's own surfaces. Three tones and a sentence. */
-  notify?: (tone: 'success' | 'warning' | 'error', message: string) => void;
+  /**
+   * Say something to the person, outside this module's own surfaces: a tone and a sentence, and for
+   * `info` or `success` one thing they can do about it (`action`, a button on the notice) and how
+   * long it stays (`duration`, in ms). `info` is for news rather than an outcome: something arrived.
+   */
+  notify?: (tone: NotifyTone, message: string, options?: NotifyOptions) => void;
   /** Who an agent id belongs to. */
   identities?: ModuleIdentityAccess;
   /** Naming and reaching spaces. */
