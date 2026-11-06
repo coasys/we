@@ -31,6 +31,7 @@ import {
   type AiModelForm,
   type AiModelView,
   apiKeyProblem,
+  canServe,
   CAPABILITY_OF,
   CUSTOM_SERVICE,
   describeDetected,
@@ -292,6 +293,14 @@ export function RuntimeStoreProvider(props: ParentProps) {
   const [aiEndpointForm, setAiEndpointForm] = createSignal<AiEndpointForm | null>(null);
   /** A download onto a server, while one runs: which model on which endpoint, and how far. */
   const [aiPull, setAiPull] = createSignal<{ endpointId: string; model: string; progress: number } | null>(null);
+  /**
+   * The downloads the servers say are running, saved model or not.
+   *
+   * A pull call can time out while the server goes on downloading. A saved model's status says so;
+   * a model still in the Add form has no row to say it, so the server's own events are kept here.
+   * The server ends each download with a `ready` or `missing` event, which takes it off.
+   */
+  const [serverPulls, setServerPulls] = createSignal<{ endpointId: string; model: string }[]>([]);
   const [languages, setLanguages] = createSignal<InstalledLanguage[]>([]);
   const [trustedAgents, setTrustedAgents] = createSignal<string[]>([]);
   const [authorizedApps, setAuthorizedApps] = createSignal<AuthorizedApp[]>([]);
@@ -386,10 +395,9 @@ export function RuntimeStoreProvider(props: ParentProps) {
   const aiEndpointOptions = createMemo(() => {
     const form = aiForm();
     if (!form) return [];
-    const needs = CAPABILITY_OF[form.kind];
     // The endpoint the form already names stays listed, so editing a model never hides its own server.
     return aiEndpointRecords()
-      .filter((e) => e.capabilities.includes(needs) || e.id === form.endpointId)
+      .filter((e) => canServe(e, form.kind) || e.id === form.endpointId)
       .map((e) => ({ label: e.name, value: e.id }));
   });
 
@@ -437,9 +445,10 @@ export function RuntimeStoreProvider(props: ParentProps) {
     const model = form?.remoteModel.trim() ?? '';
     if (!model || endpoint?.kind !== 'ollama' || !modelAdmin()?.pullModel || aiPull()) return false;
     // A pull the server is still running — one whose call timed out here — is not started twice.
-    const downloading = aiModelRecords().some(
-      (m) => m.endpointId === endpoint.id && m.status.state === 'pulling' && serves([m.remoteModel], model),
-    );
+    const downloading =
+      aiModelRecords().some(
+        (m) => m.endpointId === endpoint.id && m.status.state === 'pulling' && serves([m.remoteModel], model),
+      ) || serverPulls().some((p) => p.endpointId === endpoint.id && serves([p.model], model));
     if (downloading) return false;
     const served = discoveredForForm()?.map((m) => m.id) ?? endpoint.health.models;
     return !serves(served, model);
@@ -598,6 +607,16 @@ export function RuntimeStoreProvider(props: ParentProps) {
       const pull = aiPull();
       if (pull && pull.endpointId === event.endpointId && serves([event.remoteModel], pull.model)) {
         setAiPull({ ...pull, progress: event.status.progress ?? pull.progress });
+      }
+      const same = (p: { endpointId: string; model: string }) =>
+        p.endpointId === event.endpointId && p.model === event.remoteModel;
+      const running = event.status.state === 'pulling';
+      if (running !== serverPulls().some(same)) {
+        setServerPulls((pulls) =>
+          running
+            ? [...pulls, { endpointId: event.endpointId, model: event.remoteModel }]
+            : pulls.filter((p) => !same(p)),
+        );
       }
       setAiModelRecords((models) =>
         models.map((model) =>
@@ -773,7 +792,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
 
   /** The first endpoint that can serve `kind`, so a new model's form starts on one that fits. */
   function endpointFor(kind: AiModelKind): string {
-    return aiEndpointRecords().find((e) => e.capabilities.includes(CAPABILITY_OF[kind]))?.id ?? '';
+    return aiEndpointRecords().find((e) => canServe(e, kind))?.id ?? '';
   }
 
   function newAiModel(): void {
@@ -801,10 +820,8 @@ export function RuntimeStoreProvider(props: ParentProps) {
     if (!before) return;
     const form = { ...before, [field]: value };
     if (field === 'kind') {
-      const fits = aiEndpointRecords()
-        .find((e) => e.id === form.endpointId)
-        ?.capabilities.includes(CAPABILITY_OF[form.kind]);
-      if (!fits) form.endpointId = endpointFor(form.kind);
+      const endpoint = aiEndpointRecords().find((e) => e.id === form.endpointId);
+      if (!endpoint || !canServe(endpoint, form.kind)) form.endpointId = endpointFor(form.kind);
     }
     if (form.endpointId !== before.endpointId) {
       setAiForm({ ...form, remoteModel: '' });

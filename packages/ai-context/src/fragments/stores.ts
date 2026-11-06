@@ -913,7 +913,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       aiFormDirty:
         "boolean — the open model form has been edited since it opened. What a discard guard reads; compared against a snapshot taken on open, so looking at a model's settings and closing again asks nothing",
       aiEndpointOptions:
-        "{ label, value }[] — the servers that can serve the open model form's kind, for a we-select bound to aiForm.endpointId. Empty means no added server can: say so, and point at adding one",
+        "{ label, value }[] — the servers that can serve the open model form's kind — an Ollama for language and embedding models whether or not it has one yet, since it can download one — for a we-select bound to aiForm.endpointId. Empty means no added server can: say so, and point at adding one",
       canDiscoverAiModels:
         'boolean — the backend can ask a server which models it serves. Gate a refresh control on it; where it is false, the model id is typed',
       aiDiscoveredModelOptions:
