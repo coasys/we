@@ -1768,6 +1768,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       deleteSession: '(sessionId: string): deletes a saved session and its messages',
       cancelReply:
         '(): stops the reply the backend is running in the chat on screen. What it changed before it stopped stays changed',
+      openMadeTemplate:
+        '(recordId: string): opens a template the agent made, by its record id: a shell becomes the template on screen, still being edited, and an app the person’s app; for a view (a section) it says to add it from the space’s sections. Resolves false while the template has not reached the list yet',
       setContentMode:
         "(mode: 'preview' | 'visual'): switches the editor between the rendered preview and the visual editing surface",
       startFork: '(): opens the picker to copy the current template into one you own',

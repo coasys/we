@@ -264,6 +264,7 @@ interface ChatStep {
 const STEP_WORDS: Record<string, [doing: string, done: string]> = {
   template_read: ['Reading the template', 'Read the template'],
   template_update: ['Updating the template', 'Updated the template'],
+  template_create: ['Making a template', 'Made a template'],
   update_schema: ['Updating the template', 'Updated the template'],
   get_documentation: ['Reading the documentation', 'Read the documentation'],
   describe_perspective: ['Looking at what this space holds', 'Looked at what this space holds'],
@@ -356,6 +357,14 @@ function MessageBubble(props: {
   const steps = () => (props.message.steps as ChatStep[] | undefined) ?? [];
   const replyStatus = () => props.message.replyStatus as string | undefined;
   const unfinished = () => UNFINISHED[replyStatus() ?? ''];
+  /*
+    The templates this reply made, by record: offered under the reply rather than on their steps,
+    which fold away once it has finished, the moment the person wants to go and look.
+  */
+  const made = () =>
+    replyStatus() === 'running' || props.isStreaming
+      ? []
+      : steps().filter((s) => s.tool === 'template_create' && s.outcome === 'ok' && s.target);
 
   const displayContent = () => {
     if (props.isStreaming) return props.streamingContent || '';
@@ -386,6 +395,18 @@ function MessageBubble(props: {
       </Show>
       <Show when={displayContent()}>
         <we-markdown content={displayContent()} markdownGap="400" />
+      </Show>
+      <Show when={made().length > 0}>
+        <Row gap="200" wrap>
+          <For each={made()}>
+            {(step, i) => (
+              <we-button variant="soft" size="xs" onClick={() => void session.openMadeTemplate(step.target!)}>
+                <we-icon name="arrow-square-out" size="xs" slot="start" />
+                {made().length === 1 ? 'Open the new template' : `Open new template ${i() + 1}`}
+              </we-button>
+            )}
+          </For>
+        </Row>
       </Show>
       <Show when={unfinished()}>
         <Row ay="center" gap="200" wrap>

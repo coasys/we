@@ -50,7 +50,11 @@ agent makes for them does too:
   space's.
 
 Which dataset "library" and "space" are is the host's to know, so a tool names the place in WE's
-words and leaves the rest to whoever makes the record.
+words and leaves the rest to whoever makes the record. When the node runs the agent, WE tells it:
+a conversation is created with `library` (the root dataset, where WE keeps the person's own
+templates) beside `workIn` (where the template being edited lives, the space when it is a
+space's), and the node binds both, so the model names neither. The node looks for a template in
+the library too, so the agent can go on editing what it just made there.
 
 A record in the right place is all it takes to be seen. A library template is listed unless the
 person hid it, rather than only once something also added it to a list of what to show: a list of

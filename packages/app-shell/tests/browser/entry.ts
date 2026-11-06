@@ -1519,7 +1519,8 @@ function themePanelProbe(overrides = '{"themeName":"dark"}'): void {
 }
 
 /**
- * The AI chat with a reply in every state a backend's reply can be in: done, its steps folded;
+ * The AI chat with a reply in every state a backend's reply can be in: done, its steps folded and
+ * the template it made offered to open;
  * failed, with the error and a step that failed; interrupted by a restart; stopped part way, its
  * last step cut off; and one still running, its steps open and Stop in place of Send.
  */
@@ -1537,6 +1538,7 @@ function chatPanelProbe(): void {
         { tool: 'get_documentation', outcome: 'ok' },
         { tool: 'template_read', target: 'ad4m://t/1', outcome: 'ok' },
         { tool: 'template_update', target: 'ad4m://t/1', outcome: 'ok' },
+        { tool: 'template_create', target: 'ad4m://t/made', outcome: 'ok' },
       ],
     },
     { id: 'm2', role: 'user', content: 'Now use the accent colour for it', createdAt: at(2) },
@@ -1599,6 +1601,10 @@ function chatPanelProbe(): void {
     replyRunning: () => true,
     cancelReply: () => {
       (window as unknown as Record<string, unknown>).__probeCancelled = true;
+    },
+    openMadeTemplate: (recordId: string) => {
+      (window as unknown as Record<string, unknown>).__probeOpened = recordId;
+      return true;
     },
     undo: async () => {},
     redo: async () => {},

@@ -7,7 +7,7 @@ export { type ShapeStore, useShapeStore, ShapeStoreProvider } from './ShapeStore
 export { type RecordStore, useRecordStore, RecordStoreProvider } from './RecordStore';
 export { type SpaceStore, useSpaceStore, SpaceStoreProvider } from './SpaceStore';
 export { type ThemeStore, type EditingTheme, useThemeStore, ThemeStoreProvider } from './ThemeStore';
-export { type TemplateStore, useTemplateStore, TemplateStoreProvider } from './TemplateStore';
+export { SPACE_PREFIX, type TemplateStore, useTemplateStore, TemplateStoreProvider } from './TemplateStore';
 export { type RouteStore, useRouteStore, RouteStoreProvider } from './RouteStore';
 export { type EditorStore, useEditorStore, EditorStoreProvider } from './EditorStore';
 export { type AppStore, useAppStore, AppStoreProvider } from './AppStore';

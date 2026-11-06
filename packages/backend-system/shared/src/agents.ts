@@ -106,11 +106,14 @@ export interface AgentConversationSummary {
 export interface AgentConversationsPort {
   /**
    * Start a conversation kept in `keepIn`. Its replies' agent works in `workIn` and, with
-   * `mayEdit`, may change it there; the backend keeps those settings with the conversation.
+   * `mayEdit`, may change it there and make new templates; the backend keeps those settings with
+   * the conversation. `library` is the person's own library: a template the agent makes goes
+   * there unless the person asks for it in the space, and the agent finds it there afterwards.
    */
   create(input: {
     keepIn: DatasetHandle;
     workIn: DatasetHandle;
+    library?: DatasetHandle;
     title?: string;
     about?: string;
     mayEdit?: boolean;

@@ -4,8 +4,8 @@
  * - The conversation reads as neutral turns: the agent's replies with their status and steps,
  *   every other text child the person's, oldest first
  * - A step still running under a reply that has ended was cut off, and reads as stopped
- * - A conversation is created with the executor's settings: where the agent works, and the
- *   template tool only when it may edit
+ * - A conversation is created with the executor's settings: where the agent works, the person's
+ *   library, and the template tools (change and make) only when it may edit
  * - A node without agent sessions says so as `AgentUnavailableError`
  */
 import { AgentUnavailableError } from '@we/backend-shared';
@@ -123,18 +123,29 @@ describe('a conversation the executor keeps', () => {
     const workIn = { uuid: 'space-perspective' };
     const conversations = createAd4mAgentConversations();
 
-    const ref = await conversations.create({ keepIn, workIn, title: 'Chat 1', about: 't/1', mayEdit: true });
+    const library = { uuid: 'root-perspective' };
+    const ref = await conversations.create({
+      keepIn,
+      workIn,
+      library,
+      title: 'Chat 1',
+      about: 't/1',
+      mayEdit: true,
+    });
     expect(ref).toEqual({ dataset: keepIn, id: 'ad4m://agent_session/1' });
     expect(agentSessionCreate).toHaveBeenCalledWith({
       title: 'Chat 1',
       about: 't/1',
       workIn: 'space-perspective',
-      writeTools: ['template_update'],
+      library: 'root-perspective',
+      writeTools: ['template_update', 'template_create'],
       model: undefined,
     });
 
     await conversations.create({ keepIn, workIn });
-    expect(agentSessionCreate.mock.calls[1][0].writeTools).toBeUndefined();
+    const readOnly = agentSessionCreate.mock.calls[1][0];
+    expect(readOnly.writeTools).toBeUndefined();
+    expect(readOnly).not.toHaveProperty('library');
   });
 
   it('cancels the running reply of the conversation', async () => {
