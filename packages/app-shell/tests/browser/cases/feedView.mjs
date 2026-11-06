@@ -3,7 +3,7 @@
  *
  * - Every line and the activity row are drawn, the line said in a call naming the call.
  * - The box to write in sits at the foot of the view, below the stream, not after it in the flow.
- * - A bot's line is marked with a robot (the tooltip says "Bot"), in a call too, and Bots shows only
+ * - A bot's line is marked with a robot (the tooltip says "Written by a bot"), in a call too, and Bots shows only
  *   bots' lines.
  */
 export const name = 'the Feed as a page';
@@ -33,7 +33,9 @@ export async function check({ evaluate, measureText, screenshot }) {
     () =>
       [...document.querySelectorAll('we-tooltip')].filter(
         // Properties, not attributes: the renderer sets a custom element's props as properties.
-        (t) => t.content === 'Bot' && [...t.querySelectorAll('we-badge we-icon')].some((i) => i.name === 'robot'),
+        (t) =>
+          t.content === 'Written by a bot' &&
+          [...t.querySelectorAll('we-badge we-icon')].some((i) => i.name === 'robot'),
       ).length,
   );
   if (marks !== 1) problems.push(`${marks} bot marks, where only Data's line in the call is a bot's`);
