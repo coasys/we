@@ -15,6 +15,10 @@
       "import": "./vite.js"
     }
   },
+  "dependencies": {
+    "@we/themes": "workspace:*",
+    "@we/tokens": "workspace:*"
+  },
   "devDependencies": {
     "typescript": "^6.0.3",
     "vite": "^8.3.4",

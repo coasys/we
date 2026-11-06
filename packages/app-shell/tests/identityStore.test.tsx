@@ -1,30 +1,42 @@
 /**
- * identityStore and deviceStore: what they read from the backend's identity port,
- * what they ask of the host's custody service, and that they never hold anything but public state.
+ * identityStore and deviceStore: what they read from the backend's identity port, which changes
+ * they ask it for, and that they never hold anything but public state.
  */
-import type { CustodyPublic, IdentityHost, IdentityStep } from '@shared/platform/types';
 import { render } from '@solidjs/testing-library';
-import type { DeviceKeyView, IdentityPort, KeyLogView } from '@we/backend-shared';
+import type {
+  DeviceKeyView,
+  IdentityChange,
+  IdentityChangeOutcome,
+  IdentityCustodyView,
+  IdentityPort,
+  KeyLogView,
+} from '@we/backend-shared';
 import { NO_IDENTITY_CAPABILITIES } from '@we/backend-shared';
 import { createSignal } from 'solid-js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-let identityHost: IdentityHost | undefined;
 const [ports, setPorts] = createSignal<{ identity?: IdentityPort } | null>(null);
 const [bootState, setBootState] = createSignal('ready');
 
-vi.mock('../src/frameworks/solid/providers/PlatformProvider', () => ({
-  usePlatform: () => ({ isDesktop: true, isDevelopment: true, identity: identityHost }),
-}));
 vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
-  useSessionStore: () => ({ backendPorts: ports, bootState }),
+  useSessionStore: () => ({
+    backendPorts: ports,
+    bootState,
+    // As the session reads them from the port: linking a device needs a way to sign changes.
+    identityCapabilities: () => ({
+      ...NO_IDENTITY_CAPABILITIES,
+      keyLog: true,
+      devices: true,
+      linkDevice: !!ports()?.identity?.change,
+    }),
+  }),
 }));
 
 import { type DeviceStore, DeviceStoreProvider, useDeviceStore } from '../src/frameworks/solid/stores/DeviceStore';
 import {
   type IdentityStore,
   IdentityStoreProvider,
-  START_NOW_KEY,
+  startNowKey,
   useIdentityStore,
 } from '../src/frameworks/solid/stores/IdentityStore';
 
@@ -81,22 +93,33 @@ function backend(state: { did: string | null; events: KeyLogView['events']; devi
   return { port, calls, state };
 }
 
-/** A custody host that runs each step by changing the backend's state, as the identity window would. */
-function custody(onStep: (step: IdentityStep) => void, holds: CustodyPublic['holdsMaster'] = null) {
-  const steps: IdentityStep[] = [];
-  let state: CustodyPublic = { did: null, holdsMaster: holds, unlock: 'passphrase' };
-  const host: IdentityHost = {
-    async open(step) {
-      steps.push(step);
-      onStep(step);
-      state = { ...state, did: DID, holdsMaster: { index: 0 } };
+const NO_CUSTODY: IdentityCustodyView = { did: null, holdsMaster: false, unlock: 'passphrase', blocked: null };
+
+/** The port able to sign changes: `custody` and `change` answered by the test. */
+function signing(
+  port: IdentityPort,
+  options: {
+    custody: () => Promise<IdentityCustodyView>;
+    change: (change: IdentityChange) => Promise<IdentityChangeOutcome>;
+  },
+): IdentityPort {
+  return { ...port, custody: options.custody, change: options.change };
+}
+
+/** Changes that run by changing the backend's state, as the backend's own window would. */
+function custody(port: IdentityPort, onChange: (change: IdentityChange) => void, holds = false) {
+  const changes: IdentityChange[] = [];
+  let state: IdentityCustodyView = { ...NO_CUSTODY, holdsMaster: holds };
+  const identity = signing(port, {
+    custody: async () => state,
+    async change(change) {
+      changes.push(change);
+      onChange(change);
+      state = { ...state, did: DID, holdsMaster: true };
       return 'done';
     },
-    async publicState() {
-      return state;
-    },
-  };
-  return { host, steps };
+  });
+  return { identity, changes };
 }
 
 function mount(): { identity: IdentityStore; devices: DeviceStore } {
@@ -118,7 +141,6 @@ function mount(): { identity: IdentityStore; devices: DeviceStore } {
 }
 
 beforeEach(() => {
-  identityHost = undefined;
   setPorts(null);
   setBootState('ready');
   localStorage.clear();
@@ -153,35 +175,34 @@ describe('identityStore', () => {
     expect(identity.statusLoaded()).toBe(true);
   });
 
-  it('asks the first-run question only where the shell keeps master keys', async () => {
+  it('asks the first-run question only where this computer can sign changes', async () => {
     const b = backend({ did: null, events: [], devices: [] });
     setPorts({ identity: b.port });
-    // The web or Electron: no custody, no question, no way to change the identity.
+    // The web, or Windows: no custody, no question, no way to change the identity.
     let stores = mount();
     await flush();
     await flush();
     expect(stores.identity.needsFirstRun()).toBe(false);
     expect(stores.identity.canChange()).toBe(false);
-    await expect(stores.identity.makeIdentity()).rejects.toThrow();
+    expect(await stores.identity.makeIdentity()).toBe('failed');
 
-    identityHost = custody(() => {}).host;
+    setPorts({ identity: custody(b.port, () => {}).identity });
     stores = mount();
     await flush();
     await flush();
     expect(stores.identity.needsFirstRun()).toBe(true);
   });
 
-  it('"Make my identity here" opens the window on create, then reads the new identity', async () => {
+  it('"Make my identity here" asks for create, then reads the new identity', async () => {
     const b = backend({ did: null, events: [], devices: [] });
-    setPorts({ identity: b.port });
-    const c = custody((step) => {
-      if (step.kind === 'create') {
+    const c = custody(b.port, (change) => {
+      if (change.kind === 'create') {
         b.state.did = DID;
         b.state.events = [incept];
         b.state.devices = [devices[1]];
       }
     });
-    identityHost = c.host;
+    setPorts({ identity: c.identity });
     const { identity, devices: deviceStore } = mount();
     await flush();
     await flush();
@@ -189,29 +210,26 @@ describe('identityStore', () => {
     expect(await identity.makeIdentity()).toBe('done');
     await flush();
     await flush();
-    expect(c.steps).toEqual([{ kind: 'create' }]);
+    expect(c.changes).toEqual([{ kind: 'create' }]);
     expect(identity.did()).toBe(DID);
     expect(identity.needsFirstRun()).toBe(false);
     expect(identity.keyLog().map((r) => r.title)).toEqual(['Created your identity']);
-    expect(identity.custody()?.holdsMaster).toEqual({ index: 0 });
+    expect(identity.custody()?.holdsMaster).toBe(true);
     expect(deviceStore.devices().map((d) => d.label)).toEqual(['This computer']);
   });
 
-  it('where the executor has no identity store it trusts, asks the question but opens no window, and says why', async () => {
-    setPorts({ identity: backend({ did: null, events: [], devices: [] }).port });
-    // As the custody service words `NO_STORE` (custody/src/service.rs).
-    const why =
-      'This network has no identity store, or a store URL without its key, so Coasys on this computer cannot make or change an identity. Nothing was changed.';
-    const opened: IdentityStep[] = [];
-    identityHost = {
-      async open(step) {
-        opened.push(step);
-        return 'done';
-      },
-      async publicState() {
-        return { did: null, holdsMaster: null, unlock: 'passphrase', blocked: why };
-      },
-    };
+  it('where changes are blocked, asks the question but starts no change, and says why', async () => {
+    const why = 'This network has no identity store, so this computer cannot make or change an identity.';
+    const opened: IdentityChange[] = [];
+    setPorts({
+      identity: signing(backend({ did: null, events: [], devices: [] }).port, {
+        custody: async () => ({ ...NO_CUSTODY, blocked: why }),
+        async change(change) {
+          opened.push(change);
+          return 'done';
+        },
+      }),
+    });
     const { identity, devices: deviceStore } = mount();
     await flush();
     await flush();
@@ -220,34 +238,138 @@ describe('identityStore', () => {
     expect(identity.changeBlocked()).toBe(why);
     expect(identity.canChange()).toBe(false);
     expect(deviceStore.canManage()).toBe(false);
-    await expect(identity.makeIdentity()).rejects.toThrow(why);
-    await expect(identity.open({ kind: 'add-device' })).rejects.toThrow(why);
+    // Refused without starting anything, and said where the screen can show it.
+    expect(await identity.makeIdentity()).toBe('failed');
+    expect(identity.error()).toBe(why);
+    expect(await identity.open({ kind: 'add-device' })).toBe('failed');
     expect(opened).toEqual([]);
     expect(identity.busy()).toBe(false);
   });
 
-  it('"Start now" puts the question away on this computer', async () => {
+  it('offers no change while the backend has not said this computer can sign one', async () => {
+    const b = backend({ did: null, events: [], devices: [] });
+    setPorts({
+      identity: signing(b.port, {
+        custody: async () => {
+          throw new Error('the custody service is not running');
+        },
+        change: async () => 'done',
+      }),
+    });
+    const { identity } = mount();
+    await flush();
+    await flush();
+    expect(identity.custody()).toBeNull();
+    expect(identity.canChange()).toBe(false);
+    expect(identity.needsFirstRun()).toBe(false);
+  });
+
+  it('says why a change failed, after reading everything again', async () => {
+    const b = backend({ did: null, events: [], devices: [] });
+    setPorts({
+      identity: signing(b.port, {
+        custody: async () => NO_CUSTODY,
+        change: async () => {
+          throw new Error('the custody service stopped');
+        },
+      }),
+    });
+    const { identity } = mount();
+    await flush();
+    await flush();
+    const before = b.calls.length;
+    expect(await identity.makeIdentity()).toBe('failed');
+    expect(identity.lastOutcome()).toBe('failed');
+    expect(identity.error()).toBe('the custody service stopped');
+    expect(identity.busy()).toBe(false);
+    expect(b.calls.length).toBeGreaterThan(before);
+  });
+
+  it('draws nothing of one account after switching to another whose backend fails', async () => {
+    setPorts({ identity: backend({ did: DID, events: [incept, add], devices }).port });
+    const { identity, devices: deviceStore } = mount();
+    await flush();
+    await flush();
+    expect(identity.did()).toBe(DID);
+    expect(deviceStore.devices()).toHaveLength(2);
+
+    const broken: IdentityPort = {
+      capabilities: () => NO_IDENTITY_CAPABILITIES,
+      status: async () => {
+        throw new Error('no answer');
+      },
+    };
+    setPorts({ identity: broken });
+    await flush();
+    await flush();
+    expect(identity.did()).toBe('');
+    expect(identity.keyLog()).toEqual([]);
+    expect(identity.statusLoaded()).toBe(false);
+    expect(identity.error()).toBe('no answer');
+    expect(deviceStore.devices()).toEqual([]);
+  });
+
+  it('drops a reply from a backend the session has already left', async () => {
+    let answer!: (value: ReturnType<typeof status>) => void;
+    const slow: IdentityPort = {
+      capabilities: () => NO_IDENTITY_CAPABILITIES,
+      status: () => new Promise((resolve) => (answer = resolve)),
+    };
+    setPorts({ identity: slow });
+    const { identity } = mount();
+    await flush();
     setPorts({ identity: backend({ did: null, events: [], devices: [] }).port });
-    identityHost = custody(() => {}).host;
+    await flush();
+    await flush();
+    answer(status(DID));
+    await flush();
+    expect(identity.did()).toBe('');
+  });
+
+  it('takes the fork banner down once the backend no longer reports one', async () => {
+    let forked = true;
+    const b = backend({ did: DID, events: [incept], devices });
+    setPorts({
+      identity: {
+        ...b.port,
+        async status() {
+          return { ...status(DID), fork: forked ? { seq: 1, ours: 'QmA', theirs: 'QmB' } : null };
+        },
+      },
+    });
+    const { identity } = mount();
+    await flush();
+    await flush();
+    expect(identity.forked()).toBe(true);
+    forked = false;
+    await identity.refresh();
+    expect(identity.forked()).toBe(false);
+  });
+
+  it('"Start now" puts the question away on this computer', async () => {
+    setPorts({ identity: custody(backend({ did: null, events: [], devices: [] }).port, () => {}).identity });
     const { identity } = mount();
     await flush();
     await flush();
     identity.startWithoutIdentity();
     expect(identity.needsFirstRun()).toBe(false);
-    expect(localStorage.getItem(START_NOW_KEY)).toBe('1');
+    expect(localStorage.getItem(startNowKey('z6MkOne'))).toBe('1');
   });
 
-  it('reports a step the window cancelled, and reads again all the same', async () => {
+  it('remembers "Start now" for the account it was chosen in, not every account here', async () => {
+    localStorage.setItem(startNowKey('z6MkSomeoneElse'), '1');
+    setPorts({ identity: custody(backend({ did: null, events: [], devices: [] }).port, () => {}).identity });
+    const { identity } = mount();
+    await flush();
+    await flush();
+    expect(identity.needsFirstRun()).toBe(true);
+  });
+
+  it('reports a change the person cancelled, and reads again all the same', async () => {
     const b = backend({ did: null, events: [], devices: [] });
-    setPorts({ identity: b.port });
-    identityHost = {
-      async open() {
-        return 'cancelled';
-      },
-      async publicState() {
-        return { did: null, holdsMaster: null, unlock: 'passphrase' };
-      },
-    };
+    setPorts({
+      identity: signing(b.port, { custody: async () => NO_CUSTODY, change: async () => 'cancelled' }),
+    });
     const { identity } = mount();
     await flush();
     await flush();
@@ -273,36 +395,36 @@ describe('deviceStore', () => {
     ]);
     expect(stores.devices.canManage()).toBe(false);
 
-    identityHost = custody(() => {}, { index: 0 }).host;
+    setPorts({ identity: custody(b.port, () => {}, true).identity });
     stores = mount();
     await flush();
     await flush();
     expect(stores.devices.canManage()).toBe(true);
   });
 
-  it('revoke opens the window on that key and reads the list again', async () => {
+  it('revoke asks for that key and reads the list again', async () => {
     const b = backend({ did: DID, events: [incept, add], devices });
-    setPorts({ identity: b.port });
     const c = custody(
-      (step) => {
-        if (step.kind === 'revoke') {
+      b.port,
+      (change) => {
+        if (change.kind === 'revoke') {
           b.state.events = [
             ...b.state.events,
-            { seq: 2, op: 'revoke', hash: 'QmHash2', added: [], revoked: [step.keyId] },
+            { seq: 2, op: 'revoke', hash: 'QmHash2', added: [], revoked: [change.keyId] },
           ];
-          b.state.devices = b.state.devices.map((d) => (d.keyId === step.keyId ? { ...d, revokedSeq: 2 } : d));
+          b.state.devices = b.state.devices.map((d) => (d.keyId === change.keyId ? { ...d, revokedSeq: 2 } : d));
         }
       },
-      { index: 0 },
+      true,
     );
-    identityHost = c.host;
+    setPorts({ identity: c.identity });
     const { identity, devices: deviceStore } = mount();
     await flush();
     await flush();
     expect(await deviceStore.revoke('d2')).toBe('done');
     await flush();
     await flush();
-    expect(c.steps).toEqual([{ kind: 'revoke', keyId: 'd2' }]);
+    expect(c.changes).toEqual([{ kind: 'revoke', keyId: 'd2' }]);
     expect(deviceStore.devices().find((d) => d.keyId === 'd2')).toMatchObject({
       revoked: true,
       status: 'Revoked at #2',
@@ -311,13 +433,12 @@ describe('deviceStore', () => {
     expect(identity.keyLog()[0].title).toBe('Revoked d2');
   });
 
-  it('add opens the window on add-device', async () => {
-    setPorts({ identity: backend({ did: DID, events: [incept], devices: [devices[1]] }).port });
-    const c = custody(() => {}, { index: 0 });
-    identityHost = c.host;
+  it('add asks for add-device', async () => {
+    const c = custody(backend({ did: DID, events: [incept], devices: [devices[1]] }).port, () => {}, true);
+    setPorts({ identity: c.identity });
     const { devices: deviceStore } = mount();
     await flush();
     await deviceStore.addDevice();
-    expect(c.steps).toEqual([{ kind: 'add-device' }]);
+    expect(c.changes).toEqual([{ kind: 'add-device' }]);
   });
 });

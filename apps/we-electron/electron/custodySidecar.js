@@ -77,13 +77,26 @@ export function custodyClient(child) {
  * Starts the sidecar. Its stderr goes to `log` (the executor log): the crate writes no secret
  * there, and stdout carries only answers.
  */
-export function startCustody({ binary, executorPort, credential, baseEnv = process.env, log = console.log }) {
+export function startCustody({
+  binary,
+  executorPort,
+  credential,
+  baseEnv = process.env,
+  log = console.log,
+  onExit = () => {},
+}) {
   const { command, args, env } = custodySpawn({ binary, executorPort, credential, baseEnv });
   // A group of its own, as the executor's is, so a stop can reach it whatever it started.
   const child = spawn(command, args, { detached: true, stdio: ['pipe', 'pipe', 'pipe'], env });
   child.unref();
   createInterface({ input: child.stderr }).on('line', (line) => log(line));
   const client = custodyClient(child);
+  // How it ended goes to the log whatever ended it, and to `onExit`, which decides whether to start
+  // another: a sidecar that stopped on its own leaves every later call failing until one does.
+  child.on('exit', (code, signal) => {
+    log(`[custody] exited (code ${code}, signal ${signal})`);
+    onExit({ code, signal });
+  });
 
   return {
     call: client.call,
@@ -97,6 +110,53 @@ export function startCustody({ binary, executorPort, credential, baseEnv = proce
       const inTime = await Promise.race([exited, late]);
       clearTimeout(timer);
       if (!inTime) await stopProcess(child.pid);
+    },
+  };
+}
+
+/**
+ * Keeps one sidecar running: `start({ onExit })` starts one, and one that stops on its own — a crash,
+ * or killed from outside — is started again, so identity does not stay off for the rest of the
+ * session. Not endlessly: a sidecar that cannot stay up is broken, and a loop would only fill the
+ * log, so after `restarts` stops within `windowMs` it is left off. A supervisor stopped on purpose
+ * starts nothing again.
+ */
+export function superviseCustody({ start, restarts = 3, windowMs = 60_000, now = Date.now, log = console.error }) {
+  let current = null;
+  let crashes = [];
+  let stopped = false;
+
+  const run = () => {
+    const started = start({
+      onExit: ({ code, signal }) => {
+        if (stopped || current !== started) return;
+        current = null;
+        const at = now();
+        crashes = crashes.filter((then) => at - then < windowMs);
+        if (crashes.length >= restarts) {
+          log(
+            `[custody] stopped ${restarts + 1} times within ${windowMs / 1000} s (last: code ${code}, signal ${signal}); identity is off until the executor starts again.`,
+          );
+          return;
+        }
+        crashes.push(at);
+        log(`[custody] stopped on its own (code ${code}, signal ${signal}); starting it again.`);
+        run();
+      },
+    });
+    current = started;
+  };
+  run();
+
+  return {
+    /** The running sidecar's client, or null while none runs. */
+    current: () => current,
+    /** Stops it, and starts nothing again. */
+    async stop() {
+      stopped = true;
+      const running = current;
+      current = null;
+      await running?.stop();
     },
   };
 }

@@ -3186,15 +3186,19 @@ export function SpaceStoreProvider(props: ParentProps) {
               target class — a pass writes whatever models the call looks for — and the class this
               store reads through did not carry the flag, so the executor refused to hydrate it.
             */
-            include: { extractionPasses: true, extracted: { polymorphic: true }, amendments: true },
+            include: {
+              runs: { where: { kind: 'extraction' } },
+              extracted: { polymorphic: true },
+              amendments: true,
+            },
           } as never);
           const row = call as unknown as {
             title?: string;
-            extractionPasses?: unknown;
+            runs?: unknown;
             extracted?: unknown;
             amendments?: unknown;
           } | null;
-          const passes = (Array.isArray(row?.extractionPasses) ? row.extractionPasses : []) as PassEntry[];
+          const passes = (Array.isArray(row?.runs) ? row.runs : []) as PassEntry[];
           const records = Array.isArray(row?.extracted) ? (row.extracted as unknown[]) : [];
           const amendments = (Array.isArray(row?.amendments) ? row.amendments : []) as AmendmentEntry[];
           if (!passes.length) return null;

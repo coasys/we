@@ -721,6 +721,41 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   let node: AudioWorkletNode | null = null;
   let source: MediaStreamAudioSourceNode | null = null;
   let stream: Awaited<ReturnType<NonNullable<typeof transcription>['open']>> | null = null;
+  /** The model the open stream is listening with, for the run its lines are marked with. */
+  let hearingModel = '';
+  /**
+   * The run each spoken line is marked as written by: one per call, per model, for this agent.
+   *
+   * A line a recogniser heard is a model's writing on the speaker's behalf, so it says so the way
+   * everything else a model writes does — `generatedBy` a `ModelRun` — and `source: 'spoken'` stays
+   * beside it, saying how the words arrived. One run for the whole of somebody's speech in a call
+   * rather than one per line: a line is not a separate request, and a run per utterance would be a
+   * record per sentence for nothing a reader asks about. A new model is a new run, since which model
+   * heard the words is what the run is for.
+   *
+   * Held as the promise, so two flushes racing for the first line make one run. Forgotten when its
+   * write fails, so the next line tries again rather than every line going unmarked.
+   */
+  const transcriptionRuns = new Map<string, Promise<string | null>>();
+
+  function transcriptionRun(collection: string, dataset?: string): Promise<string | null> {
+    if (!createEntity) return Promise.resolve(null);
+    const key = `${collection}|${hearingModel}`;
+    let run = transcriptionRuns.get(key);
+    if (!run) {
+      run = createEntity(
+        'ModelRun',
+        { kind: 'transcription', model: hearingModel, trigger: 'auto' },
+        { parent: { id: collection, relation: 'runs', entity: 'CollectionBlock' }, ...(dataset ? { dataset } : {}) },
+      ).catch((cause: unknown) => {
+        transcriptionRuns.delete(key);
+        console.error('transcribe: could not record the transcription run', cause);
+        return null;
+      });
+      transcriptionRuns.set(key, run);
+    }
+    return run;
+  }
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
   let buffer = '';
   /**
@@ -1202,6 +1237,25 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       .filter((p) => !seen.has(p.id) && Boolean(seen.add(p.id)));
   };
 
+  /** A relation as a row carries it — an id, a list of one, or an included record — as an id. */
+  const relationId = (value: unknown): string => {
+    const one: unknown = Array.isArray(value) ? (value as unknown[])[0] : value;
+    if (typeof one === 'string') return one;
+    const id = (one as { id?: unknown } | null | undefined)?.id;
+    return typeof id === 'string' ? id : '';
+  };
+
+  /**
+   * The conversation a suggestion is listed under, or empty where it is only known space-wide.
+   *
+   * Where an accepted change is written down. Not `targetCollection()`, which is the call this agent
+   * is *in*: a suggestion is usually reviewed on a call that has ended, from a panel open on it, and
+   * with no live call the account of the decision was silently not written at all.
+   */
+  const callOfProposal = (id: string): string =>
+    Object.entries(proposalsByCall()).find(([key, rows]) => key !== SPACE_KEY && rows.some((p) => p.id === id))?.[0] ??
+    '';
+
   /**
    * The suggestions a card's marker is answered from: everything known, with the space on screen
    * asked about on first read — see `SPACE_KEY`.
@@ -1303,6 +1357,8 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     const proposal = allProposals().find((p) => p.id === id);
     const amending = proposal?.kind === 'update' ? proposal : null;
     const before = amending ? await readBeforeChange(amending) : null;
+    // Before it is forgotten, which takes it off the list that says which call it was on.
+    const call = callOfProposal(id);
     await interpretation.accept(id, undefined, callTarget());
     const entity = proposal?.entity;
     forgetProposal(id);
@@ -1311,6 +1367,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         amending,
         amending.fields.map((f) => f.name),
         before,
+        call,
         edited,
       );
     }
@@ -1390,6 +1447,8 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     proposal: ProposalView,
     names: string[],
     before: Record<string, unknown> | null,
+    /** The call the suggestion was on — see `callOfProposal`. The live call where it is not known. */
+    call: string,
     /**
      * What was typed into the card instead of what the pass proposed, where somebody edited it.
      *
@@ -1400,7 +1459,9 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      */
     edited: Record<string, string> | null = null,
   ): Promise<void> {
-    const collection = targetCollection();
+    // The call it was suggested on; the live one; or, for a suggestion only known space-wide, the
+    // call the record came out of — which every record a pass changes has.
+    const collection = call || targetCollection() || relationId(before?.extractedFrom);
     if (!createEntity || !collection || !before) return;
     for (const name of names) {
       const field = proposal.fields.find((f) => f.name === name);
@@ -1421,7 +1482,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       if (previousValue === newValue) continue;
       try {
         await createEntity(
-          'ExtractionAmendment',
+          'Amendment',
           {
             property: name,
             previousValue,
@@ -1672,12 +1733,14 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
 
       // The call's space, not the reader's. See `myCall().datasetUri`.
       const dataset = myCall()?.datasetUri ?? undefined;
+      const run = await transcriptionRun(slot.id, dataset);
       await createEntity?.(
         'TextBlock',
         // `spoken`, because a recogniser heard it — the one writer that may say so. Everything else
         // in this timeline is a person typing, and a transcript that cannot tell them apart claims
-        // somebody said what they wrote. See `TextBlock.source`.
-        { text, source: SPOKEN },
+        // somebody said what they wrote. See `TextBlock.source`. And `generatedBy` the run, in the
+        // same write, because a model wrote it down: see `transcriptionRuns`.
+        { text, source: SPOKEN, ...(run ? { generatedBy: [run] } : {}) },
         { parent: { id: slot.id, relation: 'children', entity: 'CollectionBlock' }, ...(dataset ? { dataset } : {}) },
       );
       await recordSelfParticipation(slot.id, dataset);
@@ -1901,6 +1964,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
 
       newStream = await transcription.open(model.id, onText);
       if (mine !== generation) return await unwind();
+      hearingModel = model.id;
 
       newContext = new AudioContext();
       // Built here rather than fetched: see `workletSource`. Revoked as soon as it is registered —
@@ -3611,9 +3675,10 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       // Before the accept, which overwrites the value this is the only remaining copy of.
       const proposal = allProposals().find((p) => p.id === id);
       const before = proposal ? await readBeforeChange(proposal) : null;
+      const call = callOfProposal(id);
       await interpretation.accept(id, field, callTarget());
       forgetField(id, field);
-      if (proposal) await recordAmendments(proposal, [field], before);
+      if (proposal) await recordAmendments(proposal, [field], before, call);
     }, 'Applies one suggested change to an agreed record.'),
     /** Dismiss one suggested change, leaving the record's value as it was. */
     dismissChange: action(async (id: string, field: string) => {

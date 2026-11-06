@@ -8,7 +8,7 @@ import { PassThrough } from 'stream';
 import { fileURLToPath } from 'url';
 import { describe, expect, it } from 'vitest';
 
-import { custodyClient, custodySpawn, startCustody } from './custodySidecar.js';
+import { custodyClient, custodySpawn, startCustody, superviseCustody } from './custodySidecar.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const CREDENTIAL = 'the-admin-credential';
@@ -84,5 +84,67 @@ describe('startCustody', () => {
     await expect(custody.call('fail')).rejects.toThrow('it failed');
     await custody.stop();
     await expect(custody.call('publicState')).rejects.toThrow('the custody service stopped');
+  });
+});
+
+describe('superviseCustody', () => {
+  /** Sidecars that stop when told to; `crash(i)` stops the i-th as if it had died. */
+  function sidecars() {
+    const started = [];
+    const start = ({ onExit }) => {
+      const one = {
+        onExit,
+        stopped: false,
+        stop: async () => ((one.stopped = true), onExit({ code: 0, signal: null })),
+      };
+      started.push(one);
+      return one;
+    };
+    return { started, start, crash: (i) => started[i].onExit({ code: 101, signal: null }) };
+  }
+
+  it('starts a sidecar that stopped on its own again', () => {
+    const s = sidecars();
+    const supervisor = superviseCustody({ start: s.start, log: () => {} });
+    expect(supervisor.current()).toBe(s.started[0]);
+    s.crash(0);
+    expect(s.started).toHaveLength(2);
+    expect(supervisor.current()).toBe(s.started[1]);
+  });
+
+  it('leaves it off after too many stops in the window, and counts afresh once the window passes', () => {
+    let t = 0;
+    const s = sidecars();
+    const logged = [];
+    const supervisor = superviseCustody({
+      start: s.start,
+      restarts: 2,
+      windowMs: 1000,
+      now: () => t,
+      log: (m) => logged.push(m),
+    });
+    s.crash(0);
+    s.crash(1);
+    s.crash(2);
+    expect(s.started).toHaveLength(3);
+    expect(supervisor.current()).toBeNull();
+    expect(logged.at(-1)).toContain('identity is off');
+
+    const again = sidecars();
+    const fresh = superviseCustody({ start: again.start, restarts: 1, windowMs: 1000, now: () => t, log: () => {} });
+    again.crash(0);
+    t = 5000;
+    again.crash(1);
+    expect(again.started).toHaveLength(3);
+    expect(fresh.current()).toBe(again.started[2]);
+  });
+
+  it('starts nothing again once stopped on purpose', async () => {
+    const s = sidecars();
+    const supervisor = superviseCustody({ start: s.start, log: () => {} });
+    await supervisor.stop();
+    expect(s.started[0].stopped).toBe(true);
+    expect(s.started).toHaveLength(1);
+    expect(supervisor.current()).toBeNull();
   });
 });

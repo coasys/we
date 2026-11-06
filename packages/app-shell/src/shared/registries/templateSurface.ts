@@ -65,8 +65,8 @@ export const CAPABILITY_GROUPS = {
   editor: 'Drive the template and theme editing surface',
   'host-layout': "Move and resize the app's own panels and docks",
   clipboard: 'Put text on your clipboard when you ask it to',
-  keys: 'See your identity and its key log, and open the window that changes it',
-  devices: 'See the devices that act as you, and open the window that adds or removes one',
+  keys: 'See your identity and its key log, and ask to make or change it — you confirm every change yourself',
+  devices: 'See the devices that act as you, and ask to add or remove one — you confirm every change yourself',
 } as const;
 
 export type CapabilityGroup = keyof typeof CAPABILITY_GROUPS;
@@ -125,9 +125,14 @@ export const CHROME_TIER: readonly CapabilityGroup[] = [
   */
   'clipboard',
   /*
-    Chrome only, and decided so: a space template learns nothing of
-    who a person is beyond their profile — not their `did:scid`, not their devices, not that a key log
-    exists. The actions here only open the host's identity window, which asks for itself.
+    Chrome only, and decided so: a space template learns nothing of who a person is beyond their
+    profile — not their identifier, not their devices, not that a key log exists.
+
+    Chrome includes an installed app and its pages (`judgeBundle`), not only what ships with WE: one
+    bag serves every chrome template, so an app the person installed can ask for a change as WE's own
+    Settings can. The guard is the change itself: the backend asks the person wherever it keeps the
+    master key and shows what will be signed, and nothing is signed without them. Narrowing these to
+    the app's own chrome waits for grants per template, which this tier list is shaped for.
   */
   'keys',
   'devices',
@@ -1452,9 +1457,9 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
   },
 
   /*
-    Reading the identity and opening the identity window. Neither action is `destructive`: the change
-    happens in the host's identity window, which is its own confirmation — it shows what will be
-    signed and asks for the unlock — so a host dialog in front of it would be a second question.
+    Reading the identity and asking for a change to it. Neither action is `destructive`: the backend
+    runs the change where it keeps the master key, and that is its own confirmation — it shows what
+    will be signed and asks for the unlock — so a host dialog in front of it would be a second question.
   */
   identityStore: {
     available: state('keys'),

@@ -5,7 +5,7 @@
 import type { DeviceView, IdentityLog, IdentityStatus, SignedHead } from '@coasys/ad4m';
 import { describe, expect, it, vi } from 'vitest';
 
-import { createAd4mIdentityPort, readKeyLog } from './identityPort';
+import { type Ad4mCustodyState, createAd4mIdentityPort, readKeyLog } from './identityPort';
 import { missingExecutorMethods, resetMissingExecutorMethods } from './missingMethods';
 
 const DID = 'did:scid:coasys:1:QmScid';
@@ -136,5 +136,36 @@ describe('the AD4M identity port', () => {
     createAd4mIdentityPort(c).onFork!((fork) => seen.push(fork));
     handler!({ did: DID, seq: 3, ours: 'QmA', theirs: 'QmB' });
     expect(seen).toEqual([{ seq: 3, ours: 'QmA', theirs: 'QmB' }]);
+  });
+});
+
+describe('the AD4M identity port with a custody service', () => {
+  const custody = (state: Partial<Ad4mCustodyState> = {}) => ({
+    open: vi.fn(async () => 'done' as const),
+    publicState: vi.fn(
+      async () => ({ did: DID, holdsMaster: { index: 0 }, unlock: 'os', ...state }) as Ad4mCustodyState,
+    ),
+  });
+
+  it('offers no change without one', async () => {
+    const port = createAd4mIdentityPort(client({ status: {} }));
+    expect(port.change).toBeUndefined();
+    expect(port.custody).toBeUndefined();
+    expect(await port.capabilities()).toMatchObject({ keyLog: true, masterKey: false, linkDevice: false });
+  });
+
+  it('runs a change through it, and reads its state in neutral terms', async () => {
+    const host = custody({ blocked: '' });
+    const port = createAd4mIdentityPort(client({ status: {} }), host);
+    expect(await port.capabilities()).toMatchObject({ masterKey: true, linkDevice: true });
+    expect(await port.change!({ kind: 'revoke', keyId: 'd2' })).toBe('done');
+    expect(host.open).toHaveBeenCalledWith({ kind: 'revoke', keyId: 'd2' });
+    // An empty reason is no reason: nothing blocks the change.
+    expect(await port.custody!()).toEqual({ did: DID, holdsMaster: true, unlock: 'os', blocked: null });
+  });
+
+  it('says why changes are blocked', async () => {
+    const port = createAd4mIdentityPort(client({ status: {} }), custody({ holdsMaster: null, blocked: 'No store.' }));
+    expect(await port.custody!()).toMatchObject({ holdsMaster: false, blocked: 'No store.' });
   });
 });

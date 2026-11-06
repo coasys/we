@@ -1341,6 +1341,7 @@ describe('a canvas over another record’s members', () => {
             id: 't1',
             title: 'Placed',
             extractedFrom: 'call-2',
+            generatedBy: 'run-2',
             author: 'did:ada',
             [NODE_TYPE_KEY]: 'TaskBlock',
           };
@@ -1348,7 +1349,7 @@ describe('a canvas over another record’s members', () => {
         }
         if (entities.includes('TaskBlock') && request.scope?.anchorId === 'root' && request.scope.via === 'children') {
           return tagged('TaskBlock', [
-            { id: 't1', title: 'Placed', extractedFrom: 'call-2', author: 'did:ada' },
+            { id: 't1', title: 'Placed', extractedFrom: 'call-2', generatedBy: 'run-2', author: 'did:ada' },
             { id: 't2', title: 'Loose', extractedFrom: { id: 'call-1' } },
           ]);
         }
@@ -1379,6 +1380,15 @@ describe('a canvas over another record’s members', () => {
     expect(asked.filter((a) => a.entities.includes('Placement')).map((a) => a.anchor)).toEqual(['canvas-1']);
     // Where each came from rides in the read the canvas makes anyway.
     expect(asked.find((a) => a.anchor === 'root')?.include).toMatchObject({ extractedFrom: true });
+  });
+
+  it('says which run made a card, placed or not, and nothing for a card a person made', async () => {
+    const { ctx } = spaceContext();
+    const { nodes } = await canvasSeed().seed({ ...options, madeBy: 'generatedBy' }, ctx);
+    expect(nodes.map((n) => [n.label, n.data?.madeBy])).toEqual([
+      ['Placed', 'run-2'],
+      ['Loose', undefined],
+    ]);
   });
 
   // What a focus dims by: who made a card, and which record it is, whatever its type declares.

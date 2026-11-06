@@ -208,4 +208,16 @@ describe('CANVAS_RECORD_CARD', () => {
     );
     expect(canvasCard({ type: 'TaskBlock', label: 'x', data: {}, display: task, states }).pending).toBe(false);
   });
+
+  it('says "by AI" on a card a model made, and nothing on one a person made', () => {
+    // The board's sparkle, in words: a canvas card takes no pointer, so it cannot hover.
+    const mark = expressions.find((source) => source.startsWith('card.generated ?')) ?? '';
+    expect(evaluate(mark, { card: { generated: true } })).toContain('inline-flex');
+    expect(evaluate(mark, { card: { generated: false } })).toBe('display: none;');
+    const card = (data: Record<string, unknown>) =>
+      canvasCard({ type: 'TaskBlock', label: 'x', data, display: task, states });
+    expect(card({ madeBy: 'run-1' }).generated).toBe(true);
+    expect(card({ origin: 'call-1' }).generated).toBe(true);
+    expect(card({}).generated).toBe(false);
+  });
 });

@@ -44,7 +44,7 @@ WE's data layer is [AD4M](https://ad4m.dev): agent-centric, local-first, peer-to
 - **Perspective / dataset** — a local knowledge graph (links/triples). The codebase says
   **dataset** at the contract layer (`DatasetStore`, `currentDataset`) and perspective at the AD4M
   layer; every Space is backed by one. `datasetStore.currentDataset` = the active dataset;
-  `datasetStore.rootDataset` = we-root, the app's configuration (AgentSettings, ChatSession,
+  `datasetStore.rootDataset` = we-root, the app's configuration (AgentSettings, Template,
   installed templates/themes); `datasetStore.personalDataset` = we-personal, the agent's own things
   (notes, the Pocket) with the ordinary space schema. Both chrome tier. See
   `packages/app-shell/src/shared/systemDatasets.ts`.

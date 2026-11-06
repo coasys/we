@@ -73,7 +73,8 @@ pub async fn identity_open(
         IDENTITY,
         WebviewUrl::App("identity/index.html".into()),
     )
-    .title("Coasys Identity")
+    // The app's own name, whichever build this is; the page names none.
+    .title(format!("{} — your identity", app.package_info().name))
     .inner_size(480.0, 640.0)
     .resizable(false)
     .focused(true)

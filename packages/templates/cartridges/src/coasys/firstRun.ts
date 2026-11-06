@@ -10,7 +10,7 @@ import type { OperatorToken, SchemaNode, SchemaProp } from '@we/schema-shared';
  * - **Make my identity here** opens the identity window, which shows the 12 words, asks for two of
  *   them back and keeps master #0 on this computer. The question goes away by itself once the
  *   identity exists, because `needsFirstRun` reads the key log again when the window closes.
- * - **Start now** uses the app with no identity, remembered on this computer; Settings → Security
+ * - **Start now** uses the app with no identity, remembered for this account on this computer; Settings → Security
  *   offers "Make my identity here" again.
  *
  * Where no identity can be made (`identityStore.changeBlocked`: the executor reports no identity
@@ -94,7 +94,7 @@ function door(options: {
  * on a build that cannot make an identity yet, why.
  */
 const keepsLine: OperatorToken = {
-  $: "identityStore.changeBlocked ? identityStore.changeBlocked : identityStore.custody.unlock == 'touch-id-or-password' ? 'Your 12 words, no email needed. This computer keeps your master key behind Touch ID' : 'Your 12 words, no email needed. This computer keeps your master key behind your passphrase'",
+  $: "identityStore.changeBlocked ? identityStore.changeBlocked : identityStore.custody.unlock == 'os' ? 'Your 12 words, no email needed. This computer keeps your master key behind its own sign-in' : 'Your 12 words, no email needed. This computer keeps your master key behind your passphrase'",
 };
 
 export const coasysFirstRun: SchemaNode = {
@@ -174,7 +174,11 @@ export const coasysFirstRun: SchemaNode = {
                 then: {
                   type: 'we-alert',
                   props: { tone: 'danger' },
-                  children: ['Your identity was not made. Nothing was published; try again.'],
+                  children: [
+                    {
+                      $: "identityStore.error != '' ? `Your identity was not made: ${identityStore.error}` : 'Your identity was not made. Nothing was published; try again.'",
+                    },
+                  ],
                 },
               },
             },
