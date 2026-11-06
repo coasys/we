@@ -591,6 +591,13 @@ export interface NotifyOptions {
   action?: { label: string; run: () => void };
   /** How long it stays, in ms. The host's default when absent. */
   duration?: number;
+  /**
+   * Whose words these are, for a notice carrying somebody's message: drawn as their avatar and name
+   * above it. `id` is the agent's, which the avatar is drawn from when there is no picture.
+   */
+  from?: { name: string; avatar?: string; id?: string };
+  /** An icon in place of the tone's, for a notice that is one kind of news: `robot` for a bot's. */
+  icon?: string;
 }
 
 /** What a module gets to know about an agent. */

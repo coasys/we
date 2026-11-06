@@ -573,9 +573,14 @@ export function ProfileStoreProvider(props: ParentProps) {
         people, and because the host is what decides that "tell somebody" means a toast.
       */
       notify: (tone, message, options) => {
+        const from = options?.from;
+        const look = {
+          ...(options?.icon && { icon: options.icon }),
+          ...(from && { from: { name: from.name, image: from.avatar, hash: from.id } }),
+        };
         // Only news and outcomes carry a button: a warning or an error says what went wrong.
-        if (tone === 'info') toastService.info(message, options?.duration, options?.action);
-        else if (tone === 'success') toastService.success(message, options?.duration, options?.action);
+        if (tone === 'info') toastService.info(message, options?.duration, options?.action, look);
+        else if (tone === 'success') toastService.success(message, options?.duration, options?.action, look);
         else toastService[tone](message, options?.duration);
       },
       identities: {
