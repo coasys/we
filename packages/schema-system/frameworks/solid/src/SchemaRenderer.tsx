@@ -27,6 +27,7 @@ import { Dynamic } from 'solid-js/web';
 
 import { AnimateRenderer } from './AnimateRenderer';
 import { ConditionalRenderer } from './ConditionalRenderer';
+import { keepRows } from './keptRows';
 import { acquireSubscription } from './subscriptionPool';
 import { SurfaceRenderer } from './SurfaceRenderer';
 import type { RendererOutput, RenderProps, SchemaNode } from './types';
@@ -998,6 +999,11 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
     // Resolve the items used for iteration — $query needs a reactive subscription,
     // everything else goes through the standard resolveProp path.
     let itemsArray: () => unknown[];
+    /*
+      A store's list is kept by id where its rows allow it — see `keepRows`. A query's rows already
+      are: the query branch reconciles them by `id` into a store of its own.
+    */
+    let kept: ReturnType<typeof keepRows> | undefined;
 
     const rawItems = node.props?.items;
     if (hasToken(rawItems, '$query', 'object')) {
@@ -1015,7 +1021,11 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
         const items: unknown = typeof resolvedItems === 'function' ? (resolvedItems as () => unknown)() : resolvedItems;
         return Array.isArray(items) ? (items as unknown[]) : [];
       });
+      // eslint-disable-next-line solid/reactivity -- handed over as an accessor; keepRows reads it in its own memo
+      kept = keepRows(itemsArray);
     }
+
+    const asKey = scopeName(node.props?.as, 'item');
 
     // Return a list of the rendered items.
     //
@@ -1028,23 +1038,34 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
     // simply unreachable — no theme or prop could recover it.
     //
     // Plain values rather than accessors, matching how the item itself is passed: a context ref
-    // resolves by path lookup, and a function under `prev` would break that. The consequence is that
-    // `$prev` is captured when a row renders, so it can go stale if the list is *reordered* under a
-    // keyed `<For>` without that row's own identity changing. Appends and prepends — every feed
-    // here — are unaffected.
-    return (
+    // resolves by path lookup, and a function under `prev` would break that. So they are captured
+    // when a row is drawn. A store list kept by id draws a row again when either changes (see
+    // `keepRows`). A query's rows are kept by id without that, so there `$prev` can go stale if the
+    // list is *reordered* without the row's own identity changing.
+    const byReference = () => (
       <For each={itemsArray()}>
         {(item, index) => {
           // Captured when the row renders, like `$prev` — see above.
           const i = untrack(index);
           return renderNode(itemSchema, {
             ...effectiveContext,
-            [scopeName(node.props?.as, 'item')]: item,
+            [asKey]: item,
             index: i,
             prev: i > 0 ? itemsArray()[i - 1] : undefined,
           });
         }}
       </For>
+    );
+    if (!kept) return byReference();
+    const { keyed, rows } = kept;
+    return (
+      <Show when={keyed()} fallback={byReference()}>
+        <For each={rows()}>
+          {(row) =>
+            renderNode(itemSchema, { ...effectiveContext, [asKey]: row.item, index: row.index, prev: row.prev })
+          }
+        </For>
+      </Show>
     );
   }
 
