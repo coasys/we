@@ -935,6 +935,8 @@ const localActions: SchemaNode = {
                     size: 'sm',
                     variant: 'soft',
                     loading: { $: "'stopLocalAi' in runtimeStore.pending" },
+                    // An install stops and starts the servers itself.
+                    disabled: { $: 'runtimeStore.localAi.installing' },
                     onClick: { $invoke: 'runtimeStore.stopLocalAi' },
                   },
                   children: [{ type: 'we-icon', props: { name: 'stop' } }],
@@ -945,6 +947,8 @@ const localActions: SchemaNode = {
                     text: 'Start',
                     size: 'sm',
                     loading: { $: "'startLocalAi' in runtimeStore.pending" },
+                    // An install stops and starts the servers itself.
+                    disabled: { $: 'runtimeStore.localAi.installing' },
                     onClick: { $invoke: 'runtimeStore.startLocalAi' },
                   },
                   children: [{ type: 'we-icon', props: { name: 'play' } }],

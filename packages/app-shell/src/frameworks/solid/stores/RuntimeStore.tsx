@@ -683,9 +683,13 @@ export function RuntimeStoreProvider(props: ParentProps) {
     An install's progress, heard while the settings are open — whether the install was started here
     or from the launcher. The end of one re-reads what it changed: the running state, and the
     managed servers and models it registered.
+
+    What was heard before is dropped when listening starts: the events between were missed, and a
+    retry of the same install has the same total, so an old count would hold the bar where it was.
   */
   createEffect(() => {
     if (!aiShown()) return;
+    setLocalProgress(null);
     const stop = localPort()?.onProgress?.((event) => {
       setLocalProgress((prev) => reduceProgress(prev, event));
       if (event.phase === 'done' || event.phase === 'failed') void refreshLocalAi();

@@ -41,8 +41,7 @@ const runtime = (overrides: Partial<LocalAiRuntimeStatus> = {}): LocalAiRuntimeS
 
 describe('reduceProgress', () => {
   it('starts over with a new install', () => {
-    const before = event({ doneBytes: 80 });
-    expect(reduceProgress(before, event({ phase: 'plan', doneBytes: 0 })).doneBytes).toBe(0);
+    // The backend sends `download` events, then `done` or `failed`: the next install starts after either.
     expect(reduceProgress(event({ phase: 'done', doneBytes: 100 }), event({ doneBytes: 5 })).doneBytes).toBe(5);
     expect(reduceProgress(event({ phase: 'failed', doneBytes: 60 }), event({ doneBytes: 5 })).doneBytes).toBe(5);
   });
@@ -56,8 +55,15 @@ describe('reduceProgress', () => {
 
 describe('progressView', () => {
   it('says each phase, and a finished install is all the way', () => {
-    expect(progressView(event({ phase: 'plan' })).text).toBe('Checking what to download');
-    expect(progressView(event({ phase: 'start', doneBytes: 100 })).text).toBe('Starting the model servers');
+    expect(progressView(event({ itemDoneBytes: 40e6, itemTotalBytes: 2.5e9, doneBytes: 40 })).text).toBe(
+      'Downloading m — 40 MB of 2.5 GB',
+    );
+    // Every file in, the servers start: the backend sends nothing more until `done`.
+    expect(progressView(event({ itemDoneBytes: 2.5e9, itemTotalBytes: 2.5e9, doneBytes: 100 }))).toEqual({
+      percent: 100,
+      text: 'Starting the model servers',
+      failed: false,
+    });
     expect(progressView(event({ phase: 'done', doneBytes: 0, totalBytes: 0 }))).toEqual({
       percent: 100,
       text: 'Installed',
@@ -101,7 +107,7 @@ describe('sentences', () => {
       stateText: 'Running · on the CPU: the GPU build found no device · restarted 2 times',
       ok: false,
     });
-    expect(runtimeView(runtime({ phase: null })).stateText).toBe('Not started');
+    expect(runtimeView(runtime({ phase: null })).stateText).toBe('Not running');
     expect(runtimeView(runtime({ phase: 'failed', detail: 'exited with 1' }))).toMatchObject({
       stateText: 'Failed · exited with 1',
       ok: false,
@@ -135,6 +141,25 @@ describe('describeLocalAi', () => {
     });
     expect(view.installing).toBe(true);
     expect(view.progress?.percent).toBe(50);
+  });
+
+  it('offers Stop for any server the backend still runs, whatever state it is in', () => {
+    // `anyRunning` picks Stop over Start. A failed server stays the backend's until it is stopped,
+    // and a start leaves it as it is: Start would do nothing for it.
+    const live = (phase: LocalAiRuntimeStatus['phase']) =>
+      describeLocalAi({
+        hardware: null,
+        plan: null,
+        status: { installed: true, installing: false, autostart: true, runtimes: [runtime({ phase })], models: [] },
+        progress: null,
+        installingHere: false,
+      }).anyRunning;
+    expect(live('failed')).toBe(true);
+    expect(live('starting')).toBe(true);
+    expect(live('restarting')).toBe(true);
+    expect(live('running')).toBe(true);
+    expect(live('stopped')).toBe(false);
+    expect(live(null)).toBe(false);
   });
 
   it('drops a finished install’s bar once it is over', () => {

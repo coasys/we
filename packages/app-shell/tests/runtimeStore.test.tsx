@@ -28,6 +28,7 @@ import type {
   PeerRecords,
   RuntimeAdminPort,
 } from '@we/backend-shared';
+import { createSignal } from 'solid-js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 let ports: Partial<BackendPorts> | null = null;
@@ -56,8 +57,19 @@ vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
 // Never 'settings', so the on-demand load effect stays dormant and each test drives the store
 // explicitly. The load-on-open behaviour is asserted separately below.
 let activeShellView: string | null = null;
+// Read on every call, so a test that opens and closes the settings while mounted re-runs the effects.
+const [shellViewChanged, setShellViewChanged] = createSignal(0);
+function setShellView(view: string | null): void {
+  activeShellView = view;
+  setShellViewChanged((n) => n + 1);
+}
 vi.mock('../src/frameworks/solid/stores/ShellStore', () => ({
-  useShellStore: () => ({ activeShellView: () => activeShellView }),
+  useShellStore: () => ({
+    activeShellView: () => {
+      shellViewChanged();
+      return activeShellView;
+    },
+  }),
 }));
 
 // Faked for the same reason as the stores above, and for one more: importing the real provider
@@ -790,7 +802,8 @@ describe('local AI on this device', () => {
       },
       async stop() {
         calls.push('stop');
-        status = { ...running, runtimes: [{ ...running.runtimes[0], phase: 'stopped', onGpu: null }] };
+        // As the executor answers: a stopped server is no longer its own, so it has no phase.
+        status = { ...running, runtimes: [{ ...running.runtimes[0], phase: null, onGpu: null }] };
         return status;
       },
       async remove(deleteFiles) {
@@ -917,12 +930,57 @@ describe('local AI on this device', () => {
 
     await store.stopLocalAi();
     expect(store.localAi()).toMatchObject({ running: false, anyRunning: false });
-    expect(store.localAi().runtimes[0].stateText).toBe('Stopped');
+    expect(store.localAi().runtimes[0].stateText).toBe('Not running');
 
     await store.removeLocalAi(true);
     expect(local.calls).toEqual(['start', 'stop', 'remove:true']);
     expect(store.localAi().installed).toBe(false);
     expect(store.aiEndpoints()).toEqual([]);
+  });
+
+  it('starts a bar over when the settings open again, rather than holding what it heard before', async () => {
+    setShellView('settings');
+    const local = localPort({ status: async () => ({ ...notInstalled, installing: true }) });
+    ports = { models: local.models };
+    const store = mount();
+    await vi.waitFor(() => expect(store.localAi().loaded).toBe(true));
+    const download = (doneBytes: number) => ({
+      phase: 'download' as const,
+      item: 'test-chat',
+      itemDoneBytes: doneBytes,
+      itemTotalBytes: 2.5e9,
+      doneBytes,
+      totalBytes: 2.54e9,
+    });
+    local.progress(download(1.524e9));
+    expect(store.localAi().progress?.percent).toBe(60);
+
+    // Closed while the install ran, so its end went unheard; a retry of the same plan has the same total.
+    setShellView(null);
+    setShellView('settings');
+    local.progress(download(0.0254e9));
+    expect(store.localAi().progress?.percent).toBe(1);
+  });
+
+  it('re-reads what an install changed when one it did not start ends', async () => {
+    setShellView('settings');
+    const local = localPort();
+    ports = { models: local.models };
+    const store = mount();
+    await vi.waitFor(() => expect(store.localAi().loaded).toBe(true));
+    // The launcher's install, or the backend's own, ran meanwhile: the backend now has it installed.
+    const port = local.models;
+    const status = vi.spyOn(port.local as LocalAiPort, 'status').mockResolvedValue(running);
+    const plan = vi.spyOn(port.local as LocalAiPort, 'plan');
+    const endpoints = vi.spyOn(port, 'endpoints').mockResolvedValue([managed]);
+    const list = vi.spyOn(port, 'list');
+
+    // Nothing is in flight from here; only its end is heard.
+    local.progress({ phase: 'done', item: '', doneBytes: 0, totalBytes: 0 });
+    await vi.waitFor(() => expect(store.localAi().installed).toBe(true));
+    for (const read of [status, plan, endpoints, list]) expect(read).toHaveBeenCalled();
+    expect(store.localAi()).toMatchObject({ installing: false, running: true });
+    expect(store.aiEndpoints()).toHaveLength(1);
   });
 
   it('does not edit or remove a managed server as a server', async () => {

@@ -3,6 +3,7 @@ import { field } from '@we/template-kit';
 
 import { aiForms, aiModelsSection, aiSetupFlow, aiSetupHeading } from './AiSettings.schema.ts';
 import { brandMark } from './brandMark';
+import { runtimeError } from './RuntimeSettings.schema.ts';
 
 /**
  * A scale step, rotated off the primary hue.
@@ -573,6 +574,9 @@ const aiSetupStep: SchemaNode = {
             },
           ],
         },
+        // The step's own error slot, as every page with a runtime section has: an install refused, or
+        // this device that could not be read, says so here rather than nowhere.
+        runtimeError,
         {
           type: 'Row',
           props: { gap: '300', ay: 'center', ax: 'end', wrap: true },

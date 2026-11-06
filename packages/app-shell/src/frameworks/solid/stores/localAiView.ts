@@ -136,6 +136,9 @@ export function progressView(progress: LocalAiProgress): LocalAiProgressView {
       case 'plan':
         return 'Checking what to download';
       case 'download':
+        // Every file is in: the backend starts the servers next, which for a large model takes a while
+        // and sends no event of its own.
+        if (progress.totalBytes > 0 && progress.doneBytes >= progress.totalBytes) return 'Starting the model servers';
         return progress.item
           ? `Downloading ${progress.item} — ${sizeText(progress.itemDoneBytes)} of ${sizeText(progress.itemTotalBytes)}`
           : 'Downloading';
@@ -176,7 +179,7 @@ const PHASE_TEXT: Record<NonNullable<LocalAiRuntimeStatus['phase']>, string> = {
 };
 
 export function runtimeView(runtime: LocalAiRuntimeStatus): LocalAiRuntimeView {
-  const parts = [runtime.phase ? PHASE_TEXT[runtime.phase] : 'Not started'];
+  const parts = [runtime.phase ? PHASE_TEXT[runtime.phase] : 'Not running'];
   if (runtime.phase === 'running' && runtime.onGpu === true) {
     parts.push(runtime.gpuBytes ? `on the GPU (${sizeText(runtime.gpuBytes)})` : 'on the GPU');
   }
@@ -216,7 +219,10 @@ export interface LocalAiView {
   installing: boolean;
   /** Every server program is running. */
   running: boolean;
-  /** At least one is running, so there is something to stop. */
+  /**
+   * At least one runs in some state — running, starting, restarting or failed — so there is something
+   * to stop. A failed server stays the backend's until it is stopped, and a start leaves it as it is.
+   */
   anyRunning: boolean;
   runtimes: LocalAiRuntimeView[];
   progress: LocalAiProgressView | null;
@@ -236,6 +242,7 @@ export function describeLocalAi(input: {
   const installing = input.installingHere || !!status?.installing;
   const runtimes = status?.runtimes ?? [];
   const runningCount = runtimes.filter((r) => r.phase === 'running').length;
+  const liveCount = runtimes.filter((r) => r.phase !== null && r.phase !== 'stopped').length;
   return {
     loaded: !!hardware && !!plan,
     device: hardware ? deviceText(hardware) : '',
@@ -253,7 +260,7 @@ export function describeLocalAi(input: {
     installed: !!status?.installed,
     installing,
     running: runtimes.length > 0 && runningCount === runtimes.length,
-    anyRunning: runningCount > 0,
+    anyRunning: liveCount > 0,
     runtimes: runtimes.map(runtimeView),
     // Shown while an install runs, and after one fails until the next starts: a failure says why.
     progress: progress && (installing || progress.phase === 'failed') ? progressView(progress) : null,

@@ -327,7 +327,7 @@ export interface LocalAiRuntimeStatus {
   version: string;
   build: string;
   kinds: AiModelKind[];
-  /** `null`: not started since the backend started. */
+  /** `null`: not running — not started since the backend started, or stopped. */
   phase: 'starting' | 'running' | 'restarting' | 'stopped' | 'failed' | null;
   port?: number;
   /** How often the backend has restarted it since it last started. */
