@@ -6,6 +6,13 @@ export type { AgentProfileSummary, PublishProfileFields } from '@we/backend-shar
 import { FILE_STORAGE_LANGUAGE } from '@we/entities';
 
 export const WE_PROFILE_SOURCE = 'we://profile';
+/**
+ * How an agent says what kind of agent it is: `<its did> ad4m://agent_kind <kind>` in its public
+ * perspective, `ad4m://bot` for a bot. AD4M's own words (`AGENT_KIND`, `AGENT_KIND_BOT` in the SDK),
+ * the same in every app, written by the agent alone.
+ */
+export const AGENT_KIND = 'ad4m://agent_kind';
+export const AGENT_KIND_BOT = 'ad4m://bot';
 export const WE_LOCATION_SOURCE = 'we://location';
 /**
  * Where the ADAM Launcher puts a profile: links whose source is the agent's own DID. It shares no
@@ -153,6 +160,14 @@ export async function getProfile(did: string, backendClient: unknown): Promise<A
     const agentPerspective = await client.agent.byDID(cleanedDid);
     if (!agentPerspective?.perspective?.links) return result;
     const links = agentPerspective.perspective.links;
+
+    // What kind of agent it says it is: a link from its own DID, in any of the formats below.
+    if (
+      links.some(
+        (l) => l.data.source === cleanedDid && l.data.predicate === AGENT_KIND && l.data.target === AGENT_KIND_BOT,
+      )
+    )
+      result.kind = 'bot';
 
     // Parse WE format (we://profile source)
     const weLinks = links.filter((l) => l.data.source === WE_PROFILE_SOURCE);

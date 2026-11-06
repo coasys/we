@@ -4065,6 +4065,7 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
 Everything said and written in a space, and what was found in it, in one stream.
 Needs: kernels records, interpretation.
 - State (read in an expression as `modules.feed.<name>`):
+  - botAuthors — The authors of lines in the Feed’s window whose own profile says they are a bot, by id — for `row.author in modules.feed.botAuthors`.
   - feedFromStart — Whether the Feed is read from the beginning rather than the live end.
   - feedHasMore — Whether there is more of the space beyond the Feed’s window.
   - feedLoaded — Whether the Feed has answered for this space yet.
@@ -4088,7 +4089,7 @@ Needs: kernels records, interpretation.
   - watchFeed — The Feed is drawn somewhere: keep it live.
 - Parts: `feed.feedView`
 - Panels (`meta.panels[].dock`): `feed` "Feed" (module-owned openness)
-- Settings: `timelineOrder` (enum; agent) — Newest messages
+- Settings: `timelineOrder` (enum; agent) — Newest messages; `botNotices` (boolean; agent) — Tell me when a bot answers
 
 ### Live presence (`live`)
 See each other’s cursors, and follow one person’s screen.

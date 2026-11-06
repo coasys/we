@@ -45,6 +45,8 @@ import type {
   ModuleIdentityAccess,
   ModuleKernels,
   ModuleStoreDeps,
+  NotifyOptions,
+  NotifyTone,
   RecordQuery,
   ViewKernel,
 } from '@we/module-shared';
@@ -102,7 +104,7 @@ export interface ModuleHostServices {
   interpretation?: InterpretationPort;
   languageModel?: LanguageModelPort;
   /** Where a module's `notify` lands — a toast, in this host. */
-  notify?: (tone: 'success' | 'warning' | 'error', message: string) => void;
+  notify?: (tone: NotifyTone, message: string, options?: NotifyOptions) => void;
   /**
    * Gather a collection's children and interpret them, published by whichever store can read the
    * dataset's models. Separate from `interpretation` because the port takes turns and only the host
@@ -673,7 +675,7 @@ export function createModuleStoreDeps(framework: {
     showCallOnScreen: (recordId, datasetUri) => services.showCallOnScreen?.(recordId, datasetUri),
     datasetRefKey: tracked(() => services.datasetRefKey?.() ?? ''),
     selfId: tracked(() => services.selfId?.() ?? null),
-    notify: (tone, message) => services.notify?.(tone, message),
+    notify: (tone, message, options) => services.notify?.(tone, message, options),
     datasets: {
       get: (uri) => services.datasets?.get(uri),
       open: (uri) => services.datasets?.open(uri),
