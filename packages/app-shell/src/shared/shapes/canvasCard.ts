@@ -49,6 +49,12 @@ export interface CanvasCard {
    */
   pending: boolean;
   /**
+   * A record a model made — the seed's `data.madeBy`, the run that wrote it, or `data.origin`, the
+   * conversation it was extracted from. Said in words in the header, since a canvas card takes no
+   * pointer and so cannot carry the hover the board's sparkle does.
+   */
+  generated: boolean;
+  /**
    * How many reactions and replies this card has collected — the seed's `counts`, or 0.
    *
    * Two numbers rather than a count per signal type, which is what the board and the calendar draw.
@@ -180,6 +186,7 @@ export function canvasCard(input: CanvasCardInput): CanvasCard {
     lines,
     prose,
     pending: data.pending === true,
+    generated: Boolean(data.madeBy) || Boolean(data.origin),
     signals: count(data.signalsCount),
     responses: count(data.responsesCount),
   };
@@ -256,6 +263,19 @@ export const CANVAS_RECORD_CARD: SchemaNode = {
           children: [{ type: 'we-icon', props: { name: { $: 'card.icon' }, size: '1.1em' } }],
         },
         { type: 'span', props: { style: 'opacity: 0.7;' }, children: [{ $: 'card.kind' }] },
+        /*
+          Made by a model, after the kind — the board's sparkle, with its words beside it rather than
+          behind a hover the card cannot take.
+        */
+        {
+          type: 'span',
+          props: {
+            style: {
+              $: "card.generated ? 'display: inline-flex; gap: 0.2em; align-items: center; vertical-align: -0.15em; margin-inline-start: 0.4em; opacity: 0.7;' : 'display: none;'",
+            },
+          },
+          children: [{ type: 'we-icon', props: { name: 'sparkle', size: '1em' } }, 'by AI'],
+        },
       ],
     },
     { type: 'div', props: { style: 'font-weight: 600;' }, children: [{ $: 'card.title' }] },

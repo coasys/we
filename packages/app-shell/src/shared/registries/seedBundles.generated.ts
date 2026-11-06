@@ -3968,7 +3968,7 @@ export const seedBundles: Bundle[] = [
                                                                 type: 'we-icon',
                                                                 props: {
                                                                   name: {
-                                                                    $: "row.id in first(local.inspectedCall).extracted ? 'sparkle' : 'pencil-simple-line'",
+                                                                    $: "(generatedRun({ record: row }) || row.extractedFrom || row.id in first(local.inspectedCall).extracted) ? 'sparkle' : 'pencil-simple-line'",
                                                                   },
                                                                   size: 'xs',
                                                                   color: 'text-faint',
@@ -3986,7 +3986,7 @@ export const seedBundles: Bundle[] = [
                                                             },
                                                             children: [
                                                               {
-                                                                $: "row.id in first(local.inspectedCall).extracted ? `Extracted from the conversation · run by ${author.name} · ` : `Added by ${author.did == me.did ? 'you' : author.name} · `",
+                                                                $: "row.extractedFrom || row.id in first(local.inspectedCall).extracted ? `Extracted from the conversation · run by ${author.name} · ` : generatedRun({ record: row }) ? `Written by AI · run by ${author.name} · ` : `Added by ${author.did == me.did ? 'you' : author.name} · `",
                                                               },
                                                               {
                                                                 type: 'we-timestamp',
@@ -21633,6 +21633,7 @@ export const seedBundles: Bundle[] = [
                                   members: { id: { $: 'spaceStore.root' }, via: 'children' },
                                   contains: { $: 'shapeStore.extractionCandidates' },
                                   origin: 'extractedFrom',
+                                  madeBy: 'generatedBy',
                                   connections: 'Relationship',
                                   routes: 'EdgeRoute',
                                   pending: { $: 'modules.transcribe.unconfirmedIds' },
