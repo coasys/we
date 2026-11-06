@@ -469,6 +469,10 @@ export function PresenceStoreProvider(props: ParentProps) {
         .map(([, entry]) => entry.uri),
     );
     setMyActivities((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => !matches(key))));
+    // Unpinned before the cleared state is published, not after by the effect below: a leader that
+    // stops holding a call while another tab of this agent still holds one hands publishing over in
+    // `setPinned`, and only then is its own state without the call kept from every peer.
+    tabs()?.setPinned(Object.keys(myActivities()).length > 0);
     for (const uri of uris) leases.get(uri)?.source.clearActivity(type, id);
   }
 
