@@ -583,7 +583,7 @@ export function ProfileStoreProvider(props: ParentProps) {
           // decorated — so a module and a template can no longer disagree about someone's name. That
           // includes the placeholder for an agent with no name at all: a call tile and a byline should
           // not differ on what an unnamed peer is called, and `displayName` is where that is decided.
-          return { name: profile.name, avatar: profile.avatar };
+          return { name: profile.name, avatar: profile.avatar, ...(profile.kind ? { kind: profile.kind } : {}) };
         },
         fetch: (agentId) => void fetchProfile(agentId),
       },

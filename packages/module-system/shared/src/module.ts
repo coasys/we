@@ -586,6 +586,8 @@ export interface ModuleIdentityAccess {
 export interface ModuleIdentity {
   name?: string;
   avatar?: string;
+  /** `bot` when the agent's own profile says it is one; absent when it says nothing. */
+  kind?: 'bot' | 'person';
 }
 
 /**
