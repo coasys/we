@@ -1,0 +1,75 @@
+# The phone's pinned connection to the desktop: a TLS 1.3 WebSocket client that trusts exactly one
+# certificate, named by the SHA-256 of its public key, and nothing a system trust store says.
+#
+# The phone runs no executor. At home it reaches the desktop's executor over a TLS listener with a
+# self-signed certificate; the phone learns the pin from a QR code. This crate is the Rust side of
+# the Capacitor plugin `CoasysTransport`, exported to Kotlin and Swift through uniffi.
+#
+# Standalone, like `crates/custody`: it has its own `Cargo.lock` and toolchain, and nothing in WE
+# links it on the desktop. The `endpoint` feature adds `spike-endpoint`, the desktop stand-in that
+# serves the pinned listener until ad4m has one of its own.
+[package]
+name = "we-phone-transport"
+version = "0.1.0"
+edition = "2021"
+description = "Pinned TLS 1.3 WebSocket client for the phone app, exported through uniffi"
+publish = false
+
+[lib]
+name = "we_phone_transport"
+# cdylib: the `.so` the Android app loads through JNA. staticlib: what the XCFramework wraps for iOS.
+# lib: the tests and the endpoint binary.
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[features]
+default = []
+# The desktop stand-in (`src/bin/spike-endpoint.rs`): certificate generation, the QR code.
+endpoint = ["dep:rcgen", "dep:qrcode", "dep:if-addrs", "dep:serde_json", "tokio/signal"]
+# `uniffi-bindgen`, run on the build host to write the Kotlin and Swift bindings.
+bindgen = ["uniffi/cli"]
+
+[[bin]]
+name = "spike-endpoint"
+required-features = ["endpoint"]
+
+[[bin]]
+name = "uniffi-bindgen"
+required-features = ["bindgen"]
+
+[dependencies]
+uniffi = "0.32"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "time", "macros", "io-util"] }
+# `ring`, not the default aws-lc-rs: ring cross-compiles for Android and iOS with no cmake or clang.
+# No `tls12`: the client offers TLS 1.3 only, so the phone library carries no TLS 1.2 code. The
+# tests turn it on (dev-dependencies) to stand up a TLS 1.2-only server and see it refused.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "logging"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring"] }
+# The host check (`verify_is_valid_for_subject_name`). The same major as rustls uses.
+rustls-webpki = { version = "0.103", default-features = false, features = ["std", "ring"] }
+# No TLS features: the crate hands tungstenite a stream it already secured.
+tokio-tungstenite = { version = "0.30", default-features = false, features = ["handshake", "connect"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+x509-parser = "0.18"
+sha2 = "0.10"
+base64 = "0.22"
+url = "2"
+thiserror = "2"
+log = "0.4"
+
+rcgen = { version = "0.14", optional = true, default-features = false, features = ["pem", "ring"] }
+qrcode = { version = "0.14", optional = true, default-features = false }
+if-addrs = { version = "0.13", optional = true }
+serde_json = { version = "1", optional = true }
+
+[dev-dependencies]
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rcgen = { version = "0.14", default-features = false, features = ["pem", "ring"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"] }
+
+[profile.release]
+# The `.so` ships inside the APK twice (arm64 and x86_64): small and stripped.
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "unwind"

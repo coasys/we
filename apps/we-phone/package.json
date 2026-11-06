@@ -1,0 +1,27 @@
+{
+  "private": true,
+  "name": "@we/app-phone",
+  "version": "0.1.0-spike.1",
+  "description": "Coasys phone app, spike 1: WE's web build in a Capacitor shell, reaching the desktop executor over a pinned Rust TLS connection",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build:web": "node scripts/assemble-web.mjs",
+    "build:rust:android": "scripts/build-android-rust.sh",
+    "build:rust:ios": "scripts/build-ios.sh",
+    "sync": "cap sync",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/barcode-scanner": "^3.1.3",
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/ios": "^8.6.0",
+    "@coasys/capacitor-transport": "link:./plugins/coasys-transport"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.6.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.3.4"
+  }
+}
