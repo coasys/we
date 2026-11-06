@@ -572,7 +572,17 @@ export function ProfileStoreProvider(props: ParentProps) {
         Wired here because this store already provides the other services a module reads about
         people, and because the host is what decides that "tell somebody" means a toast.
       */
-      notify: (tone, message) => toastService[tone](message),
+      notify: (tone, message, options) => {
+        const from = options?.from;
+        const look = {
+          ...(options?.icon && { icon: options.icon }),
+          ...(from && { from: { name: from.name, image: from.avatar, hash: from.id } }),
+        };
+        // Only news and outcomes carry a button: a warning or an error says what went wrong.
+        if (tone === 'info') toastService.info(message, options?.duration, options?.action, look);
+        else if (tone === 'success') toastService.success(message, options?.duration, options?.action, look);
+        else toastService[tone](message, options?.duration);
+      },
       identities: {
         get: (agentId) => {
           // `profileFor` rather than a scan of `profiles()`: a module reading this in a derived
@@ -583,7 +593,7 @@ export function ProfileStoreProvider(props: ParentProps) {
           // decorated — so a module and a template can no longer disagree about someone's name. That
           // includes the placeholder for an agent with no name at all: a call tile and a byline should
           // not differ on what an unnamed peer is called, and `displayName` is where that is decided.
-          return { name: profile.name, avatar: profile.avatar };
+          return { name: profile.name, avatar: profile.avatar, ...(profile.kind ? { kind: profile.kind } : {}) };
         },
         fetch: (agentId) => void fetchProfile(agentId),
       },

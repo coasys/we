@@ -4544,6 +4544,11 @@ export const contextData: ContextData = {
       requires: { kernels: ['records', 'interpretation'] },
       capabilities: ['kernel:records', 'kernel:interpretation', 'dock'],
       members: [
+        {
+          name: 'botAuthors',
+          kind: 'state',
+          doc: 'The authors of lines in the Feed’s window whose own profile says they are a bot, by id — for `row.author in modules.feed.botAuthors`.',
+        },
         { name: 'cancelReply', kind: 'action', doc: 'Puts a reply down without sending it.', ambient: true },
         { name: 'closeFeed', kind: 'action', doc: 'Closes the Feed panel.', ambient: true },
         {
@@ -4616,6 +4621,13 @@ export const contextData: ContextData = {
           label: 'Newest messages',
           description: 'Where the newest line of the Feed is drawn.',
           type: 'enum',
+          levels: ['agent'],
+        },
+        {
+          key: 'botNotices',
+          label: 'Tell me when a bot answers',
+          description: 'A notice when a bot writes in the space while you are not reading the Feed.',
+          type: 'boolean',
           levels: ['agent'],
         },
       ],

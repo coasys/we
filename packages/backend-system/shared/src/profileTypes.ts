@@ -22,6 +22,12 @@ export interface AgentProfileSummary {
    * to call them.
    */
   name?: string;
+  /**
+   * What kind of agent this is, by its own word: `bot` when its profile says it is a program acting
+   * by itself (a bot, an AI agent), absent when it says nothing. Absent is not "person": an agent
+   * that declares nothing is drawn as anyone is. `person` is for a verified source, should one come.
+   */
+  kind?: 'bot' | 'person';
   avatar?: string; // resolved data URI
   coverImage?: string; // resolved data URI
   location?: {

@@ -1166,6 +1166,14 @@ which is what a feed wants, and why absent must not read as "same as the last it
 
 Both shadow in a nested $each, exactly as the item does: the inner index restarts at 0.
 
+**Give a row an "id" and it keeps its place.** When every item of a store's list is a plain object
+with an id of its own, a row whose record changes is updated where it is: its $localState, whatever
+is typed into it and the page's scroll position all survive. A row is drawn afresh only when it
+moves, since its index and prev are handed to it when it is drawn. Items without ids, or with an id
+two of them share, are matched by identity instead, so a list that is rebuilt as new objects redraws
+every row on every change. A store that derives a list should give each row an id. A $query's rows
+are kept by id already.
+
 Conditional rendering:
 { "type": "$if", "props": { "condition": ..., "then": { ... }, "else": { ... } } }
 Renders "then" node if condition is truthy, else renders "else" node.
@@ -4046,6 +4054,7 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
 Everything said and written in a space, and what was found in it, in one stream.
 Needs: kernels records, interpretation.
 - State (read in an expression as `modules.feed.<name>`):
+  - botAuthors — The authors of lines in the Feed’s window whose own profile says they are a bot, by id — for `row.author in modules.feed.botAuthors`.
   - feedFromStart — Whether the Feed is read from the beginning rather than the live end.
   - feedHasMore — Whether there is more of the space beyond the Feed’s window.
   - feedLoaded — Whether the Feed has answered for this space yet.
@@ -4069,7 +4078,7 @@ Needs: kernels records, interpretation.
   - watchFeed — The Feed is drawn somewhere: keep it live.
 - Parts: `feed.feedView`
 - Panels (`meta.panels[].dock`): `feed` "Feed" (module-owned openness)
-- Settings: `timelineOrder` (enum; agent) — Newest messages
+- Settings: `timelineOrder` (enum; agent) — Newest messages; `botNotices` (boolean; agent) — Tell me when a bot answers
 
 ### Live presence (`live`)
 See each other’s cursors, and follow one person’s screen.
