@@ -107,6 +107,8 @@ export interface AiModelStatus {
   state: 'unknown' | 'ready' | 'missing' | 'pulling' | 'endpoint-down';
   /** Percentage, 0–100, while `pulling`. */
   progress?: number;
+  /** The backend's reason, in its own words, where it gave one — "connection refused". */
+  detail?: string;
 }
 
 export interface AiModel {

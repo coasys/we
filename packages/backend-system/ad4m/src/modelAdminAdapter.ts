@@ -78,17 +78,18 @@ const CAPABILITY_FROM_AD4M: Record<Ad4mCapability, AiCapability> = {
 };
 
 export function toModelStatus(status: ModelStatus | null | undefined): AiModelStatus {
+  const detail = status?.detail ? { detail: status.detail } : {};
   switch (status?.state) {
     case 'READY':
       return { state: 'ready' };
     case 'MISSING':
-      return { state: 'missing' };
+      return { state: 'missing', ...detail };
     case 'ENDPOINT_DOWN':
-      return { state: 'endpoint-down' };
+      return { state: 'endpoint-down', ...detail };
     case 'PULLING':
       return { state: 'pulling', progress: Math.max(0, Math.min(100, Math.round(status.progress ?? 0))) };
     default:
-      return { state: 'unknown' };
+      return { state: 'unknown', ...detail };
   }
 }
 

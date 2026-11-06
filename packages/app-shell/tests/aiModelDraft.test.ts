@@ -153,6 +153,13 @@ describe('display strings', () => {
     expect(text({ state: 'missing' })).toBe('The server does not have this model');
     expect(text({ state: 'endpoint-down' })).toBe('The server is not answering');
     expect(text({ state: 'unknown' })).toBe('Not checked yet');
+    // The server's own reason, where it gave one.
+    expect(text({ state: 'endpoint-down', detail: 'connection refused' })).toBe(
+      'The server is not answering — connection refused',
+    );
+    expect(text({ state: 'missing', detail: 'model not found' })).toBe(
+      'The server does not have this model — model not found',
+    );
     expect(describeModel(model(), [endpoint()])).toMatchObject({ endpointName: 'Ollama', ready: true });
     expect(describeModel(model(), []).endpointName).toBe('');
   });

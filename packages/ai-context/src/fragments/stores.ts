@@ -904,7 +904,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '{ crate, level }[] — per-crate log levels the user has set, sorted. Empty means the backend own defaults are in use',
       backupStatus: 'string — what the last export or import did, for display. Empty until one runs',
       aiModels:
-        "AiModelView[] — the node's models, each a reference to a model a server (endpoint) serves: id, name, kind ('llm' | 'embedding' | 'transcription' | 'speech'), endpointId, remoteModel (the id the server knows it by), status ({ state: 'ready' | 'missing' | 'pulling' | 'endpoint-down' | 'unknown', progress }), isDefault, and its display strings kindLabel, endpointName, statusText, ready. Empty until loadAiModels() runs; statuses follow the backend's events while settings are open",
+        "AiModelView[] — the node's models, each a reference to a model a server (endpoint) serves: id, name, kind ('llm' | 'embedding' | 'transcription' | 'speech'), endpointId, remoteModel (the id the server knows it by), status ({ state: 'ready' | 'missing' | 'pulling' | 'endpoint-down' | 'unknown', progress, detail — the server's reason where it gave one }), isDefault, and its display strings kindLabel, endpointName, statusText, ready. Empty until loadAiModels() runs; statuses follow the backend's events while settings are open",
       aiTasks: 'AiTask[] — named prompts apps registered against a model (id, name, modelId, systemPrompt)',
       aiForm:
         "AiModelForm | null — the model form while it is open, null when closed: { id, name, kind, endpointId, remoteModel }. Read with runtimeStore.aiForm.<field>, write with setAiFormField. An empty name saves as the model's id",
