@@ -240,8 +240,11 @@ leave it off: a template can always put the call on a click.
 **Saying something outside your own panels** goes through `deps.notify(tone, message, options?)`,
 which the host turns into a toast. `success`, `warning` and `error` report an outcome; `info` is news,
 something that arrived. News and outcomes may carry one thing to do about them (`options.action`, a
-button on the notice) and how long they stay (`options.duration`). The Feed's notice for a bot's
-answer is the example: "✦ Data: …" with Open, which shows the Feed.
+button on the notice) and how long they stay (`options.duration`). A notice carrying somebody's
+words names them (`options.from`: a name, an avatar, and their id for the avatar's pattern), drawn
+above the message, and may swap the tone's icon for its own (`options.icon`). The Feed's notice for a
+bot's answer is the example: the robot icon, the bot's avatar and name, its words, and Open, which
+shows the Feed.
 
 **Who somebody is** comes from `deps.identities`: `get(id)` reads the host's cached profile (a name, an
 avatar, and `kind: 'bot'` when the agent's own profile says it is one), and `fetch(id)` asks for one

@@ -109,7 +109,21 @@ const origin: SchemaNode = {
       type: '$if',
       props: {
         condition: { $: BOT_LINE },
-        then: { type: 'we-badge', props: { size: 'sm', tone: 'accent' }, children: ['✦ bot'] },
+        /*
+          The typed mark's shape (an icon in an xs badge, with a tooltip), so the row's marks read as
+          one set. The accent tint is what keeps it apart from the grey typed mark beside it.
+        */
+        then: {
+          type: 'we-tooltip',
+          props: { content: 'Bot', placement: 'top' },
+          children: [
+            {
+              type: 'we-badge',
+              props: { size: 'xs', tone: 'accent' },
+              children: [{ type: 'we-icon', props: { name: 'robot', size: '14px' } }],
+            },
+          ],
+        },
       },
     },
   ],

@@ -2,7 +2,7 @@
  * A bot's message raised as a notice — unit tests.
  *
  * - What was already in the space raises nothing; a bot's new line raises one notice, with Open
- * - A burst from one bot is one notice ("sent 3 messages")
+ * - A burst from one bot is one notice ("Sent 3 messages"), from the bot, with its robot
  * - Nothing for your own lines, a person's, or while the reader is on the Feed's newest line, or with
  *   the setting off
  * - An author whose profile has not arrived is asked for, and judged when the burst ends
@@ -17,11 +17,15 @@ type Row = Record<string, unknown>;
 function harness(options: { reading?: boolean; enabled?: boolean } = {}) {
   let push: (rows: Row[]) => void = () => {};
   const people = new Map<string, ModuleIdentity>([
-    ['did:data', { name: 'Data', kind: 'bot' }],
+    ['did:data', { name: 'Data', avatar: 'data.png', kind: 'bot' }],
     ['did:ann', { name: 'Ann' }],
   ]);
   const fetched: string[] = [];
-  const notices: { tone: string; message: string; options?: { action?: { label: string; run: () => void } } }[] = [];
+  const notices: {
+    tone: string;
+    message: string;
+    options?: { action?: { label: string; run: () => void }; from?: unknown; icon?: string };
+  }[] = [];
   const open = vi.fn();
   watchBotMessages({
     effect: (fn) => fn(),
@@ -60,8 +64,13 @@ describe('a bot answering in the space', () => {
     expect(h.notices).toEqual([]);
     vi.advanceTimersByTime(BOT_BURST_MS);
     expect(h.notices).toHaveLength(1);
-    expect(h.notices[0]).toMatchObject({ tone: 'info', message: '✦ Data: Here is the summary of the call.' });
-    expect(h.notices[0].options).toMatchObject({ duration: BOT_NOTICE_MS, action: { label: 'Open' } });
+    expect(h.notices[0]).toMatchObject({ tone: 'info', message: 'Here is the summary of the call.' });
+    expect(h.notices[0].options).toMatchObject({
+      duration: BOT_NOTICE_MS,
+      action: { label: 'Open' },
+      icon: 'robot',
+      from: { name: 'Data', avatar: 'data.png', id: 'did:data' },
+    });
     h.notices[0].options!.action!.run();
     expect(h.open).toHaveBeenCalled();
   });
@@ -72,7 +81,8 @@ describe('a bot answering in the space', () => {
     h.push([h.line('did:data', 'one')]);
     h.push([h.line('did:data', 'two'), h.line('did:data', 'three')]);
     vi.advanceTimersByTime(BOT_BURST_MS);
-    expect(h.notices.map((n) => n.message)).toEqual(['✦ Data sent 3 messages']);
+    expect(h.notices.map((n) => n.message)).toEqual(['Sent 3 messages']);
+    expect(h.notices[0].options?.from).toMatchObject({ name: 'Data' });
   });
 
   it('says nothing for your own lines, a person’s, a reader on the newest line, or the setting off', () => {
@@ -98,12 +108,14 @@ describe('a bot answering in the space', () => {
     expect(h.fetched).toEqual(['did:hermes']);
     h.people.set('did:hermes', { name: 'Hermes', kind: 'bot' });
     vi.advanceTimersByTime(BOT_BURST_MS);
-    expect(h.notices.map((n) => n.message)).toEqual(['✦ Hermes: on it']);
+    expect(h.notices.map((n) => n.message)).toEqual(['on it']);
+    expect(h.notices[0].options?.from).toEqual({ name: 'Hermes', id: 'did:hermes' });
   });
 });
 
 describe('botNotice', () => {
   it('quotes the first line, cut short', () => {
-    expect(botNotice('Data', ['x'.repeat(200)])).toHaveLength('✦ Data: '.length + 90);
+    expect(botNotice(['x'.repeat(200)])).toHaveLength(90);
+    expect(botNotice(['First line\nsecond'])).toBe('First line');
   });
 });

@@ -20,7 +20,7 @@
  * ## One notice for a burst
  *
  * A bot often answers in several lines at once. Lines from one author are held for
- * {@link BOT_BURST_MS} and raised as one notice ("Data sent 3 messages"). The wait also gives an
+ * {@link BOT_BURST_MS} and raised as one notice ("Sent 3 messages", under the bot's name). The wait also gives an
  * author's profile time to arrive: a line whose author is not known yet asks for the profile, and is
  * judged when the burst is raised.
  */
@@ -64,10 +64,13 @@ function quoted(text: string): string {
   return first.length > QUOTED ? `${first.slice(0, QUOTED - 1)}…` : first;
 }
 
-/** What a notice says for `lines` from one bot. */
-export function botNotice(name: string, lines: string[]): string {
-  if (lines.length === 1) return `✦ ${name}: ${quoted(lines[0])}`;
-  return `✦ ${name} sent ${lines.length} messages`;
+/**
+ * What a notice says for `lines` from one bot. Who it is from is not in the words: the notice draws
+ * the bot's avatar and name above them.
+ */
+export function botNotice(lines: string[]): string {
+  if (lines.length === 1) return quoted(lines[0]);
+  return `Sent ${lines.length} messages`;
 }
 
 export function watchBotMessages(deps: BotWatchDeps): void {
@@ -93,7 +96,9 @@ export function watchBotMessages(deps: BotWatchDeps): void {
     if (!burst || !deps.enabled() || deps.readingLive()) return;
     const who = identities?.get(author);
     if (who?.kind !== 'bot') return;
-    deps.notify?.('info', botNotice(who.name || 'A bot', burst.lines), {
+    deps.notify?.('info', botNotice(burst.lines), {
+      icon: 'robot',
+      from: { name: who.name || 'A bot', id: author, ...(who.avatar && { avatar: who.avatar }) },
       action: { label: 'Open', run: deps.open },
       duration: BOT_NOTICE_MS,
     });
