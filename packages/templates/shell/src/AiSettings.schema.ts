@@ -921,10 +921,17 @@ function lines(items: string, color: string | { $: string } = 'text-muted'): Sch
   };
 }
 
+/*
+  Install, Start, Stop and Remove are the operator's: the executor refuses them to a grant, whatever
+  it holds, and WE web connects with one. A connection that is not the operator still reads the
+  machine and the plan, and is told in one line who can act on them rather than shown buttons that
+  answer 403.
+*/
 const localActions: SchemaNode = {
   type: '$if',
   props: {
     condition: { $: 'runtimeStore.canConfigureLocalAi' },
+    else: footnote('Ask the operator of this node to set up local AI.'),
     then: {
       type: 'Row',
       props: { gap: '200', ay: 'center', wrap: true },
@@ -1148,7 +1155,8 @@ const localSection = (shown: string): SchemaNode => ({
             },
           ],
         }),
-        removeLocalModal,
+        // The operator's, as the button that opens it is: never mounted where Remove could not work.
+        { type: '$if', props: { condition: { $: 'runtimeStore.canConfigureLocalAi' }, then: removeLocalModal } },
       ],
     },
   },

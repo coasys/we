@@ -507,10 +507,16 @@ export function createAd4mModelAdmin(backendClient: unknown, options: Ad4mRuntim
 
   const operates = administersNode && granted(CAP_DOMAIN.ai, CAP_VERB.read);
   const configures = administersNode && granted(CAP_DOMAIN.ai, CAP_VERB.create);
+  /*
+    The executor guards the local AI writes with the operator credential, not a capability: a grant
+    is refused them whatever it holds. So the grant rule above is not enough — WE web's app token
+    holds `*` and would be offered an Install that always answers 403.
+  */
+  const installs = configures && (options.operator ?? true);
   return {
     ...(granted(CAP_DOMAIN.ai, CAP_VERB.read) ? read : {}),
     ...(operates ? endpoints : {}),
     ...(configures ? write : {}),
-    ...(operates ? { local: { ...localRead, ...(configures ? localWrite : {}) } } : {}),
+    ...(operates ? { local: { ...localRead, ...(installs ? localWrite : {}) } } : {}),
   };
 }

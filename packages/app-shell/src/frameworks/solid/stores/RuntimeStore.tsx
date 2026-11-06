@@ -195,7 +195,10 @@ export interface RuntimeStore {
    * the machine and what an install would do. Gate the "This device" section on it.
    */
   canUseLocalAi: Accessor<boolean>;
-  /** Local AI can be installed, started, stopped and removed from here — the node's operator. */
+  /**
+   * Local AI can be installed, started, stopped and removed from here: the connection holds the
+   * node's operator credential. A grant never does, whatever its capabilities.
+   */
   canConfigureLocalAi: Accessor<boolean>;
   /** The "This device" section: the machine, the plan, an install's progress and the running state. */
   localAi: Accessor<LocalAiView>;
@@ -517,6 +520,9 @@ export function RuntimeStoreProvider(props: ParentProps) {
   // ── Local AI ──────────────────────────────────────────────────────────────────
   const localPort = () => modelAdmin()?.local;
   const canUseLocalAi = createMemo(() => !!localPort()?.plan);
+  // The operator's flag: the adapter offers `install` only to a connection holding the node's
+  // operator credential, which the executor requires for all four local AI writes. A grant is never
+  // offered them, whatever its capabilities.
   const canConfigureLocalAi = createMemo(() => !!localPort()?.install);
   const [localHardware, setLocalHardware] = createSignal<LocalAiHardware | null>(null);
   const [localPlan, setLocalPlan] = createSignal<LocalAiPlan | null>(null);
@@ -532,7 +538,14 @@ export function RuntimeStoreProvider(props: ParentProps) {
     Reconciled by each row's `key`, an event changes the progress fields and nothing else.
   */
   const [localAiView, setLocalAiView] = createStore<LocalAiView>(
-    describeLocalAi({ hardware: null, plan: null, status: null, progress: null, installingHere: false }),
+    describeLocalAi({
+      hardware: null,
+      plan: null,
+      status: null,
+      progress: null,
+      installingHere: false,
+      operator: false,
+    }),
   );
   createComputed(() =>
     setLocalAiView(
@@ -543,6 +556,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
           status: localStatus(),
           progress: localProgress(),
           installingHere: pending().includes('installLocalAi'),
+          operator: canConfigureLocalAi(),
         }),
         { key: 'key' },
       ),

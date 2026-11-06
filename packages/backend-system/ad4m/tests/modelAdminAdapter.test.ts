@@ -447,4 +447,25 @@ describe('local AI', () => {
     expect(readOnly.install).toBeUndefined();
     expect(readOnly.remove).toBeUndefined();
   });
+
+  /*
+    The executor guards install, start, stop and remove with the operator credential, which "a grant
+    never is, whatever its capabilities". WE web connects with an app token holding `*`: offering
+    the actions there gave buttons that always answered 403.
+  */
+  it('offers install, start, stop and remove to the operator only, never to a grant holding `*`', () => {
+    const { client } = localClient();
+    const everything = [{ with: { domain: '*', pointers: ['*'] }, can: ['*'] }];
+    const grant = createAd4mModelAdmin(client, { capabilities: everything, operator: false }).local!;
+    expect(grant.plan).toBeDefined();
+    expect(grant.status).toBeDefined();
+    expect(grant.install).toBeUndefined();
+    expect(grant.start).toBeUndefined();
+    expect(grant.stop).toBeUndefined();
+    expect(grant.remove).toBeUndefined();
+
+    const operator = createAd4mModelAdmin(client, { capabilities: null, operator: true }).local!;
+    expect(operator.install).toBeDefined();
+    expect(operator.remove).toBeDefined();
+  });
 });

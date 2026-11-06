@@ -122,8 +122,33 @@ describe('sentences', () => {
 
 describe('describeLocalAi', () => {
   it('is not loaded, and offers no install, until the machine and the plan are read', () => {
-    const view = describeLocalAi({ hardware: null, plan: null, status: null, progress: null, installingHere: false });
+    const view = describeLocalAi({
+      hardware: null,
+      plan: null,
+      status: null,
+      progress: null,
+      installingHere: false,
+      operator: true,
+    });
     expect(view).toMatchObject({ loaded: false, canInstall: false, installLabel: 'Install', progress: null });
+  });
+
+  it('offers no install to a connection that is not the operator, however well it fits', () => {
+    const plan: LocalAiPlan = {
+      hardwareClass: 'linux-x64-cpu',
+      runtimes: [],
+      models: [],
+      unavailable: [],
+      downloadBytes: 3.7e9,
+      totalBytes: 3.7e9,
+      memoryBytes: 0,
+      memoryBudgetBytes: 8e9,
+      fits: true,
+      reasons: [],
+    };
+    const base = { hardware: null, plan, status: null, progress: null, installingHere: false };
+    expect(describeLocalAi({ ...base, operator: true }).canInstall).toBe(true);
+    expect(describeLocalAi({ ...base, operator: false }).canInstall).toBe(false);
   });
 
   it('counts an install the backend reports as running, whoever started it', () => {
@@ -133,6 +158,7 @@ describe('describeLocalAi', () => {
       status: { installed: false, installing: true, autostart: true, runtimes: [], models: [] },
       progress: event({ doneBytes: 50 }),
       installingHere: false,
+      operator: true,
     });
     expect(view.installing).toBe(true);
     expect(view.progress?.percent).toBe(50);
@@ -146,6 +172,7 @@ describe('describeLocalAi', () => {
       status: { installed: false, installing: false, autostart: true, runtimes: [], models: [] },
       progress: event({ doneBytes: 50 }),
       installingHere: false,
+      operator: true,
     });
     expect(view.installing).toBe(true);
     expect(view.canInstall).toBe(false);
@@ -159,6 +186,7 @@ describe('describeLocalAi', () => {
       status: null,
       progress: event({ phase: 'done' }),
       installingHere: false,
+      operator: true,
     });
     expect(view.progress).toBeNull();
   });

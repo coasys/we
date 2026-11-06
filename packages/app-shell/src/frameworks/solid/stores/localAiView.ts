@@ -235,6 +235,11 @@ export function describeLocalAi(input: {
   progress: LocalAiProgress | null;
   /** An install call from here is in flight. */
   installingHere: boolean;
+  /**
+   * This connection may install: it holds the node's operator credential. The executor refuses a
+   * grant, whatever it holds, so a non-operator is never in a state where Install is enabled.
+   */
+  operator: boolean;
 }): LocalAiView {
   const { hardware, plan, status, progress } = input;
   // Progress still under way counts too: an install the launcher started after the status was read.
@@ -263,7 +268,7 @@ export function describeLocalAi(input: {
     runtimes: runtimes.map(runtimeView),
     // Shown while an install runs, and after one fails until the next starts: a failure says why.
     progress: progress && (installing || progress.phase === 'failed') ? progressView(progress) : null,
-    canInstall: !!plan?.fits && !installing,
+    canInstall: input.operator && !!plan?.fits && !installing,
   };
 }
 
