@@ -349,17 +349,18 @@ export interface AiModelView extends AiModel {
 }
 
 export function statusText(status: AiModelStatus): string {
+  const why = status.detail ? ` — ${status.detail}` : '';
   switch (status.state) {
     case 'ready':
       return 'Ready';
     case 'pulling':
       return `Downloading ${status.progress ?? 0}%`;
     case 'missing':
-      return 'The server does not have this model';
+      return `The server does not have this model${why}`;
     case 'endpoint-down':
-      return 'The server is not answering';
+      return `The server is not answering${why}`;
     default:
-      return 'Not checked yet';
+      return `Not checked yet${why}`;
   }
 }
 

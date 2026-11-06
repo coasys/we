@@ -488,7 +488,7 @@ describe('AI models and the servers they run on', () => {
   });
 
   it('starts a new model on a server that fits, and fills in the recommended model', async () => {
-    const { port, calls } = aiPort();
+    const { port, calls } = aiPort({ list: async () => [{ ...qwen, status: { state: 'missing' } }] });
     ports = { models: port };
     const store = mount();
     await store.loadAiModels();
@@ -554,6 +554,49 @@ describe('AI models and the servers they run on', () => {
     finish();
     await pulling;
     expect(store.aiPullText()).toBe('');
+  });
+
+  it('re-reads the models after a failed pull, and keeps the error on screen', async () => {
+    // A failed or timed-out pull left each row on its last "Downloading N%".
+    let fail!: (reason: Error) => void;
+    let listedStatus: AiModel['status'] = { state: 'missing' };
+    const ai = aiPort({
+      list: async () => [{ ...qwen, status: listedStatus }],
+      pullModel: () => new Promise<void>((_resolve, reject) => (fail = reject)),
+    });
+    ports = { models: ai.port };
+    activeShellView = 'settings';
+    const store = mount();
+    await store.loadAiModels();
+    store.newAiModel();
+    await vi.waitFor(() => expect(store.aiForm()?.remoteModel).toBe('qwen3:8b'));
+
+    const pulling = store.pullAiModel();
+    ai.status({ endpointId: 'e1', remoteModel: 'qwen3:8b', status: { state: 'pulling', progress: 45 } });
+    expect(store.aiModels()[0].statusText).toBe('Downloading 45%');
+
+    fail(new Error('pull timed out'));
+    await pulling;
+    await vi.waitFor(() => expect(store.aiModels()[0].statusText).toBe('The server does not have this model'));
+    expect(store.error()).toBe('pull timed out');
+  });
+
+  it('offers no second pull while the server still downloads the model', async () => {
+    // The call can time out while the server goes on downloading; a second pull would start another.
+    const ai = aiPort({
+      list: async () => [{ ...qwen, status: { state: 'pulling', progress: 60 } }],
+      pullModel: async () => {
+        throw new Error('pull timed out');
+      },
+    });
+    ports = { models: ai.port };
+    activeShellView = 'settings';
+    const store = mount();
+    await store.loadAiModels();
+    store.newAiModel();
+    await vi.waitFor(() => expect(store.aiForm()?.remoteModel).toBe('qwen3:8b'));
+
+    expect(store.aiCanPull()).toBe(false);
   });
 
   it('re-reads the models when a server’s health changes', async () => {

@@ -480,6 +480,11 @@ export function RuntimeStoreProvider(props: ParentProps) {
     const endpoint = formEndpoint();
     const model = form?.remoteModel.trim() ?? '';
     if (!model || endpoint?.kind !== 'ollama' || !modelAdmin()?.pullModel || aiPull()) return false;
+    // A pull the server is still running — one whose call timed out here — is not started twice.
+    const downloading = aiModelRecords().some(
+      (m) => m.endpointId === endpoint.id && m.status.state === 'pulling' && serves([m.remoteModel], model),
+    );
+    if (downloading) return false;
     const served = discoveredForForm()?.map((m) => m.id) ?? endpoint.health.models;
     return !serves(served, model);
   });
@@ -961,7 +966,9 @@ export function RuntimeStoreProvider(props: ParentProps) {
     setAiPull({ endpointId: form.endpointId, model, progress: 0 });
     const pulled = await run('pullAiModel', () => port.pullModel?.(form.endpointId, model));
     setAiPull(null);
-    if (!pulled.ok) return;
+    // A failed or timed-out pull still re-reads where the models stand, so no row stays on its last
+    // percentage. Outside `run`, which would clear the error that says why.
+    if (!pulled.ok) return refreshAiModels();
     await Promise.all([discoverAiModels(), loadAiModels()]);
   }
 

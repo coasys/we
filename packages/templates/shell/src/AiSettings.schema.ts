@@ -58,10 +58,11 @@ function formFooter(close: SchemaProp, save: string, complete: string): SchemaNo
   return [
     {
       // The page's own error slot sits behind the modal, so a refused save or a failed model
-      // listing would otherwise say nothing where the person is looking.
+      // listing would otherwise say nothing where the person is looking. Not held back while other
+      // calls run: a pull can run for twenty minutes, and `run` clears the error as a call starts.
       type: '$if',
       props: {
-        condition: { $: 'runtimeStore.error && !count(runtimeStore.pending)' },
+        condition: { $: 'runtimeStore.error' },
         then: { type: 'we-alert', props: { tone: 'danger' }, children: [{ $: 'runtimeStore.error' }] },
       },
     },
@@ -1194,7 +1195,9 @@ export const aiModelsSection: SchemaNode = adminSection({
             },
           ],
         },
-        else: emptyNote('No models are configured. Apps asking for one will have nothing to use.'),
+        else: emptyNote(
+          'No models are configured. Apps asking for one will have nothing to use. Models that once ran inside the node itself are no longer supported and were removed on purpose: every model now runs on a server.',
+        ),
       },
     },
     {

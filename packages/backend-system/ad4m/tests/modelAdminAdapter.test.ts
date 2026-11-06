@@ -118,6 +118,14 @@ describe('models', () => {
     });
   });
 
+  it('keeps the executor’s reason why a model is not ready', async () => {
+    const { client } = aiClient({
+      getModels: vi.fn(async () => [{ ...qwen, status: { state: 'ENDPOINT_DOWN', detail: 'connection refused' } }]),
+    });
+    const [model] = await createAd4mModelAdmin(client, { capabilities: null }).list!();
+    expect(model.status).toEqual({ state: 'endpoint-down', detail: 'connection refused' });
+  });
+
   it('hands on `model-status` events in the port’s words', () => {
     const { client, emit } = aiClient();
     const heard: unknown[] = [];
