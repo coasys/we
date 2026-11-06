@@ -31,8 +31,11 @@ import { recordMissingMethod } from './missingMethods';
  * above it reads neutral turns.
  */
 
-/** The tool an agent that may edit is given: WE's template tool, on the record it is pointed at. */
-const EDIT_TOOLS = ['template_update'];
+/**
+ * The tools an agent that may edit is given: WE's template tools, to change the template it is
+ * pointed at and to make new ones (in the person's library, or the space when they ask).
+ */
+const EDIT_TOOLS = ['template_update', 'template_create'];
 
 const STATUSES: readonly AgentReplyStatus[] = ['running', 'done', 'failed', 'cancelled', 'interrupted'];
 const OUTCOMES: readonly string[] = ['running', 'ok', 'error'];
@@ -150,12 +153,13 @@ async function onNode<T>(call: () => Promise<T>): Promise<T> {
 
 export function createAd4mAgentConversations(): AgentConversationsPort {
   const conversations: AgentConversationsPort = {
-    async create({ keepIn, workIn, title, about, mayEdit, model }) {
+    async create({ keepIn, workIn, library, title, about, mayEdit, model }) {
       const { sessionId } = await onNode(() =>
         (keepIn as PerspectiveProxy).agentSessionCreate({
           title,
           about,
           workIn: (workIn as PerspectiveProxy).uuid,
+          ...(library ? { library: (library as PerspectiveProxy).uuid } : {}),
           writeTools: mayEdit ? EDIT_TOOLS : undefined,
           model,
         }),
