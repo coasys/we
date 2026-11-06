@@ -3324,7 +3324,7 @@ RuntimeStore:
   - aiForm: AiModelForm | null — the model form while it is open, null when closed: { id, name, kind, endpointId, remoteModel }. Read with runtimeStore.aiForm.<field>, write with setAiFormField. An empty name saves as the model's id
   - aiFormComplete: boolean — the open model form names a server and a model on it
   - aiFormDirty: boolean — the open model form has been edited since it opened. What a discard guard reads; compared against a snapshot taken on open, so looking at a model's settings and closing again asks nothing
-  - aiEndpointOptions: { label, value }[] — the servers that can serve the open model form's kind, for a we-select bound to aiForm.endpointId. Empty means no added server can: say so, and point at adding one
+  - aiEndpointOptions: { label, value }[] — the servers that can serve the open model form's kind — an Ollama for language and embedding models whether or not it has one yet, since it can download one — for a we-select bound to aiForm.endpointId. Empty means no added server can: say so, and point at adding one
   - canDiscoverAiModels: boolean — the backend can ask a server which models it serves. Gate a refresh control on it; where it is false, the model id is typed
   - aiDiscoveredModelOptions: { label, value }[] — the models the open form's server said it serves, of the form's kind only, for a Combobox (a model the server does not have yet can still be typed). Asked when the form opens and whenever its server changes
   - aiDiscoveredModelHint: string — why aiDiscoveredModelOptions is empty when the server answered with models of other kinds only (“None of this server's models are embedding models”), or empty. Show it beside the model field

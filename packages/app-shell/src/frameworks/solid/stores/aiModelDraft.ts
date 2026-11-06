@@ -269,6 +269,19 @@ export const CAPABILITY_OF: Record<AiModelKind, AiCapability> = {
   speech: 'speech',
 };
 
+/**
+ * What a server of each kind can come to serve by downloading a model. An Ollama pulls a chat or an
+ * embedding model on request, so it is offered for both before it has either — else the download
+ * that would give it one cannot be reached from the form.
+ */
+const PULLABLE: Partial<Record<AiEndpointKind, AiCapability[]>> = { ollama: ['chat', 'embeddings'] };
+
+/** Whether a server can serve a model of `kind`: it has one, or it can download one. */
+export function canServe(endpoint: { kind: AiEndpointKind; capabilities: AiCapability[] }, kind: AiModelKind): boolean {
+  const needs = CAPABILITY_OF[kind];
+  return endpoint.capabilities.includes(needs) || !!PULLABLE[endpoint.kind]?.includes(needs);
+}
+
 /** A kind as the word before "models" in a sentence: "None of this server’s models are embedding models". */
 export const KIND_NOUN: Record<AiModelKind, string> = {
   llm: 'language',

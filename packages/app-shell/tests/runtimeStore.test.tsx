@@ -614,6 +614,57 @@ describe('AI models and the servers they run on', () => {
     expect(store.aiCanPull()).toBe(false);
   });
 
+  it('offers no second pull from the Add form while the server still downloads the model', async () => {
+    // The guard read saved models only, so a pull started before saving could start twice after a
+    // timeout: no saved row was there to say the server was still downloading.
+    let fail!: (reason: Error) => void;
+    const ai = aiPort({
+      list: async () => [],
+      pullModel: () => new Promise<void>((_resolve, reject) => (fail = reject)),
+    });
+    ports = { models: ai.port };
+    activeShellView = 'settings';
+    const store = mount();
+    await store.loadAiModels();
+    store.newAiModel();
+    await vi.waitFor(() => expect(store.aiForm()?.remoteModel).toBe('qwen3:8b'));
+
+    const pulling = store.pullAiModel();
+    ai.status({ endpointId: 'e1', remoteModel: 'qwen3:8b', status: { state: 'pulling', progress: 45 } });
+    fail(new Error('pull timed out'));
+    await pulling;
+    expect(store.aiCanPull()).toBe(false);
+
+    // The server says how the download ended; a failed one can be tried again.
+    ai.status({ endpointId: 'e1', remoteModel: 'qwen3:8b', status: { state: 'missing' } });
+    expect(store.aiCanPull()).toBe(true);
+  });
+
+  it('offers an Ollama for every kind it can pull, before it has a model of that kind', async () => {
+    // A chat-only Ollama was not offered for embeddings, so the download that would give it an
+    // embedding model could not be reached from the form.
+    const chatOnly: AiEndpoint = { ...ollama, capabilities: ['chat'], health: { ...ollama.health, models: [] } };
+    const ai = aiPort({
+      endpoints: async () => [chatOnly, remote],
+      discover: async () => [{ id: 'llama3.2:3b', capabilities: ['chat'] }],
+    });
+    ports = { models: ai.port };
+    const store = mount();
+    await store.loadAiModels();
+    store.newAiModel();
+
+    store.setAiFormField('kind', 'embedding');
+    expect(store.aiForm()?.endpointId).toBe('e1');
+    expect(store.aiEndpointOptions().map((o) => o.value)).toEqual(['e1']);
+    await vi.waitFor(() => expect(store.aiDiscoveredModelHint()).not.toBe(''));
+    store.setAiFormField('remoteModel', 'nomic-embed-text');
+    expect(store.aiCanPull()).toBe(true);
+
+    // An Ollama cannot transcribe, whatever it pulls.
+    store.setAiFormField('kind', 'transcription');
+    expect(store.aiEndpointOptions()).toEqual([]);
+  });
+
   it('re-reads the models when a server’s health changes', async () => {
     const ai = aiPort();
     ports = { models: ai.port };
