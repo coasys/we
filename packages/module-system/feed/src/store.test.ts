@@ -127,13 +127,14 @@ describe('staying live', () => {
       { id: 'a-change', kind: 'update' },
     ]);
     await vi.runAllTimersAsync();
-    expect(h.subscriptions).toEqual([]);
+    // Only the bot watch, which is for the reader who is not looking (see `botWatch.ts`).
+    expect(h.subscriptions).toEqual(['TextBlock']);
     expect(h.interpretation.proposals).not.toHaveBeenCalled();
 
     // A view of the Feed is drawn: the host calls `watchFeed`, as it would open the panel.
     h.store.watchFeed();
     await vi.runAllTimersAsync();
-    expect(h.subscriptions).toContain('TextBlock');
+    expect(h.subscriptions).toEqual(['TextBlock', 'TextBlock', 'CollectionBlock']);
     // Asked of the whole space, by the host's kernel rather than by another module.
     expect(h.interpretation.proposals).toHaveBeenCalledWith(undefined, undefined);
 

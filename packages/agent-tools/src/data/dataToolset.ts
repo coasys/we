@@ -28,11 +28,9 @@ import type { SessionAnswer, SessionTool, SessionToolset } from '../core/convers
 /** Core entities that are the app's configuration rather than what a space is about. */
 const CONFIGURATION = new Set([
   'AgentSettings',
-  'ChatMessage',
-  'ChatSession',
+  'Amendment',
   'EdgeRoute',
-  'ExtractionAmendment',
-  'ExtractionPass',
+  'ModelRun',
   'MutedAgent',
   'Placement',
   'Policy',
@@ -76,6 +74,12 @@ export interface DataToolsetOptions {
   models?: EntityManifestEntry[];
   /** Define a new kind of record in the space, answering its name. Absent: the tool is not offered. */
   defineModel?: (definition: ModelDefinition) => Promise<string>;
+  /**
+   * The `ModelRun` this conversation is, where the host keeps one. What the tools create then
+   * carries it as `generatedBy`, and what they change on a record that already existed is kept as an
+   * `Amendment` naming it, so a record a model wrote or changed says so. Absent: nothing is marked.
+   */
+  run?: string;
 }
 
 const coreEntries = (() => {
@@ -132,6 +136,46 @@ export function createDataToolset(options: DataToolsetOptions): SessionToolset {
       .join(', ')}. describe_space explains each.`;
 
   const model = (name: string) => getEntityForDataset(name, dataset) as RecordModel | undefined;
+
+  /**
+   * What a change did to a record that already existed, one `Amendment` per property, naming the
+   * run, so a record a model changed says from what and by which run. Best effort: the change is
+   * what was asked for and has been made, so a log that could not be written does not undo it.
+   */
+  const recordAmendments = async (
+    entity: string,
+    id: string,
+    before: Record<string, unknown>,
+    fields: Record<string, unknown>,
+  ) => {
+    const Amendment = model('Amendment');
+    if (!Amendment || !options.run) return;
+    const printed = (value: unknown) =>
+      value === undefined || value === null
+        ? ''
+        : typeof value === 'string'
+          ? value
+          : typeof value === 'number' || typeof value === 'boolean'
+            ? String(value)
+            : (JSON.stringify(value) ?? '');
+    for (const [property, value] of Object.entries(fields)) {
+      const previousValue = printed(before[property]);
+      const newValue = printed(value);
+      if (previousValue === newValue) continue;
+      try {
+        await Amendment.create(dataset, {
+          property,
+          previousValue,
+          newValue,
+          nodeType: entity,
+          node: [id],
+          run: [options.run],
+        });
+      } catch (error) {
+        console.warn(`agent tools: changed "${property}" on ${entity} ${id} but could not record it`, error);
+      }
+    }
+  };
 
   /** The space's own record, or null for a dataset with none. */
   async function spaceRecord(): Promise<Record<string, unknown> | null> {
@@ -269,7 +313,10 @@ export function createDataToolset(options: DataToolsetOptions): SessionToolset {
       name === 'CollectionBlock' && fields.mode === 'feed'
         ? withExtractionDefaults(name, fields, await spaceRecord())
         : fields;
-    const created = await Model.create(dataset, stamped, placed.parent ? { parent: placed.parent } : undefined);
+    // Marked in the same write, so the record is never seen without it. A to-one relation is
+    // written as the single-entry list the model layer takes.
+    const marked = options.run ? { ...stamped, generatedBy: [options.run] } : stamped;
+    const created = await Model.create(dataset, marked, placed.parent ? { parent: placed.parent } : undefined);
     if (placed.parent?.relation === 'responses') await completeResponse(dataset, created.id, String(placed.parent.id));
     return {
       text: `Made a ${name}: ${created.id}.`,
@@ -288,7 +335,9 @@ export function createDataToolset(options: DataToolsetOptions): SessionToolset {
     if (!Object.keys(fields).length) return { text: 'Error: `fields` says nothing to change.' };
     const problem = fieldsProblem(entry, fields);
     if (problem) return { text: problem };
+    const before = options.run ? await Model.findOne(dataset, { where: { id } }) : null;
     await Model.update(dataset, id, fields);
+    if (before) await recordAmendments(name, id, before, fields);
     return {
       text: `Changed ${name} ${id}: ${Object.keys(fields).join(', ')}.`,
       wrote: [{ entity: name, id, change: 'updated' }],
@@ -321,6 +370,7 @@ export function createDataToolset(options: DataToolsetOptions): SessionToolset {
     const root = await createBlocks(dataset, textToBlocks(text), {
       kind,
       ...(anchor ? { anchor: anchor as never } : {}),
+      ...(options.run ? { relations: { generatedBy: [options.run] } } : {}),
     });
     if (!root?.id) return { text: 'Error: The post could not be written.' };
     if (anchor?.relation === 'responses') await completeResponse(dataset, root.id, String(anchor.id));

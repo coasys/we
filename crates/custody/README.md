@@ -61,6 +61,12 @@ step can wait for minutes while `cancel` and `publicState` are answered. When st
 step is cancelled and the process exits 0, so it never outlives its host; a bad configuration exits 2.
 Log lines go to stderr and carry no secret.
 
+**What is wiped, and what is not.** The master key, the seed and the words are held in `Secret`s and
+`Zeroizing` buffers inside this crate, wiped when the step that made them ends. A word or a passphrase
+the person types is copied before it gets here — by the window, the host's IPC, the JSON line and
+serde — and those copies are not this crate's to wipe; it moves each into a `Secret` on arrival, so it
+keeps no copy of its own past the step.
+
 ## The identity store
 
 **The network names its identity store, not WE.** The executor's bootstrap seed carries

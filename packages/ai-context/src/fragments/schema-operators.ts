@@ -182,7 +182,7 @@ To target another dataset: { "$invoke": "record.update", "args": ["EntityName", 
 record.delete — deletes one record:
 { "$invoke": "record.delete", "args": ["EntityName", { "$": "item.id" }] }
 
-Use dataset: 'datasetStore.rootDataset' for we-root entities (AgentSettings, ChatSession, etc.), and
+Use dataset: 'datasetStore.rootDataset' for we-root entities (AgentSettings, Template, etc.), and
 'datasetStore.personalDataset' for the agent's own content (a note, a Pocket folder). Both are chrome-tier.
 Use the default (no dataset) for space-scoped entities (Space, Signal, etc.). The same key $query
 takes, and it names the same accessors.

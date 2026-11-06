@@ -15,6 +15,7 @@ import {
   addDeviceButton,
   deviceList,
   deviceListFootnote,
+  identityProblem,
   keyLogSummary,
   makeIdentityCard,
 } from './IdentitySettingsPages.ts';
@@ -133,6 +134,7 @@ export const securityPage: SchemaNode = {
   props: { gap: '400' },
   children: [
     heading('Security', 'How you get in, and the key that is you.'),
+    identityProblem,
     makeIdentityCard,
     comingSoon({
       available: can('password'),
@@ -323,6 +325,7 @@ export const devicesPage: SchemaNode = {
   props: { gap: '400' },
   children: [
     heading('Devices', 'The devices that act as you: this one, and any you link.'),
+    identityProblem,
     thisDeviceRow,
     comingSoon({
       available: can('devices'),
@@ -333,8 +336,8 @@ export const devicesPage: SchemaNode = {
       children: [deviceList, deviceListFootnote],
     }),
     comingSoon({
-      // Linking needs the master key: offered where this app keeps it (the desktop app's custody),
-      // whatever the backend says, since no backend can sign one in by itself.
+      // Linking needs the master key here: `canManage` is the backend's `linkDevice` and this
+      // computer holding the key.
       available: { $: 'deviceStore.canManage' },
       icon: 'qr-code',
       title: 'Link a device',

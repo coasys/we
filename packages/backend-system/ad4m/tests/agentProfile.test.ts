@@ -219,3 +219,29 @@ describe('getProfile — a picture that cannot be read', () => {
     expect(profile.avatar).toBeUndefined();
   });
 });
+
+describe('getProfile — what kind of agent it says it is', () => {
+  it('reads a bot that says so of itself, whatever format its name is in', async () => {
+    const profile = await getProfile(
+      DID,
+      clientWith([
+        link('flux://profile', 'sioc://has_username', Literal.from('data').toUrl()),
+        link(DID, 'ad4m://agent_kind', 'ad4m://bot'),
+      ]),
+    );
+    expect(profile).toMatchObject({ handle: 'data', kind: 'bot' });
+  });
+
+  it('takes nobody else’s word for it, and says nothing for an agent that declares nothing', async () => {
+    const claimed = await getProfile(
+      DID,
+      clientWith([link('did:key:zSomeoneElse', 'ad4m://agent_kind', 'ad4m://bot')]),
+    );
+    expect(claimed.kind).toBeUndefined();
+    const silent = await getProfile(
+      DID,
+      clientWith([link('we://profile', 'we://handle', Literal.from('ann').toUrl())]),
+    );
+    expect(silent.kind).toBeUndefined();
+  });
+});

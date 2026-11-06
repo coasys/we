@@ -3186,15 +3186,19 @@ export function SpaceStoreProvider(props: ParentProps) {
               target class — a pass writes whatever models the call looks for — and the class this
               store reads through did not carry the flag, so the executor refused to hydrate it.
             */
-            include: { extractionPasses: true, extracted: { polymorphic: true }, amendments: true },
+            include: {
+              runs: { where: { kind: 'extraction' } },
+              extracted: { polymorphic: true },
+              amendments: true,
+            },
           } as never);
           const row = call as unknown as {
             title?: string;
-            extractionPasses?: unknown;
+            runs?: unknown;
             extracted?: unknown;
             amendments?: unknown;
           } | null;
-          const passes = (Array.isArray(row?.extractionPasses) ? row.extractionPasses : []) as PassEntry[];
+          const passes = (Array.isArray(row?.runs) ? row.runs : []) as PassEntry[];
           const records = Array.isArray(row?.extracted) ? (row.extracted as unknown[]) : [];
           const amendments = (Array.isArray(row?.amendments) ? row.amendments : []) as AmendmentEntry[];
           if (!passes.length) return null;
@@ -4715,9 +4719,20 @@ export function SpaceStoreProvider(props: ParentProps) {
       return !definition || !isCommunityDecided(definition) || on.has(group.id);
     });
   });
-  const spaceModuleSettings = createMemo<SettingRow[]>(() => settingRows(groupsHere(), 'space', settingLevels()));
-  const myModuleSettings = createMemo<SettingRow[]>(() => settingRows(groupsHere(), 'agent-in-space', settingLevels()));
-  const agentModuleSettings = createMemo<SettingRow[]>(() => settingRows(settingGroups(), 'agent', settingLevels()));
+  /*
+    Each row stays the same object while its setting is listed; a change to it changes its fields in
+    place. The rows are rebuilt on every write, and `$each` keys by reference, so a fresh object per row
+    redrew every row under a settings screen: pressing one switch threw the page's scroll. The fix
+    `spaceList` already has, for the same reason.
+  */
+  function keptRows(rows: () => SettingRow[]): Accessor<SettingRow[]> {
+    const [kept, setKept] = createStore<SettingRow[]>([]);
+    createComputed(() => setKept(reconcile(rows(), { key: 'id', merge: true })));
+    return () => kept;
+  }
+  const spaceModuleSettings = keptRows(() => settingRows(groupsHere(), 'space', settingLevels()));
+  const myModuleSettings = keptRows(() => settingRows(groupsHere(), 'agent-in-space', settingLevels()));
+  const agentModuleSettings = keptRows(() => settingRows(settingGroups(), 'agent', settingLevels()));
 
   /**
    * Write, or withdraw, the community's opinion about one setting.
