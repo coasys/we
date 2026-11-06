@@ -12,7 +12,27 @@ export interface ToastAction {
   run: () => void;
 }
 
-export interface ToastItem {
+/**
+ * Who a toast is from, when it carries somebody's words rather than the app's: a message a bot
+ * wrote, say. Drawn as a line above the message, avatar and name, so the reader sees whose words
+ * they are before reading them.
+ */
+export interface ToastSender {
+  name: string;
+  /** A picture for the avatar. */
+  image?: string;
+  /** What the avatar's pattern is drawn from when there is no picture: the sender's id. */
+  hash?: string;
+}
+
+/** What a toast may carry beside its message and its action. */
+export interface ToastLook {
+  /** An icon in place of its tone's, for a toast that is one kind of news: a robot for a bot's. */
+  icon?: string;
+  from?: ToastSender;
+}
+
+export interface ToastItem extends ToastLook {
   id: string;
   message: string;
   tone?: ToastTone;

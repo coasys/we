@@ -213,6 +213,8 @@ export function resolveGroup(group: SettingGroup, levels: LevelValues): Record<s
 
 /** A row a settings screen draws: the declaration, the answer, and where the answer came from. */
 export interface SettingRow extends ResolvedSetting {
+  /** `group.key`: what a screen keeps the row by, so a row stays the same object while it changes. */
+  id: string;
   group: string;
   groupLabel: string;
   label: string;
@@ -242,6 +244,7 @@ export function settingRows(groups: readonly SettingGroup[], level: SettingLevel
       const resolved = resolveSetting(setting, group.id, levels, level);
       rows.push({
         ...resolved,
+        id: `${group.id}.${setting.key}`,
         group: group.id,
         groupLabel: group.label,
         label: setting.label,
