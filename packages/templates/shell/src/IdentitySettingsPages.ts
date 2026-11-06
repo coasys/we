@@ -4,10 +4,27 @@
  *
  * Every word on a row comes worded from the stores (`identityStore.keyLog`, `deviceStore.devices`),
  * so these nodes only arrange.
- * Nothing here changes the identity: the buttons open the host's identity window, which asks for the
- * unlock and signs, and the lists are read again when it closes.
+ * Nothing here changes the identity itself: the buttons ask the backend for a change, which asks the
+ * person wherever it keeps the master key and signs there, and the lists are read again when it ends.
  */
 import type { SchemaNode } from '@we/schema-shared';
+
+/**
+ * Why the last read or change of the identity failed, where it failed. A change resolves rather than
+ * throwing (`identityStore.open`), so without this a refused one would leave the person with a
+ * button that stopped spinning and nothing else.
+ */
+export const identityProblem: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: "identityStore.error != '' || deviceStore.error != ''" },
+    then: {
+      type: 'we-alert',
+      props: { tone: 'danger' },
+      children: [{ $: "identityStore.error != '' ? identityStore.error : deviceStore.error" }],
+    },
+  },
+};
 
 const heading = (title: string, blurb: string, action?: SchemaNode): SchemaNode => ({
   type: 'Row',
@@ -135,7 +152,7 @@ export const keyLogPage: SchemaNode = {
           type: 'we-alert',
           props: { tone: 'danger' },
           children: [
-            'Two different logs exist for your identity. Coasys kept the one it had and added nothing until this is settled.',
+            'Two different logs exist for your identity. This computer kept the one it had and added nothing until this is settled.',
           ],
         },
       },

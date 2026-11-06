@@ -124,6 +124,17 @@ impl Kdf {
         t: 3,
         p: 4,
     };
+
+    /// The most a sealed item may ask for: 1 GiB, 48 passes, 64 lanes.
+    pub const CEILING: Kdf = Kdf {
+        m_kib: 1024 * 1024,
+        t: 48,
+        p: 64,
+    };
+
+    fn within_ceiling(self) -> bool {
+        self.m_kib <= Self::CEILING.m_kib && self.t <= Self::CEILING.t && self.p <= Self::CEILING.p
+    }
 }
 
 fn derive(passphrase: &str, salt: &[u8], kdf: Kdf) -> Result<Zeroizing<[u8; 32]>, VaultError> {
@@ -186,6 +197,11 @@ pub fn open(blob: &[u8], scid: &str, passphrase: &str) -> Result<CustodyItem, Va
     };
     // Refuse a blob asking for a cost below the floor a hostile file could pick to make guessing cheap.
     if kdf.m_kib < 8 * 1024 && !cfg!(test) && !cfg!(feature = "cheap-kdf") {
+        return Err(VaultError::Tampered);
+    }
+    // And above the ceiling one could pick to make opening it hang the service or exhaust memory:
+    // sixteen times what this crate seals with, so a later, costlier setting still opens.
+    if !kdf.within_ceiling() {
         return Err(VaultError::Tampered);
     }
     let salt = &blob[28..28 + SALT_LEN];
@@ -261,6 +277,21 @@ mod tests {
             open(b"nonsense", "QmScid", "x").err(),
             Some(VaultError::Tampered)
         );
+    }
+
+    #[test]
+    fn a_blob_asking_for_more_than_the_ceiling_is_refused_before_any_work() {
+        let blob = seal(&item(), "correct horse battery", CHEAP, &counter()).unwrap();
+        // The cost sits after the magic, as m, t, p.
+        for (at, value) in [(16, 4 * 1024 * 1024), (20, 1_000_000), (24, 1_000)] {
+            let mut asking = blob.clone();
+            asking[at..at + 4].copy_from_slice(&(value as u32).to_le_bytes());
+            assert_eq!(
+                open(&asking, "QmScid", "correct horse battery").err(),
+                Some(VaultError::Tampered)
+            );
+        }
+        assert!(Kdf::DESKTOP.within_ceiling());
     }
 
     #[test]

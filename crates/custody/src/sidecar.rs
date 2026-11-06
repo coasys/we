@@ -319,7 +319,7 @@ mod tests {
         assert_eq!(shown["screen"]["screen"], "failed");
         assert_eq!(
             shown["screen"]["message"],
-            "Coasys is starting on this computer. Try again in a moment."
+            "The identity service on this computer is still starting. Try again in a moment."
         );
         // The last screen of the step: the host learns how it ended without reading the screen.
         assert_eq!(shown["outcome"], "failed");

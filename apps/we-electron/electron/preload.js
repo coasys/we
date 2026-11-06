@@ -42,11 +42,11 @@ contextBridge.exposeInMainWorld('electron', {
   saveFile: (file) => ipcRenderer.invoke('save-file', file),
 
   /*
-    The identity: open the identity window on a step, which resolves with how the step ended, and
-    read public custody state. No word, passphrase or key comes this way. Absent on Windows, where
-    there is no custody service.
+    The custody sidecar: open its window on a change to the identity, which resolves with how the
+    change ended, and read its public state. No word, passphrase or key comes this way. Absent on
+    Windows, where there is no custody service.
   */
-  identity:
+  custody:
     process.platform === 'win32'
       ? undefined
       : {

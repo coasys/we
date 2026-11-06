@@ -9,6 +9,12 @@
 //! On disk: `<dir>/pending-incepts.json`, a JSON array of key-log events in their wire form, written
 //! whole through a temp file so a crash leaves the previous list. The file is removed when the list
 //! empties.
+//!
+//! The folder is shared by every desktop app and build on this computer, and two can run at once (a
+//! WE build and a white-labelled one each hold their own single-instance lock). So each read and
+//! each read-modify-write holds an advisory lock on `<dir>/pending-incepts.lock` for its length,
+//! across processes — the in-process mutex alone let two services each write back a list without
+//! the other's incept.
 
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -18,6 +24,26 @@ use ad4m_identity_core::Event;
 
 /// The file's name inside the custody folder.
 pub const FILE_NAME: &str = "pending-incepts.json";
+
+/// The lock every process holds while it reads or changes the file.
+const LOCK_NAME: &str = "pending-incepts.lock";
+
+/// Holds the folder's lock until dropped: shared to read, exclusive to change.
+fn lock_folder(dir: &std::path::Path, exclusive: bool) -> Result<std::fs::File, VaultError> {
+    std::fs::create_dir_all(dir).map_err(unavailable)?;
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(dir.join(LOCK_NAME))
+        .map_err(unavailable)?;
+    if exclusive {
+        file.lock().map_err(unavailable)?;
+    } else {
+        file.lock_shared().map_err(unavailable)?;
+    }
+    Ok(file)
+}
 
 /// Where the pending incepts are kept.
 pub enum PendingIncepts {
@@ -49,6 +75,7 @@ impl PendingIncepts {
         match self {
             PendingIncepts::File { dir, lock } => {
                 let _held = lock.lock().map_err(|_| unavailable("lock poisoned"))?;
+                let _shared = lock_folder(dir, false)?;
                 read(dir)
             }
             PendingIncepts::Memory(events) => Ok(events
@@ -75,6 +102,7 @@ impl PendingIncepts {
         match self {
             PendingIncepts::File { dir, lock } => {
                 let _held = lock.lock().map_err(|_| unavailable("lock poisoned"))?;
+                let _exclusive = lock_folder(dir, true)?;
                 let mut events = read(dir)?;
                 edit(&mut events);
                 write(dir, &events)
@@ -106,7 +134,8 @@ fn write(dir: &std::path::Path, events: &[Event]) -> Result<(), VaultError> {
     }
     std::fs::create_dir_all(dir).map_err(unavailable)?;
     let bytes = serde_json::to_vec(events).map_err(unavailable)?;
-    let tmp = path.with_extension("json.tmp");
+    // Its own temp name per process, so two writers never share one half-written file.
+    let tmp = path.with_extension(format!("json.{}.tmp", std::process::id()));
     let mut file = std::fs::File::create(&tmp).map_err(unavailable)?;
     file.write_all(&bytes).map_err(unavailable)?;
     file.sync_all().map_err(unavailable)?;
@@ -161,6 +190,27 @@ mod tests {
         assert!(PendingIncepts::file(dir.path()).list().unwrap().is_empty());
         // An empty list leaves no file behind.
         assert!(!dir.path().join(FILE_NAME).exists());
+    }
+
+    #[test]
+    fn two_services_keeping_at_once_lose_neither_incept() {
+        // Each its own `PendingIncepts`, as two apps' custody services are: only the folder's lock
+        // stands between their read-modify-writes.
+        let dir = tempfile::tempdir().unwrap();
+        let incepts: Vec<Event> = (10..30).map(incept).collect();
+        std::thread::scope(|scope| {
+            for chunk in incepts.chunks(5) {
+                let dir = dir.path();
+                scope.spawn(move || {
+                    let service = PendingIncepts::file(dir);
+                    for event in chunk {
+                        service.keep(event).unwrap();
+                    }
+                });
+            }
+        });
+        let kept = PendingIncepts::file(dir.path()).list().unwrap();
+        assert_eq!(kept.len(), incepts.len());
     }
 
     #[test]

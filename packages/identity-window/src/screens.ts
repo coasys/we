@@ -47,12 +47,12 @@ export function heading(screen: Screen): { title: string; lead: string } {
     case 'show-words':
       return {
         title: 'Your 12 words',
-        lead: 'These words make your master key: it adds and removes your devices. Write them on paper and keep them: your identity can only ever be restored from them. You see them only during this setup, and nobody at Coasys ever sees them.',
+        lead: 'These words make your master key: it adds and removes your devices. Write them on paper and keep them: your identity can only ever be restored from them. You see them only during this setup, and nobody but you ever sees them.',
       };
     case 'confirm-words':
       return {
         title: 'Check two words',
-        lead: `Type words ${screen.positions[0]} and ${screen.positions[1]} from your paper, to check your copy. Coasys picks two words at random each time.`,
+        lead: `Type words ${screen.positions[0]} and ${screen.positions[1]} from your paper, to check your copy. Two words are picked at random each time.`,
       };
     case 'set-passphrase':
       return {
