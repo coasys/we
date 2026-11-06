@@ -1565,6 +1565,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     switchSession: action('editor'),
     deleteSession: destructive('editor'),
     cancelReply: action('editor'),
+    openMadeTemplate: action('editor'),
     setContentMode: ambient('editor'),
     undo: action('editor'),
     redo: action('editor'),

@@ -2405,6 +2405,7 @@ export const contextData: ContextData = {
       actions: [
         'refreshAssistant',
         'cancelReply',
+        'openMadeTemplate',
         'newChat',
         'switchSession',
         'deleteSession',
@@ -2453,7 +2454,14 @@ export const contextData: ContextData = {
         'toggleVisualPanel',
       ],
       destructive: ['deleteSession', 'clearHistory'],
-      needsArgs: ['switchSession', 'deleteSession', 'setContentMode', 'confirmPicker', 'sendMessage'],
+      needsArgs: [
+        'openMadeTemplate',
+        'switchSession',
+        'deleteSession',
+        'setContentMode',
+        'confirmPicker',
+        'sendMessage',
+      ],
     },
     {
       name: 'identityStore',

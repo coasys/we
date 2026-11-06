@@ -369,7 +369,8 @@ const roleOf = (schema: { meta?: { role?: string } }): string => (schema.meta?.r
 
 const TemplateContext = createContext<TemplateStore>();
 
-const SPACE_PREFIX = 'space::';
+/** What `switchTemplate` puts before the id of a template the space holds, rather than the agent's library. */
+export const SPACE_PREFIX = 'space::';
 
 export function TemplateStoreProvider(props: ParentProps) {
   const session = useSessionStore();

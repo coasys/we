@@ -17,6 +17,7 @@ import { sameTemplateContent } from '@shared/templateSync';
 import { deepClone } from '@shared/utils';
 import {
   type EditingTheme,
+  SPACE_PREFIX,
   useDatasetStore,
   useSessionStore,
   useShapeStore,
@@ -123,6 +124,13 @@ export interface EditorStore {
   replyRunning: Accessor<boolean>;
   /** Stop that reply. What the agent changed before it stopped stays changed. */
   cancelReply: () => Promise<void>;
+  /**
+   * Open a template the agent made, by its record: a shell becomes the template on screen, still
+   * being edited, as a fork does; an app becomes the person's app. A view is one section of a
+   * space, so it is added from the space's sections instead, and this says so. False when the
+   * template has not reached the list yet.
+   */
+  openMadeTemplate: (recordId: string) => Promise<boolean>;
   newChat: () => Promise<void>;
   switchSession: (sessionId: string) => Promise<void>;
   deleteSession: (sessionId: string) => Promise<void>;
@@ -429,6 +437,9 @@ export function EditorStoreProvider(props: ParentProps) {
       const ref = await port.create({
         keepIn,
         workIn: stored.dataset,
+        // The person's library is the root dataset, as it is for the templates the editor saves:
+        // where a template the agent makes goes unless they ask for it in the space.
+        library: keepIn,
         title: `Chat ${keptConversations().length + 1}`,
         about: stored.recordId,
         mayEdit: true,
@@ -516,6 +527,26 @@ export function EditorStoreProvider(props: ParentProps) {
       console.error('Failed to stop the reply', err);
       toastService.error('Could not stop the reply');
     }
+  }
+
+  async function openMadeTemplate(recordId: string): Promise<boolean> {
+    const made = templateStore.allTemplates().find((t) => templateStore.storedAt(t)?.recordId === recordId);
+    if (!made?.id) {
+      toastService.info('That template is still on its way. Try again in a moment.');
+      return false;
+    }
+    const name = made.meta?.name || 'The template';
+    if (made.meta?.role === 'app') {
+      await editApp(made.id);
+      return true;
+    }
+    if (made.meta?.role === 'view') {
+      toastService.info(`"${name}" is a section: add it to a space from the space's sections.`);
+      return true;
+    }
+    templateStore.switchTemplate(made._fromSpace ? `${SPACE_PREFIX}${made.id}` : made.id);
+    if (!isEditingTemplate()) enterTemplateEditing('edit');
+    return true;
   }
 
   /** The chats to choose between: the backend's conversations, or the editor's own. */
@@ -1520,6 +1551,7 @@ export function EditorStoreProvider(props: ParentProps) {
     isReadOnly,
     replyRunning,
     cancelReply,
+    openMadeTemplate,
 
     // Picker state
     pickerOpen,

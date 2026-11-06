@@ -199,6 +199,8 @@ export interface SessionPort {
   replyRunning: () => boolean;
   /** Stop it. What the agent changed before it stopped stays changed. */
   cancelReply: () => void | Promise<void>;
+  /** Open a template the agent made, by its record id (a done `template_create` step's target). */
+  openMadeTemplate: (recordId: string) => boolean | Promise<boolean>;
   newChat: () => void;
   switchSession: (sessionId: string) => void;
   deleteSession: (sessionId: string) => Promise<void>;

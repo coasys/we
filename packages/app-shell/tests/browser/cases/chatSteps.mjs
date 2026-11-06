@@ -19,7 +19,9 @@ export async function check({ evaluate, screenshot }) {
   });
   const problems = [];
   const has = (t) => seen.texts.includes(t);
-  if (!has('3 steps')) problems.push('the finished reply does not fold its steps to "3 steps"');
+  if (!has('4 steps')) problems.push('the finished reply does not fold its steps to "4 steps"');
+  if (!seen.buttons.includes('Open the new template'))
+    problems.push('the finished reply does not offer to open the template it made');
   if (has('Read the documentation')) problems.push('the finished reply shows its steps unfolded');
   if (!seen.texts.some((t) => t.startsWith('The reply failed: credits ran out')))
     problems.push('the failed reply does not say why');
@@ -31,6 +33,15 @@ export async function check({ evaluate, screenshot }) {
   if (seen.spinners !== 1) problems.push(`${seen.spinners} spinners, where only the running step has one`);
   if (!seen.icons.includes('stop')) problems.push('no Stop while a reply runs');
   if (seen.icons.includes('paper-plane-tilt')) problems.push('Send is shown while a reply runs');
+
+  const asked = await evaluate(() => {
+    const open = [...document.querySelectorAll('we-button')].find(
+      (b) => b.textContent.trim() === 'Open the new template',
+    );
+    open?.click();
+    return window.__probeOpened;
+  });
+  if (asked !== 'ad4m://t/made') problems.push(`Open asked for ${asked}, not the template the reply made`);
 
   // Open the stopped reply's steps: the step its stop cut off says so, and does not spin.
   await evaluate(() => {

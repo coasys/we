@@ -168,6 +168,8 @@ export function createStandaloneEditorHost(initial: TemplateSchema): {
       deleteSession: async () => {},
       replyRunning: () => false,
       cancelReply: () => {},
+      // No backend agent here, so no reply makes a template to open.
+      openMadeTemplate: () => false,
     },
 
     identity: {
