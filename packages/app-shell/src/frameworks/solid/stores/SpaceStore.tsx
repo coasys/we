@@ -4719,9 +4719,20 @@ export function SpaceStoreProvider(props: ParentProps) {
       return !definition || !isCommunityDecided(definition) || on.has(group.id);
     });
   });
-  const spaceModuleSettings = createMemo<SettingRow[]>(() => settingRows(groupsHere(), 'space', settingLevels()));
-  const myModuleSettings = createMemo<SettingRow[]>(() => settingRows(groupsHere(), 'agent-in-space', settingLevels()));
-  const agentModuleSettings = createMemo<SettingRow[]>(() => settingRows(settingGroups(), 'agent', settingLevels()));
+  /*
+    Each row stays the same object while its setting is listed; a change to it changes its fields in
+    place. The rows are rebuilt on every write, and `$each` keys by reference, so a fresh object per row
+    redrew every row under a settings screen: pressing one switch threw the page's scroll. The fix
+    `spaceList` already has, for the same reason.
+  */
+  function keptRows(rows: () => SettingRow[]): Accessor<SettingRow[]> {
+    const [kept, setKept] = createStore<SettingRow[]>([]);
+    createComputed(() => setKept(reconcile(rows(), { key: 'id', merge: true })));
+    return () => kept;
+  }
+  const spaceModuleSettings = keptRows(() => settingRows(groupsHere(), 'space', settingLevels()));
+  const myModuleSettings = keptRows(() => settingRows(groupsHere(), 'agent-in-space', settingLevels()));
+  const agentModuleSettings = keptRows(() => settingRows(settingGroups(), 'agent', settingLevels()));
 
   /**
    * Write, or withdraw, the community's opinion about one setting.

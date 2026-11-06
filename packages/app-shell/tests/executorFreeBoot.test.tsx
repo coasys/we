@@ -131,6 +131,7 @@ import { ShellStoreProvider } from '../src/frameworks/solid/stores/ShellStore';
 import { type SpaceStore, SpaceStoreProvider, useSpaceStore } from '../src/frameworks/solid/stores/SpaceStore';
 import { NO_STARTER } from '../src/shared/bundles/bundleStarter';
 import { createModuleStoreDeps } from '../src/shared/registries/moduleHostServices';
+import { moduleRegistry } from '../src/shared/registries/moduleRegistry';
 import { provideSeed } from '../src/shared/seedRegistry';
 import { writeSpaceLandmark } from '../src/shared/spaceLandmarks';
 import { COMMUNITY_POLICY } from '../src/shared/spacePolicy';
@@ -728,6 +729,34 @@ describe('dataset lifecycle through the real stores', () => {
 
     expect(rowOf()?.defaultThemeId).toBe('retro');
     expect(rowOf()).toBe(before);
+  }, 10000);
+
+  /*
+    The same for a module's setting rows, which are rebuilt on every write: pressing one switch on a
+    settings screen redrew every row under it and threw the page's scroll.
+  */
+  it('keeps a module setting’s row the same object when it changes', async () => {
+    moduleRegistry.register(
+      {
+        manifest: { id: 'rowtest', name: 'Row test' },
+        contributes: { settings: [{ key: 'loud', label: 'Loud', type: 'boolean', default: true, levels: ['agent'] }] },
+      },
+      { backend: 'ad4m', framework: 'solid' },
+    );
+    try {
+      const stores = mountShell();
+      await ready(stores);
+      const rowOf = () => stores.spaces.agentModuleSettings().find((r) => r.id === 'rowtest.loud');
+      const before = rowOf();
+      expect(before?.value).toBe(true);
+
+      await stores.spaces.setAgentModuleSetting('rowtest', 'loud', false);
+
+      await vi.waitFor(() => expect(rowOf()?.value).toBe(false));
+      expect(rowOf()).toBe(before);
+    } finally {
+      moduleRegistry.unregister('rowtest');
+    }
   }, 10000);
 
   /*
