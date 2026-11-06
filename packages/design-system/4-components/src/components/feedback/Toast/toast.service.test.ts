@@ -116,4 +116,15 @@ describe('toastService', () => {
     second.action!.run();
     expect(undone).toEqual(['a', 'b']);
   });
+
+  it('carries who a toast is from and its own icon', () => {
+    toastService.info('On it', 0, undefined, { icon: 'robot', from: { name: 'Data', hash: 'did:data' } });
+    expect(toastService.toasts()[0]).toMatchObject({ icon: 'robot', from: { name: 'Data', hash: 'did:data' } });
+  });
+
+  it('never collapses the same words from two senders into one', () => {
+    toastService.info('Done', 0, undefined, { from: { name: 'Data' } });
+    toastService.info('Done', 0, undefined, { from: { name: 'Hermes' } });
+    expect(toastService.toasts().map((t) => t.from?.name)).toEqual(['Data', 'Hermes']);
+  });
 });
