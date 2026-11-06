@@ -2414,6 +2414,7 @@ const feedViewPage = (): Scenario => {
       modules: {
         feed: {
           feedRows: [
+            line('m4', 'did:data', 'The venue is booked for Friday.', '2026-10-27T10:04:00Z', 'call-1', 'Monday sync'),
             line('m3', 'did:them', 'See you all on Friday', '2026-10-27T10:03:00Z'),
             {
               kind: 'activity',
@@ -2434,12 +2435,15 @@ const feedViewPage = (): Scenario => {
           feedFromStart: false,
           timelineOrientation: 'newestBottom',
           replyingTo: null,
+          // Data's own profile says it is a bot.
+          botAuthors: ['did:data'],
         },
       },
       profileStore: {
         profiles: [
           { did: 'did:them', name: 'Theodora Fairweather', avatar: '' },
           { did: 'did:me', name: 'Alexandra Whitfield', avatar: '' },
+          { did: 'did:data', name: 'Data', avatar: '', kind: 'bot' },
         ],
       },
     },

@@ -237,6 +237,17 @@ reports a measured box — publish it with `deps.action(fn, doc, { ambient: true
 event. Anything that stores, publishes, spends tokens or reaches a device stays as it is. When unsure,
 leave it off: a template can always put the call on a click.
 
+**Saying something outside your own panels** goes through `deps.notify(tone, message, options?)`,
+which the host turns into a toast. `success`, `warning` and `error` report an outcome; `info` is news,
+something that arrived. News and outcomes may carry one thing to do about them (`options.action`, a
+button on the notice) and how long they stay (`options.duration`). The Feed's notice for a bot's
+answer is the example: "✦ Data: …" with Open, which shows the Feed.
+
+**Who somebody is** comes from `deps.identities`: `get(id)` reads the host's cached profile (a name, an
+avatar, and `kind: 'bot'` when the agent's own profile says it is one), and `fetch(id)` asks for one
+not cached yet. Tell a bot by its `kind`, never by how its record was written: a record WE's own
+composer did not write is every other app's too.
+
 Teardown goes through `deps.onDispose(fn)`, never a `destroy` key on the store: store keys are
 template-callable vocabulary.
 
