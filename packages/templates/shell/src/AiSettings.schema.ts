@@ -921,6 +921,19 @@ function lines(items: string, color: string | { $: string } = 'text-muted'): Sch
   };
 }
 
+/** Install, or "Install the rest" once part of the plan is in: the label says which. */
+const installButton: SchemaNode = {
+  type: 'we-button',
+  props: {
+    text: { $: 'runtimeStore.localAi.installLabel' },
+    size: 'sm',
+    disabled: { $: '!runtimeStore.localAi.canInstall' },
+    loading: { $: 'runtimeStore.localAi.installing' },
+    onClick: { $invoke: 'runtimeStore.installLocalAi' },
+  },
+  children: [{ type: 'we-icon', props: { name: 'download' } }],
+};
+
 /*
   Install, Start, Stop and Remove are the operator's: the executor refuses them to a grant, whatever
   it holds, and WE web connects with one. A connection that is not the operator still reads the
@@ -951,6 +964,8 @@ const localActions: SchemaNode = {
                     size: 'sm',
                     variant: 'soft',
                     loading: { $: "'stopLocalAi' in runtimeStore.pending" },
+                    // An install stops and starts the servers itself.
+                    disabled: { $: 'runtimeStore.localAi.installing' },
                     onClick: { $invoke: 'runtimeStore.stopLocalAi' },
                   },
                   children: [{ type: 'we-icon', props: { name: 'stop' } }],
@@ -961,23 +976,28 @@ const localActions: SchemaNode = {
                     text: 'Start',
                     size: 'sm',
                     loading: { $: "'startLocalAi' in runtimeStore.pending" },
+                    // An install stops and starts the servers itself.
+                    disabled: { $: 'runtimeStore.localAi.installing' },
                     onClick: { $invoke: 'runtimeStore.startLocalAi' },
                   },
                   children: [{ type: 'we-icon', props: { name: 'play' } }],
                 },
               },
             },
-            else: {
-              type: 'we-button',
-              props: {
-                text: { $: 'runtimeStore.localAi.installLabel' },
-                size: 'sm',
-                disabled: { $: '!runtimeStore.localAi.canInstall' },
-                loading: { $: 'runtimeStore.localAi.installing' },
-                onClick: { $invoke: 'runtimeStore.installLocalAi' },
-              },
-              children: [{ type: 'we-icon', props: { name: 'download' } }],
-            },
+            else: installButton,
+          },
+        },
+        /*
+          Part of the plan installed — the one service the backend installs by itself when an app first
+          asks for its default model, or an install of some kinds — is still `installed`. The rest is one
+          more install away (an install naming no kinds fetches the whole plan), so it is offered here
+          rather than only after a Remove.
+        */
+        {
+          type: '$if',
+          props: {
+            condition: { $: 'runtimeStore.localAi.installed && runtimeStore.localAi.incomplete' },
+            then: installButton,
           },
         },
         {
@@ -1096,7 +1116,8 @@ const localSection = (shown: string): SchemaNode => ({
                         {
                           type: '$if',
                           props: {
-                            condition: { $: '!runtimeStore.localAi.installed' },
+                            // Said before the rest of a partial install too: it is the same install.
+                            condition: { $: '!runtimeStore.localAi.installed || runtimeStore.localAi.incomplete' },
                             then: footnote(
                               'An install cannot be cancelled, and it continues if you close Settings. When it is installed, the model servers start each time the node starts.',
                             ),

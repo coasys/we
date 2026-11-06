@@ -70,24 +70,30 @@ describe('the account’s answer', () => {
     };
   }
 
-  it('is kept per account', () => {
+  it('is kept per node', () => {
     const store = memory();
-    expect(readAiSetupAnswer('did:test:one', store)).toBeNull();
-    recordAiSetupAnswer('did:test:one', 'skipped', store);
-    expect(readAiSetupAnswer('did:test:one', store)).toBe('skipped');
-    expect(readAiSetupAnswer('did:test:two', store)).toBeNull();
+    expect(readAiSetupAnswer('https://one.test', store)).toBeNull();
+    recordAiSetupAnswer('https://one.test', 'skipped', store);
+    expect(readAiSetupAnswer('https://one.test', store)).toBe('skipped');
+    expect(readAiSetupAnswer('https://two.test', store)).toBeNull();
   });
 
   it('keeps a set-up answer as well as a skip', () => {
     const store = memory();
-    recordAiSetupAnswer('did:test:one', 'set-up', store);
-    expect(readAiSetupAnswer('did:test:one', store)).toBe('set-up');
+    recordAiSetupAnswer('https://one.test', 'set-up', store);
+    expect(readAiSetupAnswer('https://one.test', store)).toBe('set-up');
+  });
+
+  it('keeps nothing for a node with no address', () => {
+    const store = memory();
+    recordAiSetupAnswer('', 'skipped', store);
+    expect(readAiSetupAnswer('', store)).toBeNull();
   });
 
   it('reads nothing it did not write', () => {
     const store = memory();
-    store.setItem('we.aiSetup.answer:did:test:one', 'something else');
-    expect(readAiSetupAnswer('did:test:one', store)).toBeNull();
+    store.setItem('we.aiSetup.answer:https://one.test', 'something else');
+    expect(readAiSetupAnswer('https://one.test', store)).toBeNull();
     expect(readAiSetupAnswer('', store)).toBeNull();
   });
 });

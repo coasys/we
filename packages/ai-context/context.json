@@ -7079,6 +7079,7 @@
             "summary",
             "installLabel",
             "installed",
+            "incomplete",
             "installing",
             "running",
             "anyRunning",

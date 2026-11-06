@@ -2779,6 +2779,7 @@ export const contextData: ContextData = {
             'summary',
             'installLabel',
             'installed',
+            'incomplete',
             'installing',
             'running',
             'anyRunning',

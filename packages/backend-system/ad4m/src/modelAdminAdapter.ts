@@ -467,7 +467,7 @@ export function createAd4mModelAdmin(backendClient: unknown, options: Ad4mRuntim
   /**
    * Local AI reads the node's own machine — its processor, its memory, its disk — so it is the
    * operator's, like the endpoints: a guest on somebody else's node has no use for that machine's
-   * hardware and should not be shown it. The progress events go to the operator alone as well.
+   * hardware and should not be shown it.
    */
   const localRead: LocalAiPort = {
     async hardware() {
@@ -479,13 +479,16 @@ export function createAd4mModelAdmin(backendClient: unknown, options: Ad4mRuntim
     async status() {
       return toLocalStatus(await client.ai.localStatus());
     },
+  };
+
+  /**
+   * Installing, starting, stopping and removing are the executor's operator-only calls, and it sends
+   * the install's progress events to operator sessions alone: a grant would listen to nothing.
+   */
+  const localWrite: LocalAiPort = {
     onProgress(listener) {
       return client.on('ai-local-progress', (progress) => listener(toLocalProgress(progress)));
     },
-  };
-
-  /** Installing, starting, stopping and removing are the executor's operator-only calls. */
-  const localWrite: LocalAiPort = {
     /**
      * Gigabytes: the SDK waits hours by default rather than the usual request timeout. Progress is
      * heard through `onProgress`, so an install started from the launcher shows here too.

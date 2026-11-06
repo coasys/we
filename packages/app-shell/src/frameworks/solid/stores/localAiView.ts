@@ -140,6 +140,9 @@ export function progressView(progress: LocalAiProgress): LocalAiProgressView {
       case 'plan':
         return 'Checking what to download';
       case 'download':
+        // Every file is in: the backend starts the servers next, which for a large model takes a while
+        // and sends no event of its own.
+        if (progress.totalBytes > 0 && progress.doneBytes >= progress.totalBytes) return 'Starting the model servers';
         return progress.item
           ? `Downloading ${progress.item} — ${sizeText(progress.itemDoneBytes)} of ${sizeText(progress.itemTotalBytes)}`
           : 'Downloading';
@@ -180,7 +183,7 @@ const PHASE_TEXT: Record<NonNullable<LocalAiRuntimeStatus['phase']>, string> = {
 };
 
 export function runtimeView(runtime: LocalAiRuntimeStatus): LocalAiRuntimeView {
-  const parts = [runtime.phase ? PHASE_TEXT[runtime.phase] : 'Not started'];
+  const parts = [runtime.phase ? PHASE_TEXT[runtime.phase] : 'Not running'];
   if (runtime.phase === 'running' && runtime.onGpu === true) {
     parts.push(runtime.gpuBytes ? `on the GPU (${sizeText(runtime.gpuBytes)})` : 'on the GPU');
   }
@@ -215,12 +218,22 @@ export interface LocalAiView {
   planNotes: string[];
   fits: boolean;
   summary: string;
+  /** "Install (2.5 GB)", or "Install the rest (2.5 GB)" where part of the plan is installed. */
   installLabel: string;
+  /**
+   * Something is installed. Not the whole plan: the backend installs one service by itself the first
+   * time an app asks for its default model, and an install can name kinds — see `incomplete`.
+   */
   installed: boolean;
+  /** Installed, and the plan still has something not downloaded, which an install fetches. */
+  incomplete: boolean;
   installing: boolean;
   /** Every server program is running. */
   running: boolean;
-  /** At least one is running, so there is something to stop. */
+  /**
+   * At least one runs in some state — running, starting, restarting or failed — so there is something
+   * to stop. A failed server stays the backend's until it is stopped, and a start leaves it as it is.
+   */
   anyRunning: boolean;
   runtimes: LocalAiRuntimeView[];
   progress: LocalAiProgressView | null;
@@ -247,6 +260,11 @@ export function describeLocalAi(input: {
   const installing = input.installingHere || !!status?.installing || underWay;
   const runtimes = status?.runtimes ?? [];
   const runningCount = runtimes.filter((r) => r.phase === 'running').length;
+  const liveCount = runtimes.filter((r) => r.phase !== null && r.phase !== 'stopped').length;
+  const installed = !!status?.installed;
+  // An install with no kinds named installs the whole plan, so the rest is one more install away.
+  const incomplete = installed && !!plan && [...plan.models, ...plan.runtimes].some((item) => !item.installed);
+  const size = plan && plan.downloadBytes > 0 ? ` (${sizeText(plan.downloadBytes)})` : '';
   return {
     loaded: !!hardware && !!plan,
     device: hardware ? deviceText(hardware) : '',
@@ -260,11 +278,12 @@ export function describeLocalAi(input: {
     planNotes: plan ? planNotes(plan) : [],
     fits: !!plan?.fits,
     summary: plan ? planSummary(plan) : '',
-    installLabel: plan && plan.downloadBytes > 0 ? `Install (${sizeText(plan.downloadBytes)})` : 'Install',
-    installed: !!status?.installed,
+    installLabel: incomplete ? `Install the rest${size}` : `Install${size}`,
+    installed,
+    incomplete,
     installing,
     running: runtimes.length > 0 && runningCount === runtimes.length,
-    anyRunning: runningCount > 0,
+    anyRunning: liveCount > 0,
     runtimes: runtimes.map(runtimeView),
     // Shown while an install runs, and after one fails until the next starts: a failure says why.
     progress: progress && (installing || progress.phase === 'failed') ? progressView(progress) : null,

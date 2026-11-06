@@ -28,6 +28,7 @@ import type {
   PeerRecords,
   RuntimeAdminPort,
 } from '@we/backend-shared';
+import { createSignal } from 'solid-js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 let ports: Partial<BackendPorts> | null = null;
@@ -37,13 +38,16 @@ const session = vi.hoisted(() => ({
   step: 'ready',
   held: 0,
   finished: 0,
+  agent: 'did:test:new-account',
+  url: 'https://node.test' as string | undefined,
 }));
 
 vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
   useSessionStore: () => ({
     backendPorts: () => ports,
     signInStep: () => session.step,
-    me: () => ({ id: 'did:test:new-account' }),
+    me: () => ({ id: session.agent }),
+    serverUrl: () => session.url,
     holdForAiSetup: () => {
       session.held += 1;
     },
@@ -56,14 +60,20 @@ vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
 // Never 'settings', so the on-demand load effect stays dormant and each test drives the store
 // explicitly. The load-on-open behaviour is asserted separately below.
 let activeShellView: string | null = null;
-/** Tells the store `activeShellView` changed, for a test that closes the settings under it. */
-const shellView = vi.hoisted(() => ({ changed: () => {} }));
-vi.mock('../src/frameworks/solid/stores/ShellStore', async () => {
-  const { createSignal } = await import('solid-js');
-  const [version, setVersion] = createSignal(0);
-  shellView.changed = () => setVersion((n) => n + 1);
-  return { useShellStore: () => ({ activeShellView: () => (version(), activeShellView) }) };
-});
+// Read on every call, so a test that opens and closes the settings while mounted re-runs the effects.
+const [shellViewChanged, setShellViewChanged] = createSignal(0);
+function setShellView(view: string | null): void {
+  activeShellView = view;
+  setShellViewChanged((n) => n + 1);
+}
+vi.mock('../src/frameworks/solid/stores/ShellStore', () => ({
+  useShellStore: () => ({
+    activeShellView: () => {
+      shellViewChanged();
+      return activeShellView;
+    },
+  }),
+}));
 
 // Faked for the same reason as the stores above, and for one more: importing the real provider
 // pulls the whole app-shell provider graph (down to the block editor) into a test about a settings
@@ -158,6 +168,8 @@ beforeEach(() => {
   session.step = 'ready';
   session.held = 0;
   session.finished = 0;
+  session.agent = 'did:test:new-account';
+  session.url = 'https://node.test';
   localStorage.clear();
 });
 
@@ -838,7 +850,8 @@ describe('local AI on this device', () => {
       },
       async stop() {
         calls.push('stop');
-        status = { ...running, runtimes: [{ ...running.runtimes[0], phase: 'stopped', onGpu: null }] };
+        // As the executor answers: a stopped server is no longer its own, so it has no phase.
+        status = { ...running, runtimes: [{ ...running.runtimes[0], phase: null, onGpu: null }] };
         return status;
       },
       async remove(deleteFiles) {
@@ -885,8 +898,7 @@ describe('local AI on this device', () => {
     mount();
     await vi.waitFor(() => expect(local.listening()).toBe(true));
 
-    activeShellView = null;
-    shellView.changed();
+    setShellView(null);
     expect(local.listening()).toBe(false);
   });
 
@@ -910,7 +922,7 @@ describe('local AI on this device', () => {
   it('still says an install failed after the settings were closed and opened again', async () => {
     // The first-run step says the install carries on; a failure after that was in the shared error
     // only, which the next read clears as it starts.
-    activeShellView = 'settings';
+    setShellView('settings');
     const local = localPort({
       install: async () => {
         throw new Error('disk full');
@@ -921,6 +933,9 @@ describe('local AI on this device', () => {
     await vi.waitFor(() => expect(store.localAi().loaded).toBe(true));
     await store.installLocalAi();
 
+    // Opening the settings again starts listening afresh: what was under way is dropped, a failure kept.
+    setShellView(null);
+    setShellView('settings');
     await store.loadLocalAi();
     expect(store.error()).toBe('');
     expect(store.localAi().progress).toMatchObject({ text: 'The install failed — disk full', failed: true });
@@ -1014,12 +1029,57 @@ describe('local AI on this device', () => {
 
     await store.stopLocalAi();
     expect(store.localAi()).toMatchObject({ running: false, anyRunning: false });
-    expect(store.localAi().runtimes[0].stateText).toBe('Stopped');
+    expect(store.localAi().runtimes[0].stateText).toBe('Not running');
 
     await store.removeLocalAi(true);
     expect(local.calls).toEqual(['start', 'stop', 'remove:true']);
     expect(store.localAi().installed).toBe(false);
     expect(store.aiEndpoints()).toEqual([]);
+  });
+
+  it('starts a bar over when the settings open again, rather than holding what it heard before', async () => {
+    setShellView('settings');
+    const local = localPort({ status: async () => ({ ...notInstalled, installing: true }) });
+    ports = { models: local.models };
+    const store = mount();
+    await vi.waitFor(() => expect(store.localAi().loaded).toBe(true));
+    const download = (doneBytes: number) => ({
+      phase: 'download' as const,
+      item: 'test-chat',
+      itemDoneBytes: doneBytes,
+      itemTotalBytes: 2.5e9,
+      doneBytes,
+      totalBytes: 2.54e9,
+    });
+    local.progress(download(1.524e9));
+    expect(store.localAi().progress?.percent).toBe(60);
+
+    // Closed while the install ran, so its end went unheard; a retry of the same plan has the same total.
+    setShellView(null);
+    setShellView('settings');
+    local.progress(download(0.0254e9));
+    expect(store.localAi().progress?.percent).toBe(1);
+  });
+
+  it('re-reads what an install changed when one it did not start ends', async () => {
+    setShellView('settings');
+    const local = localPort();
+    ports = { models: local.models };
+    const store = mount();
+    await vi.waitFor(() => expect(store.localAi().loaded).toBe(true));
+    // The launcher's install, or the backend's own, ran meanwhile: the backend now has it installed.
+    const port = local.models;
+    const status = vi.spyOn(port.local as LocalAiPort, 'status').mockResolvedValue(running);
+    const plan = vi.spyOn(port.local as LocalAiPort, 'plan');
+    const endpoints = vi.spyOn(port, 'endpoints').mockResolvedValue([managed]);
+    const list = vi.spyOn(port, 'list');
+
+    // Nothing is in flight from here; only its end is heard.
+    local.progress({ phase: 'done', item: '', doneBytes: 0, totalBytes: 0 });
+    await vi.waitFor(() => expect(store.localAi().installed).toBe(true));
+    for (const read of [status, plan, endpoints, list]) expect(read).toHaveBeenCalled();
+    expect(store.localAi()).toMatchObject({ installing: false, running: true });
+    expect(store.aiEndpoints()).toHaveLength(1);
   });
 
   it('does not edit or remove a managed server as a server', async () => {
@@ -1128,16 +1188,41 @@ describe('a first run’s AI step', () => {
     expect(await mount().openAiStep()).toBe(false);
   });
 
-  it('finishes setting up on skip, and is not asked again for that account', async () => {
+  it('finishes setting up on skip, and a second account on that node is not asked again', async () => {
     ports = { models: node() };
     const store = mount();
     expect(await store.openAiStep()).toBe(true);
     store.skipAiSetup();
     expect(session.finished).toBe(1);
-    expect(localStorage.getItem('we.aiSetup.answer:did:test:new-account')).toBe('skipped');
 
+    // The step runs only for a new agent, so the answer that counts is the node's: the next account
+    // made against it has a new id, and its operator already said no AI for now.
+    session.agent = 'did:test:second-account';
     expect(await mount().openAiStep()).toBe(false);
     expect(session.held).toBe(1);
+  });
+
+  it('asks an account on another node, whatever this one answered', async () => {
+    ports = { models: node() };
+    expect(await mount().openAiStep()).toBe(true);
+    mount().skipAiSetup();
+
+    session.agent = 'did:test:second-account';
+    session.url = 'https://other-node.test';
+    expect(await mount().openAiStep()).toBe(true);
+    expect(session.held).toBe(2);
+  });
+
+  it('keeps no answer where the node has no address to keep it under', async () => {
+    session.url = undefined;
+    ports = { models: node() };
+    const store = mount();
+    expect(await store.openAiStep()).toBe(true);
+    store.skipAiSetup();
+    expect(Object.keys(localStorage).filter((key) => key.startsWith('we.aiSetup'))).toEqual([]);
+
+    session.agent = 'did:test:second-account';
+    expect(await mount().openAiStep()).toBe(true);
   });
 
   it('clears its time limit once the node has answered', async () => {
@@ -1161,7 +1246,7 @@ describe('a first run’s AI step', () => {
     store.finishAiSetup();
     expect(session.finished).toBe(1);
     expect(store.aiEndpointForm()).toBeNull();
-    expect(localStorage.getItem('we.aiSetup.answer:did:test:new-account')).toBe('set-up');
+    expect(localStorage.getItem('we.aiSetup.answer:https://node.test')).toBe('set-up');
   });
 
   it('reads the AI sections while the step is up, as it does while the settings are open', async () => {

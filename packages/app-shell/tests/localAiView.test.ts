@@ -42,8 +42,7 @@ const runtime = (overrides: Partial<LocalAiRuntimeStatus> = {}): LocalAiRuntimeS
 
 describe('reduceProgress', () => {
   it('starts over with a new install', () => {
-    const before = event({ doneBytes: 80 });
-    expect(reduceProgress(before, event({ phase: 'plan', doneBytes: 0 })).doneBytes).toBe(0);
+    // The backend sends `download` events, then `done` or `failed`: the next install starts after either.
     expect(reduceProgress(event({ phase: 'done', doneBytes: 100 }), event({ doneBytes: 5 })).doneBytes).toBe(5);
     expect(reduceProgress(event({ phase: 'failed', doneBytes: 60 }), event({ doneBytes: 5 })).doneBytes).toBe(5);
   });
@@ -57,8 +56,15 @@ describe('reduceProgress', () => {
 
 describe('progressView', () => {
   it('says each phase, and a finished install is all the way', () => {
-    expect(progressView(event({ phase: 'plan' })).text).toBe('Checking what to download');
-    expect(progressView(event({ phase: 'start', doneBytes: 100 })).text).toBe('Starting the model servers');
+    expect(progressView(event({ itemDoneBytes: 40e6, itemTotalBytes: 2.5e9, doneBytes: 40 })).text).toBe(
+      'Downloading m — 40 MB of 2.5 GB',
+    );
+    // Every file in, the servers start: the backend sends nothing more until `done`.
+    expect(progressView(event({ itemDoneBytes: 2.5e9, itemTotalBytes: 2.5e9, doneBytes: 100 }))).toEqual({
+      percent: 100,
+      text: 'Starting the model servers',
+      failed: false,
+    });
     expect(progressView(event({ phase: 'done', doneBytes: 0, totalBytes: 0 }))).toEqual({
       percent: 100,
       text: 'Installed',
@@ -102,7 +108,7 @@ describe('sentences', () => {
       stateText: 'Running · on the CPU: the GPU build found no device · restarted 2 times',
       ok: false,
     });
-    expect(runtimeView(runtime({ phase: null })).stateText).toBe('Not started');
+    expect(runtimeView(runtime({ phase: null })).stateText).toBe('Not running');
     expect(runtimeView(runtime({ phase: 'failed', detail: 'exited with 1' }))).toMatchObject({
       stateText: 'Failed · exited with 1',
       ok: false,
@@ -177,6 +183,101 @@ describe('describeLocalAi', () => {
     expect(view.installing).toBe(true);
     expect(view.canInstall).toBe(false);
     expect(view.progress?.percent).toBe(50);
+  });
+
+  it('offers Stop for any server the backend still runs, whatever state it is in', () => {
+    // `anyRunning` picks Stop over Start. A failed server stays the backend's until it is stopped,
+    // and a start leaves it as it is: Start would do nothing for it.
+    const live = (phase: LocalAiRuntimeStatus['phase']) =>
+      describeLocalAi({
+        hardware: null,
+        plan: null,
+        status: { installed: true, installing: false, autostart: true, runtimes: [runtime({ phase })], models: [] },
+        progress: null,
+        installingHere: false,
+        operator: true,
+      }).anyRunning;
+    expect(live('failed')).toBe(true);
+    expect(live('starting')).toBe(true);
+    expect(live('restarting')).toBe(true);
+    expect(live('running')).toBe(true);
+    expect(live('stopped')).toBe(false);
+    expect(live(null)).toBe(false);
+  });
+
+  describe('an install of part of the plan', () => {
+    // The backend installs one service by itself the first time an app asks for its default model,
+    // and an install can name kinds: either leaves the plan partly downloaded and `installed` true.
+    const partPlan: LocalAiPlan = {
+      hardwareClass: 'linux-x64-cpu',
+      runtimes: [
+        {
+          id: 'llama-server',
+          version: 'b1',
+          build: 'linux-x64-cpu',
+          backend: 'cpu',
+          sizeBytes: 40e6,
+          installed: false,
+          kinds: ['llm'],
+        },
+        {
+          id: 'nemo-speech',
+          version: 'v1',
+          build: 'linux-x64-cpu',
+          backend: 'cpu',
+          sizeBytes: 200e6,
+          installed: true,
+          kinds: ['transcription'],
+        },
+      ],
+      models: [
+        {
+          kind: 'llm',
+          model: 'test-chat',
+          sizeBytes: 2.5e9,
+          memoryBytes: 3e9,
+          license: 'MIT',
+          installed: false,
+          basis: 'measured',
+          fromClass: 'linux-x64-cpu',
+        },
+      ],
+      unavailable: [],
+      downloadBytes: 2.54e9,
+      totalBytes: 2.74e9,
+      memoryBytes: 3e9,
+      memoryBudgetBytes: 8e9,
+      fits: true,
+      reasons: [],
+    };
+    const installedStatus = { installed: true, installing: false, autostart: true, runtimes: [], models: [] };
+    const base = { hardware: null, status: installedStatus, progress: null, installingHere: false };
+
+    it('offers the operator the rest of the plan, with what is left to download', () => {
+      const view = describeLocalAi({ ...base, plan: partPlan, operator: true });
+      expect(view).toMatchObject({ installed: true, incomplete: true, canInstall: true });
+      expect(view.installLabel).toBe('Install the rest (2.5 GB)');
+    });
+
+    it('offers nothing more once every item is downloaded', () => {
+      const whole: LocalAiPlan = {
+        ...partPlan,
+        downloadBytes: 0,
+        runtimes: partPlan.runtimes.map((r) => ({ ...r, installed: true })),
+        models: partPlan.models.map((m) => ({ ...m, installed: true })),
+      };
+      expect(describeLocalAi({ ...base, plan: whole, operator: true }).incomplete).toBe(false);
+    });
+
+    it('is not the rest of anything before a first install', () => {
+      const view = describeLocalAi({ ...base, status: null, plan: partPlan, operator: true });
+      expect(view.incomplete).toBe(false);
+      expect(view.installLabel).toBe('Install (2.5 GB)');
+    });
+
+    it('offers the rest to the operator only', () => {
+      expect(describeLocalAi({ ...base, plan: partPlan, operator: false }).canInstall).toBe(false);
+    });
   });
 
   it('drops a finished install’s bar once it is over', () => {

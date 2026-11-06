@@ -463,9 +463,12 @@ describe('local AI', () => {
     expect(grant.start).toBeUndefined();
     expect(grant.stop).toBeUndefined();
     expect(grant.remove).toBeUndefined();
+    // The executor sends `ai-local-progress` to operator sessions only: a grant would listen to nothing.
+    expect(grant.onProgress).toBeUndefined();
 
     const operator = createAd4mModelAdmin(client, { capabilities: null, operator: true }).local!;
     expect(operator.install).toBeDefined();
     expect(operator.remove).toBeDefined();
+    expect(operator.onProgress).toBeDefined();
   });
 });

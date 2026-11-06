@@ -2,9 +2,9 @@
  * The AI step of a first run: after a new account's identity is made, before the app appears, the
  * person chooses where its models run — this device, a model server, or nothing for now.
  *
- * Asked once per account, and only where there is something to choose. A node that already has a
- * model (the launcher's own onboarding set one up, or the operator did) has its answer. A connection
- * that may not change the node's AI — a managed user on a node somebody else runs — has no question
+ * Asked once per node, on the first account made against it, and only where there is something to
+ * choose. A node that already has a model (the launcher's own onboarding set one up, or the operator
+ * did) has its answer. A connection that may not change the node's AI — a managed user on a node somebody else runs — has no question
  * it could answer, so it is not asked one: the step offers only what this connection can do, and
  * Skip, and is absent when Skip would be the only thing on it.
  */
@@ -39,7 +39,7 @@ export interface AiStepFacts extends AiSetupAbilities {
   models: number;
   /** Local AI finished an install on the node's machine. */
   localInstalled: boolean;
-  /** This account answered the step already. */
+  /** An account on this node answered the step already. */
   answered: boolean;
 }
 
@@ -52,8 +52,11 @@ export function offersAiStep(facts: AiStepFacts): boolean {
 /** How the step was left: with something set up, or skipped. */
 export type AiSetupAnswer = 'set-up' | 'skipped';
 
-/** Where an account's answer is kept, by the agent's id. On the device, as the account is. */
-const answerKey = (agentId: string) => `we.aiSetup.answer:${agentId}`;
+/**
+ * Where a node's answer is kept, by the node's address. On the device, as the account is. Per node,
+ * not per agent: the step runs only for an agent just made, which never has an answer of its own.
+ */
+const answerKey = (node: string) => `we.aiSetup.answer:${node}`;
 
 type AnswerStore = Pick<Storage, 'getItem' | 'setItem'>;
 
@@ -65,22 +68,18 @@ function storage(): AnswerStore | null {
   }
 }
 
-/** The account's answer to the step, or null when it has not given one. */
-export function readAiSetupAnswer(agentId: string, store: AnswerStore | null = storage()): AiSetupAnswer | null {
-  if (!agentId || !store) return null;
-  const value = store.getItem(answerKey(agentId));
+/** The node's answer to the step, or null when no account on it has given one. */
+export function readAiSetupAnswer(node: string, store: AnswerStore | null = storage()): AiSetupAnswer | null {
+  if (!node || !store) return null;
+  const value = store.getItem(answerKey(node));
   return value === 'set-up' || value === 'skipped' ? value : null;
 }
 
-/** Keeps the account's answer, so the step does not come back. */
-export function recordAiSetupAnswer(
-  agentId: string,
-  answer: AiSetupAnswer,
-  store: AnswerStore | null = storage(),
-): void {
-  if (!agentId || !store) return;
+/** Keeps the node's answer, so the step does not come back for another account on it. */
+export function recordAiSetupAnswer(node: string, answer: AiSetupAnswer, store: AnswerStore | null = storage()): void {
+  if (!node || !store) return;
   try {
-    store.setItem(answerKey(agentId), answer);
+    store.setItem(answerKey(node), answer);
   } catch {
     // A full or refused store forgets the answer; the step is still asked only on a first run.
   }

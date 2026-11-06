@@ -702,9 +702,15 @@ export function RuntimeStoreProvider(props: ParentProps) {
     An install's progress, heard while the settings are open — whether the install was started here
     or from the launcher. The end of one re-reads what it changed: the running state, and the
     managed servers and models it registered.
+
+    What was heard before is dropped when listening starts: the events between were missed, and a
+    retry of the same install has the same total, so an old count would hold the bar where it was.
+    A failure is kept: it is why the last install did not finish, which somebody who left during it
+    has not read yet, and the next install's first event replaces it.
   */
   createEffect(() => {
     if (!aiShown()) return;
+    setLocalProgress((prev) => (prev?.phase === 'failed' ? prev : null));
     const stop = localPort()?.onProgress?.((event) => {
       setLocalProgress((prev) => reduceProgress(prev, event));
       if (event.phase === 'done' || event.phase === 'failed') void refreshLocalAi();
@@ -1206,7 +1212,13 @@ export function RuntimeStoreProvider(props: ParentProps) {
 
   // ── A first run's AI step ───────────────────────────────────────────────────────────────────────
 
-  const agentId = () => session.me()?.id ?? '';
+  /*
+    The node the answer is kept for, by its address. The step runs only for an agent just made, so
+    an answer kept per agent would never be read again; per node, a second account made against a
+    node whose first chose Skip is not asked again. A node reached with no address (the desktop's
+    own executor) keeps no answer, and every new account on it is asked, as before.
+  */
+  const nodeKey = () => session.serverUrl() ?? '';
 
   /**
    * Ask, or not. Reads what the node already has first, bounded, since a first run is waiting on the
@@ -1219,7 +1231,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
       canConfigureAi: canConfigureAi(),
       canManageAiEndpoints: canManageAiEndpoints(),
     };
-    const answered = readAiSetupAnswer(agentId()) !== null;
+    const answered = readAiSetupAnswer(nodeKey()) !== null;
     if (!offersAiStep({ ...abilities, models: 0, localInstalled: false, answered })) return false;
     const port = modelAdmin();
     const read = Promise.all([port?.list?.() ?? Promise.resolve([]), localPort()?.status?.() ?? Promise.resolve(null)]);
@@ -1240,7 +1252,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
   }
 
   function leaveAiStep(answer: AiSetupAnswer): void {
-    recordAiSetupAnswer(agentId(), answer);
+    recordAiSetupAnswer(nodeKey(), answer);
     // A form left open on the step would come back over the app's settings page later.
     batch(() => {
       setAiForm(null);
