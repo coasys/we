@@ -267,6 +267,14 @@ export const CAPABILITY_OF: Record<AiModelKind, AiCapability> = {
   speech: 'speech',
 };
 
+/** A kind as the word before "models" in a sentence: "None of this server’s models are embedding models". */
+export const KIND_NOUN: Record<AiModelKind, string> = {
+  llm: 'language',
+  embedding: 'embedding',
+  transcription: 'transcription',
+  speech: 'speech',
+};
+
 /** Whether `served` lists `model` — Ollama lists `m` as `m:latest`. */
 export function serves(served: string[], model: string): boolean {
   return served.some((s) => s === model || s === `${model}:latest`);

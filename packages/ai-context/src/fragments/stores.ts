@@ -124,6 +124,7 @@ export const storeEntries: StoreEntry[] = [
       aiEndpointOptions: { type: 'array', properties: ['label', 'value'] },
       canDiscoverAiModels: { type: 'boolean' },
       aiDiscoveredModelOptions: { type: 'array', properties: ['label', 'value'] },
+      aiDiscoveredModelHint: { type: 'string' },
       aiRecommendedModel: { type: 'string' },
       aiCanPull: { type: 'boolean' },
       aiPullText: { type: 'string' },
@@ -916,7 +917,9 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       canDiscoverAiModels:
         'boolean — the backend can ask a server which models it serves. Gate a refresh control on it; where it is false, the model id is typed',
       aiDiscoveredModelOptions:
-        "{ label, value }[] — the models the open form's server said it serves, of the form's kind where the server says, for a Combobox (a model the server does not have yet can still be typed). Asked when the form opens and whenever its server changes",
+        "{ label, value }[] — the models the open form's server said it serves, of the form's kind only, for a Combobox (a model the server does not have yet can still be typed). Asked when the form opens and whenever its server changes",
+      aiDiscoveredModelHint:
+        "string — why aiDiscoveredModelOptions is empty when the server answered with models of other kinds only (“None of this server's models are embedding models”), or empty. Show it beside the model field",
       aiRecommendedModel:
         "string — the model the backend recommends for the open form's kind on its server's kind (an Ollama, a speech server), or empty. Worth saying beside the model field",
       aiCanPull:

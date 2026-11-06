@@ -252,7 +252,11 @@ export function createAd4mModelAdmin(backendClient: unknown, options: Ad4mRuntim
     },
 
     onEndpointHealth(listener) {
-      return client.on('ai-endpoint-status', ({ endpointId, health }) => listener(endpointId, toHealth(health)));
+      // The executor sends this when a server's health or its capabilities change — a pull can give
+      // an Ollama a kind of model it did not have.
+      return client.on('ai-endpoint-status', ({ endpointId, health, capabilities }) =>
+        listener(endpointId, toHealth(health), capabilities ? toCapabilities(capabilities) : undefined),
+      );
     },
   };
 

@@ -6988,6 +6988,9 @@
           "type": "array",
           "properties": ["label", "value"]
         },
+        "aiDiscoveredModelHint": {
+          "type": "string"
+        },
         "aiRecommendedModel": {
           "type": "string"
         },

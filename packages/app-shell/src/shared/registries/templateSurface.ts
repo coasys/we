@@ -305,6 +305,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     aiEndpointOptions: state('runtime-admin'),
     canDiscoverAiModels: state('runtime-admin'),
     aiDiscoveredModelOptions: state('runtime-admin'),
+    aiDiscoveredModelHint: state('runtime-admin'),
     aiRecommendedModel: state('runtime-admin'),
     aiCanPull: state('runtime-admin'),
     aiPullText: state('runtime-admin'),

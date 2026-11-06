@@ -294,7 +294,7 @@ const modelForm: SchemaNode = {
             // What the server knows the model by. Listed once the server has answered, and typed
             // where it has not — a model an Ollama does not have yet can be named and downloaded.
             description: {
-              $: "runtimeStore.aiRecommendedModel ? `Recommended: ${runtimeStore.aiRecommendedModel}` : ''",
+              $: "runtimeStore.aiDiscoveredModelHint ? runtimeStore.aiDiscoveredModelHint : runtimeStore.aiRecommendedModel ? `Recommended: ${runtimeStore.aiRecommendedModel}` : ''",
             },
           },
           children: [

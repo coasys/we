@@ -199,8 +199,13 @@ export interface ModelAdminPort {
   pullModel?(endpointId: string, remoteModel: string): Promise<void>;
   /** Hear where a server's model stands while it changes — a pull's progress. Returns the unsubscribe. */
   onModelStatus?(listener: (event: AiModelStatusEvent) => void): () => void;
-  /** Hear an endpoint's health change. Returns the unsubscribe. */
-  onEndpointHealth?(listener: (endpointId: string, health: AiEndpointHealth) => void): () => void;
+  /**
+   * Hear an endpoint's health change. Returns the unsubscribe. `capabilities` is what the server can
+   * do now — it changes as models are pulled — and absent where the backend does not say.
+   */
+  onEndpointHealth?(
+    listener: (endpointId: string, health: AiEndpointHealth, capabilities?: AiCapability[]) => void,
+  ): () => void;
   /** The models the backend recommends, and where to get a server for them. */
   recommended?(): { models: AiRecommendedModel[]; installLinks: AiServerInstallLink[] };
 }

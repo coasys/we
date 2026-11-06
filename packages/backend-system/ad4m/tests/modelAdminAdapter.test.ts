@@ -184,6 +184,23 @@ describe('endpoints', () => {
     });
   });
 
+  it('hands on `ai-endpoint-status` with the capabilities the server has now', () => {
+    const { client, emit } = aiClient();
+    const listener = vi.fn();
+    createAd4mModelAdmin(client, { capabilities: null }).onEndpointHealth!(listener);
+
+    emit('ai-endpoint-status', {
+      endpointId: 'e1',
+      health: { state: 'REACHABLE', servedModels: ['nomic-embed-text'] },
+      capabilities: ['chat', 'embeddings'],
+    });
+
+    expect(listener).toHaveBeenCalledWith('e1', { state: 'reachable', detail: '', models: ['nomic-embed-text'] }, [
+      'chat',
+      'embeddings',
+    ]);
+  });
+
   it('detects servers on the node’s machine', async () => {
     const { client } = aiClient();
     await expect(createAd4mModelAdmin(client, { capabilities: null }).detectEndpoints!()).resolves.toEqual([

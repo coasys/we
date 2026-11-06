@@ -2714,6 +2714,7 @@ export const contextData: ContextData = {
         aiEndpointOptions: { type: 'array', properties: ['label', 'value'] },
         canDiscoverAiModels: { type: 'boolean' },
         aiDiscoveredModelOptions: { type: 'array', properties: ['label', 'value'] },
+        aiDiscoveredModelHint: { type: 'string' },
         aiRecommendedModel: { type: 'string' },
         aiCanPull: { type: 'boolean' },
         aiPullText: { type: 'string' },
