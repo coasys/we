@@ -306,6 +306,18 @@ function recommended(): ReturnType<NonNullable<ModelAdminPort['recommended']>> {
   };
 }
 
+/**
+ * The executor's refusals name the RPC to call next ("run ai.localInstall again"), which is right for
+ * an SDK caller and nothing a person can do. They are shown as the error, so they say the act instead.
+ */
+function inPeoplesWords(error: unknown): unknown {
+  if (!(error instanceof Error)) return error;
+  const message = error.message
+    .replace('run ai.localInstall again', 'install local AI again')
+    .replace('call ai.localInstall', 'install it first');
+  return message === error.message ? error : new Error(message, { cause: error });
+}
+
 export function createAd4mModelAdmin(backendClient: unknown, options: Ad4mRuntimeOptions = {}): ModelAdminPort {
   const client = backendClient as Ad4mClient;
   const administersNode = options.administersNode ?? true;
@@ -383,7 +395,11 @@ export function createAd4mModelAdmin(backendClient: unknown, options: Ad4mRuntim
     },
 
     onEndpointHealth(listener) {
-      return client.on('ai-endpoint-status', ({ endpointId, health }) => listener(endpointId, toHealth(health)));
+      // The executor sends this when a server's health or its capabilities change — a pull can give
+      // an Ollama a kind of model it did not have.
+      return client.on('ai-endpoint-status', ({ endpointId, health, capabilities }) =>
+        listener(endpointId, toHealth(health), capabilities ? toCapabilities(capabilities) : undefined),
+      );
     },
   };
 
@@ -498,7 +514,11 @@ export function createAd4mModelAdmin(backendClient: unknown, options: Ad4mRuntim
       return toLocalStatus(await client.ai.localInstall(services ? { services } : {}));
     },
     async start() {
-      return toLocalStatus(await client.ai.localStart());
+      try {
+        return toLocalStatus(await client.ai.localStart());
+      } catch (error) {
+        throw inPeoplesWords(error);
+      }
     },
     async stop() {
       return toLocalStatus(await client.ai.localStop());

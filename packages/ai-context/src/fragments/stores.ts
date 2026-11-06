@@ -124,6 +124,7 @@ export const storeEntries: StoreEntry[] = [
       aiEndpointOptions: { type: 'array', properties: ['label', 'value'] },
       canDiscoverAiModels: { type: 'boolean' },
       aiDiscoveredModelOptions: { type: 'array', properties: ['label', 'value'] },
+      aiDiscoveredModelHint: { type: 'string' },
       aiRecommendedModel: { type: 'string' },
       aiCanPull: { type: 'boolean' },
       aiPullText: { type: 'string' },
@@ -193,6 +194,7 @@ export const storeEntries: StoreEntry[] = [
           'installing',
           'running',
           'anyRunning',
+          'canStart',
           'runtimes',
           'progress',
           'canInstall',
@@ -953,7 +955,9 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       canDiscoverAiModels:
         'boolean — the backend can ask a server which models it serves. Gate a refresh control on it; where it is false, the model id is typed',
       aiDiscoveredModelOptions:
-        "{ label, value }[] — the models the open form's server said it serves, of the form's kind where the server says, for a Combobox (a model the server does not have yet can still be typed). Asked when the form opens and whenever its server changes",
+        "{ label, value }[] — the models the open form's server said it serves, of the form's kind only, for a Combobox (a model the server does not have yet can still be typed). Asked when the form opens and whenever its server changes",
+      aiDiscoveredModelHint:
+        "string — why aiDiscoveredModelOptions is empty when the server answered with models of other kinds only (“None of this server's models are embedding models”), or empty. Show it beside the model field",
       aiRecommendedModel:
         "string — the model the backend recommends for the open form's kind on its server's kind (an Ollama, a speech server), or empty. Worth saying beside the model field",
       aiCanPull:
@@ -969,7 +973,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       canConfigureLocalAi:
         "boolean — local AI can be installed, started, stopped and removed from here: the connection holds the node's operator credential. A grant never does, whatever its capabilities, so WE web's app token reads false. Gate those controls on it",
       localAi:
-        'LocalAiView — the "This device" section, already in words: device (processor and memory), gpus (string[]), compute (what the models would run on), budget, notes, items ({ key, label, name, sizeText, detail, done }[] — the models and server programs an install brings; detail is the licence and memory of a model, empty for a server program), unavailable and reasons (string[]), planNotes (string[] — how the plan was chosen where not by measurement: the kinds nothing was measured for on this class of device, which take the smallest model, and the backend the settings of the node hold it to), fits, summary ("Downloads 3.1 GB · fits this device"), installLabel ("Install (2.5 GB)", or "Install the rest (2.5 GB)" while incomplete), installed (something is installed, not necessarily the whole plan), incomplete (installed, and the plan still has something not downloaded: offer Install again, which fetches the rest), installing, running (every server runs), anyRunning (a server runs in any state — running, starting, restarting or failed — so there is something to stop), runtimes ({ key, label, stateText, ok, tone }[] — phase, on the GPU or not, restarts; tone is success, idle (never started or stopped on purpose) or warning), progress ({ percent, text, failed } while an install runs, and after one fails) and canInstall (never true where canConfigureLocalAi is false). loaded is false until the machine and the plan have been read',
+        'LocalAiView — the "This device" section, already in words: device (processor and memory), gpus (string[]), compute (what the models would run on), budget, notes, items ({ key, label, name, sizeText, detail, done }[] — the models and server programs an install brings; detail is the licence and memory of a model, empty for a server program), unavailable and reasons (string[]), planNotes (string[] — how the plan was chosen where not by measurement: the kinds nothing was measured for on this class of device, which take the smallest model, and the backend the settings of the node hold it to), fits, summary ("Downloads 3.1 GB · fits this device"), installLabel ("Install (2.5 GB)", or "Install the rest (2.5 GB)" while incomplete), installed (something is installed, not necessarily the whole plan), incomplete (installed, and the plan still has something not downloaded: offer Install again, which fetches the rest), installing, running (every server runs), anyRunning (a server runs in any state — running, starting, restarting or failed — so there is something to stop), canStart (a server is never started, stopped or failed, so a start has something to start — a failed one is offered both), runtimes ({ key, label, stateText, ok, tone }[] — phase, on the GPU or not, restarts; tone is success, idle (never started or stopped on purpose) or warning), progress ({ percent, text, failed } while an install runs, and after one fails) and canInstall (never true where canConfigureLocalAi is false). loaded is false until the machine and the plan have been read',
       aiSetupOptions:
         "('local' | 'server' | 'skip')[] — the ways to get AI this connection can choose between, in order: 'local' where it may install local AI on the node's machine, 'server' where it may add model servers and models, and always 'skip'. Gate each card of a Set up AI choice on it, as 'local' in runtimeStore.aiSetupOptions. Only 'skip' means there is nothing this connection can set up",
       aiDetectedEndpoints:

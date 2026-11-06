@@ -13,6 +13,7 @@
 import { render } from '@solidjs/testing-library';
 import type { ExecutorHost, ExecutorSettings } from '@we/app-shell/shared';
 import type {
+  AiCapability,
   AiEndpoint,
   AiEndpointHealth,
   AiModel,
@@ -385,7 +386,8 @@ describe('AI models and the servers they run on', () => {
   function aiPort(overrides: Partial<ModelAdminPort> = {}) {
     const calls: string[] = [];
     let emitStatus: ((event: AiModelStatusEvent) => void) | null = null;
-    let emitHealth: ((endpointId: string, health: AiEndpointHealth) => void) | null = null;
+    let emitHealth: ((endpointId: string, health: AiEndpointHealth, capabilities?: AiCapability[]) => void) | null =
+      null;
     let listed = 0;
     const port: ModelAdminPort = {
       async list() {
@@ -445,7 +447,8 @@ describe('AI models and the servers they run on', () => {
       calls,
       listed: () => listed,
       status: (event: AiModelStatusEvent) => emitStatus?.(event),
-      health: (endpointId: string, health: AiEndpointHealth) => emitHealth?.(endpointId, health),
+      health: (endpointId: string, health: AiEndpointHealth, capabilities?: AiCapability[]) =>
+        emitHealth?.(endpointId, health, capabilities),
     };
   }
 
@@ -623,6 +626,53 @@ describe('AI models and the servers they run on', () => {
 
     expect(store.aiEndpoints()[1].healthText).toBe('Answering · 1 model');
     await vi.waitFor(() => expect(ai.listed()).toBe(before + 1));
+  });
+
+  it('takes a server’s capabilities from its health event, so a server that gains a kind is offered for it', async () => {
+    // Capabilities were read once, when the server was added: a server with only a chat model was
+    // never offered for embeddings, so the download that would give it one could not be reached.
+    const ai = aiPort();
+    ports = { models: ai.port };
+    activeShellView = 'settings';
+    const store = mount();
+    await vi.waitFor(() => expect(store.aiEndpoints()).toHaveLength(2));
+    store.newAiModel();
+    store.setAiFormField('kind', 'embedding');
+    expect(store.aiEndpointOptions().map((o) => o.value)).toEqual(['e1']);
+
+    ai.health('e2', { state: 'reachable', detail: '', models: ['m'] }, ['chat', 'embeddings']);
+
+    expect(store.aiEndpointOptions().map((o) => o.value)).toEqual(['e1', 'e2']);
+  });
+
+  it('keeps a server’s capabilities when its health event carries none', async () => {
+    const ai = aiPort();
+    ports = { models: ai.port };
+    activeShellView = 'settings';
+    const store = mount();
+    await vi.waitFor(() => expect(store.aiEndpoints()).toHaveLength(2));
+
+    ai.health('e1', { state: 'reachable', detail: '', models: ['m'] });
+
+    store.newAiModel();
+    store.setAiFormField('kind', 'embedding');
+    expect(store.aiEndpointOptions().map((o) => o.value)).toEqual(['e1']);
+  });
+
+  it('lists no model of the wrong kind, and says why the list is empty', async () => {
+    // A server with only chat models offered them all as embedding models.
+    const ai = aiPort({ discover: async () => [{ id: 'llama3.2:3b', capabilities: ['chat'] }] });
+    ports = { models: ai.port };
+    const store = mount();
+    await store.loadAiModels();
+    store.newAiModel();
+    await vi.waitFor(() => expect(store.aiDiscoveredModelOptions().map((o) => o.value)).toEqual(['llama3.2:3b']));
+    expect(store.aiDiscoveredModelHint()).toBe('');
+
+    store.setAiFormField('kind', 'embedding');
+
+    expect(store.aiDiscoveredModelOptions()).toEqual([]);
+    expect(store.aiDiscoveredModelHint()).toBe('None of this server’s models are embedding models');
   });
 
   it('saves a new model as an add, named after its id when no name was typed, and an edit as an update', async () => {

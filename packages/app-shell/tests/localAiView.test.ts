@@ -186,8 +186,6 @@ describe('describeLocalAi', () => {
   });
 
   it('offers Stop for any server the backend still runs, whatever state it is in', () => {
-    // `anyRunning` picks Stop over Start. A failed server stays the backend's until it is stopped,
-    // and a start leaves it as it is: Start would do nothing for it.
     const live = (phase: LocalAiRuntimeStatus['phase']) =>
       describeLocalAi({
         hardware: null,
@@ -203,6 +201,25 @@ describe('describeLocalAi', () => {
     expect(live('running')).toBe(true);
     expect(live('stopped')).toBe(false);
     expect(live(null)).toBe(false);
+  });
+
+  it('offers Start for a server that failed, as well as one that is stopped', () => {
+    // The backend starts a failed server again, so a failed one is offered both Stop and Start.
+    const startable = (phase: LocalAiRuntimeStatus['phase']) =>
+      describeLocalAi({
+        hardware: null,
+        plan: null,
+        status: { installed: true, installing: false, autostart: true, runtimes: [runtime({ phase })], models: [] },
+        progress: null,
+        installingHere: false,
+        operator: true,
+      }).canStart;
+    expect(startable('failed')).toBe(true);
+    expect(startable('stopped')).toBe(true);
+    expect(startable(null)).toBe(true);
+    expect(startable('running')).toBe(false);
+    expect(startable('starting')).toBe(false);
+    expect(startable('restarting')).toBe(false);
   });
 
   describe('an install of part of the plan', () => {

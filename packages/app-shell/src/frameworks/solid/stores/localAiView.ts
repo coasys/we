@@ -232,9 +232,14 @@ export interface LocalAiView {
   running: boolean;
   /**
    * At least one runs in some state — running, starting, restarting or failed — so there is something
-   * to stop. A failed server stays the backend's until it is stopped, and a start leaves it as it is.
+   * to stop. A failed server stays the backend's until it is stopped.
    */
   anyRunning: boolean;
+  /**
+   * At least one is not running and not on its way: never started, stopped, or failed. A start starts
+   * those, a failed one included, so a failed server is offered both Start and Stop.
+   */
+  canStart: boolean;
   runtimes: LocalAiRuntimeView[];
   progress: LocalAiProgressView | null;
   /** An install can be started now. */
@@ -284,6 +289,9 @@ export function describeLocalAi(input: {
     installing,
     running: runtimes.length > 0 && runningCount === runtimes.length,
     anyRunning: liveCount > 0,
+    // With none listed, Start stays offered, as it was before a failed server could be started.
+    canStart:
+      !runtimes.length || runtimes.some((r) => r.phase === null || r.phase === 'stopped' || r.phase === 'failed'),
     runtimes: runtimes.map(runtimeView),
     // Shown while an install runs, and after one fails until the next starts: a failure says why.
     progress: progress && (installing || progress.phase === 'failed') ? progressView(progress) : null,

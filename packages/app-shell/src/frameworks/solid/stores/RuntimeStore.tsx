@@ -49,6 +49,7 @@ import {
   endpointFormComplete,
   endpointFormFrom,
   endpointName,
+  KIND_NOUN,
   maxContextProblem,
   modelFormComplete,
   modelFormFrom,
@@ -161,6 +162,8 @@ export interface RuntimeStore {
    * asked, and for any endpoint other than the one asked.
    */
   aiDiscoveredModelOptions: Accessor<{ label: string; value: string }[]>;
+  /** Why the discovered list is empty when the server answered with models of other kinds, or empty. */
+  aiDiscoveredModelHint: Accessor<string>;
   /** The model the backend recommends for the open form's kind on its endpoint's kind, or empty. */
   aiRecommendedModel: Accessor<string>;
   /** The open form's model can be downloaded onto its endpoint: an Ollama that does not have it. */
@@ -472,10 +475,17 @@ export function RuntimeStoreProvider(props: ParentProps) {
     const form = aiForm();
     const models = discoveredForForm();
     if (!form || !models) return [];
-    // A server's capabilities are partly a guess from the model's id: where the guess finds none of
-    // the kind asked for, every model is listed rather than none.
-    const fitting = models.filter((m) => m.capabilities.includes(CAPABILITY_OF[form.kind]));
-    return (fitting.length ? fitting : models).map((m) => ({ label: m.id, value: m.id }));
+    // Only models of the kind asked for: a chat model offered as an embedding model saves one that
+    // cannot work. Where none fits, aiDiscoveredModelHint says so, and a model can still be typed.
+    return models
+      .filter((m) => m.capabilities.includes(CAPABILITY_OF[form.kind]))
+      .map((m) => ({ label: m.id, value: m.id }));
+  });
+  const aiDiscoveredModelHint = createMemo(() => {
+    const form = aiForm();
+    const models = discoveredForForm();
+    if (!form || !models?.length || aiDiscoveredModelOptions().length) return '';
+    return `None of this server’s models are ${KIND_NOUN[form.kind]} models`;
   });
 
   const aiCanPull = createMemo(() => {
@@ -740,8 +750,11 @@ export function RuntimeStoreProvider(props: ParentProps) {
       );
     });
     // A server's health decides its models' statuses, so a change re-reads them rather than guessing.
-    const stopHealth = port?.onEndpointHealth?.((endpointId, health) => {
-      setAiEndpointRecords((endpoints) => endpoints.map((e) => (e.id === endpointId ? { ...e, health } : e)));
+    // Capabilities ride along, so a server that gains a kind of model is offered for it at once.
+    const stopHealth = port?.onEndpointHealth?.((endpointId, health, capabilities) => {
+      setAiEndpointRecords((endpoints) =>
+        endpoints.map((e) => (e.id === endpointId ? { ...e, health, ...(capabilities ? { capabilities } : {}) } : e)),
+      );
       void refreshAiModels();
     });
     onCleanup(() => {
@@ -1413,6 +1426,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
     aiEndpointOptions,
     canDiscoverAiModels,
     aiDiscoveredModelOptions,
+    aiDiscoveredModelHint,
     aiRecommendedModel,
     aiCanPull,
     aiPullText,

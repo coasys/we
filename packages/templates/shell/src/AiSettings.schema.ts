@@ -298,7 +298,7 @@ const modelForm: SchemaNode = {
             // What the server knows the model by. Listed once the server has answered, and typed
             // where it has not — a model an Ollama does not have yet can be named and downloaded.
             description: {
-              $: "runtimeStore.aiRecommendedModel ? `Recommended: ${runtimeStore.aiRecommendedModel}` : ''",
+              $: "runtimeStore.aiDiscoveredModelHint ? runtimeStore.aiDiscoveredModelHint : runtimeStore.aiRecommendedModel ? `Recommended: ${runtimeStore.aiRecommendedModel}` : ''",
             },
           },
           children: [
@@ -953,36 +953,48 @@ const localActions: SchemaNode = {
           type: '$if',
           props: {
             condition: { $: 'runtimeStore.localAi.installed' },
+            // A failed server is offered both: Start tries it again, Stop lets it go.
             then: {
-              type: '$if',
-              props: {
-                condition: { $: 'runtimeStore.localAi.anyRunning' },
-                then: {
-                  type: 'we-button',
+              type: 'Row',
+              props: { gap: '200', ay: 'center' },
+              children: [
+                {
+                  type: '$if',
                   props: {
-                    text: 'Stop',
-                    size: 'sm',
-                    variant: 'soft',
-                    loading: { $: "'stopLocalAi' in runtimeStore.pending" },
-                    // An install stops and starts the servers itself.
-                    disabled: { $: 'runtimeStore.localAi.installing' },
-                    onClick: { $invoke: 'runtimeStore.stopLocalAi' },
+                    condition: { $: 'runtimeStore.localAi.anyRunning' },
+                    then: {
+                      type: 'we-button',
+                      props: {
+                        text: 'Stop',
+                        size: 'sm',
+                        variant: 'soft',
+                        loading: { $: "'stopLocalAi' in runtimeStore.pending" },
+                        // An install stops and starts the servers itself.
+                        disabled: { $: 'runtimeStore.localAi.installing' },
+                        onClick: { $invoke: 'runtimeStore.stopLocalAi' },
+                      },
+                      children: [{ type: 'we-icon', props: { name: 'stop' } }],
+                    },
                   },
-                  children: [{ type: 'we-icon', props: { name: 'stop' } }],
                 },
-                else: {
-                  type: 'we-button',
+                {
+                  type: '$if',
                   props: {
-                    text: 'Start',
-                    size: 'sm',
-                    loading: { $: "'startLocalAi' in runtimeStore.pending" },
-                    // An install stops and starts the servers itself.
-                    disabled: { $: 'runtimeStore.localAi.installing' },
-                    onClick: { $invoke: 'runtimeStore.startLocalAi' },
+                    condition: { $: 'runtimeStore.localAi.canStart' },
+                    then: {
+                      type: 'we-button',
+                      props: {
+                        text: 'Start',
+                        size: 'sm',
+                        loading: { $: "'startLocalAi' in runtimeStore.pending" },
+                        disabled: { $: 'runtimeStore.localAi.installing' },
+                        onClick: { $invoke: 'runtimeStore.startLocalAi' },
+                      },
+                      children: [{ type: 'we-icon', props: { name: 'play' } }],
+                    },
                   },
-                  children: [{ type: 'we-icon', props: { name: 'play' } }],
                 },
-              },
+              ],
             },
             else: installButton,
           },

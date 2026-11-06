@@ -191,6 +191,23 @@ describe('endpoints', () => {
     });
   });
 
+  it('hands on `ai-endpoint-status` with the capabilities the server has now', () => {
+    const { client, emit } = aiClient();
+    const listener = vi.fn();
+    createAd4mModelAdmin(client, { capabilities: null }).onEndpointHealth!(listener);
+
+    emit('ai-endpoint-status', {
+      endpointId: 'e1',
+      health: { state: 'REACHABLE', servedModels: ['nomic-embed-text'] },
+      capabilities: ['chat', 'embeddings'],
+    });
+
+    expect(listener).toHaveBeenCalledWith('e1', { state: 'reachable', detail: '', models: ['nomic-embed-text'] }, [
+      'chat',
+      'embeddings',
+    ]);
+  });
+
   it('detects servers on the node’s machine', async () => {
     const { client } = aiClient();
     await expect(createAd4mModelAdmin(client, { capabilities: null }).detectEndpoints!()).resolves.toEqual([
@@ -419,6 +436,20 @@ describe('local AI', () => {
     expect(ai.localStart).toHaveBeenCalled();
     await local.remove!(true);
     expect(ai.localRemove).toHaveBeenLastCalledWith(true);
+  });
+
+  it('says a refused start in the words a person reads, not the RPC it names', async () => {
+    // The executor tells its caller what to call next; a person cannot call ai.localInstall.
+    const { client, ai } = localClient();
+    const local = createAd4mModelAdmin(client, { capabilities: null }).local!;
+    ai.localStart.mockRejectedValueOnce(
+      new Error("Local AI's files are missing from the store (/models/qwen3-4b): run ai.localInstall again"),
+    );
+    await expect(local.start!()).rejects.toThrow(
+      "Local AI's files are missing from the store (/models/qwen3-4b): install local AI again",
+    );
+    ai.localStart.mockRejectedValueOnce(new Error('Local AI is not installed: call ai.localInstall'));
+    await expect(local.start!()).rejects.toThrow('Local AI is not installed: install it first');
   });
 
   it('hands on `ai-local-progress` events in the port’s words', () => {

@@ -238,11 +238,11 @@ describe('the buttons under This device', () => {
     [...container.querySelectorAll('we-button')] as (Element & { text?: string; disabled?: boolean })[];
   const named = (container: HTMLElement, text: string) => buttons(container).find((button) => button.text === text);
 
-  it('offers Stop for a failed server, which a start would leave as it is', async () => {
+  it('offers Start and Stop for a failed server: the backend starts a failed one again', async () => {
     const { container } = renderSection(aiSection, undefined, installed('failed'));
     await vi.waitFor(() => expect(container.textContent).toContain('Failed'));
     expect(named(container, 'Stop')).toBeDefined();
-    expect(named(container, 'Start')).toBeUndefined();
+    expect(named(container, 'Start')).toBeDefined();
   });
 
   it('offers Start once the servers are stopped', async () => {
