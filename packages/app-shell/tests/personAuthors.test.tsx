@@ -205,4 +205,35 @@ describe('ProfileStore — authors as persons', () => {
     await settle();
     expect(persons.personOf.mock.calls.filter(([did]) => did === LAPTOP)).toHaveLength(1);
   });
+
+  it('asks again about a key that was a miss, once the port would let the question through', async () => {
+    // A key read before its person linked it (or while the identity store was down) is its own
+    // person for now. The port asks again after its miss TTL; the store must not hold the first
+    // miss for the whole session.
+    me = { did: 'did:key:z6MkTestViewer' };
+    const LATE = 'did:key:z6MkTestLateDevice';
+    let linked = false;
+    persons.personOf.mockImplementation(async (did: string) => {
+      if (did === LATE) return linked ? PERSON : LATE;
+      return personOfKey[did] ?? did;
+    });
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const store = mount();
+      await store.fetchProfile(LATE);
+      await settle();
+      expect(store.personOf(LATE)).toBe(LATE);
+
+      // The person links the device, and the port's miss TTL passes.
+      linked = true;
+      vi.setSystemTime(Date.now() + 61_000);
+      store.profileFor(LATE);
+      await settle();
+      expect(store.personOf(LATE)).toBe(PERSON);
+      expect(store.profileFor(LATE)?.did).toBe(PERSON);
+    } finally {
+      vi.useRealTimers();
+      persons.personOf.mockImplementation(async (did: string) => personOfKey[did] ?? did);
+    }
+  });
 });

@@ -134,6 +134,13 @@ export interface ProfileStore {
   }) => Promise<void>;
 }
 
+/**
+ * How long a key nobody listed is left alone before a read asks the person port about it again.
+ * The port keeps its own miss TTL towards the backend; this is only what stops every read of an
+ * unlisted author from asking the port.
+ */
+const PERSON_MISS_RETRY_MS = 60_000;
+
 const ProfileContext = createContext<ProfileStore>();
 
 export function ProfileStoreProvider(props: ParentProps) {
@@ -205,21 +212,40 @@ export function ProfileStoreProvider(props: ParentProps) {
    * nobody lists never appears here, and reads as its own person.
    */
   const [personByKey, setPersonByKey] = createStore<Record<string, string>>({});
+  /** The keys being asked about, and those answered with a person: never asked again. */
   const personAsked = new Set<string>();
+  /**
+   * When each key that nobody listed was last asked about. A miss is not for good: the person may
+   * link the device a moment later, or the identity store may have been unreachable. The port asks
+   * the backend again after its own miss TTL; this only keeps a read from asking the port on every
+   * frame in between.
+   */
+  const personMissedAt = new Map<string, number>();
 
   function resolvePerson(did: string): void {
     if (!did.startsWith('did:key:') || personAsked.has(did)) return;
+    const missedAt = personMissedAt.get(did);
+    if (missedAt !== undefined && Date.now() - missedAt < PERSON_MISS_RETRY_MS) return;
     const persons = session.backendPorts()?.persons;
     if (!persons) return;
     personAsked.add(did);
     persons
       .personOf(did)
       .then((person) => {
-        if (!person || person === did) return;
+        if (!person || person === did) {
+          personAsked.delete(did);
+          personMissedAt.set(did, Date.now());
+          return;
+        }
+        personMissedAt.delete(did);
         setPersonByKey(did, person);
         void fetchProfile(person);
       })
-      .catch((err) => console.warn(`ProfileStore: could not resolve who ${did} speaks for`, err));
+      .catch((err) => {
+        personAsked.delete(did);
+        personMissedAt.set(did, Date.now());
+        console.warn(`ProfileStore: could not resolve who ${did} speaks for`, err);
+      });
   }
 
   /** The person a DID speaks for: a device's person once known, anything else itself. */
