@@ -58,9 +58,10 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * The port the Electron app serves its renderer on (`main.js`, `startAppServer`): fixed, on every
- * address, and the app listens for no bind error. Beside another WE that holds it, the app stops in
- * Electron's "A JavaScript error occurred in the main process" box: no window, no script answered,
- * and the scenario fails minutes later without a word of why.
+ * address. Beside another WE that holds it, an app that ignored the bind error loaded that WE's
+ * renderer as its own, and a scenario could pass against a renderer that is not the one under
+ * test; the app now ends with a message instead. Either way the world refuses the launch first,
+ * and says why.
  */
 export const ELECTRON_LAUNCHER_PORT = 9080;
 
@@ -71,8 +72,8 @@ export async function assertPortFree(port: number): Promise<void> {
     server.once('error', (error: NodeJS.ErrnoException) => {
       reject(
         new Error(
-          `port ${port} is held by another process (${error.code}): the Electron app serves its renderer there ` +
-            `and does not start beside it; stop the other WE first`,
+          `port ${port} is held by another process (${error.code}): the Electron app serves its renderer there, ` +
+            `and beside another server it would show that server's page; stop the other WE first`,
         ),
       );
     });

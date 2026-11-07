@@ -622,7 +622,21 @@ function startAppServer() {
       res.sendFile('index.html', { root: launcherDir });
     });
 
-    launcherApp.listen(9080, () => {
+    /*
+      Express 5 hands a bind error to this callback instead of raising it. Ignored, the app would
+      log that it listens, then load `http://localhost:9080` from whoever holds the port — another
+      WE's renderer, served as this app's own. So a taken port ends the app, with the reason.
+    */
+    launcherApp.listen(9080, (error) => {
+      if (error) {
+        console.error('[main] The WE launcher could not listen on port 9080:', error.message);
+        dialog.showErrorBox(
+          'The app could not start',
+          `Port 9080 is taken by another program, and the app serves its interface there.\n\n${error.message}\n\nStop the other program (another WE?) and start the app again.`,
+        );
+        app.exit(1);
+        return;
+      }
       console.log('   ✓ WE launcher listening on port 9080\n');
     });
   } else {

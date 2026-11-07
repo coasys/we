@@ -111,8 +111,8 @@ Linux with Xvfb, `dbus-run-session` and (for `vault: 'os'`) `gnome-keyring`. The
 
    The run refuses to start when the app names another executor, or the sidecar beside the app is
    not the harness build, and says what to run. A launch refuses while another process holds port
-   9080, where the app serves its renderer and loads it from: beside another WE the run would test
-   whatever answers on that port, or the app would stop on the bind error.
+   9080, where the app serves its renderer and loads it from: the app ends on the bind error with a
+   message, and before that fix the run would have tested whatever answered on that port.
 
 3. The scenarios:
 
