@@ -14,47 +14,28 @@ vi.mock('@we/entities', () => ({
   },
 }));
 
-import { getForeignShacl } from './perspectiveHelpers';
+import { buildEntityClasses, buildEntityManifest, getForeignShacl, readShapeProperties } from './perspectiveHelpers';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function makeShape(targetClass?: string): SHACLShape {
+function makeShape(targetClass: string, properties: { path: string; name?: string }[] = []): SHACLShape {
   return {
-    nodeShapeUri: `${targetClass ?? 'unknown'}Shape`,
+    nodeShapeUri: `${targetClass}Shape`,
     targetClass,
-    properties: [],
+    properties,
     parentShapes: [],
   } as unknown as SHACLShape;
 }
 
 /**
- * The shape registry as the executor answers it: the names, the index query's rows, and `getShacl`.
- *
- * `getAllShacl` throws. It reads every named shape in one call and skips one it cannot decode, but
- * it still carries every link of every shape — the cost `getForeignShacl` exists to avoid by
- * asking the index query first and reading in full only the shapes it has to.
+ * The shape registry as the executor answers it: `shapes()`, one record per registered class with
+ * its whole shape. Nothing else is mocked, so a read through any other method fails here.
  */
-function mockPerspective(shapes: Array<{ name: string; shape: SHACLShape }>, listed = shapes.map((s) => s.name)) {
+function mockPerspective(shapes: Array<{ name: string; shape: SHACLShape }>) {
   return {
-    getShaclNames: vi.fn().mockResolvedValue(listed),
-    // Rows only for a query that walks name → shape → target class, so a broken query fails here.
-    querySparql: vi.fn(async (query: string) =>
-      query.includes('<ad4m://shacl_shape_uri>') && query.includes('<sh://targetClass>')
-        ? shapes.map(({ name, shape }) => ({
-            name: `literal:string:shacl://${name}`,
-            shape: shape.nodeShapeUri,
-            ...(shape.targetClass ? { targetClass: shape.targetClass } : {}),
-          }))
-        : [],
-    ),
-    getShacl: vi.fn(async (name: string) => shapes.find((s) => s.name === name)?.shape ?? null),
-    getAllShacl: vi.fn(() => {
-      throw new Error('getAllShacl carries every link of every shape');
-    }),
+    shapes: vi.fn(async () => shapes.map(({ name, shape }) => ({ name, shape, hash: `hash-${name}` }))),
   } as unknown as PerspectiveProxy;
 }
-
-const shapesRead = (perspective: PerspectiveProxy) => vi.mocked(perspective.getShacl).mock.calls.map(([name]) => name);
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
@@ -67,139 +48,183 @@ describe('getForeignShacl', () => {
 
     const foreign = await getForeignShacl(perspective);
 
-    expect(foreign.length).toBe(2);
     expect(foreign.map((s) => s.name)).toEqual(['Task', 'Note']);
   });
 
   it('filters out shapes that match a native model name AND targetClass', async () => {
     const perspective = mockPerspective([
-      // Same name + same targetClass → native, should be filtered out
       { name: 'Message', shape: makeShape('flux://Message') },
-      // Foreign shape
-      { name: 'Task', shape: makeShape('app://Task') },
-    ]);
-
-    const foreign = await getForeignShacl(perspective);
-
-    expect(foreign.length).toBe(1);
-    expect(foreign[0].name).toBe('Task');
-    // The native shape is recognised from the index alone — never read in full.
-    expect(shapesRead(perspective)).toEqual(['Task']);
-  });
-
-  it('keeps shapes that share a native name but have a different targetClass', async () => {
-    const perspective = mockPerspective([
-      // Same name "Message" but different targetClass → foreign namesake
-      { name: 'Message', shape: makeShape('other-app://Message') },
-    ]);
-
-    const foreign = await getForeignShacl(perspective);
-
-    expect(foreign.length).toBe(1);
-    expect(foreign[0].name).toBe('Message');
-    expect(foreign[0].shape.targetClass).toBe('other-app://Message');
-  });
-
-  it('drops shapes with a native name collision when targetClass is missing', async () => {
-    const perspective = mockPerspective([
-      // Same name as a native entity, and no targetClass to tell them apart.
-      { name: 'Channel', shape: makeShape(undefined) },
-    ]);
-
-    const foreign = await getForeignShacl(perspective);
-
-    // Nothing distinguishes it from WE's own Channel, so it is treated as native and skipped —
-    // the same call the multi-round-trip version made when getShaclTargetClass came back empty.
-    expect(foreign.length).toBe(0);
-    expect(shapesRead(perspective)).toEqual([]);
-  });
-
-  it("leaves out the executor's own classes, without reading them", async () => {
-    const perspective = mockPerspective([
-      { name: 'FlowInstance', shape: makeShape('ad4m://FlowInstance') },
-      { name: 'AutoProcessor', shape: makeShape('ad4m://AutoProcessor') },
       { name: 'Task', shape: makeShape('app://Task') },
     ]);
 
     const foreign = await getForeignShacl(perspective);
 
     expect(foreign.map((s) => s.name)).toEqual(['Task']);
-    expect(shapesRead(perspective)).toEqual(['Task']);
+  });
+
+  it('keeps a shape that shares a native name, named by its target class', async () => {
+    // WE has `Message` (flux://Message here). Another app's `Message` is a class of its own, and
+    // under the bare name it would be WE's in the entity registry, so it goes by its IRI.
+    const perspective = mockPerspective([
+      { name: 'Message', shape: makeShape('flux://Message') },
+      { name: 'Message', shape: makeShape('other-app://Message') },
+    ]);
+
+    const foreign = await getForeignShacl(perspective);
+
+    expect(foreign).toHaveLength(1);
+    expect(foreign[0].name).toBe('other-app://Message');
+    expect(foreign[0].shape.targetClass).toBe('other-app://Message');
+  });
+
+  it('names two foreign classes of one name by their target classes', async () => {
+    const perspective = mockPerspective([
+      { name: 'Task', shape: makeShape('a://Task') },
+      { name: 'Task', shape: makeShape('b://Task') },
+      { name: 'Note', shape: makeShape('a://Note') },
+    ]);
+
+    expect((await getForeignShacl(perspective)).map((s) => s.name)).toEqual(['a://Task', 'b://Task', 'Note']);
+  });
+
+  it("leaves out the executor's own classes", async () => {
+    const perspective = mockPerspective([
+      { name: 'FlowInstance', shape: makeShape('ad4m://FlowInstance') },
+      { name: 'AutoProcessor', shape: makeShape('ad4m://AutoProcessor') },
+      { name: 'Task', shape: makeShape('app://Task') },
+    ]);
+
+    expect((await getForeignShacl(perspective)).map((s) => s.name)).toEqual(['Task']);
   });
 
   it('returns an empty array when the perspective has no shapes', async () => {
-    const perspective = mockPerspective([]);
-    const foreign = await getForeignShacl(perspective);
-    expect(foreign).toEqual([]);
+    expect(await getForeignShacl(mockPerspective([]))).toEqual([]);
   });
 
-  it('asks one index query, whatever the number of shapes, and never getAllShacl', async () => {
+  it('reads the registry in one call, whatever the number of shapes', async () => {
     const perspective = mockPerspective([
       { name: 'Message', shape: makeShape('flux://Message') },
       { name: 'Channel', shape: makeShape('flux://Channel') },
       { name: 'X', shape: makeShape('app://X') },
     ]);
 
-    await getForeignShacl(perspective);
-
-    expect(perspective.querySparql).toHaveBeenCalledTimes(1);
-    expect(perspective.getShaclNames).toHaveBeenCalledTimes(1);
-    expect(perspective.getAllShacl).not.toHaveBeenCalled();
-    expect(shapesRead(perspective)).toEqual(['X']);
+    expect((await getForeignShacl(perspective)).map((s) => s.name)).toEqual(['X']);
+    expect(perspective.shapes).toHaveBeenCalledTimes(1);
+    expect(perspective.shapes).toHaveBeenCalledWith();
   });
 
-  it('decides on the shape as read when the index and the shape disagree', async () => {
-    // The index marks Message as another target class, so it is read — and the rule then runs on
-    // what `getShacl` returns, which here is WE's own Message after all.
-    const perspective = mockPerspective([{ name: 'Message', shape: makeShape('other-app://Message') }]);
-    vi.mocked(perspective.getShacl).mockResolvedValue(makeShape('flux://Message'));
-
-    expect(await getForeignShacl(perspective)).toEqual([]);
-    expect(shapesRead(perspective)).toEqual(['Message']);
+  it('returns each foreign shape as the registry gave it, without its hash', async () => {
+    const shape = makeShape('app://Task');
+    expect(await getForeignShacl(mockPerspective([{ name: 'Task', shape }]))).toEqual([{ name: 'Task', shape }]);
   });
+});
 
-  it('builds the other foreign models when one shape cannot be read', async () => {
-    // The SDK the app runs cannot parse a property transform a newer SDK encoded, and throws.
+describe('readShapeProperties', () => {
+  it('gives every registered class its properties, by path and name, in one call', async () => {
     const perspective = mockPerspective([
-      { name: 'Task', shape: makeShape('app://Task') },
-      { name: 'Broken', shape: makeShape('app://Broken') },
+      { name: 'Message', shape: makeShape('flux://Message', [{ path: 'flux://body', name: 'body' }]) },
+      {
+        name: 'Task',
+        shape: makeShape('app://Task', [{ path: 'app://title', name: 'title' }, { path: 'app://done' }]),
+      },
     ]);
-    vi.mocked(perspective.getShacl).mockImplementation(async (name: string) => {
-      if (name === 'Broken') throw new Error('Failed to deserialize transform');
-      return makeShape('app://Task');
-    });
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    expect((await getForeignShacl(perspective)).map((s) => s.name)).toEqual(['Task']);
-    expect(warn).toHaveBeenCalledOnce();
-    warn.mockRestore();
+    expect(await readShapeProperties(perspective)).toEqual([
+      { name: 'Message', properties: [{ path: 'flux://body', name: 'body' }] },
+      { name: 'Task', properties: [{ path: 'app://title', name: 'title' }, { path: 'app://done' }] },
+    ]);
+    expect(perspective.shapes).toHaveBeenCalledTimes(1);
   });
 
-  it('reads every shape, and keeps the answer, when the index query fails', async () => {
-    const perspective = mockPerspective([
-      { name: 'Task', shape: makeShape('app://Task') },
-      { name: 'Message', shape: makeShape('flux://Message') },
-    ]);
-    vi.mocked(perspective.querySparql).mockRejectedValue(new Error('SPARQL unavailable'));
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  it('leaves out a class with no properties', async () => {
+    const perspective = mockPerspective([{ name: 'Marker', shape: makeShape('app://Marker') }]);
+    expect(await readShapeProperties(perspective)).toEqual([]);
+  });
+});
 
-    expect((await getForeignShacl(perspective)).map((s) => s.name)).toEqual(['Task']);
-    expect(shapesRead(perspective)).toEqual(['Task', 'Message']);
-    expect(warn).toHaveBeenCalledOnce();
-    warn.mockRestore();
+/** A real shape with one named property, as the executor reads one back. */
+async function realShape(targetClass: string, property: { name: string; path: string; class?: string }) {
+  const { SHACLShape: Shape } = await vi.importActual<typeof import('@coasys/ad4m')>('@coasys/ad4m');
+  const shape = new Shape(targetClass);
+  shape.addProperty({
+    name: property.name,
+    path: property.path,
+    ...(property.class ? { class: property.class } : { datatype: 'xsd://string', maxCount: 1 }),
+  } as never);
+  return shape;
+}
+
+describe('a foreign class named by its target class', () => {
+  it('is built as the class of that target class, under the name it was given', async () => {
+    const shape = await realShape('other-app://Message', { name: 'body', path: 'other-app://body' });
+
+    const classes = buildEntityClasses([{ name: 'other-app://Message', shape }]);
+
+    // The given name is the IRI, so the one key is both.
+    expect(Object.keys(classes)).toEqual(['other-app://Message']);
+    const cls = classes['other-app://Message'] as unknown as { getTargetClass(): string };
+    expect(cls.getTargetClass()).toBe('other-app://Message');
   });
 
-  it('reads nothing the registry does not list', async () => {
-    // A shape's links can outlive its `ad4m://has_shacl` entry; the registry says what is installed.
-    const perspective = mockPerspective(
-      [
-        { name: 'Task', shape: makeShape('app://Task') },
-        { name: 'Removed', shape: makeShape('app://Removed') },
-      ],
-      ['Task'],
+  it('keeps its own name, and the `Shape` alias, where the name is free', async () => {
+    const shape = await realShape('app://Task', { name: 'title', path: 'app://title' });
+
+    expect(Object.keys(buildEntityClasses([{ name: 'Task', shape }])).sort()).toEqual([
+      'Task',
+      'TaskShape',
+      'app://Task',
+    ]);
+  });
+
+  it('two foreign classes of one name, with no WE class of that name, are both reachable', async () => {
+    // `Note` is not a WE model in this registry (the mock has Message and Channel only).
+    const a = await realShape('a://Note', { name: 'body', path: 'a://body' });
+    const b = await realShape('b://Note', { name: 'text', path: 'b://text' });
+
+    // Given as the executor names them: one name, two classes. Neither may overwrite the other.
+    const classes = buildEntityClasses([
+      { name: 'Note', shape: a },
+      { name: 'Note', shape: b },
+    ]);
+    const targetOf = (key: string) => (classes[key] as unknown as { getTargetClass(): string }).getTargetClass();
+
+    expect(Object.keys(classes).sort()).toEqual(['a://Note', 'b://Note']);
+    expect(targetOf('a://Note')).toBe('a://Note');
+    expect(targetOf('b://Note')).toBe('b://Note');
+  });
+
+  it('two foreign classes of one name, named through getForeignShacl, are both registered by IRI', async () => {
+    const a = await realShape('a://Note', { name: 'body', path: 'a://body' });
+    const b = await realShape('b://Note', { name: 'text', path: 'b://text' });
+    const foreign = await getForeignShacl(
+      mockPerspective([
+        { name: 'Note', shape: a },
+        { name: 'Note', shape: b },
+      ]),
     );
 
-    expect((await getForeignShacl(perspective)).map((s) => s.name)).toEqual(['Task']);
-    expect(shapesRead(perspective)).toEqual(['Task']);
+    const classes = buildEntityClasses(foreign);
+
+    expect(foreign.map((s) => s.name)).toEqual(['a://Note', 'b://Note']);
+    expect((classes['a://Note'] as unknown as { getTargetClass(): string }).getTargetClass()).toBe('a://Note');
+    expect((classes['b://Note'] as unknown as { getTargetClass(): string }).getTargetClass()).toBe('b://Note');
+    expect(classes['Note']).toBeUndefined();
+  });
+
+  it('is what a relation to it names in the manifest', async () => {
+    const topic = await realShape('other-app://Topic', { name: 'title', path: 'other-app://title' });
+    const post = await realShape('other-app://Post', {
+      name: 'topic',
+      path: 'other-app://topic',
+      class: 'other-app://TopicShape',
+    });
+
+    const entries = buildEntityManifest([
+      { name: 'other-app://Topic', shape: topic },
+      { name: 'Post', shape: post },
+    ]);
+
+    expect(entries.map((e) => e.name)).toEqual(['other-app://Topic', 'Post']);
+    expect(entries[1].properties[0].relatedEntity).toBe('other-app://Topic');
   });
 });

@@ -2,27 +2,39 @@
  * A space's models kept as their SHACL alone: saved, listed back as the manifest they were saved as,
  * kept through an install that rewrites their shape, and removed.
  *
- * The install is faked the way the executor does it: registering a class removes every link on its
- * shape's nodes and writes the shape again — which is exactly what would take the annotations with
- * it, and why the store puts them back.
+ * The install is faked the way the executor does it: registering a class removes the shape's own
+ * links and writes the shape again, and leaves every other link on its nodes — the annotations among
+ * them. `shapes()` answers from what was registered, through the shape's JSON.
  */
+import { Literal, SHACLShape } from '@coasys/ad4m';
 import type { EntityManifest, ShapeInput } from '@we/backend-shared';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import { describe, expect, it } from 'vitest';
 
 import { compileManifest } from '../src/manifestCompiler';
 import { createAd4mShapeStore } from '../src/nativeShapes';
+import { ANNOTATION } from '../src/shapeCodec';
 
 interface Stored {
   data: { source: string; predicate?: string; target: string };
 }
 
-type Shaped = { generateSHACL: () => { shape: { nodeShapeUri: string; toLinks(): Stored['data'][] } } };
+type Shaped = { generateSHACL: () => { shape: SHACLShape } };
 
-/** Links in, links out — the surface the store uses. */
+const pairOf = (l: Stored['data']) => `${l.source}\u0000${l.predicate ?? ''}`;
+
+/** Links in, links out, and the registered shapes — the surface the store uses. */
 function fakePerspective() {
   let links: Stored[] = [];
+  const registered = new Map<string, SHACLShape>();
   const perspective = {
+    async shapes() {
+      return [...registered.values()].map((shape) => ({
+        name: shape.targetClass!.replace('we://', ''),
+        shape: SHACLShape.fromJSON(shape.toJSON()),
+        hash: '',
+      }));
+    },
     async get(query: { source?: string; predicate?: string }) {
       return links.filter(
         (l) =>
@@ -40,17 +52,18 @@ function fakePerspective() {
       links = links.filter((l) => !drop.has(l));
       return [];
     },
-    /** What registering a class does to its shape: wipe the shape's nodes, write the shape again. */
+    /**
+     * What registering a class does to its shape: nothing when the stored shape is the same one,
+     * else its own links written again, every other link kept.
+     */
     register(cls: unknown) {
       const shape = (cls as Shaped).generateSHACL().shape;
-      const nodes = new Set([
-        shape.nodeShapeUri,
-        ...links
-          .filter((l) => l.data.source === shape.nodeShapeUri && l.data.predicate === 'sh://property')
-          .map((l) => l.data.target),
-      ]);
-      links = links.filter((l) => !nodes.has(l.data.source));
+      const before = registered.get(shape.targetClass!);
+      if (before && JSON.stringify(before.toJSON()) === JSON.stringify(shape.toJSON())) return;
+      const own = new Set((before?.toLinks() ?? []).map(pairOf));
+      links = links.filter((l) => !own.has(pairOf(l.data)));
       for (const data of shape.toLinks()) links.push({ data });
+      registered.set(shape.targetClass!, shape);
     },
     all: () => links.map((l) => l.data),
   };
@@ -125,16 +138,12 @@ describe('a space model kept as its SHACL', () => {
     for (const link of perspective.all()) expect(nodes.has(link.source)).toBe(true);
   });
 
-  it('loses the model to an install that rewrites its shape, and keeps it again after one', async () => {
+  it('keeps the model through an install that writes its shape again', async () => {
     const { store, perspective, dataset } = setup();
     await store.save(dataset, SHAPE);
     perspective.register(
       compileManifest(MANIFEST, { moduleId: 'shape/abc', resolveExternal: () => undefined }).Sighting,
     );
-    // The install took the annotations — the shape is no longer one of the space's models.
-    expect(await store.list(dataset)).toEqual([]);
-
-    await store.keep!(dataset, SHAPE);
     expect((await store.list(dataset)).map((s) => s.manifest)).toEqual([MANIFEST]);
   });
 
@@ -144,12 +153,24 @@ describe('a space model kept as its SHACL', () => {
     await store.save(dataset, { ...SHAPE, version: 2, description: 'A bird' }, id);
     expect(await store.list(dataset)).toMatchObject([{ id, version: 2, description: 'A bird' }]);
 
-    const before = perspective.all().length;
-    await store.keep!(dataset, { ...SHAPE, version: 2, description: 'A bird' });
-    expect(perspective.all()).toHaveLength(before);
+    const before = perspective.all();
+    await store.save(dataset, { ...SHAPE, version: 2, description: 'A bird' }, id);
+    expect(perspective.all()).toEqual(before);
   });
 
-  it('reads a model something else added to as not editable, and keeps what it added', async () => {
+  it('does not list annotations whose class is not registered', async () => {
+    const { store, perspective, dataset } = setup();
+    await perspective.addLinks([
+      {
+        source: 'we://SightingShape',
+        predicate: ANNOTATION.shapeId,
+        target: Literal.from(JSON.stringify('we://shapes/abc')).toUrl(),
+      },
+    ]);
+    expect(await store.list(dataset)).toEqual([]);
+  });
+
+  it('reads a model something else added to as not editable', async () => {
     const { store, perspective, dataset } = setup();
     await store.save(dataset, SHAPE);
     const field = perspective
@@ -159,12 +180,6 @@ describe('a space model kept as its SHACL', () => {
 
     const [listed] = await store.list(dataset);
     expect(listed).toMatchObject({ editable: false, manifest: MANIFEST });
-    await store.keep!(dataset, SHAPE);
-    expect(perspective.all()).toContainEqual({
-      source: field,
-      predicate: 'sh://maxLength',
-      target: 'literal:280^^xsd:integer',
-    });
   });
 
   it('removes a model from the space’s own, leaving its SHACL for the records that have its type', async () => {

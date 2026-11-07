@@ -215,6 +215,25 @@ export async function judge({ pin, basePin, base }) {
   return { ok: true, reason: `Pins ad4m ${short}, which is on ad4m \`dev\` and contains \`${base}\`'s pin.` };
 }
 
+/**
+ * The verdict with the lockfile's integrity checked as well: a snapshot the lockfile installs with no
+ * `integrity` fails the gate, whatever the pin verdict was.
+ *
+ * Whatever it was, because a paired PR's pin verdict is "not on ad4m `dev` yet" for its whole
+ * review. When this ran only after a passing verdict, a lockfile without integrity went unreported
+ * for exactly that time, and surfaced only once the ad4m PR had merged — after review. Here both
+ * reasons are said, and a waiting PR stays waiting.
+ */
+export function withLockfileCheck(verdict, pin, lockText) {
+  if (pin.kind !== 'snapshot') return verdict;
+  const bare = lockfileSnapshots(lockText).filter((s) => !s.integrity);
+  if (!bare.length) return verdict;
+  const reason = `The lockfile installs the snapshot with no integrity, so a frozen install would accept whatever bytes the URL serves.`;
+  const fix = `pnpm bump:ad4m ${pin.commit}`;
+  if (verdict.ok) return { ok: false, reason, fix };
+  return { ...verdict, reason: `${verdict.reason}\n${reason}`, fix: verdict.fix ? `${verdict.fix}; ${fix}` : fix };
+}
+
 /** The base branch's package.json, as it is now. */
 async function basePackageJson(repo, base) {
   const file = await github(`repos/${repo}/contents/package.json?ref=${encodeURIComponent(base)}`);
@@ -238,17 +257,11 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     // Into `main` only the PR's own pin matters, so `main`'s is not read — it need not even be
     // readable, and `main` has held a mismatched pair.
     const basePin = base === 'main' ? null : readPin(await basePackageJson(repo, base));
-    verdict = await judge({ pin, basePin, base });
-    if (verdict.ok && pin.kind === 'snapshot') {
-      const bare = lockfileSnapshots(readFileSync(join(ROOT, 'pnpm-lock.yaml'), 'utf8')).filter((s) => !s.integrity);
-      if (bare.length) {
-        verdict = {
-          ok: false,
-          reason: `The lockfile installs the snapshot with no integrity, so a frozen install would accept whatever bytes the URL serves.`,
-          fix: `pnpm bump:ad4m ${pin.commit}`,
-        };
-      }
-    }
+    verdict = withLockfileCheck(
+      await judge({ pin, basePin, base }),
+      pin,
+      readFileSync(join(ROOT, 'pnpm-lock.yaml'), 'utf8'),
+    );
   } catch (error) {
     if (!(error instanceof PinError)) throw error;
     verdict = { ok: false, reason: error.message };

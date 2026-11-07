@@ -12,6 +12,7 @@
  */
 import { render } from '@solidjs/testing-library';
 import { createInMemoryBackendPorts, type InMemoryAgentOptions, type InMemoryLifecycle } from '@we/backend-inmemory';
+import { ModuleSchemasRefused } from '@we/backend-shared';
 import { createBlocks, registerCoreBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
 import { AgentSettings, CollectionBlock, getEntity, Policy, Space, SpaceLandmark } from '@we/entities';
@@ -299,29 +300,25 @@ describe('boot', () => {
   });
 
   /*
-    A reload on a space's address waited for the whole boot before that space began to load, then
-    read its templates, then its schema, one after another. Its templates and schema reads now start
-    as soon as the list names it, and the agent's spaces are read beside the system datasets.
+    A reload on a space's address waited for the whole boot before that space began to load. The
+    agent's spaces are now read beside the system datasets, as soon as the list names them.
   */
-  it('starts the addressed space, and reads spaces, while the system datasets come up', async () => {
+  it('reads spaces while the system datasets come up', async () => {
     seededDatasets = [{ id: 'garden-1', name: 'Garden' }];
     window.history.replaceState({}, '', '/space/garden-1/canvas');
     let releaseRoot!: () => void;
     const rootHeld = new Promise<void>((resolve) => (releaseRoot = resolve));
-    const prepared: unknown[] = [];
     onPorts = (ports) => {
       const { installRoot } = ports.schemas;
       ports.schemas.installRoot = async (dataset) => {
         await rootHeld;
         return installRoot(dataset);
       };
-      ports.schemas.prepare = (dataset) => prepared.push(dataset);
     };
     try {
       const stores = mountShell();
       const loadSpaces = vi.spyOn(stores.spaces, 'loadSpaces');
 
-      await vi.waitFor(() => expect(prepared).toHaveLength(1));
       await vi.waitFor(() =>
         expect(loadSpaces).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ id: 'garden-1' })])),
       );
@@ -2396,4 +2393,108 @@ describe('where a response was said', () => {
     expect(rows.find((r) => r.id === said.id)).toMatchObject({ call: standup.id, callTitle: 'Standup' });
     expect(ids).not.toContain(aside.id);
   }, 15000);
+});
+
+describe('a schema install the backend refuses', () => {
+  /** The class names in an install, as the in-memory backend is handed them. */
+  const classNames = (schemas: readonly unknown[]) => schemas.map((cls) => (cls as { name: string }).name);
+
+  it('reports a refused module, and the space still opens', async () => {
+    seededDatasets = [{ id: 'garden-1', name: 'Garden' }];
+    const refusal = new ModuleSchemasRefused([
+      { moduleId: 'clashing', reason: 'Shape garden://ClashShape already belongs to class other-app://Clash' },
+    ]);
+    onPorts = (ports) => {
+      ports.schemas.installModules = async () => {
+        throw refusal;
+      };
+    };
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const toasted = vi.spyOn(toastService, 'error');
+    try {
+      const stores = mountShell();
+      await ready(stores);
+
+      await stores.datasets.switchDataset('garden-1');
+
+      expect(stores.datasets.currentDataset()?.id).toBe('garden-1');
+      expect(stores.datasets.isWeSpace()).toBe(true);
+      expect(toasted).not.toHaveBeenCalledWith('Could not open that space');
+      // Reported where the refresh is, naming the module.
+      expect(logged).toHaveBeenCalledWith('DatasetStore: module schema install failed', refusal);
+      expect(refusal.message).toContain('clashing');
+    } finally {
+      logged.mockRestore();
+      toasted.mockRestore();
+    }
+  });
+
+  it('reports a refused refresh, and the switch carries on', async () => {
+    seededDatasets = [{ id: 'garden-1', name: 'Garden' }];
+    const refusal = new Error('Shape we://SpaceShape already belongs to class other-app://Space');
+    let refreshed = 0;
+    onPorts = (ports) => {
+      ports.schemas.refreshSpace = async () => {
+        refreshed++;
+        throw refusal;
+      };
+    };
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const toasted = vi.spyOn(toastService, 'error');
+    try {
+      const stores = mountShell();
+      await ready(stores);
+      const before = refreshed;
+
+      await stores.datasets.switchDataset('garden-1');
+
+      expect(refreshed).toBe(before + 1);
+      expect(stores.datasets.currentDataset()?.id).toBe('garden-1');
+      expect(toasted).not.toHaveBeenCalledWith('Could not open that space');
+      expect(logged).toHaveBeenCalledWith('DatasetStore: space schema refresh failed', refusal);
+    } finally {
+      logged.mockRestore();
+      toasted.mockRestore();
+    }
+  });
+
+  it("shows a refused record type as a problem, and writes none of the app's record types", async () => {
+    seededDatasets = [{ id: 'garden-1', name: 'Garden' }];
+    let shapes!: NonNullable<ReturnType<typeof createInMemoryBackendPorts>['schemas']['shapes']>;
+    onPorts = (ports) => {
+      shapes = ports.schemas.shapes!;
+      const { installModules } = ports.schemas;
+      ports.schemas.installModules = async (dataset, schemas) => {
+        if (classNames(schemas).includes('Clash')) {
+          throw new ModuleSchemasRefused([
+            {
+              moduleId: 'shape/bundle/garden-app/Clash',
+              reason: 'Shape garden://ClashShape already belongs to class other-app://Clash',
+            },
+          ]);
+        }
+        return installModules(dataset, schemas);
+      };
+    };
+    const stores = mountShell();
+    await ready(stores);
+    await stores.datasets.switchDataset('garden-1');
+    const handle = stores.datasets.currentDataset()!.handle;
+    const type = (name: string) => ({
+      name,
+      manifest: { version: '1', entities: { [name]: { properties: { label: { type: 'string' } }, relations: {} } } },
+    });
+
+    const problems = await stores.shapes.addRecordTypes('garden-app', [type('Plant'), type('Clash')] as never);
+
+    expect(problems).toEqual([
+      '"Clash" could not be added — Shape garden://ClashShape already belongs to class other-app://Clash',
+    ]);
+    expect(await shapes.list(handle)).toEqual([]);
+    expect(stores.shapes.spaceShapes()).toEqual([]);
+
+    // Once nothing refuses, the same call adds both.
+    expect(await stores.shapes.addRecordTypes('garden-app', [type('Plant')] as never)).toEqual([]);
+    expect((await shapes.list(handle)).map((s) => s.name)).toEqual(['Plant']);
+  });
 });

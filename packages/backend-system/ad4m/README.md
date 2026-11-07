@@ -35,11 +35,10 @@ shape of — and `@coasys/ad4m` becomes a dependency of one package rather than 
 ## What the executor could own
 
 Some of this package is logic held here until the executor does it. Each one moving upstream deletes
-code on this side, which is the intended direction:
+code on this side, which is the intended direction. (Shape staleness diffing and duplicate-install
+remediation were the first to go: `registerShapes` compares each shape with the stored one and writes
+only a changed one, so `sdnaEntities.ts` sends one call.)
 
-- SDNA staleness diffing and duplicate-install remediation (`sdnaEntities.ts`) — `refreshSpace`
-  compares stored shapes against declared ones on every space switch because `add_sdna` is not
-  idempotent about a shape that changed.
 - Parenting extracted records and re-keying overlay values from predicates to property names
   (`interpretationAdapter.ts`) — `runInterpretation` writes instances and returns URIs; attaching
   them to a container and naming their fields for a reviewer happens here.

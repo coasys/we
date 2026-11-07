@@ -27,6 +27,27 @@ import type { TranscriptionPort } from './transcription';
 import type { WorkflowPort } from './workflows';
 
 /**
+ * Some modules' schemas were refused by the backend, and the rest were installed.
+ *
+ * Each module's schemas install on their own, so one module the backend refuses — a class name
+ * another app already holds, say — leaves every other module, and the host's own schemas, working.
+ * This rejection comes after all of them were tried, naming the modules refused and why; a module
+ * not named here is installed. A refused module wrote nothing.
+ */
+export class ModuleSchemasRefused extends Error {
+  readonly refused: readonly { moduleId: string; reason: string }[];
+
+  constructor(refused: readonly { moduleId: string; reason: string }[]) {
+    super(
+      `${refused.length === 1 ? 'A module was' : `${refused.length} modules were`} refused, and the rest installed: ` +
+        refused.map((r) => `${r.moduleId} (${r.reason})`).join('; '),
+    );
+    this.name = 'ModuleSchemasRefused';
+    this.refused = refused;
+  }
+}
+
+/**
  * Schema management on a dataset: installing the host's entity schemas, checking what a dataset
  * already holds, discovering foreign schemas, and compiling declared (manifest-form) entities
  * into this backend's installable representation.
@@ -46,9 +67,17 @@ export interface SchemaPort {
    * hands those calls, not which method it calls. See `ModuleDefinition.entities.scope`.
    */
   installRoot(dataset: DatasetHandle): Promise<void>;
-  /** Install the host's space schemas plus the given module schemas. Idempotent. */
+  /**
+   * Install the host's space schemas plus the given module schemas. Idempotent. When only modules
+   * are refused, the host's schemas and every other module are in, and this rejects with
+   * {@link ModuleSchemasRefused}.
+   */
   installSpace(dataset: DatasetHandle, moduleSchemas: readonly unknown[]): Promise<void>;
-  /** Install only the given module schemas (runs on every space switch — diffs before writing). */
+  /**
+   * Install only the given module schemas (runs on every space switch — diffs before writing). Each
+   * module installs on its own; a refused one rejects with {@link ModuleSchemasRefused} once the
+   * others are in.
+   */
   installModules(dataset: DatasetHandle, moduleSchemas: readonly unknown[]): Promise<void>;
   /**
    * Bring a dataset's space schemas up to date with the ones this build declares, for a dataset that
@@ -58,22 +87,15 @@ export interface SchemaPort {
    * this build declares that the dataset never had at all. The second matters as much as the first —
    * a dataset predating a newly added entity can answer no query about it.
    *
-   * Runs on every space switch, so it must diff before writing. Returns the schemas it wrote, or an
-   * empty array — the common case — when everything stored was already current.
+   * Runs on every space switch, so it must diff before writing. Returns the schemas it wrote, by
+   * entity name (a backend that addresses classes by another key maps each back), or an empty
+   * array — the common case — when everything stored was already current.
    */
   refreshSpace(dataset: DatasetHandle): Promise<string[]>;
   /** Ensure one schema payload is installed. Idempotent. */
   ensure(dataset: DatasetHandle, schema: unknown): Promise<void>;
   /** Whether the host's core space schema is installed (the "is this a WE space" check). */
   hasCoreSchema(dataset: DatasetHandle): Promise<boolean>;
-  /**
-   * Start the reads a switch into this dataset is about to make, and answer nothing.
-   *
-   * A hint: a backend that shares or caches those reads lets the switch find them done; one that
-   * does not leaves this out. Called on boot for the space the address names, while the system
-   * datasets are still being brought up.
-   */
-  prepare?(dataset: DatasetHandle): void;
   /** Whether the dataset has any schema at all (the auto-install trigger check). */
   hasAnySchema(dataset: DatasetHandle): Promise<boolean>;
   /**
@@ -143,8 +165,6 @@ export interface SchemaPort {
    * space-owned marker — after which release improvements flow again.
    */
   resetInterpretationHints(dataset: DatasetHandle, entity: string): Promise<void>;
-  /** Optional remediation for duplicated schema installs (backend-specific failure mode). */
-  dedupe?(dataset: DatasetHandle): Promise<{ removed: number; authors: string[] }>;
   /**
    * Where the space keeps its own models. Optional: absent, each model is a manifest document on a
    * `Shape` record — see {@link ShapeStore}.

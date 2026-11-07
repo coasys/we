@@ -1,6 +1,7 @@
-import { Ad4mModel, Literal, type PerspectiveProxy, type SHACLShape } from '@coasys/ad4m';
+import { Ad4mModel, type PerspectiveProxy, type SHACLShape } from '@coasys/ad4m';
 import { type EntityClass, getEntity, getEntityTargetClass, getRegisteredEntityNames } from '@we/entities';
 
+import { classNameOf } from './className';
 import type { EntityManifestEntry, EntityManifestProperty } from './manifestTypes';
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
@@ -37,80 +38,22 @@ function shaclClassToLocalName(classUri: string): string {
 
 export type ForeignShape = { name: string; shape: SHACLShape };
 
-/*
-  Why the shape registry is read with SPARQL rather than `getAllShacl()`.
-
-  The client the app runs comes from `@coasys/ad4m-connect`, which bundles its own copy of
-  `@coasys/ad4m`. Until ad4m #1443 `getAllShacl()` in that copy was not one call: it listed the
-  names, then read every shape with `getShacl()`, which cost 3 + P calls for a shape of P
-  properties. A space with ~40 shapes paid ~650 `queryLinks` on every load to keep the handful that
-  are foreign, and a remote executor queued them for seconds. It is one call now, but it still
-  carries every link of every shape asked for.
-
-  What a caller here needs to know about most shapes is a few links each — name → shape → target
-  class, shape → property → path — so one SPARQL query answers it for every shape at once, and a
-  shape is read in full only when it has to be.
-*/
-
-/** Every installed shape's name node, shape and target class. */
-const SHAPE_INDEX = `SELECT ?name ?shape ?targetClass WHERE {
-  ?name <ad4m://shacl_shape_uri> ?shape .
-  OPTIONAL { ?shape <sh://targetClass> ?targetClass }
-}`;
-
-/** Every installed shape's property shapes and their paths. */
-const SHAPE_PROPERTIES = `SELECT ?name ?prop ?path WHERE {
-  ?name <ad4m://shacl_shape_uri> ?shape .
-  ?shape <sh://property> ?prop .
-  ?prop <sh://path> ?path .
-}`;
-
-type Row = Record<string, string | undefined>;
-
-async function select(perspective: PerspectiveProxy, query: string): Promise<Row[]> {
-  const rows: unknown = await perspective.querySparql(query);
-  return Array.isArray(rows) ? (rows as Row[]) : [];
-}
-
-/** `literal:string:shacl://TaskBlock` → `TaskBlock`, decoded as `getShaclNames()` decodes it. */
-function shapeName(nameNode: string | undefined): string | undefined {
-  if (!nameNode) return undefined;
-  try {
-    const value: unknown = Literal.fromUrl(nameNode).get();
-    return typeof value === 'string' ? value.replace('shacl://', '') : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/** A property's name as `SHACLShape.fromLinks` derives it: what follows the last `.` of its shape. */
-function propertyName(propShape: string): string | undefined {
-  if (propShape.startsWith('_:')) return undefined;
-  const dot = propShape.lastIndexOf('.');
-  return dot === -1 ? undefined : propShape.slice(dot + 1);
-}
-
 /**
- * Every installed shape's properties — path, and name where the shape gives one — in the order
- * `getShaclNames()` lists the shapes. Two round trips however many shapes there are.
+ * Every registered shape's properties — path, and name where the shape gives one — in the order
+ * `shapes()` lists the classes (by name). One round trip however many shapes there are.
  *
- * Where the graph holds more than one answer, this keeps all of them and `getShacl()` kept one: a
- * name mapped to two shapes gives both shapes' properties, and a property with two paths gives
- * both. Either takes a merged or damaged registry.
+ * A class with no properties is left out: it has nothing to offer a caller that maps predicates.
  */
 export async function readShapeProperties(
   perspective: PerspectiveProxy,
 ): Promise<{ name: string; properties: { path: string; name?: string }[] }[]> {
-  const [names, rows] = await Promise.all([perspective.getShaclNames(), select(perspective, SHAPE_PROPERTIES)]);
-  const byShape = new Map<string, { path: string; name?: string }[]>();
-  for (const row of rows) {
-    const shape = shapeName(row.name);
-    if (!shape || !row.prop || !row.path) continue;
-    const properties = byShape.get(shape) ?? [];
-    properties.push({ path: row.path, name: propertyName(row.prop) });
-    byShape.set(shape, properties);
-  }
-  return names.flatMap((name) => (byShape.has(name) ? [{ name, properties: byShape.get(name)! }] : []));
+  const registered = await perspective.shapes();
+  return registered
+    .filter(({ shape }) => shape.properties.length > 0)
+    .map(({ name, shape }) => ({
+      name,
+      properties: shape.properties.map((p) => ({ path: p.path, ...(p.name !== undefined ? { name: p.name } : {}) })),
+    }));
 }
 
 /**
@@ -126,15 +69,19 @@ const isExecutorClass = (targetClass: string | null | undefined): boolean =>
 /**
  * Fetch SHACL shapes that the perspective has but WE does not know about natively.
  *
- * A shape is foreign when no native model has its name, or when it takes a native name over a
- * different target class. The index answers that for every shape in one query, so only foreign
- * shapes are read in full, and a native name is read only when the index says it might be one.
+ * A shape is foreign when no native model has its target class. `shapes()` returns every registered
+ * class with its whole shape in one call, so the rule is applied to the shapes as the executor stores
+ * them.
+ *
+ * **Named so that no two classes share a name in WE.** The executor addresses a class by its target
+ * class IRI, so two apps may each have a class of one name: WE's `Topic` is `we://Topic`, Flux's is
+ * `flux://Topic`, and one perspective holds both. WE's entity registry is keyed by name, and a native
+ * class wins a name over a foreign one, so a foreign `Topic` registered as `Topic` could never be
+ * reached — and a template asking for `Topic` would read WE's. A foreign class keeps its own name
+ * where that name is free (no native model has it and no other foreign class does); otherwise it is
+ * named by its target class IRI, which is unique by construction.
  *
  * The executor's own classes are left out — see {@link isExecutorClass}.
- *
- * A native name with no stored target class counts as the native model and is not read. Read in
- * full, it would not have: `SHACLShape.fromLinks` falls back to the shape's own URI as its target
- * class, which made such a shape look foreign and built a second model under the native name.
  *
  * Callers that need both the entity classes (`buildEntityClasses`) and the AI
  * manifest (`buildEntityManifest`) for the same perspective should fetch here
@@ -142,47 +89,21 @@ const isExecutorClass = (targetClass: string | null | undefined): boolean =>
  * this data, not separate fetches.
  */
 export async function getForeignShacl(perspective: PerspectiveProxy): Promise<ForeignShape[]> {
-  // Without the index every shape is read, as before it existed: slower, and the same answer.
-  const [names, rows] = await Promise.all([
-    perspective.getShaclNames(),
-    select(perspective, SHAPE_INDEX).catch((error: unknown) => {
-      console.warn('ad4m: the shape index query failed; reading every shape instead', error);
-      return null;
-    }),
-  ]);
+  const registered = await perspective.shapes();
   const nativeNames = new Set(getRegisteredEntityNames());
-  const nativeTargetClass = (name: string) => getEntityTargetClass(getEntity(name));
-
-  const storedClasses = new Map<string, Set<string>>();
-  for (const row of rows ?? []) {
-    const name = shapeName(row.name);
-    if (name && row.targetClass) storedClasses.set(name, (storedClasses.get(name) ?? new Set()).add(row.targetClass));
-  }
-  const worthReading = (name: string) => {
-    const stored = [...(storedClasses.get(name) ?? [])];
-    if (rows && stored.length && stored.every(isExecutorClass)) return false;
-    return !rows || !nativeNames.has(name) || stored.some((c) => c !== nativeTargetClass(name));
-  };
-
-  const read = await Promise.all(
-    names.filter(worthReading).map(async (name) => {
-      try {
-        return { name, shape: await perspective.getShacl(name) };
-      } catch (error) {
-        // A shape this SDK cannot parse — a property transform a newer SDK encoded, say — costs
-        // its own model, not every foreign model in the dataset.
-        console.warn(`ad4m: shape "${name}" could not be read; no model is built for it`, error);
-        return { name, shape: null };
-      }
-    }),
+  const nativeTargetClasses = new Set(
+    [...nativeNames].map((name) => getEntityTargetClass(getEntity(name))).filter((c): c is string => Boolean(c)),
   );
-  // The rule itself, on the shape as read: a native name counts only over a different target class.
-  return read.filter(
-    (s): s is ForeignShape =>
-      !!s.shape &&
-      !isExecutorClass(s.shape.targetClass) &&
-      (!nativeNames.has(s.name) || (s.shape.targetClass != null && s.shape.targetClass !== nativeTargetClass(s.name))),
+  const foreign = registered.filter(
+    ({ shape }) =>
+      !isExecutorClass(shape.targetClass) && !(shape.targetClass && nativeTargetClasses.has(shape.targetClass)),
   );
+  const perName = new Map<string, number>();
+  for (const { name } of foreign) perName.set(name, (perName.get(name) ?? 0) + 1);
+  return foreign.map(({ name, shape }) => {
+    const free = !nativeNames.has(name) && perName.get(name) === 1;
+    return { name: free || !shape.targetClass ? name : shape.targetClass, shape };
+  });
 }
 
 /**
@@ -190,25 +111,44 @@ export async function getForeignShacl(perspective: PerspectiveProxy): Promise<Fo
  * given (WE-native models are already registered globally at module load and
  * never need runtime synthesis — see `getForeignShacl`, whose result this expects).
  *
+ * Each class is built under its local name, the class name the executor gives it, so it keeps the
+ * shape's target class (`fromSHACL` reads the namespace off the target class by that name) and the
+ * executor addresses it by that IRI. It is registered under the name `getForeignShacl` chose, which is
+ * the target class IRI where the local name is taken.
+ *
  * A lazy class resolver is passed to `fromSHACL` so that collection relations
  * with a `sh:class` URI get a proper `target` thunk wired up.  Because the
- * resolver closes over the `result` object (which is still being populated
+ * resolver closes over the `byLocalName` map (which is still being populated
  * during the loop), and `target` is only evaluated at query time, this
- * correctly handles all cross-model references without ordering concerns.
+ * correctly handles all cross-model references without ordering concerns. The resolver is given a
+ * local name (`fromSHACL` strips the IRI), so it answers among these foreign classes: a foreign
+ * relation to `Topic` means the foreign app's own `Topic`, not WE's.
  *
  * The returned record can be passed directly to `registerDynamicEntities()`.
  */
 export function buildEntityClasses(shapes: ForeignShape[]): Record<string, EntityClass> {
   const result: Record<string, EntityClass> = {};
-  // classResolver supports both "Message" and "MessageShape" keys so that
+  // The resolver supports both "Message" and "MessageShape" keys so that
   // sh:class URIs (which use nodeShapeUri = "flux://MessageShape") resolve correctly.
-  const classResolver = (localName: string) => result[localName] as typeof Ad4mModel | undefined;
+  const byLocalName: Record<string, typeof Ad4mModel> = {};
+  const classResolver = (localName: string) => byLocalName[localName];
+  // A name two of the given shapes share is no class's own: keyed by it, the second class would
+  // overwrite the first. Each such class is reached by its target class IRI instead.
+  const perName = new Map<string, number>();
+  for (const { name } of shapes) perName.set(name, (perName.get(name) ?? 0) + 1);
   for (const { name, shape } of shapes) {
-    const cls = Ad4mModel.fromSHACL(shape, name, classResolver) as unknown as EntityClass;
-    result[name] = cls;
+    const local = shape.targetClass ? classNameOf(shape.targetClass) : name;
+    const cls = Ad4mModel.fromSHACL(shape, local, classResolver);
+    byLocalName[local] ??= cls;
+    byLocalName[`${local}Shape`] ??= cls;
+    const shared = perName.get(name)! > 1;
+    if (!shared || !shape.targetClass) result[name] ??= cls;
+    // Every class is also keyed by its target class IRI, which is unique by construction, so a class
+    // is always reachable by the key the executor names it with.
+    if (shape.targetClass) result[shape.targetClass] ??= cls;
     // Also register under nodeShapeUri-style name (e.g. "MessageShape") so that
     // sh:class URI local-names resolve even when they include the "Shape" suffix.
-    result[`${name}Shape`] = cls;
+    if (!shared && name === local) result[`${name}Shape`] ??= cls;
   }
   return result;
 }
@@ -219,8 +159,17 @@ export function buildEntityClasses(shapes: ForeignShape[]): Record<string, Entit
  * so they're excluded — see `getForeignShacl`, whose result this expects). Flag
  * properties (`hasValue`) and unnamed properties are excluded. Suitable for
  * injection into an AI system prompt as `externalEntities`.
+ *
+ * A relation's `relatedEntity` is the name its target goes by here: a foreign class among `shapes`
+ * where `sh:class` names one (by target class or by shape), so a relation to Flux's `Topic` names
+ * the entity `getForeignShacl` registered it under rather than WE's `Topic`.
  */
 export function buildEntityManifest(shapes: ForeignShape[]): EntityManifestEntry[] {
+  const entityOf = new Map<string, string>();
+  for (const { name, shape } of shapes) {
+    if (shape.targetClass) entityOf.set(shape.targetClass, name);
+    if (shape.nodeShapeUri) entityOf.set(shape.nodeShapeUri, name);
+  }
   return shapes.map(({ name, shape }) => ({
     name,
     targetClass: shape.targetClass ?? '',
@@ -235,7 +184,7 @@ export function buildEntityManifest(shapes: ForeignShape[]): EntityManifestEntry
         required: (p.minCount ?? 0) >= 1,
         writable: p.writable ?? true,
         ...(p.resolveLanguage !== undefined && { resolveLanguage: p.resolveLanguage }),
-        ...(p.class !== undefined && { relatedEntity: shaclClassToLocalName(p.class) }),
+        ...(p.class !== undefined && { relatedEntity: entityOf.get(p.class) ?? shaclClassToLocalName(p.class) }),
         // The shape says which end owns the link, so an entry read back from storage keeps it.
         ...(p.relationKind?.startsWith('belongsTo') && { reverse: true }),
         ...(p.interpretationHint !== undefined && { interpretationHint: p.interpretationHint }),

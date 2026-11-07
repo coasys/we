@@ -567,7 +567,8 @@ function endName(end: string, type: string): string {
  * Stored first because a writer that recorded it meant it — see `reifiedEdgeFrom`. The fallback is
  * for connections an extraction pass wrote without `sourceType`/`targetType`: the end then arrives
  * hydrated and classified, carrying `__subjectClass`, which is the key the executor writes and the
- * graph reads (`NODE_TYPE_KEY`).
+ * graph reads (`NODE_TYPE_KEY`). Its value is the entity name: the backend maps the class it read the
+ * record as (an IRI on AD4M) back to the name before a template sees it.
  */
 function endType(stored: string, end: string): string {
   return `(${stored} ? ${stored} : ${end}.__subjectClass)`;

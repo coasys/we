@@ -2344,7 +2344,7 @@ export const contextData: ContextData = {
         marketplaceId: { type: 'object' },
         marketplaceJoined: { type: 'boolean' },
       },
-      actions: ['switchDataset', 'reorderDatasets', 'removeDataset', 'cleanupSpaceSdna'],
+      actions: ['switchDataset', 'reorderDatasets', 'removeDataset'],
       ambient: ['switchDataset'],
       destructive: ['removeDataset'],
       needsArgs: ['switchDataset', 'reorderDatasets', 'removeDataset'],

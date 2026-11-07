@@ -25,6 +25,7 @@ import {
   type EntityManifest,
   extractableEntities,
   manifestEntries,
+  ModuleSchemasRefused,
   namePropertyOf,
   type ShapeInput,
   type ShapeStore as ShapeStorage,
@@ -588,8 +589,10 @@ export function ShapeStoreProvider(props: ParentProps) {
   // ── The adoption rail ─────────────────────────────────────────────────────────
 
   /**
-   * Compile a stored model and install its schema into the space — then let the store put back
-   * whatever of the model the install rewrote (`ShapeStore.keep`).
+   * Compile a stored model and install its schema into the space.
+   *
+   * Every class the model declares goes in one install, which the backend takes or refuses whole: a
+   * refused model leaves none of its classes behind. Rejects with the backend's reason.
    */
   async function adoptShape(shape: ShapeInput, dataset = handle()): Promise<void> {
     const ports = schemas();
@@ -599,8 +602,13 @@ export function ShapeStoreProvider(props: ParentProps) {
     const started = performance.now();
     const classes = ports.declareInDataset(dataset, manifest, { moduleId: `shape/${view.shapeId}` });
     const declared = performance.now();
-    for (const cls of Object.values(classes)) await ports.ensure(dataset, cls);
-    await storage().keep?.(dataset, shape);
+    try {
+      await ports.installModules(dataset, Object.values(classes));
+    } catch (err) {
+      // The model is the only module in the call, so the refusal's reason is the model's.
+      if (err instanceof ModuleSchemasRefused) throw new Error(err.refused.map((r) => r.reason).join('; '));
+      throw err;
+    }
     trace('shapes', 'adopt', {
       name: view.name,
       classes: Object.keys(classes).length,
@@ -1140,8 +1148,10 @@ export function ShapeStoreProvider(props: ParentProps) {
         forkedFrom: existing?.forkedFrom ?? '',
         manifest: gate.manifest,
       };
-      await storage().save(dataset, shape, existing?.id);
+      // Installed before the record is saved, so a model the backend refuses leaves no record that
+      // every later visit would fail to adopt.
       await adoptShape(shape);
+      await storage().save(dataset, shape, existing?.id);
       /*
         Ticking the switch is the space's decision, so it does not need making twice.
 
@@ -1191,6 +1201,8 @@ export function ShapeStoreProvider(props: ParentProps) {
       present = new Map((await storage().list(dataset)).map((shape) => [shape.name, shape]));
     }
     const names = types.map((type) => type.name);
+    const adopted: ShapeInput[] = [];
+    let refused = false;
     for (const type of types) {
       // Recognised by where it came from, so a second install or set-up adds nothing twice.
       const shapeId = `we://shapes/bundle/${bundleId}/${type.name}`;
@@ -1217,10 +1229,26 @@ export function ShapeStoreProvider(props: ParentProps) {
         forkedFrom: '',
         manifest: gate.manifest,
       };
-      await storage().save(dataset, shape);
-      // Adopted as `loadShapes` adopts it on every later visit.
-      await adoptShape(shape, dataset);
+      // Adopted as `loadShapes` adopts it on every later visit. A type the backend refuses — a
+      // shape URI another app's class already holds, say — is a problem to show, like an invalid
+      // definition, not an error thrown out of the middle of the set.
+      try {
+        await adoptShape(shape, dataset);
+        adopted.push(shape);
+      } catch (err) {
+        refused = true;
+        problems.push(`"${type.name}" could not be added — ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
+    /*
+      Records only once the backend took every type. A record is what the space lists, and adopts
+      on every visit, so records written beside a refused type would leave the app half in the
+      space: some of its kinds of record there, one missing, and set-up reported as failed. The
+      shapes the backend did take stay registered, which shows nowhere and costs nothing on the next
+      try: an unchanged shape writes nothing.
+    */
+    if (refused) return problems;
+    for (const shape of adopted) await storage().save(dataset, shape);
     if (onScreen) await loadShapes();
     return problems;
   }

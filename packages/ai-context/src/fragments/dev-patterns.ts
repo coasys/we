@@ -642,17 +642,25 @@ What the SDK and executor do around a subscription, so a watch can rely on it:
   lets go, so a surface remounting does not tear one down and open another. \`onProposalsChanged\`
   shows how.
 
-### Reading shapes from \`@we/backend-ad4m\`
+### Reading and registering shapes from \`@we/backend-ad4m\`
 
 The \`PerspectiveProxy\` the app holds comes from the SDK copy bundled inside \`@coasys/ad4m-connect\`,
 not from the \`@coasys/ad4m\` this repo pins. An SDK fix reaches the app only when ad4m-connect
 republishes, so measure performance work against that copy, not the workspace one.
 
-In that copy, \`getAllShacl(options?: { names })\` reads every shape — or the named ones — in one call,
-and skips a shape it cannot decode rather than rejecting. It still carries every link of every shape
-it returns. For a question about a few links of many shapes, ask the executor once with SPARQL, and
-read a shape in full only when the answer needs it: \`readShapeProperties\` and \`getForeignShacl\` in
-\`perspectiveHelpers.ts\` show how.
+The executor holds a shape registry per perspective. Read it with \`perspective.shapes(names?)\`: one
+call, one record per registered class (\`name\` is the local name of the target class, sorted by
+name). Two apps can each have a class with the same local name, so a lookup by target class checks
+\`record.shape.targetClass\` too — \`storedShapeOf\` in \`sdnaEntities.ts\` shows how. Do not read
+shapes from links or with SPARQL: the registry is the one source the model queries use.
+
+Write it with \`perspective.registerShapes(shapes)\` (or \`Model.register(p)\` /
+\`Ad4mModel.registerAll(p, models)\`). The executor compares each shape with the stored one and writes
+only a changed one, and the call answers once queries see the new shapes, so do not read first, sleep
+after, or write hints again after. One call refuses two shapes for one class, and the executor refuses
+a class name that another target class already holds in the perspective. WE's own links on a shape
+node (annotations, the tuned-hints marker) are links, read and written as links; the executor keeps
+them when it rewrites a shape.
 
 ---
 

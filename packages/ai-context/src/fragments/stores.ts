@@ -232,7 +232,7 @@ export const storeEntries: StoreEntry[] = [
       marketplaceConfigured: { type: 'boolean' },
       marketplaceJoined: { type: 'boolean' },
     },
-    actions: ['switchDataset', 'reorderDatasets', 'cleanupSpaceSdna'],
+    actions: ['switchDataset', 'reorderDatasets'],
   },
   {
     name: 'profileStore',
@@ -1002,8 +1002,6 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       switchDataset:
         '(uuid: string): switches to a dataset by UUID, registers its SHACL models as dynamic model classes, and populates currentDatasetEntities',
       reorderDatasets: '(newOrder: string[]): reorders the sidebar items by UUID array',
-      cleanupSpaceSdna:
-        '(uuid?: string): one-time remediation for a space that accumulated duplicate SDNA installs — removes the redundant duplicate link copies. Defaults to the current dataset. Returns a display-ready summary string naming how many links were removed and the DIDs that authored them (your own DID annotated with "(you)"), or an empty string if nothing needed cleaning up',
     },
   },
   profileStore: {
