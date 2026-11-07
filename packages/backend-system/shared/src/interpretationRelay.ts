@@ -25,7 +25,7 @@
  * Phase, runner, elapsed, the ids written and the one-line detail. Never the model exchange: the
  * prompt is built from the whole transcript, so it is as long as the call, and every peer would
  * receive it once per phase. Nobody needs it live either — a finished pass writes its prompt and
- * response into the graph as an `ExtractionPass`, where every member reads it a moment later. So
+ * response into the graph as an extraction `ModelRun`, where every member reads it a moment later. So
  * a peer's row carries no `llm`, and only the runner's own row can open its exchange while it runs.
  *
  * ## Trust

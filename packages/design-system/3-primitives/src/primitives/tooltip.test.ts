@@ -10,6 +10,8 @@
  *
  * The same decision `we-draggable` made, and the docblock there states the general form.
  */
+import './text';
+
 import { describe, expect, it, vi } from 'vitest';
 
 import { boxlessLayoutProps } from '../shared/boxless';
@@ -185,5 +187,34 @@ describe('hover', () => {
 
     a.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: b }));
     expect(el.open).toBe(true);
+  });
+});
+
+describe('what counts as something to say', () => {
+  const hover = (el: HTMLElement) =>
+    el
+      .querySelector('we-badge')!
+      .dispatchEvent(new MouseEvent('mouseover', { bubbles: true, relatedTarget: document.body }));
+
+  it('opens on slotted content whose words a primitive draws in its own shadow root', async () => {
+    /*
+      A sentence given to `we-text` as `text` is drawn in its shadow root, so the light DOM holds no
+      text at all. This is the shape a schema hovercard has, and it read as empty.
+    */
+    const el = await mount({}, '<we-badge>x</we-badge><div slot="content"><we-text></we-text></div>');
+    const text = el.querySelector('we-text') as HTMLElement & { text: string; updateComplete: Promise<unknown> };
+    text.text = 'Extracted from the conversation';
+    await text.updateComplete;
+
+    hover(el);
+    expect(el.open).toBe(true);
+  });
+
+  it('still stays shut over slotted content that shows nothing', async () => {
+    const el = await mount({}, '<we-badge>x</we-badge><div slot="content"><we-text></we-text></div>');
+    await (el.querySelector('we-text') as HTMLElement & { updateComplete: Promise<unknown> }).updateComplete;
+
+    hover(el);
+    expect(el.open).toBe(false);
   });
 });

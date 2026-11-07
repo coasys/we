@@ -490,7 +490,7 @@ To target another dataset: { "$invoke": "record.update", "args": ["EntityName", 
 record.delete — deletes one record:
 { "$invoke": "record.delete", "args": ["EntityName", { "$": "item.id" }] }
 
-Use dataset: 'datasetStore.rootDataset' for we-root entities (AgentSettings, ChatSession, etc.), and
+Use dataset: 'datasetStore.rootDataset' for we-root entities (AgentSettings, Template, etc.), and
 'datasetStore.personalDataset' for the agent's own content (a note, a Pocket folder). Both are chrome-tier.
 Use the default (no dataset) for space-scoped entities (Space, Signal, etc.). The same key $query
 takes, and it names the same accessors.
@@ -596,6 +596,7 @@ registers (listed last). Wrong-typed input answers with the empty value of its k
     voices(options) — Whose reactions a weighted score was made from, as a list a reader turns voices up and down in — { did, name, avatar, cards, mean, weight, share, mine, pretend }, the busiest first. `weight` is how much the voice counts (0–100) and `share` its part of everybody's say. Options: summary (what a GraphView's onSeedSummary reported — the canvas seed's `{ type, voices }`), param (the weights as the address holds them, `did=50,did=0`), profiles (profileStore.profiles), me (me.did).  e.g. voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did })
     voicesParam(options) — The weights address form with one voice changed — options param, did and weight (0–100) — or, with only (a DID) and voices (the listed rows), every voice at nothing but that one. A voice back at full is left out, so putting everything back leaves a clean address.  e.g. voicesParam({ param: local.voices, did: voice.did, weight: event.detail })
     formatJson(options) — A JSON string indented for reading, or the text unchanged when it will not parse — which is the case worth showing rather than swallowing. Options: text. For displaying a stored blob (an extraction pass’s prompt and response); a schema has no JSON.stringify of its own.  e.g. formatJson({ text: pass.prompt })
+    generatedRun(options) — Whether a model made a record: { by: "run", run } naming the run that wrote it (a transcribed line, a record an extraction pass or an agent made, a reply in the editor’s chat), or null for what a person made. Reads the record’s own generatedBy, as an id or an included record, so it needs no query. Ask this rather than reading the relation. Options: record.  e.g. generatedRun({ record: post }) ? 'Written by AI' : ''
 
 The where-object — one grammar shared by filter(), find(), and $query's where. Keys are field names;
 values may be expressions (in an expression) or tokens (in a $query):
@@ -1164,6 +1165,14 @@ The first row has no prev at all, so the condition is false there and it keeps i
 which is what a feed wants, and why absent must not read as "same as the last item".
 
 Both shadow in a nested $each, exactly as the item does: the inner index restarts at 0.
+
+**Give a row an "id" and it keeps its place.** When every item of a store's list is a plain object
+with an id of its own, a row whose record changes is updated where it is: its $localState, whatever
+is typed into it and the page's scroll position all survive. A row is drawn afresh only when it
+moves, since its index and prev are handed to it when it is drawn. Items without ids, or with an id
+two of them share, are matched by identity instead, so a list that is rebuilt as new objects redraws
+every row on every change. A store that derives a list should give each row an id. A $query's rows
+are kept by id already.
 
 Conditional rendering:
 { "type": "$if", "props": { "condition": ..., "then": { ... }, "else": { ... } } }
@@ -2592,18 +2601,6 @@ CalloutBlock extends WeNode:
   - icon: string [we://icon]
   - version: number [we://version]
 
-ChatMessage extends WeNode:
-  Fields:
-  - role: string [we://role]
-  - content: string [we://content]
-
-ChatSession extends WeNode:
-  Fields:
-  - name: string [we://name]
-  - templateId: string [we://template_id]
-  Relations:
-  - messages: HasMany → ChatMessage [we://chat_message]
-
 CodeBlock extends WeNode:
   Fields:
   - code: string (required) [we://code]
@@ -2630,10 +2627,9 @@ CollectionBlock extends WeNode:
   - arranges: HasMany [we://arranges]
   - gathers: HasOne [we://gathers]
   - board: HasOne → CollectionBlock [we://board]
-  - extractionPasses: HasMany → ExtractionPass [we://extraction_pass_record]
   - extracted: HasMany [we://extracted]
   - recognised: HasMany [we://recognised]
-  - amendments: HasMany → ExtractionAmendment [we://extraction_amendment]
+  - amendments: HasMany → Amendment [we://amendment]
 
 DividerBlock extends WeNode:
   Fields:
@@ -2951,7 +2947,7 @@ Theme extends WeNode:
   Relations:
   - screenshots: HasMany → ImageBlock [we://screenshot]
 
-ExtractionAmendment extends Ad4mModel:
+Amendment extends Ad4mModel:
   Fields:
   - property: string [we://amended_property]
   - previousValue: string [we://previous_value]
@@ -2959,16 +2955,19 @@ ExtractionAmendment extends Ad4mModel:
   - nodeType: string [we://node_type]
   Relations:
   - node: HasOne [we://amended_node]
+  - run: HasOne → ModelRun [we://amendment_run]
 
-ExtractionPass extends Ad4mModel:
+ModelRun extends Ad4mModel:
   Fields:
-  - outcome: string = 'done' [we://outcome]
-  - recordCount: number [we://record_count]
-  - targets: string [we://extraction_targets]
-  - error: string [we://error]
+  - kind: string [we://model_run_kind]
+  - model: string [we://model_run_model]
   - trigger: string = 'manual' [we://trigger]
+  - outcome: string = 'done' [we://outcome]
+  - error: string [we://error]
+  - recordCount: number [we://model_run_record_count]
+  - detail: string [we://model_run_detail]
   - prompt: string [we://prompt]
-  - response: string [we://response]
+  - output: string [we://model_run_output]
 
 TypeStyle extends Ad4mModel:
   Fields:
@@ -2995,6 +2994,8 @@ WeNode extends Ad4mModel:
   - inThread: HasOne [we://thread]
   - partOf: HasOne [we://child]
   - extractedFrom: HasOne [we://extracted]
+  - runs: HasMany → ModelRun [we://model_run]
+  - generatedBy: HasOne → ModelRun [we://generated_by]
   - signals: HasMany → Signal [we://signal]
   - participants: HasMany [we://participant]
   - mentions: HasMany [we://mention]
@@ -3110,7 +3111,7 @@ DeviceStore:
 
 EditorStore:
 - State:
-  - messages: ChatMessage[] — the active AI session's messages (id, role: 'user' | 'assistant' | 'system', content, createdAt, status). Empty for a new chat
+  - messages: the active chat's messages (id, role: 'user' | 'assistant' | 'system', content, createdAt, status). Empty for a new chat
   - isOpen: boolean — the AI chat panel is open
   - isStreaming: boolean — an assistant reply is arriving; streamingContent holds what has arrived so far
   - streamingContent: string — the partial assistant reply while isStreaming, empty otherwise
@@ -3125,7 +3126,7 @@ EditorStore:
   - pickerDefaultName: string — what the picker’s name field starts with
   - pickerDefaultIcon: string — what its icon field starts with
   - pickerShowDestination: boolean — the picker offers a personal-or-space destination, which it can only do while a space is open to save into
-  - sessions: ChatSession[] — this template's saved AI sessions (id, name, templateId), newest first
+  - sessions: this template's saved chats (id, name), newest first
   - activeSessionId: string | null — the session whose messages are shown
   - contentMode: 'preview' | 'visual' — whether the editor shows the rendered template or the visual editing surface
   - schemaJson: string — the template being edited, serialised with its node ids — what the code panel shows and edits. Ids are permanent, so a save keeps them
@@ -3202,7 +3203,7 @@ IdentityStore:
 
 InterpretationStore:
 - State:
-  - activity: InterpretationActivityView[] — every extraction pass this agent knows about, its own and its peers’, running first then most recent. Each row carries display-ready strings: `label` is a whole clause ("Anna is waiting on the model", "Extracted 3 records"), `elapsed` is `m:ss` while running and empty once settled, `name`/`avatar`/`runner` identify who is running it, and `mine` says whether it is this agent’s. Only a row with `mine` carries `prompt`/`response` — a peer’s exchange is never sent live; read it from the call’s `ExtractionPass` records once the pass settles — so gate a details affordance on `hasDetail`
+  - activity: InterpretationActivityView[] — every extraction pass this agent knows about, its own and its peers’, running first then most recent. Each row carries display-ready strings: `label` is a whole clause ("Anna is waiting on the model", "Extracted 3 records"), `elapsed` is `m:ss` while running and empty once settled, `name`/`avatar`/`runner` identify who is running it, and `mine` says whether it is this agent’s. Only a row with `mine` carries `prompt`/`response` — a peer’s exchange is never sent live; read it from the call’s extraction runs (`ModelRun` records under `runs`) once the pass settles — so gate a details affordance on `hasDetail`
   - runningCount: number — how many passes are still in flight. What a collapsed "N extractions running" summary counts
   - hasActivity: boolean — whether there is anything to show at all. Counts settled rows too, so a bar gated on it does not vanish the instant a pass finishes and take its result with it
   - runningPasses: InterpretationActivityView[] — the passes still in flight, for a readout that lists them
@@ -4053,6 +4054,7 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
 Everything said and written in a space, and what was found in it, in one stream.
 Needs: kernels records, interpretation.
 - State (read in an expression as `modules.feed.<name>`):
+  - botAuthors — The authors of lines in the Feed’s window whose own profile says they are a bot, by id — for `row.author in modules.feed.botAuthors`.
   - feedFromStart — Whether the Feed is read from the beginning rather than the live end.
   - feedHasMore — Whether there is more of the space beyond the Feed’s window.
   - feedLoaded — Whether the Feed has answered for this space yet.
@@ -4076,7 +4078,7 @@ Needs: kernels records, interpretation.
   - watchFeed — The Feed is drawn somewhere: keep it live.
 - Parts: `feed.feedView`
 - Panels (`meta.panels[].dock`): `feed` "Feed" (module-owned openness)
-- Settings: `timelineOrder` (enum; agent) — Newest messages
+- Settings: `timelineOrder` (enum; agent) — Newest messages; `botNotices` (boolean; agent) — Tell me when a bot answers
 
 ### Live presence (`live`)
 See each other’s cursors, and follow one person’s screen.

@@ -204,7 +204,7 @@ describe('createInterpretationRelay', () => {
   it('never puts the model exchange on the wire', () => {
     /*
       The prompt is built from the whole transcript, so it is as long as the call, and it would go to
-      every peer once per phase. A finished pass writes it into the graph as an ExtractionPass, which
+      every peer once per phase. A finished pass writes it into the graph as an extraction ModelRun, which
       is where everybody else reads it — so the live row carries none of it.
     */
     const { anna, bo } = pair();

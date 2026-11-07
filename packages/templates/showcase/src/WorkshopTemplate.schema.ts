@@ -73,6 +73,7 @@ import {
   formModal,
   inspectorPanel,
   kindGlyph,
+  modelMark,
   newNoteModal,
   newThingChooser,
   openRecord,
@@ -2869,6 +2870,8 @@ const eventList: SchemaNode = {
                               props: { gap: '200', ay: 'center', wrap: true },
                               children: [
                                 { type: 'we-text', props: { fontWeight: 'semibold', text: { $: 'event.title' } } },
+                                // Where it came from, as the board's cards say it.
+                                modelMark({ as: 'event', extracted: 'event.extractedFrom' }),
                                 {
                                   type: '$if',
                                   props: {
