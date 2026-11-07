@@ -97,6 +97,19 @@ describe('getEntityNameByTargetClass', () => {
     expect(getEntityNameByTargetClass('app://Task', { uuid: 'uuid-task' })).toBe('Task');
   });
 
+  it("does not give WE's name to a foreign class registered under it before WE's class was", () => {
+    // Flux's `Poll` was keyed by its name (and its IRI) while WE had no `Poll`; then the polls
+    // module registered WE's own.
+    const fluxPoll = classOf('flux://Poll');
+    registerDynamicEntities('uuid-poll', { Poll: fluxPoll, 'flux://Poll': fluxPoll });
+    registerEntity('Poll', classOf('we://Poll'));
+    const dataset = { uuid: 'uuid-poll' };
+
+    expect(getEntityNameByTargetClass('we://Poll', dataset)).toBe('Poll');
+    expect(getEntityNameByTargetClass('flux://Poll', dataset)).toBe('flux://Poll');
+    unregisterEntity('Poll');
+  });
+
   it('is undefined for a target class nothing registered, and for a class with no shape', () => {
     registerEntity('Broken', Native);
     expect(getEntityNameByTargetClass('nowhere://X')).toBeUndefined();

@@ -161,6 +161,9 @@ export function getEntityNameByTargetClass(targetClass: string, dataset?: unknow
   const perspectiveUuid = (dataset as { uuid?: string } | undefined)?.uuid;
   const dynamic = perspectiveUuid ? perspectiveEntityRegistry.get(perspectiveUuid) : undefined;
   for (const [name, model] of Object.entries(dynamic ?? {})) {
+    // A foreign class registered under a name before WE's own class of that name was (a module
+    // registered after the dataset opened) does not take the name from it.
+    if (name in entityRegistry) continue;
     if (targetClassOf(model) === targetClass) return name;
   }
   return undefined;

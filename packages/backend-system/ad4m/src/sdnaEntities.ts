@@ -364,8 +364,8 @@ export async function installModuleSdna(p: PerspectiveProxy, moduleEntities: rea
  * One `registerShapes` call. The executor decides what changed and writes only that; a space whose
  * shapes are current costs the call and writes nothing.
  *
- * Returns the classes it wrote, for logging: by name from this executor, by target class from one
- * that answers `written` by IRI.
+ * Returns the classes it wrote, for logging, by entity name (`registerModels` maps the target class
+ * IRIs the executor answers with).
  */
 export async function refreshSpaceSdna(p: PerspectiveProxy): Promise<string[]> {
   return registerModels(p, SPACE_MODELS);

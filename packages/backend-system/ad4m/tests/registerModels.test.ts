@@ -143,7 +143,7 @@ describe('isEntityRegistered', () => {
 
 describe('classNameOf', () => {
   // Each expected value is what the executor's `class_name_of` answers for the same input
-  // (ad4m's rust-executor/src/perspectives/shacl_parser.rs, at the pinned commit 99fe1354d): the
+  // (ad4m's rust-executor/src/perspectives/shacl_parser.rs, at the pinned commit): the
   // name `shapes(names)` selects by, so a WE name that differs looks up a class never stored.
   it.each([
     ['urn:isbn:Book', 'Book'],
