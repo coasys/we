@@ -86,6 +86,7 @@ describe('the AD4M identity port', () => {
           head,
           fork: null,
           storeBehind: { since: 1_700_000_000, seq: 0 },
+          store: null,
         } satisfies IdentityStatus,
         devices: [
           { keyId: 'd1', sign: 'z6MkOne', bot: null, expires: null, addedSeq: 0, revokedSeq: null, thisDevice: true },
