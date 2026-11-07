@@ -209,7 +209,11 @@ same way: in a sealed item's header (`coasys-custody/3`), or after the index in 
 another app staged since. A newer stage replaces any staged key, whoever staged it. A key staged
 before tokens were kept has none, and only a read whose log is past it discards it. A read that
 forgets a replaced kept key (the log is past it and no key waits in the inbox) leaves the staged slot
-alone, since a rotation's publish may be on its way; only `remove-master` takes both slots.
+alone, since a rotation's publish may be on its way. `remove-master` (the logout) forgets the kept
+key and discards a staged key at or behind the log's current master, which the next read would
+otherwise promote or keep, bringing back the key just removed; a staged key ahead of the log is
+another app's rotation in flight and stays for its owner. That rule is the identity client's
+(`remove_master`); the service removes nothing after it.
 
 Promoting can fail after the publish, for example when the keychain refuses the update or the unlock
 is cancelled. The key **was** replaced all the same. The window says so ("This computer could not
@@ -277,7 +281,7 @@ answer is one `rotate` that revokes the targets and replaces the key.
   device that calls itself a server starts unticked. The person sees every device and decides; the
   default is not proof of what a device is.
 - **Removing the master key is logical removal, not secure erasure.** `remove-master` deletes the
-  item and any staged one from the keychain or the Secret Service, or unlinks the encrypted files. The bytes may stay on
+  item, and a staged one at or behind the log, from the keychain or the Secret Service, or unlinks the encrypted files. The bytes may stay on
   the disk, in the store's database or in a backup until overwritten. They are encrypted (sealed
   under the passphrase, or under the keychain's own protection), so what remains is as strong as
   that protection, not gone.

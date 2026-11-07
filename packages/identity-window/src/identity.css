@@ -132,8 +132,10 @@ label.check {
   color: var(--text);
 }
 
+/* `border-box`: a field given a width keeps its padding and border inside it, never past its box. */
 input[type='text'],
 input[type='password'] {
+  box-sizing: border-box;
   font: inherit;
   color: var(--text);
   background: var(--sunken);
@@ -142,10 +144,24 @@ input[type='password'] {
   padding: 10px 12px;
 }
 
+/*
+  A word field sits beside its number, not under it, with tighter padding than other fields: twelve
+  of them, the lead, an error and the buttons fit the 640 px window.
+*/
+label.word {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+}
+
 /* A word field shrinks with its column rather than keeping the browser's default input width. */
 .word input {
+  box-sizing: border-box;
   min-width: 0;
   width: 100%;
+  flex: 1;
+  padding: 6px 8px;
 }
 
 /* The field the custody service refused: the error colour, in a border that shows without focus. */

@@ -253,6 +253,17 @@ describe('the identity window', () => {
     expect(css).toMatch(/\.word input \{[^}]*min-width: 0;[^}]*width: 100%;/);
   });
 
+  it('keeps each field inside its box: padding and border count in its width', () => {
+    // A word field at `width: 100%` without it is its padding and border wider than its card, and
+    // runs over the next one.
+    expect(css).toMatch(/\.word input \{[^}]*box-sizing: border-box;/);
+    expect(css).toMatch(/input\[type='text'\],\s*input\[type='password'\] \{[^}]*box-sizing: border-box;/);
+  });
+
+  it('puts a word field beside its number, so the twelve fit the 640 px window', () => {
+    expect(css).toMatch(/label\.word \{[^}]*flex-direction: row;/);
+  });
+
   it('never draws the 12 words on a screen after the words entry', () => {
     // The window draws only what a screen carries: none of the later screens has a field for words.
     const later: Screen[] = [

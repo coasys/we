@@ -678,7 +678,10 @@ const ONLY_COPY: &str = "This computer keeps the only copy of your master key: n
 fn words_refused(e: &ad4m_identity_core::words::WordsError) -> (String, Option<usize>) {
     use ad4m_identity_core::words::WordsError;
     match e {
-        WordsError::Count(n) => (format!("That is {n} words. Type all 12, in order."), None),
+        WordsError::Count(n) => {
+            let noun = if *n == 1 { "word" } else { "words" };
+            (format!("That is {n} {noun}. Type all 12, in order."), None)
+        }
         WordsError::UnknownWord { position, .. } => (
             format!("Word {position} is not one of the words a recovery phrase uses. Check it on your paper."),
             Some(*position),
@@ -3294,14 +3297,10 @@ async fn remove_master_on<R: ExecutorRpc>(
             answer(reply, Err(CustodyError::WrongInput));
             continue;
         };
+        // The client forgets the kept key and owns the staged slot: a stage at or behind the log
+        // goes, one ahead of it (another app's rotation in flight) stays.
         let screen = match remove_master(executor, &vault.unlocking(None), &did, &RANDOM).await {
-            Ok(_) => {
-                // The client forgot the kept key; a logout leaves no staged copy here either.
-                if let Err(e) = vault.remove_every_copy(scid) {
-                    log::warn!("custody: a staged master key was not removed: {e}");
-                }
-                Screen::MasterRemoved
-            }
+            Ok(_) => Screen::MasterRemoved,
             Err(e) => failed(&e),
         };
         return answer(reply, Ok(screen));
@@ -5005,6 +5004,20 @@ mod tests {
         assert!(words_refused(&short).0.contains("2 words"));
     }
 
+    #[test]
+    fn a_count_refusal_says_word_for_one_and_words_for_more() {
+        let count = |typed: &str| words_refused(&words::parse(typed).unwrap_err()).0;
+        assert_eq!(count("abandon"), "That is 1 word. Type all 12, in order.");
+        assert_eq!(
+            count("abandon ability"),
+            "That is 2 words. Type all 12, in order."
+        );
+        assert_eq!(
+            count(&["abandon"; 13].join(" ")),
+            "That is 13 words. Type all 12, in order."
+        );
+    }
+
     /// The 12 words of `entropy`, as a person types them.
     fn phrase_of(entropy: u8) -> String {
         words::from_entropy(&[entropy; 16]).words().join(" ")
@@ -5645,6 +5658,68 @@ mod tests {
         remove_master_on(&executor, &empty, &address, &mut rx, &mut reply).await;
         let screen = first.await.unwrap().unwrap();
         assert!(matches!(&screen, Screen::Failed { .. }), "{screen:?}");
+    }
+
+    /// The logout through the window's remove step, with another device (`d2`) holding the current
+    /// master #0. The kept key goes; a stage at or behind the log goes with it (a refresh would
+    /// bring the removed key back); a stage ahead of the log is another app's rotation in flight
+    /// and stays. One rule, the client's: the service removes nothing after it.
+    #[tokio::test]
+    async fn a_logout_takes_the_kept_key_and_a_stage_up_to_the_log_but_not_one_ahead() {
+        // (staged index, staged index left after the logout)
+        for (staged, left) in [(None, None), (Some(0), None), (Some(1), Some(1))] {
+            let (events, _) = crate::keylog::tests::log_with_d2(true);
+            let scid = events[0].scid.clone();
+            let mut record = ad4m_identity_core::record::PrivateRecord::default();
+            record
+                .devices
+                .insert("d1".into(), this_computer(None, true, Some(0)));
+            let mut d2 = named("Phone");
+            d2.holds_master = Holds::Yes;
+            d2.master_index = Some(0);
+            record.devices.insert("d2".into(), d2);
+            let (executor, _) = executor_with(&events, &record);
+            executor
+                .rpc()
+                .answer("identity.recordPut", json!({ "version": 2 }));
+            let vault = memory_vault(crate::store::StoreKind::Keychain);
+            keep_master(&vault, &scid, 0);
+            if let Some(index) = staged {
+                let seed = words::seed(&words::from_entropy(&[41u8; 16]));
+                let key = words::master_key(&seed, index).unwrap();
+                Vault::stage_master(
+                    &vault.unlocking(None),
+                    &scid,
+                    index,
+                    Secret::new(key.to_bytes()),
+                    &ad4m_identity_client::StageToken([0xe; 16]),
+                )
+                .unwrap();
+            }
+            let (address, mut rx, mut reply, window, first) = opened();
+            let ((), screens) = tokio::join!(
+                remove_master_on(&executor, &vault, &address, &mut rx, &mut reply),
+                async {
+                    let mut shown = vec![first.await.unwrap().unwrap()];
+                    shown.push(window.step(StepInput::Remove).await);
+                    shown
+                }
+            );
+            assert!(matches!(&screens[0], Screen::RemoveMaster { error: None }));
+            assert!(
+                matches!(&screens[1], Screen::MasterRemoved),
+                "staged {staged:?}: {:?}",
+                screens[1]
+            );
+            assert_eq!(executor.rpc().called("identity.recordPut").len(), 1);
+            assert!(!vault.holds(&scid).unwrap(), "staged {staged:?}");
+            assert_eq!(vault.master_index(&scid).unwrap(), None);
+            assert_eq!(
+                vault.staged_index(&scid).unwrap(),
+                left,
+                "staged {staged:?}"
+            );
+        }
     }
 
     /// The log of `log_with_d2`, rotated once to master #1 elsewhere.

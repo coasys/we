@@ -103,17 +103,6 @@ impl DesktopVault {
         }
     }
 
-    /// Removes the master key of `scid` from this computer: the kept key and any staged one, so no
-    /// copy is left in either slot. For a logout (`remove_master`), after the record no longer
-    /// lists this computer as holding it. A refresh that forgets a replaced kept key uses
-    /// [`Vault::forget_master`] instead, which leaves a staged key for the rotation that staged
-    /// it. Needs no unlock.
-    pub fn remove_every_copy(&self, scid: &str) -> Result<(), VaultError> {
-        log::info!("custody: remove every copy of a master key");
-        self.store.delete(&item_name(scid))?;
-        self.store.delete(&staged_name(scid))
-    }
-
     /// Whether an item for `scid` is held, without an unlock (no prompt, no passphrase): the store is
     /// asked whether the item exists, and the item itself is never read.
     pub fn holds(&self, scid: &str) -> Result<bool, VaultError> {
@@ -307,7 +296,8 @@ impl Vault for Unlocking<'_> {
     /// Forgets the kept key only. A staged key stays: a refresh forgets a kept key the log has
     /// replaced while a rotation's stage ahead of the log (this app's, or another app's on this
     /// computer) may still be waiting for its publish, and `promote_master` needs it then. The
-    /// logout, which removes every copy, is [`DesktopVault::remove_every_copy`].
+    /// logout (`remove_master`) calls this too, then discards a stage at or behind the log itself
+    /// with [`Vault::discard_staged`], leaving one ahead of it.
     fn forget_master(&self, scid: &str) -> Result<(), VaultError> {
         log::info!("custody: forget a master key");
         self.vault.store.delete(&item_name(scid))
@@ -894,14 +884,6 @@ mod tests {
                 .index(),
             2
         );
-
-        // A logout takes every copy: the kept key and whatever is staged.
-        flow.stage_master("QmScid", 3, Secret::new([7u8; 32]), &ours)
-            .unwrap();
-        this_app.remove_every_copy("QmScid").unwrap();
-        assert_eq!(this_app.master_index("QmScid").unwrap(), None);
-        assert_eq!(this_app.staged_index("QmScid").unwrap(), None);
-        assert!(!this_app.holds("QmScid").unwrap());
     }
 
     #[test]
@@ -1211,14 +1193,11 @@ mod tests {
         assert_eq!(locked.staged_index("QmScid").unwrap(), None);
 
         // A refresh forgetting a replaced kept key leaves a staged one (a rotation's publish may
-        // be on its way); removing the master key from this computer takes both.
+        // be on its way).
         flow.stage_master("QmScid", 3, Secret::new([7u8; 32]), &ours)
             .unwrap();
         locked.forget_master("QmScid").unwrap();
         assert_eq!(locked.staged_index("QmScid").unwrap(), Some(3));
-        assert_eq!(locked.master_index("QmScid").unwrap(), None);
-        vault.remove_every_copy("QmScid").unwrap();
-        assert_eq!(locked.staged_index("QmScid").unwrap(), None);
         assert_eq!(locked.master_index("QmScid").unwrap(), None);
     }
 
