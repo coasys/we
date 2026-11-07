@@ -1,6 +1,6 @@
 /**
- * The custody sidecar as the main process runs it: the credential in its environment and never in
- * its arguments, answers matched to their requests, and a stop that ends it.
+ * The custody sidecar as the main process runs it: the credential as the first line of its stdin and
+ * never in its arguments or environment, answers matched to their requests, and a stop that ends it.
  */
 import { EventEmitter } from 'events';
 import { dirname, join } from 'path';
@@ -14,22 +14,31 @@ const here = dirname(fileURLToPath(import.meta.url));
 const CREDENTIAL = 'the-custody-credential';
 
 describe('custodySpawn', () => {
-  it('passes the credential in the environment and never as an argument', () => {
-    const { command, args, env } = custodySpawn({
+  it('passes the credential as the first line of stdin, never as an argument or in the environment', () => {
+    const { command, args, env, stdin } = custodySpawn({
       binary: '/opt/we/we-custody',
       executorPort: 12001,
       credential: CREDENTIAL,
-      baseEnv: { HOME: '/home/someone', AD4M_ADMIN_CREDENTIAL: 'the-admin-credential' },
+      baseEnv: {
+        HOME: '/home/someone',
+        AD4M_ADMIN_CREDENTIAL: 'the-admin-credential',
+        AD4M_CUSTODY_CREDENTIAL: 'inherited',
+        AD4M_CUSTODY_CREDENTIAL_FILE: '/tmp/custody',
+        WE_EXTERNAL_AD4M_CUSTODY_CREDENTIAL: 'external',
+      },
     });
     expect(command).toBe('/opt/we/we-custody');
     expect(args).toEqual(['--executor-port', '12001']);
     expect(args.join(' ')).not.toContain(CREDENTIAL);
-    // The custody credential only: an admin credential in the parent's environment is not passed on.
-    expect(env).toEqual({ HOME: '/home/someone', AD4M_CUSTODY_CREDENTIAL: CREDENTIAL });
+    expect(stdin).toBe(`${CREDENTIAL}\n`);
+    // Neither credential, and none inherited: an environment is a file the admin credential reads.
+    expect(env).toEqual({ HOME: '/home/someone' });
   });
 
-  it('refuses to start without a credential', () => {
-    expect(() => custodySpawn({ binary: 'b', executorPort: 1, credential: '', baseEnv: {} })).toThrow();
+  it('refuses to start without a credential, or with one that is not one line', () => {
+    for (const credential of ['', '  ', 'two\nlines']) {
+      expect(() => custodySpawn({ binary: 'b', executorPort: 1, credential, baseEnv: {} })).toThrow();
+    }
   });
 });
 
@@ -72,12 +81,12 @@ describe('custodyClient', () => {
 });
 
 describe('startCustody', () => {
-  it('runs the sidecar with the credential in its environment, and stop ends it', async () => {
+  it('runs the sidecar with the credential on its stdin before any request, and stop ends it', async () => {
     const custody = startCustody({
       binary: join(here, 'fixtures', 'custody-echo.mjs'),
       executorPort: 12001,
       credential: CREDENTIAL,
-      baseEnv: { PATH: process.env.PATH },
+      baseEnv: { PATH: process.env.PATH, AD4M_CUSTODY_CREDENTIAL: 'inherited', AD4M_ADMIN_CREDENTIAL: 'admin' },
       log: () => {},
     });
     const answer = await custody.call('publicState');
@@ -85,6 +94,7 @@ describe('startCustody', () => {
       method: 'publicState',
       argv: ['--executor-port', '12001'],
       credential: CREDENTIAL,
+      envCredential: null,
       admin: null,
     });
     await expect(custody.call('fail')).rejects.toThrow('it failed');

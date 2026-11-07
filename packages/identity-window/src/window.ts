@@ -13,7 +13,16 @@ import '@we/tokens/css/color';
 import 'virtual:we-identity-theme.css';
 import './identity.css';
 
-import { heading, isLast, remaining, type Screen, spreadWords, type StepInput, wordNumber } from './screens';
+import {
+  heading,
+  isLast,
+  remaining,
+  type Screen,
+  spreadWords,
+  type StepInput,
+  targetLine,
+  wordNumber,
+} from './screens';
 
 /**
  * How the window reaches the custody service: the four calls the host's main process answers for
@@ -345,7 +354,7 @@ function body(screen: Screen): Child[] {
       return [
         ...whoAsks(screen),
         ...(screen.kind === 'confirm-revoke'
-          ? [el('ul', {}, ...screen.devices.map((d) => el('li', { textContent: d })))]
+          ? [el('ul', {}, ...screen.targets.map((t) => el('li', { textContent: targetLine(t) })))]
           : []),
         ...(p ? [p.label] : []),
         ...errorLine(screen.error),

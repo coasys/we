@@ -37,9 +37,16 @@ ended — never a screen. See each app's `DEVELOPMENT.md`.
 
 ## The sidecar
 
-`we-custody --executor-port <port> [--custody-dir <dir>]`, with the executor's admin credential in
-`AD4M_ADMIN_CREDENTIAL` (never an argument: `ps` shows arguments to every user). It takes no
-identity store setting: it asks the executor which store it uses, as below. It speaks lines of JSON on stdin and stdout
+`we-custody --executor-port <port> [--custody-dir <dir>]`. It reaches the executor with the
+**custody credential** — the one the executor's `--custody-channel` admits, distinct from the admin
+credential the app's window gets — and reads it from the **first line of its stdin**, before any
+request. Never an argument (`ps` shows arguments to every user) and never the environment (a process's
+`/proc/<pid>/environ` is readable through the executor by whoever holds the admin credential): the
+sidecar refuses to start with `AD4M_CUSTODY_CREDENTIAL` or `AD4M_CUSTODY_CREDENTIAL_FILE` set, or
+without a non-blank first line ending in a newline (exit 2). The executor takes the same credential
+the same way: started with `--custody-channel`, it reads the first line of its own stdin and exits 78
+if either variable is set. It takes no identity store setting: it asks the executor which store it
+uses, as below. After the credential line it speaks lines of JSON on stdin and stdout
 (`src/sidecar.rs`):
 
 ```text
@@ -144,8 +151,8 @@ The steps the main window may open (`IdentityStep`) besides `create` and `revoke
 | `restore`        | a computer of no identity yet  | "Use my 12 words": finds the identity, ticks its devices to lock out, rotates and adds this computer  |
 | `remove-master`  | a computer with the master key | on log out: forgets this computer's copy of the master key; refused when it is the only copy          |
 
-`revoke` carries `rotate`: "Also replace my master key", ticked by default when the device revoked
-keeps the master key. A revoke alone leaves that copy valid; with the choice the window takes the 12
+`revoke` carries `rotate`: "Also replace my master key", ticked by default when the key log says the
+device revoked may still hold the master key (`mayHoldMaster`, below). A revoke alone leaves that copy valid; with the choice the window takes the 12
 words and publishes one `rotate` that revokes the device and replaces the master key, so the revoked
 copy signs nothing any more.
 
@@ -186,6 +193,17 @@ for one, or a new one when this computer keeps no master key yet.
 signed parts) and `masterWaiting`. Saying no to a request is closing the window: the request waits
 until it expires.
 
+What a card or a confirmation says about a device comes from the key log, never from the private
+record, which any linked device can write. A request card names who asks by its key id and the
+fingerprint of its signing key; a `confirm-revoke` card names each key it would revoke the same way
+(`targets`), with the record's name only beside it ("your record calls it …"), and refuses a key the
+log does not list. Whether a device **may still hold a valid master key** — on that card and on the
+`revoke` step's confirmation (`mayHoldMaster`) — is the log's too: it made the identity, or the
+claim it joined with said `canKeepMaster`. A record saying `holdsMaster: false` does not hide that,
+and a revoke does not change the master key, so the person is told to replace it. A `confirm-revoke`
+request that also asks to replace the master key goes on, after the yes, to the 12 words, and the
+answer is one `rotate` that revokes the targets and replaces the key.
+
 ## Testing
 
 ```sh
@@ -210,8 +228,10 @@ cargo test --config "$P.ad4m-identity-client.path=\"$A/ad4m-identity-client\"" \
 
 A patched build rewrites `Cargo.lock`'s `source` lines; restore it before committing.
 
-The end-to-end test runs the three flows against a real identity-store and two real executors; see
-the header of `tests/live.rs` for what it needs:
+The end-to-end test runs the three flows against a real identity-store and real executors, and a
+desktop executor (`--custody-channel`, the custody credential on stdin, no `--operator`) whose first
+link records its operator, after which another identity's offer is refused `first-link`; see the
+header of `tests/live.rs` for what it needs:
 
 ```sh
 CUSTODY_LIVE=1 AD4M_REPO=<ad4m> cargo test --features cheap-kdf --test live -- --nocapture

@@ -29,6 +29,7 @@ import { openExecutorLog } from './executorLog.js';
 import {
   afterExecutorExit,
   crashBackoff,
+  custodyCredentialLine,
   executorArgs,
   executorEnv,
   EXIT,
@@ -37,6 +38,7 @@ import {
   startWithPortRetry,
   stopChild,
   waitUntilReady,
+  withoutCustodyCredential,
 } from './executorProcess.js';
 import { createIdentity, IDENTITY_PAGE, IDENTITY_SCHEME, identityFile, isIdentityPage } from './identityWindow.js';
 import { executorSpawnEnv, handleFromWindow, isFromWindow } from './ipcSender.js';
@@ -216,7 +218,10 @@ function ensureDataPathInitialised(executorPath, dataPath, log) {
   if (existsSync(join(dataPath, 'mainnet_seed.seed'))) return;
 
   console.log('[main] Data path not initialised, running executor init:', dataPath);
-  const result = spawnSync(executorPath, ['init', '--data-path', dataPath], { maxBuffer: 16 * 1024 * 1024 });
+  const result = spawnSync(executorPath, ['init', '--data-path', dataPath], {
+    maxBuffer: 16 * 1024 * 1024,
+    env: withoutCustodyCredential(process.env),
+  });
   for (const [output, destination] of [
     [result.stdout, process.stdout],
     [result.stderr, process.stderr],
@@ -339,8 +344,12 @@ async function startExecutorOnce({ samePort }) {
     if (!samePort || !ad4mPort) {
       ad4mPort = await findFreePort(12000, 13000);
       ad4mToken = uuidv4();
-      custodyToken = uuidv4();
     }
+    // The custody credential is fresh at every start, the same port or not: the renderer never
+    // holds it, so nothing needs it to outlive the executor and the sidecar it is given to. It is
+    // never the admin credential (`custodyCredentialLine` refuses that).
+    custodyToken = uuidv4();
+    const custodyLine = custodyCredentialLine(custodyToken, ad4mToken);
 
     // Get AD4M data directory
     const ad4mDataPath = resolveAd4mDataPath();
@@ -372,18 +381,25 @@ async function startExecutorOnce({ samePort }) {
     ensureDataPathInitialised(executorPath, ad4mDataPath, log);
     const configFile = ensureExecutorConfig(ad4mDataPath);
 
-    // stdin is a pipe this process holds open and never writes: with `--watch-stdin true` the
-    // executor stops when it closes, which `stopExecutorProcess` does, and the OS does if this
-    // process dies. Its output is still captured: Holochain and language output reach stdout.
+    // stdin is a pipe this process holds open: with `--watch-stdin true` the executor stops when it
+    // closes, which `stopExecutorProcess` does, and the OS does if this process dies. The one thing
+    // written to it is the custody credential's line, at once: the executor waits for it before it
+    // starts anything (`--custody-channel`), and a credential anywhere else could be read back by
+    // the renderer's admin credential (an environment is a file: `/proc/<pid>/environ`). Its output
+    // is still captured: Holochain and language output reach stdout.
     executorProcess = spawn(
       executorPath,
       executorArgs({ port: ad4mPort, dataPath: ad4mDataPath, configFile, logDir: join(ad4mDataPath, 'logs') }),
       {
         detached: true, // Create a new process group so we can kill the entire tree
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: executorSpawnEnv(executorEnv(), ad4mToken, custodyToken),
+        env: executorSpawnEnv(executorEnv(), ad4mToken),
       },
     );
+    // A write to a pipe whose reader is gone (an executor that already exited) is answered by its
+    // exit, below, not by a throw.
+    executorProcess.stdin?.on('error', () => {});
+    executorProcess.stdin?.write(custodyLine);
 
     // Detach from the parent — lets Node.js exit without waiting for the child,
     // and is required for process.kill(-pid) group-kill to work.
@@ -394,8 +410,6 @@ async function startExecutorOnce({ samePort }) {
     executorProcess.stdin?.unref?.();
     executorProcess.stdout?.unref();
     executorProcess.stderr?.unref();
-    // A write to a pipe whose reader is gone; nothing is written, so only the close can fail.
-    executorProcess.stdin?.on('error', () => {});
 
     // The last lines it printed: the reason a refused start (78, 79) gives is on stderr.
     const tail = outputTail(20);
@@ -1234,7 +1248,13 @@ app.whenReady().then(async () => {
     ad4mToken = process.env.WE_EXTERNAL_AD4M_TOKEN;
     console.log('[main] External executor mode — port:', ad4mPort);
     // An external executor's custody channel has its own credential; without one, identity is off.
+    // Read here and passed to the sidecar on its stdin only; whoever runs that executor wrote the
+    // same value to its stdin as the first line. No child of this process inherits the variable
+    // (`withoutCustodyCredential`), and it is dropped from this process's own environment too, so
+    // nothing started later gets it. This process's initial environment still holds it: external
+    // mode is for development, see DEVELOPMENT.md.
     custodyToken = process.env.WE_EXTERNAL_AD4M_CUSTODY_CREDENTIAL || null;
+    delete process.env.WE_EXTERNAL_AD4M_CUSTODY_CREDENTIAL;
     if (custodyToken) startCustodyFor(ad4mPort, custodyToken);
     else console.error('[main] No WE_EXTERNAL_AD4M_CUSTODY_CREDENTIAL — identity is off');
   } else {

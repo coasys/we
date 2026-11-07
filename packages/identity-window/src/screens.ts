@@ -36,7 +36,8 @@ export type Screen =
       keyId: string;
       fingerprint: string;
       code: string;
-      devices: string[];
+      /** For `confirm-revoke`: the keys it asks to revoke, as the key log lists them. */
+      targets: RevokeTarget[];
       passphrase: boolean;
       error: string | null;
     }
@@ -47,8 +48,9 @@ export type Screen =
   | {
       screen: 'revoke-confirm';
       keyId: string;
-      holdsMaster: boolean;
-      /** Whether "Also replace my master key" starts ticked. */
+      /** The key log let the device keep the master key, so it may still hold a valid one. */
+      mayHoldMaster: boolean;
+      /** Whether "Also replace my master key" starts ticked: when the device may hold a copy. */
       rotate: boolean;
       passphrase: boolean;
       error: string | null;
@@ -83,6 +85,27 @@ export interface RestoreDevice {
   name: string | null;
   kind: string | null;
   lockOut: boolean;
+}
+
+/**
+ * A key a revoke request asks to revoke (`we_custody::RevokeTarget`): its key id and its signing
+ * key's fingerprint from the key log say which key goes, and `mayHoldMaster` is the log's too.
+ * `recordName` is what the private record calls it, which any linked device can write: shown
+ * beside the key, never instead of it.
+ */
+export type RevokeTarget = { keyId: string; fingerprint: string; recordName: string | null; mayHoldMaster: boolean };
+
+/** Why revoking a device the log let keep the master key does not take that key from it. */
+const MAY_HOLD_MASTER =
+  'A revoke does not change your master key: replace your master key to stop it from adding and removing your devices.';
+
+/** One key of a revoke request, as its card lists it. */
+export function targetLine(target: RevokeTarget): string {
+  return [
+    `${target.keyId} · key ${target.fingerprint}`,
+    ...(target.recordName ? [`your record calls it ${target.recordName}`] : []),
+    ...(target.mayHoldMaster ? ['may still hold a valid master key'] : []),
+  ].join(' · ');
 }
 
 /** What the window sends back (`we_custody::StepInput`). */
@@ -207,10 +230,7 @@ export function heading(screen: Screen): { title: string; lead: string } {
             title: `Device ${screen.keyId} (key ${screen.fingerprint}) asks for the master key — send it?`,
             lead: `Your record calls it ${screen.device}. Check that the device shows the code ${screen.code} and the same key. With the master key, it can add and remove your devices too. Send it only if you asked for it there.`,
           }
-        : {
-            title: `${screen.device} asks to revoke ${screen.devices.join(', ')}`,
-            lead: 'Each revoked device stops acting as you, and can never be added back. Confirm only if you asked for this there.',
-          };
+        : revokeRequest(screen);
     case 'request-answered':
       return screen.kind === 'send-master'
         ? {
@@ -240,9 +260,9 @@ export function heading(screen: Screen): { title: string; lead: string } {
         title: `Revoke the key ${screen.keyId}?`,
         lead: [
           'Do this for a device you lost or no longer use. Your key log records that its key no longer acts as you, and the key can never be added back. Other computers apply this when they next read your key log, so one that is offline can accept the key for a while. Some things it signed before can also stop counting as yours.',
-          ...(screen.holdsMaster
+          ...(screen.mayHoldMaster
             ? [
-                'It keeps a copy of your master key, or has one waiting. Its copy of the master key stays valid after the revoke unless you also replace your master key, which stops it from adding and removing your devices. That needs your 12 words.',
+                `Your key log let this device keep your master key, so it may still hold a valid master key. ${MAY_HOLD_MASTER} “Also replace my master key” does that with this revoke, and needs your 12 words.`,
               ]
             : []),
         ].join(' '),
@@ -318,6 +338,29 @@ function wordsHeading(purpose: WordsPurpose): { title: string; lead: string } {
         lead: `${type} The revoke also replaces your master key, and only your words can make the next one.`,
       };
   }
+}
+
+/**
+ * A revoke request's card: who asks and which keys go, each by the key log's key id and fingerprint,
+ * never by the record's names; and which of them may still hold a valid master key, as the log says.
+ */
+function revokeRequest(screen: Extract<Screen, { screen: 'request' }>): { title: string; lead: string } {
+  const holders = screen.targets.filter((t) => t.mayHoldMaster).map((t) => t.keyId);
+  return {
+    title: `Device ${screen.keyId} (key ${screen.fingerprint}) asks to revoke ${screen.targets
+      .map((t) => `${t.keyId} (key ${t.fingerprint})`)
+      .join(', ')}`,
+    lead: [
+      `Your record calls the asking device ${screen.device}. Check that it shows the code ${screen.code} and the same key.`,
+      'Each revoked device stops acting as you, and can never be added back.',
+      ...(holders.length
+        ? [
+            `Your key log let ${holders.join(', ')} keep your master key, so ${holders.join(', ')} may still hold a valid master key. ${MAY_HOLD_MASTER}`,
+          ]
+        : []),
+      'Confirm only if you asked for this there.',
+    ].join(' '),
+  };
 }
 
 /** Whether the screen is the step's last: the window offers Done and closes. */
