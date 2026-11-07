@@ -23,8 +23,9 @@
 //!
 //! A second case starts a desktop executor the way the desktop apps do: `--custody-channel`, the
 //! custody credential as the first line of its stdin, and no `--operator`. Its first link, made
-//! through its own custody service ("Show my code" scanned by the holder), records the operator,
-//! and an offer of another identity is refused `first-link` from then on.
+//! through its own custody service ("Show my code" scanned by the holder), records the operator
+//! when it joins: while bound, an offer of another identity is refused `already-linked`, and once
+//! its key is revoked, `first-link`.
 //!
 //! The cases run one at a time: each starts its own store and executors.
 
@@ -736,8 +737,9 @@ async fn make_link_and_revoke_through_the_custody_service() {
 /// A desktop executor — `--custody-channel` with the custody credential on stdin, no `--operator`,
 /// so no operator record — joins the identity of the first holder that links it, through its own
 /// custody service as the desktop apps run it ("Show my code" here, "Scan or paste a code" on the
-/// holder). That first claim records the operator (`FirstRun`): from then on an offer of another
-/// identity is refused `first-link`, before anything reaches the store.
+/// holder). Its join records the operator (`FirstRun`; the claim alone records nothing): while
+/// bound an offer of another identity is refused `already-linked`, and after the holder revokes
+/// its key, `first-link` — before anything reaches the store.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_desktop_executor_takes_its_first_link_as_its_operator() {
     let Some((_one, world)) = set_up().await else {
@@ -833,22 +835,11 @@ async fn a_desktop_executor_takes_its_first_link_as_its_operator() {
     // Claimed over the custody channel: a desktop app may keep the master key.
     assert!(can_keep);
 
-    // The store took B's claim, so B records the holder's identity as its operator, and an
-    // offer of another identity is refused — even before B's key is in any log.
-    let refused = b
-        .try_call(
-            "identity.claimOffer",
-            json!({ "offer": other_offer, "canKeepMaster": false }),
-        )
-        .await
-        .expect_err("a desktop executor claimed an offer of a second identity");
-    assert!(refused.contains("first-link"), "{refused}");
-    assert!(
-        refused.contains(&did) && refused.contains(&other_did),
-        "the refusal names the operator and the offer's identity: {refused}"
-    );
+    // The claim records nothing yet: until B joins, a claim that never completes (the wrong code
+    // scanned, the holder said No) leaves B free to claim again. Nothing here claims C's offer
+    // before the join, so B's own join is the only one in flight.
 
-    // The holder confirms, and B joins the identity it recorded.
+    // The holder confirms, and B joins the identity — which records it as B's operator.
     let (linked, joined) = tokio::join!(
         holder.step(StepInput::Confirm {
             name: Some("Desktop B".into()),
@@ -879,18 +870,70 @@ async fn a_desktop_executor_takes_its_first_link_as_its_operator() {
         (status["did"].as_str(), status["keyId"].as_str()),
         (Some(did.as_str()), Some("d2"))
     );
+
+    // Bound to A's identity, B refuses an offer of another one: its key speaks for an identity.
+    let refused = b
+        .try_call(
+            "identity.claimOffer",
+            json!({ "offer": other_offer, "canKeepMaster": false }),
+        )
+        .await
+        .expect_err("a linked desktop executor claimed an offer of a second identity");
+    assert!(refused.contains("already-linked"), "{refused}");
+    assert_eq!(log_ops(&c, &other_did).await, ["incept"]);
+
+    // Once the holder revokes d2, B's key speaks for no identity, but the operator it recorded
+    // at the join stays: an offer of another identity is now refused `first-link`.
+    let confirm = holder
+        .start(IdentityStep::Revoke {
+            key_id: "d2".into(),
+        })
+        .await
+        .unwrap();
+    assert!(
+        matches!(&confirm, Screen::RevokeConfirm { key_id, .. } if key_id == "d2"),
+        "{confirm:?}"
+    );
+    let revoked = holder
+        .step(StepInput::Revoke {
+            passphrase: Some(PASSPHRASE.into()),
+        })
+        .await
+        .unwrap();
+    assert!(
+        matches!(&revoked, Screen::Revoked { key_id, seq: 2 } if key_id == "d2"),
+        "{revoked:?}"
+    );
+    let status = b.call("identity.status", json!({})).await;
+    assert_eq!(status["revoked"], 2, "B reports its key revoked: {status}");
+    let refused = b
+        .try_call(
+            "identity.claimOffer",
+            json!({ "offer": other_offer, "canKeepMaster": false }),
+        )
+        .await
+        .expect_err("a desktop executor claimed an offer of an identity not its operator");
+    assert!(refused.contains("first-link"), "{refused}");
+    assert!(
+        refused.contains(&did) && refused.contains(&other_did),
+        "the refusal names the operator and the offer's identity: {refused}"
+    );
     // C's identity never got B's key.
-    let log = c
+    assert_eq!(log_ops(&c, &other_did).await, ["incept"]);
+}
+
+/// The ops of `did`'s log, fresh from the store, as `node` reads it.
+async fn log_ops(node: &Node, did: &str) -> Vec<String> {
+    let log = node
         .call(
             "identity.log",
-            json!({ "did": other_did, "from": 0, "fresh": true }),
+            json!({ "did": did, "from": 0, "fresh": true }),
         )
         .await;
-    let ops: Vec<&str> = log["events"]
+    log["events"]
         .as_array()
         .unwrap()
         .iter()
-        .map(|e| e["op"].as_str().unwrap())
-        .collect();
-    assert_eq!(ops, ["incept"]);
+        .map(|e| e["op"].as_str().unwrap().to_string())
+        .collect()
 }
