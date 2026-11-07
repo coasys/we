@@ -45,7 +45,7 @@ export function modelMark(opts: { as: string; extracted?: string }): SchemaNode 
                           text: {
                             $:
                               `\`\${${as}.extractedFrom ? 'Extracted from the conversation' : 'Written by AI'}` +
-                              " · run by ${author.did == me.did ? 'you' : author.name}`",
+                              " · run by ${author.did == me.person ? 'you' : author.name}`",
                           },
                         },
                       },

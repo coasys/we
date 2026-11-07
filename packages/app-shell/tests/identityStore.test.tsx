@@ -17,11 +17,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const [ports, setPorts] = createSignal<{ identity?: IdentityPort } | null>(null);
 const [bootState, setBootState] = createSignal('ready');
+const refreshMe = vi.fn(async () => {});
 
 vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
   useSessionStore: () => ({
     backendPorts: ports,
     bootState,
+    refreshMe,
     // As the session reads them from the port: linking a device needs a way to sign changes.
     identityCapabilities: () => ({
       ...NO_IDENTITY_CAPABILITIES,
@@ -438,7 +440,11 @@ describe('deviceStore', () => {
     setPorts({ identity: c.identity });
     const { devices: deviceStore } = mount();
     await flush();
+    refreshMe.mockClear();
     await deviceStore.addDevice();
     expect(c.changes).toEqual([{ kind: 'add-device' }]);
+    // A new device is a new key that writes as this person: the session reads `me.dids` again, so a
+    // post from it is "mine" without a restart.
+    expect(refreshMe).toHaveBeenCalledTimes(1);
   });
 });

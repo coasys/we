@@ -25,6 +25,7 @@ import { DEV_FEATURES, devToolsEnabled, setDevToolsMuted } from '@we/module-shar
 import { Accessor, createContext, createEffect, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
 import type { BackendAccountInfo, BackendHostInfo } from '../../../shared/backend/types';
+import { selfAcrossDevices } from '../../../shared/selfAcrossDevices';
 import { type SignInStep, signInStep as stepOf } from '../../../shared/signInStep';
 import { credential } from '../credential';
 import { useBackend, usePlatform } from '../providers/PlatformProvider';
@@ -45,9 +46,21 @@ export type BootState = 'initialising' | 'login' | 'createAgent' | 'finishing' |
 const SESSION_TIMEOUT_MESSAGE =
   'Your account is taking longer than usual to start. It may still be finishing — try again in a moment.';
 
-/** The authenticated identity as the shell holds it — neutral `id` plus the backend's own fields
- * (`did` is template-facing vocabulary: `$me.did`). */
-export type SessionIdentity = AgentIdentity & { did?: string; perspective?: unknown };
+/**
+ * The authenticated identity as the shell holds it — neutral `id` plus the backend's own fields
+ * (`did` is template-facing vocabulary: `$me.did`).
+ *
+ * `did` is this device's key, the `author` of everything it writes. `person` and `dids` are the same
+ * agent across all of its computers (see `shared/selfAcrossDevices.ts`). `dids` holds every device key
+ * and the person, so "is this me" is one test whatever names the agent: `author in me.dids` for a
+ * record, `m.did in me.dids` for a member or a profile (listed one per person).
+ */
+export type SessionIdentity = AgentIdentity & {
+  did?: string;
+  perspective?: unknown;
+  person?: string;
+  dids?: string[];
+};
 
 export interface SessionStore {
   // State
@@ -327,7 +340,22 @@ export function SessionStoreProvider(props: ParentProps) {
     const session = agentSession();
     if (!session) return;
     try {
-      setMe((await session.me()) as SessionIdentity);
+      const identity = (await session.me()) as SessionIdentity;
+      const did = identity.did ?? identity.id;
+      // Drawn first with what was known (this device alone, on a first read), so nothing waits on
+      // the key log to know who is signed in, and a re-read does not flicker back to one device.
+      const before = me();
+      const known =
+        before && (before.did ?? before.id) === did && before.person && before.dids
+          ? { person: before.person, dids: before.dids }
+          : { person: did, dids: did ? [did] : [] };
+      setMe({ ...identity, ...known });
+      // A key log that cannot be read now keeps what was known, rather than dropping my other devices.
+      const self = await selfAcrossDevices(did, backendPorts()?.identity, known);
+      // Set again only when the key log changed the answer: everything keyed on `me` re-reads on a
+      // new value, and without a key log there is nothing new to read.
+      const changed = self.person !== known.person || self.dids.join() !== known.dids.join();
+      if (changed && agentSession() === session) setMe({ ...identity, ...self });
     } catch (error) {
       console.error('SessionStore: refreshMe error', error);
     }

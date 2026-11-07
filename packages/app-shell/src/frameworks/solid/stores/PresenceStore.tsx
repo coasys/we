@@ -42,11 +42,11 @@
  *
  * ## What it never does
  *
- * Fetch profiles. Presence carries `agentId` only; profiles come from `profileStore.profiles()`, the cache
+ * Fetch profiles. Presence carries `agentId` only; profiles come from `profileStore.profileFor`, the cache
  * `$identities` and the `$agent` block already use. Flux's presence map *is* its profile cache, so it
  * re-hydrates every peer profile on every heartbeat — an N-peer `Promise.all` every five seconds.
  */
-import { MAX_LEASES, reconcileLeases, unionPeers, wantedUris } from '@shared/presenceScope';
+import { MAX_LEASES, presentAs, reconcileLeases, unionPeers, wantedUris } from '@shared/presenceScope';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { createTabCoordinator } from '@shared/tabCoordinator';
 import { useDatasetStore } from '@solid/stores/DatasetStore';
@@ -83,7 +83,17 @@ import {
  * `did` mirrors `agentId`, and `tone` is flattened onto the peer so a template can reach it with a
  * plain `$item.tone` in a `$map` — no nested path resolution needed.
  */
-export type PresentAgent = Peer & Partial<AgentProfileSummary> & { did: string; tone: PresenceTone };
+export type PresentAgent = Peer &
+  Partial<AgentProfileSummary> & {
+    did: string;
+    /**
+     * The person this peer's device speaks for — `did` itself when it speaks for nobody else. Presence
+     * is per device (each computer beats on its own), so one person on two computers is two peers with
+     * one `person`; "is this me" is `p.did in me.dids`, which also leaves out my own other computer.
+     */
+    person: string;
+    tone: PresenceTone;
+  };
 
 export interface PresenceStore {
   /** Every peer we know of in the current space, liveness-derived, offline included. */
@@ -399,24 +409,21 @@ export function PresenceStoreProvider(props: ParentProps) {
    */
   const rawPeers = createMemo<Peer[]>(() => unionPeers(peersByUri()));
 
-  // Join against the shared agent cache. `find` over `agents()` matches how SpaceStore.members
-  // resolves its dids; both read the same cache that `fetchAgent` populates.
+  // Join against the shared agent cache through `profileFor`, as a byline does: a peer's device is
+  // drawn as its person, and `did` stays the device that is present.
   const peers = createMemo<PresentAgent[]>(() => {
-    const cached = profileStore.profiles();
     // Sorted most-present-first, with a stable tiebreak — without it, equal-liveness peers reorder
     // as the underlying Map iterates and the avatar row reshuffles on every heartbeat.
     return sortByPresence(rawPeers()).map((peer) => {
-      const profile = cached.find((a) => a.did === peer.agentId);
-      return { ...peer, ...profile, did: peer.agentId, tone: peerTone(peer) };
+      return { ...presentAs(peer, profileStore.profileFor), tone: peerTone(peer) };
     });
   });
 
   // Ask AD4M for any peer whose profile we have not cached. The effect re-runs as peers arrive, and
   // `fetchAgent` already deduplicates in-flight requests, so this is safe to call repeatedly.
   createEffect(() => {
-    const cached = profileStore.profiles();
     for (const peer of rawPeers()) {
-      if (!cached.some((a) => a.did === peer.agentId)) void profileStore.fetchProfile(peer.agentId);
+      if (!profileStore.profileFor(peer.agentId)) void profileStore.fetchProfile(peer.agentId);
     }
   });
 

@@ -104,6 +104,11 @@ export interface FeedWindowOptions {
    * {@link FeedReadStopped}.
    */
   stopped?: () => boolean;
+  /**
+   * The person an author speaks for (`ModuleIdentity.person`), so what one person made from two
+   * computers is one activity row rather than two. Each author is their own person without it.
+   */
+  personOf?: (author: string) => string;
 }
 
 /** What {@link readFeedWindow} rejects with when `stopped` says its answer is no longer wanted. */
@@ -169,12 +174,13 @@ export function groupActivity(
   records: { row: Row; entity: string }[],
   titles: ReadonlyMap<string, string>,
   pending: ReadonlySet<string> = new Set(),
+  personOf: (author: string) => string = (author) => author,
 ): FeedActivity[] {
   const sorted = [...records].sort((a, b) => timeOf(a.row) - timeOf(b.row));
   const groups: { key: string; last: number; rows: { row: Row; entity: string }[] }[] = [];
   for (const record of sorted) {
     const origin = idOf(record.row.extractedFrom);
-    const key = origin ? `from:${origin}` : `by:${text(record.row.author)}`;
+    const key = origin ? `from:${origin}` : `by:${personOf(text(record.row.author))}`;
     const at = timeOf(record.row);
     const open = groups.find((g) => g.key === key && at - g.last <= ACTIVITY_GROUP_MS);
     if (open) {
@@ -229,11 +235,10 @@ export function markPending(rows: FeedRow[], pending: ReadonlySet<string>): Feed
 export async function readFeedWindow(
   find: FeedFind,
   options: FeedWindowOptions,
-): Promise<{ rows: FeedRow[]; hasMore: boolean }> {
+): Promise<{ rows: FeedRow[]; hasMore: boolean; parts?: FeedWindowParts }> {
   const { root, shown, fromStart } = options;
   if (!root) return { rows: [], hasMore: false };
   const order: 'asc' | 'desc' = fromStart ? 'asc' : 'desc';
-  const before = (a: number, b: number) => (fromStart ? a < b : a > b);
   const page = (within: string): RecordQuery => ({
     within,
     order: { createdAt: order },
@@ -298,8 +303,41 @@ export async function readFeedWindow(
     );
   }
 
-  const activity = groupActivity(extracted.flat(), titles, options.pending);
+  const parts: FeedWindowParts = {
+    lines,
+    records: extracted.flat(),
+    titles,
+    shown,
+    fromStart: !!fromStart,
+    more: filled || reachedCalls < calls.length || calls.length >= CALL_WINDOW,
+  };
+  return { ...arrangeFeedWindow(parts, options.pending, options.personOf), parts };
+}
+
+/**
+ * What one read of the window found, before it was grouped and cut to size — kept so the window can
+ * be arranged again (a person arriving for two devices' records) without asking the backend again.
+ */
+export interface FeedWindowParts {
+  lines: FeedLine[];
+  /** The extracted and hand-made records, ungrouped. */
+  records: { row: Row; entity: string }[];
+  titles: ReadonlyMap<string, string>;
+  shown: number;
+  fromStart: boolean;
+  /** A source held more than the read took, whatever the arrangement. */
+  more: boolean;
+}
+
+/** The rows a read's parts draw as: activity grouped, merged with the lines, in window order, cut to `shown`. */
+export function arrangeFeedWindow(
+  parts: FeedWindowParts,
+  pending?: ReadonlySet<string>,
+  personOf?: (author: string) => string,
+): { rows: FeedRow[]; hasMore: boolean } {
+  const { lines, records, titles, shown, fromStart } = parts;
+  const before = (a: number, b: number) => (fromStart ? a < b : a > b);
+  const activity = groupActivity(records, titles, pending, personOf);
   const merged: FeedRow[] = [...lines, ...activity].sort((a, b) => (before(timeOf(a), timeOf(b)) ? -1 : 1));
-  const hasMore = merged.length > shown || filled || reachedCalls < calls.length || calls.length >= CALL_WINDOW;
-  return { rows: merged.slice(0, shown), hasMore };
+  return { rows: merged.slice(0, shown), hasMore: merged.length > shown || parts.more };
 }

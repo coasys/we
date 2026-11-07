@@ -967,7 +967,7 @@ export default function TemplateProvider() {
         stores: chromeBag,
         registry,
         agent: (did) => {
-          const profile = profileStore.profiles().find((p) => p.did === did);
+          const profile = profileStore.profileFor(did);
           return profile ? { name: profile.name ?? '', avatar: profile.avatar ?? '' } : undefined;
         },
         // The same handle `BlockHostProvider` hands the composer — a ghost renders outside it.
@@ -1685,13 +1685,13 @@ export default function TemplateProvider() {
       // A quote names whose words it holds. A person not yet cached is fetched, and the name arrives
       // through the same reactive cache a byline reads.
       personName={(did) => {
-        const profile = profileStore.profiles().find((entry) => entry.did === did);
+        const profile = profileStore.profileFor(did);
         if (!profile) void profileStore.fetchProfile(did);
         return profile?.name || undefined;
       }}
       // Who a mention names, for its hover card: the face beside the name, by the same cache.
       person={(did) => {
-        const profile = profileStore.profiles().find((entry) => entry.did === did);
+        const profile = profileStore.profileFor(did);
         if (!profile) void profileStore.fetchProfile(did);
         return profile ? { name: profile.name || undefined, avatar: profile.avatar || undefined } : undefined;
       }}

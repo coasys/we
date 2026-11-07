@@ -568,3 +568,158 @@ describe('the Feed reading only when something changed', () => {
     vi.useRealTimers();
   });
 });
+
+/*
+  One person on two computers. A record's author is the device that signed it, and the host learns
+  which person a device speaks for in the background — after the window has been read. The rows were
+  grouped once, by key, and nothing regrouped when the person arrived.
+*/
+describe('the Feed grouping by person', () => {
+  const LAPTOP = 'did:key:z6MkTestLaptop';
+  const DESKTOP = 'did:key:z6MkTestDesktop';
+  const PERSON = 'did:scid:test:1:QmTestRobin';
+
+  /** The host's identities: reactive, and knowing nobody's person until `resolve` says. */
+  function identities(r: ReturnType<typeof reactive>) {
+    const [persons, setPersons] = r.signal<Record<string, string>>({});
+    const fetched: string[] = [];
+    return {
+      access: {
+        get: (id: string) => {
+          const person = persons()[id];
+          return { name: 'Robin', ...(person ? { person } : {}) };
+        },
+        fetch: (id: string) => void fetched.push(id),
+      },
+      fetched,
+      resolve: (map: Record<string, string>) => setPersons({ ...persons(), ...map }),
+    };
+  }
+
+  it('makes the two devices one activity once the person is known', async () => {
+    vi.useFakeTimers();
+    const r = reactive();
+    const s = space();
+    s.found.TaskBlock = [
+      { id: 'task-1', title: 'Book a room', author: LAPTOP, createdAt: 1_000 },
+      { id: 'task-2', title: 'Order lunch', author: DESKTOP, createdAt: 2_000 },
+    ];
+    const who = identities(r);
+    const { kernel } = suggestions(r.signal);
+    const feed = createFeed({
+      signal: r.signal,
+      effect: r.effect,
+      state: markState,
+      action: markAction,
+      onDispose: () => {},
+      dataset: () => 'space-1',
+      spaceRoot: () => 'root-1',
+      records: s.records as never,
+      interpretation: kernel as never,
+      identities: who.access,
+      write: async () => null,
+    });
+    const rows = () => (feed.feedRows as unknown as () => { kind: string; items?: { id: string }[] }[])();
+    const activity = () => rows().filter((row) => row.kind === 'activity');
+    (feed.openFeed as unknown as () => void)();
+    await vi.runAllTimersAsync();
+
+    // Read before anyone knew: each device its own author.
+    expect(activity()).toHaveLength(2);
+    const reads = s.finds.length;
+
+    who.resolve({ [LAPTOP]: PERSON, [DESKTOP]: PERSON });
+    await vi.runAllTimersAsync();
+
+    expect(activity()).toHaveLength(1);
+    expect(activity()[0].items?.map((item) => item.id)).toEqual(['task-1', 'task-2']);
+    // Regrouped from what the last read already holds: not one query more to the executor.
+    expect(s.finds.length).toBe(reads);
+    vi.useRealTimers();
+  });
+
+  it('does not read again when a person arrives for nobody in the window', async () => {
+    vi.useFakeTimers();
+    const r = reactive();
+    const s = space();
+    s.found.TaskBlock = [{ id: 'task-1', title: 'Book a room', author: LAPTOP, createdAt: 1_000 }];
+    const who = identities(r);
+    const { kernel } = suggestions(r.signal);
+    const feed = createFeed({
+      signal: r.signal,
+      effect: r.effect,
+      state: markState,
+      action: markAction,
+      onDispose: () => {},
+      dataset: () => 'space-1',
+      spaceRoot: () => 'root-1',
+      records: s.records as never,
+      interpretation: kernel as never,
+      identities: who.access,
+      write: async () => null,
+    });
+    (feed.openFeed as unknown as () => void)();
+    await vi.runAllTimersAsync();
+    const reads = s.finds.length;
+    const drawn = (feed.feedRows as unknown as () => unknown[])();
+
+    who.resolve({ 'did:key:z6MkTestStranger': PERSON });
+    await vi.runAllTimersAsync();
+    expect(s.finds.length).toBe(reads);
+    // Nobody on screen moved, so the rows drawn are the very same list.
+    expect((feed.feedRows as unknown as () => unknown[])()).toBe(drawn);
+    vi.useRealTimers();
+  });
+
+  it('keeps the regroup when the person lands while the read is still drawing', async () => {
+    /*
+      The read groups by key inside `readFeedWindow`, then draws in a later microtask. A person can
+      land in between: the host answers a cached `personOf` in a microtask. The regroup effect then
+      runs the moment the read publishes what it grouped by, and the read must not draw its stale
+      split rows over the merged ones — with `groupedAs` already naming the person, nothing would
+      repair them until the next read.
+    */
+    vi.useFakeTimers();
+    const r = reactive();
+    const s = space();
+    s.found.TaskBlock = [
+      { id: 'task-1', title: 'Book a room', author: LAPTOP, createdAt: 1_000 },
+      { id: 'task-2', title: 'Order lunch', author: DESKTOP, createdAt: 2_000 },
+    ];
+    const who = identities(r);
+    let asked = 0;
+    const access = {
+      ...who.access,
+      get: (id: string) => {
+        // The first time the read asks about a device, its person lands one microtask later —
+        // before the read's continuation draws.
+        if (asked++ === 0) queueMicrotask(() => who.resolve({ [LAPTOP]: PERSON, [DESKTOP]: PERSON }));
+        return who.access.get(id);
+      },
+    };
+    const { kernel } = suggestions(r.signal);
+    const feed = createFeed({
+      signal: r.signal,
+      effect: r.effect,
+      state: markState,
+      action: markAction,
+      onDispose: () => {},
+      dataset: () => 'space-1',
+      spaceRoot: () => 'root-1',
+      records: s.records as never,
+      interpretation: kernel as never,
+      identities: access,
+      write: async () => null,
+    });
+    const rows = () => (feed.feedRows as unknown as () => { kind: string; items?: { id: string }[] }[])();
+    const activity = () => rows().filter((row) => row.kind === 'activity');
+    (feed.openFeed as unknown as () => void)();
+    await vi.runAllTimersAsync();
+
+    // The person was asked about during the read, and landed before it drew.
+    expect(asked).toBeGreaterThan(0);
+    expect(activity()).toHaveLength(1);
+    expect(activity()[0].items?.map((item) => item.id)).toEqual(['task-1', 'task-2']);
+    vi.useRealTimers();
+  });
+});

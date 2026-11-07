@@ -139,6 +139,18 @@ Almost every entity extends `WeNode`, which in turn extends `Ad4mModel`.
 
 These are always present on every model instance but are only surfaced in the UI where contextually appropriate (e.g. a `LocationBlock` pin on a map might not show a thread of responses, but the data is there if needed in future).
 
+### `author` is a device; the person is resolved
+
+A record's `author` is the device key that signed it (`did:key:…`), and stays that: queries, `$query`
+author filters and the write check all match on it. A person who writes from two computers is two
+device keys listed in one key log, whose DID (`did:scid:…`) is the person. WE turns the one into the
+other wherever a record is _shown_. Through `PersonPort`, `$agent` and `profileStore.profileFor`
+answer an author with the person's profile (`did` is the person, `device` the key that signed), and
+the Feed groups by person. Templates decide "mine" with `author in me.dids`, and "is this person me"
+with `did == me.person`, never `author == me.did`. A key that no log lists is its own person, so
+nothing changes for an agent without a key log. Where the backend could not confirm a signature, a
+display read says so (`cantCheck`, `flagged`) and a byline draws a quiet mark.
+
 ---
 
 ## What a model made

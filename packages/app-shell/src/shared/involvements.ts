@@ -103,8 +103,15 @@ export function relationId(value: unknown): string {
 export interface InvolvementDeps {
   /** The dataset a write means — the space on screen. */
   dataset: () => DatasetProxy | undefined;
-  /** The DID of the agent asking. */
+  /** The DID of the agent asking — this device, which signs every write made here. */
   me: () => string | undefined;
+  /**
+   * Every DID that is the agent asking (`me.dids`: this device, their other devices, their person).
+   * An answer given from another of their computers is still their answer: changing it here replaces
+   * it rather than adding a second, and withdrawing it withdraws that one too. Omit for this device
+   * alone.
+   */
+  mine?: () => readonly string[] | undefined;
   /** The kinds this space uses, withdrawn ones included — a write about one somebody already holds must still resolve. */
   types: () => readonly InvolvementTypeView[];
   /** How a refusal or a failure reaches the person who caused it. */
@@ -131,6 +138,8 @@ export interface InvolvementActions {
 
 export function createInvolvementActions(deps: InvolvementDeps): InvolvementActions {
   const { dataset, me, types, notify, hold, release, done } = deps;
+  /** This device first, then every other DID that is the same agent. */
+  const selves = (self: string): string[] => [...new Set([self, ...(deps.mine?.() ?? [])])];
 
   /*
     One write at a time per pair, in the order they were pressed.
@@ -174,7 +183,7 @@ export function createInvolvementActions(deps: InvolvementDeps): InvolvementActi
       return;
     }
     if (type.reflexive) {
-      if (agent !== self) {
+      if (!self || !selves(self).includes(agent)) {
         notify(`Only they can say whether they are ${type.name.toLowerCase()}`);
         return;
       }
@@ -226,9 +235,13 @@ export function createInvolvementActions(deps: InvolvementDeps): InvolvementActi
     for (const slug of answers) hold?.(nodeId, self, slug, slug === kind);
     await inOrder(`${nodeId}\u0000${self}\u0000answer`, async () => {
       try {
-        const held = (await heldBy(p, nodeId, self)).filter((row) => answers.has(row.kind));
+        // Mine from any of my computers — one answer per person, not one per device.
+        const held = (await Promise.all(selves(self).map((did) => heldBy(p, nodeId, did))))
+          .flat()
+          .filter((row) => answers.has(row.kind));
         const stale = held.filter((row) => row.kind !== kind);
         const already = held.some((row) => row.kind === kind);
+        for (const row of stale) if (row.agent && row.agent !== self) hold?.(nodeId, row.agent, row.kind, false);
         if (stale.length || (!already && kind)) {
           await runEntityTransaction(p, async (tx) => {
             for (const row of stale) await row.delete(tx.batchId);
@@ -238,6 +251,7 @@ export function createInvolvementActions(deps: InvolvementDeps): InvolvementActi
           });
         }
         for (const slug of answers) done?.(nodeId, self, slug);
+        for (const row of stale) if (row.agent && row.agent !== self) done?.(nodeId, row.agent, row.kind);
       } catch (error) {
         for (const slug of answers) release?.(nodeId, self, slug);
         console.error('SpaceStore: could not save that answer', error);

@@ -276,7 +276,8 @@ const memberRow: SchemaNode = {
     {
       type: 'we-text',
       props: { flex: '1', truncate: true },
-      children: [{ $: "member.did == me.did ? member.name + ' (you)' : member.name" }],
+      // A member is a person (`did`) with the device keys that joined for them; `me.dids` holds both.
+      children: [{ $: "member.did in me.dids ? member.name + ' (you)' : member.name" }],
     },
     { type: 'Row', props: { gap: '100', wrap: true, ay: 'center' }, children: [memberBadges] },
     memberRoleMenu,

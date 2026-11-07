@@ -181,7 +181,7 @@ const everything = (record: string) => `filter(${record}.signals, { author: { no
  * Off the overlaid list, not the raw one: a heart that fills a second after its count moves reads
  * as somebody else's reaction arriving rather than as your own registering.
  */
-const mineOfType = (record: string, as: string) => `count(filter(${forType(record, as)}, { author: me.did }))`;
+const mineOfType = (record: string, as: string) => `count(filter(${forType(record, as)}, { author: me.dids }))`;
 
 /**
  * The set of types this display draws, which is the whole of what `showUnused` decides.
@@ -480,7 +480,7 @@ const SEARCH = 'reactorSearch';
 
 /** Who reacted with this type, joined to their faces and names — see the `reactors` host function. */
 const reactorsOf = (record: string, as: string, search?: string) =>
-  `reactors({ signals: ${forType(record, as)}, profiles: profileStore.profiles, me: me.did${
+  `reactors({ signals: ${forType(record, as)}, profiles: profileStore.profiles, me: me.dids${
     search ? `, search: local.${search}` : ''
   } })`;
 
@@ -1211,7 +1211,7 @@ function totalMark(opts: Resolved): SchemaNode {
     props: {
       icon: 'smiley',
       count: { $: `signalTally({ signals: ${everything(opts.record)} })` },
-      mine: { $: `count(filter(${opts.record}.signals, { author: me.did }))` },
+      mine: { $: `count(filter(${opts.record}.signals, { author: me.dids }))` },
       ...(opts.size && { size: opts.size }),
       label: 'Reactions',
       ...(opts.readOnly ? {} : { onPress: { $setLocal: MODAL_OPEN, value: true } }),
