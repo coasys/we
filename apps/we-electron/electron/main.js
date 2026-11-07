@@ -626,6 +626,10 @@ function startAppServer() {
       Express 5 hands a bind error to this callback instead of raising it. Ignored, the app would
       log that it listens, then load `http://localhost:9080` from whoever holds the port — another
       WE's renderer, served as this app's own. So a taken port ends the app, with the reason.
+
+      `app.quit()`, not `app.exit()`: this callback runs after `startExecutor` may already have
+      spawned the detached executor and the custody sidecar, and only `quit` fires `before-quit`,
+      which stops them. `exit` would leave both running with no app.
     */
     launcherApp.listen(9080, (error) => {
       if (error) {
@@ -634,7 +638,7 @@ function startAppServer() {
           'The app could not start',
           `Port 9080 is taken by another program, and the app serves its interface there.\n\n${error.message}\n\nStop the other program (another WE?) and start the app again.`,
         );
-        app.exit(1);
+        app.quit();
         return;
       }
       console.log('   ✓ WE launcher listening on port 9080\n');
