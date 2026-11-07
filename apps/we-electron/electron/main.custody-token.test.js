@@ -2,14 +2,16 @@
  * The custody channel's credential, driven through `main.js` as in `main.supervisor.test.js`.
  *
  * The custody sidecar reaches the executor's custody channel with a credential of its own: `main.js`
- * makes it at each start beside the admin credential, passes it to the executor
- * (`AD4M_CUSTODY_CREDENTIAL`) and to the sidecar only. The main window's `get-token` answers the
+ * makes it at each start beside the admin credential and writes it as the first line of the
+ * executor's stdin and of the sidecar's — never in an argument or an environment, which the
+ * renderer's admin credential could read back (`/proc/<pid>/environ`). The main window's `get-token` answers the
  * admin credential, which the executor's custody guard (`identity::custody::admit`) refuses, so
  * nothing running in the main renderer can call `identity.takeMaster` or `identity.claimOffer` with
  * `canKeepMaster`.
  *
- * The sidecar is a fake `we-custody` beside the fake executor: it records its arguments and
- * environment and answers nothing.
+ * The sidecar is a fake `we-custody` beside the fake executor (`fixtures/fake-executor.cjs`, which
+ * keeps the executor's stdin contract): both record their arguments, environment and first stdin
+ * line, and the sidecar answers nothing.
  */
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
@@ -163,13 +165,30 @@ function invoke(channel, ...args) {
   return state.ipc[channel](event, ...args);
 }
 
-/** A `we-custody` that writes what it was started with, then waits for its stdin to close. */
+/**
+ * A `we-custody` that reads the first line of its stdin (the credential, as the real one does),
+ * writes it with what it was started with, then waits for its stdin to close.
+ */
 const fakeCustody = (file) => `#!${process.execPath}
 const fs = require('fs');
-fs.writeFileSync(${JSON.stringify(file)}, JSON.stringify({ argv: process.argv.slice(2), env: process.env, pid: process.pid }));
-process.stdin.resume();
+let pending = '';
+process.stdin.on('data', (chunk) => {
+  if (pending === null) return;
+  pending += chunk.toString('utf8');
+  const end = pending.indexOf('\\n');
+  if (end === -1) return;
+  const firstLine = pending.slice(0, end);
+  pending = null;
+  fs.writeFileSync(${JSON.stringify(file)}, JSON.stringify({ argv: process.argv.slice(2), env: process.env, pid: process.pid, firstLine }));
+});
 process.stdin.on('end', () => process.exit(0));
 `;
+
+/** What the fake executor's first start was started with (`fixtures/fake-executor.cjs`). */
+const executorStart = () => JSON.parse(readFileSync(join(dataDir(), 'fake-executor.start-1.json'), 'utf8'));
+
+/** Variables a custody credential could be passed in, which neither child may get. */
+const CUSTODY_VARS = /^(AD4M_CUSTODY_CREDENTIAL|WE_EXTERNAL_AD4M_CUSTODY_CREDENTIAL)/;
 
 describe.skipIf(process.platform === 'win32' || !existsSync(join(here, 'seed-csp.json')))(
   'the credential the custody sidecar gets is not the one the main window gets',
@@ -191,6 +210,9 @@ describe.skipIf(process.platform === 'win32' || !existsSync(join(here, 'seed-csp
       process.env.VITE_DEV_SERVER_URL = 'http://localhost:5173';
       delete process.env.WE_EXTERNAL_AD4M_PORT;
       delete process.env.WE_EXTERNAL_AD4M_TOKEN;
+      // Inherited by the app, and passed to neither child: the executor would refuse to start (78).
+      process.env.AD4M_CUSTODY_CREDENTIAL = 'inherited-custody-credential';
+      process.env.AD4M_CUSTODY_CREDENTIAL_FILE = join(state.root, 'inherited-custody-credential');
 
       await import('./main.js');
       state.readyResolve();
@@ -199,6 +221,8 @@ describe.skipIf(process.platform === 'win32' || !existsSync(join(here, 'seed-csp
     }, 60_000);
 
     afterAll(async () => {
+      delete process.env.AD4M_CUSTODY_CREDENTIAL;
+      delete process.env.AD4M_CUSTODY_CREDENTIAL_FILE;
       const { app } = await import('electron');
       app.quit();
       await until(() => state.quitDone).catch(() => {});
@@ -209,12 +233,33 @@ describe.skipIf(process.platform === 'win32' || !existsSync(join(here, 'seed-csp
       rmSync(state.root, { recursive: true, force: true });
     });
 
-    it('starts the sidecar against the executor with the custody credential, and only it, in its environment', async () => {
+    it('gives the executor the custody credential as the first line of its stdin, and keeps stdin open', async () => {
+      const start = executorStart();
+      const custody = JSON.parse(readFileSync(custodyFile(), 'utf8'));
+      expect(start.argv).toContain('--custody-channel');
+      expect(start.custodyLine).toMatch(/^[0-9a-f-]{36}$/);
+      // The same credential the sidecar got: the one the custody channel admits.
+      expect(start.custodyLine).toBe(custody.firstLine);
+      // Nowhere else: not in the arguments, not in the environment, not inherited from the app.
+      expect(start.argv.join(' ')).not.toContain(start.custodyLine);
+      expect(Object.keys(start.env).filter((name) => CUSTODY_VARS.test(name))).toEqual([]);
+      expect(Object.values(start.env)).not.toContain(start.custodyLine);
+      // `--watch-stdin true`: closing the pipe would stop it; it is still open and the executor up.
+      expect(executorLog()).toContain('1 custody credential read');
+      expect(executorLog()).not.toContain('stdin closed');
+      expect(alive(pids()[0])).toBe(true);
+    });
+
+    it('starts the sidecar with the custody credential on its stdin, and neither credential in its environment', async () => {
       const custody = JSON.parse(readFileSync(custodyFile(), 'utf8'));
       const port = await invoke('get-port');
+      const token = await invoke('get-token');
       expect(custody.argv).toEqual(['--executor-port', String(port)]);
-      expect(custody.env.AD4M_CUSTODY_CREDENTIAL).toMatch(/^[0-9a-f-]{36}$/);
+      expect(custody.firstLine).toMatch(/^[0-9a-f-]{36}$/);
+      expect(Object.keys(custody.env).filter((name) => CUSTODY_VARS.test(name))).toEqual([]);
       expect(custody.env.AD4M_ADMIN_CREDENTIAL).toBeUndefined();
+      expect(Object.values(custody.env)).not.toContain(custody.firstLine);
+      expect(Object.values(custody.env)).not.toContain(token);
     });
 
     it('answers get-token with the admin credential, never the custody credential', async () => {
@@ -224,7 +269,8 @@ describe.skipIf(process.platform === 'win32' || !existsSync(join(here, 'seed-csp
       // on a loopback listener, so the main renderer, with this token, cannot call
       // `identity.takeMaster` and take a master key waiting in this computer's inbox.
       expect(token).toMatch(/^[0-9a-f-]{36}$/);
-      expect(token).not.toBe(custody.env.AD4M_CUSTODY_CREDENTIAL);
+      expect(token).not.toBe(custody.firstLine);
+      expect(executorStart().env.AD4M_ADMIN_CREDENTIAL).toBe(token);
     });
   },
 );

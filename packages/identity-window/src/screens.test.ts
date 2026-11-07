@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 // The policy as `vite.js` writes it into the built page.
 import policy from '../csp.txt?raw';
 import indexSource from './index.ts?raw';
-import { heading, isLast, remaining, wordNumber } from './screens';
+import { heading, isLast, remaining, type RevokeTarget, targetLine, wordNumber } from './screens';
 import screensSource from './screens.ts?raw';
 import windowSource from './window.ts?raw';
 
@@ -16,22 +16,24 @@ const IDENTITY_CSP = policy.trim();
 describe('the identity window', () => {
   it('says what a revocation does, and promises nothing about earlier signatures', () => {
     const confirm = { screen: 'revoke-confirm' as const, keyId: 'd2', passphrase: false, error: null };
-    const lead = heading({ ...confirm, holdsMaster: false }).lead;
+    const lead = heading({ ...confirm, mayHoldMaster: false }).lead;
     expect(lead).toContain('when they next read your key log');
     expect(lead).toContain('can also stop counting as yours');
-    expect(lead).not.toContain('stays valid');
+    expect(lead).not.toContain('master key');
   });
 
-  it('tells before revoking a device that keeps the master key that its copy stays valid', () => {
+  it('tells before revoking a device the key log let keep the master key that it may still hold a valid one', () => {
     const lead = heading({
       screen: 'revoke-confirm',
       keyId: 'd2',
-      holdsMaster: true,
+      mayHoldMaster: true,
       passphrase: false,
       error: null,
     }).lead;
-    expect(lead).toContain('Its copy of the master key stays valid');
+    expect(lead).toContain('may still hold a valid master key');
     expect(lead).toContain('replace your master key');
+    // Not a claim about what the device holds: the log says it may, not that it does.
+    expect(lead).not.toMatch(/keeps a copy|stays valid/);
   });
 
   it('asks for the two words the custody service chose', () => {
@@ -51,7 +53,7 @@ describe('the identity window', () => {
     expect(heading({ ...match, hint: null }).title).toBe('Add this device?');
   });
 
-  it('asks the holder by name whether to send the master key, and the revoke request names each device', () => {
+  it('asks the holder by key whether to send the master key, and the revoke request names each key from the log', () => {
     const request = {
       screen: 'request' as const,
       id: 'r1',
@@ -61,14 +63,34 @@ describe('the identity window', () => {
       passphrase: false,
       error: null,
     };
-    const send = heading({ ...request, kind: 'send-master', device: 'Phone', devices: [] });
+    const send = heading({ ...request, kind: 'send-master', device: 'Phone', targets: [] });
     // The key log's key, not the name any device can write, says who asks.
     expect(send.title).toBe('Device d2 (key AbCd 1234) asks for the master key — send it?');
     expect(send.lead).toContain('Phone');
     expect(send.lead).toContain('R7K Q2M');
     expect(send.lead).toContain('add and remove your devices');
-    const revoke = heading({ ...request, kind: 'confirm-revoke', device: 'Laptop', devices: ['Old desktop', 'd4'] });
-    expect(revoke.title).toBe('Laptop asks to revoke Old desktop, d4');
+
+    // A record that renamed the target "Old desktop" and said it keeps no master key: the card
+    // still says which key goes, by the log's key id and fingerprint, and that it may hold one.
+    const targets: RevokeTarget[] = [
+      { keyId: 'd3', fingerprint: 'WxYz 5678', recordName: 'Old desktop', mayHoldMaster: true },
+      { keyId: 'd4', fingerprint: 'QrSt 9012', recordName: null, mayHoldMaster: false },
+    ];
+    const revoke = heading({ ...request, kind: 'confirm-revoke', device: 'Laptop', targets });
+    expect(revoke.title).toBe('Device d2 (key AbCd 1234) asks to revoke d3 (key WxYz 5678), d4 (key QrSt 9012)');
+    expect(revoke.title).not.toContain('Old desktop');
+    expect(revoke.lead).toContain('Your record calls the asking device Laptop');
+    expect(revoke.lead).toContain('R7K Q2M');
+    expect(revoke.lead).toContain('d3 may still hold a valid master key');
+    expect(revoke.lead).toContain('replace your master key');
+    expect(revoke.lead).not.toContain('d4 may');
+    expect(targetLine(targets[0])).toBe(
+      'd3 · key WxYz 5678 · your record calls it Old desktop · may still hold a valid master key',
+    );
+    expect(targetLine(targets[1])).toBe('d4 · key QrSt 9012');
+
+    const none = heading({ ...request, kind: 'confirm-revoke', device: 'Laptop', targets: [targets[1]] });
+    expect(none.lead).not.toContain('master key');
   });
 
   it('says on a linked device what it can and cannot do, and what is still on its way', () => {

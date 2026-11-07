@@ -152,6 +152,37 @@ pub(crate) mod tests {
         (vec![incept, add], d2_signer)
     }
 
+    /// `events` (from [`log_with_d2`]) with device `d3` added from a claim that said
+    /// `can_keep_master`; answers `d3`'s signer.
+    pub(crate) fn add_d3(events: &mut Vec<Event>, can_keep_master: bool) -> KeySigner {
+        use ad4m_identity_core::words;
+        let master = words::master_key(&words::seed(&words::from_entropy(&[41u8; 16])), 0).unwrap();
+        let chain = fold(events).unwrap();
+        let signer = KeySigner::new(&[7u8; 32], 0);
+        let enc = encode_x25519_multikey(&[8u8; 32]);
+        let claim = make_claim(
+            &events[0].scid,
+            "offer-3",
+            [10u8; 32],
+            &signer,
+            enc.clone(),
+            can_keep_master,
+            None,
+        )
+        .unwrap();
+        let d3 = DeviceKey {
+            id: "d3".into(),
+            sign: Signer::key(&signer),
+            enc,
+            life: KeyLife::Standing,
+        };
+        let mut add = add_unsigned(&chain, d3, "offer-3", &claim.co_sig).unwrap();
+        cosign(&mut add, "m0", &master).unwrap();
+        events.push(add);
+        fold(events).unwrap();
+        signer
+    }
+
     #[test]
     fn the_log_says_which_device_may_keep_the_master_key() {
         let (events, d2) = log_with_d2(true);
