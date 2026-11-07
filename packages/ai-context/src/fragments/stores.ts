@@ -98,6 +98,10 @@ export const storeEntries: StoreEntry[] = [
       mcpEnabled: { type: 'boolean' },
       mcpPort: { type: 'number' },
       executorRestartPending: { type: 'boolean' },
+      executorConfigFile: { type: 'string' },
+      executorConfigRows: { type: 'array', properties: ['id', 'key', 'value', 'kind', 'checked', 'editable', 'note'] },
+      executorLogTail: { type: 'string' },
+      canRestartExecutor: { type: 'boolean' },
       canBackUp: { type: 'boolean' },
       logLevels: { type: 'array', properties: ['crate', 'level'] },
       backupStatus: { type: 'string' },
@@ -176,6 +180,8 @@ export const storeEntries: StoreEntry[] = [
       'exportDatabase',
       'importDatabase',
       'restartExecutor',
+      'setExecutorConfigValue',
+      'loadExecutorLogTail',
       'loadAiModels',
       'loadAiTasks',
       'newAiModel',
@@ -873,6 +879,13 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       mcpEnabled: 'boolean — whether the backend serves MCP on its next start',
       mcpPort: 'number — the port MCP is served on',
       executorRestartPending: 'boolean — settings were changed that the running backend has not picked up',
+      executorConfigFile:
+        'string — the path of the config file the backend started with, where this app may write it (the desktop app’s own executor); empty otherwise. Gate the config rows on it',
+      executorConfigRows:
+        '{ id, key, value, kind, checked, editable, note }[] — every key of that file: value ready to show ("Default" when unset), kind the control it takes (boolean | number | text, or fixed for one only shown), checked for a switch, editable, and note saying why one is not (a flag of this start sets it) or that it is changed only from this computer',
+      executorLogTail:
+        'string — the newest lines of this run’s backend log, oldest first. Empty until loadExecutorLogTail runs',
+      canRestartExecutor: 'boolean — the host starts the backend, so a restart can be offered',
       canBackUp:
         'boolean — a database export/import can be offered: the backend writes the file and the host can name one. False on web',
       logLevels:
@@ -927,7 +940,11 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       removeLogLevel: '(crate: string): drops an override, returning that crate to the backend default',
       exportDatabase: '(): asks for a file, then has the backend write everything to it',
       importDatabase: '(): asks for a file, then has the backend read it back in',
-      restartExecutor: '(): starts the backend over so written settings take effect. Does not return',
+      restartExecutor:
+        '(): starts the backend over so written settings take effect — where it keeps a config file, by asking it to restart, and the app starts it again with the same arguments and reloads. Does not return',
+      setExecutorConfigValue:
+        '(key: string, value): writes one key of the config file — a row’s key and the control’s value (event.detail); an empty value returns it to its default. Takes effect at the next start. A refused key lands in error with the backend’s reason',
+      loadExecutorLogTail: '(): reads the newest lines of the backend’s log into executorLogTail',
       loadAiModels: '(): fetches the installed AI models and their load status',
       loadAiTasks: '(): fetches the prompts apps registered against a model',
       newAiModel: '(): opens the model form empty, for a new model',

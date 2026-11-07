@@ -17,8 +17,8 @@
  * no path to give it. The launcher's own publish form asks the user to type the path, and its
  * buttons are wired to the install handler, so it has never published anything.
  */
-import { type Ad4mClient, type Apps, capSentence } from '@coasys/ad4m';
-import type { AuthorizedApp, RuntimeAdminPort } from '@we/backend-shared';
+import { type Ad4mClient, type Apps, capSentence, type RuntimeConfig } from '@coasys/ad4m';
+import type { AuthorizedApp, ExecutorConfig, RuntimeAdminPort } from '@we/backend-shared';
 
 import type { Ad4mCapability } from './capabilities';
 import { missingExecutorMethods, onMissingMethod } from './missingMethods';
@@ -82,6 +82,24 @@ function readRequestedAuth(addon: string): {
     appUrl: text('appUrl') ?? '',
     appIconPath: text('appIconPath'),
     capabilities: Array.isArray(capabilities) ? (capabilities as unknown[]) : [],
+  };
+}
+
+/**
+ * `runtime.config` in the contract's shape: each key the executor writes, with the file's value.
+ * `machine` keys are the executor's "only on this machine"; `pinned` is a flag or an `AD4M_*`
+ * variable of this start overriding the file.
+ */
+export function toExecutorConfig(config: RuntimeConfig): ExecutorConfig {
+  return {
+    file: config.file,
+    restartPending: config.restartPending,
+    entries: config.keys.map((info) => ({
+      key: info.key,
+      value: config.values[info.key],
+      writableFrom: info.class === 'machine' ? 'this-machine' : 'anywhere',
+      pinned: info.pinned !== undefined,
+    })),
   };
 }
 
@@ -325,6 +343,28 @@ export function createAd4mRuntimeAdmin(backendClient: unknown, options: Ad4mRunt
 
     async addPeerInfos(infos) {
       await client.runtime.hcAddAgentInfos(infos);
+    },
+
+    // ── The executor's own process (its run contract; operator only) ───────────────────
+    async executorConfig() {
+      return toExecutorConfig(await client.runtime.config());
+    },
+
+    async setExecutorConfig(set, unset) {
+      const result = await client.runtime.setConfig(set, unset);
+      return {
+        restartPending: result.restartPending,
+        refused: result.refused.map(({ key, reason, detail }) => ({ key, reason, ...(detail ? { detail } : {}) })),
+      };
+    },
+
+    /** `runtime.restart`: answers, then exits 75, and the app supervising it starts it again. */
+    async restartExecutor() {
+      await client.runtime.restart();
+    },
+
+    async executorLogTail(lines) {
+      return (await client.runtime.logTail(lines)).lines;
     },
   };
 

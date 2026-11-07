@@ -269,6 +269,123 @@ describe('how the backend is started', () => {
   });
 });
 
+describe('a backend that keeps its own config file', () => {
+  /** A runtime port over a config file, recording the calls; the host only restarts and names files. */
+  function configBackend() {
+    const calls: string[] = [];
+    let values: Record<string, unknown> = { mcp_enabled: false, auto_permit_cap_requests: true };
+    let restartPending = false;
+    const runtime: NonNullable<BackendPorts['runtime']> = {
+      async executorConfig() {
+        return {
+          file: '/data/executor-config.json',
+          restartPending,
+          entries: [
+            { key: 'mcp_enabled', value: values.mcp_enabled, writableFrom: 'anywhere', pinned: false },
+            { key: 'mcp_port', value: values.mcp_port, writableFrom: 'anywhere', pinned: false },
+            { key: 'log_config', value: values.log_config, writableFrom: 'anywhere', pinned: false },
+            {
+              key: 'auto_permit_cap_requests',
+              value: values.auto_permit_cap_requests,
+              writableFrom: 'anywhere',
+              pinned: false,
+            },
+            { key: 'port', value: undefined, writableFrom: 'this-machine', pinned: true },
+          ],
+        };
+      },
+      async setExecutorConfig(set, unset = []) {
+        calls.push(`set:${JSON.stringify(set)}:${unset.join(',')}`);
+        if (set.mcp_port === 80)
+          return { restartPending, refused: [{ key: 'mcp_port', reason: 'invalid', detail: 'below 1024' }] };
+        values = { ...values, ...set };
+        for (const key of unset) delete values[key];
+        restartPending = true;
+        return { restartPending, refused: [] };
+      },
+      async restartExecutor() {
+        calls.push('runtime.restart');
+      },
+      async executorLogTail(lines) {
+        calls.push(`tail:${lines}`);
+        return ['first', 'second'];
+      },
+    };
+    const host: ExecutorHost = {
+      async restart() {
+        calls.push('host.restart');
+      },
+    };
+    return { runtime, host, calls };
+  }
+
+  it('writes MCP and log levels into the file, and restarts through the backend', async () => {
+    const { runtime, host, calls } = configBackend();
+    executorHost = host;
+    ports = { runtime };
+    const store = mount();
+
+    await store.setMcpEnabled(true);
+    await store.setLogLevel('holochain', 'warn');
+    await store.removeLogLevel('holochain');
+
+    expect(calls).toEqual([
+      'set:{"mcp_enabled":true}:',
+      'set:{"log_config":{"holochain":"warn"}}:',
+      'set:{}:log_config',
+    ]);
+    expect(store.mcpEnabled()).toBe(true);
+    expect(store.executorRestartPending()).toBe(true);
+    expect(store.executorConfigFile()).toBe('/data/executor-config.json');
+
+    await store.restartExecutor();
+    // `runtime.restart`: the host starts the executor again with the same arguments.
+    expect(calls.at(-1)).toBe('runtime.restart');
+    expect(calls).not.toContain('host.restart');
+  });
+
+  it('shows every key as a row, editable unless a flag of this start sets it', async () => {
+    const { runtime, host } = configBackend();
+    executorHost = host;
+    activeShellView = 'settings';
+    ports = { runtime };
+    const store = mount();
+
+    await vi.waitFor(() => expect(store.executorConfigRows()).toHaveLength(5));
+    const row = (key: string) => store.executorConfigRows().find((r) => r.key === key);
+    expect(row('auto_permit_cap_requests')).toMatchObject({ kind: 'boolean', checked: true, editable: true });
+    expect(row('port')).toMatchObject({ kind: 'fixed', value: 'Default', editable: false });
+    expect(row('port')?.note).toMatch(/at each start/);
+
+    await store.setExecutorConfigValue('auto_permit_cap_requests', false);
+    expect(row('auto_permit_cap_requests')).toMatchObject({ checked: false });
+    // A row no control is offered for is not written.
+    await store.setExecutorConfigValue('port', 12345);
+    expect(row('port')?.value).toBe('Default');
+  });
+
+  it('says which key the backend refused, and why', async () => {
+    const { runtime, host } = configBackend();
+    executorHost = host;
+    ports = { runtime };
+    const store = mount();
+
+    await store.setMcpPort(80);
+    expect(store.error()).toBe('mcp_port: invalid — below 1024');
+  });
+
+  it('reads the log tail', async () => {
+    const { runtime, host, calls } = configBackend();
+    executorHost = host;
+    ports = { runtime };
+    const store = mount();
+
+    await store.loadExecutorLogTail();
+    expect(store.executorLogTail()).toBe('first\nsecond');
+    expect(calls).toContain('tail:200');
+  });
+});
+
 describe('degrading when the backend administers nothing', () => {
   it('reports every capability false rather than throwing', () => {
     ports = {}; // a port bundle with no `runtime` — what the in-memory backend supplies

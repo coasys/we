@@ -44,6 +44,7 @@ import type {
   AiTask,
   AuthorizedApp,
   ConsentRequest,
+  ExecutorConfig,
   InstalledLanguage,
   UnsupportedCapability,
 } from '@we/backend-shared';
@@ -168,6 +169,21 @@ export interface RuntimeStore {
   mcpPort: Accessor<number>;
   /** Settings have been changed that the running backend has not picked up. */
   executorRestartPending: Accessor<boolean>;
+  /**
+   * The backend's config file, where it keeps one this app may write (the desktop app's own
+   * executor): its path, empty otherwise. Gate the config rows on it.
+   */
+  executorConfigFile: Accessor<string>;
+  /**
+   * Every key of that file, as rows: `value` ready to show, `kind` the control it takes
+   * (`boolean`, `number`, `text`, or `fixed` for one only shown), `editable`, and `note` saying
+   * why one is not (a flag of this start sets it).
+   */
+  executorConfigRows: Accessor<ExecutorConfigRow[]>;
+  /** The newest lines of this run's backend log, oldest first, one string. Empty until loaded. */
+  executorLogTail: Accessor<string>;
+  /** Restart can be offered: the host starts the backend. */
+  canRestartExecutor: Accessor<boolean>;
   /** The consent request awaiting a decision, if any. Schemas render a modal on this. */
   pendingConsent: Accessor<ConsentRequest | null>;
   /** A secret returned by an approval that must be relayed to the asker by hand. */
@@ -222,12 +238,65 @@ export interface RuntimeStore {
   setMcpPort: (port: number) => Promise<void>;
   /** Start the backend over so the written settings take effect. Does not return. */
   restartExecutor: () => Promise<void>;
+  /** Write one key of the config file. Takes the row's key and the control's value; empty clears it. */
+  setExecutorConfigValue: (key: string, value: unknown) => Promise<void>;
+  /** Read the newest lines of the backend's log. */
+  loadExecutorLogTail: () => Promise<void>;
   approveConsent: () => Promise<void>;
   denyConsent: () => Promise<void>;
   dismissConsentSecret: () => void;
 }
 
 const RuntimeContext = createContext<RuntimeStore>();
+
+/** One key of the backend's config file, ready for a settings row. */
+export interface ExecutorConfigRow {
+  /** The key, so a row keeps its place while its value changes. */
+  id: string;
+  key: string;
+  value: string;
+  kind: 'boolean' | 'number' | 'text' | 'fixed';
+  /** The value as a boolean, for a switch. */
+  checked: boolean;
+  editable: boolean;
+  note: string;
+}
+
+/** What the config file holds, as the rows the settings page draws. */
+export function executorConfigRows(config: ExecutorConfig | null): ExecutorConfigRow[] {
+  return (config?.entries ?? []).map((entry) => {
+    const { value } = entry;
+    const kind: ExecutorConfigRow['kind'] =
+      typeof value === 'boolean'
+        ? 'boolean'
+        : typeof value === 'number'
+          ? 'number'
+          : typeof value === 'string'
+            ? 'text'
+            : 'fixed';
+    const shown =
+      value === undefined
+        ? 'Default'
+        : typeof value === 'string'
+          ? value
+          : typeof value === 'number' || typeof value === 'boolean'
+            ? `${value}`
+            : JSON.stringify(value);
+    return {
+      id: entry.key,
+      key: entry.key,
+      value: shown,
+      kind,
+      checked: value === true,
+      editable: !entry.pinned && kind !== 'fixed',
+      note: entry.pinned
+        ? 'Set by the app at each start'
+        : entry.writableFrom === 'this-machine'
+          ? 'Only from this computer'
+          : '',
+    };
+  });
+}
 
 export function RuntimeStoreProvider(props: ParentProps) {
   const session = useSessionStore();
@@ -253,6 +322,10 @@ export function RuntimeStoreProvider(props: ParentProps) {
   const [executorRestartPending, setExecutorRestartPending] = createSignal(false);
   const [logLevelMap, setLogLevelMap] = createSignal<Record<string, string>>({});
   const [backupStatus, setBackupStatus] = createSignal('');
+  const [executorConfig, setExecutorConfig] = createSignal<ExecutorConfig | null>(null);
+  const [executorLogTail, setExecutorLogTail] = createSignal('');
+  const configRows = createMemo(() => executorConfigRows(executorConfig()));
+  const executorConfigFile = createMemo(() => executorConfig()?.file ?? '');
 
   // A queue, not a single slot: two apps can ask at once, and dropping the second would leave it
   // hanging exactly the way having no listener at all does. The template renders the head.
@@ -281,6 +354,13 @@ export function RuntimeStoreProvider(props: ParentProps) {
 
   const executorHost = () => platform.executor;
   const canConfigureExecutor = createMemo(() => !!executorHost());
+  /**
+   * Whether the backend keeps its settings in its own config file, written through the port. Where
+   * it does, MCP and log levels are that file's keys; where the host keeps them instead (Tauri), they
+   * go through the host.
+   */
+  const configInFile = () => !executorHost()?.setSettings && !!runtime()?.setExecutorConfig;
+  const canRestartExecutor = createMemo(() => !!executorHost());
   // Both halves are needed: the backend writes the file, the host is what can name one. Neither is
   // any use alone, which is why this is one flag rather than two.
   const canBackUp = createMemo(() => !!runtime()?.exportDatabase && !!executorHost()?.chooseFile);
@@ -513,9 +593,60 @@ export function RuntimeStoreProvider(props: ParentProps) {
   // always "write it down, then start over". `executorRestartPending` is what turns that from a
   // setting that silently does nothing into one that says what it is waiting for.
 
+  /** Read the config file, and MCP and log levels out of it. */
+  async function loadExecutorConfig(): Promise<void> {
+    const loaded = await run('loadExecutorConfig', () => runtime()?.executorConfig?.());
+    if (!loaded.ok || !loaded.value) return;
+    const config = loaded.value;
+    const value = (key: string) => config.entries.find((entry) => entry.key === key)?.value;
+    batch(() => {
+      setExecutorConfig(config);
+      setMcpEnabledSignal(value('mcp_enabled') === true);
+      setMcpPortSignal(typeof value('mcp_port') === 'number' ? (value('mcp_port') as number) : 3001);
+      const levels = value('log_config');
+      setLogLevelMap(levels && typeof levels === 'object' ? { ...(levels as Record<string, string>) } : {});
+      setExecutorRestartPending(config.restartPending);
+    });
+  }
+
+  /**
+   * Write keys to the config file, then read it back. A key the backend will not write is said in
+   * the error slot, in its own words, with the key it is about.
+   */
+  async function writeExecutorConfig(set: Record<string, unknown>, unset: string[] = []): Promise<void> {
+    const written = await run('writeExecutorSettings', () => runtime()?.setExecutorConfig?.(set, unset));
+    if (!written.ok || !written.value) return;
+    const { refused } = written.value;
+    await loadExecutorConfig();
+    if (refused.length) {
+      setError(refused.map(({ key, reason, detail }) => `${key}: ${reason}${detail ? ` — ${detail}` : ''}`).join('; '));
+    }
+  }
+
+  async function setExecutorConfigValue(key: string, value: unknown): Promise<void> {
+    const row = configRows().find((r) => r.key === key);
+    if (!row?.editable) return;
+    const raw: unknown = value && typeof value === 'object' && 'detail' in value ? value.detail : value;
+    if (raw === '' || raw === null || raw === undefined) return writeExecutorConfig({}, [key]);
+    const text = typeof raw === 'string' ? raw.trim() : typeof raw === 'number' ? `${raw}` : '';
+    const coerced = row.kind === 'boolean' ? raw === true : row.kind === 'number' ? Number(raw) : text;
+    if (row.kind === 'number' && !Number.isFinite(coerced)) {
+      setError(`${key}: a number is required`);
+      return;
+    }
+    await writeExecutorConfig({ [key]: coerced });
+  }
+
+  async function loadExecutorLogTail(): Promise<void> {
+    const tail = await run('loadExecutorLogTail', () => runtime()?.executorLogTail?.(200));
+    if (tail.ok) setExecutorLogTail((tail.value ?? []).join('\n'));
+  }
+
   async function loadExecutorSettings(): Promise<void> {
     const host = executorHost();
     if (!host) return;
+    if (configInFile()) return loadExecutorConfig();
+    if (!host.getSettings) return;
     try {
       const settings = await host.getSettings();
       setMcpEnabledSignal(settings.mcpEnabled);
@@ -529,7 +660,20 @@ export function RuntimeStoreProvider(props: ParentProps) {
   async function writeExecutorSettings(update: Partial<ExecutorSettings>): Promise<void> {
     const host = executorHost();
     if (!host) return;
-    const applied = await run('writeExecutorSettings', () => host.setSettings(update));
+    if (configInFile()) {
+      const set: Record<string, unknown> = {};
+      const unset: string[] = [];
+      if (update.mcpEnabled !== undefined) set.mcp_enabled = update.mcpEnabled;
+      if (update.mcpPort !== undefined) set.mcp_port = update.mcpPort;
+      if (update.logLevels !== undefined) {
+        if (Object.keys(update.logLevels).length) set.log_config = update.logLevels;
+        else unset.push('log_config');
+      }
+      return writeExecutorConfig(set, unset);
+    }
+    if (!host.setSettings) return;
+    const setSettings = host.setSettings.bind(host);
+    const applied = await run('writeExecutorSettings', () => setSettings(update));
     if (!applied.ok || !applied.value) return;
     setMcpEnabledSignal(applied.value.mcpEnabled);
     setMcpPortSignal(applied.value.mcpPort);
@@ -587,10 +731,20 @@ export function RuntimeStoreProvider(props: ParentProps) {
     await writeExecutorSettings({ mcpPort: Number(port) });
   }
 
+  /**
+   * Where the backend keeps a config file, ask it to restart (`restartExecutor`: it stops, and the
+   * host starts it again with the same arguments and reloads the window). Otherwise the host starts
+   * it over itself.
+   */
   async function restartExecutor(): Promise<void> {
     const host = executorHost();
     if (!host) return;
     setExecutorRestartPending(false);
+    const port = runtime();
+    if (configInFile() && port?.restartExecutor) {
+      await run('restartExecutor', () => port.restartExecutor?.());
+      return;
+    }
     await host.restart();
   }
 
@@ -863,6 +1017,10 @@ export function RuntimeStoreProvider(props: ParentProps) {
     mcpEnabled,
     mcpPort,
     executorRestartPending,
+    executorConfigFile,
+    executorConfigRows: configRows,
+    executorLogTail,
+    canRestartExecutor,
     aiModels,
     aiTasks,
     aiForm,
@@ -921,6 +1079,8 @@ export function RuntimeStoreProvider(props: ParentProps) {
     exportDatabase,
     importDatabase,
     restartExecutor,
+    setExecutorConfigValue,
+    loadExecutorLogTail,
     approveConsent,
     denyConsent,
     dismissConsentSecret: () => setConsentSecret(''),

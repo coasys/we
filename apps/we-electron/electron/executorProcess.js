@@ -48,30 +48,18 @@ export function executorPidsFor(psOutput, dataPath) {
  * The environment the executor is started with.
  *
  * `AD4M_EXIT_WITH_PARENT`: the executor shuts down once this app's process is gone, however it
- * ended. It runs detached, in its own session, so a terminal's Ctrl+C or hangup never reaches it,
- * and an app that crashes, is killed, or dies of a second signal while `before-quit` still waits on
- * `stopExecutor` sends it nothing: it used to run on, holding the data path's locks, until the next
- * launch stopped it. An executor too old to know the variable ignores it, and so does one on
- * Windows: the executor only watches its parent on macOS and Linux. An inherited value wins, so
+ * ended. It runs detached, in its own session, so a terminal's Ctrl+C or hangup never reaches it.
+ * `--watch-stdin` (see {@link executorArgs}) does the same through the pipe this app holds; the
+ * variable stays for an executor that predates the flag. An inherited value wins, so
  * `AD4M_EXIT_WITH_PARENT=false` keeps the executor running past the app, to attach a debugger to it
  * or read its state after a crash.
  *
- * Log levels reach it as `RUST_LOG`, which is the only lever there is: the executor's own logging
- * setup reads that variable and, finding it set, leaves it alone. Written as overrides — anything
- * not named keeps the executor's default, which is why this builds a string only from what the user
- * actually chose.
- *
- * An inherited `RUST_LOG` always wins. Someone who exported one before launching is debugging
- * something specific, and having a settings screen quietly override that would be the opposite of
- * helpful.
+ * Log levels are not here: they are `log_config` in the executor's config file
+ * ({@link initialExecutorConfig}). An inherited `RUST_LOG` still reaches the executor and wins over
+ * the file — someone who exported one before launching is debugging something specific.
  */
-export function executorEnv(logLevels, env = process.env) {
-  const overrides = Object.entries(logLevels ?? {});
-  const rustLog =
-    overrides.length && !env.RUST_LOG
-      ? { RUST_LOG: overrides.map(([crate, level]) => `${crate}=${level}`).join(',') }
-      : {};
-  return { AD4M_EXIT_WITH_PARENT: 'true', ...env, ...rustLog };
+export function executorEnv(env = process.env) {
+  return { AD4M_EXIT_WITH_PARENT: 'true', ...env };
 }
 
 /**
@@ -138,6 +126,22 @@ export async function stopProcess(pid, { timeoutMs = 10_000 } = {}) {
   return 'SIGKILL';
 }
 
+/**
+ * Stop an executor this app started with `--watch-stdin true`: close its stdin, which it answers
+ * by shutting down and exiting 0, and fall back to {@link stopProcess} (SIGTERM, then SIGKILL) if
+ * it has not gone within `timeoutMs`. Resolves with how it ended: 'stdin', 'SIGTERM', 'SIGKILL' or
+ * 'gone'.
+ */
+export async function stopChild(proc, { timeoutMs = 10_000, fallback = stopProcess } = {}) {
+  const gone = () => proc.exitCode !== null || proc.signalCode !== null;
+  if (gone()) return 'gone';
+  const exited = new Promise((resolve) => proc.once('exit', () => resolve(true)));
+  proc.stdin?.end();
+  const inTime = await Promise.race([exited, sleep(timeoutMs).then(() => gone())]);
+  if (inTime) return 'stdin';
+  return fallback(proc.pid);
+}
+
 /** Stops every executor running on `dataPath`. Logs what it stopped through `log(line)`. */
 export async function stopExecutorsFor(dataPath, log = console.log) {
   if (process.platform === 'win32') return;
@@ -158,46 +162,147 @@ export async function stopExecutorsFor(dataPath, log = console.log) {
 }
 
 /**
- * Whether an executor that exited on its own may be started again: up to `limit` restarts in a row,
- * the count ending only when an executor has stayed up for `healthyMs`.
+ * How long to wait before starting again an executor that crashed: 1 s, 2 s, 4 s … up to `capMs`,
+ * and `null` — give up — after `limit` crashes in a row. The count ends only when an executor has
+ * stayed up for `healthyMs`.
  *
- * The executor is the app's whole backend: when it dies on its own the window stays up, every
- * call fails, and the client redials a port nothing listens on, every 30 s, until the user quits.
- * Starting it again ends that. The limit stops an executor that keeps failing (a corrupt store, a
- * port it cannot bind) from being restarted in a loop; past it, the exit is left to the user. A
- * restart the user starts from settings does not reset the count: only a healthy run does, so an
- * executor that still crashes within `healthyMs` of it is not restarted again on its own.
- *
- * Counted in a row rather than per time window: a window only catches failures faster than itself,
- * so an executor dying 30 s after each start never filled a 3-per-minute window and was restarted
- * forever. A run that lasted `healthyMs` shows the restart worked, so the next crash starts afresh.
+ * The executor is the app's whole backend: when it dies on its own the window stays up and every
+ * call fails, so starting it again is right. The delay keeps an executor that dies at once from
+ * spinning; the limit stops one that keeps failing (a corrupt store) from being restarted forever,
+ * and past it the exit is shown to the person. Counted in a row rather than per time window: a
+ * window only catches failures faster than itself, so an executor dying 30 s after each start never
+ * filled a 3-per-minute window and was restarted forever.
  *
  * Returns a function taking when the exited executor started; it answers for this exit and counts
  * the restart when it allows one.
  */
-export function restartBudget({ limit = 3, healthyMs = 5 * 60_000, now = Date.now } = {}) {
-  let restarts = 0;
+export function crashBackoff({ baseMs = 1_000, capMs = 30_000, healthyMs = 60_000, limit = 6, now = Date.now } = {}) {
+  let crashes = 0;
   return (startedAt) => {
-    if (now() - startedAt >= healthyMs) restarts = 0;
-    if (restarts >= limit) return false;
-    restarts += 1;
-    return true;
+    if (now() - startedAt >= healthyMs) crashes = 0;
+    if (crashes >= limit) return null;
+    const delay = Math.min(capMs, baseMs * 2 ** crashes);
+    crashes += 1;
+    return delay;
+  };
+}
+
+/** The executor's exit codes: its run contract with whatever supervises it (ad4m `exit.rs`). */
+export const EXIT = Object.freeze({
+  STOPPED: 0,
+  RESTART: 75,
+  CONFIG_REFUSED: 78,
+  DATA_FOLDER_BUSY: 79,
+  PORT_TAKEN: 80,
+});
+
+/**
+ * What to do about an executor that exited, from its exit code:
+ *
+ * - `stopped` — it was not the current executor, or the app is quitting: this app stopped it.
+ * - `leave` — the current one, before the window exists. The first start is still waiting on it,
+ *   reads the code itself and fails on its own (see `startExecutor`).
+ * - `done` — exit 0: it stopped because it was asked to (`runtime.quit`, a signal, stdin closed).
+ * - `restart` — `samePort: true` for 75 (`runtime.restart`: the same arguments, at once, not
+ *   counted as a crash); `samePort: false` with `delayMs` for 80 (the port is taken: another one)
+ *   and for a crash, as `backoff` allows.
+ * - `refused` — 78: the config file or a flag is refused. Starting again fails the same way.
+ * - `busy` — 79: another executor holds the data folder. Not ours to stop.
+ * - `give-up` — a crash past what `backoff` allows.
+ *
+ * `backoff` is a {@link crashBackoff}, consulted (and so spent) only for a crash or a taken port.
+ */
+export function afterExecutorExit({ current, quitting, appUp, startedAt, code, signal }, backoff) {
+  if (!current || quitting) return { action: 'stopped' };
+  if (!appUp) return { action: 'leave' };
+  if (signal == null) {
+    if (code === EXIT.STOPPED) return { action: 'done' };
+    if (code === EXIT.RESTART) return { action: 'restart', samePort: true, delayMs: 0 };
+    if (code === EXIT.CONFIG_REFUSED) return { action: 'refused' };
+    if (code === EXIT.DATA_FOLDER_BUSY) return { action: 'busy' };
+  }
+  const delayMs = backoff(startedAt);
+  if (delayMs === null) return { action: 'give-up' };
+  return { action: 'restart', samePort: false, delayMs: code === EXIT.PORT_TAKEN && signal == null ? 0 : delayMs };
+}
+
+/**
+ * The arguments the executor is started with, after `run`.
+ *
+ * - `--watch-stdin true`: it stops (exit 0) when its stdin closes. This app holds the pipe open
+ *   and closes it to stop the executor; if the app dies, the OS closes it, and the executor ends
+ *   with the app.
+ * - `--log-dir`: the executor keeps its own log, one file per run, five runs
+ *   (`executor-0.log` is this run), which `runtime.logTail` reads.
+ * - `--config`: the file `runtime.setConfig` writes and the next start reads.
+ * - `--custody-channel`: opens `identity.custodyStatus` to the custody service beside it.
+ *
+ * The admin credential is in the environment (`executorSpawnEnv`), not here: an argument is visible
+ * to every user of the computer through `ps`. `--app-data-path` stays a flag, followed by another
+ * flag, because `executorPidsFor` finds a running executor by it.
+ */
+export function executorArgs({ port, dataPath, configFile, logDir }) {
+  return [
+    'run',
+    '--port',
+    String(port),
+    '--app-data-path',
+    dataPath,
+    '--config',
+    configFile,
+    '--log-dir',
+    logDir,
+    '--watch-stdin',
+    'true',
+    '--custody-channel',
+    'true',
+    '--run-dapp-server',
+    'false',
+    '--connect-holochain',
+    'true',
+  ];
+}
+
+/**
+ * The config file a data folder starts with, the first time this app starts an executor on it.
+ *
+ * From what an older build of this app kept in its account registry (`accounts.executorSettings`),
+ * so MCP and log levels chosen there carry over; afterwards the file is where they live, and the
+ * settings page writes it through `runtime.setConfig`. Only keys the executor lets a running
+ * executor change (`restart` keys) — flags still set the rest.
+ *
+ * `auto_permit_cap_requests: true` keeps what an executor started without a config file does: with
+ * one, the executor's default turns to `false`. A person can change it on the settings page.
+ */
+export function initialExecutorConfig({ mcpEnabled = false, mcpPort, logLevels } = {}) {
+  return {
+    mcp_enabled: mcpEnabled === true,
+    ...(mcpPort ? { mcp_port: mcpPort } : {}),
+    ...(logLevels && Object.keys(logLevels).length ? { log_config: { ...logLevels } } : {}),
+    auto_permit_cap_requests: true,
   };
 }
 
 /**
- * What to do about an executor that exited:
- *
- * - 'stopped' — it was not the current executor, or the app is quitting: this app stopped it.
- * - 'leave' — the current one, before the window exists. The first start is still waiting on it
- *   and fails on its own; a restart now would start a second executor that wait knows nothing of.
- * - 'restart' — the current one crashed or was killed from outside, and `mayRestart` allows it.
- * - 'give-up' — the same, past the budget.
- *
- * `mayRestart` is a `restartBudget` and is only consulted, and so only spent, for a restart.
+ * The last `max` lines of a process's output, for saying why it stopped. Chunks arrive cut anywhere;
+ * a line is kept once it is whole, and `lines()` adds a partial last one.
  */
-export function afterExecutorExit({ current, quitting, appUp, startedAt }, mayRestart) {
-  if (!current || quitting) return 'stopped';
-  if (!appUp) return 'leave';
-  return mayRestart(startedAt) ? 'restart' : 'give-up';
+export function outputTail(max = 20) {
+  const kept = [];
+  let partial = '';
+  return {
+    push(chunk) {
+      const text = partial + String(chunk);
+      const parts = text.split(/\r?\n/);
+      partial = parts.pop() ?? '';
+      for (const line of parts) {
+        if (!line.trim()) continue;
+        kept.push(line);
+        if (kept.length > max) kept.shift();
+      }
+    },
+    lines() {
+      return partial.trim() ? [...kept, partial].slice(-max) : [...kept];
+    },
+  };
 }

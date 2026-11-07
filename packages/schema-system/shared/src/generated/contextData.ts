@@ -2761,6 +2761,13 @@ export const contextData: ContextData = {
         mcpEnabled: { type: 'boolean' },
         mcpPort: { type: 'number' },
         executorRestartPending: { type: 'boolean' },
+        executorConfigFile: { type: 'string' },
+        executorConfigRows: {
+          type: 'array',
+          properties: ['id', 'key', 'value', 'kind', 'checked', 'editable', 'note'],
+        },
+        executorLogTail: { type: 'string' },
+        canRestartExecutor: { type: 'boolean' },
         pendingConsent: { type: 'object', properties: ['kind', 'title', 'message', 'app', 'peerId'] },
         consentSecret: { type: 'string' },
       },
@@ -2799,6 +2806,8 @@ export const contextData: ContextData = {
         'importDatabase',
         'setMcpPort',
         'restartExecutor',
+        'setExecutorConfigValue',
+        'loadExecutorLogTail',
         'approveConsent',
         'denyConsent',
         'dismissConsentSecret',
@@ -2816,6 +2825,7 @@ export const contextData: ContextData = {
         'loadAuthorizedApps',
         'loadNetworkMetrics',
         'loadPeerInfos',
+        'loadExecutorLogTail',
         'dismissConsentSecret',
       ],
       destructive: [
@@ -2849,6 +2859,7 @@ export const contextData: ContextData = {
         'setLogLevel',
         'removeLogLevel',
         'setMcpPort',
+        'setExecutorConfigValue',
       ],
     },
     {

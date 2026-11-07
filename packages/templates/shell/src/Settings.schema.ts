@@ -25,6 +25,8 @@ import { languagesLocalState, languagesSection } from './LanguageSettings.schema
 import {
   backup,
   connectedApps,
+  executorSettings,
+  executorSettingsLocalState,
   executorSupport,
   logging,
   loggingLocalState,
@@ -1518,8 +1520,23 @@ export const settingsTemplate: TemplateSchema = {
       path: '/devices/this',
       // What runs underneath sits behind This device's Advanced switch: network, languages and logs
       // are what someone opens when the data layer misbehaves, and noise the rest of the time.
-      $localState: { ...networkLocalState, ...loggingLocalState, ...languagesLocalState },
-      ...page([thisDevicePage([runtimeError, executorSupport, trustedAgents, peerNetwork, logging, languagesSection])]),
+      $localState: {
+        ...networkLocalState,
+        ...loggingLocalState,
+        ...executorSettingsLocalState,
+        ...languagesLocalState,
+      },
+      ...page([
+        thisDevicePage([
+          runtimeError,
+          executorSupport,
+          trustedAgents,
+          peerNetwork,
+          logging,
+          executorSettings,
+          languagesSection,
+        ]),
+      ]),
     },
     { path: '/bots', ...page([botsPage]) },
     { path: '/connections', ...page([runtimeError, connectedApps]) },
@@ -1555,8 +1572,8 @@ export const settingsTemplate: TemplateSchema = {
     },
     {
       path: '/network',
-      $localState: { ...networkLocalState, ...loggingLocalState },
-      ...page([runtimeError, executorSupport, trustedAgents, peerNetwork, logging]),
+      $localState: { ...networkLocalState, ...loggingLocalState, ...executorSettingsLocalState },
+      ...page([runtimeError, executorSupport, trustedAgents, peerNetwork, logging, executorSettings]),
     },
     // No `$if` on the route itself: its nav entry is already gated, and a production build resolves
     // the switch to false whatever it is set to, so the page is inert rather than dangerous if
