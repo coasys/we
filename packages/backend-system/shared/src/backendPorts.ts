@@ -27,6 +27,27 @@ import type { TranscriptionPort } from './transcription';
 import type { WorkflowPort } from './workflows';
 
 /**
+ * Some modules' schemas were refused by the backend, and the rest were installed.
+ *
+ * Each module's schemas install on their own, so one module the backend refuses — a class name
+ * another app already holds, say — leaves every other module, and the host's own schemas, working.
+ * This rejection comes after all of them were tried, naming the modules refused and why; a module
+ * not named here is installed. A refused module wrote nothing.
+ */
+export class ModuleSchemasRefused extends Error {
+  readonly refused: readonly { moduleId: string; reason: string }[];
+
+  constructor(refused: readonly { moduleId: string; reason: string }[]) {
+    super(
+      `${refused.length === 1 ? 'A module was' : `${refused.length} modules were`} refused, and the rest installed: ` +
+        refused.map((r) => `${r.moduleId} (${r.reason})`).join('; '),
+    );
+    this.name = 'ModuleSchemasRefused';
+    this.refused = refused;
+  }
+}
+
+/**
  * Schema management on a dataset: installing the host's entity schemas, checking what a dataset
  * already holds, discovering foreign schemas, and compiling declared (manifest-form) entities
  * into this backend's installable representation.
@@ -46,9 +67,17 @@ export interface SchemaPort {
    * hands those calls, not which method it calls. See `ModuleDefinition.entities.scope`.
    */
   installRoot(dataset: DatasetHandle): Promise<void>;
-  /** Install the host's space schemas plus the given module schemas. Idempotent. */
+  /**
+   * Install the host's space schemas plus the given module schemas. Idempotent. When only modules
+   * are refused, the host's schemas and every other module are in, and this rejects with
+   * {@link ModuleSchemasRefused}.
+   */
   installSpace(dataset: DatasetHandle, moduleSchemas: readonly unknown[]): Promise<void>;
-  /** Install only the given module schemas (runs on every space switch — diffs before writing). */
+  /**
+   * Install only the given module schemas (runs on every space switch — diffs before writing). Each
+   * module installs on its own; a refused one rejects with {@link ModuleSchemasRefused} once the
+   * others are in.
+   */
   installModules(dataset: DatasetHandle, moduleSchemas: readonly unknown[]): Promise<void>;
   /**
    * Bring a dataset's space schemas up to date with the ones this build declares, for a dataset that

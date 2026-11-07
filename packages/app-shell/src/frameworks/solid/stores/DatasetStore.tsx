@@ -19,6 +19,7 @@ import { createCallKernel } from '@shared/callKernel';
 import { sameDataset } from '@shared/datasetIdentity';
 import { hostListeners, hostSlot } from '@shared/hostSlot';
 import { gatherTranscriptTurns, type TurnRecord } from '@shared/interpretation/transcriptTurns';
+import { reportModuleRefusal } from '@shared/moduleSchemaRefusal';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import { getSeed } from '@shared/seedRegistry';
@@ -1013,11 +1014,15 @@ export function DatasetStoreProvider(props: ParentProps) {
     const moduleSchemas = [...moduleRegistry.moduleSchemas(schemas), ...moduleRegistry.agentSchemas(schemas)];
 
     if (!existing || !(await schemas.hasCoreSchema(personal.handle))) {
-      await schemas.installSpace(personal.handle, moduleSchemas);
+      await schemas
+        .installSpace(personal.handle, moduleSchemas)
+        .catch(reportModuleRefusal('DatasetStore: personal space'));
     } else {
       // The same two catches a space gets on every switch, run together — see `switchDataset`.
       await Promise.all([
-        schemas.installModules(personal.handle, moduleSchemas),
+        schemas.installModules(personal.handle, moduleSchemas).catch((err) => {
+          console.error('DatasetStore: personal space module schema install failed', err);
+        }),
         schemas.refreshSpace(personal.handle).catch((err) => {
           console.error('DatasetStore: personal space schema refresh failed', err);
         }),
@@ -1193,7 +1198,9 @@ export function DatasetStoreProvider(props: ParentProps) {
           await lifecycle.whenSynced?.(uuid);
           if (requestedDataset !== uuid) return;
           if (!(await schemas.hasAnySchema(handle))) {
-            await schemas.installSpace(handle, moduleRegistry.moduleSchemas(schemas));
+            await schemas
+              .installSpace(handle, moduleRegistry.moduleSchemas(schemas))
+              .catch(reportModuleRefusal('DatasetStore: switchDataset'));
           }
           weSpace = await schemas.hasCoreSchema(handle);
         }
@@ -1211,8 +1218,14 @@ export function DatasetStoreProvider(props: ParentProps) {
         //
         // Together rather than in turn: they register disjoint classes (a module's, WE's own), so
         // neither waits on the other.
+        //
+        // Neither failing stops the switch. The space is a WE space already, so it opens on the
+        // shapes it holds; a module the backend refused is named in the error (each module installs
+        // on its own, so the others are in), and its records are what will not query.
         const [, written] = await Promise.all([
-          schemas.installModules(handle, moduleRegistry.moduleSchemas(schemas)),
+          schemas.installModules(handle, moduleRegistry.moduleSchemas(schemas)).catch((err) => {
+            console.error('DatasetStore: module schema install failed', err);
+          }),
           schemas.refreshSpace(handle).catch((err) => {
             console.error('DatasetStore: space schema refresh failed', err);
             return [] as string[];

@@ -1,4 +1,5 @@
 import { type Ad4mModel, LinkQuery, type PerspectiveProxy, SHACLShape } from '@coasys/ad4m';
+import { ModuleSchemasRefused } from '@we/backend-shared';
 import { getEntityTargetClass } from '@we/entities';
 
 import {
@@ -45,6 +46,7 @@ import {
   VideoBlock,
   WeNode,
 } from './entities';
+import { moduleOfModel } from './manifestCompiler';
 
 /**
  * All SDNA models that belong to the we-root system perspective.
@@ -76,14 +78,17 @@ export const HINTS_CUSTOMIZED_PREDICATE = 'we://interpretation_customized';
  * The name the executor gives the class of a target class: its local name. `shapes(names)` selects
  * by this name, so a lookup by target class asks for it and then checks the target class, because
  * two apps can each have a class with the same local name.
+ *
+ * The executor's `class_name_of` exactly (`extract_local_name` in ad4m's
+ * `rust-executor/src/perspectives/shacl_parser.rs`): what follows the rightmost `#`, `:` or `/`, so
+ * `urn:isbn:Book` is `Book` and `ns#a/b` is `b`; `unknown` when that is empty; the whole string when
+ * it has none of the three. A name worked out any other way asks `shapes()` for a class it never
+ * stored.
  */
 export function classNameOf(targetClass: string): string {
-  const hash = targetClass.lastIndexOf('#');
-  if (hash !== -1) return targetClass.slice(hash + 1);
-  const slash = targetClass.lastIndexOf('/');
-  if (slash !== -1 && slash < targetClass.length - 1) return targetClass.slice(slash + 1);
-  const scheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:(.+)$/.exec(targetClass);
-  return scheme ? scheme[1] : targetClass;
+  const at = Math.max(targetClass.lastIndexOf('#'), targetClass.lastIndexOf(':'), targetClass.lastIndexOf('/'));
+  const local = at === -1 ? targetClass : targetClass.slice(at + 1);
+  return local === '' ? 'unknown' : local;
 }
 
 /** The stored shape of the class `targetClass`, as the executor reads it, or `null` when it has none. */
@@ -318,9 +323,13 @@ export async function installSpaceSdna(p: PerspectiveProxy, moduleEntities: read
  * every existing space unable to query its entities: "No SHACL shape stored for class X", from a
  * perspective that looks healthy. The executor writes nothing for a shape it already holds.
  *
- * Its own call rather than part of the space models' call: `registerShapes` refuses the whole call
- * when two shapes name one class, and a module that declares a class WE already has must not stop
- * WE's own models from registering.
+ * **One `registerShapes` call per module**, and none shared with WE's own models. The executor
+ * refuses a whole call — writing nothing from it — when one shape in it is refused: a class name
+ * another app's class already holds, two shapes for one name, a reserved name. In one call, a single
+ * module doing that would leave every module, and WE's models, unregistered. Each module is tried,
+ * and when some were refused this rejects afterwards with {@link ModuleSchemasRefused} naming them;
+ * the others are in. A class not compiled from a module manifest (one written by hand) counts as a
+ * module of its own, under its class name.
  *
  * The models arrive as an argument rather than being read from the module registry. The registry is
  * the host's, and a backend adapter reaching up into it would be the one edge that inverts this
@@ -328,7 +337,20 @@ export async function installSpaceSdna(p: PerspectiveProxy, moduleEntities: read
  * The caller already holds the registry, so passing `moduleRegistry.models()` costs nothing.
  */
 export async function installModuleSdna(p: PerspectiveProxy, moduleEntities: readonly unknown[] = []): Promise<void> {
-  if (moduleEntities.length) await registerModels(p, moduleEntities as (typeof Ad4mModel)[]);
+  const byModule = new Map<string, (typeof Ad4mModel)[]>();
+  for (const model of moduleEntities as (typeof Ad4mModel)[]) {
+    const id = moduleOfModel(model) ?? model.name;
+    byModule.set(id, [...(byModule.get(id) ?? []), model]);
+  }
+  const refused: { moduleId: string; reason: string }[] = [];
+  for (const [moduleId, models] of byModule) {
+    try {
+      await registerModels(p, models);
+    } catch (error) {
+      refused.push({ moduleId, reason: error instanceof Error ? error.message : String(error) });
+    }
+  }
+  if (refused.length) throw new ModuleSchemasRefused(refused);
 }
 
 /**

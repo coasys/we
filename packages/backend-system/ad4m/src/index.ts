@@ -52,6 +52,7 @@ export {
   type CompileManifestOptions,
   CORE_VOCABULARY,
   manifestToEntries,
+  moduleOfModel,
 } from './manifestCompiler';
 export { type Ad4mLifecycleOptions, createAd4mAgentSession, createAd4mDatasetLifecycle } from './lifecycleAdapter';
 export { createAd4mModelAdmin } from './modelAdminAdapter';

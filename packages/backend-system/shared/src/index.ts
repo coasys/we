@@ -153,6 +153,7 @@ export { NAME_CANDIDATES, nameFromProperties, namePropertyOf } from './recordNam
 export type { NameableProperty } from './recordName';
 export { ANONYMOUS_AGENT_NAME, displayName, isProfileEmpty } from './profileTypes';
 export type { AgentProfileSummary, PublishProfileFields } from './profileTypes';
+export { ModuleSchemasRefused } from './backendPorts';
 export type {
   BackendPorts,
   BackendPortsContext,

@@ -8,7 +8,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
-import { judge, movedOn, setWaitingLabel, WAITING_LABEL } from './ad4m-gate.mjs';
+import { judge, movedOn, setWaitingLabel, WAITING_LABEL, withLockfileCheck } from './ad4m-gate.mjs';
 
 const BASE = 'a'.repeat(40);
 const ON_DEV = 'b'.repeat(40);
@@ -199,5 +199,40 @@ describe('the waiting-on-ad4m label', () => {
 
   it('takes it off a PR that is no longer waiting', async () => {
     assert.deepEqual(await writes([WAITING_LABEL.name], false), [`DELETE repos/coasys/we/issues/7/labels/${name}`]);
+  });
+});
+
+describe('the lockfile integrity check', () => {
+  const url = (name) => `https://pkg.pr.new/coasys/ad4m/@coasys/${name}@${UNMERGED}`;
+  const lock = (integrity) =>
+    ['ad4m', 'ad4m-connect']
+      .map((name) =>
+        integrity
+          ? `    resolution: {integrity: sha512-x, tarball: ${url(name)}}`
+          : `    resolution: {tarball: ${url(name)}}`,
+      )
+      .join('\n');
+  const waiting = { ok: false, reason: 'Pins an ad4m commit that is not on ad4m `dev` yet.', waiting: true };
+
+  it('fails a passing pin whose lockfile has no integrity', () => {
+    const verdict = withLockfileCheck({ ok: true, reason: 'fine' }, snapshot(UNMERGED), lock(false));
+    assert.equal(verdict.ok, false);
+    assert.match(verdict.reason, /no integrity/);
+    assert.equal(verdict.fix, `pnpm bump:ad4m ${UNMERGED}`);
+  });
+
+  it('still reports it while the PR waits on ad4m, and keeps it waiting', () => {
+    const verdict = withLockfileCheck(waiting, snapshot(UNMERGED), lock(false));
+    assert.equal(verdict.ok, false);
+    assert.equal(verdict.waiting, true);
+    assert.match(verdict.reason, /not on ad4m `dev` yet/);
+    assert.match(verdict.reason, /no integrity/);
+    assert.equal(verdict.fix, `pnpm bump:ad4m ${UNMERGED}`);
+  });
+
+  it('leaves the verdict alone when the lockfile has the integrity, or the pin is a version', () => {
+    assert.equal(withLockfileCheck(waiting, snapshot(UNMERGED), lock(true)), waiting);
+    const passing = { ok: true, reason: 'fine' };
+    assert.equal(withLockfileCheck(passing, { kind: 'version', version: '0.14.0' }, lock(false)), passing);
   });
 });

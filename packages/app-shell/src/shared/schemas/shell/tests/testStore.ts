@@ -215,8 +215,8 @@ export function createTestStore(
 
         // Ensure seed data exists
         const existing = await TestItem.findAll(p);
+        // No wait before writing: registration answers once the shapes are usable.
         if (!existing || existing.length === 0) {
-          await new Promise((r) => setTimeout(r, 500));
           for (const item of seedItems) {
             await TestItem.create(p, item);
           }
