@@ -299,29 +299,25 @@ describe('boot', () => {
   });
 
   /*
-    A reload on a space's address waited for the whole boot before that space began to load, then
-    read its templates, then its schema, one after another. Its templates and schema reads now start
-    as soon as the list names it, and the agent's spaces are read beside the system datasets.
+    A reload on a space's address waited for the whole boot before that space began to load. The
+    agent's spaces are now read beside the system datasets, as soon as the list names them.
   */
-  it('starts the addressed space, and reads spaces, while the system datasets come up', async () => {
+  it('reads spaces while the system datasets come up', async () => {
     seededDatasets = [{ id: 'garden-1', name: 'Garden' }];
     window.history.replaceState({}, '', '/space/garden-1/canvas');
     let releaseRoot!: () => void;
     const rootHeld = new Promise<void>((resolve) => (releaseRoot = resolve));
-    const prepared: unknown[] = [];
     onPorts = (ports) => {
       const { installRoot } = ports.schemas;
       ports.schemas.installRoot = async (dataset) => {
         await rootHeld;
         return installRoot(dataset);
       };
-      ports.schemas.prepare = (dataset) => prepared.push(dataset);
     };
     try {
       const stores = mountShell();
       const loadSpaces = vi.spyOn(stores.spaces, 'loadSpaces');
 
-      await vi.waitFor(() => expect(prepared).toHaveLength(1));
       await vi.waitFor(() =>
         expect(loadSpaces).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ id: 'garden-1' })])),
       );

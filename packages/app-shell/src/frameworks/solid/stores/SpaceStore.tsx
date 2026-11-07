@@ -1836,7 +1836,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (first !== 'space' || !segment) return;
     const ds = datasets.find((d) => datasetAddressedBy(d, segment));
     if (!ds) return;
-    datasetStore.prepareDataset(ds);
     void templateStore.preloadSpaceTemplates(ds).catch(() => {});
   }
 

@@ -183,7 +183,7 @@ const WATCH_DEFAULTS = {
  * and would have no reason to go looking at its class list.
  */
 async function assertShapesInstalled(perspective: PerspectiveProxy, names: string[]): Promise<void> {
-  const installed = new Set(await perspective.getShaclNames());
+  const installed = new Set((await perspective.shapes()).map((s) => s.name));
   const missing = names.filter((name) => !installed.has(name));
   if (missing.length) {
     throw new Error(
@@ -274,8 +274,8 @@ async function predicateNames(perspective: PerspectiveProxy): Promise<NameTables
 
 /**
  * The properties of every shape this perspective holds beyond the compiled-in registry. Every read
- * of `proposals()` and every per-field decision asks, and reading the shapes one at a time cost a
- * round trip per shape and per property — see `readShapeProperties` for what it costs instead.
+ * of `proposals()` and every per-field decision asks; `readShapeProperties` answers it in one
+ * `shapes()` call.
  *
  * A shape with a native model's name is skipped whatever its target class: the compiled-in shape
  * answers for that name, as it always has here.

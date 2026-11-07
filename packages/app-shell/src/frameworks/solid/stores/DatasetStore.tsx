@@ -168,10 +168,6 @@ export interface DatasetStore {
    */
   updateAgentSettings: (updates: Partial<AgentSettings>) => Promise<boolean>;
   clearCurrentDataset: () => void;
-  /** One-time remediation for a space that accumulated duplicate SDNA installs — removes the
-   * redundant duplicate link copies. Defaults to the active dataset. Returns a display-ready
-   * summary string, or '' if nothing needed cleaning up. */
-  cleanupSpaceSdna: (uuid?: string) => Promise<string>;
 
   // Wiring for SpaceStore and the boot controller (not schema-facing)
   /**
@@ -196,11 +192,6 @@ export interface DatasetStore {
    * than reading it again. Resolves with every dataset it saw or made, for `loadDatasets`.
    */
   initSystemDatasets: (known?: AppDataset[] | null) => Promise<AppDataset[] | null>;
-  /**
-   * Start the reads a switch into this dataset makes, ahead of the switch — see
-   * `SchemaPort.prepare`. For a boot, while the system datasets come up.
-   */
-  prepareDataset: (dataset: AppDataset) => void;
   /**
    * Publish the dataset list. Given the list `initSystemDatasets` just read, publishes that rather
    * than asking the backend again — every ask builds a handle per dataset, and a boot asked twice.
@@ -927,10 +918,6 @@ export function DatasetStoreProvider(props: ParentProps) {
     }
   }
 
-  function prepareDataset(dataset: AppDataset): void {
-    session.backendPorts()?.schemas.prepare?.(dataset.handle);
-  }
-
   async function initSystemDatasets(known?: AppDataset[] | null): Promise<AppDataset[] | null> {
     const lifecycle = session.lifecycle();
     if (!lifecycle) return null;
@@ -1184,12 +1171,8 @@ export function DatasetStoreProvider(props: ParentProps) {
       const app = toApp(ref);
       const handle = app.handle;
 
-      // Check whether the schema is already installed. The port's `hasCoreSchema` uses the
-      // reliable marker rather than a shape listing for the isWeSpace determination — a listing's
-      // underlying triples can lag behind
-      // on a freshly-switched-to, not-yet-fully-synced dataset (e.g. over a
-      // remote backend connection) even though the space's SDNA is already installed
-      // and queryable.
+      // Check whether the schema is already installed. `hasCoreSchema` asks whether WE's Space
+      // class is registered — the class every query against a WE space reads first.
       //
       // But the *install-triggering* condition below must stay "is ANYTHING at all
       // installed", not "is WE's Space specifically installed" — a dataset with
@@ -1218,16 +1201,16 @@ export function DatasetStoreProvider(props: ParentProps) {
         // An existing WE space skips the install above by design, so a module enabled after the
         // space was created would find its shapes missing — a query failing with "No SHACL shape
         // stored for class X" in a dataset that otherwise looks healthy. Module shapes therefore
-        // install on every switch; the port diffs before writing, so this is a read in the
-        // common case.
+        // install on every switch; registration writes only what changed, so this writes nothing
+        // in the common case.
         //
         // The same skip has a second cost, in two forms: a *property* added to one of WE's own
         // models, and a *model* added outright, both reach newly created spaces only — the first
         // silently dropping writes, the second failing every query against the new entity with "No
-        // SHACL shape stored for class X". Refresh covers both; it diffs before writing.
+        // SHACL shape stored for class X". Refresh covers both, and writes only what changed.
         //
-        // Together rather than in turn: they register disjoint classes (a module's, WE's own) from
-        // the same reads, which the port shares — so both cost the one round trip.
+        // Together rather than in turn: they register disjoint classes (a module's, WE's own), so
+        // neither waits on the other.
         const [, written] = await Promise.all([
           schemas.installModules(handle, moduleRegistry.moduleSchemas(schemas)),
           schemas.refreshSpace(handle).catch((err) => {
@@ -1287,34 +1270,6 @@ export function DatasetStoreProvider(props: ParentProps) {
     }
   }
 
-  async function cleanupSpaceSdna(uuid?: string): Promise<string> {
-    const lifecycle = session.lifecycle();
-    if (!lifecycle) return '';
-
-    const targetUuid = uuid ?? currentDataset()?.id;
-    if (!targetUuid) {
-      console.warn('DatasetStore: cleanupSpaceSdna called with no uuid and no active dataset');
-      return '';
-    }
-
-    try {
-      const handle = (await lifecycle.get(targetUuid))?.handle;
-      if (!handle) return '';
-      const schemas = session.backendPorts()?.schemas;
-      if (!schemas?.dedupe) return '';
-      const { removed, authors } = await schemas.dedupe(handle);
-      if (removed === 0) return 'No duplicate SDNA links found.';
-      const myDid = session.me()?.did;
-      const authorList = authors.map((did) => (did === myDid ? `${did} (you)` : did)).join(', ');
-      const summary = `Removed ${removed} duplicate SDNA link(s) created by: ${authorList}`;
-      trace('dataset', 'sdna:cleanup', { dataset: targetUuid, summary });
-      return summary;
-    } catch (error) {
-      console.error('DatasetStore: cleanupSpaceSdna error', error);
-      return '';
-    }
-  }
-
   const store: DatasetStore = {
     datasets,
     orderedDatasets,
@@ -1350,13 +1305,11 @@ export function DatasetStoreProvider(props: ParentProps) {
       setCurrentDataset(null);
       setIsWeSpace(false);
     },
-    cleanupSpaceSdna,
 
     trackDataset,
     onDatasetRemoved: removedListeners.add,
     readDatasets,
     initSystemDatasets,
-    prepareDataset,
     loadDatasets,
     subscribeToChanges,
     getDatasetOrder,

@@ -54,9 +54,4 @@ export interface ShapeStore {
    * space simply no longer lists the model among its own.
    */
   remove(dataset: DatasetHandle, id: string): Promise<void>;
-  /**
-   * After a model's schema has been (re)installed: put back whatever of the stored model the install
-   * rewrote. A backend whose install never touches what it stores leaves this out.
-   */
-  keep?(dataset: DatasetHandle, shape: ShapeInput): Promise<void>;
 }

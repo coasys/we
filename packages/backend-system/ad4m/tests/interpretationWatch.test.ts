@@ -73,7 +73,7 @@ function perspective(agent = 'did:me') {
   const handle = {
     uuid: 'p1',
     on: () => () => {},
-    getShaclNames: async () => ['TaskBlock', 'EventBlock', 'Relationship'],
+    shapes: async () => ['TaskBlock', 'EventBlock', 'Relationship'].map((name) => ({ name, shape: {}, hash: '' })),
     get: async (query: { source?: string; predicate?: string }) => {
       calls.get += 1;
       // A real read yields the event loop; so does this one, so concurrent callers interleave.

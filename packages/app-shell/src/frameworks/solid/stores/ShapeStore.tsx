@@ -587,10 +587,7 @@ export function ShapeStoreProvider(props: ParentProps) {
 
   // ── The adoption rail ─────────────────────────────────────────────────────────
 
-  /**
-   * Compile a stored model and install its schema into the space — then let the store put back
-   * whatever of the model the install rewrote (`ShapeStore.keep`).
-   */
+  /** Compile a stored model and install its schema into the space. */
   async function adoptShape(shape: ShapeInput, dataset = handle()): Promise<void> {
     const ports = schemas();
     if (!ports || !dataset) return;
@@ -600,7 +597,6 @@ export function ShapeStoreProvider(props: ParentProps) {
     const classes = ports.declareInDataset(dataset, manifest, { moduleId: `shape/${view.shapeId}` });
     const declared = performance.now();
     for (const cls of Object.values(classes)) await ports.ensure(dataset, cls);
-    await storage().keep?.(dataset, shape);
     trace('shapes', 'adopt', {
       name: view.name,
       classes: Object.keys(classes).length,

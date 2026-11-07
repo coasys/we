@@ -66,14 +66,6 @@ export interface SchemaPort {
   ensure(dataset: DatasetHandle, schema: unknown): Promise<void>;
   /** Whether the host's core space schema is installed (the "is this a WE space" check). */
   hasCoreSchema(dataset: DatasetHandle): Promise<boolean>;
-  /**
-   * Start the reads a switch into this dataset is about to make, and answer nothing.
-   *
-   * A hint: a backend that shares or caches those reads lets the switch find them done; one that
-   * does not leaves this out. Called on boot for the space the address names, while the system
-   * datasets are still being brought up.
-   */
-  prepare?(dataset: DatasetHandle): void;
   /** Whether the dataset has any schema at all (the auto-install trigger check). */
   hasAnySchema(dataset: DatasetHandle): Promise<boolean>;
   /**
@@ -143,8 +135,6 @@ export interface SchemaPort {
    * space-owned marker — after which release improvements flow again.
    */
   resetInterpretationHints(dataset: DatasetHandle, entity: string): Promise<void>;
-  /** Optional remediation for duplicated schema installs (backend-specific failure mode). */
-  dedupe?(dataset: DatasetHandle): Promise<{ removed: number; authors: string[] }>;
   /**
    * Where the space keeps its own models. Optional: absent, each model is a manifest document on a
    * `Shape` record — see {@link ShapeStore}.

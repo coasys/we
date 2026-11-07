@@ -21,7 +21,7 @@ function perspectiveReturning(ids: string[], existing: StoredLink[] = []) {
     uuid: `p-${Math.random()}`,
     on: () => {},
     runInterpretation: async () => ids,
-    getShaclNames: async () => ['TaskBlock'],
+    shapes: async () => [{ name: 'TaskBlock', shape: {}, hash: '' }],
     interpretationOverlays: async () => [],
     add: async (link: { data: StoredLink } | StoredLink) => {
       links.push('data' in link ? link.data : link);

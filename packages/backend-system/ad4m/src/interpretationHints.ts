@@ -3,84 +3,46 @@
  * behind per-space hint customization.
  *
  * The executor assembles extraction prompts from the shapes stored in the perspective, not from
- * the model classes — so the space is already the override point for hints. What stood in the way
- * was `shapeIsStale`, which rewrites a stored shape whenever it differs from the class declaration
- * and would revert any community-tuned hint on the next space switch. The contract here splits the
- * two regimes: **structure stays code-owned** (paths and the identity key are still stale-checked),
+ * the model classes — so the space is already the override point for hints. The contract splits two
+ * regimes: **structure stays code-owned** (every registration sends the model's declared structure),
  * **interpretation metadata becomes space-owned once a space customizes it** — a marker link on the
- * shape node records the customization, and the staleness check yields to it.
+ * shape node records the customization.
  *
- * A *structural* refresh (the model gained a property) rewrites the whole shape graph, which would
- * drop the customized hints and the marker with it. `registerEntities` reads a customized shape's
- * hints before such a refresh and writes them back after, so the community's tuning outlives a
- * release that changes the model's structure. A hint on a property the new shape no longer has has
- * nowhere to go, and is lost with the property.
+ * Hints are part of a shape as the executor stores it (`ad4m://interpretation_hint` on the shape and
+ * property nodes), so a hint is written the way a shape is: read the stored shape with `shapes()`,
+ * change its hints, and give it back to `registerShapes`, which writes only the changed hints. The
+ * marker is a link of WE's own; the executor keeps it when it rewrites the shape. Registration reads
+ * the marker and sends a marked shape with its stored hints (see `registerModels` in
+ * `sdnaEntities.ts`), so the community's tuning outlives a release that changes the model's
+ * structure. A hint on a property the new shape no longer has has nowhere to go, and is lost with the
+ * property.
  */
-import { Link, LinkQuery, Literal, type PerspectiveProxy } from '@coasys/ad4m';
+import { Link, LinkQuery, Literal, type PerspectiveProxy, SHACLShape } from '@coasys/ad4m';
 import type { EntityHintState } from '@we/backend-shared';
 import { getEntityForDataset, getEntityTargetClass } from '@we/entities';
 
-import { declaredShape, forgetStoredShapes } from './sdnaEntities';
+import { ensureEntityRegistered, HINTS_CUSTOMIZED_PREDICATE, storedShapeOf } from './sdnaEntities';
 
-/** Marker on the shape node: this shape's hints were tuned by the space and must not be reverted. */
-export const HINTS_CUSTOMIZED_PREDICATE = 'we://interpretation_customized';
-const HINT_PREDICATE = 'ad4m://interpretation_hint';
-
-/** Hints are stored literal-encoded; a raw target is returned as-is. */
-function decodeLiteral(value: string): string {
-  if (!value.startsWith('literal:')) return value;
-  try {
-    return String(Literal.fromUrl(value).get());
-  } catch {
-    return value;
-  }
-}
-
-/**
- * Each declared property's name and the path it is stored under — what turns the contract's
- * property names into this backend's storage keys and back. From the model's own shape, which is
- * what was installed.
- */
-function namedPaths(entity: string, p: PerspectiveProxy): { byName: Map<string, string>; byPath: Map<string, string> } {
-  const byName = new Map<string, string>();
-  const byPath = new Map<string, string>();
+/** The names of the properties the entity's model declares: the contract's property names. */
+function declaredNames(entity: string, p: PerspectiveProxy): Set<string> {
+  const names = new Set<string>();
   const model = getEntityForDataset(entity, p) as
-    { generateSHACL?: () => { shape?: { properties?: { name?: string; path?: string }[] } } } | undefined;
+    { generateSHACL?: () => { shape?: { properties?: { name?: string }[] } } } | undefined;
   try {
     for (const property of model?.generateSHACL?.().shape?.properties ?? []) {
-      if (!property.name || !property.path) continue;
-      byName.set(property.name, property.path);
-      if (!byPath.has(property.path)) byPath.set(property.path, property.name);
+      if (property.name) names.add(property.name);
     }
   } catch {
     // A model that cannot describe itself has no names to offer; its hints read as none.
   }
-  return { byName, byPath };
+  return names;
 }
 
-/** The shape node and its property nodes (keyed by path) for one entity, or null when absent. */
-async function locateShape(
-  p: PerspectiveProxy,
-  entity: string,
-): Promise<{ shapeUri: string; propNodes: Map<string, string> } | null> {
+/** The entity's stored shape, or null when the entity is unknown or its class has no shape here. */
+async function storedShape(p: PerspectiveProxy, entity: string): Promise<SHACLShape | null> {
   const model = getEntityForDataset(entity, p);
   const targetClass = model ? getEntityTargetClass(model) : undefined;
-  if (!targetClass) return null;
-
-  const shapeLinks = await p.get(new LinkQuery({ source: targetClass, predicate: 'ad4m://shape' }));
-  const shapeUri = shapeLinks[0]?.data.target;
-  if (!shapeUri) return null;
-
-  const propNodes = new Map<string, string>();
-  const propLinks = await p.get(new LinkQuery({ source: shapeUri, predicate: 'sh://property' }));
-  await Promise.all(
-    propLinks.map(async (link) => {
-      const pathLinks = await p.get(new LinkQuery({ source: link.data.target, predicate: 'sh://path' }));
-      const path = pathLinks[0]?.data.target;
-      if (path) propNodes.set(path, link.data.target);
-    }),
-  );
-  return { shapeUri, propNodes };
+  return targetClass ? storedShapeOf(p, targetClass) : null;
 }
 
 /** Replace every link `source -[predicate]-> *` with one carrying `value`; empty value = remove only. */
@@ -92,26 +54,18 @@ async function replaceLink(p: PerspectiveProxy, source: string, predicate: strin
 
 /** The hints currently stored on the perspective for one entity, or null when it has no shape. */
 export async function readInterpretationHints(p: PerspectiveProxy, entity: string): Promise<EntityHintState | null> {
-  const located = await locateShape(p, entity);
-  if (!located) return null;
-  const { shapeUri, propNodes } = located;
-
-  const [classLinks, marker] = await Promise.all([
-    p.get(new LinkQuery({ source: shapeUri, predicate: HINT_PREDICATE })),
-    p.get(new LinkQuery({ source: shapeUri, predicate: HINTS_CUSTOMIZED_PREDICATE })),
-  ]);
-  const { byPath } = namedPaths(entity, p);
+  const shape = await storedShape(p, entity);
+  if (!shape) return null;
+  const marker = await p.get(new LinkQuery({ source: shape.nodeShapeUri, predicate: HINTS_CUSTOMIZED_PREDICATE }));
+  const names = declaredNames(entity, p);
   const propHints: Record<string, string> = {};
-  await Promise.all(
-    [...propNodes.entries()].map(async ([path, node]) => {
-      const name = byPath.get(path);
-      if (!name) return;
-      const links = await p.get(new LinkQuery({ source: node, predicate: HINT_PREDICATE }));
-      if (links[0]) propHints[name] = decodeLiteral(links[0].data.target);
-    }),
-  );
+  for (const property of shape.properties) {
+    if (property.name && names.has(property.name) && property.interpretationHint !== undefined) {
+      propHints[property.name] = property.interpretationHint;
+    }
+  }
   return {
-    ...(classLinks[0] ? { classHint: decodeLiteral(classLinks[0].data.target) } : {}),
+    ...(shape.interpretationHint !== undefined ? { classHint: shape.interpretationHint } : {}),
     propHints,
     customized: marker.length > 0,
   };
@@ -123,54 +77,46 @@ export async function readInterpretationHints(p: PerspectiveProxy, entity: strin
  * Only the keys present are touched (a partial update); an empty-string hint removes that hint.
  * `propHints` is keyed by property name. Throws when the entity has no stored shape — customizing what
  * is not installed would succeed silently and do nothing, which is the worse failure.
+ *
+ * The marker goes first. If the shape write then fails, the marker only keeps the hints that were
+ * already stored; the other order could leave tuned hints with no marker, and the next switch would
+ * put the declared hints back over them.
  */
 export async function writeInterpretationHints(
   p: PerspectiveProxy,
   entity: string,
   hints: { classHint?: string; propHints?: Record<string, string> },
 ): Promise<void> {
-  const located = await locateShape(p, entity);
-  if (!located) throw new Error(`writeInterpretationHints: no stored shape for "${entity}" in this dataset`);
-  const { shapeUri, propNodes } = located;
+  const stored = await storedShape(p, entity);
+  if (!stored) throw new Error(`writeInterpretationHints: no stored shape for "${entity}" in this dataset`);
 
-  try {
-    if (hints.classHint !== undefined) await replaceLink(p, shapeUri, HINT_PREDICATE, hints.classHint || null);
-    const { byName } = namedPaths(entity, p);
-    for (const [name, hint] of Object.entries(hints.propHints ?? {})) {
-      const path = byName.get(name);
-      const node = path ? propNodes.get(path) : undefined;
-      if (!node) throw new Error(`writeInterpretationHints: "${entity}" has no stored property called ${name}`);
-      await replaceLink(p, node, HINT_PREDICATE, hint || null);
-    }
-    await replaceLink(p, shapeUri, HINTS_CUSTOMIZED_PREDICATE, 'true');
-  } finally {
-    // The staleness comparison reads these triples; a cached read now predates them.
-    forgetStoredShapes(p);
+  const shape = SHACLShape.fromJSON(stored.toJSON());
+  if (hints.classHint !== undefined) {
+    if (hints.classHint) shape.interpretationHint = hints.classHint;
+    else delete shape.interpretationHint;
   }
+  for (const [name, hint] of Object.entries(hints.propHints ?? {})) {
+    const property = shape.properties.find((p) => p.name === name);
+    if (!property) throw new Error(`writeInterpretationHints: "${entity}" has no stored property called ${name}`);
+    if (hint) property.interpretationHint = hint;
+    else delete property.interpretationHint;
+  }
+
+  await replaceLink(p, shape.nodeShapeUri, HINTS_CUSTOMIZED_PREDICATE, 'true');
+  await p.registerShapes([shape]);
 }
 
 /**
  * Reset one entity's hints to what its model class declares, and clear the customized marker —
  * the "reset to default" affordance, and how a space resumes receiving hint improvements from
  * releases after having customized.
+ *
+ * Unmarked, the shape registers as the model declares it, hints included.
  */
 export async function resetInterpretationHints(p: PerspectiveProxy, entity: string): Promise<void> {
-  const located = await locateShape(p, entity);
-  if (!located) return;
   const model = getEntityForDataset(entity, p);
-  if (!model) return;
-  const declared = declaredShape(model);
-  const { shapeUri, propNodes } = located;
-
-  try {
-    await replaceLink(p, shapeUri, HINT_PREDICATE, declared.classHint ?? null);
-    await Promise.all(
-      [...propNodes.entries()].map(([path, node]) =>
-        replaceLink(p, node, HINT_PREDICATE, declared.propHints.get(path) ?? null),
-      ),
-    );
-    await replaceLink(p, shapeUri, HINTS_CUSTOMIZED_PREDICATE, null);
-  } finally {
-    forgetStoredShapes(p);
-  }
+  const stored = await storedShape(p, entity);
+  if (!model || !stored) return;
+  await replaceLink(p, stored.nodeShapeUri, HINTS_CUSTOMIZED_PREDICATE, null);
+  await ensureEntityRegistered(p, model as never);
 }

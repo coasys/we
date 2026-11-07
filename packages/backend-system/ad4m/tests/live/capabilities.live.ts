@@ -24,7 +24,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { Ad4mClient, type Ad4mModel, type PerspectiveProxy } from '@coasys/ad4m';
+import { Ad4mClient, Ad4mModel, type PerspectiveProxy } from '@coasys/ad4m';
 import { executeQueryIR, type InMemoryDataset, planQuery, type QueryIR, type Row } from '@we/backend-shared';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 
@@ -369,8 +369,7 @@ describe('ad4mCapabilities against the executor', () => {
       flag: flag(`${P}item`),
       classResolver: (name: string) => classes[name],
     }) as ModelClass;
-    await perspective.ensureSDNASubjectClass(classes.VerifyGroup);
-    await perspective.ensureSDNASubjectClass(classes.VerifyItem);
+    await Ad4mModel.registerAll(perspective, [classes.VerifyGroup, classes.VerifyItem]);
     Item = classes.VerifyItem;
     seeded = await seed(perspective, classes.VerifyGroup, Item);
   }, 180_000);

@@ -48,9 +48,7 @@ interface TestModelClass {
   create(dataset: unknown, data: Record<string, unknown>, opts?: Record<string, unknown>): Promise<TestRecord>;
   delete(dataset: unknown, id: string): Promise<void>;
   findAll(dataset: unknown): Promise<TestRecord[]>;
-}
-interface TestPerspective {
-  ensureSDNASubjectClass(model: TestModelClass): Promise<void>;
+  register(dataset: unknown): Promise<unknown>;
 }
 
 // ---------------------------------------------------------------------------
@@ -208,12 +206,12 @@ export function createTestStore(
     if (!ref || !m) return;
     const { TestItem, TestChild } = m;
 
-    const p = ref.handle as TestPerspective;
+    const p = ref.handle;
 
     void (async () => {
       try {
-        await p.ensureSDNASubjectClass(TestItem);
-        await p.ensureSDNASubjectClass(TestChild);
+        await TestItem.register(p);
+        await TestChild.register(p);
 
         // Ensure seed data exists
         const existing = await TestItem.findAll(p);

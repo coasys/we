@@ -3,8 +3,7 @@ import { expr } from '@we/schema-shared';
 import { confirmModal } from '@we/template-kit';
 
 /**
- * Every dataset this agent holds, as datasets rather than as spaces — ids, share URIs, and the two
- * destructive tools.
+ * Every dataset this agent holds, as datasets rather than as spaces — ids, share URIs, and delete.
  *
  * Collapsed by default and separated from the spaces list because the subject differs. The list
  * above is about communities; this is about storage. It also keeps hard delete from sitting one
@@ -29,7 +28,6 @@ const datasetCard: SchemaNode = {
   type: 'Column',
   props: { gap: '200', p: '300', bg: 'surface', r: '300', border: '1px solid border' },
   $localState: {
-    sdnaCleanupResult: { type: 'string', initial: '' },
     confirmDeleteOpen: { type: 'boolean', initial: false },
     deleting: { type: 'boolean', initial: false },
   },
@@ -75,22 +73,6 @@ const datasetCard: SchemaNode = {
       type: 'Row',
       props: { gap: '200', ay: 'center', wrap: true },
       children: [
-        {
-          type: 'we-button',
-          props: {
-            variant: 'soft',
-            size: 'sm',
-            onClick: {
-              $invoke: 'datasetStore.cleanupSpaceSdna',
-              args: [{ $: 'dataset.id' }],
-              onSuccess: [{ $setLocal: 'sdnaCleanupResult', value: { $: 'result' } }],
-            },
-          },
-          children: [
-            { type: 'we-icon', props: { name: 'broom' } },
-            { type: 'we-text', props: { variant: 'label' }, children: ['Clean up duplicate schema'] },
-          ],
-        },
         {
           type: 'we-button',
           props: {
@@ -162,17 +144,6 @@ const datasetCard: SchemaNode = {
           children: [
             'Deleting this removes your notes and your Pocket. Posts you shared from a note are not affected.',
           ],
-        },
-      },
-    },
-    {
-      type: '$if',
-      props: {
-        condition: { $: 'local.sdnaCleanupResult' },
-        then: {
-          type: 'we-text',
-          props: { variant: 'footnote', color: 'text-faint' },
-          children: [{ $: 'local.sdnaCleanupResult' }],
         },
       },
     },
