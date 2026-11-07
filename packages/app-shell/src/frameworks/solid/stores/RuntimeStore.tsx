@@ -262,21 +262,20 @@ export interface ExecutorConfigRow {
   note: string;
 }
 
-/** What the config file holds, as the rows the settings page draws. */
+/**
+ * What the config file holds, as the rows the settings page draws. A row's control comes from the
+ * key's type, not its value, so a key the file leaves to its default — or one just cleared — keeps
+ * its control, empty, and can be set.
+ */
 export function executorConfigRows(config: ExecutorConfig | null): ExecutorConfigRow[] {
   return (config?.entries ?? []).map((entry) => {
     const { value } = entry;
-    const kind: ExecutorConfigRow['kind'] =
-      typeof value === 'boolean'
-        ? 'boolean'
-        : typeof value === 'number'
-          ? 'number'
-          : typeof value === 'string'
-            ? 'text'
-            : 'fixed';
+    const kind: ExecutorConfigRow['kind'] = entry.kind === 'object' ? 'fixed' : entry.kind;
     const shown =
       value === undefined
-        ? 'Default'
+        ? kind === 'fixed'
+          ? 'Default'
+          : ''
         : typeof value === 'string'
           ? value
           : typeof value === 'number' || typeof value === 'boolean'

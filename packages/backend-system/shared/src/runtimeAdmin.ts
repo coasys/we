@@ -100,6 +100,12 @@ export interface ExecutorConfig {
 
 export interface ExecutorConfigEntry {
   key: string;
+  /**
+   * The type of value the key takes, known whether or not the file holds one: a key left to its
+   * default arrives with no value to tell it by. `object` is a nested setting a single control
+   * cannot edit, and a key whose type the backend does not say.
+   */
+  kind: 'boolean' | 'number' | 'text' | 'object';
   /** What the file holds, or undefined when it leaves the key to its default. */
   value: unknown;
   /**

@@ -1,14 +1,11 @@
 /**
- * Which executors this app may stop, and how it stops one — against real processes for the latter.
+ * How the app starts, supervises and stops its executor — against real processes for the stop.
  *
- * The selection is the part worth pinning: it used to be `pkill -f ad4m-executor`, which also ended
- * every other app's executor on the machine, a second WE checkout's, test executors and any command
- * line that merely mentioned the binary.
+ * It stops only its own child: startup once ran `pkill -f ad4m-executor`, which also ended every
+ * other app's executor on the machine, and later stopped any executor on its data folder. Another
+ * executor there now refuses to start beside it (exit 79), which `afterExecutorExit` reports.
  */
 import { spawn } from 'child_process';
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
-import { tmpdir } from 'os';
-import { join } from 'path';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -16,12 +13,11 @@ import {
   crashBackoff,
   executorArgs,
   executorEnv,
-  executorPidsFor,
   EXIT,
   initialExecutorConfig,
   outputTail,
+  startWithPortRetry,
   stopChild,
-  stopExecutorsFor,
   stopProcess,
   waitUntilReady,
 } from './executorProcess.js';
@@ -123,6 +119,52 @@ describe('afterExecutorExit', () => {
   });
 });
 
+describe('startWithPortRetry', () => {
+  /** A `startOnce` failing with these exit codes in turn (null: it starts), recording its calls. */
+  const starts = (...codes) => {
+    const calls = [];
+    const startOnce = async (options) => {
+      calls.push(options);
+      const code = codes[calls.length - 1];
+      if (code != null) throw Object.assign(new Error(`exit ${code}`), { exitCode: code });
+    };
+    return { startOnce, calls };
+  };
+
+  it('tries another port on the first start, when no window exists to restart from', async () => {
+    const { startOnce, calls } = starts(EXIT.PORT_TAKEN, EXIT.PORT_TAKEN, null);
+    await startWithPortRetry(startOnce, { samePort: true, appUp: () => false });
+    expect(calls).toEqual([{ samePort: true }, { samePort: false }, { samePort: false }]);
+  });
+
+  it('gives up on the first start after three taken ports', async () => {
+    const { startOnce, calls } = starts(EXIT.PORT_TAKEN, EXIT.PORT_TAKEN, EXIT.PORT_TAKEN, null);
+    await expect(startWithPortRetry(startOnce, { appUp: () => false })).rejects.toMatchObject({
+      exitCode: EXIT.PORT_TAKEN,
+    });
+    expect(calls).toHaveLength(3);
+  });
+
+  // Once the window exists the exit handler (`afterExecutorExit`) has already queued a restart for
+  // that exit, against the crash backoff. A second try here would start an executor the queued
+  // restart then stops, and would go on trying after the handler gave up.
+  it('leaves a taken port to the exit handler once the window exists', async () => {
+    const { startOnce, calls } = starts(EXIT.PORT_TAKEN, null);
+    await expect(startWithPortRetry(startOnce, { samePort: true, appUp: () => true })).rejects.toMatchObject({
+      exitCode: EXIT.PORT_TAKEN,
+    });
+    expect(calls).toEqual([{ samePort: true }]);
+  });
+
+  it('does not try again after any other failure', async () => {
+    const { startOnce, calls } = starts(EXIT.DATA_FOLDER_BUSY, null);
+    await expect(startWithPortRetry(startOnce, { appUp: () => false })).rejects.toMatchObject({
+      exitCode: EXIT.DATA_FOLDER_BUSY,
+    });
+    expect(calls).toHaveLength(1);
+  });
+});
+
 describe('executorArgs', () => {
   const args = executorArgs({ port: 12001, dataPath: '/d/a b', configFile: '/d/a b/c.json', logDir: '/d/a b/logs' });
 
@@ -134,12 +176,6 @@ describe('executorArgs', () => {
     expect(flag('--config')).toBe('/d/a b/c.json');
     expect(flag('--log-dir')).toBe('/d/a b/logs');
     expect(flag('--custody-channel')).toBe('true');
-  });
-
-  // `executorPidsFor` finds a running executor by its data path, which another flag must follow.
-  it('is found again by its data path', () => {
-    const line = `  42 /opt/ad4m-executor ${args.join(' ')}`;
-    expect(executorPidsFor(line, '/d/a b')).toEqual([42]);
   });
 });
 
@@ -218,9 +254,6 @@ describe('stopChild', () => {
   });
 });
 
-const ps = (...lines) => lines.join('\n');
-const exe = '/Applications/WE.app/Contents/Resources/ad4m-executor';
-
 describe('waitUntilReady', () => {
   /** A probe answering `answers` in turn, and a wait that takes no time. */
   const setup = (answers) => {
@@ -255,41 +288,6 @@ describe('waitUntilReady', () => {
     );
     expect(await outcome).toBe('gone');
     expect(asked()).toBe(2);
-  });
-});
-
-describe('executorPidsFor', () => {
-  it('finds the executor running on this data path', () => {
-    const out = ps(
-      `  101 ${exe} run --port 12000 --admin-credential x --app-data-path /Users/a/.ad4m --run-dapp-server false`,
-      `  102 /usr/bin/other --app-data-path /Users/a/.ad4m`,
-    );
-    expect(executorPidsFor(out, '/Users/a/.ad4m')).toEqual([101]);
-  });
-
-  it('leaves executors on other data paths alone, including a path that only starts the same', () => {
-    const out = ps(
-      `  201 ${exe} run --port 12000 --app-data-path /Users/a/.ad4m-other --run-dapp-server false`,
-      `  202 ${exe} run --port 12400 --app-data-path /tmp/test/data`,
-      `  203 /Applications/ADAM Launcher.app/Contents/MacOS/ad4m-executor run --app-data-path /Users/a/.ad4m-launcher`,
-    );
-    expect(executorPidsFor(out, '/Users/a/.ad4m')).toEqual([]);
-  });
-
-  it('matches the path as the last argument and a path with spaces', () => {
-    const out = ps(
-      `  301 ${exe} run --app-data-path /Users/a/My Data`,
-      `  302 ${exe} run --app-data-path /Users/a/My Data/sub --port 1`,
-    );
-    expect(executorPidsFor(out, '/Users/a/My Data')).toEqual([301]);
-  });
-
-  it('ignores commands that only mention the binary', () => {
-    const out = ps(
-      `  401 cargo build --release -p ad4m --bin ad4m-executor --app-data-path /Users/a/.ad4m`,
-      `  402 tail -f /Users/a/.ad4m/ad4m-executor.log --app-data-path /Users/a/.ad4m`,
-    );
-    expect(executorPidsFor(out, '/Users/a/.ad4m')).toEqual([]);
   });
 });
 
@@ -337,34 +335,5 @@ describe.skipIf(process.platform === 'win32')('stopProcess', () => {
   // Signalling pid 1 as root would send init a SIGTERM, so only run this where it is refused.
   it.skipIf(process.getuid?.() === 0)('rejects for a running process it may not signal', async () => {
     await expect(stopProcess(1, { timeoutMs: 300 })).rejects.toMatchObject({ code: 'EPERM' });
-  });
-});
-
-describe.skipIf(process.platform === 'win32')('stopExecutorsFor', () => {
-  // `COLUMNS` makes `ps` cut each line to that width. The executor's data path comes after the
-  // binary path and the admin credential, so a cut line no longer names it and the match misses.
-  it('finds an executor whose data path is past the terminal width', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'we-executor-'));
-    const exePath = join(dir, 'ad4m-executor');
-    writeFileSync(exePath, "#!/bin/sh\ntrap 'exit 0' TERM\nwhile :; do sleep 0.1; done\n");
-    chmodSync(exePath, 0o755);
-    const dataPath = join(dir, 'data');
-    const proc = spawn(exePath, ['run', '--admin-credential', 'x'.repeat(80), '--app-data-path', dataPath], {
-      stdio: 'ignore',
-    });
-    const exited = new Promise((r) => proc.once('exit', r));
-    const columns = process.env.COLUMNS;
-    process.env.COLUMNS = '80';
-    try {
-      const lines = [];
-      await stopExecutorsFor(dataPath, (line) => lines.push(line));
-      expect(lines).toContain(`[main] Stopping the executor already running on ${dataPath} (pid ${proc.pid})`);
-      await exited;
-    } finally {
-      if (columns === undefined) delete process.env.COLUMNS;
-      else process.env.COLUMNS = columns;
-      proc.kill('SIGKILL');
-      rmSync(dir, { recursive: true, force: true });
-    }
   });
 });

@@ -348,6 +348,7 @@ describe("the executor's own process", () => {
           { key: 'mcp_enabled', class: 'restart' },
           { key: 'log_config', class: 'restart', pinned: 'config' },
           { key: 'port', class: 'machine' },
+          { key: 'a_key_this_build_does_not_know', class: 'machine' },
         ],
       })),
       setConfig: vi.fn(async () => ({ restartPending: true, refused: [{ key: 'port', reason: 'pinned-by-config' }] })),
@@ -363,9 +364,18 @@ describe("the executor's own process", () => {
       file: '/data/executor-config.json',
       restartPending: false,
       entries: [
-        { key: 'mcp_enabled', value: true, writableFrom: 'anywhere', pinned: false },
-        { key: 'log_config', value: { holochain: 'warn' }, writableFrom: 'anywhere', pinned: true },
-        { key: 'port', value: undefined, writableFrom: 'this-machine', pinned: false },
+        { key: 'mcp_enabled', kind: 'boolean', value: true, writableFrom: 'anywhere', pinned: false },
+        { key: 'log_config', kind: 'object', value: { holochain: 'warn' }, writableFrom: 'anywhere', pinned: true },
+        // Not in the file: its type comes from the key, so it can still be set.
+        { key: 'port', kind: 'number', value: undefined, writableFrom: 'this-machine', pinned: false },
+        // A key without a known type is only shown.
+        {
+          key: 'a_key_this_build_does_not_know',
+          kind: 'object',
+          value: undefined,
+          writableFrom: 'this-machine',
+          pinned: false,
+        },
       ],
     });
   });

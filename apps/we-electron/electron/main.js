@@ -15,7 +15,7 @@ import {
 } from 'electron';
 import contextMenu from 'electron-context-menu';
 import express from 'express';
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import http from 'http';
 import net from 'net';
 import { homedir } from 'os';
@@ -34,8 +34,8 @@ import {
   EXIT,
   initialExecutorConfig,
   outputTail,
+  startWithPortRetry,
   stopChild,
-  stopExecutorsFor,
   waitUntilReady,
 } from './executorProcess.js';
 import { createIdentity, IDENTITY_PAGE, IDENTITY_SCHEME, identityFile, isIdentityPage } from './identityWindow.js';
@@ -151,11 +151,10 @@ const seedProductName = (() => {
 if (seedProductName && !app.isPackaged) app.setName(seedProductName);
 
 /*
-  One instance per app. A second launch would start its own executor on the same data path, which
-  stops the first one's (`stopExecutorsFor`) and deletes the locks under it; the first then starts
-  its executor again and stops the second's, and so on. The lock is per `userData` directory, and a
-  seed product runs under its own name (above) and so its own directory: different products still
-  run side by side. Taken before the registry and any executor work, and a refused launch exits at
+  One instance per app. A second launch would start its own executor on the data path the first
+  one's holds, which refuses to start (exit 79): a second window over a dead backend. The lock is
+  per `userData` directory, and a seed product runs under its own name (above) and so its own
+  directory: different products still run side by side. Taken before the registry and any executor work, and a refused launch exits at
   once: `app.quit()` would let the rest of this module run, and the registry migrates account
   directories when it is created.
 */
@@ -304,23 +303,13 @@ async function waitForGraphQL(port, proc) {
  * `samePort` starts it again with the same arguments — port and credential included — which is
  * what `runtime.restart` (exit 75) asks for. Otherwise it gets a free port and a new credential.
  *
- * A first start whose executor exits 80 (the port was taken between choosing it and binding it)
- * tries another port, up to three times. One that exits 78 or 79 throws, with the executor's last
- * lines as the reason.
+ * The first start, before the window exists, tries another port when its executor exits 80 (the
+ * port was taken between choosing it and binding it), up to three times; after that the exit
+ * handler owns every recovery (`startWithPortRetry`). One that exits 78 or 79 throws, with the
+ * executor's last lines as the reason.
  */
-async function startExecutor({ samePort = false } = {}) {
-  for (let attempt = 1; ; attempt++) {
-    try {
-      await startExecutorOnce({ samePort: samePort && attempt === 1 });
-      return;
-    } catch (err) {
-      if (err.exitCode === EXIT.PORT_TAKEN && attempt < 3) {
-        console.warn(`[main] Port ${ad4mPort} is taken; starting the executor on another one`);
-        continue;
-      }
-      throw err;
-    }
-  }
+function startExecutor({ samePort = false } = {}) {
+  return startWithPortRetry(startExecutorOnce, { samePort, appUp: () => Boolean(mainWindow) });
 }
 
 /** The config file `--config` names, in the account's data folder. See `ensureExecutorConfig`. */
@@ -361,44 +350,9 @@ async function startExecutorOnce({ samePort }) {
     const log = executorLog;
     if (log) console.log('[main] Executor log:', log.path);
 
-    // Stop an executor still running on this data path (one a previous run left behind, e.g. after
-    // Ctrl+C or a crash) and wait for it to exit. Only that one: other executors on the machine are
-    // not ours. It must be gone before the lair socket / LOCK cleanups below, or it re-acquires them.
-    await stopExecutorsFor(ad4mDataPath, (line) => {
-      console.log(line);
-      log?.write(`${line}\n`);
-    });
-
-    // Clean up stale lair-keystore socket file — if a previous run crashed without
-    // killing child processes, this socket stays on disk and causes lair-keystore
-    // to fail on the next agent.unlock(), which crashes the executor.
-    const keychainSocketPath = join(ad4mDataPath, 'ad4m', 'h', 'c', 'ks', 'socket');
-    if (existsSync(keychainSocketPath)) {
-      console.log('[main] Removing stale lair-keystore socket:', keychainSocketPath);
-      try {
-        rmSync(keychainSocketPath);
-      } catch (e) {
-        console.warn('[main] Could not remove socket:', e.message);
-      }
-    }
-
-    // Clean up stale RocksDB LOCK files left by a detached executor that survived
-    // a Ctrl+C / forced quit. Without this, the next launch panics with
-    // "Resource temporarily unavailable" on every perspective's SPARQL store.
-    const perspectivesDir = join(ad4mDataPath, 'perspectives');
-    if (existsSync(perspectivesDir)) {
-      try {
-        for (const uuid of readdirSync(perspectivesDir)) {
-          const lockFile = join(perspectivesDir, uuid, 'sparql_store', 'LOCK');
-          if (existsSync(lockFile)) {
-            console.log('[main] Removing stale SPARQL LOCK:', lockFile);
-            rmSync(lockFile);
-          }
-        }
-      } catch (e) {
-        console.warn('[main] Could not clean SPARQL LOCK files:', e.message);
-      }
-    }
+    // Nothing else running on this data folder is stopped, and nothing under it is deleted: an
+    // executor someone else runs there keeps it, and this one refuses to start (exit 79). See the
+    // head of `executorProcess.js`.
 
     console.log('Starting AD4M executor...');
     console.log('Port:', ad4mPort);

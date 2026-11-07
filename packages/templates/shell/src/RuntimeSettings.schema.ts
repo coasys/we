@@ -674,6 +674,7 @@ export const executorSettings: SchemaNode = {
                                 width: '220px',
                                 type: { $: "row.kind == 'number' ? 'number' : 'text'" },
                                 value: { $: 'row.value' },
+                                placeholder: 'Default',
                                 onChange: {
                                   $invoke: 'runtimeStore.setExecutorConfigValue',
                                   args: [{ $: 'row.key' }, { $: 'event.detail' }],

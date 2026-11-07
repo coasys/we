@@ -1,48 +1,28 @@
 /**
- * Stopping executors: only the ones this account owns, and gracefully.
+ * Starting, stopping and supervising the executor this app runs.
  *
- * ## Which
+ * ## Only our own
  *
- * An executor holds its data path exclusively — the lair-keystore socket, the Holochain conductor
- * and every perspective's RocksDB store live under it — so the executor that must be gone before
- * this one starts is the one running on the same `--app-data-path`. Nothing else is ours to stop:
- * the ADAM launcher's executor, a second WE checkout's, a test executor on another path. Matching
- * the argument rather than keeping a PID file of our own also finds an executor that an older
- * build of this app left behind, which never wrote one.
+ * The app stops only the executor it started: its own child, through the pipe it holds
+ * ({@link stopChild}). An executor someone else runs on the same data folder — the ADAM launcher's,
+ * one started from a terminal — is not ours to stop. The executor holds `executor.lock` in its data
+ * folder and refuses to start beside another (exit 79, before it opens anything there), and the app
+ * says so ({@link afterExecutorExit}'s `busy`).
+ *
+ * Startup used to find and stop any executor whose command line named this data folder, then delete
+ * the lair socket and the RocksDB LOCK files under it. That was for an executor an older build left
+ * running after the app died. Now one cannot outlive the app: `--watch-stdin` stops it when the pipe
+ * closes, which the OS does when the app dies, and `AD4M_EXIT_WITH_PARENT` does the same for an
+ * executor that predates the flag. And the deletions are not needed for a dead executor — lair
+ * removes its own stale socket, and RocksDB locks the LOCK file rather than relying on its absence —
+ * while for a live one they broke the executor that exit 79 now protects.
  *
  * ## How
  *
- * The executor shuts down cleanly on SIGTERM: it stops the Holochain conductor and exits. So the
- * stop is SIGTERM, then a wait for the process to go, and SIGKILL only if it does not. SIGKILL first
- * left the conductor and the stores mid-write, which is the state the startup cleanup then had to
- * repair.
+ * The executor shuts down cleanly on SIGTERM and when its stdin closes: it stops the Holochain
+ * conductor and exits. So the stop closes stdin, then SIGTERM, then a wait for the process to go,
+ * and SIGKILL only if it does not. SIGKILL first left the conductor and the stores mid-write.
  */
-import { execFileSync } from 'child_process';
-
-const EXECUTOR_BINARY = 'ad4m-executor';
-const DATA_PATH_FLAG = '--app-data-path';
-
-/**
- * PIDs of executors running on `dataPath`, from `ps -axo pid=,command=` output. A process counts
- * when its program is the executor binary and its data path argument is exactly `dataPath`.
- */
-export function executorPidsFor(psOutput, dataPath) {
-  const flag = ` ${DATA_PATH_FLAG} ${dataPath}`;
-  const pids = [];
-  for (const line of psOutput.split('\n')) {
-    const match = line.match(/^\s*(\d+)\s+(.*)$/);
-    if (!match) continue;
-    const [, pid, command] = match;
-    const program = command.split(` run `)[0];
-    if (!program.endsWith(`/${EXECUTOR_BINARY}`) && program !== EXECUTOR_BINARY) continue;
-    const at = command.indexOf(flag);
-    if (at === -1) continue;
-    // The path ends the command line, or the next argument starts after it.
-    const after = command.slice(at + flag.length);
-    if (after === '' || after.startsWith(' --')) pids.push(Number(pid));
-  }
-  return pids;
-}
 
 /**
  * The environment the executor is started with.
@@ -142,25 +122,6 @@ export async function stopChild(proc, { timeoutMs = 10_000, fallback = stopProce
   return fallback(proc.pid);
 }
 
-/** Stops every executor running on `dataPath`. Logs what it stopped through `log(line)`. */
-export async function stopExecutorsFor(dataPath, log = console.log) {
-  if (process.platform === 'win32') return;
-  let psOutput;
-  try {
-    // `ww`: without it, `ps` cuts each line to `COLUMNS` when that is set, which drops
-    // `--app-data-path` (it comes after the binary path and the port) and the match misses.
-    psOutput = execFileSync('ps', ['-axwwo', 'pid=,command='], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
-  } catch (err) {
-    log(`[main] Could not list processes, not stopping a previous executor: ${err.message}`);
-    return;
-  }
-  for (const pid of executorPidsFor(psOutput, dataPath).filter((p) => p !== process.pid)) {
-    log(`[main] Stopping the executor already running on ${dataPath} (pid ${pid})`);
-    const how = await stopProcess(pid);
-    log(`[main] Previous executor stopped (${how})`);
-  }
-}
-
 /**
  * How long to wait before starting again an executor that crashed: 1 s, 2 s, 4 s … up to `capMs`,
  * and `null` — give up — after `limit` crashes in a row. The count ends only when an executor has
@@ -201,7 +162,7 @@ export const EXIT = Object.freeze({
  *
  * - `stopped` — it was not the current executor, or the app is quitting: this app stopped it.
  * - `leave` — the current one, before the window exists. The first start is still waiting on it,
- *   reads the code itself and fails on its own (see `startExecutor`).
+ *   reads the code itself and fails, or tries another port, on its own ({@link startWithPortRetry}).
  * - `done` — exit 0: it stopped because it was asked to (`runtime.quit`, a signal, stdin closed).
  * - `restart` — `samePort: true` for 75 (`runtime.restart`: the same arguments, at once, not
  *   counted as a crash); `samePort: false` with `delayMs` for 80 (the port is taken: another one)
@@ -227,6 +188,28 @@ export function afterExecutorExit({ current, quitting, appUp, startedAt, code, s
 }
 
 /**
+ * Start the executor with `startOnce`, which rejects with the exit code of an executor that exited
+ * before it was ready. A taken port (80) is tried again on another port, up to `attempts` starts —
+ * but only while `appUp()` is false: the first start, before a window exists, when the exit handler
+ * leaves the executor to it ({@link afterExecutorExit}'s `leave`). Once the window exists the exit
+ * handler owns recovery: it has already queued a restart for that exit, against the crash backoff,
+ * so this rejects and leaves it there. Trying here as well started an executor the queued restart
+ * then stopped, and went on trying after the handler had given up.
+ *
+ * `samePort` is passed to the first start only: another try needs another port.
+ */
+export async function startWithPortRetry(startOnce, { samePort = false, appUp, attempts = 3 }) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await startOnce({ samePort: samePort && attempt === 1 });
+    } catch (err) {
+      if (err.exitCode !== EXIT.PORT_TAKEN || attempt >= attempts || appUp()) throw err;
+      console.warn('[main] The executor’s port is taken; starting it on another one');
+    }
+  }
+}
+
+/**
  * The arguments the executor is started with, after `run`.
  *
  * - `--watch-stdin true`: it stops (exit 0) when its stdin closes. This app holds the pipe open
@@ -238,8 +221,7 @@ export function afterExecutorExit({ current, quitting, appUp, startedAt, code, s
  * - `--custody-channel`: opens `identity.custodyStatus` to the custody service beside it.
  *
  * The admin credential is in the environment (`executorSpawnEnv`), not here: an argument is visible
- * to every user of the computer through `ps`. `--app-data-path` stays a flag, followed by another
- * flag, because `executorPidsFor` finds a running executor by it.
+ * to every user of the computer through `ps`.
  */
 export function executorArgs({ port, dataPath, configFile, logDir }) {
   return [

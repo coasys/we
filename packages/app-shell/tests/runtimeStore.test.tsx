@@ -281,16 +281,24 @@ describe('a backend that keeps its own config file', () => {
           file: '/data/executor-config.json',
           restartPending,
           entries: [
-            { key: 'mcp_enabled', value: values.mcp_enabled, writableFrom: 'anywhere', pinned: false },
-            { key: 'mcp_port', value: values.mcp_port, writableFrom: 'anywhere', pinned: false },
-            { key: 'log_config', value: values.log_config, writableFrom: 'anywhere', pinned: false },
+            { key: 'mcp_enabled', kind: 'boolean', value: values.mcp_enabled, writableFrom: 'anywhere', pinned: false },
+            { key: 'mcp_port', kind: 'number', value: values.mcp_port, writableFrom: 'anywhere', pinned: false },
+            { key: 'log_config', kind: 'object', value: values.log_config, writableFrom: 'anywhere', pinned: false },
             {
               key: 'auto_permit_cap_requests',
+              kind: 'boolean',
               value: values.auto_permit_cap_requests,
               writableFrom: 'anywhere',
               pinned: false,
             },
-            { key: 'port', value: undefined, writableFrom: 'this-machine', pinned: true },
+            {
+              key: 'hc_admin_port',
+              kind: 'number',
+              value: values.hc_admin_port,
+              writableFrom: 'this-machine',
+              pinned: false,
+            },
+            { key: 'port', kind: 'number', value: undefined, writableFrom: 'this-machine', pinned: true },
           ],
         };
       },
@@ -351,17 +359,39 @@ describe('a backend that keeps its own config file', () => {
     ports = { runtime };
     const store = mount();
 
-    await vi.waitFor(() => expect(store.executorConfigRows()).toHaveLength(5));
+    await vi.waitFor(() => expect(store.executorConfigRows()).toHaveLength(6));
     const row = (key: string) => store.executorConfigRows().find((r) => r.key === key);
     expect(row('auto_permit_cap_requests')).toMatchObject({ kind: 'boolean', checked: true, editable: true });
-    expect(row('port')).toMatchObject({ kind: 'fixed', value: 'Default', editable: false });
+    expect(row('port')).toMatchObject({ kind: 'number', editable: false });
     expect(row('port')?.note).toMatch(/at each start/);
 
     await store.setExecutorConfigValue('auto_permit_cap_requests', false);
     expect(row('auto_permit_cap_requests')).toMatchObject({ checked: false });
     // A row no control is offered for is not written.
     await store.setExecutorConfigValue('port', 12345);
-    expect(row('port')?.value).toBe('Default');
+    expect(row('port')?.value).toBe('');
+  });
+
+  // `runtime.config` returns what the file holds, so a key the file leaves to its default has no
+  // value to tell its type by: the type comes with the key.
+  it('offers a key the file does not hold, and keeps its input once it is cleared', async () => {
+    const { runtime, host, calls } = configBackend();
+    executorHost = host;
+    activeShellView = 'settings';
+    ports = { runtime };
+    const store = mount();
+
+    await vi.waitFor(() => expect(store.executorConfigRows()).toHaveLength(6));
+    const row = (key: string) => store.executorConfigRows().find((r) => r.key === key);
+    expect(row('hc_admin_port')).toMatchObject({ kind: 'number', value: '', editable: true });
+
+    await store.setExecutorConfigValue('hc_admin_port', '4000');
+    expect(calls.at(-1)).toBe('set:{"hc_admin_port":4000}:');
+    expect(row('hc_admin_port')).toMatchObject({ kind: 'number', value: '4000', editable: true });
+
+    await store.setExecutorConfigValue('hc_admin_port', '');
+    expect(calls.at(-1)).toBe('set:{}:hc_admin_port');
+    expect(row('hc_admin_port')).toMatchObject({ kind: 'number', value: '', editable: true });
   });
 
   it('says which key the backend refused, and why', async () => {
