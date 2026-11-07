@@ -59,6 +59,28 @@ describe('selfAcrossDevices', () => {
     warn.mockRestore();
   });
 
+  it('answers what it last knew when the key log cannot be read now', async () => {
+    const known = { person: PERSON, dids: [DESKTOP, LAPTOP, PERSON] };
+    const failing = {
+      status: async () => {
+        throw new Error('identity store unavailable');
+      },
+    };
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(await selfAcrossDevices(DESKTOP, failing, known)).toEqual(known);
+    // Another device's answer is not this one's.
+    expect(await selfAcrossDevices('did:key:z6MkTestElsewhere', failing, known)).toEqual({
+      person: 'did:key:z6MkTestElsewhere',
+      dids: ['did:key:z6MkTestElsewhere'],
+    });
+    warn.mockRestore();
+    // A log that answers "no person" is an answer, not a failure: it is not overridden.
+    expect(await selfAcrossDevices(DESKTOP, { status: async () => ({ did: null }) as never }, known)).toEqual({
+      person: DESKTOP,
+      dids: [DESKTOP],
+    });
+  });
+
   it("makes a post from my other computer mine, as a template's ownership check reads it", async () => {
     const identity = {
       status: async () => ({ did: PERSON }) as never,

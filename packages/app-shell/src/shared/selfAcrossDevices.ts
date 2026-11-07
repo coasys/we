@@ -7,8 +7,8 @@
  * names an agent: `author in me.dids` for a record a device signed, `m.did in me.dids` for a member or
  * a profile, which are listed one per person (see `spaceStore.members`, `profileStore.profiles`).
  *
- * Revoked devices stay in `dids`: what a device wrote while it spoke for the person stays theirs, and
- * the backend already refuses anything that device signs after it was removed.
+ * Revoked devices stay in `dids`: what a device wrote while it spoke for the person stays theirs. The
+ * executor flags a revoked key's link unless its store already held that link before the revocation.
  */
 import type { IdentityPort } from '@we/backend-shared';
 
@@ -29,11 +29,15 @@ export function deviceDid(sign: string): string {
 
 /**
  * Reads the person and their devices from the identity port. Never rejects: a backend without a key
- * log, or one that cannot answer, leaves this device as its own person, as it was before key logs.
+ * log leaves this device as its own person, as it was before key logs. One that cannot answer right
+ * now answers `lastKnown` where there is one — a passing store error is not news that this device
+ * stopped speaking for its person, and answering it as such would make my other devices' posts
+ * "not mine" until the next read — and this device alone otherwise.
  */
 export async function selfAcrossDevices(
   did: string,
   identity: Pick<IdentityPort, 'status' | 'devices'> | null | undefined,
+  lastKnown?: SelfAcrossDevices,
 ): Promise<SelfAcrossDevices> {
   const alone: SelfAcrossDevices = { person: did, dids: did ? [did] : [] };
   if (!did || !identity?.status) return alone;
@@ -46,6 +50,6 @@ export async function selfAcrossDevices(
     return { person: status.did, dids };
   } catch (error) {
     console.warn('selfAcrossDevices: could not read who this device speaks for', error);
-    return alone;
+    return lastKnown?.dids.includes(did) ? lastKnown : alone;
   }
 }

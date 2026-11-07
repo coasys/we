@@ -235,11 +235,10 @@ export function markPending(rows: FeedRow[], pending: ReadonlySet<string>): Feed
 export async function readFeedWindow(
   find: FeedFind,
   options: FeedWindowOptions,
-): Promise<{ rows: FeedRow[]; hasMore: boolean }> {
+): Promise<{ rows: FeedRow[]; hasMore: boolean; parts?: FeedWindowParts }> {
   const { root, shown, fromStart } = options;
   if (!root) return { rows: [], hasMore: false };
   const order: 'asc' | 'desc' = fromStart ? 'asc' : 'desc';
-  const before = (a: number, b: number) => (fromStart ? a < b : a > b);
   const page = (within: string): RecordQuery => ({
     within,
     order: { createdAt: order },
@@ -304,8 +303,41 @@ export async function readFeedWindow(
     );
   }
 
-  const activity = groupActivity(extracted.flat(), titles, options.pending, options.personOf);
+  const parts: FeedWindowParts = {
+    lines,
+    records: extracted.flat(),
+    titles,
+    shown,
+    fromStart: !!fromStart,
+    more: filled || reachedCalls < calls.length || calls.length >= CALL_WINDOW,
+  };
+  return { ...arrangeFeedWindow(parts, options.pending, options.personOf), parts };
+}
+
+/**
+ * What one read of the window found, before it was grouped and cut to size — kept so the window can
+ * be arranged again (a person arriving for two devices' records) without asking the backend again.
+ */
+export interface FeedWindowParts {
+  lines: FeedLine[];
+  /** The extracted and hand-made records, ungrouped. */
+  records: { row: Row; entity: string }[];
+  titles: ReadonlyMap<string, string>;
+  shown: number;
+  fromStart: boolean;
+  /** A source held more than the read took, whatever the arrangement. */
+  more: boolean;
+}
+
+/** The rows a read's parts draw as: activity grouped, merged with the lines, in window order, cut to `shown`. */
+export function arrangeFeedWindow(
+  parts: FeedWindowParts,
+  pending?: ReadonlySet<string>,
+  personOf?: (author: string) => string,
+): { rows: FeedRow[]; hasMore: boolean } {
+  const { lines, records, titles, shown, fromStart } = parts;
+  const before = (a: number, b: number) => (fromStart ? a < b : a > b);
+  const activity = groupActivity(records, titles, pending, personOf);
   const merged: FeedRow[] = [...lines, ...activity].sort((a, b) => (before(timeOf(a), timeOf(b)) ? -1 : 1));
-  const hasMore = merged.length > shown || filled || reachedCalls < calls.length || calls.length >= CALL_WINDOW;
-  return { rows: merged.slice(0, shown), hasMore };
+  return { rows: merged.slice(0, shown), hasMore: merged.length > shown || parts.more };
 }

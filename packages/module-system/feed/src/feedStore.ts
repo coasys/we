@@ -22,7 +22,16 @@
  */
 import type { InterpretationKernel, ModuleStoreDeps, RecordsKernel } from '@we/module-shared';
 
-import { FEED_FIRST_PAGE, FEED_PAGE, FeedReadStopped, type FeedRow, markPending, readFeedWindow } from './feed';
+import {
+  arrangeFeedWindow,
+  FEED_FIRST_PAGE,
+  FEED_PAGE,
+  FeedReadStopped,
+  type FeedRow,
+  type FeedWindowParts,
+  markPending,
+  readFeedWindow,
+} from './feed';
 
 /** How long a burst of changes is collected before the window is read again. */
 const SETTLE_MS = 250;
@@ -60,12 +69,21 @@ export function createFeed(deps: FeedDeps) {
   const [rows, setRows] = signal<FeedRow[]>([]);
   const [hasMore, setHasMore] = signal(false);
   const [loaded, setLoaded] = signal(false);
+  /**
+   * The person each author on screen was grouped under when the window was read — see "Grouping by
+   * person" below.
+   */
+  const [groupedAs, setGroupedAs] = signal<Record<string, string>>({});
+  /** What the last read drawn found, before grouping — what a person arriving is regrouped from. */
+  let drawnParts: FeedWindowParts | undefined;
 
   // Forgotten whenever the dataset changes, so a switch never draws the last space's rows under the
   // new space's name.
   effect?.(() => {
     void deps.dataset?.();
     setRows([]);
+    drawnParts = undefined;
+    setGroupedAs({});
     setLoaded(false);
   });
 
@@ -120,6 +138,7 @@ export function createFeed(deps: FeedDeps) {
     const anchoredAtStart = fromStart();
     const same = () => !disposed && root() === space && shown() === size && fromStart() === anchoredAtStart;
     const activityTypes = (deps.interpretation?.targets(space) ?? []).map((t) => t.entity);
+    const used: Record<string, string> = {};
     try {
       const result = await readFeedWindow((entity, query) => records?.find(entity, query) ?? Promise.resolve([]), {
         root: space,
@@ -128,9 +147,11 @@ export function createFeed(deps: FeedDeps) {
         activityTypes,
         pending: new Set(unconfirmed()),
         stopped: () => !same() || !looking(),
-        personOf: (author) => deps.identities?.get(author)?.person ?? author,
+        personOf: (author) => (used[author] = deps.identities?.get(author)?.person ?? author),
       });
       if (same()) {
+        drawnParts = result.parts;
+        setGroupedAs(used);
         // Marked with the suggestions as they are now, which may have settled while it ran.
         setRows(markPending(result.rows, new Set(unconfirmed())));
         setHasMore(result.hasMore);
@@ -172,6 +193,34 @@ export function createFeed(deps: FeedDeps) {
       else changed();
     };
   };
+
+  /*
+    ## Grouping by person
+
+    Activity is grouped by the person an author speaks for, and the host learns that in the background:
+    a device's person arrives after its profile, which may be after the read that grouped it. So the
+    authors a read grouped are watched, and when one's person is no longer what it was grouped under
+    the window is arranged again from what that read found (`drawnParts`) — the two devices' rows
+    become one with no query to the backend, which would cost seconds of executor time per space. A
+    person arriving for an author not on screen, or the same person again, redraws nothing. An author
+    nobody has fetched is fetched here.
+  */
+  effect?.(() => {
+    const identities = deps.identities;
+    if (!identities) return;
+    const personOf = (author: string) => identities.get(author)?.person ?? author;
+    let moved = false;
+    for (const [author, person] of Object.entries(groupedAs())) {
+      if (!identities.get(author)) identities.fetch(author);
+      if (personOf(author) !== person) moved = true;
+    }
+    if (!moved || !drawnParts) return;
+    const used: Record<string, string> = {};
+    const result = arrangeFeedWindow(drawnParts, new Set(unconfirmed()), (author) => (used[author] = personOf(author)));
+    setGroupedAs(used);
+    setRows(result.rows);
+    setHasMore(result.hasMore);
+  });
 
   // Read when the window moves, and when somebody starts looking at one that is owed a read.
   effect?.(() => {

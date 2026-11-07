@@ -350,7 +350,8 @@ export function SessionStoreProvider(props: ParentProps) {
           ? { person: before.person, dids: before.dids }
           : { person: did, dids: did ? [did] : [] };
       setMe({ ...identity, ...known });
-      const self = await selfAcrossDevices(did, backendPorts()?.identity);
+      // A key log that cannot be read now keeps what was known, rather than dropping my other devices.
+      const self = await selfAcrossDevices(did, backendPorts()?.identity, known);
       // Set again only when the key log changed the answer: everything keyed on `me` re-reads on a
       // new value, and without a key log there is nothing new to read.
       const changed = self.person !== known.person || self.dids.join() !== known.dids.join();
