@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { type Ad4mServerHost, createAd4mIdentityPort } from './identityPort';
 import {
+  describeRefusal,
   KeySessionError,
   type KeySessionRemote,
   normalizeServerAddress,
@@ -492,6 +493,15 @@ describe('reading a refusal', () => {
     expect(refusalReason(new FakeRpcError(403, 'local-only: signSessionStatement'))).toBe('local-only');
     expect(refusalReason(new FakeRpcError(503, 'store-unavailable'))).toBe('store-unavailable');
     expect(refusalReason(new Error('RPC error 403: grant'))).toBe('grant');
+  });
+
+  // A server with no `public_origins` set, the usual first remote setup.
+  it('tells a server with no public origin how to set one', () => {
+    const reason = refusalReason(new FakeRpcError(403, 'no-public-origin: set public_origins (--public-origin)'));
+    expect(reason).toBe('no-public-origin');
+    expect(describeRefusal(reason, 'https://home.example')).toMatch(
+      /does not list https:\/\/home\.example as its address\. Its operator sets it with --public-origin/,
+    );
   });
 
   it('calls a failure with no word of the executor’s unreachable or refused', () => {

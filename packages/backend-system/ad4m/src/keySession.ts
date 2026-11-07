@@ -115,6 +115,7 @@ export class KeySessionError extends Error {
 const REASONS = [
   'challenge',
   'audience',
+  'no-public-origin',
   'signature',
   'key',
   'not-known',
@@ -157,7 +158,9 @@ export function describeRefusal(reason: string, origin?: string): string {
     case 'store-unavailable':
       return 'That server cannot check your keys right now: it cannot reach the identity store. Try again later.';
     case 'audience':
-      // The server accepts a login only for an origin it is configured as (`--public-origin`).
+    case 'no-public-origin':
+      // The server accepts a login only for an origin it is configured as (`--public-origin`); with
+      // none configured, only from its own computer.
       return `That server does not list ${origin ?? 'this address'} as its address. Its operator sets it with --public-origin.`;
     case 'challenge':
       return 'That server and this computer disagree about the time, or the login took too long. Try again.';
