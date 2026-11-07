@@ -13,6 +13,7 @@
 import { sourceAfterEdit, TYPED } from '@we/messages';
 import type { ModuleStoreDeps, RecordsKernel } from '@we/module-shared';
 
+import { watchBotMessages } from './botWatch';
 import { createFeed } from './feedStore';
 
 /** The line a reply is being written to. */
@@ -33,7 +34,7 @@ export function createFeedStore(deps: ModuleStoreDeps) {
     return createEntity('TextBlock', { text: words, source: TYPED, ...(marks ? { marks } : {}) }, { parent: holder });
   }
 
-  const feed = createFeed({
+  const { followingLive, ...feed } = createFeed({
     signal,
     effect,
     state,
@@ -45,6 +46,43 @@ export function createFeedStore(deps: ModuleStoreDeps) {
     interpretation,
     write: (collection, text, marks) =>
       writeMessage({ id: collection, relation: 'children', entity: 'CollectionBlock' }, text, marks),
+  });
+
+  /*
+    A bot answering in the space raises a notice while nobody is reading the Feed's newest line —
+    see `botWatch.ts`. On unless the reader turned it off (`botNotices`).
+  */
+  watchBotMessages({
+    effect,
+    onDispose,
+    space: () => (dataset?.() ? (deps.spaceRoot?.() ?? '') : ''),
+    records,
+    identities: deps.identities,
+    selfId: deps.selfId,
+    notify: deps.notify,
+    enabled: () => settings?.().botNotices !== false,
+    readingLive: followingLive,
+    open: () => {
+      feed.openFeed();
+      feed.readFeedLive();
+    },
+  });
+
+  /*
+    Who in the Feed's window is a bot, by their own profile. Their profiles are asked for as their
+    lines arrive, so the badge and the Bots filter follow as each answers.
+  */
+  const authors = () => [
+    ...new Set(
+      feed
+        .feedRows()
+        .filter((row) => row.kind === 'line')
+        .map((row) => row.author)
+        .filter(Boolean),
+    ),
+  ];
+  effect?.(() => {
+    for (const author of authors()) if (!deps.identities?.get(author)) deps.identities?.fetch(author);
   });
 
   /*
@@ -60,6 +98,10 @@ export function createFeedStore(deps: ModuleStoreDeps) {
 
   return {
     ...feed,
+    botAuthors: state(
+      () => authors().filter((author) => deps.identities?.get(author)?.kind === 'bot'),
+      'The authors of lines in the Feed’s window whose own profile says they are a bot, by id — for `row.author in modules.feed.botAuthors`.',
+    ),
     replyingTo: state(replyingTo, 'The line a reply is being written to — { id, text, author } — or null.'),
     startReply: action(
       (line: { id?: unknown; text?: unknown; author?: unknown }) =>

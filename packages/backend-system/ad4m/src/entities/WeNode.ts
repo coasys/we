@@ -1,5 +1,6 @@
-import { Ad4mModel, BelongsToOne, HasMany, HasManyMethods, Model } from '@coasys/ad4m';
+import { Ad4mModel, BelongsToOne, HasMany, HasManyMethods, HasOne, Model } from '@coasys/ad4m';
 
+import { ModelRun } from './ModelRun';
 import { Signal } from './Signal';
 
 @Model({ name: 'WeNode' })
@@ -56,6 +57,14 @@ export class WeNode extends Ad4mModel {
    */
   @BelongsToOne({ through: 'we://extracted', polymorphic: true })
   extractedFrom?: string;
+
+  /** Every time a model was asked to do something about this record. See the manifest's `runs`. */
+  @HasMany(() => ModelRun, { through: 'we://model_run' })
+  runs: string[] = [];
+
+  /** The run that wrote this record, where a model wrote it. See the manifest's `generatedBy`. */
+  @HasOne(() => ModelRun, { through: 'we://generated_by' })
+  generatedBy?: string;
 
   @HasMany(() => Signal, { through: 'we://signal' })
   signals: string[] = [];

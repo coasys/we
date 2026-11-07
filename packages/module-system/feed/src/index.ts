@@ -77,6 +77,18 @@ export const feedModule = defineModule({
         default: 'newestBottom',
         levels: ['agent'],
       },
+      /*
+        A bot answering in the space, raised as a notice while the reader is not on the Feed's newest
+        line — over a call filling the screen, too. Theirs to turn off, as a reading preference.
+      */
+      {
+        key: 'botNotices',
+        label: 'Tell me when a bot answers',
+        description: 'A notice when a bot writes in the space while you are not reading the Feed.',
+        type: 'boolean',
+        default: true,
+        levels: ['agent'],
+      },
     ],
   },
 

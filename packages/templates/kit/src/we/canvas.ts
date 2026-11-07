@@ -47,6 +47,8 @@ export function canvasSeedOptions({ canvas, members }: CanvasSeedOptions): Recor
     contains: { $: EXTRACTABLE },
     // Where each card came from, for a badge or a lens by conversation.
     origin: 'extractedFrom',
+    // Which run made each card, for its "by AI" mark — see `generatedRun` in `@we/entities`.
+    madeBy: 'generatedBy',
     connections: 'Relationship',
     // How this canvas draws its lines: which side of a card each end attaches to, and the points one
     // is bent through. Per canvas, like a placement — the same claim elsewhere keeps its own shape.

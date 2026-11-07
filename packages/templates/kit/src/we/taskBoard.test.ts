@@ -196,7 +196,8 @@ describe('a board read by who is on the work', () => {
     expect(extracted.match(/"slot":"content"/g)?.length).toBeGreaterThanOrEqual(3);
     expect(extracted).toContain("p.semantic == 'reviewing').filter(p, p.kind == part.slug)");
     // Provenance is the extracted mark's to say, never a people hovercard's.
-    expect(extracted).toContain('Extracted from the conversation · run by');
+    expect(extracted).toContain('Extracted from the conversation');
+    expect(extracted).toContain('generatedRun({ record: card }) || (card.x)');
     expect(extracted).not.toContain('Added by');
   });
 

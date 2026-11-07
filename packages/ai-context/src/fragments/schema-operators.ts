@@ -182,7 +182,7 @@ To target another dataset: { "$invoke": "record.update", "args": ["EntityName", 
 record.delete — deletes one record:
 { "$invoke": "record.delete", "args": ["EntityName", { "$": "item.id" }] }
 
-Use dataset: 'datasetStore.rootDataset' for we-root entities (AgentSettings, ChatSession, etc.), and
+Use dataset: 'datasetStore.rootDataset' for we-root entities (AgentSettings, Template, etc.), and
 'datasetStore.personalDataset' for the agent's own content (a note, a Pocket folder). Both are chrome-tier.
 Use the default (no dataset) for space-scoped entities (Space, Signal, etc.). The same key $query
 takes, and it names the same accessors.
@@ -810,6 +810,14 @@ The first row has no prev at all, so the condition is false there and it keeps i
 which is what a feed wants, and why absent must not read as "same as the last item".
 
 Both shadow in a nested $each, exactly as the item does: the inner index restarts at 0.
+
+**Give a row an "id" and it keeps its place.** When every item of a store's list is a plain object
+with an id of its own, a row whose record changes is updated where it is: its $localState, whatever
+is typed into it and the page's scroll position all survive. A row is drawn afresh only when it
+moves, since its index and prev are handed to it when it is drawn. Items without ids, or with an id
+two of them share, are matched by identity instead, so a list that is rebuilt as new objects redraws
+every row on every change. A store that derives a list should give each row an id. A $query's rows
+are kept by id already.
 
 Conditional rendering:
 { "type": "$if", "props": { "condition": ..., "then": { ... }, "else": { ... } } }

@@ -1,6 +1,6 @@
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
-import { agentByline, emptyState, field, formModal, sectionLabel } from '@we/template-kit';
+import { agentByline, emptyState, field, formModal, modelMark, sectionLabel } from '@we/template-kit';
 
 /**
  * The space's events, as a month and as a list.
@@ -14,8 +14,8 @@ import { agentByline, emptyState, field, formModal, sectionLabel } from '@we/tem
  * Ordinary `EventBlock` records, whoever made them. Some are composed by hand; some are written by
  * the extraction pass over a call transcript, which is the point — a meeting where somebody said
  * "let's do the design review next Tuesday at 3" puts that on the calendar without anyone filling
- * in a form. Nothing here distinguishes the two, deliberately: an event is an event, and provenance
- * belongs on the record rather than in a second list.
+ * in a form. Both are one list, deliberately: an event is an event, and provenance belongs on the
+ * record rather than in a second list. The record carries it, and `modelMark` draws it on the row.
  *
  * ## Dates
  *
@@ -461,6 +461,7 @@ const eventRow: SchemaNode = {
       children: [
         { type: 'we-icon', props: { name: 'calendar', color: 'accent-text' } },
         { type: 'we-text', props: { fontWeight: 'semibold' }, children: [{ $: 'event.title' }] },
+        modelMark({ as: 'event' }),
         {
           type: 'we-text',
           props: { fontSize: '200', color: 'text', ml: 'auto' },

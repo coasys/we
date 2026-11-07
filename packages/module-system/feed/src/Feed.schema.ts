@@ -52,8 +52,13 @@ const timelineOrderButton: SchemaNode = {
 /** A reply is being written to one of the Feed's lines — the Feed's own `replyingTo`. */
 const FEED_REPLY = 'modules.feed.replyingTo';
 
-/** What the window draws: everything, or only messages when the reader put activity away. */
-const ROWS = "local.feedActivity ? modules.feed.feedRows : modules.feed.feedRows.filter(r, r.kind == 'line')";
+/** A line whose author's own profile says it is a bot — see the store's `botAuthors`. */
+const BOT_LINE = 'row.author in modules.feed.botAuthors';
+
+/** What the window draws: everything, only messages, or only bots' messages — the reader's choice. */
+const ROWS =
+  "local.feedShow == 'bots' ? modules.feed.feedRows.filter(r, r.kind == 'line' && r.author in modules.feed.botAuthors) " +
+  ": local.feedShow == 'messages' ? modules.feed.feedRows.filter(r, r.kind == 'line') : modules.feed.feedRows";
 
 /** The words on the "more is coming" line, by which way the window grows. */
 const MORE_WORDS = { $: `${FROM_START} ? 'Later in the space…' : 'Earlier in the space…'` };
@@ -74,32 +79,54 @@ const more = (end: 'start' | 'end'): SchemaNode => ({
 });
 
 /**
- * Where a line came from, beside its time: the call, which opens it. A message WE did not write
- * carries no `source` — a bot's — and says so.
+ * Where a line came from, beside its time: the call, which opens it, and whether a bot wrote it.
+ *
+ * A bot is known by its own profile, never by how the line was written: a line with no `source` is
+ * every app's but WE's, and a bot answering in a call writes into the call. So the mark shows in a
+ * call too, beside the call's name.
  */
 const origin: SchemaNode = {
-  type: '$if',
-  props: {
-    condition: { $: 'row.call' },
-    then: {
-      type: 'we-button',
-      props: {
-        size: 'xs',
-        variant: 'ghost',
-        // Into the call it was said in — the address the transcript and the space's views follow.
-        onClick: { $invoke: 'routeStore.setParam', args: ['call', { $: 'row.call' }] },
-      },
-      children: [{ $: 'row.callTitle' }],
-    },
-    // How a line arrived — typed, corrected — is the line's own mark. A bot's carries no source at all.
-    else: {
+  type: 'Row',
+  props: { gap: '100', ay: 'center' },
+  children: [
+    {
       type: '$if',
       props: {
-        condition: { $: "row.source == ''" },
-        then: { type: 'we-badge', props: { size: 'sm' }, children: ['bot'] },
+        condition: { $: 'row.call' },
+        then: {
+          type: 'we-button',
+          props: {
+            size: 'xs',
+            variant: 'ghost',
+            // Into the call it was said in — the address the transcript and the space's views follow.
+            onClick: { $invoke: 'routeStore.setParam', args: ['call', { $: 'row.call' }] },
+          },
+          children: [{ $: 'row.callTitle' }],
+        },
       },
     },
-  },
+    {
+      type: '$if',
+      props: {
+        condition: { $: BOT_LINE },
+        /*
+          The typed mark's shape (an icon in an xs badge, with a tooltip saying how the line came to be), so the row's marks read as
+          one set. The accent tint is what keeps it apart from the grey typed mark beside it.
+        */
+        then: {
+          type: 'we-tooltip',
+          props: { content: 'Written by a bot', placement: 'top' },
+          children: [
+            {
+              type: 'we-badge',
+              props: { size: 'xs', tone: 'accent' },
+              children: [{ type: 'we-icon', props: { name: 'robot', size: '14px' } }],
+            },
+          ],
+        },
+      },
+    },
+  ],
 };
 
 /** One message, drawn exactly as the transcript draws one — see `messageLine`. */
@@ -274,7 +301,11 @@ const feedTimeline: SchemaNode = timeline({
                 then: {
                   type: 'we-text',
                   props: { variant: 'footnote', color: 'text-muted' },
-                  children: ['Nothing said here yet. Calls, messages and what is found in them appear here.'],
+                  children: [
+                    {
+                      $: "local.feedShow == 'bots' ? 'No bot has written in this part of the space.' : 'Nothing said here yet. Calls, messages and what is found in them appear here.'",
+                    },
+                  ],
                 },
                 else: { type: 'we-animated-icon', props: { name: 'spinner', size: 'sm' } },
               },
@@ -287,27 +318,32 @@ const feedTimeline: SchemaNode = timeline({
   ],
 });
 
-/** Messages only or with what was found, and which way round — the reader's own two choices. */
+/** One of the reader's three choices of what the Feed shows. */
+const showButton = (value: string, label: string): SchemaNode => ({
+  type: 'we-button',
+  props: {
+    size: 'xs',
+    variant: { $: `local.feedShow == '${value}' ? 'soft' : 'ghost'` },
+    onClick: { $setLocal: 'feedShow', value },
+  },
+  children: [label],
+});
+
+/** What the Feed shows — everything, messages, or bots' messages — and which way round: the reader's own. */
 const feedControls: SchemaNode = {
   type: 'Row',
   props: { gap: '100', ay: 'center' },
   children: [
-    {
-      type: 'we-button',
-      props: {
-        size: 'xs',
-        variant: { $: "local.feedActivity ? 'soft' : 'ghost'" },
-        onClick: { $setLocal: 'feedActivity', value: { $: '!local.feedActivity' } },
-      },
-      children: [{ $: "local.feedActivity ? 'Messages and activity' : 'Messages only'" }],
-    },
+    showButton('all', 'Everything'),
+    showButton('messages', 'Messages'),
+    showButton('bots', 'Bots'),
     timelineOrderButton,
   ],
 };
 
-/** The reader's choice of messages only, kept on this device — declared where the controls and the list meet. */
+/** The reader's choice of what the Feed shows, kept on this device — declared where the controls and the list meet. */
 const FEED_LOCALS = {
-  feedActivity: { type: 'boolean', initial: true, persist: 'feed.activity' },
+  feedShow: { type: 'string', initial: 'all', persist: 'feed.show' },
 } as const;
 
 /**

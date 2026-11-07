@@ -37,6 +37,7 @@ import { componentRegistry } from '@solid/registries/componentRegistry';
 import { ShellStoreProvider, useShellStore } from '@solid/stores/ShellStore';
 import { createInMemoryBackend } from '@we/backend-inmemory';
 import { BlockHostProvider } from '@we/block-solid';
+import type { ToastLook } from '@we/components/solid';
 import { ToastContainer, toastService } from '@we/components/solid';
 import {
   CopiedPartNote,
@@ -1519,14 +1520,15 @@ function themePanelProbe(overrides = '{"themeName":"dark"}'): void {
 
 /**
  * The app's toast stack, mounted with one toast raised, so a case can measure how a toast lays out.
+ * `look` names its icon and who it is from, as a bot's notice does.
  * Returns the toast's id; the container stays until the next case clears the mount.
  */
-function toastProbe(message: string, actionLabel = ''): string {
+function toastProbe(message: string, actionLabel = '', look?: ToastLook): string {
   const host = document.getElementById('mount') as HTMLElement;
   host.innerHTML = '';
   const dispose = render(() => createComponent(ToastContainer, {}), host);
   probeDisposers.unshift(dispose);
-  const id = toastService.info(message, 0, actionLabel ? { label: actionLabel, run: () => {} } : undefined);
+  const id = toastService.info(message, 0, actionLabel ? { label: actionLabel, run: () => {} } : undefined, look);
   // A toast with no timeout outlives the container; take it down with the case.
   probeDisposers.unshift(() => toastService.remove(id));
   return id;
