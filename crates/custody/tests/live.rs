@@ -896,6 +896,7 @@ async fn a_desktop_executor_takes_its_first_link_as_its_operator() {
     );
     let revoked = holder
         .step(StepInput::Revoke {
+            rotate: false,
             passphrase: Some(PASSPHRASE.into()),
         })
         .await
