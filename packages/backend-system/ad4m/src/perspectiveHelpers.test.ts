@@ -160,6 +160,7 @@ describe('a foreign class named by its target class', () => {
 
     const classes = buildEntityClasses([{ name: 'other-app://Message', shape }]);
 
+    // The given name is the IRI, so the one key is both.
     expect(Object.keys(classes)).toEqual(['other-app://Message']);
     const cls = classes['other-app://Message'] as unknown as { getTargetClass(): string };
     expect(cls.getTargetClass()).toBe('other-app://Message');
@@ -168,7 +169,46 @@ describe('a foreign class named by its target class', () => {
   it('keeps its own name, and the `Shape` alias, where the name is free', async () => {
     const shape = await realShape('app://Task', { name: 'title', path: 'app://title' });
 
-    expect(Object.keys(buildEntityClasses([{ name: 'Task', shape }])).sort()).toEqual(['Task', 'TaskShape']);
+    expect(Object.keys(buildEntityClasses([{ name: 'Task', shape }])).sort()).toEqual([
+      'Task',
+      'TaskShape',
+      'app://Task',
+    ]);
+  });
+
+  it('two foreign classes of one name, with no WE class of that name, are both reachable', async () => {
+    // `Note` is not a WE model in this registry (the mock has Message and Channel only).
+    const a = await realShape('a://Note', { name: 'body', path: 'a://body' });
+    const b = await realShape('b://Note', { name: 'text', path: 'b://text' });
+
+    // Given as the executor names them: one name, two classes. Neither may overwrite the other.
+    const classes = buildEntityClasses([
+      { name: 'Note', shape: a },
+      { name: 'Note', shape: b },
+    ]);
+    const targetOf = (key: string) => (classes[key] as unknown as { getTargetClass(): string }).getTargetClass();
+
+    expect(Object.keys(classes).sort()).toEqual(['a://Note', 'b://Note']);
+    expect(targetOf('a://Note')).toBe('a://Note');
+    expect(targetOf('b://Note')).toBe('b://Note');
+  });
+
+  it('two foreign classes of one name, named through getForeignShacl, are both registered by IRI', async () => {
+    const a = await realShape('a://Note', { name: 'body', path: 'a://body' });
+    const b = await realShape('b://Note', { name: 'text', path: 'b://text' });
+    const foreign = await getForeignShacl(
+      mockPerspective([
+        { name: 'Note', shape: a },
+        { name: 'Note', shape: b },
+      ]),
+    );
+
+    const classes = buildEntityClasses(foreign);
+
+    expect(foreign.map((s) => s.name)).toEqual(['a://Note', 'b://Note']);
+    expect((classes['a://Note'] as unknown as { getTargetClass(): string }).getTargetClass()).toBe('a://Note');
+    expect((classes['b://Note'] as unknown as { getTargetClass(): string }).getTargetClass()).toBe('b://Note');
+    expect(classes['Note']).toBeUndefined();
   });
 
   it('is what a relation to it names in the manifest', async () => {

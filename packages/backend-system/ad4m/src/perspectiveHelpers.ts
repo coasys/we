@@ -132,15 +132,23 @@ export function buildEntityClasses(shapes: ForeignShape[]): Record<string, Entit
   // sh:class URIs (which use nodeShapeUri = "flux://MessageShape") resolve correctly.
   const byLocalName: Record<string, typeof Ad4mModel> = {};
   const classResolver = (localName: string) => byLocalName[localName];
+  // A name two of the given shapes share is no class's own: keyed by it, the second class would
+  // overwrite the first. Each such class is reached by its target class IRI instead.
+  const perName = new Map<string, number>();
+  for (const { name } of shapes) perName.set(name, (perName.get(name) ?? 0) + 1);
   for (const { name, shape } of shapes) {
     const local = shape.targetClass ? classNameOf(shape.targetClass) : name;
     const cls = Ad4mModel.fromSHACL(shape, local, classResolver);
     byLocalName[local] ??= cls;
     byLocalName[`${local}Shape`] ??= cls;
-    result[name] = cls;
+    const shared = perName.get(name)! > 1;
+    if (!shared || !shape.targetClass) result[name] ??= cls;
+    // Every class is also keyed by its target class IRI, which is unique by construction, so a class
+    // is always reachable by the key the executor names it with.
+    if (shape.targetClass) result[shape.targetClass] ??= cls;
     // Also register under nodeShapeUri-style name (e.g. "MessageShape") so that
     // sh:class URI local-names resolve even when they include the "Shape" suffix.
-    if (name === local) result[`${name}Shape`] = cls;
+    if (!shared && name === local) result[`${name}Shape`] ??= cls;
   }
   return result;
 }

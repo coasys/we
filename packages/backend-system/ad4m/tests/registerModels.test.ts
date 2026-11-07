@@ -83,7 +83,35 @@ describe('refreshing a space', () => {
     older.properties = older.properties.slice(1);
 
     expect(await refreshSpaceSdna(r.proxy)).toEqual(['Space']);
+    // The executor answered by target class IRI; the port answers the entity name WE registered.
+    expect(r.calls.written.at(-1)).toEqual([targetOf(Space)]);
     expect(await refreshSpaceSdna(r.proxy)).toEqual([]);
+  });
+
+  it("names WE's class it wrote by entity, beside another app's class of the same name", async () => {
+    const r = fakeShapeRegistry();
+    r.registry.set('other-app://Space', theirs('Space'));
+
+    await installSpaceSdna(r.proxy);
+    const older = r.registry.get(targetOf(Space))!;
+    older.properties = older.properties.slice(1);
+
+    expect(await refreshSpaceSdna(r.proxy)).toEqual(['Space']);
+    expect(r.registry.get('other-app://Space')!.targetClass).toBe('other-app://Space');
+  });
+
+  it('passes a name an older executor answered with through as it is', async () => {
+    const r = fakeShapeRegistry();
+    await installSpaceSdna(r.proxy);
+    const answer = r.perspective.registerShapes.bind(r.perspective);
+    r.perspective.registerShapes = async (shapes) => {
+      const result = await answer(shapes);
+      return { ...result, written: result.written.map(classNameOf) };
+    };
+    const older = r.registry.get(targetOf(Space))!;
+    older.properties = older.properties.slice(1);
+
+    expect(await refreshSpaceSdna(r.proxy)).toEqual(['Space']);
   });
 });
 

@@ -29,34 +29,39 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function nameOne(row: Record<string, unknown>, dataset: unknown, depth: number): void {
+function nameOne(row: Record<string, unknown>, dataset: unknown, depth: number, seen: WeakSet<object>): void {
+  if (seen.has(row)) return;
+  seen.add(row);
   const type = row[SUBJECT_CLASS];
-  if (typeof type !== 'string') return;
-  row[SUBJECT_CLASS] = entityNameOfClass(type, dataset);
+  if (typeof type === 'string') row[SUBJECT_CLASS] = entityNameOfClass(type, dataset);
   const types = row[SUBJECT_CLASSES];
   if (Array.isArray(types)) {
     row[SUBJECT_CLASSES] = (types as unknown[]).map((t) => (typeof t === 'string' ? entityNameOfClass(t, dataset) : t));
   }
   if (depth >= MAX_DEPTH) return;
-  // Only into values that are records themselves (they carry the key), so nothing else of the row's
-  // is walked: a model instance holds its perspective, and that is not data.
+  // Into every member, whether or not this row says its own class: a plain read of a collection has
+  // no `__subjectClass` of its own, and its polymorphic `children` each do. A key starting with `_` is
+  // an instance's own state, not data (an Ad4mModel keeps its perspective under `_perspective`), so it
+  // is not walked.
   for (const key of Object.keys(row)) {
+    if (key.startsWith('_')) continue;
     const value = row[key];
     if (Array.isArray(value)) {
-      for (const member of value) if (isRecord(member)) nameOne(member, dataset, depth + 1);
+      for (const member of value) if (isRecord(member)) nameOne(member, dataset, depth + 1, seen);
     } else if (isRecord(value)) {
-      nameOne(value, dataset, depth + 1);
+      nameOne(value, dataset, depth + 1, seen);
     }
   }
 }
 
 /**
- * Name the record types of `rows` in place, and answer the rows. A row with no `__subjectClass`, and
- * a value that is not a row, pass untouched.
+ * Name the record types of `rows` in place, and answer the rows. A row with no `__subjectClass` keeps
+ * none, though its members are named; a value that is not a row passes untouched.
  */
 export function nameRecordTypes<T>(rows: T, dataset?: unknown): T {
   if (Array.isArray(rows)) {
-    for (const row of rows) if (isRecord(row)) nameOne(row, dataset, 0);
+    const seen = new WeakSet<object>();
+    for (const row of rows) if (isRecord(row)) nameOne(row, dataset, 0, seen);
   }
   return rows;
 }

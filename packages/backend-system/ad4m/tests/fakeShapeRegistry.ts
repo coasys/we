@@ -5,7 +5,7 @@
  * - each shape is the class of its **target class IRI**, so two classes may share a name
  *   (`we://topic` and `flux://Topic` are both `Topic`);
  * - `registerShapes` compares each shape with the one stored for its class and writes only a changed
- *   one, and answers `written`/`unchanged` by class name, sorted;
+ *   one, and answers `written`/`unchanged` by target class IRI, sorted (two classes may share a name);
  * - it refuses a whole call, writing nothing from it, when two shapes in it are for one target class,
  *   or a shape's URI is held by another class;
  * - `shapes(keys?)` answers the classes whose name or target class is in `keys`, sorted by name and
@@ -31,6 +31,7 @@ export function fakeShapeRegistry() {
     registerShapes: [] as string[][],
     /** Each call's classes, by target class. */
     registerTargets: [] as string[][],
+    /** Each call's `written`, by target class IRI. */
     written: [] as string[][],
     shapes: [] as (string[] | undefined)[],
   };
@@ -59,10 +60,10 @@ export function fakeShapeRegistry() {
       shapes.forEach((shape, i) => {
         const before = registry.get(targets[i]);
         if (before && JSON.stringify(before.toJSON()) === JSON.stringify(shape.toJSON())) {
-          unchanged.push(names[i]);
+          unchanged.push(targets[i]);
         } else {
           registry.set(targets[i], copy(shape));
-          written.push(names[i]);
+          written.push(targets[i]);
         }
       });
       written.sort();

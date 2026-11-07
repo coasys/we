@@ -44,7 +44,8 @@ function shapeRegistry() {
         }
       }
       for (const shape of shapes) registry.set(shape.targetClass!, shape);
-      return { written: shapes.map((s) => nameOf(s.targetClass!)).sort(), unchanged: [] };
+      // By target class IRI, as the executor answers (two classes may share a name).
+      return { written: shapes.map((s) => s.targetClass!).sort(), unchanged: [] };
     },
     async shapes(keys?: string[]) {
       return [...registry.entries()]

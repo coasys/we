@@ -48,6 +48,7 @@ import {
   WeNode,
 } from './entities';
 import { moduleOfModel } from './manifestCompiler';
+import { entityNameOfClass } from './recordTypes';
 
 export { classNameOf };
 
@@ -115,7 +116,7 @@ export function withTunedHints(declared: SHACLShape, stored: SHACLShape): SHACLS
 }
 
 /**
- * Register these models' shapes in one `registerShapes` call, and answer the classes it wrote.
+ * Register these models' shapes in one `registerShapes` call, and answer the entities it wrote.
  *
  * The executor compares each shape with the one it stores and writes only the differences, so this
  * is safe to call on every start and on every space switch, from any number of peers. It answers
@@ -153,8 +154,16 @@ async function registerModels(p: PerspectiveProxy, models: readonly (typeof Ad4m
     });
   }
 
+  // The executor names each class it wrote by its target class IRI (two classes may share a name).
+  // The port answers entity names: the name the class is registered under in WE, or, for a class not
+  // registered yet (the registry fills when the backend's ports are made), the name of the class it
+  // sent. An executor that answered names passes through as it is.
   const { written } = await p.registerShapes(shapes);
-  return written;
+  const sent = new Set(declared.map((shape) => shape.targetClass));
+  return written.map((key) => {
+    const name = entityNameOfClass(key, p);
+    return name === key && sent.has(key) ? classNameOf(key) : name;
+  });
 }
 
 /**

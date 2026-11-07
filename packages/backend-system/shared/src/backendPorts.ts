@@ -87,8 +87,9 @@ export interface SchemaPort {
    * this build declares that the dataset never had at all. The second matters as much as the first —
    * a dataset predating a newly added entity can answer no query about it.
    *
-   * Runs on every space switch, so it must diff before writing. Returns the schemas it wrote, or an
-   * empty array — the common case — when everything stored was already current.
+   * Runs on every space switch, so it must diff before writing. Returns the schemas it wrote, by
+   * entity name (a backend that addresses classes by another key maps each back), or an empty
+   * array — the common case — when everything stored was already current.
    */
   refreshSpace(dataset: DatasetHandle): Promise<string[]>;
   /** Ensure one schema payload is installed. Idempotent. */

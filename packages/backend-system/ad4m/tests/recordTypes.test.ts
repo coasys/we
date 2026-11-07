@@ -10,8 +10,8 @@ import { Ad4mModel } from '@coasys/ad4m';
 import { getEntityTargetClass, registerDynamicEntities, registerEntity, unregisterEntity } from '@we/entities';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
-import { toRendererUnion } from '../src/ad4mAdapter';
-import { EventBlock, TaskBlock, Topic } from '../src/entities';
+import { toRendererEntity, toRendererUnion } from '../src/ad4mAdapter';
+import { EventBlock, TaskBlock, Topic, WeNode } from '../src/entities';
 import { entityNameOfClass, nameRecordTypes, namingBuilder } from '../src/recordTypes';
 
 const MODELS = { TaskBlock, EventBlock, Topic };
@@ -149,5 +149,64 @@ describe('toRendererUnion', () => {
 
     expect(findAllOf.mock.calls[0][1]).toEqual([TaskBlock, EventBlock]);
     expect(rows.map((r) => (r as { __subjectClass: string }).__subjectClass)).toEqual(['TaskBlock', 'EventBlock']);
+  });
+});
+
+describe('toRendererEntity over an abstract class', () => {
+  // An abstract read (WeNode, TextContent, a Container) answers each row as the concrete class it was
+  // read as, by IRI. The renderer sees entity names, as for a union.
+  it('names each row of a read', async () => {
+    vi.spyOn(WeNode as unknown as typeof Ad4mModel, 'findAll').mockResolvedValue([
+      { id: 'a', __subjectClass: TASK, __subjectClasses: [TASK] },
+      { id: 'b', __subjectClass: EVENT },
+      { id: 'c', __subjectClass: 'flux://Topic' },
+    ] as never);
+
+    const rows = await toRendererEntity(WeNode as never).findAll(dataset as never, {} as never);
+
+    expect(rows.map((r) => (r as { __subjectClass: string }).__subjectClass)).toEqual([
+      'TaskBlock',
+      'EventBlock',
+      'flux://Topic',
+    ]);
+    expect((rows[0] as { __subjectClasses: string[] }).__subjectClasses).toEqual(['TaskBlock']);
+  });
+
+  it('names the members of a row that says no class of its own', async () => {
+    // A concrete read (a collection) has no `__subjectClass`; its polymorphic `children` each do.
+    const perspective = { uuid: 'p-own-state', __subjectClass: TASK };
+    vi.spyOn(WeNode as unknown as typeof Ad4mModel, 'findAll').mockResolvedValue([
+      {
+        id: 'col',
+        _perspective: perspective,
+        children: [{ id: 't', __subjectClass: TASK }],
+        cover: { __subjectClass: EVENT },
+      },
+    ] as never);
+
+    const [row] = (await toRendererEntity(WeNode as never).findAll(dataset as never, {} as never)) as never as {
+      __subjectClass?: string;
+      children: { __subjectClass: string }[];
+      cover: { __subjectClass: string };
+    }[];
+
+    expect(row.__subjectClass).toBeUndefined();
+    expect(row.children[0].__subjectClass).toBe('TaskBlock');
+    expect(row.cover.__subjectClass).toBe('EventBlock');
+    // An instance's own state is not data, and is not walked.
+    expect(perspective.__subjectClass).toBe(TASK);
+  });
+
+  it('names each row of a live read', async () => {
+    const builder = {
+      get: vi.fn(async () => [{ id: 'a', __subjectClass: TOPIC }]),
+    };
+    vi.spyOn(WeNode as unknown as typeof Ad4mModel, 'query').mockReturnValue(builder as never);
+
+    const live = toRendererEntity(WeNode as never).query(dataset as never, {} as never) as unknown as {
+      get(): Promise<unknown[]>;
+    };
+
+    expect(await live.get()).toEqual([{ id: 'a', __subjectClass: 'Topic' }]);
   });
 });
