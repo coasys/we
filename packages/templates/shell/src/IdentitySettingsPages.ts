@@ -324,6 +324,23 @@ const deviceRow: SchemaNode = listRow(
         },
       },
     },
+    {
+      // A revoked device whose copy of the master key still counts: replacing it is the way out.
+      type: '$if',
+      props: {
+        condition: { $: 'device.replaceMaster && deviceStore.canReplaceMaster' },
+        then: {
+          type: 'we-button',
+          props: {
+            variant: 'ghost',
+            size: 'sm',
+            disabled: { $: 'identityStore.busy' },
+            onClick: { $invoke: 'deviceStore.replaceMaster' },
+          },
+          children: ['Replace my master key'],
+        },
+      },
+    },
   ],
 );
 
@@ -379,6 +396,24 @@ export const addDeviceButton: SchemaNode = {
   },
 };
 
+/** "Replace my master key": from the 12 words, on any device of the identity that takes them. */
+export const replaceMasterButton: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'deviceStore.canReplaceMaster' },
+    then: stepButton('Replace my master key', 'deviceStore.replaceMaster', 'soft'),
+  },
+};
+
+/** "Use my 12 words": brings the identity back on a computer of none. */
+export const restoreButton: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'deviceStore.canRestore' },
+    then: stepButton('Use my 12 words', 'deviceStore.restore', 'soft'),
+  },
+};
+
 /** A card with an icon, a title, a sentence and its buttons. */
 const stepCard = (icon: string, title: string, text: string, buttons: SchemaNode[]): SchemaNode => ({
   type: 'Card',
@@ -404,16 +439,17 @@ const when = (condition: string, then: SchemaNode): SchemaNode => ({
 
 /**
  * What this computer can do about the master key and joining an identity: show its code to join
- * one, take the master key sent here, or ask a device that keeps it.
+ * one, or bring it back from the 12 words; take the master key sent here, or ask a device that keeps
+ * it; replace it from the words.
  */
 export const masterKeyCards: SchemaNode[] = [
   when(
-    'deviceStore.canShowCode',
+    'deviceStore.canShowCode || deviceStore.canRestore',
     stepCard(
       'qr-code',
       'Join your identity from another device',
-      'Show this computer’s code, then add it from a device of your identity with “Scan or paste a code”.',
-      [stepButton('Show my code', 'deviceStore.showCode')],
+      'Show this computer’s code, then add it from a device of your identity with “Scan or paste a code”. Lost every device? Use your 12 words.',
+      [when('deviceStore.canShowCode', stepButton('Show my code', 'deviceStore.showCode')), restoreButton],
     ),
   ),
   when(
@@ -432,6 +468,15 @@ export const masterKeyCards: SchemaNode[] = [
       'This computer does not keep your master key',
       'Ask for it, then send it from a device that keeps it. Its Devices page shows your request.',
       [stepButton('Ask for the master key', 'deviceStore.askMaster', 'soft')],
+    ),
+  ),
+  when(
+    'deviceStore.canReplaceMaster',
+    stepCard(
+      'key',
+      'Lost a device that keeps your master key?',
+      'Replace your master key with your 12 words. This computer keeps the new one, and every copy kept until now stops adding and removing your devices.',
+      [replaceMasterButton],
     ),
   ),
 ];

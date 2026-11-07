@@ -2,7 +2,10 @@
  * The identity window's screens, as the custody service sends them (`we_custody::Screen`), and the
  * words each one says: the recovery phrase, the identity being ready, the passphrase fallback where
  * there is no keychain, linking a device from either side (a code shown, a code scanned or pasted),
- * taking, asking for and sending the master key, naming a device, and revoking one.
+ * taking, asking for and sending the master key, naming a device, revoking one, and the 12 words typed
+ * back in: replacing the master key, restoring the identity on a computer that has none, and removing
+ * the master key from this computer. The words typed are never sent back: no screen after the words
+ * entry carries them, and a refused word is named by its place only.
  *
  * Pure, so the wording is tested without a window (`screens.test.ts`). `window.ts` draws them.
  */
@@ -41,13 +44,46 @@ export type Screen =
   | { screen: 'asked'; keyId: string; fingerprint: string; code: string }
   | { screen: 'rename'; keyId: string; name: string; error: string | null }
   | { screen: 'renamed'; keyId: string; name: string }
-  | { screen: 'revoke-confirm'; keyId: string; holdsMaster: boolean; passphrase: boolean; error: string | null }
+  | {
+      screen: 'revoke-confirm';
+      keyId: string;
+      holdsMaster: boolean;
+      /** Whether "Also replace my master key" starts ticked. */
+      rotate: boolean;
+      passphrase: boolean;
+      error: string | null;
+    }
+  | {
+      screen: 'enter-words';
+      purpose: WordsPurpose;
+      error: string | null;
+      /** The refused word's place, from 1. */
+      position: number | null;
+    }
+  | { screen: 'restore-devices'; did: string; devices: RestoreDevice[]; note: string | null }
+  | { screen: 'master-replaced'; index: number; revoked: string[]; note: string | null }
+  | { screen: 'restored'; did: string; name: string; keyId: string; revoked: string[]; note: string | null }
+  | { screen: 'remove-master'; error: string | null }
+  | { screen: 'master-removed' }
   | { screen: 'revoked'; keyId: string; seq: number }
   | { screen: 'pending-refused'; did: string; message: string }
   | { screen: 'failed'; message: string };
 
 /** What another device asks of the one holding the master key. */
 export type RequestKind = 'send-master' | 'confirm-revoke';
+
+/** What the 12 words are typed for: replacing the master key, restoring the identity, a revoke or an
+ *  answered request that also replaces the master key. */
+export type WordsPurpose = 'replace' | 'restore' | 'revoke' | 'answer';
+
+/** A device of the identity the words restore, ticked to lock out when it may be lost. */
+export interface RestoreDevice {
+  keyId: string;
+  /** The record's name, when the record could be read and names it. */
+  name: string | null;
+  kind: string | null;
+  lockOut: boolean;
+}
 
 /** What the window sends back (`we_custody::StepInput`). */
 export type StepInput =
@@ -61,7 +97,10 @@ export type StepInput =
   | { kind: 'wait-join' }
   | { kind: 'answer'; passphrase?: string }
   | { kind: 'name'; name: string }
-  | { kind: 'revoke'; passphrase?: string }
+  | { kind: 'revoke'; passphrase?: string; rotate?: boolean }
+  | { kind: 'twelve-words'; words: string }
+  | { kind: 'lock-out'; keyIds: string[]; name?: string }
+  | { kind: 'remove' }
   | { kind: 'discard' };
 
 /** "4:52" — how long an offer still works. */
@@ -75,13 +114,23 @@ export function wordNumber(i: number): string {
   return String(i + 1).padStart(2, '0');
 }
 
+/**
+ * Where a pasted phrase goes when pasted into word field `at` (from 0): each word to the field it
+ * fills, from that field on, stopping at the twelfth. A single word is the browser's to paste.
+ */
+export function spreadWords(pasted: string, at: number): Array<[number, string]> {
+  const words = pasted.trim().split(/\s+/).filter(Boolean);
+  if (words.length < 2) return [];
+  return words.slice(0, 12 - at).map((word, i) => [at + i, word]);
+}
+
 /** The lead of each screen: its title and the sentence under it. */
 export function heading(screen: Screen): { title: string; lead: string } {
   switch (screen.screen) {
     case 'show-words':
       return {
         title: 'Your 12 words',
-        lead: 'These words make your master key: it adds and removes your devices. Write them on paper and keep them: your identity can only ever be restored from them. You see them only during this setup, and nobody but you ever sees them.',
+        lead: 'These words make your master key: it adds and removes your devices. Write them on paper and keep them: with them you can restore your identity on a new computer, and replace your master key when a device that keeps it is lost. You see them only during this setup, and nobody but you ever sees them.',
       };
     case 'confirm-words':
       return {
@@ -193,10 +242,48 @@ export function heading(screen: Screen): { title: string; lead: string } {
           'Do this for a device you lost or no longer use. Your key log records that its key no longer acts as you, and the key can never be added back. Other computers apply this when they next read your key log, so one that is offline can accept the key for a while. Some things it signed before can also stop counting as yours.',
           ...(screen.holdsMaster
             ? [
-                'It keeps a copy of your master key, or has one waiting. Its copy of the master key stays valid after the revoke: replace your master key to stop it from adding and removing your devices.',
+                'It keeps a copy of your master key, or has one waiting. Its copy of the master key stays valid after the revoke unless you also replace your master key, which stops it from adding and removing your devices. That needs your 12 words.',
               ]
             : []),
         ].join(' '),
+      };
+    case 'enter-words':
+      return wordsHeading(screen.purpose);
+    case 'restore-devices':
+      return {
+        title: 'Lock out lost devices',
+        lead: [
+          'These are the devices of your identity. Tick each one you lost or no longer use: it is revoked, and your master key is replaced, so a copy it kept stops working. This computer becomes one of your devices and keeps the new master key.',
+          ...(screen.note ? [screen.note] : []),
+        ].join(' '),
+      };
+    case 'master-replaced':
+      return {
+        title: 'Your master key is replaced',
+        lead: [
+          `This computer keeps master key #${screen.index}. Copies of the one before it no longer add or remove devices, on any device.`,
+          ...(screen.revoked.length ? [`Revoked in the same step: ${screen.revoked.join(', ')}.`] : []),
+          ...(screen.note ? [screen.note] : []),
+        ].join(' '),
+      };
+    case 'restored':
+      return {
+        title: `Restored as ${screen.name}`,
+        lead: [
+          `This computer signs for you as ${screen.keyId} and keeps your new master key.`,
+          ...(screen.revoked.length ? [`Locked out: ${screen.revoked.join(', ')}.`] : []),
+          ...(screen.note ? [screen.note] : []),
+        ].join(' '),
+      };
+    case 'remove-master':
+      return {
+        title: 'Remove my master key from this computer?',
+        lead: 'This computer stops keeping your master key. It stays one of your devices and still signs for you. Your other devices that keep a copy, and your 12 words, still add and remove devices.',
+      };
+    case 'master-removed':
+      return {
+        title: 'This computer no longer keeps your master key',
+        lead: 'It still signs for you. To add or remove devices, use a device that keeps your master key, or your 12 words.',
       };
     case 'revoked':
       return { title: `${screen.keyId} revoked`, lead: `Your key log records it as entry #${screen.seq}.` };
@@ -207,6 +294,29 @@ export function heading(screen: Screen): { title: string; lead: string } {
       };
     case 'failed':
       return { title: 'That did not work', lead: screen.message };
+  }
+}
+
+/** The words entry's lead, by what the words are for. */
+function wordsHeading(purpose: WordsPurpose): { title: string; lead: string } {
+  const type = 'Type your 12 words from your paper, in order.';
+  switch (purpose) {
+    case 'replace':
+      return {
+        title: 'Replace my master key',
+        lead: `${type} They make your next master key, which this computer keeps. Copies of the one you have now stop working, on every device that keeps one.`,
+      };
+    case 'restore':
+      return {
+        title: 'Use my 12 words',
+        lead: `${type} This computer finds the identity they make, and becomes one of its devices.`,
+      };
+    case 'revoke':
+    case 'answer':
+      return {
+        title: 'Your 12 words replace your master key',
+        lead: `${type} The revoke also replaces your master key, and only your words can make the next one.`,
+      };
   }
 }
 
@@ -221,6 +331,9 @@ export function isLast(screen: Screen): boolean {
     'request-answered',
     'asked',
     'renamed',
+    'master-replaced',
+    'restored',
+    'master-removed',
     'failed',
   ].includes(screen.screen);
 }

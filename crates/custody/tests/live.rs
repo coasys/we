@@ -534,6 +534,7 @@ async fn make_link_and_revoke_through_the_custody_service() {
     let wrong = shown.record(
         &custody
             .step(StepInput::Revoke {
+                rotate: false,
                 passphrase: Some("still not the passphrase".into()),
             })
             .await
@@ -546,6 +547,7 @@ async fn make_link_and_revoke_through_the_custody_service() {
     let revoked = shown.record(
         &custody
             .step(StepInput::Revoke {
+                rotate: false,
                 passphrase: Some(PASSPHRASE.into()),
             })
             .await

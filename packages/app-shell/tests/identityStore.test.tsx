@@ -28,6 +28,7 @@ vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
       keyLog: true,
       devices: true,
       linkDevice: !!ports()?.identity?.change,
+      recoveryWords: !!ports()?.identity?.change,
     }),
   }),
 }));
@@ -564,5 +565,95 @@ describe('deviceStore', () => {
     expect(changes).toEqual([{ kind: 'show-code' }]);
     expect(identity.did()).toBe(DID);
     expect(deviceStore.canShowCode()).toBe(false);
+  });
+
+  it('offers "Use my 12 words" beside "Show my code", and reads the identity it restored', async () => {
+    const b = backend({ did: null, events: [], devices: [] });
+    const changes: IdentityChange[] = [];
+    let state: IdentityCustodyView = { ...NO_CUSTODY, unlock: 'os' };
+    setPorts({
+      identity: signing(b.port, {
+        custody: async () => state,
+        async change(change) {
+          changes.push(change);
+          b.state.did = DID;
+          b.state.events = [incept, add];
+          b.state.devices = devices;
+          state = { ...state, did: DID, holdsMaster: true };
+          return 'done';
+        },
+      }),
+    });
+    const { identity, devices: deviceStore } = mount();
+    await flush();
+    await flush();
+    expect(deviceStore.canRestore()).toBe(true);
+    expect(deviceStore.canShowCode()).toBe(true);
+    // Nothing to replace or remove before there is an identity here.
+    expect(deviceStore.canReplaceMaster()).toBe(false);
+    expect(deviceStore.canRemoveMaster()).toBe(false);
+    expect(await deviceStore.restore()).toBe('done');
+    await flush();
+    expect(changes).toEqual([{ kind: 'restore' }]);
+    expect(identity.did()).toBe(DID);
+    expect(deviceStore.canRestore()).toBe(false);
+    expect(deviceStore.canRemoveMaster()).toBe(true);
+  });
+
+  it('offers no words without a custody service to take them', async () => {
+    setPorts({ identity: backend({ did: null, events: [], devices: [] }).port });
+    const { devices: deviceStore } = mount();
+    await flush();
+    await flush();
+    expect(deviceStore.canRestore()).toBe(false);
+    expect(deviceStore.canReplaceMaster()).toBe(false);
+  });
+
+  it('replaces the master key on a device that does not keep it, and the revoked holder stops warning', async () => {
+    const revokedD2 = devices.map((d) => (d.keyId === 'd2' ? { ...d, revokedSeq: 2 } : d));
+    const revoke = { seq: 2, op: 'revoke', hash: 'QmHash2', added: [], revoked: ['d2'] };
+    const b = backend({ did: DID, events: [incept, add, revoke], devices: revokedD2 });
+    let state: IdentityCustodyView = { ...NO_CUSTODY, did: DID, unlock: 'os', revokedHolders: ['d2'] };
+    const changes: IdentityChange[] = [];
+    setPorts({
+      identity: signing(b.port, {
+        custody: async () => state,
+        async change(change) {
+          changes.push(change);
+          if (change.kind === 'replace-master') {
+            b.state.events = [...b.state.events, { seq: 3, op: 'rotate', hash: 'QmHash3', added: [], revoked: [] }];
+            // The record may still list the old holder: the rotation, not the record, settles it.
+            state = {
+              ...state,
+              holdsMaster: true,
+              revokedHolders: [],
+              devices: [{ keyId: 'd2', name: 'Laptop', kind: 'desktop-app', holdsMaster: 'yes' }],
+            };
+          }
+          if (change.kind === 'remove-master') state = { ...state, holdsMaster: false };
+          return 'done';
+        },
+      }),
+    });
+    const { devices: deviceStore } = mount();
+    await flush();
+    await flush();
+    const d2 = () => deviceStore.devices().find((d) => d.keyId === 'd2')!;
+    expect(d2().master).toContain('replace your master key');
+    expect(d2().replaceMaster).toBe(true);
+    // Not keeping the master key is the point: the lost device kept it.
+    expect(deviceStore.canManage()).toBe(false);
+    expect(deviceStore.canReplaceMaster()).toBe(true);
+    expect(deviceStore.canRemoveMaster()).toBe(false);
+
+    expect(await deviceStore.replaceMaster()).toBe('done');
+    await flush();
+    await flush();
+    expect(d2()).toMatchObject({ master: '', replaceMaster: false });
+    expect(deviceStore.canRemoveMaster()).toBe(true);
+    expect(await deviceStore.removeMaster()).toBe('done');
+    await flush();
+    expect(deviceStore.canRemoveMaster()).toBe(false);
+    expect(changes).toEqual([{ kind: 'replace-master' }, { kind: 'remove-master' }]);
   });
 });

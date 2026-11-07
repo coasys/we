@@ -99,6 +99,17 @@ impl DesktopVault {
         self.store.contains(&item_name(scid))
     }
 
+    /// The index of the master key held for `scid` (#0, or #n after `n` rotations), without an
+    /// unlock: from the public index list beside the retry list, never from the item. `None` when
+    /// no item is held. An item kept before the list existed is master #0 — no build before
+    /// rotation kept any other.
+    pub fn master_index(&self, scid: &str) -> Result<Option<u32>, VaultError> {
+        if !self.holds(scid)? {
+            return Ok(None);
+        }
+        Ok(Some(self.pending.master_index(scid)?.unwrap_or(0)))
+    }
+
     fn read(
         &self,
         scid: &str,
@@ -156,7 +167,18 @@ impl Vault for Unlocking<'_> {
             index,
             master: Zeroizing::new(*secret.expose()),
         };
-        self.vault.write(&item, self.passphrase())
+        self.vault.write(&item, self.passphrase())?;
+        self.vault.pending.set_master_index(scid, index)
+    }
+
+    fn master_index(&self, scid: &str) -> Result<Option<u32>, VaultError> {
+        self.vault.master_index(scid)
+    }
+
+    fn forget_master(&self, scid: &str) -> Result<(), VaultError> {
+        log::info!("custody: forget a master key");
+        self.vault.store.delete(&item_name(scid))?;
+        self.vault.pending.forget_master_index(scid)
     }
 
     fn unlock(&self, scid: &str, why: MasterUse, now: u64) -> Result<Unlocked, VaultError> {
@@ -612,6 +634,38 @@ mod tests {
         );
         assert_eq!(
             flow.unlock("QmOther", MasterUse::Link, 0).err(),
+            Some(VaultError::NotFound)
+        );
+    }
+
+    /// The index of the key kept is read with no unlock — a sealed item, no passphrase — follows a
+    /// rotation, is #0 for an item kept before the index list, and is gone with the key.
+    #[test]
+    fn the_master_index_needs_no_unlock_and_goes_with_the_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = DesktopVault::with_kdf(
+            Box::new(crate::store::FileStore::new(dir.path())),
+            PendingIncepts::file(dir.path()),
+            CHEAP,
+        );
+        assert!(vault.needs_passphrase_for("QmScid").unwrap());
+        let locked = vault.unlocking(None);
+        assert_eq!(locked.master_index("QmScid").unwrap(), None);
+        let flow = vault.unlocking(pass("a passphrase of some length"));
+        flow.store_master("QmScid", 0, Secret::new([4u8; 32]))
+            .unwrap();
+        flow.store_master("QmScid", 1, Secret::new([5u8; 32]))
+            .unwrap();
+        assert_eq!(locked.master_index("QmScid").unwrap(), Some(1));
+        // An item from before the list: master #0.
+        vault.pending.forget_master_index("QmScid").unwrap();
+        assert_eq!(locked.master_index("QmScid").unwrap(), Some(0));
+        locked.forget_master("QmScid").unwrap();
+        locked.forget_master("QmScid").unwrap();
+        assert!(!vault.holds("QmScid").unwrap());
+        assert_eq!(locked.master_index("QmScid").unwrap(), None);
+        assert_eq!(
+            flow.unlock("QmScid", MasterUse::Link, 0).err(),
             Some(VaultError::NotFound)
         );
     }

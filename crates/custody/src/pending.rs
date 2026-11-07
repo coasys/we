@@ -17,6 +17,12 @@
 //! again at the next start and unlock (`flows::master::retry_pushes`). Each entry is an identity and
 //! a device key id: no secret — every try seals the master key current then.
 //!
+//! And the **index of each master key kept here** (`<dir>/master-index.json`): which master — #0,
+//! or #n after `n` rotations — the vault's item for an identity holds. The index sits inside the
+//! sealed item too, but reading it there needs the passphrase or the keychain's prompt, and the
+//! identity client asks for it with no unlock (`Vault::master_index`, to see whether a rotation
+//! replaced the key kept here). An index is public: the key log lists every master by it.
+//!
 //! The folder is shared by every desktop app and build on this computer, and two can run at once (a
 //! WE build and a white-labelled one each hold their own single-instance lock). So each read and
 //! each read-modify-write holds an advisory lock on `<dir>/pending-incepts.lock` for its length,
@@ -36,6 +42,24 @@ pub const FILE_NAME: &str = "pending-incepts.json";
 
 /// The retry list's file inside the custody folder.
 pub const PUSHES_FILE_NAME: &str = "pending-pushes.json";
+
+/// The master-index list's file inside the custody folder.
+pub const MASTERS_FILE_NAME: &str = "master-index.json";
+
+/// Which master an identity's kept item holds: public, as the key log lists it.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct MasterIndex {
+    pub scid: String,
+    pub index: u32,
+}
+
+/// The lists a memory store keeps (tests).
+#[derive(Default)]
+pub struct Lists {
+    incepts: Vec<Event>,
+    pushes: Vec<PendingPush>,
+    masters: Vec<MasterIndex>,
+}
 
 /// The lock every process holds while it reads or changes the file.
 const LOCK_NAME: &str = "pending-incepts.lock";
@@ -62,7 +86,7 @@ pub enum PendingIncepts {
     /// `<dir>/pending-incepts.json` and `<dir>/pending-pushes.json`: what the app uses.
     File { dir: PathBuf, lock: Mutex<()> },
     /// Kept only as long as the value (tests).
-    Memory(Mutex<(Vec<Event>, Vec<PendingPush>)>),
+    Memory(Mutex<Lists>),
 }
 
 fn unavailable(why: impl std::fmt::Display) -> VaultError {
@@ -79,19 +103,19 @@ impl PendingIncepts {
     }
 
     pub fn memory() -> Self {
-        PendingIncepts::Memory(Mutex::new((Vec::new(), Vec::new())))
+        PendingIncepts::Memory(Mutex::new(Lists::default()))
     }
 
     /// The kept incepts.
     pub fn list(&self) -> Result<Vec<Event>, VaultError> {
-        self.read_one(FILE_NAME, |m| m.0.clone())
+        self.read_one(FILE_NAME, |m| m.incepts.clone())
     }
 
     /// Keeps `incept`, replacing a kept incept of the same identity.
     pub fn keep(&self, incept: &Event) -> Result<(), VaultError> {
         self.change(
             FILE_NAME,
-            |m| &mut m.0,
+            |m| &mut m.incepts,
             |events: &mut Vec<Event>| {
                 events.retain(|e| e.scid != incept.scid);
                 events.push(incept.clone());
@@ -103,21 +127,21 @@ impl PendingIncepts {
     pub fn forget(&self, scid: &str) -> Result<(), VaultError> {
         self.change(
             FILE_NAME,
-            |m| &mut m.0,
+            |m| &mut m.incepts,
             |events: &mut Vec<Event>| events.retain(|e| e.scid != scid),
         )
     }
 
     /// The master-key pushes kept and not yet confirmed sent.
     pub fn pushes(&self) -> Result<Vec<PendingPush>, VaultError> {
-        self.read_one(PUSHES_FILE_NAME, |m| m.1.clone())
+        self.read_one(PUSHES_FILE_NAME, |m| m.pushes.clone())
     }
 
     /// Keeps `push` on the retry list; keeping one already listed is no change.
     pub fn keep_push(&self, push: &PendingPush) -> Result<(), VaultError> {
         self.change(
             PUSHES_FILE_NAME,
-            |m| &mut m.1,
+            |m| &mut m.pushes,
             |pushes: &mut Vec<PendingPush>| {
                 if !pushes.contains(push) {
                     pushes.push(push.clone());
@@ -130,15 +154,48 @@ impl PendingIncepts {
     pub fn push_done(&self, push: &PendingPush) -> Result<(), VaultError> {
         self.change(
             PUSHES_FILE_NAME,
-            |m| &mut m.1,
+            |m| &mut m.pushes,
             |pushes: &mut Vec<PendingPush>| pushes.retain(|p| p != push),
+        )
+    }
+
+    /// The index of the master kept for `scid`, as last written; `None` when none is listed.
+    pub fn master_index(&self, scid: &str) -> Result<Option<u32>, VaultError> {
+        Ok(self
+            .read_one(MASTERS_FILE_NAME, |m| m.masters.clone())?
+            .into_iter()
+            .find(|m| m.scid == scid)
+            .map(|m| m.index))
+    }
+
+    /// Lists master `index` as the one kept for `scid`, in place of any other.
+    pub fn set_master_index(&self, scid: &str, index: u32) -> Result<(), VaultError> {
+        self.change(
+            MASTERS_FILE_NAME,
+            |m| &mut m.masters,
+            |masters: &mut Vec<MasterIndex>| {
+                masters.retain(|m| m.scid != scid);
+                masters.push(MasterIndex {
+                    scid: scid.to_string(),
+                    index,
+                });
+            },
+        )
+    }
+
+    /// Forgets the index of `scid`; nothing to do when none is listed.
+    pub fn forget_master_index(&self, scid: &str) -> Result<(), VaultError> {
+        self.change(
+            MASTERS_FILE_NAME,
+            |m| &mut m.masters,
+            |masters: &mut Vec<MasterIndex>| masters.retain(|m| m.scid != scid),
         )
     }
 
     fn read_one<T: DeserializeOwned>(
         &self,
         file: &str,
-        memory: impl FnOnce(&(Vec<Event>, Vec<PendingPush>)) -> Vec<T>,
+        memory: impl FnOnce(&Lists) -> Vec<T>,
     ) -> Result<Vec<T>, VaultError> {
         match self {
             PendingIncepts::File { dir, lock } => {
@@ -155,7 +212,7 @@ impl PendingIncepts {
     fn change<T: Serialize + DeserializeOwned>(
         &self,
         file: &str,
-        memory: impl FnOnce(&mut (Vec<Event>, Vec<PendingPush>)) -> &mut Vec<T>,
+        memory: impl FnOnce(&mut Lists) -> &mut Vec<T>,
         edit: impl FnOnce(&mut Vec<T>),
     ) -> Result<(), VaultError> {
         match self {
@@ -320,5 +377,30 @@ mod tests {
         memory.keep_push(&push("d2")).unwrap();
         assert_eq!(memory.pushes().unwrap(), vec![push("d2")]);
         assert!(memory.list().unwrap().is_empty());
+    }
+
+    #[test]
+    fn the_master_index_is_kept_per_identity_and_forgotten() {
+        let dir = tempfile::tempdir().unwrap();
+        let pending = PendingIncepts::file(dir.path());
+        assert_eq!(pending.master_index("QmA").unwrap(), None);
+        pending.set_master_index("QmA", 0).unwrap();
+        pending.set_master_index("QmB", 3).unwrap();
+        // A rotation lists the next master in place of the one before.
+        pending.set_master_index("QmA", 1).unwrap();
+        drop(pending);
+        let reopened = PendingIncepts::file(dir.path());
+        assert_eq!(reopened.master_index("QmA").unwrap(), Some(1));
+        assert_eq!(reopened.master_index("QmB").unwrap(), Some(3));
+        reopened.forget_master_index("QmA").unwrap();
+        reopened.forget_master_index("QmA").unwrap();
+        assert_eq!(reopened.master_index("QmA").unwrap(), None);
+        reopened.forget_master_index("QmB").unwrap();
+        assert!(!dir.path().join(MASTERS_FILE_NAME).exists());
+
+        let memory = PendingIncepts::memory();
+        memory.set_master_index("QmA", 2).unwrap();
+        assert_eq!(memory.master_index("QmA").unwrap(), Some(2));
+        assert!(memory.pushes().unwrap().is_empty());
     }
 }

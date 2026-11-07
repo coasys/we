@@ -56,7 +56,17 @@ function isIdentityStep(step) {
 }
 
 /** The steps that name nothing but their kind. */
-const PLAIN_STEPS = new Set(['create', 'add-device', 'scan-device', 'show-code', 'take-master', 'ask-master']);
+const PLAIN_STEPS = new Set([
+  'create',
+  'add-device',
+  'scan-device',
+  'show-code',
+  'take-master',
+  'ask-master',
+  'replace-master',
+  'restore',
+  'remove-master',
+]);
 
 /**
  * `custody()` is the running sidecar's client, or null; it changes when the executor restarts.

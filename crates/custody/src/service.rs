@@ -20,15 +20,21 @@ use ad4m_client::ws_rpc::WsRpcClient;
 use ad4m_identity_client::executor::IdentityStatus;
 use ad4m_identity_client::flows::create::{resume, CreateFlow, CreateScreen, Created};
 use ad4m_identity_client::flows::link::{Claimed, LinkFlow};
-use ad4m_identity_client::flows::master::{retry_pushes, take_master};
+use ad4m_identity_client::flows::master::{
+    refresh_master, remove_master, retry_pushes, take_master, Refreshed,
+};
 use ad4m_identity_client::flows::requests::{self, Answered};
-use ad4m_identity_client::flows::revoke::revoke;
+use ad4m_identity_client::flows::restore::RestoreFlow;
+use ad4m_identity_client::flows::revoke::{revoke, revoke_and_rotate};
+use ad4m_identity_client::flows::rotate::{rotate, Rotated};
 use ad4m_identity_client::record::{self, Change};
+use ad4m_identity_client::vault::{MasterUse, Vault};
 use ad4m_identity_client::{
     ClientError, Clock, ExecutorRpc, OsRandom, Secret, SystemClock, VaultError, ViaExecutor,
 };
 use ad4m_identity_core::link::{DeviceString, OfferKind, CONFIRM_GRACE_S, OFFER_TTL_S};
 use ad4m_identity_core::record::{DeviceEntry, DeviceKind, HoldsMaster as Holds, Place};
+use ad4m_identity_core::words::{self, Words};
 use ad4m_identity_core::{Event, Op};
 use ad4m_ldk::identity::DeviceRequestBody;
 use serde::{Deserialize, Serialize};
@@ -72,6 +78,15 @@ pub enum IdentityStep {
         #[serde(rename = "keyId")]
         key_id: String,
     },
+    /// Replaces the master key with the next one the 12 words make; this computer keeps it, and
+    /// every other app that kept the old one is sent the new one.
+    ReplaceMaster,
+    /// On a computer of no identity: the 12 words give the identity back here, and lock out the
+    /// devices the person ticks ("Use my 12 words").
+    Restore,
+    /// Forgets this computer's copy of the master key ("Also remove my master key from this
+    /// computer", on log out). Refused while it is the only copy.
+    RemoveMaster,
 }
 
 /// What the identity window draws next. Only public data, except the words on `ShowWords`, which
@@ -195,9 +210,47 @@ pub enum Screen {
         /// that copy valid until the master key is replaced.
         #[serde(rename = "holdsMaster")]
         holds_master: bool,
+        /// Whether "Also replace my master key" starts ticked: when the device keeps a copy.
+        rotate: bool,
         passphrase: bool,
         error: Option<String>,
     },
+    /// Type the 12 words, for `purpose`: `replace`, `restore`, `revoke` (a revoke that also
+    /// replaces the master key) or `answer` (a request that asks for that). `error`: why the
+    /// words typed last were refused; `position`: the word it names, from 1. The words typed are
+    /// never sent back, on this screen or any later one.
+    EnterWords {
+        purpose: &'static str,
+        error: Option<String>,
+        position: Option<usize>,
+    },
+    /// The devices of the identity the words restore, to pick the ones to lock out (`lockOut`
+    /// ticked by default for apps). `note`: why they show by key id only, when they do.
+    RestoreDevices {
+        did: String,
+        devices: Vec<RestoreDevice>,
+        note: Option<String>,
+    },
+    /// The master key was replaced (`rotate` published): `index` is the new master's,
+    /// `revoked` the keys the same event revoked. `note`: what did not happen yet.
+    MasterReplaced {
+        index: u32,
+        revoked: Vec<String>,
+        note: Option<String>,
+    },
+    /// The identity is back on this computer, which signs as `key_id` and keeps the new master.
+    Restored {
+        did: String,
+        name: String,
+        #[serde(rename = "keyId")]
+        key_id: String,
+        revoked: Vec<String>,
+        note: Option<String>,
+    },
+    /// What removing the master key from this computer does, before it is done.
+    RemoveMaster { error: Option<String> },
+    /// This computer no longer keeps the master key.
+    MasterRemoved,
     /// The key was revoked (`revoke` published).
     Revoked {
         #[serde(rename = "keyId")]
@@ -222,7 +275,10 @@ impl Screen {
             | Screen::MasterTaken { .. }
             | Screen::RequestAnswered { .. }
             | Screen::Asked { .. }
-            | Screen::Renamed { .. } => Some(StepOutcome::Done),
+            | Screen::Renamed { .. }
+            | Screen::MasterReplaced { .. }
+            | Screen::Restored { .. }
+            | Screen::MasterRemoved => Some(StepOutcome::Done),
             Screen::Failed { .. } => Some(StepOutcome::Failed),
             _ => None,
         }
@@ -284,10 +340,27 @@ pub enum StepInput {
     Name {
         name: String,
     },
-    /// Revoke, with the passphrase where the computer needs one.
+    /// Revoke, with the passphrase where the computer needs one; `rotate`: also replace the
+    /// master key, which asks for the 12 words next.
     Revoke {
         passphrase: Option<String>,
+        #[serde(default)]
+        rotate: bool,
     },
+    /// The 12 words, as typed: one string, the words separated by spaces.
+    TwelveWords {
+        words: String,
+    },
+    /// The devices to lock out of a restore (key ids of `RestoreDevices`), and this computer's
+    /// name.
+    #[serde(rename_all = "camelCase")]
+    LockOut {
+        key_ids: Vec<String>,
+        #[serde(default)]
+        name: Option<String>,
+    },
+    /// Yes on `RemoveMaster`.
+    Remove,
     /// Forget the identity on `PendingRefused`, which can never be published.
     Discard,
 }
@@ -307,6 +380,9 @@ impl std::fmt::Debug for StepInput {
             StepInput::Answer { .. } => "answer",
             StepInput::Name { .. } => "name",
             StepInput::Revoke { .. } => "revoke",
+            StepInput::TwelveWords { .. } => "twelve-words",
+            StepInput::LockOut { .. } => "lock-out",
+            StepInput::Remove => "remove",
             StepInput::Discard => "discard",
         };
         f.write_str(name)
@@ -366,6 +442,17 @@ pub struct RequestView {
     /// For `confirm-revoke`: the keys it asks to revoke.
     pub key_ids: Vec<String>,
     pub expires: u64,
+}
+
+/// One device on the restore's lock-out list.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RestoreDevice {
+    pub key_id: String,
+    /// The record's name; `None` when the record does not name it or could not be read.
+    pub name: Option<String>,
+    pub kind: Option<DeviceKind>,
+    pub lock_out: bool,
 }
 
 /// Where the executor's RPC is, and the admin credential for it. Nothing else of the executor: the
@@ -497,6 +584,38 @@ fn names_no_store(e: &ClientError) -> bool {
     matches!(e, ClientError::Rpc(e) if e.code == 503 && e.message.starts_with("no-store-keys"))
 }
 
+/// Words that are all on the list and pass the checksum, yet make no master key of the identity.
+const NOT_THESE_WORDS: &str = "These words do not make your identity's master key. Check each \
+     word against your paper, in order. Nothing was changed.";
+
+/// Why a master key is not removed from this computer.
+const ONLY_COPY: &str = "This computer keeps the only copy of your master key: no other \
+     computer or phone of yours keeps one. Removing it would leave only your 12 words to add or \
+     remove devices. Send it to another device first. Your master key stays on this computer.";
+
+/// Why the 12 words typed were refused, and the word it names (from 1). Names a word by its
+/// place only: the word typed, or the list word nearest it, may be one of the 12.
+fn words_refused(e: &ad4m_identity_core::words::WordsError) -> (String, Option<usize>) {
+    use ad4m_identity_core::words::WordsError;
+    match e {
+        WordsError::Count(n) => (format!("That is {n} words. Type all 12, in order."), None),
+        WordsError::UnknownWord { position, .. } => (
+            format!("Word {position} is not one of the words a recovery phrase uses. Check it on your paper."),
+            Some(*position),
+        ),
+        WordsError::Checksum => (
+            "One of the words is wrong: they do not fit together. Check each word against your \
+             paper, in order."
+                .into(),
+            None,
+        ),
+        WordsError::Index(_) => (
+            "Your master key cannot be replaced again from these words.".into(),
+            None,
+        ),
+    }
+}
+
 /// Words a person reads, for each way a flow stops.
 fn failed(e: &ClientError) -> Screen {
     let message = match e {
@@ -524,9 +643,16 @@ fn failed(e: &ClientError) -> Screen {
         ClientError::Poster(why) => {
             format!("The request does not check out ({why}). Nothing was done.")
         }
-        ClientError::NeedsWords => "This request also asks to replace the master key, which \
-                                    needs your 12 words. This version cannot do that yet."
+        ClientError::NeedsWords => {
+            "This also replaces your master key, which needs your 12 words.".into()
+        }
+        // Never the word itself, nor the list word nearest it: either may be one of the 12.
+        ClientError::Words(e) => words_refused(e).0,
+        ClientError::NotTheseWords(_) => NOT_THESE_WORDS.into(),
+        ClientError::LogBusy => "Your key log kept changing on another device while this ran. \
+                                 Nothing was replaced. Try again in a moment."
             .into(),
+        ClientError::OnlyCopy => ONLY_COPY.into(),
         ClientError::RecordBusy => {
             "Your device list is being changed on another device. Try again in a moment.".into()
         }
@@ -567,6 +693,15 @@ async fn serve(vault: DesktopVault, address: ExecutorAddress, mut rx: Rx) {
                     }
                     IdentityStep::Revoke { key_id } => {
                         run_revoke(&vault, &address, &mut rx, &mut reply, key_id).await
+                    }
+                    IdentityStep::ReplaceMaster => {
+                        run_replace_master(&vault, &address, &mut rx, &mut reply).await
+                    }
+                    IdentityStep::Restore => {
+                        run_restore(&vault, &address, &mut rx, &mut reply).await
+                    }
+                    IdentityStep::RemoveMaster => {
+                        run_remove_master(&vault, &address, &mut rx, &mut reply).await
                     }
                 }
             }
@@ -720,6 +855,7 @@ async fn public_state_on<R: ExecutorRpc>(
                 Err(e) => log::warn!("custody: the waiting master key was not taken: {e}"),
             }
         }
+        refresh_stale(executor, vault, did, master_waiting && !os_unlocks).await;
         devices = match record::read(executor, did).await {
             Ok(opened) => opened.map(|o| device_names(&o.record)).unwrap_or_default(),
             Err(e) => {
@@ -749,8 +885,14 @@ async fn public_state_on<R: ExecutorRpc>(
                 None
             }
         });
-    // The index sits inside the sealed item; only master #0 is held for now (no rotation yet).
-    let holds_master = sealed.map(|_| HoldsMaster { index: 0 });
+    // The index of the key held, from the public list kept beside the vault (no unlock).
+    let holds_master = sealed.map(|_| HoldsMaster {
+        index: did
+            .as_deref()
+            .and_then(ad4m_identity_core::scid_of)
+            .and_then(|scid| vault.master_index(scid).ok().flatten())
+            .unwrap_or(0),
+    });
     // The unlock of the key reported as held; with none held, the unlock a new one would get.
     let unlock = if sealed.unwrap_or_else(|| vault.needs_passphrase()) {
         "passphrase"
@@ -784,6 +926,46 @@ async fn master_waits<R: ExecutorRpc>(executor: &ViaExecutor<R>) -> bool {
             );
             false
         }
+    }
+}
+
+/// Where this computer keeps a master key of `did` that a rotation on another device replaced:
+/// takes the current one from the inbox, or forgets the replaced one and asks a holder for the
+/// current one ([`refresh_master`]). Only when the log, read fresh, lists a master after the one
+/// kept here, so a log read behind can never make it forget a current key. `sealed_waits`: the
+/// current key waits in the inbox and needs the passphrase of a sealed item, so "Take the master
+/// key" takes it rather than this.
+async fn refresh_stale<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    vault: &DesktopVault,
+    did: &str,
+    sealed_waits: bool,
+) {
+    let Some(scid) = ad4m_identity_core::scid_of(did) else {
+        return;
+    };
+    let Ok(Some(kept)) = vault.master_index(scid) else {
+        return;
+    };
+    let current = match executor.events(did).await {
+        Ok(events) => match ad4m_identity_core::fold(&events) {
+            Ok(chain) => chain.state().masters.len().saturating_sub(1),
+            Err(e) => return log::warn!("custody: the key log does not fold: {e}"),
+        },
+        Err(e) => return log::warn!("custody: the key log cannot be read now: {e}"),
+    };
+    if kept as usize >= current || sealed_waits {
+        return;
+    }
+    match refresh_master(executor, &vault.unlocking(None), did, &RANDOM).await {
+        Ok(Refreshed::Current) => {}
+        Ok(Refreshed::Taken(taken)) => {
+            log::info!("custody: took master #{} in place of #{kept}", taken.index)
+        }
+        Ok(Refreshed::Asked(id)) => log::info!(
+            "custody: forgot the replaced master #{kept}, and asked for the current one ({id})"
+        ),
+        Err(e) => log::warn!("custody: the replaced master #{kept} was not refreshed: {e}"),
     }
 }
 
@@ -1032,11 +1214,16 @@ async fn create_on<R: ExecutorRpc>(
 
     // incept, the executor's co-signature, the vault keeps master #0 and the incept, publish.
     let unlocking = vault.unlocking(passphrase);
-    let screen = match flow.finish(executor, &unlocking).await {
-        Ok(created) => Screen::IdentityReady {
-            did: created.did,
-            key_id: created.device_key_id,
-        },
+    let screen = match flow.finish(executor, &unlocking, &RANDOM).await {
+        Ok(created) => {
+            if let Some(Err(e)) = &created.record {
+                log::warn!("custody: the record does not list this computer yet: {e}");
+            }
+            Screen::IdentityReady {
+                did: created.did,
+                key_id: created.device_key_id,
+            }
+        }
         // Custody came first, so a publish that failed left an identity to finish, not a loss —
         // when the incept kept is this executor's. Another account's is not this step's.
         Err(e) if own_pending(vault, &device_key).ok().flatten().is_some() => unfinished(&e),
@@ -2027,28 +2214,53 @@ async fn answer_on<R: ExecutorRpc>(
             continue;
         };
         let unlocking = vault.unlocking(passphrase.map(Secret::new));
+        let answered_screen = |answered: Answered| {
+            let note = match &answered {
+                Answered::MasterSent(sent) => handed_over(&[], &sent.record),
+                Answered::Revoked(revoked) => handed_over(&[], &revoked.record),
+                Answered::Rotated(rotated) => handed_over(&rotated.pushes, &rotated.record),
+            };
+            Screen::RequestAnswered {
+                kind,
+                device: device.clone(),
+                note,
+            }
+        };
         match requests::answer(executor, &unlocking, &did, &request, &CLOCK, &RANDOM).await {
             Ok(answered) => {
-                let record = match &answered {
-                    Answered::MasterSent(sent) => sent.record.as_ref().err(),
-                    Answered::Revoked(revoked) => revoked.record.as_ref().err(),
-                };
-                if let Some(e) = record {
-                    log::warn!("custody: the record was not changed after the answer: {e}");
-                }
                 retry_quietly(executor, &unlocking, &did).await;
-                return answer(
-                    reply,
-                    Ok(Screen::RequestAnswered {
-                        kind,
-                        device: device.clone(),
-                        note: record.map(|_| {
-                            "Your device list does not show it yet: it is updated the next time \
-                             a device changes it."
-                                .to_string()
-                        }),
-                    }),
-                );
+                return answer(reply, Ok(answered_screen(answered)));
+            }
+            // The request also asks to replace the master key: the words sign that rotation.
+            // The passphrase seals the new key where the old one rests, so it is checked first.
+            Err(ClientError::NeedsWords) if needs && !opens(&unlocking, &did) => answer(
+                reply,
+                Ok(card(Some(
+                    "That passphrase does not open your master key.".into(),
+                ))),
+            ),
+            Err(ClientError::NeedsWords) => {
+                let mut error = None;
+                let screen = loop {
+                    let Some((_typed, words)) =
+                        ask_words(vault, address, rx, reply, "answer", error.take()).await
+                    else {
+                        return;
+                    };
+                    match requests::answer_with_words(
+                        executor, &unlocking, &did, &request, &words, &CLOCK, &RANDOM,
+                    )
+                    .await
+                    {
+                        Ok(answered) => break answered_screen(answered),
+                        Err(ClientError::NotTheseWords(_)) => {
+                            error = Some((NOT_THESE_WORDS.into(), None))
+                        }
+                        Err(e) => break failed(&e),
+                    }
+                };
+                retry_quietly(executor, &unlocking, &did).await;
+                return answer(reply, Ok(screen));
             }
             Err(ClientError::Vault(VaultError::Cancelled)) if needs => answer(
                 reply,
@@ -2226,10 +2438,24 @@ async fn run_revoke(
         Ok(e) => e,
         Err(message) => return answer(reply, Ok(Screen::Failed { message })),
     };
-    if let Err(refused) = trusted_store(&executor).await {
+    revoke_on(&executor, vault, address, rx, reply, key_id).await
+}
+
+/// [`run_revoke`] once the executor answers. With "Also replace my master key" ticked (by
+/// default when the device keeps a copy), the 12 words are asked next and the revoke is one
+/// rotation to a new master key: the revoked device's copy stops acting with it.
+async fn revoke_on<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    vault: &DesktopVault,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+    key_id: String,
+) {
+    if let Err(refused) = trusted_store(executor).await {
         return answer(reply, Ok(refused));
     }
-    finish_pending_quietly(&executor, vault).await;
+    finish_pending_quietly(executor, vault).await;
     let (did, own) = match executor.status().await {
         Ok(status) => match status.did {
             Some(did) => (did, status.key_id),
@@ -2257,27 +2483,61 @@ async fn run_revoke(
         Ok(needs) => needs,
         Err(e) => return answer(reply, Ok(failed(&e))),
     };
-    let holds_master = keeps_master(&executor, &did, &key_id).await;
-    answer(
-        reply,
-        Ok(Screen::RevokeConfirm {
-            key_id: key_id.clone(),
-            holds_master,
-            passphrase: needs,
-            error: None,
-        }),
-    );
+    let holds_master = keeps_master(executor, &did, &key_id).await;
+    let confirm = |error: Option<String>| Screen::RevokeConfirm {
+        key_id: key_id.clone(),
+        holds_master,
+        rotate: holds_master,
+        passphrase: needs,
+        error,
+    };
+    answer(reply, Ok(confirm(None)));
     loop {
         let Some(input) = next_input(vault, address, rx, reply).await else {
             return;
         };
-        let StepInput::Revoke { passphrase } = input else {
+        let StepInput::Revoke { passphrase, rotate } = input else {
             answer(reply, Err(CustodyError::WrongInput));
             continue;
         };
         let unlocking = vault.unlocking(passphrase.map(Secret::new));
+        if rotate {
+            // The words sign the rotation; the passphrase seals the new key where the old one
+            // rests, so it is checked before any word is asked.
+            if needs && !opens(&unlocking, &did) {
+                answer(
+                    reply,
+                    Ok(confirm(Some(
+                        "That passphrase does not open your master key.".into(),
+                    ))),
+                );
+                continue;
+            }
+            let revoke = [ad4m_identity_core::KeyId::from(key_id.as_str())];
+            let mut error = None;
+            let screen = loop {
+                let Some((_typed, words)) =
+                    ask_words(vault, address, rx, reply, "revoke", error.take()).await
+                else {
+                    return;
+                };
+                match revoke_and_rotate(
+                    executor, &unlocking, &did, &revoke, &words, &CLOCK, &RANDOM,
+                )
+                .await
+                {
+                    Ok(rotated) => break replaced(rotated),
+                    Err(ClientError::NotTheseWords(_)) => {
+                        error = Some((NOT_THESE_WORDS.into(), None))
+                    }
+                    Err(e) => break failed(&e),
+                }
+            };
+            retry_quietly(executor, &unlocking, &did).await;
+            return answer(reply, Ok(screen));
+        }
         match revoke(
-            &executor,
+            executor,
             &unlocking,
             &did,
             std::slice::from_ref(&key_id),
@@ -2300,15 +2560,413 @@ async fn run_revoke(
             }
             Err(ClientError::Vault(VaultError::Cancelled)) if needs => answer(
                 reply,
-                Ok(Screen::RevokeConfirm {
-                    key_id: key_id.clone(),
-                    holds_master,
-                    passphrase: true,
-                    error: Some("That passphrase does not open your master key.".into()),
-                }),
+                Ok(confirm(Some(
+                    "That passphrase does not open your master key.".into(),
+                ))),
             ),
             Err(e) => return answer(reply, Ok(failed(&e))),
         }
+    }
+}
+
+/// Whether `unlocking` opens the master key of `did` kept here: a passphrase checked before a step
+/// that publishes, so a wrong one cannot leave a new key published and not kept.
+fn opens(unlocking: &Unlocking<'_>, did: &str) -> bool {
+    let Some(scid) = ad4m_identity_core::scid_of(did) else {
+        return false;
+    };
+    Vault::unlock(unlocking, scid, MasterUse::Revoke, CLOCK.now()).is_ok()
+}
+
+// ─── the 12 words: replace the master key, restore ──────────────────────────────────
+
+/// Asks for the 12 words until they parse, saying why each refused set was (a word by its place,
+/// never by what was typed). `None` when the window cancels. The typed string is wiped on drop.
+async fn ask_words(
+    vault: &DesktopVault,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+    purpose: &'static str,
+    mut error: Option<(String, Option<usize>)>,
+) -> Option<(Secret<String>, Words)> {
+    loop {
+        let (message, position) = error.take().map_or((None, None), |(m, p)| (Some(m), p));
+        answer(
+            reply,
+            Ok(Screen::EnterWords {
+                purpose,
+                error: message,
+                position,
+            }),
+        );
+        let typed = loop {
+            match next_input(vault, address, rx, reply).await? {
+                StepInput::TwelveWords { words } => break Secret::new(words),
+                _ => answer(reply, Err(CustodyError::WrongInput)),
+            }
+        };
+        match words::parse(typed.expose()) {
+            Ok(parsed) => return Some((typed, parsed)),
+            Err(e) => error = Some(words_refused(&e)),
+        }
+    }
+}
+
+/// The last screen of a rotation, saying what did not happen yet.
+fn replaced(rotated: Rotated) -> Screen {
+    Screen::MasterReplaced {
+        index: rotated.index,
+        revoked: rotated
+            .revoked
+            .iter()
+            .map(|k| k.as_str().to_string())
+            .collect(),
+        note: handed_over(&rotated.pushes, &rotated.record),
+    }
+}
+
+/// What the hand-over of a new master key left undone, in words: the apps it has not reached yet
+/// (the retry list sends it again at each unlock), and the device list not updated yet.
+fn handed_over(
+    pushes: &[(ad4m_identity_core::KeyId, Result<String, ClientError>)],
+    record: &Result<u64, ClientError>,
+) -> Option<String> {
+    let mut note = Vec::new();
+    let late: Vec<&str> = pushes
+        .iter()
+        .filter(|(_, pushed)| pushed.is_err())
+        .map(|(key_id, _)| key_id.as_str())
+        .collect();
+    for (key_id, pushed) in pushes {
+        if let Err(e) = pushed {
+            log::warn!("custody: the new master key did not reach {key_id} yet: {e}");
+        }
+    }
+    if !late.is_empty() {
+        note.push(format!(
+            "The new master key has not reached {} yet: this computer sends it again each time \
+             it unlocks.",
+            late.join(", ")
+        ));
+    }
+    if let Err(e) = record {
+        log::warn!("custody: the record was not written after the rotation: {e}");
+        note.push(
+            "Your device list does not show it yet: it is updated the next time a device \
+             changes it."
+                .into(),
+        );
+    }
+    (!note.is_empty()).then(|| note.join(" "))
+}
+
+/// The executor's identity, or the screen saying it has none.
+async fn identity_of<R: ExecutorRpc>(executor: &ViaExecutor<R>) -> Result<String, Screen> {
+    match executor.status().await {
+        Ok(IdentityStatus { did: Some(did), .. }) => Ok(did),
+        Ok(_) => Err(Screen::Failed {
+            message: "This computer is not linked to an identity yet.".into(),
+        }),
+        Err(e) => Err(failed(&ClientError::Rpc(e))),
+    }
+}
+
+/// The vault for a step that keeps a new master key of `scid` here: with the passphrase of the key
+/// kept here, checked by opening it; with a new one where none is kept and a new item is sealed;
+/// else with none. `None` when the window cancels.
+async fn unlocking_to_keep<'v>(
+    vault: &'v DesktopVault,
+    did: &str,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+) -> Option<Result<Unlocking<'v>, Screen>> {
+    let scid = ad4m_identity_core::scid_of(did)?;
+    match held_sealed(vault, scid) {
+        Err(e) => Some(Err(failed(&ClientError::Vault(e)))),
+        Ok(None) if vault.needs_passphrase() => {
+            let p = new_passphrase(vault, address, rx, reply).await?;
+            Some(Ok(vault.unlocking(Some(p))))
+        }
+        Ok(None) | Ok(Some(false)) => Some(Ok(vault.unlocking(None))),
+        Ok(Some(true)) => {
+            answer(reply, Ok(Screen::EnterPassphrase { error: None }));
+            loop {
+                let StepInput::Passphrase { passphrase, .. } =
+                    next_input(vault, address, rx, reply).await?
+                else {
+                    answer(reply, Err(CustodyError::WrongInput));
+                    continue;
+                };
+                let unlocking = vault.unlocking(Some(Secret::new(passphrase)));
+                if opens(&unlocking, did) {
+                    return Some(Ok(unlocking));
+                }
+                answer(reply, Ok(wrong_passphrase()));
+            }
+        }
+    }
+}
+
+async fn run_replace_master(
+    vault: &DesktopVault,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+) {
+    let executor = match connect(address).await {
+        Ok(e) => e,
+        Err(message) => return answer(reply, Ok(Screen::Failed { message })),
+    };
+    replace_master_on(&executor, vault, address, rx, reply).await
+}
+
+/// Replaces the master key with the next one the 12 words make. Any device of the identity may:
+/// the words, not a kept key, sign the rotation, and this computer keeps the new key — behind its
+/// passphrase where it keeps the old one sealed, or a new one where a new item is sealed. The
+/// other apps that kept the old key are sent the new one; a push that fails stays on the retry
+/// list.
+async fn replace_master_on<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    vault: &DesktopVault,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+) {
+    if let Err(refused) = trusted_store(executor).await {
+        return answer(reply, Ok(refused));
+    }
+    finish_pending_quietly(executor, vault).await;
+    let did = match identity_of(executor).await {
+        Ok(did) => did,
+        Err(screen) => return answer(reply, Ok(screen)),
+    };
+    // Words first, so a typo is caught before a passphrase is asked.
+    let Some((typed, words)) = ask_words(vault, address, rx, reply, "replace", None).await else {
+        return;
+    };
+    let unlocking = match unlocking_to_keep(vault, &did, address, rx, reply).await {
+        None => return,
+        Some(Err(screen)) => return answer(reply, Ok(screen)),
+        Some(Ok(unlocking)) => unlocking,
+    };
+    let mut first = Some(words);
+    drop(typed);
+    let mut error = None;
+    let screen = loop {
+        let words = match first.take() {
+            Some(words) => words,
+            None => match ask_words(vault, address, rx, reply, "replace", error.take()).await {
+                Some((_, words)) => words,
+                None => return,
+            },
+        };
+        match rotate(executor, &unlocking, &did, &words, &[], &CLOCK, &RANDOM).await {
+            Ok(rotated) => break replaced(rotated),
+            Err(ClientError::NotTheseWords(_)) => error = Some((NOT_THESE_WORDS.into(), None)),
+            Err(e) => break failed(&e),
+        }
+    };
+    retry_quietly(executor, &unlocking, &did).await;
+    answer(reply, Ok(screen));
+}
+
+async fn run_restore(
+    vault: &DesktopVault,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+) {
+    let executor = match connect(address).await {
+        Ok(e) => e,
+        Err(message) => return answer(reply, Ok(Screen::Failed { message })),
+    };
+    restore_on(&executor, vault, address, rx, reply).await
+}
+
+/// "Use my 12 words" on a computer of no identity: the words name the identity (the store's key
+/// index knows whose master #0 they make), its devices are listed with the apps ticked to lock out,
+/// and one rotation revokes the ticked ones and gives this computer the new master key; then
+/// this computer joins as a device, and the apps not locked out are sent the new key.
+async fn restore_on<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    vault: &DesktopVault,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+) {
+    if let Err(refused) = trusted_store(executor).await {
+        return answer(reply, Ok(refused));
+    }
+    match executor.status().await {
+        Ok(IdentityStatus { did: Some(did), .. }) => {
+            return answer(reply, Ok(failed(&ClientError::HasIdentity(did))))
+        }
+        Ok(_) => {}
+        Err(e) => return answer(reply, Ok(failed(&ClientError::Rpc(e)))),
+    }
+    let Some((mut typed, _)) = ask_words(vault, address, rx, reply, "restore", None).await else {
+        return;
+    };
+    // Where a new item is sealed, its passphrase now: the flow keeps the new key with it.
+    let mut passphrase = None;
+    if vault.needs_passphrase() {
+        let Some(p) = new_passphrase(vault, address, rx, reply).await else {
+            return;
+        };
+        passphrase = Some(p);
+    }
+    let unlocking = vault.unlocking(passphrase);
+    let flow = loop {
+        match RestoreFlow::start(executor, &unlocking, typed.expose(), &CLOCK, &RANDOM).await {
+            Ok(flow) => break flow,
+            Err(ClientError::NotTheseWords(_)) => {
+                match ask_words(
+                    vault,
+                    address,
+                    rx,
+                    reply,
+                    "restore",
+                    Some((NOT_THESE_WORDS.into(), None)),
+                )
+                .await
+                {
+                    Some((again, _)) => typed = again,
+                    None => return,
+                }
+            }
+            Err(e) => return answer(reply, Ok(failed(&e))),
+        }
+    };
+    drop(typed);
+    let did = flow.did().to_string();
+    // A key of this identity already kept here sealed: the new one goes where it rests, so the
+    // passphrase must open it.
+    if let Some(scid) = ad4m_identity_core::scid_of(&did) {
+        if matches!(held_sealed(vault, scid), Ok(Some(true))) && !opens(&unlocking, &did) {
+            return answer(
+                reply,
+                Ok(Screen::Failed {
+                    message: "This computer keeps a master key of this identity behind another \
+                              passphrase. Nothing was changed."
+                        .into(),
+                }),
+            );
+        }
+    }
+    let devices: Vec<RestoreDevice> = flow
+        .devices()
+        .iter()
+        .map(|d| RestoreDevice {
+            key_id: d.key_id.as_str().to_string(),
+            name: d.name.clone(),
+            kind: d.kind,
+            lock_out: d.lock_out,
+        })
+        .collect();
+    let note = flow.record_error().map(|e| {
+        log::warn!("custody: the record could not be read for the restore: {e}");
+        "Your device list could not be read, so your devices show by their keys.".to_string()
+    });
+    answer(
+        reply,
+        Ok(Screen::RestoreDevices {
+            did: did.clone(),
+            devices: devices.clone(),
+            note,
+        }),
+    );
+    let (lock_out, name) = loop {
+        let Some(input) = next_input(vault, address, rx, reply).await else {
+            return;
+        };
+        match input {
+            StepInput::LockOut { key_ids, name }
+                if key_ids
+                    .iter()
+                    .all(|k| devices.iter().any(|d| &d.key_id == k)) =>
+            {
+                break (key_ids, name)
+            }
+            _ => answer(reply, Err(CustodyError::WrongInput)),
+        }
+    };
+    let entry = this_computer(given_name(name), true);
+    let name = entry.name.clone();
+    let lock_out: Vec<ad4m_identity_core::KeyId> = lock_out
+        .iter()
+        .map(|k| ad4m_identity_core::KeyId::from(k.as_str()))
+        .collect();
+    let screen = match flow.finish(&lock_out, entry).await {
+        Ok(restored) => {
+            retry_quietly(executor, &unlocking, &did).await;
+            Screen::Restored {
+                note: handed_over(&restored.pushes, &restored.record),
+                did: restored.did,
+                name,
+                key_id: restored.key_id.as_str().to_string(),
+                revoked: restored
+                    .revoked
+                    .iter()
+                    .map(|k| k.as_str().to_string())
+                    .collect(),
+            }
+        }
+        Err(e) => failed(&e),
+    };
+    answer(reply, Ok(screen));
+}
+
+// ─── remove the master key from this computer ────────────────────────────────────
+
+async fn run_remove_master(
+    vault: &DesktopVault,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+) {
+    let executor = match connect(address).await {
+        Ok(e) => e,
+        Err(message) => return answer(reply, Ok(Screen::Failed { message })),
+    };
+    remove_master_on(&executor, vault, address, rx, reply).await
+}
+
+/// Forgets this computer's copy of the master key, once the record no longer lists it as
+/// holding one. Refused, with the key left where it is, while no other computer or phone of the
+/// identity keeps a copy. No unlock: forgetting a key needs none.
+async fn remove_master_on<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    vault: &DesktopVault,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+) {
+    let did = match identity_of(executor).await {
+        Ok(did) => did,
+        Err(screen) => return answer(reply, Ok(screen)),
+    };
+    let held = ad4m_identity_core::scid_of(&did).map(|scid| vault.holds(scid));
+    match held {
+        Some(Ok(true)) => {}
+        Some(Err(e)) => return answer(reply, Ok(failed(&ClientError::Vault(e)))),
+        _ => return answer(reply, Ok(failed(&ClientError::Vault(VaultError::NotFound)))),
+    }
+    answer(reply, Ok(Screen::RemoveMaster { error: None }));
+    loop {
+        let Some(input) = next_input(vault, address, rx, reply).await else {
+            return;
+        };
+        let StepInput::Remove = input else {
+            answer(reply, Err(CustodyError::WrongInput));
+            continue;
+        };
+        let screen = match remove_master(executor, &vault.unlocking(None), &did, &RANDOM).await {
+            Ok(_) => Screen::MasterRemoved,
+            Err(e) => failed(&e),
+        };
+        return answer(reply, Ok(screen));
     }
 }
 
@@ -2501,7 +3159,7 @@ mod tests {
         executor.rpc().refuse_publish.set(true);
         let vault = open_vault(dir.path());
         let failed_create = confirmed(21)
-            .finish(&executor, &vault.unlocking(pass()))
+            .finish(&executor, &vault.unlocking(pass()), &RANDOM)
             .await;
         assert!(
             matches!(&failed_create, Err(ClientError::Rpc(e)) if e.code == 503),
@@ -2518,7 +3176,7 @@ mod tests {
 
         // Other words are refused while it is pending, in words a person reads.
         let other = confirmed(22)
-            .finish(&executor, &vault.unlocking(pass()))
+            .finish(&executor, &vault.unlocking(pass()), &RANDOM)
             .await;
         let Err(e @ ClientError::CreatePending(did)) = &other else {
             panic!("{other:?}");
@@ -2557,7 +3215,7 @@ mod tests {
         let executor = ViaExecutor::new(FakeExecutor::new());
         let vault = open_vault(dir.path());
         let created = confirmed(23)
-            .finish(&executor, &vault.unlocking(pass()))
+            .finish(&executor, &vault.unlocking(pass()), &RANDOM)
             .await
             .unwrap();
         assert!(vault.pending_incepts().unwrap().is_empty());
@@ -2889,7 +3547,7 @@ mod tests {
         let vault = open_vault(dir.path());
         executor.rpc().refuse_publish.set(true);
         let _ = confirmed(31)
-            .finish(&executor, &vault.unlocking(pass()))
+            .finish(&executor, &vault.unlocking(pass()), &RANDOM)
             .await;
         let scid = vault.pending_incepts().unwrap()[0].scid.clone();
 
@@ -2910,7 +3568,7 @@ mod tests {
         *executor.rpc().refuse_for_good.borrow_mut() =
             Some((409, "conflict: the store's head is seq 2 (h)".into()));
         let _ = confirmed(32)
-            .finish(&executor, &vault.unlocking(pass()))
+            .finish(&executor, &vault.unlocking(pass()), &RANDOM)
             .await;
         let scid = vault.pending_incepts().unwrap()[0].scid.clone();
         let did = did_of(&scid);
@@ -2946,7 +3604,7 @@ mod tests {
         *executor.rpc().refuse_for_good.borrow_mut() =
             Some((409, "key-taken: z6Mk sits in a log".into()));
         let _ = confirmed(33)
-            .finish(&executor, &vault.unlocking(pass()))
+            .finish(&executor, &vault.unlocking(pass()), &RANDOM)
             .await;
 
         // Cancelled on the refusal screen: the incept is still kept.
@@ -3434,11 +4092,13 @@ mod tests {
         let confirm = serde_json::to_value(Screen::RevokeConfirm {
             key_id: "d2".into(),
             holds_master: true,
+            rotate: true,
             passphrase: false,
             error: None,
         })
         .unwrap();
         assert_eq!(confirm["holdsMaster"], true);
+        assert_eq!(confirm["rotate"], true);
     }
 
     /// A device without the master key names only itself; naming another device is refused.
@@ -3639,5 +4299,575 @@ mod tests {
             (&screen["screen"], &screen["qrSvg"]),
             (&json!("device-code"), &json!("<svg/>"))
         );
+    }
+
+    #[test]
+    fn the_word_steps_cross_ipc_in_their_wire_form_and_never_print_the_words() {
+        for (text, step) in [
+            (r#"{"kind":"replace-master"}"#, IdentityStep::ReplaceMaster),
+            (r#"{"kind":"restore"}"#, IdentityStep::Restore),
+            (r#"{"kind":"remove-master"}"#, IdentityStep::RemoveMaster),
+        ] {
+            assert_eq!(serde_json::from_str::<IdentityStep>(text).unwrap(), step);
+        }
+        let phrase = phrase_of(41);
+        for (text, debug) in [
+            (
+                json!({ "kind": "twelve-words", "words": phrase }).to_string(),
+                "twelve-words",
+            ),
+            (
+                r#"{"kind":"lock-out","keyIds":["d2"],"name":"Laptop"}"#.into(),
+                "lock-out",
+            ),
+            (r#"{"kind":"remove"}"#.into(), "remove"),
+        ] {
+            let input: StepInput = serde_json::from_str(&text).unwrap();
+            let printed = format!("{input:?}");
+            assert!(printed.contains(debug), "{printed}");
+            for word in phrase.split(' ') {
+                assert!(!printed.contains(word), "{printed}");
+            }
+        }
+        let StepInput::LockOut { key_ids, name } =
+            serde_json::from_str(r#"{"kind":"lock-out","keyIds":["d2"],"name":"Laptop"}"#).unwrap()
+        else {
+            panic!("expected lock-out");
+        };
+        assert_eq!(
+            (key_ids, name),
+            (vec!["d2".to_string()], Some("Laptop".into()))
+        );
+        // A revoke from a window that offers no choice replaces nothing.
+        let input: StepInput = serde_json::from_str(r#"{"kind":"revoke"}"#).unwrap();
+        assert!(matches!(input, StepInput::Revoke { rotate: false, .. }));
+        let input: StepInput = serde_json::from_str(r#"{"kind":"revoke","rotate":true}"#).unwrap();
+        assert!(matches!(input, StepInput::Revoke { rotate: true, .. }));
+        let screen = serde_json::to_value(Screen::RestoreDevices {
+            did: "did:scid:x".into(),
+            devices: vec![RestoreDevice {
+                key_id: "d2".into(),
+                name: Some("Phone".into()),
+                kind: None,
+                lock_out: true,
+            }],
+            note: None,
+        })
+        .unwrap();
+        assert_eq!(screen["screen"], "restore-devices");
+        assert_eq!(
+            (
+                &screen["devices"][0]["keyId"],
+                &screen["devices"][0]["lockOut"]
+            ),
+            (&json!("d2"), &json!(true))
+        );
+        let screen = serde_json::to_value(Screen::EnterWords {
+            purpose: "replace",
+            error: None,
+            position: None,
+        })
+        .unwrap();
+        assert_eq!(
+            (&screen["screen"], &screen["purpose"]),
+            (&json!("enter-words"), &json!("replace"))
+        );
+        let restored = Screen::Restored {
+            did: "did:scid:x".into(),
+            name: "Laptop".into(),
+            key_id: "d3".into(),
+            revoked: vec!["d1".into()],
+            note: None,
+        };
+        let screen = serde_json::to_value(&restored).unwrap();
+        assert_eq!(
+            (&screen["screen"], &screen["keyId"]),
+            (&json!("restored"), &json!("d3"))
+        );
+        assert_eq!(
+            serde_json::to_value(Screen::MasterRemoved).unwrap()["screen"],
+            "master-removed"
+        );
+        let replaced = Screen::MasterReplaced {
+            index: 1,
+            revoked: vec![],
+            note: None,
+        };
+        assert_eq!(
+            serde_json::to_value(&replaced).unwrap()["screen"],
+            "master-replaced"
+        );
+        for done in [replaced, restored, Screen::MasterRemoved] {
+            assert_eq!(done.outcome(), Some(StepOutcome::Done), "{done:?}");
+        }
+        for open in [
+            Screen::EnterWords {
+                purpose: "replace",
+                error: None,
+                position: None,
+            },
+            Screen::RemoveMaster { error: None },
+        ] {
+            assert_eq!(open.outcome(), None, "{open:?}");
+        }
+    }
+
+    #[test]
+    fn a_refused_word_is_named_by_its_place_and_never_by_what_was_typed() {
+        let phrase = phrase_of(41);
+        let mut typed: Vec<String> = phrase.split(' ').map(str::to_string).collect();
+        let real = typed[2].clone();
+        // One letter off: the word list's nearest word is the real one.
+        typed[2] = format!("{}q", &real[..real.len() - 1]);
+        let e = words::parse(&typed.join(" ")).unwrap_err();
+        let (message, position) = words_refused(&e);
+        assert_eq!(position, Some(3));
+        assert!(message.contains("Word 3"), "{message}");
+        assert!(
+            !message.contains(&typed[2]) && !message.contains(&real),
+            "{message}"
+        );
+        let Screen::Failed { message } = failed(&ClientError::Words(e)) else {
+            panic!("expected a failure");
+        };
+        assert!(
+            !message.contains(&typed[2]) && !message.contains(&real),
+            "{message}"
+        );
+        let short = words::parse("abandon ability").unwrap_err();
+        assert!(words_refused(&short).0.contains("2 words"));
+    }
+
+    /// The 12 words of `entropy`, as a person types them.
+    fn phrase_of(entropy: u8) -> String {
+        words::from_entropy(&[entropy; 16]).words().join(" ")
+    }
+
+    /// An executor that speaks for the identity `events` make (this computer its `d1`) and serves
+    /// that log, with no record, no request and nothing in the inbox.
+    fn executor_of(events: &[Event]) -> ViaExecutor<FakeExecutor> {
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        let scid = events[0].scid.clone();
+        executor.rpc().answer(
+            "identity.log",
+            json!({ "did": did_of(&scid), "events": events, "head": null, "fork": null }),
+        );
+        executor.rpc().answer("identity.record", Value::Null);
+        executor.rpc().answer("identity.inbox", json!([]));
+        executor.rpc().answer("identity.requests", json!([]));
+        executor.rpc().answer("identity.takeMaster", Value::Null);
+        *executor.rpc().held.borrow_mut() = Some(scid);
+        executor
+    }
+
+    /// Master `index` of the words of `log_with_d2`, kept in `vault`.
+    fn keep_master(vault: &DesktopVault, scid: &str, index: u32) {
+        let seed = words::seed(&words::from_entropy(&[41u8; 16]));
+        let key = words::master_key(&seed, index).unwrap();
+        Vault::store_master(
+            &vault.unlocking(None),
+            scid,
+            index,
+            Secret::new(key.to_bytes()),
+        )
+        .unwrap();
+    }
+
+    /// The event each `identity.publish` carried.
+    fn published(executor: &ViaExecutor<FakeExecutor>) -> Vec<Event> {
+        executor
+            .rpc()
+            .called("identity.publish")
+            .iter()
+            .map(|p| Event::from_json(&p["events"][0]).unwrap())
+            .collect()
+    }
+
+    /// Every string a screen carries, keys left out.
+    fn strings_of(value: &Value, into: &mut Vec<String>) {
+        match value {
+            Value::String(s) => into.push(s.clone()),
+            Value::Array(items) => items.iter().for_each(|v| strings_of(v, into)),
+            Value::Object(fields) => fields.values().for_each(|v| strings_of(v, into)),
+            _ => {}
+        }
+    }
+
+    /// No screen carries a word of the phrase, two of its words together, or what was `typed` in
+    /// a word's place.
+    fn shows_no_word(screens: &[Screen], phrase: &str, typed: &[&str]) {
+        let words: Vec<&str> = phrase.split(' ').collect();
+        for screen in screens {
+            let mut strings = Vec::new();
+            strings_of(&serde_json::to_value(screen).unwrap(), &mut strings);
+            for s in strings {
+                assert!(!words.contains(&s.as_str()), "{s}");
+                for pair in words.windows(2) {
+                    assert!(!s.contains(&pair.join(" ")), "{s}");
+                }
+                for t in typed {
+                    assert!(!s.contains(t), "{s}");
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn replacing_the_master_key_asks_again_for_words_that_are_not_the_identitys() {
+        let (events, _) = crate::keylog::tests::log_with_d2(true);
+        let scid = events[0].scid.clone();
+        let executor = executor_of(&events);
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        keep_master(&vault, &scid, 0);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let phrase = phrase_of(41);
+        let mut typo: Vec<String> = phrase.split(' ').map(str::to_string).collect();
+        typo[2] = "zzzq".into();
+        let typo = typo.join(" ");
+        let other = phrase_of(9);
+        let ex = &executor;
+        let ((), screens) = tokio::join!(
+            replace_master_on(&executor, &vault, &address, &mut rx, &mut reply),
+            async {
+                let mut shown = vec![first.await.unwrap().unwrap()];
+                for words in [&typo, &other] {
+                    shown.push(
+                        window
+                            .step(StepInput::TwelveWords {
+                                words: words.clone(),
+                            })
+                            .await,
+                    );
+                }
+                // Nothing is published for words that are not the identity's.
+                assert_eq!(ex.rpc().publishes.get(), 0);
+                shown.push(
+                    window
+                        .step(StepInput::TwelveWords {
+                            words: phrase.clone(),
+                        })
+                        .await,
+                );
+                shown
+            }
+        );
+        assert!(
+            matches!(
+                &screens[0],
+                Screen::EnterWords {
+                    purpose: "replace",
+                    error: None,
+                    ..
+                }
+            ),
+            "{:?}",
+            screens[0]
+        );
+        assert!(
+            matches!(&screens[1], Screen::EnterWords { position: Some(3), error: Some(m), .. } if m.contains("Word 3")),
+            "{:?}",
+            screens[1]
+        );
+        assert!(
+            matches!(&screens[2], Screen::EnterWords { position: None, error: Some(m), .. } if m == NOT_THESE_WORDS),
+            "{:?}",
+            screens[2]
+        );
+        assert!(
+            matches!(&screens[3], Screen::MasterReplaced { index: 1, revoked, .. } if revoked.is_empty()),
+            "{:?}",
+            screens[3]
+        );
+        // One rotation, to master #1, which this computer keeps now.
+        let rotations = published(&executor);
+        assert_eq!(rotations.len(), 1);
+        assert!(matches!(rotations[0].op, Op::Rotate { .. }));
+        let mut log = events.clone();
+        log.extend(rotations);
+        ad4m_identity_core::fold(&log).unwrap();
+        assert_eq!(vault.master_index(&scid).unwrap(), Some(1));
+        shows_no_word(&screens, &phrase, &["zzzq"]);
+    }
+
+    #[tokio::test]
+    async fn a_revoke_that_also_replaces_the_master_key_leaves_no_holder_to_warn_about() {
+        let (events, _) = crate::keylog::tests::log_with_d2(true);
+        let scid = events[0].scid.clone();
+        let executor = executor_of(&events);
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        keep_master(&vault, &scid, 0);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let phrase = phrase_of(41);
+        let ((), screens) = tokio::join!(
+            revoke_on(
+                &executor,
+                &vault,
+                &address,
+                &mut rx,
+                &mut reply,
+                "d2".into()
+            ),
+            async {
+                let mut shown = vec![first.await.unwrap().unwrap()];
+                shown.push(
+                    window
+                        .step(StepInput::Revoke {
+                            passphrase: None,
+                            rotate: true,
+                        })
+                        .await,
+                );
+                shown.push(
+                    window
+                        .step(StepInput::TwelveWords {
+                            words: phrase.clone(),
+                        })
+                        .await,
+                );
+                shown
+            }
+        );
+        // d2 may keep the master key, so the choice starts ticked.
+        assert!(
+            matches!(
+                &screens[0],
+                Screen::RevokeConfirm {
+                    holds_master: true,
+                    rotate: true,
+                    ..
+                }
+            ),
+            "{:?}",
+            screens[0]
+        );
+        assert!(matches!(
+            &screens[1],
+            Screen::EnterWords {
+                purpose: "revoke",
+                ..
+            }
+        ));
+        assert!(
+            matches!(&screens[2], Screen::MasterReplaced { index: 1, revoked, .. } if revoked == &["d2".to_string()]),
+            "{:?}",
+            screens[2]
+        );
+        // One event revokes d2 and replaces the master key: its copy no longer signs, so the
+        // revoked-holder warning has nothing left to say.
+        let mut log = events.clone();
+        log.extend(published(&executor));
+        assert_eq!(log.len(), 3);
+        assert!(matches!(&log[2].op, Op::Rotate { .. }));
+        assert!(crate::keylog::revoked_holders(&log).is_empty());
+        assert_eq!(vault.master_index(&scid).unwrap(), Some(1));
+        shows_no_word(&screens, &phrase, &[]);
+    }
+
+    #[tokio::test]
+    async fn a_revoke_without_the_choice_publishes_a_plain_revoke() {
+        let (events, _) = crate::keylog::tests::log_with_d2(false);
+        let scid = events[0].scid.clone();
+        let executor = executor_of(&events);
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        keep_master(&vault, &scid, 0);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let ((), screens) = tokio::join!(
+            revoke_on(
+                &executor,
+                &vault,
+                &address,
+                &mut rx,
+                &mut reply,
+                "d2".into()
+            ),
+            async {
+                let mut shown = vec![first.await.unwrap().unwrap()];
+                shown.push(
+                    window
+                        .step(StepInput::Revoke {
+                            passphrase: None,
+                            rotate: false,
+                        })
+                        .await,
+                );
+                shown
+            }
+        );
+        // A device that never could keep the master key: the choice starts unticked.
+        assert!(matches!(
+            &screens[0],
+            Screen::RevokeConfirm {
+                holds_master: false,
+                rotate: false,
+                ..
+            }
+        ));
+        assert!(
+            matches!(&screens[1], Screen::Revoked { .. }),
+            "{:?}",
+            screens[1]
+        );
+        assert!(matches!(&published(&executor)[0].op, Op::Revoke { .. }));
+        assert_eq!(vault.master_index(&scid).unwrap(), Some(0));
+    }
+
+    #[tokio::test]
+    async fn a_restore_finds_the_identity_of_the_words_and_ticks_its_devices_to_lock_out() {
+        let (events, _) = crate::keylog::tests::log_with_d2(true);
+        let did = did_of(&events[0].scid);
+        let executor = executor_of(&events);
+        // This computer speaks for no identity yet.
+        *executor.rpc().held.borrow_mut() = None;
+        executor.rpc().answer("identity.keyOwner", Value::Null);
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let phrase = phrase_of(41);
+        let ex = &executor;
+        let owner = json!({ "did": did, "keyId": "m0", "added": 0, "revoked": null });
+        let ((), screens) = tokio::join!(
+            restore_on(&executor, &vault, &address, &mut rx, &mut reply),
+            async move {
+                let mut shown = vec![first.await.unwrap().unwrap()];
+                // The store knows no identity of these words yet.
+                shown.push(
+                    window
+                        .step(StepInput::TwelveWords {
+                            words: phrase.clone(),
+                        })
+                        .await,
+                );
+                ex.rpc().answer("identity.keyOwner", owner);
+                shown.push(window.step(StepInput::TwelveWords { words: phrase }).await);
+                // The window closes on the device list.
+                shown
+            }
+        );
+        assert!(matches!(
+            &screens[0],
+            Screen::EnterWords {
+                purpose: "restore",
+                ..
+            }
+        ));
+        assert!(
+            matches!(&screens[1], Screen::EnterWords { error: Some(m), .. } if m == NOT_THESE_WORDS),
+            "{:?}",
+            screens[1]
+        );
+        let Screen::RestoreDevices {
+            did: shown_did,
+            devices,
+            note,
+        } = &screens[2]
+        else {
+            panic!("{:?}", screens[2]);
+        };
+        assert_eq!(shown_did, &did);
+        // No record to name them: listed by key, every one ticked, and the screen says why.
+        let ids: Vec<(&str, bool)> = devices
+            .iter()
+            .map(|d| (d.key_id.as_str(), d.lock_out))
+            .collect();
+        assert_eq!(ids, [("d1", true), ("d2", true)]);
+        assert!(note.is_some());
+        // Closed before finishing: nothing published, nothing kept.
+        assert_eq!(executor.rpc().publishes.get(), 0);
+        assert!(!vault.holds(&events[0].scid).unwrap());
+        shows_no_word(&screens, &phrase_of(41), &[]);
+    }
+
+    #[tokio::test]
+    async fn a_computer_that_speaks_for_an_identity_restores_nothing() {
+        let (events, _) = crate::keylog::tests::log_with_d2(true);
+        let executor = executor_of(&events);
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        drop(window);
+        restore_on(&executor, &vault, &address, &mut rx, &mut reply).await;
+        let screen = first.await.unwrap().unwrap();
+        assert!(matches!(&screen, Screen::Failed { .. }), "{screen:?}");
+        assert!(executor.rpc().called("identity.keyOwner").is_empty());
+    }
+
+    #[tokio::test]
+    async fn the_only_copy_of_the_master_key_is_never_removed() {
+        let (events, _) = crate::keylog::tests::log_with_d2(true);
+        let scid = events[0].scid.clone();
+        let executor = executor_of(&events);
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        keep_master(&vault, &scid, 0);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let ((), screens) = tokio::join!(
+            remove_master_on(&executor, &vault, &address, &mut rx, &mut reply),
+            async {
+                let mut shown = vec![first.await.unwrap().unwrap()];
+                shown.push(window.step(StepInput::Remove).await);
+                shown
+            }
+        );
+        assert!(matches!(&screens[0], Screen::RemoveMaster { error: None }));
+        // No record lists another copy: refused, with the reason, and the key stays.
+        assert!(
+            matches!(&screens[1], Screen::Failed { message } if message == ONLY_COPY),
+            "{:?}",
+            screens[1]
+        );
+        assert!(vault.holds(&scid).unwrap());
+
+        // A computer that keeps none has nothing to remove.
+        let empty = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        drop(window);
+        remove_master_on(&executor, &empty, &address, &mut rx, &mut reply).await;
+        let screen = first.await.unwrap().unwrap();
+        assert!(matches!(&screen, Screen::Failed { .. }), "{screen:?}");
+    }
+
+    /// The log of `log_with_d2`, rotated once to master #1 elsewhere.
+    fn rotated_log() -> Vec<Event> {
+        let (mut events, _) = crate::keylog::tests::log_with_d2(true);
+        let seed = words::seed(&words::from_entropy(&[41u8; 16]));
+        let chain = ad4m_identity_core::fold(&events).unwrap();
+        let m1 = words::master_key(&seed, 1).unwrap();
+        let salt = bs58::encode(words::salt(&seed, 1)).into_string();
+        let (next, _) = words::next_commitment(&seed, 2).unwrap();
+        events
+            .push(ad4m_identity_core::build::rotate(&chain, &m1, &salt, Some(next), &[]).unwrap());
+        ad4m_identity_core::fold(&events).unwrap();
+        events
+    }
+
+    #[tokio::test]
+    async fn a_master_key_a_rotation_replaced_is_forgotten_and_the_current_one_asked_for() {
+        let events = rotated_log();
+        let scid = events[0].scid.clone();
+        let executor = executor_of(&events);
+        executor
+            .rpc()
+            .answer("identity.postRequest", json!({ "id": "r9" }));
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        keep_master(&vault, &scid, 0);
+        let public = public_state_on(Some(&executor), &vault).await;
+        // Master #0 no longer signs: it is gone, and a holder is asked for #1.
+        assert!(!vault.holds(&scid).unwrap());
+        assert_eq!(public.holds_master, None);
+        assert_eq!(executor.rpc().called("identity.postRequest").len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_current_master_key_is_kept_and_reported_with_its_index() {
+        let events = rotated_log();
+        let scid = events[0].scid.clone();
+        let executor = executor_of(&events);
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        keep_master(&vault, &scid, 1);
+        let public = public_state_on(Some(&executor), &vault).await;
+        assert_eq!(public.holds_master, Some(HoldsMaster { index: 1 }));
+        assert!(executor.rpc().called("identity.postRequest").is_empty());
+        // A log read behind the kept key never makes this computer forget it.
+        let (behind, _) = crate::keylog::tests::log_with_d2(true);
+        let executor = executor_of(&behind);
+        public_state_on(Some(&executor), &vault).await;
+        assert_eq!(vault.master_index(&scid).unwrap(), Some(1));
     }
 }

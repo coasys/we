@@ -120,7 +120,11 @@ export interface IdentityPort {
  * - `ask-master`: ask a device that keeps the master key to send it here.
  * - `answer-request`: answer what another device asked (send the master key, revoke devices).
  * - `rename`: name a device, in the private record only its devices read.
- * - `revoke`: revoke a device.
+ * - `revoke`: revoke a device, and replace the master key in the same step where the person chooses.
+ * - `replace-master`: replace the master key from the 12 words, so every copy kept until now stops.
+ * - `restore`: on a computer of no identity yet, bring the identity back from the 12 words, locking
+ *   out the devices the person picks.
+ * - `remove-master`: stop keeping the master key on this computer; refused for the only copy.
  */
 export type IdentityChange =
   | { kind: 'create' }
@@ -131,7 +135,10 @@ export type IdentityChange =
   | { kind: 'ask-master' }
   | { kind: 'answer-request'; id: string }
   | { kind: 'rename'; keyId: string }
-  | { kind: 'revoke'; keyId: string };
+  | { kind: 'revoke'; keyId: string }
+  | { kind: 'replace-master' }
+  | { kind: 'restore' }
+  | { kind: 'remove-master' };
 
 /** How a change ended: made, abandoned by the person, or refused along the way. */
 export type IdentityChangeOutcome = 'done' | 'cancelled' | 'failed';

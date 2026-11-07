@@ -131,15 +131,35 @@ incept only; the master key stays where it rests.
 
 The steps the main window may open (`IdentityStep`) besides `create` and `revoke`:
 
-| Step             | Where                          | What it does                                                                                         |
-| ---------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| `add-device`     | a computer with the master key | gives a server an offer link (QR and text), then the match code, then signs the `add`                |
-| `scan-device`    | a computer with the master key | "Scan or paste a code": takes the `coasys:device:1:…` code a new device shows and sends it the offer |
-| `show-code`      | a computer of no identity yet  | "Show my code": its device code as a QR code and a copyable link, until a holder links it            |
-| `take-master`    | a linked device                | "Take the master key": keeps the master key another device sent here                                 |
-| `ask-master`     | a linked device                | "Ask for the master key": posts a `send-master` request for a holder to answer                       |
-| `answer-request` | a computer with the master key | answers another device's `send-master` or `confirm-revoke` request, on the person's yes              |
-| `rename`         | a computer with the master key | names a device in the identity's private record                                                      |
+| Step             | Where                          | What it does                                                                                          |
+| ---------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| `add-device`     | a computer with the master key | gives a server an offer link (QR and text), then the match code, then signs the `add`                 |
+| `scan-device`    | a computer with the master key | "Scan or paste a code": takes the `coasys:device:1:…` code a new device shows and sends it the offer  |
+| `show-code`      | a computer of no identity yet  | "Show my code": its device code as a QR code and a copyable link, until a holder links it             |
+| `take-master`    | a linked device                | "Take the master key": keeps the master key another device sent here                                  |
+| `ask-master`     | a linked device                | "Ask for the master key": posts a `send-master` request for a holder to answer                        |
+| `answer-request` | a computer with the master key | answers another device's `send-master` or `confirm-revoke` request, on the person's yes               |
+| `rename`         | a computer with the master key | names a device in the identity's private record                                                       |
+| `replace-master` | a device of the identity       | "Replace my master key": takes the 12 words and publishes a `rotate`; this computer keeps the new key |
+| `restore`        | a computer of no identity yet  | "Use my 12 words": finds the identity, ticks its devices to lock out, rotates and adds this computer  |
+| `remove-master`  | a computer with the master key | on log out: forgets this computer's copy of the master key; refused when it is the only copy          |
+
+`revoke` carries `rotate`: "Also replace my master key", ticked by default when the device revoked
+keeps the master key. A revoke alone leaves that copy valid; with the choice the window takes the 12
+words and publishes one `rotate` that revokes the device and replaces the master key, so the revoked
+copy signs nothing any more.
+
+The 12 words are typed into twelve fields (a paste fills them from the field it lands in). A word
+that is not in the list is refused by its position only ("Word 3 is not one of the words"), never by
+what was typed, and no suggestion is made; words of another identity, or no identity, are refused
+without publishing anything. Once a step leaves the words screen the fields are emptied and no
+later screen, log line or reply carries a word.
+
+After a rotation the other devices that kept the master key hold a replaced one. Each `publicState`
+compares the master index this computer keeps with the log's: a replaced key is swapped for the
+current one waiting in the inbox (`refresh_master`), or forgotten and the current one asked for
+from a holder (`send-master`). A log read behind never makes it forget a current key. The current
+master key sealed to each holder goes on the same retry list as a link's push (`pending-pushes.json`).
 
 On the match screen of a link the person names the new device, names this computer too when the
 private record does not list it yet, and — for a device that may keep it (a desktop app, not a
@@ -173,6 +193,10 @@ cd crates/custody
 cargo test                       # vault, sealing, screens, the sidecar, command table, the executor boundary
 ```
 
+The word steps (replace, restore, revoke with the replace, remove on log out, the stale-master
+refresh) are tested against a canned executor in `service.rs`: each test also checks that no word
+of the phrase, and nothing typed, reaches a screen or a published event.
+
 It builds against the ad4m commit WE pins, by git (`Cargo.toml`; `tests/boundary.rs` fails if that
 rev and `package.json`'s pin differ). Against a local ad4m checkout at that commit:
 
@@ -180,8 +204,11 @@ rev and `package.json`'s pin differ). Against a local ad4m checkout at that comm
 A=<ad4m>; P='patch."https://github.com/coasys/ad4m"'
 cargo test --config "$P.ad4m-identity-client.path=\"$A/ad4m-identity-client\"" \
   --config "$P.ad4m-identity-core.path=\"$A/ad4m-identity-core\"" \
-  --config "$P.ad4m-client.path=\"$A/rust-client\""
+  --config "$P.ad4m-client.path=\"$A/rust-client\"" \
+  --config "$P.ad4m-ldk.path=\"$A/ad4m-ldk/rust\""
 ```
+
+A patched build rewrites `Cargo.lock`'s `source` lines; restore it before committing.
 
 The end-to-end test runs the three flows against a real identity-store and two real executors; see
 the header of `tests/live.rs` for what it needs:

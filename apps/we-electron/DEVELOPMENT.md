@@ -141,7 +141,9 @@ with the Tauri app, which links the same crate.
 - **The steps** it may open are the custody service's (`crates/custody/README.md`, "Devices and the
   master key"): make the identity, add a server by link, scan or paste a new device's code, show
   this computer's code, take or ask for the master key, answer another device's request, name a
-  device, revoke one. `identityWindow.js` refuses any other step, and a step that names a device or
+  device, revoke one (and replace the master key with it), replace the master key with the 12
+  words, restore the identity from them, remove the master key from this computer on log out.
+  `identityWindow.js` refuses any other step, and a step that names a device or
   a request without one.
 
 The network names the identity store, not WE: the executor's bootstrap seed carries it, and the

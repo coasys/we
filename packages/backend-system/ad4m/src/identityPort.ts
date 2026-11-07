@@ -215,11 +215,13 @@ export function createAd4mIdentityPort(backendClient: unknown, custody?: Ad4mCus
       }
       // The log and the device list come from the executor. Changing either needs the master key,
       // which only the custody service holds: without one, this computer reads and changes nothing.
+      // The custody service also takes the 12 words back, to replace the master key or restore.
       return {
         ...NO_IDENTITY_CAPABILITIES,
         keyLog: true,
         devices: true,
         masterKey: !!custody,
+        recoveryWords: !!custody,
         linkDevice: !!custody,
       };
     },

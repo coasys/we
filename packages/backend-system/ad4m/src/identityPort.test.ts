@@ -151,13 +151,21 @@ describe('the AD4M identity port with a custody service', () => {
     const port = createAd4mIdentityPort(client({ status: {} }));
     expect(port.change).toBeUndefined();
     expect(port.custody).toBeUndefined();
-    expect(await port.capabilities()).toMatchObject({ keyLog: true, masterKey: false, linkDevice: false });
+    expect(await port.capabilities()).toMatchObject({
+      keyLog: true,
+      masterKey: false,
+      recoveryWords: false,
+      linkDevice: false,
+    });
   });
 
   it('runs a change through it, and reads its state in neutral terms', async () => {
     const host = custody({ blocked: '' });
     const port = createAd4mIdentityPort(client({ status: {} }), host);
-    expect(await port.capabilities()).toMatchObject({ masterKey: true, linkDevice: true });
+    // The custody service takes the 12 words back too: replacing the master key, restoring.
+    expect(await port.capabilities()).toMatchObject({ masterKey: true, recoveryWords: true, linkDevice: true });
+    expect(await port.change!({ kind: 'replace-master' })).toBe('done');
+    expect(host.open).toHaveBeenCalledWith({ kind: 'replace-master' });
     expect(await port.change!({ kind: 'revoke', keyId: 'd2' })).toBe('done');
     expect(host.open).toHaveBeenCalledWith({ kind: 'revoke', keyId: 'd2' });
     // An empty reason is no reason: nothing blocks the change.
