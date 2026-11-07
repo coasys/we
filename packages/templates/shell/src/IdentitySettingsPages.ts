@@ -62,19 +62,35 @@ const back = (label: string, path: string): SchemaNode => ({
   children: [{ type: 'we-icon', props: { name: 'caret-left' } }, label],
 });
 
-/** One row of a list card: an icon disc, two lines, and whatever sits at the end. */
-function listRow(icon: SchemaNode, title: SchemaNode, detail: SchemaNode, end: SchemaNode[]): SchemaNode {
+/**
+ * One row of a list card: an icon disc, a title over its detail lines, and whatever sits at the end.
+ *
+ * The text may shrink, but not below 12rem: short of that, the end (badges and buttons) wraps onto
+ * a line of its own, kept to the right, and wraps within itself if it is wider than that. Without
+ * the floor a long badge took every pixel and left the name one letter per line. A badge never
+ * wraps its own words (`we-badge`), so a sentence goes in the detail lines, not at the end.
+ */
+function listRow(
+  icon: SchemaNode,
+  title: SchemaNode,
+  detail: SchemaNode | SchemaNode[],
+  end: SchemaNode[],
+): SchemaNode {
   return {
     type: 'Row',
-    props: { gap: '400', ay: 'center', px: '400', py: '300', borderBottom: '1px solid border' },
+    props: { gap: '400', ay: 'center', wrap: true, px: '400', py: '300', borderBottom: '1px solid border' },
     children: [
       icon,
       {
         type: 'Column',
-        props: { gap: '100', flex: '1', minWidth: '0' },
-        children: [title, detail],
+        props: { gap: '100', flex: '1 1 12rem', minWidth: '0' },
+        children: [title, ...(Array.isArray(detail) ? detail : [detail])],
       },
-      ...end,
+      {
+        type: 'Row',
+        props: { gap: '400', ay: 'center', ax: 'end', wrap: true, ml: 'auto', flex: '0 1 auto', minWidth: '0' },
+        children: end,
+      },
     ],
   };
 }
@@ -270,15 +286,31 @@ const deviceRow: SchemaNode = listRow(
   },
   {
     type: 'we-text',
-    props: { color: { $: "device.revoked ? 'text-muted' : 'text'" } },
+    // A name wraps between words, never inside one (typography defaults to `overflow-wrap: anywhere`).
+    props: { color: { $: "device.revoked ? 'text-muted' : 'text'" }, overflowWrap: 'normal' },
     children: [{ $: 'device.label' }],
   },
-  { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: [{ $: 'device.subtitle' }] },
+  [
+    { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: [{ $: 'device.subtitle' }] },
+    // A revoked device's copy of the master key is a sentence and a warning, so it is a line that
+    // wraps rather than a badge (which never does).
+    {
+      type: '$if',
+      props: {
+        condition: { $: "device.revoked && device.master != ''" },
+        then: {
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'warning-text', overflowWrap: 'normal' },
+          children: [{ $: 'device.master' }],
+        },
+      },
+    },
+  ],
   [
     {
       type: '$if',
       props: {
-        condition: { $: "device.master != ''" },
+        condition: { $: "!device.revoked && device.master != ''" },
         then: {
           type: 'we-badge',
           props: { tone: { $: "device.holdsMaster == 'yes' ? 'accent' : 'warning'" }, size: 'sm' },
