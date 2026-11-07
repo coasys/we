@@ -7016,7 +7016,9 @@
             "kindLabel",
             "healthText",
             "healthy",
-            "modelCount"
+            "modelCount",
+            "managed",
+            "editable"
           ]
         },
         "aiDetectedEndpoints": {
@@ -7057,6 +7059,41 @@
         "aiServiceOptions": {
           "type": "array",
           "properties": ["label", "value"]
+        },
+        "canUseLocalAi": {
+          "type": "boolean"
+        },
+        "canConfigureLocalAi": {
+          "type": "boolean"
+        },
+        "localAi": {
+          "type": "object",
+          "properties": [
+            "loaded",
+            "device",
+            "gpus",
+            "compute",
+            "budget",
+            "notes",
+            "items",
+            "unavailable",
+            "reasons",
+            "fits",
+            "summary",
+            "installLabel",
+            "installed",
+            "incomplete",
+            "installing",
+            "running",
+            "anyRunning",
+            "canStart",
+            "runtimes",
+            "progress",
+            "canInstall"
+          ]
+        },
+        "aiSetupOptions": {
+          "type": "array"
         },
         "languages": {
           "type": "array",
@@ -7136,6 +7173,13 @@
         "closeAiEndpointForm",
         "saveAiEndpoint",
         "removeAiEndpoint",
+        "loadLocalAi",
+        "installLocalAi",
+        "startLocalAi",
+        "stopLocalAi",
+        "removeLocalAi",
+        "skipAiSetup",
+        "finishAiSetup",
         "loadLanguages",
         "installLanguage",
         "removeLanguage",
@@ -7174,6 +7218,7 @@
         "setAiEndpointField",
         "setAiService",
         "closeAiEndpointForm",
+        "loadLocalAi",
         "loadLanguages",
         "loadTrustedAgents",
         "loadAuthorizedApps",
@@ -7185,6 +7230,7 @@
         "removeAiModel",
         "removeAiTask",
         "removeAiEndpoint",
+        "removeLocalAi",
         "removeLanguage",
         "trustAgent",
         "untrustAgent",
@@ -7206,6 +7252,7 @@
         "setAiEndpointField",
         "setAiService",
         "removeAiEndpoint",
+        "removeLocalAi",
         "installLanguage",
         "removeLanguage",
         "trustAgent",

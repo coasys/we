@@ -1,5 +1,5 @@
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
-import { adminSection, discardGuard, emptyNote } from '@we/template-kit';
+import { adminSection, confirmModal, discardGuard, emptyNote } from '@we/template-kit';
 
 /**
  * AI — the model servers the backend uses, the models on them, and the prompts apps have registered
@@ -11,9 +11,13 @@ import { adminSection, discardGuard, emptyNote } from '@we/template-kit';
  *
  * A model is a reference to a model a **server** serves (an Ollama, a llama-server, a speech server,
  * OpenAI, Anthropic). So the page has two lists and two forms: the servers, with their addresses,
- * keys and health; and the models, each naming its server and the id the server knows it by. The
- * backend runs no model itself, so a node with no server has no AI — which is why servers found on
- * the node's own machine are offered first, and where to get one is said when there are none.
+ * keys and health; and the models, each naming its server and the id the server knows it by.
+ *
+ * Where the backend can install and run model servers itself (local AI), "This device" comes first:
+ * the machine it found, the models and programs fitted to it, an install with its progress, and how
+ * the servers run. Those servers are listed with the rest but are the backend's — edited and removed
+ * only through "This device". Before anything is set up, the page asks which of three ways to go
+ * (this device, a model server, or skip), the choice the launcher's onboarding offers.
  *
  * Both forms live in `runtimeStore` rather than in `$localState`: their fields depend on each other
  * (the kind of model decides which servers fit, the server decides which models are listed), and a
@@ -401,12 +405,15 @@ const modelForm: SchemaNode = {
   ],
 };
 
-/** Edit and remove, for whoever may change the node's AI. */
-function rowActions(edit: string, remove: string, id: string): SchemaNode {
+/**
+ * Edit and remove, for whoever may change the node's AI. `also` narrows it further — a server local
+ * AI runs is the backend's, not one to edit or remove here.
+ */
+function rowActions(edit: string, remove: string, id: string, also = ''): SchemaNode {
   return {
     type: '$if',
     props: {
-      condition: { $: 'runtimeStore.canConfigureAi' },
+      condition: { $: also ? `runtimeStore.canConfigureAi && ${also}` : 'runtimeStore.canConfigureAi' },
       then: {
         type: 'Row',
         props: { gap: '200', ay: 'center' },
@@ -443,10 +450,13 @@ const endpointCard: SchemaNode = {
             { type: 'we-badge', props: { size: 'xs' }, children: [{ $: 'endpoint.kindLabel' }] },
           ],
         },
-        rowActions('runtimeStore.editAiEndpoint', 'runtimeStore.removeAiEndpoint', 'endpoint.id'),
+        rowActions('runtimeStore.editAiEndpoint', 'runtimeStore.removeAiEndpoint', 'endpoint.id', 'endpoint.editable'),
       ],
     },
-    footnote({ $: 'endpoint.baseUrl' }),
+    // Its address is a port the backend chose and may change at the next start: what it is matters more.
+    footnote({
+      $: "endpoint.managed ? 'Run by local AI on this device. Start, stop or remove it under This device.' : endpoint.baseUrl",
+    }),
     {
       type: 'Row',
       props: { gap: '200', ay: 'center', wrap: true },
@@ -726,6 +736,543 @@ const taskCard: SchemaNode = {
   ],
 };
 
+// ── This device ─────────────────────────────────────────────────────────────────
+
+/** Nothing is set up yet: no server, and local AI not installed. When Settings offers the choice. */
+const UNSET = '!runtimeStore.localAi.installed && !count(runtimeStore.aiEndpoints)';
+
+/**
+ * One of the three ways to get AI, as a card that is chosen by pressing it. A bare button around a
+ * card rather than an outlined button: a button's variants have a fixed control height, and a card
+ * holding an icon, a title and two lines of text overflows it.
+ */
+function setupChoice(value: string, icon: string, title: string, text: string): SchemaNode {
+  // Offered only where this connection can act on it — see `runtimeStore.aiSetupOptions`.
+  return {
+    type: '$if',
+    props: {
+      condition: { $: `'${value}' in runtimeStore.aiSetupOptions` },
+      then: setupCard(value, icon, title, text),
+    },
+  };
+}
+
+function setupCard(value: string, icon: string, title: string, text: string): SchemaNode {
+  const chosen = `local.aiSetup == '${value}'`;
+  return {
+    type: 'we-button',
+    props: {
+      variant: 'bare',
+      flex: '1 1 200px',
+      minWidth: '0',
+      ay: 'stretch',
+      onClick: { $setLocal: 'aiSetup', value },
+    },
+    children: [
+      {
+        type: 'Column',
+        props: {
+          gap: '200',
+          p: '400',
+          ax: 'start',
+          width: '100%',
+          height: '100%',
+          r: 'surface',
+          bg: { $: `${chosen} ? 'accent-soft' : 'surface'` },
+          border: { $: `${chosen} ? '1px solid accent-border' : '1px solid border'` },
+          hoverProps: { borderColor: 'border-hover' },
+        },
+        children: [
+          {
+            type: 'we-icon',
+            props: { name: icon, size: 'lg', color: { $: `${chosen} ? 'accent-text' : 'text-muted'` } },
+          },
+          { type: 'we-text', props: { fontWeight: 'semibold' }, children: [title] },
+          {
+            type: 'we-text',
+            props: { variant: 'footnote', color: 'text-muted', textAlign: 'left' },
+            children: [text],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+/** What the choice is about: a heading and the sentence under it. Drawn larger on a first run. */
+export function aiSetupHeading(variant: 'settings' | 'step'): SchemaNode {
+  return {
+    type: 'Column',
+    props: { gap: variant === 'step' ? '200' : '100' },
+    children: [
+      variant === 'step'
+        ? { type: 'we-text', props: { variant: 'heading-md', tag: 'h2' }, children: ['Set up AI'] }
+        : { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Set up AI'] },
+      variant === 'step'
+        ? {
+            type: 'we-text',
+            props: { color: 'text-muted' },
+            children: [
+              'Nothing answers prompts or transcribes yet. Choose where the models run. You can change this later in Settings.',
+            ],
+          }
+        : footnote('Nothing answers prompts or transcribes yet. Choose where the models run.'),
+    ],
+  };
+}
+
+const setupChooser = (choosing: string, heading: boolean): SchemaNode => ({
+  type: '$if',
+  props: {
+    condition: { $: choosing },
+    then: {
+      type: 'Column',
+      props: { gap: '300' },
+      children: [
+        ...(heading ? [aiSetupHeading('settings')] : []),
+        {
+          type: 'Row',
+          props: { gap: '300', wrap: true },
+          children: [
+            setupChoice(
+              'local',
+              'cpu',
+              'This device',
+              'Recommended. Models fitted to this computer run on it, and nothing leaves it.',
+            ),
+            setupChoice(
+              'server',
+              'hard-drives',
+              'A model server',
+              'One on this computer (Ollama, llama-server, a speech server) or an API such as OpenAI, with your key.',
+            ),
+            setupChoice('skip', 'x', 'Skip', 'No AI for now. Come back here when you want it.'),
+          ],
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $: "local.aiSetup == 'skip'" },
+            then: emptyNote('No AI for now. Apps asking for a model will have nothing to use until one is set up.'),
+          },
+        },
+      ],
+    },
+  },
+});
+
+const planRow: SchemaNode = {
+  type: 'Row',
+  props: { gap: '300', ay: 'center', ax: 'between' },
+  children: [
+    {
+      type: 'Column',
+      props: { gap: '0', minWidth: '0' },
+      children: [
+        {
+          type: 'Row',
+          props: { gap: '200', ay: 'center', minWidth: '0' },
+          children: [
+            { type: 'we-text', props: { variant: 'label', color: 'text-muted' }, children: [{ $: 'item.label' }] },
+            { type: 'we-text', props: { truncate: true }, children: [{ $: 'item.name' }] },
+          ],
+        },
+        // A model's licence and memory: part of what an install agrees to.
+        { type: '$if', props: { condition: { $: 'item.detail' }, then: footnote({ $: 'item.detail' }) } },
+      ],
+    },
+    footnote({ $: 'item.sizeText' }, { $: "item.done ? 'success-text' : 'text-muted'" }),
+  ],
+};
+
+const runtimeRow: SchemaNode = {
+  type: 'Row',
+  props: { gap: '200', ay: 'center' },
+  children: [
+    {
+      type: 'we-icon',
+      props: {
+        name: {
+          $: "runtime.tone == 'success' ? 'check-circle' : runtime.tone == 'idle' ? 'pause-circle' : 'warning'",
+        },
+        size: 'sm',
+        color: {
+          $: "runtime.tone == 'success' ? 'success-text' : runtime.tone == 'idle' ? 'text-muted' : 'warning-text'",
+        },
+      },
+    },
+    {
+      type: 'Column',
+      props: { gap: '0', minWidth: '0' },
+      children: [
+        { type: 'we-text', props: { variant: 'label' }, children: [{ $: 'runtime.label' }] },
+        footnote({ $: 'runtime.stateText' }, { $: "runtime.tone == 'warning' ? 'warning-text' : 'text-muted'" }),
+      ],
+    },
+  ],
+};
+
+/** A list of sentences in one colour, or nothing. */
+function lines(items: string, color: string | { $: string } = 'text-muted'): SchemaNode {
+  return {
+    type: '$each',
+    props: { items: { $: items }, as: 'line' },
+    children: [footnote({ $: 'line' }, color)],
+  };
+}
+
+/** Install, or "Install the rest" once part of the plan is in: the label says which. */
+const installButton: SchemaNode = {
+  type: 'we-button',
+  props: {
+    text: { $: 'runtimeStore.localAi.installLabel' },
+    size: 'sm',
+    disabled: { $: '!runtimeStore.localAi.canInstall' },
+    loading: { $: 'runtimeStore.localAi.installing' },
+    onClick: { $invoke: 'runtimeStore.installLocalAi' },
+  },
+  children: [{ type: 'we-icon', props: { name: 'download' } }],
+};
+
+/*
+  Install, Start, Stop and Remove are the operator's: the executor refuses them to a grant, whatever
+  it holds, and WE web connects with one. A connection that is not the operator still reads the
+  machine and the plan, and is told in one line who can act on them rather than shown buttons that
+  answer 403.
+*/
+const localActions: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'runtimeStore.canConfigureLocalAi' },
+    else: footnote('Set up local AI in the ADAM launcher on this node, or ask its operator.'),
+    then: {
+      type: 'Row',
+      props: { gap: '200', ay: 'center', wrap: true },
+      children: [
+        {
+          type: '$if',
+          props: {
+            condition: { $: 'runtimeStore.localAi.installed' },
+            // A failed server is offered both: Start tries it again, Stop lets it go.
+            then: {
+              type: 'Row',
+              props: { gap: '200', ay: 'center' },
+              children: [
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: 'runtimeStore.localAi.anyRunning' },
+                    then: {
+                      type: 'we-button',
+                      props: {
+                        text: 'Stop',
+                        size: 'sm',
+                        variant: 'soft',
+                        loading: { $: "'stopLocalAi' in runtimeStore.pending" },
+                        // An install stops and starts the servers itself.
+                        disabled: { $: 'runtimeStore.localAi.installing' },
+                        onClick: { $invoke: 'runtimeStore.stopLocalAi' },
+                      },
+                      children: [{ type: 'we-icon', props: { name: 'stop' } }],
+                    },
+                  },
+                },
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: 'runtimeStore.localAi.canStart' },
+                    then: {
+                      type: 'we-button',
+                      props: {
+                        text: 'Start',
+                        size: 'sm',
+                        loading: { $: "'startLocalAi' in runtimeStore.pending" },
+                        disabled: { $: 'runtimeStore.localAi.installing' },
+                        onClick: { $invoke: 'runtimeStore.startLocalAi' },
+                      },
+                      children: [{ type: 'we-icon', props: { name: 'play' } }],
+                    },
+                  },
+                },
+              ],
+            },
+            else: installButton,
+          },
+        },
+        /*
+          Part of the plan installed — the one service the backend installs by itself when an app first
+          asks for its default model, or an install of some kinds — is still `installed`. The rest is one
+          more install away (an install naming no kinds fetches the whole plan), so it is offered here
+          rather than only after a Remove.
+        */
+        {
+          type: '$if',
+          props: {
+            condition: { $: 'runtimeStore.localAi.installed && runtimeStore.localAi.incomplete' },
+            then: installButton,
+          },
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $: 'runtimeStore.localAi.installed && !runtimeStore.localAi.installing' },
+            then: {
+              type: 'we-button',
+              props: {
+                text: 'Remove',
+                size: 'sm',
+                variant: 'ghost',
+                tone: 'danger',
+                // Each removal starts with the files kept: the last one's choice is not this one's.
+                onClick: [
+                  { $setLocal: 'removeLocalFiles', value: false },
+                  { $setLocal: 'confirmRemoveLocal', value: true },
+                ],
+              },
+              children: [{ type: 'we-icon', props: { name: 'trash' } }],
+            },
+          },
+        },
+      ],
+    },
+  },
+};
+
+const removeLocalModal: SchemaNode = confirmModal({
+  open: { $: 'local.confirmRemoveLocal' },
+  close: { $setLocal: 'confirmRemoveLocal', value: false },
+  title: 'Remove local AI?',
+  body: 'Its model servers stop, and its models are no longer the defaults. Apps asking for a model will use another one if there is one.',
+  children: [
+    {
+      type: 'we-checkbox',
+      // The visible text is the slot; `label` only names the control for assistive technology.
+      props: {
+        checked: { $: 'local.removeLocalFiles' },
+        onChange: { $setLocal: 'removeLocalFiles', value: { $: 'event.detail' } },
+      },
+      children: ['Also delete the downloaded models and programs'],
+    },
+    footnote(
+      'Kept, they are not downloaded again if you install local AI later. Other agents on this computer can use the same files: deleted, they download them again.',
+    ),
+  ],
+  confirmLabel: 'Remove',
+  confirm: { $invoke: 'runtimeStore.removeLocalAi', args: [{ $: 'local.removeLocalFiles' }] },
+  busy: { $: "'removeLocalAi' in runtimeStore.pending" },
+});
+
+const localSection = (shown: string): SchemaNode => ({
+  type: '$if',
+  props: {
+    condition: { $: shown },
+    then: {
+      type: 'Column',
+      $localState: {
+        confirmRemoveLocal: { type: 'boolean', initial: false },
+        removeLocalFiles: { type: 'boolean', initial: false },
+      },
+      children: [
+        adminSection({
+          title: 'This device',
+          icon: 'cpu',
+          refresh: 'runtimeStore.loadLocalAi',
+          children: [
+            {
+              type: '$if',
+              props: {
+                condition: { $: 'runtimeStore.localAi.loaded' },
+                then: {
+                  type: 'Column',
+                  props: { gap: '300' },
+                  children: [
+                    // The machine: what the plan below is fitted to.
+                    {
+                      type: 'Column',
+                      props: { gap: '100', bg: 'surface', r: '300', px: '300', py: '300' },
+                      children: [
+                        {
+                          type: 'we-text',
+                          props: { variant: 'label' },
+                          children: [{ $: 'runtimeStore.localAi.device' }],
+                        },
+                        lines('runtimeStore.localAi.gpus'),
+                        footnote({ $: 'runtimeStore.localAi.compute' }),
+                        footnote({ $: 'runtimeStore.localAi.budget' }),
+                        lines('runtimeStore.localAi.notes', 'text-faint'),
+                      ],
+                    },
+                    // What an install brings, and whether it fits.
+                    {
+                      type: 'Column',
+                      props: { gap: '200', bg: 'surface', r: '300', px: '300', py: '300' },
+                      children: [
+                        {
+                          type: '$each',
+                          props: { items: { $: 'runtimeStore.localAi.items' }, as: 'item' },
+                          children: [planRow],
+                        },
+                        lines('runtimeStore.localAi.planNotes', 'text-muted'),
+                        lines('runtimeStore.localAi.unavailable', 'warning-text'),
+                        lines('runtimeStore.localAi.reasons', {
+                          $: "runtimeStore.localAi.fits ? 'text-muted' : 'danger-text'",
+                        }),
+                        {
+                          type: 'we-text',
+                          props: {
+                            variant: 'label',
+                            color: { $: "runtimeStore.localAi.fits ? 'text' : 'danger-text'" },
+                          },
+                          children: [{ $: 'runtimeStore.localAi.summary' }],
+                        },
+                        {
+                          type: '$if',
+                          props: {
+                            // Said before the rest of a partial install too: it is the same install.
+                            condition: { $: '!runtimeStore.localAi.installed || runtimeStore.localAi.incomplete' },
+                            then: footnote(
+                              'An install cannot be cancelled, and it continues if you close Settings. When it is installed, the model servers start each time the node starts.',
+                            ),
+                          },
+                        },
+                      ],
+                    },
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: 'runtimeStore.localAi.progress' },
+                        then: {
+                          type: 'Column',
+                          props: { gap: '200' },
+                          children: [
+                            {
+                              type: 'we-progress-bar',
+                              props: {
+                                value: { $: 'runtimeStore.localAi.progress.percent' },
+                                max: 100,
+                                size: 'sm',
+                                tone: { $: "runtimeStore.localAi.progress.failed ? 'danger' : 'accent'" },
+                              },
+                            },
+                            footnote(
+                              { $: 'runtimeStore.localAi.progress.text' },
+                              { $: "runtimeStore.localAi.progress.failed ? 'danger-text' : 'text-muted'" },
+                            ),
+                          ],
+                        },
+                      },
+                    },
+                    // How it runs, once it is installed.
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: 'runtimeStore.localAi.installed && count(runtimeStore.localAi.runtimes)' },
+                        then: {
+                          type: 'Column',
+                          props: { gap: '200' },
+                          children: [
+                            {
+                              type: '$each',
+                              props: { items: { $: 'runtimeStore.localAi.runtimes' }, as: 'runtime' },
+                              children: [runtimeRow],
+                            },
+                          ],
+                        },
+                      },
+                    },
+                    localActions,
+                  ],
+                },
+                else: footnote('Checking this device…'),
+              },
+            },
+          ],
+        }),
+        // The operator's, as the button that opens it is: never mounted where Remove could not work.
+        { type: '$if', props: { condition: { $: 'runtimeStore.canConfigureLocalAi' }, then: removeLocalModal } },
+      ],
+    },
+  },
+});
+
+/**
+ * "Set up AI": the choice between this device, a model server and nothing for now, and what each
+ * choice opens — the device and its plan, or the servers. One fragment for the two places that ask
+ * the question: the AI settings, and a first run's AI step (`aiSetupStep` in the sign-in screen).
+ *
+ * Reads and writes `local.aiSetup`, which the place rendering it declares: which choice is shown.
+ * `settled` says when everything is shown whatever the choice says — in Settings, once anything is
+ * set up; never on a first run, where the choice is the point of the step. `heading` draws the
+ * choice's own heading; the step draws a larger one above it instead (`aiSetupHeading('step')`).
+ */
+export function aiSetupFlow(settled: string, heading = true): SchemaNode[] {
+  const choosing = `!(${settled}) && count(runtimeStore.aiSetupOptions) > 1`;
+  return [
+    setupChooser(choosing, heading),
+    localSection(`runtimeStore.canUseLocalAi && ((${settled}) || local.aiSetup == 'local')`),
+    // The model servers, unless the choice went another way.
+    { type: '$if', props: { condition: { $: `!(${choosing}) || local.aiSetup == 'server'` }, then: endpointsSection } },
+  ];
+}
+
+/** The models, each with what it is for and the server that serves it, and a way to add one. */
+export const aiModelsSection: SchemaNode = adminSection({
+  title: 'Models',
+  icon: 'sparkle',
+  refresh: 'runtimeStore.loadAiModels',
+  children: [
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'count(runtimeStore.aiModels)' },
+        then: {
+          type: 'Column',
+          props: { gap: '200' },
+          children: [
+            {
+              type: '$each',
+              props: { items: { $: 'runtimeStore.aiModels' }, as: 'model' },
+              children: [modelCard],
+            },
+          ],
+        },
+        else: emptyNote(
+          'No models are configured. Apps asking for one will have nothing to use. Models that once ran inside the node itself are no longer supported and were removed on purpose: every model now runs on a server.',
+        ),
+      },
+    },
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'runtimeStore.canConfigureAi' },
+        then: {
+          type: 'Row',
+          children: [
+            {
+              type: 'we-button',
+              props: {
+                text: 'Add a model',
+                size: 'sm',
+                variant: 'soft',
+                // A model names a server, so with none to name there is nothing to add yet.
+                disabled: { $: 'runtimeStore.canManageAiEndpoints && !count(runtimeStore.aiEndpoints)' },
+                onClick: { $invoke: 'runtimeStore.newAiModel' },
+              },
+              children: [{ type: 'we-icon', props: { name: 'plus' } }],
+            },
+          ],
+        },
+      },
+    },
+  ],
+});
+
+/** The model form and the server form, each while it is open. Place once, beside the sections. */
+export const aiForms: SchemaNode[] = [
+  { type: '$if', props: { condition: { $: 'runtimeStore.aiForm' }, then: modelForm } },
+  { type: '$if', props: { condition: { $: 'runtimeStore.aiEndpointForm' }, then: endpointForm } },
+];
+
 export const aiSection: SchemaNode = {
   type: '$if',
   props: {
@@ -733,59 +1280,14 @@ export const aiSection: SchemaNode = {
     then: {
       type: 'Column',
       props: { gap: '600' },
+      $localState: {
+        // Which of the three ways to get AI the reader is looking at. Kept on the device, since it
+        // is a preference about this page rather than anything a link should carry.
+        aiSetup: { type: 'string', initial: 'local', persist: 'settings.aiSetup' },
+      },
       children: [
-        endpointsSection,
-
-        adminSection({
-          title: 'Models',
-          icon: 'sparkle',
-          refresh: 'runtimeStore.loadAiModels',
-          children: [
-            {
-              type: '$if',
-              props: {
-                condition: { $: 'count(runtimeStore.aiModels)' },
-                then: {
-                  type: 'Column',
-                  props: { gap: '200' },
-                  children: [
-                    {
-                      type: '$each',
-                      props: { items: { $: 'runtimeStore.aiModels' }, as: 'model' },
-                      children: [modelCard],
-                    },
-                  ],
-                },
-                else: emptyNote(
-                  'No models are configured. Apps asking for one will have nothing to use. Models that once ran inside the node itself are no longer supported and were removed on purpose: every model now runs on a server.',
-                ),
-              },
-            },
-            {
-              type: '$if',
-              props: {
-                condition: { $: 'runtimeStore.canConfigureAi' },
-                then: {
-                  type: 'Row',
-                  children: [
-                    {
-                      type: 'we-button',
-                      props: {
-                        text: 'Add a model',
-                        size: 'sm',
-                        variant: 'soft',
-                        // A model names a server, so with none to name there is nothing to add yet.
-                        disabled: { $: 'runtimeStore.canManageAiEndpoints && !count(runtimeStore.aiEndpoints)' },
-                        onClick: { $invoke: 'runtimeStore.newAiModel' },
-                      },
-                      children: [{ type: 'we-icon', props: { name: 'plus' } }],
-                    },
-                  ],
-                },
-              },
-            },
-          ],
-        }),
+        ...aiSetupFlow(`!(${UNSET})`),
+        aiModelsSection,
 
         adminSection({
           title: 'Tasks',
@@ -813,8 +1315,7 @@ export const aiSection: SchemaNode = {
           ],
         }),
 
-        { type: '$if', props: { condition: { $: 'runtimeStore.aiForm' }, then: modelForm } },
-        { type: '$if', props: { condition: { $: 'runtimeStore.aiEndpointForm' }, then: endpointForm } },
+        ...aiForms,
       ],
     },
   },

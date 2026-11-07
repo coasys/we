@@ -20,6 +20,11 @@ import {
   type AIModel,
   type EndpointHealth,
   type EndpointKind,
+  type LocalAiHardware as Ad4mLocalHardware,
+  type LocalAiPlan as Ad4mLocalPlan,
+  type LocalAiProgress as Ad4mLocalProgress,
+  type LocalAiService,
+  type LocalAiStatus as Ad4mLocalStatus,
   type ModelInput,
   type ModelStatus,
   type ModelType,
@@ -35,6 +40,11 @@ import type {
   AiModelKind,
   AiModelStatus,
   AiRecommendedModel,
+  LocalAiHardware,
+  LocalAiPlan,
+  LocalAiPort,
+  LocalAiProgress,
+  LocalAiStatus,
   ModelAdminPort,
 } from '@we/backend-shared';
 
@@ -114,6 +124,127 @@ function toEndpoint(endpoint: Ad4mEndpoint): AiEndpoint {
     ...(endpoint.requestTimeoutSecs ? { requestTimeoutSecs: endpoint.requestTimeoutSecs } : {}),
     ...(endpoint.maxConcurrent ? { maxConcurrent: endpoint.maxConcurrent } : {}),
     health: toHealth(endpoint.health),
+    managed: endpoint.managed === true,
+  };
+}
+
+// ── Local AI ──────────────────────────────────────────────────────────────────
+
+/** AD4M names what a local runtime serves by service; the port by the kind of model. */
+const SERVICE_TO_KIND: Record<LocalAiService, AiModelKind> = {
+  llm: 'llm',
+  embeddings: 'embedding',
+  stt: 'transcription',
+  tts: 'speech',
+};
+
+const KIND_TO_SERVICE = Object.fromEntries(
+  Object.entries(SERVICE_TO_KIND).map(([service, kind]) => [kind, service]),
+) as Record<AiModelKind, LocalAiService>;
+
+const toKinds = (services: LocalAiService[]): AiModelKind[] => services.map((service) => SERVICE_TO_KIND[service]);
+
+/** `null` and `undefined` both read as absent, so an optional field is never present and empty. */
+function optional<K extends string>(key: K, value: number | null | undefined): Partial<Record<K, number>> {
+  return typeof value === 'number' ? ({ [key]: value } as Record<K, number>) : {};
+}
+
+export function toLocalHardware(hardware: Ad4mLocalHardware): LocalAiHardware {
+  return {
+    os: hardware.os,
+    arch: hardware.arch,
+    cpu: hardware.cpu.brand,
+    ramBytes: hardware.ramBytes,
+    gpus: hardware.gpus.map((gpu) => ({
+      vendor: gpu.vendor,
+      type: gpu.type,
+      name: gpu.name,
+      ...optional('vramBytes', gpu.vramBytes),
+      ...optional('sharedBytes', gpu.sharedBytes),
+    })),
+    backends: [...hardware.backends],
+    memoryBudgetBytes: hardware.memoryBudgetBytes,
+    ...optional('diskFreeBytes', hardware.diskFreeBytes),
+    hardwareClass: hardware.hardwareClass,
+    notes: [...hardware.notes],
+  };
+}
+
+export function toLocalPlan(plan: Ad4mLocalPlan): LocalAiPlan {
+  return {
+    hardwareClass: plan.hardwareClass,
+    runtimes: plan.runtimes.map((runtime) => ({
+      id: runtime.runtimeId,
+      version: runtime.version,
+      build: runtime.build,
+      backend: runtime.backend,
+      sizeBytes: runtime.sizeBytes,
+      installed: runtime.installed,
+      kinds: toKinds(runtime.services),
+    })),
+    models: plan.models.map((model) => ({
+      kind: SERVICE_TO_KIND[model.service],
+      model: model.modelId,
+      sizeBytes: model.sizeBytes,
+      memoryBytes: model.memoryBytes,
+      license: model.license,
+      installed: model.installed,
+      basis: model.basis,
+      fromClass: model.fromClass,
+    })),
+    unavailable: plan.unavailable.map(({ service, reason }) => ({ kind: SERVICE_TO_KIND[service], reason })),
+    downloadBytes: plan.downloadBytes,
+    totalBytes: plan.totalBytes,
+    memoryBytes: plan.memoryBytes,
+    memoryBudgetBytes: plan.memoryBudgetBytes,
+    ...optional('diskFreeBytes', plan.diskFreeBytes),
+    fits: plan.fits,
+    reasons: [...plan.reasons],
+    ...(plan.device ? { device: plan.device } : {}),
+  };
+}
+
+const PROGRESS_PHASES = new Set<LocalAiProgress['phase']>(['plan', 'download', 'start', 'register', 'done', 'failed']);
+
+export function toLocalProgress(progress: Ad4mLocalProgress): LocalAiProgress {
+  // The executor documents six phases as a string; one it adds later reads as the step before done.
+  const phase = PROGRESS_PHASES.has(progress.phase as LocalAiProgress['phase'])
+    ? (progress.phase as LocalAiProgress['phase'])
+    : 'register';
+  return {
+    phase,
+    item: progress.item ?? '',
+    itemDoneBytes: progress.itemDoneBytes,
+    itemTotalBytes: progress.itemTotalBytes,
+    doneBytes: progress.doneBytes,
+    totalBytes: progress.totalBytes,
+    detail: progress.detail ?? '',
+  };
+}
+
+export function toLocalStatus(status: Ad4mLocalStatus): LocalAiStatus {
+  return {
+    installed: status.installed,
+    installing: status.installing,
+    autostart: status.autostart,
+    runtimes: status.runtimes.map((runtime) => ({
+      id: runtime.runtimeId,
+      version: runtime.version,
+      build: runtime.build,
+      kinds: toKinds(runtime.services),
+      phase: runtime.phase,
+      ...optional('port', runtime.port),
+      restarts: runtime.restarts,
+      detail: runtime.detail ?? '',
+      ...(runtime.endpointId ? { endpointId: runtime.endpointId } : {}),
+      onGpu: runtime.onGpu,
+      ...optional('gpuBytes', runtime.gpuBytes),
+    })),
+    models: status.models.map((model) => ({
+      kind: SERVICE_TO_KIND[model.service],
+      model: model.modelId,
+      ...(model.model ? { modelId: model.model } : {}),
+    })),
   };
 }
 
@@ -173,6 +304,18 @@ function recommended(): ReturnType<NonNullable<ModelAdminPort['recommended']>> {
       { label: 'speaches', url: AI_SERVER_INSTALL_LINKS.speaches },
     ],
   };
+}
+
+/**
+ * The executor's refusals name the RPC to call next ("run ai.localInstall again"), which is right for
+ * an SDK caller and nothing a person can do. They are shown as the error, so they say the act instead.
+ */
+function inPeoplesWords(error: unknown): unknown {
+  if (!(error instanceof Error)) return error;
+  const message = error.message
+    .replace('run ai.localInstall again', 'install local AI again')
+    .replace('call ai.localInstall', 'install it first');
+  return message === error.message ? error : new Error(message, { cause: error });
 }
 
 export function createAd4mModelAdmin(backendClient: unknown, options: Ad4mRuntimeOptions = {}): ModelAdminPort {
@@ -337,10 +480,66 @@ export function createAd4mModelAdmin(backendClient: unknown, options: Ad4mRuntim
     },
   };
 
+  /**
+   * Local AI reads the node's own machine — its processor, its memory, its disk — so it is the
+   * operator's, like the endpoints: a guest on somebody else's node has no use for that machine's
+   * hardware and should not be shown it.
+   */
+  const localRead: LocalAiPort = {
+    async hardware() {
+      return toLocalHardware(await client.ai.localHardware());
+    },
+    async plan() {
+      return toLocalPlan(await client.ai.localPlan());
+    },
+    async status() {
+      return toLocalStatus(await client.ai.localStatus());
+    },
+  };
+
+  /**
+   * Installing, starting, stopping and removing are the executor's operator-only calls, and it sends
+   * the install's progress events to operator sessions alone: a grant would listen to nothing.
+   */
+  const localWrite: LocalAiPort = {
+    onProgress(listener) {
+      return client.on('ai-local-progress', (progress) => listener(toLocalProgress(progress)));
+    },
+    /**
+     * Gigabytes: the SDK waits hours by default rather than the usual request timeout. Progress is
+     * heard through `onProgress`, so an install started from the launcher shows here too.
+     */
+    async install(options) {
+      const services = options?.kinds?.map((kind) => KIND_TO_SERVICE[kind]);
+      return toLocalStatus(await client.ai.localInstall(services ? { services } : {}));
+    },
+    async start() {
+      try {
+        return toLocalStatus(await client.ai.localStart());
+      } catch (error) {
+        throw inPeoplesWords(error);
+      }
+    },
+    async stop() {
+      return toLocalStatus(await client.ai.localStop());
+    },
+    async remove(deleteFiles) {
+      await client.ai.localRemove(deleteFiles);
+    },
+  };
+
   const operates = administersNode && granted(CAP_DOMAIN.ai, CAP_VERB.read);
+  const configures = administersNode && granted(CAP_DOMAIN.ai, CAP_VERB.create);
+  /*
+    The executor guards the local AI writes with the operator credential, not a capability: a grant
+    is refused them whatever it holds. So the grant rule above is not enough — WE web's app token
+    holds `*` and would be offered an Install that always answers 403.
+  */
+  const installs = configures && (options.operator ?? true);
   return {
     ...(granted(CAP_DOMAIN.ai, CAP_VERB.read) ? read : {}),
     ...(operates ? endpoints : {}),
-    ...(administersNode && granted(CAP_DOMAIN.ai, CAP_VERB.create) ? write : {}),
+    ...(configures ? write : {}),
+    ...(operates ? { local: { ...localRead, ...(installs ? localWrite : {}) } } : {}),
   };
 }

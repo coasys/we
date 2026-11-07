@@ -35,6 +35,7 @@ function endpoint(overrides: Partial<AiEndpoint> = {}): AiEndpoint {
     hasApiKey: false,
     capabilities: ['chat'],
     health: { state: 'reachable', detail: '', models: [] },
+    managed: false,
     ...overrides,
   };
 }
@@ -176,6 +177,22 @@ describe('display strings', () => {
     expect(health({ state: 'unreachable', detail: 'connection refused' }).healthText).toBe(
       'Not answering — connection refused',
     );
+  });
+
+  it('points a stopped local AI server at This device rather than repeating the backend’s detail', () => {
+    const stopped = describeEndpoint(
+      endpoint({
+        managed: true,
+        health: { state: 'unreachable', detail: 'Local AI is not running: start it with ai.localStart', models: [] },
+      }),
+      [],
+    );
+    expect(stopped).toMatchObject({
+      kindLabel: 'This device',
+      healthText: 'Not running — start it under This device',
+      healthy: false,
+      editable: false,
+    });
   });
 
   it('names a server found on the machine by its kind and where it is', () => {

@@ -20,6 +20,14 @@
  * `canManageTrust` and friends false and the settings template renders nothing for that section.
  * The in-memory backend supplies no runtime port at all, which is the case that keeps this honest.
  */
+import {
+  type AiSetupAnswer,
+  type AiSetupOption,
+  aiSetupOptions as aiSetupOptionsFor,
+  offersAiStep,
+  readAiSetupAnswer,
+  recordAiSetupAnswer,
+} from '@shared/aiSetupStep';
 import type { ExecutorSettings } from '@shared/platform/types';
 import { copyText } from '@shared/utils';
 import { usePlatform } from '@solid/providers/PlatformProvider';
@@ -46,12 +54,14 @@ import {
   maxContextProblem,
   modelFormComplete,
   modelFormFrom,
+  modelsForRoles,
   sameServer,
   serves,
   toEndpointDraft,
   toModelDraft,
   withService,
 } from '@solid/stores/aiModelDraft';
+import { describeLocalAi, isManaged, type LocalAiView, reduceProgress } from '@solid/stores/localAiView';
 import { useSessionStore } from '@solid/stores/SessionStore';
 import { useShellStore } from '@solid/stores/ShellStore';
 import type {
@@ -65,12 +75,17 @@ import type {
   AuthorizedApp,
   ConsentRequest,
   InstalledLanguage,
+  LocalAiHardware,
+  LocalAiPlan,
+  LocalAiProgress,
+  LocalAiStatus,
   UnsupportedCapability,
 } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import {
   type Accessor,
   batch,
+  createComputed,
   createContext,
   createEffect,
   createMemo,
@@ -79,6 +94,13 @@ import {
   type ParentProps,
   useContext,
 } from 'solid-js';
+import { createStore, reconcile } from 'solid-js/store';
+
+/**
+ * How long a first run waits to hear what AI the node has before deciding whether to ask about it.
+ * Two local reads; a node slower than this is not asked, rather than holding a new account's screen.
+ */
+const AI_STEP_READ_MS = 5000;
 
 export interface RuntimeStore {
   // ── Capability flags (schemas gate sections on these) ────────────────────────
@@ -172,6 +194,24 @@ export interface RuntimeStore {
   aiApiKeyError: Accessor<string>;
   /** The kinds of server an endpoint can be, for a we-select on `aiEndpointForm.service`. */
   aiServiceOptions: Accessor<{ label: string; value: string }[]>;
+  /**
+   * The backend can install and run models on its own machine (local AI): it shows this connection
+   * the machine and what an install would do. Gate the "This device" section on it.
+   */
+  canUseLocalAi: Accessor<boolean>;
+  /**
+   * Local AI can be installed, started, stopped and removed from here: the connection holds the
+   * node's operator credential. A grant never does, whatever its capabilities.
+   */
+  canConfigureLocalAi: Accessor<boolean>;
+  /** The "This device" section: the machine, the plan, an install's progress and the running state. */
+  localAi: Accessor<LocalAiView>;
+  /**
+   * The ways to get AI this connection can choose between, in order: 'local' (install on the node's
+   * machine), 'server' (add a model server), and always 'skip'. What the "Set up AI" choice offers,
+   * in Settings and on a first run's AI step.
+   */
+  aiSetupOptions: Accessor<AiSetupOption[]>;
   languages: Accessor<InstalledLanguage[]>;
   trustedAgents: Accessor<string[]>;
   authorizedApps: Accessor<AuthorizedApp[]>;
@@ -240,6 +280,23 @@ export interface RuntimeStore {
   saveAiEndpoint: () => Promise<void>;
   /** Remove an endpoint. Refused while models run on it. */
   removeAiEndpoint: (id: string) => Promise<void>;
+  /** Read the machine, the plan and how local AI runs. Done when the settings open. */
+  loadLocalAi: () => Promise<void>;
+  /** Download, check, start and register what the plan says. Resolves when it is done; `localAi.progress` meanwhile. */
+  installLocalAi: () => Promise<void>;
+  startLocalAi: () => Promise<void>;
+  stopLocalAi: () => Promise<void>;
+  /** Unregister and stop local AI; `deleteFiles` deletes the downloaded models and programs as well. */
+  removeLocalAi: (deleteFiles: boolean) => Promise<void>;
+  /**
+   * On a first run, once the profile is published: hold the sign-in screen on the AI step when there
+   * is something to ask. Resolves true when it did; false leaves setting up to finish as before.
+   */
+  openAiStep: () => Promise<boolean>;
+  /** Leave the AI step with nothing set up, and keep that answer so it is not asked again. */
+  skipAiSetup: () => void;
+  /** Leave the AI step with what was set up on it, and keep that answer. */
+  finishAiSetup: () => void;
   loadLanguages: () => Promise<void>;
   installLanguage: (address: string) => Promise<void>;
   removeLanguage: (address: string) => Promise<void>;
@@ -479,6 +536,67 @@ export function RuntimeStoreProvider(props: ParentProps) {
     return form ? apiKeyProblem(form) : '';
   });
 
+  // ── Local AI ──────────────────────────────────────────────────────────────────
+  const localPort = () => modelAdmin()?.local;
+  const canUseLocalAi = createMemo(() => !!localPort()?.plan);
+  // The operator's flag: the adapter offers `install` only to a connection holding the node's
+  // operator credential, which the executor requires for all four local AI writes. A grant is never
+  // offered them, whatever its capabilities.
+  const canConfigureLocalAi = createMemo(() => !!localPort()?.install);
+  const [localHardware, setLocalHardware] = createSignal<LocalAiHardware | null>(null);
+  const [localPlan, setLocalPlan] = createSignal<LocalAiPlan | null>(null);
+  const [localStatus, setLocalStatus] = createSignal<LocalAiStatus | null>(null);
+  const [localProgress, setLocalProgress] = createSignal<LocalAiProgress | null>(null);
+  /*
+    Held in a store and reconciled, rather than a memo handing out a new object each time.
+
+    An install's progress arrives many times a second, and every event re-derives the whole view.
+    As a fresh object, everything the page binds to it was asked again: the plan's rows and the
+    running servers' rows are lists of objects, so each event gave the list new ones and its `$each`
+    took every row down and drew new ones — under a reader who had scrolled down to watch the bar.
+    Reconciled by each row's `key`, an event changes the progress fields and nothing else.
+  */
+  const [localAiView, setLocalAiView] = createStore<LocalAiView>(
+    describeLocalAi({
+      hardware: null,
+      plan: null,
+      status: null,
+      progress: null,
+      installingHere: false,
+      operator: false,
+    }),
+  );
+  createComputed(() =>
+    setLocalAiView(
+      reconcile(
+        describeLocalAi({
+          hardware: localHardware(),
+          plan: localPlan(),
+          status: localStatus(),
+          progress: localProgress(),
+          installingHere: pending().includes('installLocalAi'),
+          operator: canConfigureLocalAi(),
+        }),
+        { key: 'key' },
+      ),
+    ),
+  );
+  const localAi: Accessor<LocalAiView> = () => localAiView;
+
+  const aiSetupOptions = createMemo(() =>
+    aiSetupOptionsFor({
+      canConfigureLocalAi: canConfigureLocalAi(),
+      canConfigureAi: canConfigureAi(),
+      canManageAiEndpoints: canManageAiEndpoints(),
+    }),
+  );
+
+  /**
+   * A page showing the AI settings is up: the settings overlay, or a first run's AI step. What the
+   * AI reads and the listeners below wait for, so neither runs for a session nobody is looking at.
+   */
+  const aiShown = () => shell.activeShellView() === 'settings' || session.signInStep() === 'setUpAi';
+
   const aiServiceOptions = () => [
     ...AI_SERVICES.map((service) => ({ label: service.label, value: service.id })),
     { label: 'Another OpenAI-compatible server', value: CUSTOM_SERVICE },
@@ -587,12 +705,36 @@ export function RuntimeStoreProvider(props: ParentProps) {
     if (canManageTrust()) void loadTrustedAgents();
     if (canManageApps()) void loadAuthorizedApps();
     if (canManageLanguages()) void loadLanguages();
-    if (canManageAi()) {
-      void loadAiModels();
-      void loadAiTasks();
-    }
-    if (canManageAiEndpoints()) void detectAiEndpoints();
+    if (canManageAi()) void loadAiTasks();
     if (canConfigureExecutor()) void loadExecutorSettings();
+  });
+
+  // The AI sections are on the settings page and on a first run's AI step, which share them.
+  createEffect(() => {
+    if (!aiShown()) return;
+    if (canManageAi()) void loadAiModels();
+    if (canManageAiEndpoints()) void detectAiEndpoints();
+    if (canUseLocalAi()) void loadLocalAi();
+  });
+
+  /*
+    An install's progress, heard while the settings are open — whether the install was started here
+    or from the launcher. The end of one re-reads what it changed: the running state, and the
+    managed servers and models it registered.
+
+    What was heard before is dropped when listening starts: the events between were missed, and a
+    retry of the same install has the same total, so an old count would hold the bar where it was.
+    A failure is kept: it is why the last install did not finish, which somebody who left during it
+    has not read yet, and the next install's first event replaces it.
+  */
+  createEffect(() => {
+    if (!aiShown()) return;
+    setLocalProgress((prev) => (prev?.phase === 'failed' ? prev : null));
+    const stop = localPort()?.onProgress?.((event) => {
+      setLocalProgress((prev) => reduceProgress(prev, event));
+      if (event.phase === 'done' || event.phase === 'failed') void refreshLocalAi();
+    });
+    if (stop) onCleanup(stop);
   });
 
   /*
@@ -601,7 +743,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
     which replaces polling every model's status on a timer.
   */
   createEffect(() => {
-    if (shell.activeShellView() !== 'settings') return;
+    if (!aiShown()) return;
     const port = modelAdmin();
     const stopModels = port?.onModelStatus?.((event) => {
       const pull = aiPull();
@@ -927,7 +1069,32 @@ export function RuntimeStoreProvider(props: ParentProps) {
     const added = await run('addDetectedEndpoint', () =>
       modelAdmin()?.addEndpoint?.({ name, kind: found.kind, baseUrl: found.baseUrl }),
     );
-    if (added.ok) await loadAiModels();
+    if (!added.ok) return;
+    if (added.value) await fillRoles(added.value);
+    await loadAiModels();
+  }
+
+  /**
+   * Give a server found on the node's machine the models it serves for each role nothing fills yet,
+   * so one press leaves something answering — see `modelsForRoles`. A server on this machine only:
+   * an API somewhere else bills for what it answers, and which of its models to pay for is the
+   * person's to choose in the model form.
+   */
+  async function fillRoles(endpoint: AiEndpoint): Promise<void> {
+    const port = modelAdmin();
+    if (!port?.discover || !port.add) return;
+    const listed = await run('addDetectedEndpoint', async () => {
+      const [served, existing] = await Promise.all([port.discover?.({ endpointId: endpoint.id }), port.list?.()]);
+      return { served: served ?? [], existing: existing ?? aiModelRecords() };
+    });
+    if (!listed.ok || !listed.value) return;
+    const drafts = modelsForRoles({
+      endpoint,
+      served: listed.value.served,
+      recommended: recommendations().models,
+      existing: listed.value.existing,
+    });
+    for (const draft of drafts) await run('addDetectedEndpoint', () => port.add?.(draft));
   }
 
   function newAiEndpoint(): void {
@@ -936,7 +1103,8 @@ export function RuntimeStoreProvider(props: ParentProps) {
 
   function editAiEndpoint(id: string): void {
     const endpoint = aiEndpointRecords().find((candidate) => candidate.id === id);
-    if (endpoint) openAiEndpointForm(endpointFormFrom(endpoint));
+    // A managed server's address and settings are the backend's: there is nothing here to edit.
+    if (endpoint && !endpoint.managed) openAiEndpointForm(endpointFormFrom(endpoint));
   }
 
   function setAiEndpointField(field: string, value: string | boolean): void {
@@ -966,8 +1134,168 @@ export function RuntimeStoreProvider(props: ParentProps) {
     await loadAiModels();
   }
 
+  /** A managed server goes with local AI (`removeLocalAi`); the backend refuses it here anyway. */
   async function removeAiEndpoint(id: string): Promise<void> {
+    if (isManaged(aiEndpointRecords(), id)) return;
     if ((await run('removeAiEndpoint', () => modelAdmin()?.removeEndpoint?.(id))).ok) await loadAiModels();
+  }
+
+  // ── Local AI ───────────────────────────────────────────────────────────────────
+
+  /** The machine, the plan and the running state, read together so the section renders once. */
+  async function loadLocalAi(): Promise<void> {
+    const port = localPort();
+    if (!port?.plan) return;
+    const loaded = await run('loadLocalAi', () =>
+      Promise.all([
+        port.hardware?.() ?? Promise.resolve(null),
+        port.plan?.(),
+        port.status?.() ?? Promise.resolve(null),
+      ]),
+    );
+    if (!loaded.ok || !loaded.value) return;
+    const [hardware, plan, status] = loaded.value;
+    batch(() => {
+      setLocalHardware(hardware ?? null);
+      setLocalPlan(plan ?? null);
+      setLocalStatus(status ?? null);
+      // A bar left under way when the settings closed mid-install is over if the backend says no
+      // install runs: the events that ended it were not heard.
+      if (status && !status.installing && !pending().includes('installLocalAi')) {
+        setLocalProgress((prev) => (prev && prev.phase !== 'done' && prev.phase !== 'failed' ? null : prev));
+      }
+    });
+  }
+
+  /**
+   * After an install, a start or a stop: the plan (what is downloaded now), the running state, and
+   * the servers and models local AI registered. Outside `run`, like `refreshAiModels`: it follows the
+   * action rather than being one, and must not wipe the error the action may have left.
+   */
+  async function refreshLocalAi(): Promise<void> {
+    const port = localPort();
+    try {
+      const [plan, status] = await Promise.all([port?.plan?.(), port?.status?.()]);
+      batch(() => {
+        if (plan) setLocalPlan(plan);
+        if (status) setLocalStatus(status);
+      });
+    } catch {
+      // The section keeps what it last said; reopening the settings reads it again.
+    }
+    await refreshAiEndpointsAndModels();
+  }
+
+  async function refreshAiEndpointsAndModels(): Promise<void> {
+    try {
+      const port = modelAdmin();
+      const [models, endpoints] = await Promise.all([port?.list?.(), port?.endpoints?.()]);
+      batch(() => {
+        if (models) setAiModelRecords(models);
+        if (endpoints) setAiEndpointRecords(endpoints);
+      });
+    } catch {
+      // As refreshAiModels: the rows keep what they last said.
+    }
+  }
+
+  async function installLocalAi(): Promise<void> {
+    const port = localPort();
+    if (!port?.install || localAi().installing) return;
+    setLocalProgress(null);
+    const installed = await run('installLocalAi', () => port.install?.());
+    if (installed.ok && installed.value) setLocalStatus(installed.value);
+    // The call has returned, so the install is over, whether or not its last event was heard.
+    if (installed.ok) setLocalProgress(null);
+    // Kept with the install, not only in the shared error: the person may have left the settings, and
+    // the next read clears that error as it starts.
+    if (!installed.ok) {
+      const why = error();
+      setLocalProgress((prev) =>
+        prev?.phase === 'failed'
+          ? prev
+          : {
+              phase: 'failed',
+              item: '',
+              itemDoneBytes: 0,
+              itemTotalBytes: 0,
+              doneBytes: prev?.doneBytes ?? 0,
+              totalBytes: prev?.totalBytes ?? 0,
+              detail: why,
+            },
+      );
+    }
+    await refreshLocalAi();
+  }
+
+  async function startLocalAi(): Promise<void> {
+    const started = await run('startLocalAi', () => localPort()?.start?.());
+    if (started.ok && started.value) setLocalStatus(started.value);
+    await refreshLocalAi();
+  }
+
+  async function stopLocalAi(): Promise<void> {
+    const stopped = await run('stopLocalAi', () => localPort()?.stop?.());
+    if (stopped.ok && stopped.value) setLocalStatus(stopped.value);
+    await refreshLocalAi();
+  }
+
+  // ── A first run's AI step ───────────────────────────────────────────────────────────────────────
+
+  /*
+    The node the answer is kept for, by its address. The step runs only for an agent just made, so
+    an answer kept per agent would never be read again; per node, a second account made against a
+    node whose first chose Skip is not asked again. A node reached with no address (the desktop's
+    own executor) keeps no answer, and every new account on it is asked, as before.
+  */
+  const nodeKey = () => session.serverUrl() ?? '';
+
+  /**
+   * Ask, or not. Reads what the node already has first, bounded, since a first run is waiting on the
+   * answer: a node that does not say within the bound is not asked about, and Settings is where AI is
+   * set up afterwards.
+   */
+  async function openAiStep(): Promise<boolean> {
+    const abilities = {
+      canConfigureLocalAi: canConfigureLocalAi(),
+      canConfigureAi: canConfigureAi(),
+      canManageAiEndpoints: canManageAiEndpoints(),
+    };
+    const answered = readAiSetupAnswer(nodeKey()) !== null;
+    if (!offersAiStep({ ...abilities, models: 0, localInstalled: false, answered })) return false;
+    const port = modelAdmin();
+    const read = Promise.all([port?.list?.() ?? Promise.resolve([]), localPort()?.status?.() ?? Promise.resolve(null)]);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const known = await Promise.race([
+      read.catch(() => null),
+      new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), AI_STEP_READ_MS))),
+    ]).finally(() => clearTimeout(timer));
+    if (!known) return false;
+    const [models, status] = known;
+    if (!offersAiStep({ ...abilities, models: models.length, localInstalled: !!status?.installed, answered })) {
+      return false;
+    }
+    setAiModelRecords(models);
+    if (status) setLocalStatus(status);
+    session.holdForAiSetup();
+    return true;
+  }
+
+  function leaveAiStep(answer: AiSetupAnswer): void {
+    recordAiSetupAnswer(nodeKey(), answer);
+    // A form left open on the step would come back over the app's settings page later.
+    batch(() => {
+      setAiForm(null);
+      setAiEndpointForm(null);
+    });
+    session.finishSetup();
+  }
+
+  async function removeLocalAi(deleteFiles: boolean): Promise<void> {
+    const removed = await run('removeLocalAi', () => localPort()?.remove?.(deleteFiles === true));
+    if (!removed.ok) return;
+    setLocalProgress(null);
+    await refreshLocalAi();
   }
 
   // ── Settings ─────────────────────────────────────────────────────────────────
@@ -1129,6 +1457,9 @@ export function RuntimeStoreProvider(props: ParentProps) {
     aiMaxContextError,
     aiApiKeyError,
     aiServiceOptions,
+    canUseLocalAi,
+    canConfigureLocalAi,
+    localAi,
     languages,
     trustedAgents,
     authorizedApps,
@@ -1162,6 +1493,15 @@ export function RuntimeStoreProvider(props: ParentProps) {
     closeAiEndpointForm,
     saveAiEndpoint,
     removeAiEndpoint,
+    loadLocalAi,
+    installLocalAi,
+    aiSetupOptions,
+    openAiStep,
+    skipAiSetup: () => leaveAiStep('skipped'),
+    finishAiSetup: () => leaveAiStep('set-up'),
+    startLocalAi,
+    stopLocalAi,
+    removeLocalAi,
     loadLanguages,
     installLanguage,
     removeLanguage,

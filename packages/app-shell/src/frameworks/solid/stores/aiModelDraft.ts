@@ -10,6 +10,7 @@
 import type {
   AiCapability,
   AiDetectedEndpoint,
+  AiDiscoveredModel,
   AiEndpoint,
   AiEndpointDraft,
   AiEndpointKind,
@@ -17,6 +18,7 @@ import type {
   AiModelDraft,
   AiModelKind,
   AiModelStatus,
+  AiRecommendedModel,
 } from '@we/backend-shared';
 
 // ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -293,6 +295,35 @@ export function serves(served: string[], model: string): boolean {
   return served.some((s) => s === model || s === `${model}:latest`);
 }
 
+/**
+ * The models a server just added should take on, one per kind of model nothing does yet.
+ *
+ * For each kind the server can serve and the node has no model for: the model the backend recommends
+ * on that kind of server when the server lists it, else the first model it lists for that kind. A
+ * kind the node already has a model for is left alone — the person chose that one — and a kind the
+ * server lists nothing for is left empty rather than guessed. The first model of a kind becomes its
+ * default, so a server added with nothing else set up answers prompts at once.
+ */
+export function modelsForRoles(input: {
+  endpoint: Pick<AiEndpoint, 'id' | 'kind' | 'capabilities'>;
+  served: AiDiscoveredModel[];
+  recommended: AiRecommendedModel[];
+  existing: Pick<AiModel, 'kind'>[];
+}): AiModelDraft[] {
+  const kinds = Object.keys(CAPABILITY_OF) as AiModelKind[];
+  return kinds.flatMap((kind): AiModelDraft[] => {
+    const capability = CAPABILITY_OF[kind];
+    if (!input.endpoint.capabilities.includes(capability)) return [];
+    if (input.existing.some((model) => model.kind === kind)) return [];
+    const fitting = input.served.filter((model) => model.capabilities.includes(capability)).map((model) => model.id);
+    const recommended = input.recommended.find(
+      (model) => model.kind === kind && model.endpointKind === input.endpoint.kind && serves(fitting, model.model),
+    );
+    const remoteModel = recommended ? fitting.find((id) => serves([id], recommended.model)) : fitting[0];
+    return remoteModel ? [{ name: remoteModel, kind, endpointId: input.endpoint.id, remoteModel }] : [];
+  });
+}
+
 // ── Display ───────────────────────────────────────────────────────────────────
 
 export const MODEL_KIND_LABELS: Record<AiModelKind, string> = {
@@ -373,6 +404,20 @@ export interface AiEndpointView extends AiEndpoint {
   healthy: boolean;
   /** How many of this node's models run on it. */
   modelCount: number;
+  /**
+   * Can be edited and removed as a server. False for one the backend runs itself (local AI), which
+   * is changed through "This device" instead — the backend refuses an edit or a removal of it.
+   */
+  editable: boolean;
+}
+
+/**
+ * What a server that did not answer says. A managed one is started from "This device", and the
+ * backend's own detail for it names an RPC, so it is not repeated.
+ */
+function unreachableText(endpoint: AiEndpoint): string {
+  if (endpoint.managed) return 'Not running — start it under This device';
+  return endpoint.health.detail ? `Not answering — ${endpoint.health.detail}` : 'Not answering';
 }
 
 export function describeEndpoint(endpoint: AiEndpoint, models: AiModel[]): AiEndpointView {
@@ -383,16 +428,15 @@ export function describeEndpoint(endpoint: AiEndpoint, models: AiModel[]): AiEnd
       : health.state === 'unauthorized'
         ? 'The key was refused'
         : health.state === 'unreachable'
-          ? health.detail
-            ? `Not answering — ${health.detail}`
-            : 'Not answering'
+          ? unreachableText(endpoint)
           : 'Not checked yet';
   return {
     ...endpoint,
-    kindLabel: ENDPOINT_KIND_LABELS[endpoint.kind],
+    kindLabel: endpoint.managed ? 'This device' : ENDPOINT_KIND_LABELS[endpoint.kind],
     healthText,
     healthy: health.state === 'reachable' || health.state === 'unknown',
     modelCount: models.filter((m) => m.endpointId === endpoint.id).length,
+    editable: !endpoint.managed,
   };
 }
 

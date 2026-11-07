@@ -62,6 +62,12 @@ export interface AiEndpoint {
   /** At most this many requests at once. Carried so an edit does not drop it. */
   maxConcurrent?: number;
   health: AiEndpointHealth;
+  /**
+   * The backend runs this server itself — local AI on this device (see `LocalAiPort`). A managed
+   * server cannot be edited or removed as a server: it goes with `LocalAiPort.remove`, and its address
+   * and health are the backend's to keep.
+   */
+  managed: boolean;
 }
 
 /**
@@ -208,4 +214,175 @@ export interface ModelAdminPort {
   ): () => void;
   /** The models the backend recommends, and where to get a server for them. */
   recommended?(): { models: AiRecommendedModel[]; installLinks: AiServerInstallLink[] };
+  /**
+   * Local AI: model servers the backend installs and runs itself, on the machine it runs on. Absent
+   * where the backend cannot, or where this connection may not see the node's machine.
+   */
+  local?: LocalAiPort;
+}
+
+// ── Local AI ──────────────────────────────────────────────────────────────────
+
+/** A graphics processor the backend found. */
+export interface LocalAiGpu {
+  vendor: 'nvidia' | 'amd' | 'intel' | 'apple' | 'other';
+  /** `unified`: one memory for the CPU and the GPU (Apple, AMD Strix Halo). */
+  type: 'discrete' | 'integrated' | 'unified';
+  name: string;
+  /** Dedicated memory, or an integrated GPU's carve-out. Absent where it could not be read. */
+  vramBytes?: number;
+  /** System memory the GPU may map besides. Absent where it could not be read. */
+  sharedBytes?: number;
+}
+
+/** The machine the backend runs on, as far as running models on it goes. */
+export interface LocalAiHardware {
+  /** `linux`, `macos` or `windows`. */
+  os: string;
+  /** `x64` or `arm64`. */
+  arch: string;
+  /** The CPU's name, empty where it could not be read. */
+  cpu: string;
+  ramBytes: number;
+  gpus: LocalAiGpu[];
+  /** What a runtime may compute with here: `cpu`, `metal`, `vulkan`, `cuda`, `rocm`. */
+  backends: string[];
+  /** What the models may take together. */
+  memoryBudgetBytes: number;
+  /** Free space where the models are kept. Absent where it could not be read. */
+  diskFreeBytes?: number;
+  /** The backend's name for this class of machine — what its recommendations are keyed by. */
+  hardwareClass: string;
+  /** What detection could not read, and what it estimated. */
+  notes: string[];
+}
+
+/** A server program the plan installs. */
+export interface LocalAiPlannedRuntime {
+  /** The program: `llama-server`. */
+  id: string;
+  version: string;
+  /** Its build for this machine: `linux-x64-vulkan`. */
+  build: string;
+  backend: string;
+  sizeBytes: number;
+  /** Already on disk. */
+  installed: boolean;
+  kinds: AiModelKind[];
+}
+
+/** A model the plan installs. */
+export interface LocalAiPlannedModel {
+  kind: AiModelKind;
+  /** Its id, which is also the id its server serves it by. */
+  model: string;
+  sizeBytes: number;
+  memoryBytes: number;
+  license: string;
+  installed: boolean;
+  /**
+   * `measured`: what the backend measured for this class of machine (or the nearest smaller one).
+   * `default`: nothing was measured for this kind here, so the plan takes the smallest model it has.
+   */
+  basis: 'measured' | 'default';
+  /** The class of machine the choice comes from — for a default, this machine's own. */
+  fromClass: string;
+}
+
+/** What an install would do on this machine. */
+export interface LocalAiPlan {
+  hardwareClass: string;
+  runtimes: LocalAiPlannedRuntime[];
+  models: LocalAiPlannedModel[];
+  /** A kind of model the plan leaves out, and why. */
+  unavailable: { kind: AiModelKind; reason: string }[];
+  /** What is not downloaded yet. */
+  downloadBytes: number;
+  /** Everything the plan installs, downloaded or not. */
+  totalBytes: number;
+  /** The planned models' memory, together. */
+  memoryBytes: number;
+  memoryBudgetBytes: number;
+  diskFreeBytes?: number;
+  /** The models fit the memory budget and the download fits the disk. */
+  fits: boolean;
+  /** Why it does not fit, and what was stepped down or runs on the CPU. */
+  reasons: string[];
+  /**
+   * The backend the node's settings hold the plan to (`cpu`, `metal`, `vulkan`, `cuda`, `rocm`), or
+   * absent when it plans for the best one detection found.
+   */
+  device?: string;
+}
+
+/** Where an install is, as the backend reports it while one runs. */
+export interface LocalAiProgress {
+  phase: 'plan' | 'download' | 'start' | 'register' | 'done' | 'failed';
+  /** The program or model being downloaded. Empty outside a download. */
+  item: string;
+  itemDoneBytes: number;
+  itemTotalBytes: number;
+  doneBytes: number;
+  totalBytes: number;
+  /** Why it failed, or what it is doing. Empty otherwise. */
+  detail: string;
+}
+
+/** One server program the backend runs. */
+export interface LocalAiRuntimeStatus {
+  id: string;
+  version: string;
+  build: string;
+  kinds: AiModelKind[];
+  /** `null`: not running — not started since the backend started, or stopped. */
+  phase: 'starting' | 'running' | 'restarting' | 'stopped' | 'failed' | null;
+  port?: number;
+  /** How often the backend has restarted it since it last started. */
+  restarts: number;
+  /** Why it failed or restarted. Empty otherwise. */
+  detail: string;
+  /** The model server it is registered as, once it is. */
+  endpointId?: string;
+  /**
+   * After a start on a GPU build: whether the model is in GPU memory. `null`: not checked (a CPU
+   * build, or a GPU whose memory the backend cannot see).
+   */
+  onGpu: boolean | null;
+  gpuBytes?: number;
+}
+
+/** What local AI has set up on this machine, and how it runs. */
+export interface LocalAiStatus {
+  /** An install finished. */
+  installed: boolean;
+  installing: boolean;
+  /** The servers start with the backend. */
+  autostart: boolean;
+  runtimes: LocalAiRuntimeStatus[];
+  /** The models installed, with the backend's model each is registered as, once it is. */
+  models: { kind: AiModelKind; model: string; modelId?: string }[];
+}
+
+/**
+ * Local AI — the backend installs model servers and models fitted to the machine it runs on, runs
+ * them, and registers them as managed servers, models and defaults. Nothing leaves the machine.
+ *
+ * Every member is optional, read separately from changed: a connection may be shown what an install
+ * would do without being allowed to start one.
+ */
+export interface LocalAiPort {
+  hardware?(): Promise<LocalAiHardware>;
+  plan?(): Promise<LocalAiPlan>;
+  status?(): Promise<LocalAiStatus>;
+  /**
+   * Download, check, start and register. Resolves when it is done, which for gigabytes is minutes;
+   * `onProgress` hears where it is meanwhile. `kinds` limits it to some of the plan; absent, all of it.
+   */
+  install?(options?: { kinds?: AiModelKind[] }): Promise<LocalAiStatus>;
+  start?(): Promise<LocalAiStatus>;
+  stop?(): Promise<LocalAiStatus>;
+  /** Unregister and stop the servers; `deleteFiles` deletes what was downloaded as well. */
+  remove?(deleteFiles: boolean): Promise<void>;
+  /** Hear an install's progress — one started here or anywhere else. Returns the unsubscribe. */
+  onProgress?(listener: (progress: LocalAiProgress) => void): () => void;
 }
