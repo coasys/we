@@ -5653,6 +5653,103 @@ mod tests {
         events
     }
 
+    /// `at_1` (the log of `rotated_log`) rotated once more, to master #2.
+    fn rotated_again(at_1: &[Event]) -> Vec<Event> {
+        let mut events = at_1.to_vec();
+        let seed = words::seed(&words::from_entropy(&[41u8; 16]));
+        let chain = ad4m_identity_core::fold(&events).unwrap();
+        let m2 = words::master_key(&seed, 2).unwrap();
+        let salt = bs58::encode(words::salt(&seed, 2)).into_string();
+        let (next, _) = words::next_commitment(&seed, 3).unwrap();
+        events
+            .push(ad4m_identity_core::build::rotate(&chain, &m2, &salt, Some(next), &[]).unwrap());
+        assert_eq!(
+            ad4m_identity_core::fold(&events)
+                .unwrap()
+                .state()
+                .masters
+                .len(),
+            3
+        );
+        events
+    }
+
+    /// Lal's review case (we#431). This computer keeps master #0; another app here, rebuilding
+    /// from the words, staged #2 and its publish is on its way; the log is at #1. A refresh
+    /// leaves #2 (ahead of the log), forgets #0 (behind it) and asks for the current key — and
+    /// the forget must not take the stage with it. The publish of #2 then lands, the rotating
+    /// flow is cut off before its promote, and the next refresh promotes #2.
+    async fn a_stage_ahead_of_the_log_outlives_forgetting_the_kept_key(
+        vault: &DesktopVault,
+        passphrase: Option<&str>,
+    ) {
+        let at_1 = rotated_log();
+        let at_2 = rotated_again(&at_1);
+        let scid = at_1[0].scid.clone();
+        let did = did_of(&scid);
+        let executor = executor_of(&at_1);
+        executor
+            .rpc()
+            .answer("identity.postRequest", json!({ "id": "r9" }));
+        let seed = words::seed(&words::from_entropy(&[41u8; 16]));
+        let key = |index| Secret::new(words::master_key(&seed, index).unwrap().to_bytes());
+        let flow = vault.unlocking(passphrase.map(|p| Secret::new(p.to_string())));
+        flow.store_master(&scid, 0, key(0)).unwrap();
+        flow.stage_master(
+            &scid,
+            2,
+            key(2),
+            &ad4m_identity_client::StageToken([0xd; 16]),
+        )
+        .unwrap();
+
+        let refreshed = refresh_master(&executor, &vault.unlocking(None), &did, &RANDOM)
+            .await
+            .unwrap();
+        assert!(matches!(refreshed, Refreshed::Asked(_)), "{refreshed:?}");
+        assert_eq!(executor.rpc().called("identity.postRequest").len(), 1);
+        assert_eq!(vault.master_index(&scid).unwrap(), None);
+        assert_eq!(vault.staged_index(&scid).unwrap(), Some(2));
+
+        // The publish of #2 lands; the flow that staged it never promotes.
+        serve_log(&executor, &at_2);
+        let refreshed = refresh_master(&executor, &vault.unlocking(None), &did, &RANDOM)
+            .await
+            .unwrap();
+        assert!(
+            matches!(refreshed, Refreshed::Promoted { index: 2, .. }),
+            "{refreshed:?}"
+        );
+        assert_eq!(vault.staged_index(&scid).unwrap(), None);
+        assert_eq!(vault.master_index(&scid).unwrap(), Some(2));
+        let unlocked = flow
+            .unlock(&scid, ad4m_identity_client::MasterUse::Link, 0)
+            .unwrap();
+        assert_eq!(
+            Signer::key(unlocked.signer(0).unwrap()),
+            Signer::key(&KeySigner::new(key(2).expose(), 2))
+        );
+    }
+
+    #[tokio::test]
+    async fn a_refresh_keeps_a_stage_ahead_of_the_log_in_a_sealed_file() {
+        let dir = tempfile::tempdir().unwrap();
+        a_stage_ahead_of_the_log_outlives_forgetting_the_kept_key(
+            &open_vault(dir.path()),
+            Some(PASSPHRASE),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn a_refresh_keeps_a_stage_ahead_of_the_log_in_the_keychain() {
+        a_stage_ahead_of_the_log_outlives_forgetting_the_kept_key(
+            &memory_vault(crate::store::StoreKind::Keychain),
+            None,
+        )
+        .await;
+    }
+
     #[tokio::test]
     async fn a_master_key_a_rotation_replaced_is_forgotten_and_the_current_one_asked_for() {
         let events = rotated_log();

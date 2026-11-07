@@ -293,13 +293,12 @@ impl Vault for Unlocking<'_> {
         self.vault.store.delete(&staged_name(scid))
     }
 
-    /// Forgets the kept key and any staged one: removing the master key from this computer
-    /// leaves no copy in either slot. (The client discards or promotes a staged key before it
-    /// forgets a replaced one, so nothing it still needs is staged here.)
+    /// Forgets the kept key only. A staged key may belong to a rotation in flight in another app
+    /// on this computer: its owner promotes or discards it, and a refresh discards it once it is
+    /// behind the log.
     fn forget_master(&self, scid: &str) -> Result<(), VaultError> {
         log::info!("custody: forget a master key");
-        self.vault.store.delete(&item_name(scid))?;
-        self.vault.store.delete(&staged_name(scid))
+        self.vault.store.delete(&item_name(scid))
     }
 
     fn unlock(&self, scid: &str, why: MasterUse, now: u64) -> Result<Unlocked, VaultError> {
@@ -1056,7 +1055,7 @@ mod tests {
     /// Stage, promote and discard on one store: a staged key is not what unlock gives and leaves
     /// the kept one as it is; promote moves it over the kept one with no passphrase; discard
     /// forgets only the index named, and with an owner only that owner's key; forgetting the
-    /// master key forgets a staged one too.
+    /// master key leaves a staged one.
     fn stage_promote_discard(vault: &DesktopVault, passphrase: Option<&str>) {
         let (ours, theirs) = (StageToken([1u8; 16]), StageToken([2u8; 16]));
         let flow = vault.unlocking(passphrase.map(|p| Secret::new(p.to_string())));
@@ -1117,12 +1116,74 @@ mod tests {
         locked.discard_staged("QmScid", 3, None).unwrap();
         assert_eq!(locked.staged_index("QmScid").unwrap(), None);
 
-        // Removing the master key from this computer leaves no staged copy either.
+        // Forgetting the kept key leaves a staged one: its owner, or a refresh, decides on it.
         flow.stage_master("QmScid", 3, Secret::new([7u8; 32]), &ours)
             .unwrap();
         locked.forget_master("QmScid").unwrap();
-        assert_eq!(locked.staged_index("QmScid").unwrap(), None);
         assert_eq!(locked.master_index("QmScid").unwrap(), None);
+        assert_eq!(locked.staged_index("QmScid").unwrap(), Some(3));
+        locked.discard_staged("QmScid", 3, Some(&ours)).unwrap();
+        assert_eq!(locked.staged_index("QmScid").unwrap(), None);
+    }
+
+    /// Lal's review case (we#431): a refresh leaves a key staged ahead of the log, then forgets
+    /// the kept key behind it (kept #0, log at #1, another app's rebuild staged #2). The forget
+    /// takes the kept slot only: #2 stays staged, and its promote still works once its publish
+    /// lands, giving the staged key.
+    fn forgetting_the_kept_key_leaves_a_stage_in_flight(
+        vault: &DesktopVault,
+        passphrase: Option<&str>,
+    ) {
+        let flow = vault.unlocking(passphrase.map(|p| Secret::new(p.to_string())));
+        let locked = vault.unlocking(None);
+        flow.store_master("QmScid", 0, Secret::new([4u8; 32]))
+            .unwrap();
+        flow.stage_master("QmScid", 2, Secret::new([6u8; 32]), &StageToken([0xc; 16]))
+            .unwrap();
+
+        locked.forget_master("QmScid").unwrap();
+        assert_eq!(vault.master_index("QmScid").unwrap(), None);
+        assert!(!vault.holds("QmScid").unwrap());
+        assert_eq!(vault.staged_index("QmScid").unwrap(), Some(2));
+
+        locked.promote_master("QmScid", 2).unwrap();
+        assert_eq!(vault.staged_index("QmScid").unwrap(), None);
+        assert_eq!(vault.master_index("QmScid").unwrap(), Some(2));
+        let promoted = flow.unlock("QmScid", MasterUse::Link, 0).unwrap();
+        assert_eq!(
+            ad4m_identity_core::build::Signer::key(promoted.signer(0).unwrap()),
+            ed25519_signing_key_multikey([6u8; 32])
+        );
+    }
+
+    #[test]
+    fn forgetting_the_kept_key_leaves_a_stage_in_flight_in_every_store() {
+        let dir = tempfile::tempdir().unwrap();
+        let sealed_file = DesktopVault::with_kdf(
+            Box::new(crate::store::FileStore::new(dir.path())),
+            PendingIncepts::memory(),
+            CHEAP,
+        );
+        forgetting_the_kept_key_leaves_a_stage_in_flight(
+            &sealed_file,
+            Some("a passphrase of some length"),
+        );
+
+        let keychain = DesktopVault::new(
+            Box::new(MemoryStore::as_kind(StoreKind::Keychain)),
+            PendingIncepts::memory(),
+        );
+        forgetting_the_kept_key_leaves_a_stage_in_flight(&keychain, None);
+
+        let sealed_platform = DesktopVault::with_kdf(
+            Box::new(MemoryStore::new()),
+            PendingIncepts::memory(),
+            CHEAP,
+        );
+        forgetting_the_kept_key_leaves_a_stage_in_flight(
+            &sealed_platform,
+            Some("a passphrase of some length"),
+        );
     }
 
     #[test]
