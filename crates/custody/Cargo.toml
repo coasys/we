@@ -35,7 +35,8 @@ ad4m-ldk = { git = "https://github.com/coasys/ad4m", rev = "6f13f508c570ac2601c6
 # `io-std` and `io-util`: the sidecar's lines on stdin and stdout.
 tokio = { version = "1", features = ["rt", "sync", "macros", "time", "io-std", "io-util"] }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# `raw_value`: the sidecar reads a request's params straight from its line (`sidecar::Request`).
+serde_json = { version = "1", features = ["raw_value"] }
 thiserror = "2"
 zeroize = { version = "1.8", features = ["derive"] }
 argon2 = "0.5"

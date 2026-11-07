@@ -16,6 +16,7 @@ import './identity.css';
 import {
   heading,
   isLast,
+  refusedField,
   remaining,
   type Screen,
   spreadWords,
@@ -179,7 +180,10 @@ function wordsEntry(position: number | null): { fields: HTMLInputElement[]; grid
       event.preventDefault();
       for (const [at, word] of spread) fields[at].value = word;
     };
-    input.toggleAttribute('aria-invalid', position === i + 1);
+    // `aria-invalid` is a token, not a boolean attribute: present and empty would mean "true" to some
+    // readers and nothing to others, so the refused field says "true" and the others carry none.
+    if (refusedField(position, i)) input.setAttribute('aria-invalid', 'true');
+    else input.removeAttribute('aria-invalid');
   });
   wordFields = fields;
   const grid = el(
@@ -430,6 +434,26 @@ function body(screen: Screen): Child[] {
           button('Keep it', cancel),
         ),
       ];
+    case 'master-not-kept':
+      // The rotation stands: closing leaves it, and Try again needs the words once more.
+      return [
+        el(
+          'div',
+          { className: 'row' },
+          button('Type my 12 words again', () => step({ kind: 'try-again' }), 'primary'),
+          button('Close', cancel),
+        ),
+      ];
+    case 'restore-not-linked':
+      return [
+        el('div', { className: 'link', textContent: screen.did }),
+        el(
+          'div',
+          { className: 'row' },
+          button('Try again', () => step({ kind: 'try-again' }), 'primary'),
+          button('Close', cancel),
+        ),
+      ];
     case 'restored':
       return [el('div', { className: 'link', textContent: screen.did })];
     case 'master-replaced':
@@ -476,7 +500,7 @@ function draw(screen: Screen) {
   root.replaceChildren(...parts);
   // A refused word's field first, else the first field.
   (
-    root.querySelector<HTMLInputElement>('input[aria-invalid]') ??
+    root.querySelector<HTMLInputElement>('input[aria-invalid="true"]') ??
     root.querySelector<HTMLInputElement>('input:not([type=checkbox])')
   )?.focus();
 }

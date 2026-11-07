@@ -410,8 +410,8 @@ async fn make_identity(custody: &CustodyHandle) -> String {
         panic!("no confirm-words")
     };
     let answers = [
-        words[positions[0] - 1].clone(),
-        words[positions[1] - 1].clone(),
+        words[positions[0] - 1].clone().into(),
+        words[positions[1] - 1].clone().into(),
     ];
     let set = custody.step(StepInput::Words { answers }).await.unwrap();
     assert!(
@@ -475,8 +475,8 @@ async fn make_link_and_revoke_through_the_custody_service() {
         matches!(&again, Screen::ConfirmWords { positions: p, error: Some(_) } if *p == positions)
     );
     let answers = [
-        words[positions[0] - 1].clone(),
-        words[positions[1] - 1].clone(),
+        words[positions[0] - 1].clone().into(),
+        words[positions[1] - 1].clone().into(),
     ];
     let set = shown.record(&custody.step(StepInput::Words { answers }).await.unwrap());
     assert!(

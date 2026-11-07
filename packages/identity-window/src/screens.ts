@@ -64,6 +64,10 @@ export type Screen =
     }
   | { screen: 'restore-devices'; did: string; devices: RestoreDevice[]; note: string | null }
   | { screen: 'master-replaced'; index: number; revoked: string[]; note: string | null }
+  /** The rotation is published but this computer could not keep the new key: not a last screen. */
+  | { screen: 'master-not-kept'; index: number; revoked: string[]; reason: string; note: string | null }
+  /** The restore's rotation is published but this computer is not linked yet: not a last screen. */
+  | { screen: 'restore-not-linked'; did: string; revoked: string[]; reason: string }
   | { screen: 'restored'; did: string; name: string; keyId: string; revoked: string[]; note: string | null }
   | { screen: 'remove-master'; error: string | null }
   | { screen: 'master-removed' }
@@ -124,7 +128,8 @@ export type StepInput =
   | { kind: 'twelve-words'; words: string }
   | { kind: 'lock-out'; keyIds: string[]; name?: string }
   | { kind: 'remove' }
-  | { kind: 'discard' };
+  | { kind: 'discard' }
+  | { kind: 'try-again' };
 
 /** "4:52" — how long an offer still works. */
 export function remaining(expires: number, nowSeconds: number): string {
@@ -135,6 +140,11 @@ export function remaining(expires: number, nowSeconds: number): string {
 /** "01" … "12", as the words grid numbers them. */
 export function wordNumber(i: number): string {
   return String(i + 1).padStart(2, '0');
+}
+
+/** Whether word field `i` (from 0) is the one refused at `position` (from 1, or none). */
+export function refusedField(position: number | null, i: number): boolean {
+  return position === i + 1;
 }
 
 /**
@@ -284,6 +294,25 @@ export function heading(screen: Screen): { title: string; lead: string } {
           `This computer keeps master key #${screen.index}. Copies of the one before it no longer add or remove devices, on any device.`,
           ...(screen.revoked.length ? [`Revoked in the same step: ${screen.revoked.join(', ')}.`] : []),
           ...(screen.note ? [screen.note] : []),
+        ].join(' '),
+      };
+    case 'master-not-kept':
+      return {
+        title: 'Your master key is replaced, but this computer could not keep the new key',
+        lead: [
+          `Master key #${screen.index} is now your master key, and copies of the one before it no longer add or remove devices. ${screen.reason}`,
+          ...(screen.revoked.length ? [`Revoked in the same step: ${screen.revoked.join(', ')}.`] : []),
+          ...(screen.note ? [screen.note] : []),
+          'Type your 12 words again to replace it once more with a key this computer keeps.',
+        ].join(' '),
+      };
+    case 'restore-not-linked':
+      return {
+        title: 'Your identity is restored, but this computer is not linked yet',
+        lead: [
+          `Your master key is replaced. ${screen.reason}`,
+          ...(screen.revoked.length ? [`Locked out: ${screen.revoked.join(', ')}.`] : []),
+          'Try again to add this computer as one of your devices; your 12 words are not needed for that.',
         ].join(' '),
       };
     case 'restored':

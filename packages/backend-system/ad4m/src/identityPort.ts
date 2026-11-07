@@ -58,8 +58,11 @@ export interface Ad4mCustodyHost {
 /** The custody service's public state, as it answers `publicState`. */
 export interface Ad4mCustodyState {
   did: string | null;
-  /** The index of the master key held here, if one is. */
-  holdsMaster: { index: number } | null;
+  /**
+   * A master key is held here, with the index its item carries (`null` when the item does not say:
+   * one kept before the index was kept with it).
+   */
+  holdsMaster: { index: number | null } | null;
   unlock: 'os' | 'passphrase' | null;
   /**
    * Why no change can run here: the executor reports no identity store (its network names none),

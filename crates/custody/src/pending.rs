@@ -17,11 +17,9 @@
 //! again at the next start and unlock (`flows::master::retry_pushes`). Each entry is an identity and
 //! a device key id: no secret — every try seals the master key current then.
 //!
-//! And the **index of each master key kept here** (`<dir>/master-index.json`): which master — #0,
-//! or #n after `n` rotations — the vault's item for an identity holds. The index sits inside the
-//! sealed item too, but reading it there needs the passphrase or the keychain's prompt, and the
-//! identity client asks for it with no unlock (`Vault::master_index`, to see whether a rotation
-//! replaced the key kept here). An index is public: the key log lists every master by it.
+//! The index of the master key kept here is not one of these lists: a list beside the item can
+//! fall behind it (a write that fails after the item's), and a reader that trusts it would forget
+//! the current key for a replaced one. It lives with the item (`crate::vault`).
 //!
 //! The folder is shared by every desktop app and build on this computer, and two can run at once (a
 //! WE build and a white-labelled one each hold their own single-instance lock). So each read and
@@ -43,22 +41,11 @@ pub const FILE_NAME: &str = "pending-incepts.json";
 /// The retry list's file inside the custody folder.
 pub const PUSHES_FILE_NAME: &str = "pending-pushes.json";
 
-/// The master-index list's file inside the custody folder.
-pub const MASTERS_FILE_NAME: &str = "master-index.json";
-
-/// Which master an identity's kept item holds: public, as the key log lists it.
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct MasterIndex {
-    pub scid: String,
-    pub index: u32,
-}
-
 /// The lists a memory store keeps (tests).
 #[derive(Default)]
 pub struct Lists {
     incepts: Vec<Event>,
     pushes: Vec<PendingPush>,
-    masters: Vec<MasterIndex>,
 }
 
 /// The lock every process holds while it reads or changes the file.
@@ -156,39 +143,6 @@ impl PendingIncepts {
             PUSHES_FILE_NAME,
             |m| &mut m.pushes,
             |pushes: &mut Vec<PendingPush>| pushes.retain(|p| p != push),
-        )
-    }
-
-    /// The index of the master kept for `scid`, as last written; `None` when none is listed.
-    pub fn master_index(&self, scid: &str) -> Result<Option<u32>, VaultError> {
-        Ok(self
-            .read_one(MASTERS_FILE_NAME, |m| m.masters.clone())?
-            .into_iter()
-            .find(|m| m.scid == scid)
-            .map(|m| m.index))
-    }
-
-    /// Lists master `index` as the one kept for `scid`, in place of any other.
-    pub fn set_master_index(&self, scid: &str, index: u32) -> Result<(), VaultError> {
-        self.change(
-            MASTERS_FILE_NAME,
-            |m| &mut m.masters,
-            |masters: &mut Vec<MasterIndex>| {
-                masters.retain(|m| m.scid != scid);
-                masters.push(MasterIndex {
-                    scid: scid.to_string(),
-                    index,
-                });
-            },
-        )
-    }
-
-    /// Forgets the index of `scid`; nothing to do when none is listed.
-    pub fn forget_master_index(&self, scid: &str) -> Result<(), VaultError> {
-        self.change(
-            MASTERS_FILE_NAME,
-            |m| &mut m.masters,
-            |masters: &mut Vec<MasterIndex>| masters.retain(|m| m.scid != scid),
         )
     }
 
@@ -377,30 +331,5 @@ mod tests {
         memory.keep_push(&push("d2")).unwrap();
         assert_eq!(memory.pushes().unwrap(), vec![push("d2")]);
         assert!(memory.list().unwrap().is_empty());
-    }
-
-    #[test]
-    fn the_master_index_is_kept_per_identity_and_forgotten() {
-        let dir = tempfile::tempdir().unwrap();
-        let pending = PendingIncepts::file(dir.path());
-        assert_eq!(pending.master_index("QmA").unwrap(), None);
-        pending.set_master_index("QmA", 0).unwrap();
-        pending.set_master_index("QmB", 3).unwrap();
-        // A rotation lists the next master in place of the one before.
-        pending.set_master_index("QmA", 1).unwrap();
-        drop(pending);
-        let reopened = PendingIncepts::file(dir.path());
-        assert_eq!(reopened.master_index("QmA").unwrap(), Some(1));
-        assert_eq!(reopened.master_index("QmB").unwrap(), Some(3));
-        reopened.forget_master_index("QmA").unwrap();
-        reopened.forget_master_index("QmA").unwrap();
-        assert_eq!(reopened.master_index("QmA").unwrap(), None);
-        reopened.forget_master_index("QmB").unwrap();
-        assert!(!dir.path().join(MASTERS_FILE_NAME).exists());
-
-        let memory = PendingIncepts::memory();
-        memory.set_master_index("QmA", 2).unwrap();
-        assert_eq!(memory.master_index("QmA").unwrap(), Some(2));
-        assert!(memory.pushes().unwrap().is_empty());
     }
 }

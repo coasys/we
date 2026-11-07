@@ -20,10 +20,21 @@ use ad4m_identity_client::VaultError;
 
 /// The version byte of a custody item.
 const ITEM_V: u8 = 1;
-/// The sealed blob's prefix: the format, so a later format can tell its own from this one.
-const SEALED_MAGIC: &[u8; 16] = b"coasys-custody/1";
+/// The sealed blob's prefix: the format, so a later format can tell its own from this one. `/2`
+/// carries the master index in the header, covered by the AEAD tag ([`sealed_index`]).
+const SEALED_MAGIC: &[u8; 16] = b"coasys-custody/2";
+/// The first format: no index in the header. Still opened; its index is read only from inside.
+const SEALED_MAGIC_V1: &[u8; 16] = b"coasys-custody/1";
 const SALT_LEN: usize = 16;
 const NONCE_LEN: usize = 24;
+/// Where the Argon2id cost (m, t, p) sits in either format.
+const KDF_AT: usize = 16;
+const SALT_AT: usize = KDF_AT + 12;
+const NONCE_AT: usize = SALT_AT + SALT_LEN;
+/// Where `/2` keeps the master index (u32 LE), after the nonce.
+const INDEX_AT: usize = NONCE_AT + NONCE_LEN;
+const HEADER_V1: usize = INDEX_AT;
+const HEADER_V2: usize = INDEX_AT + 4;
 
 /// The passphrase's shortest length, in Unicode scalars after NFKC.
 pub const PASSPHRASE_MIN_CHARS: usize = 15;
@@ -147,8 +158,19 @@ fn derive(passphrase: &str, salt: &[u8], kdf: Kdf) -> Result<Zeroizing<[u8; 32]>
     Ok(key)
 }
 
-/// `magic | m_kib | t | p | salt | nonce | ciphertext`, the parameters in the blob so a later
-/// change of cost still opens what was sealed before it. The scid is the AEAD's associated data.
+/// The associated data of a `/2` blob: its whole header (magic, cost, salt, nonce, index), then
+/// the scid. So the index read from the header with no passphrase ([`sealed_index`]) is the one
+/// the tag covers: a changed index does not open.
+fn aad_v2(header: &[u8], scid: &str) -> Vec<u8> {
+    let mut aad = Vec::with_capacity(header.len() + scid.len());
+    aad.extend_from_slice(header);
+    aad.extend_from_slice(scid.as_bytes());
+    aad
+}
+
+/// `magic | m_kib | t | p | salt | nonce | index | ciphertext`, the parameters in the blob so a
+/// later change of cost still opens what was sealed before it, and the master index in clear
+/// so it is read with no passphrase. The header and the scid are the AEAD's associated data.
 pub fn seal(
     item: &CustodyItem,
     passphrase: &str,
@@ -161,39 +183,56 @@ pub fn seal(
     random(&mut nonce);
     let key = derive(passphrase, &salt, kdf)?;
     let cipher = XChaCha20Poly1305::new_from_slice(&key[..]).map_err(|_| VaultError::Tampered)?;
-    let plain = item.to_bytes();
-    let sealed = cipher
-        .encrypt(
-            XNonce::from_slice(&nonce),
-            Payload {
-                msg: &plain,
-                aad: item.scid.as_bytes(),
-            },
-        )
-        .map_err(|_| VaultError::Unavailable("sealing failed".into()))?;
-    let mut out = Vec::with_capacity(16 + 12 + SALT_LEN + NONCE_LEN + sealed.len());
+    let mut out = Vec::with_capacity(HEADER_V2 + 1 + 4 + 32 + item.scid.len() + 16);
     out.extend_from_slice(SEALED_MAGIC);
     for n in [kdf.m_kib, kdf.t, kdf.p] {
         out.extend_from_slice(&n.to_le_bytes());
     }
     out.extend_from_slice(&salt);
     out.extend_from_slice(&nonce);
+    out.extend_from_slice(&item.index.to_le_bytes());
+    let plain = item.to_bytes();
+    let sealed = cipher
+        .encrypt(
+            XNonce::from_slice(&nonce),
+            Payload {
+                msg: &plain,
+                aad: &aad_v2(&out, &item.scid),
+            },
+        )
+        .map_err(|_| VaultError::Unavailable("sealing failed".into()))?;
     out.extend_from_slice(&sealed);
     Ok(out)
+}
+
+/// The master index a sealed blob names in its header, read with no passphrase. `None` for a
+/// blob of the first format (no index outside the ciphertext) or one that is not a sealed item.
+///
+/// The header is covered by the tag, so the index is the one [`open`] gives, or the blob does
+/// not open at all: it names the key an unlock would give, never another.
+pub fn sealed_index(blob: &[u8]) -> Option<u32> {
+    if blob.len() <= HEADER_V2 || &blob[..16] != SEALED_MAGIC {
+        return None;
+    }
+    Some(u32::from_le_bytes(
+        blob[INDEX_AT..HEADER_V2].try_into().ok()?,
+    ))
 }
 
 /// Opens a sealed item. A wrong passphrase and a changed blob are the same answer, `Cancelled`
 /// for the person (they typed something else) — the flow returns to the passphrase screen.
 pub fn open(blob: &[u8], scid: &str, passphrase: &str) -> Result<CustodyItem, VaultError> {
-    let header = 16 + 12 + SALT_LEN + NONCE_LEN;
-    if blob.len() <= header || &blob[..16] != SEALED_MAGIC {
+    let v2 = blob.len() > HEADER_V2 && &blob[..16] == SEALED_MAGIC;
+    let v1 = blob.len() > HEADER_V1 && &blob[..16] == SEALED_MAGIC_V1;
+    if !v1 && !v2 {
         return Err(VaultError::Tampered);
     }
+    let header = if v2 { HEADER_V2 } else { HEADER_V1 };
     let num = |at: usize| u32::from_le_bytes(blob[at..at + 4].try_into().unwrap_or([0; 4]));
     let kdf = Kdf {
-        m_kib: num(16),
-        t: num(20),
-        p: num(24),
+        m_kib: num(KDF_AT),
+        t: num(KDF_AT + 4),
+        p: num(KDF_AT + 8),
     };
     // Refuse a blob asking for a cost below the floor a hostile file could pick to make guessing cheap.
     if kdf.m_kib < 8 * 1024 && !cfg!(test) && !cfg!(feature = "cheap-kdf") {
@@ -204,16 +243,21 @@ pub fn open(blob: &[u8], scid: &str, passphrase: &str) -> Result<CustodyItem, Va
     if !kdf.within_ceiling() {
         return Err(VaultError::Tampered);
     }
-    let salt = &blob[28..28 + SALT_LEN];
-    let nonce = &blob[28 + SALT_LEN..header];
+    let salt = &blob[SALT_AT..NONCE_AT];
+    let nonce = &blob[NONCE_AT..INDEX_AT];
     let key = derive(passphrase, salt, kdf)?;
     let cipher = XChaCha20Poly1305::new_from_slice(&key[..]).map_err(|_| VaultError::Tampered)?;
+    let aad = if v2 {
+        aad_v2(&blob[..header], scid)
+    } else {
+        scid.as_bytes().to_vec()
+    };
     let mut plain = cipher
         .decrypt(
             XNonce::from_slice(nonce),
             Payload {
                 msg: &blob[header..],
-                aad: scid.as_bytes(),
+                aad: &aad,
             },
         )
         .map_err(|_| VaultError::Cancelled)?;
@@ -221,6 +265,11 @@ pub fn open(blob: &[u8], scid: &str, passphrase: &str) -> Result<CustodyItem, Va
     plain.zeroize();
     let item = item?;
     if item.scid != scid {
+        return Err(VaultError::Tampered);
+    }
+    // The header's index is covered by the tag; one sealed beside another index inside is not
+    // what this crate writes.
+    if v2 && sealed_index(blob) != Some(item.index) {
         return Err(VaultError::Tampered);
     }
     Ok(item)
@@ -259,6 +308,51 @@ mod tests {
         );
         // The blob is bound to its identity.
         assert!(open(&blob, "QmOther", "correct horse battery").is_err());
+    }
+
+    /// The index is read from the header with no passphrase, and the tag covers it: a header
+    /// that names another index does not open.
+    #[test]
+    fn the_index_is_read_without_the_passphrase_and_cannot_be_changed() {
+        let blob = seal(&item(), "correct horse battery", CHEAP, &counter()).unwrap();
+        assert_eq!(sealed_index(&blob), Some(2));
+        let mut moved = blob.clone();
+        moved[INDEX_AT..HEADER_V2].copy_from_slice(&5u32.to_le_bytes());
+        assert_eq!(sealed_index(&moved), Some(5));
+        assert!(open(&moved, "QmScid", "correct horse battery").is_err());
+        assert_eq!(sealed_index(b"nonsense"), None);
+    }
+
+    /// A blob of the first format (sealed before the index was in the header) still opens, and
+    /// its index cannot be vouched for without the passphrase.
+    #[test]
+    fn a_first_format_blob_opens_and_names_no_index() {
+        let item = item();
+        let mut salt = [0u8; SALT_LEN];
+        let mut nonce = [0u8; NONCE_LEN];
+        counter()(&mut salt);
+        counter()(&mut nonce);
+        let key = derive("correct horse battery", &salt, CHEAP).unwrap();
+        let cipher = XChaCha20Poly1305::new_from_slice(&key[..]).unwrap();
+        let sealed = cipher
+            .encrypt(
+                XNonce::from_slice(&nonce),
+                Payload {
+                    msg: &item.to_bytes(),
+                    aad: b"QmScid",
+                },
+            )
+            .unwrap();
+        let mut blob = SEALED_MAGIC_V1.to_vec();
+        for n in [CHEAP.m_kib, CHEAP.t, CHEAP.p] {
+            blob.extend_from_slice(&n.to_le_bytes());
+        }
+        blob.extend_from_slice(&salt);
+        blob.extend_from_slice(&nonce);
+        blob.extend_from_slice(&sealed);
+        assert_eq!(sealed_index(&blob), None);
+        let opened = open(&blob, "QmScid", "correct horse battery").unwrap();
+        assert_eq!((opened.index, *opened.master), (2, [7u8; 32]));
     }
 
     #[test]

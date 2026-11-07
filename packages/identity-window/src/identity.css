@@ -70,7 +70,9 @@ p {
 
 .words {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+
+  /* `minmax(0, …)`: a column is never widened by its field's intrinsic width, so three always fit. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 
   /* Not selectable, so a stray select-all and copy cannot put the words on a synced clipboard. */
@@ -138,6 +140,19 @@ input[type='password'] {
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 10px 12px;
+}
+
+/* A word field shrinks with its column rather than keeping the browser's default input width. */
+.word input {
+  min-width: 0;
+  width: 100%;
+}
+
+/* The field the custody service refused: the error colour, in a border that shows without focus. */
+input[aria-invalid='true'] {
+  border-color: var(--danger);
+  outline: 2px solid var(--danger);
+  outline-offset: 1px;
 }
 
 .row {

@@ -8,6 +8,12 @@
 //!
 //! Every read and write is logged by kind only (`custody: read for Link`), never with contents.
 //!
+//! Each identity has two slots in the store: its kept master key (`coasys.identity/<scid>`) and a
+//! rotation's staged one (`coasys.identity.staged/<scid>`, [`Vault::stage_master`]), the staged one
+//! always in the store the kept one is in, sealed as it is. Each item carries its master index
+//! where it can be read with no unlock and cannot be changed apart from the key: a sealed item in
+//! its header, under the AEAD tag; a keychain item as an attribute written in the same `SecItemAdd`.
+//!
 //! Beside the master keys the vault keeps the incept of an identity `create` made here until its
 //! publish is confirmed, and the retry list of master-key pushes to other devices
 //! ([`PendingIncepts`]): public data, so in files rather than the secret store.
@@ -19,7 +25,7 @@ use zeroize::Zeroizing;
 
 use crate::pending::PendingIncepts;
 use crate::seal::{self, CustodyItem, Kdf};
-use crate::store::{item_name, SecretStore};
+use crate::store::{item_name, staged_name, SecretStore};
 
 pub struct DesktopVault {
     store: Box<dyn SecretStore>,
@@ -100,14 +106,35 @@ impl DesktopVault {
     }
 
     /// The index of the master key held for `scid` (#0, or #n after `n` rotations), without an
-    /// unlock: from the public index list beside the retry list, never from the item. `None` when
-    /// no item is held. An item kept before the list existed is master #0 — no build before
-    /// rotation kept any other.
+    /// unlock. From the item itself, never from a list beside it: a sealed item's header, which
+    /// its tag covers ([`seal::sealed_index`]), or the attribute the keychain wrote in the same
+    /// operation as the key ([`SecretStore::index_of`]). So it names the key an unlock gives,
+    /// or that unlock fails. `None` when no item is held, or when the item does not say (one
+    /// sealed before the index was in its header, a keychain item without the attribute).
     pub fn master_index(&self, scid: &str) -> Result<Option<u32>, VaultError> {
-        if !self.holds(scid)? {
+        self.index_at(&item_name(scid))
+    }
+
+    /// The index of the key a rotation staged for `scid`, read as [`master_index`](Self::master_index);
+    /// `None` when none is staged.
+    pub fn staged_index(&self, scid: &str) -> Result<Option<u32>, VaultError> {
+        self.index_at(&staged_name(scid))
+    }
+
+    /// The index the item `name` carries, with no unlock.
+    fn index_at(&self, name: &str) -> Result<Option<u32>, VaultError> {
+        if !self.store.contains(name)? {
             return Ok(None);
         }
-        Ok(Some(self.pending.master_index(scid)?.unwrap_or(0)))
+        if self.store.kind_of(name)?.unlocks_itself() {
+            return self.store.index_of(name);
+        }
+        // A sealed blob: its bytes are no secret without the passphrase.
+        Ok(self
+            .store
+            .get(name)?
+            .as_deref()
+            .and_then(seal::sealed_index))
     }
 
     fn read(
@@ -128,18 +155,26 @@ impl DesktopVault {
         seal::open(&bytes, scid, passphrase)
     }
 
-    fn write(&self, item: &CustodyItem, passphrase: Option<&str>) -> Result<(), VaultError> {
+    /// Writes `item` under `name` (its kept slot or its staged one), in one store operation that
+    /// carries its index with it.
+    fn write(
+        &self,
+        name: &str,
+        item: &CustodyItem,
+        passphrase: Option<&str>,
+    ) -> Result<(), VaultError> {
         log::info!("custody: write");
-        let name = item_name(&item.scid);
         // Sealed or not as the store this item goes to (where it already is, or where a new one
         // goes) keeps it.
-        let bytes = if self.store.kind_of(&name)?.unlocks_itself() {
-            item.to_bytes().to_vec()
+        if self.store.kind_of(name)?.unlocks_itself() {
+            let bytes = item.to_bytes();
+            self.store.put_indexed(name, &bytes, item.index)
         } else {
             let passphrase = passphrase.ok_or(VaultError::Cancelled)?;
-            seal::seal(item, passphrase, self.kdf, &os_random)?
-        };
-        self.store.put(&name, &bytes)
+            // The index is in the sealed header, under the tag.
+            let bytes = seal::seal(item, passphrase, self.kdf, &os_random)?;
+            self.store.put(name, &bytes)
+        }
     }
 }
 
@@ -167,18 +202,64 @@ impl Vault for Unlocking<'_> {
             index,
             master: Zeroizing::new(*secret.expose()),
         };
-        self.vault.write(&item, self.passphrase())?;
-        self.vault.pending.set_master_index(scid, index)
+        self.vault.write(&item_name(scid), &item, self.passphrase())
     }
 
     fn master_index(&self, scid: &str) -> Result<Option<u32>, VaultError> {
         self.vault.master_index(scid)
     }
 
+    /// The staged slot (`coasys.identity.staged/<scid>`), in the store the kept item is in and
+    /// sealed as it is, under this flow's passphrase. The store's put is durable when it answers
+    /// (a file is synced before its rename; the keychain and the Secret Service commit the item).
+    fn stage_master(
+        &self,
+        scid: &str,
+        index: u32,
+        secret: Secret<[u8; 32]>,
+    ) -> Result<(), VaultError> {
+        log::info!("custody: stage a master key");
+        let item = CustodyItem {
+            scid: scid.to_string(),
+            index,
+            master: Zeroizing::new(*secret.expose()),
+        };
+        self.vault
+            .write(&staged_name(scid), &item, self.passphrase())
+    }
+
+    fn staged_index(&self, scid: &str) -> Result<Option<u32>, VaultError> {
+        self.vault.staged_index(scid)
+    }
+
+    /// The staged item is moved over the kept one, as it is: sealed bytes stay sealed, so no
+    /// passphrase and no prompt. A crash during the move leaves the key under one name or both,
+    /// never neither; `refresh_master` finishes it.
+    fn promote_master(&self, scid: &str, index: u32) -> Result<(), VaultError> {
+        if self.vault.staged_index(scid)? != Some(index) {
+            return Err(VaultError::NotFound);
+        }
+        log::info!("custody: promote a staged master key");
+        self.vault
+            .store
+            .rename(&staged_name(scid), &item_name(scid))
+    }
+
+    fn discard_staged(&self, scid: &str, index: u32) -> Result<(), VaultError> {
+        if self.vault.staged_index(scid)? != Some(index) {
+            return Ok(());
+        }
+        log::info!("custody: discard a staged master key");
+        self.vault.store.delete(&staged_name(scid))
+    }
+
+    /// Forgets the kept key and any staged one: removing the master key from this computer
+    /// leaves no copy in either slot. (The client discards or promotes a staged key before it
+    /// forgets a replaced one, so nothing it still needs is staged here.)
     fn forget_master(&self, scid: &str) -> Result<(), VaultError> {
         log::info!("custody: forget a master key");
         self.vault.store.delete(&item_name(scid))?;
-        self.vault.pending.forget_master_index(scid)
+        self.vault.store.delete(&staged_name(scid))
     }
 
     fn unlock(&self, scid: &str, why: MasterUse, now: u64) -> Result<Unlocked, VaultError> {
@@ -509,6 +590,15 @@ mod tests {
         fn delete(&self, n: &str) -> Result<(), VaultError> {
             (**self).delete(n)
         }
+        fn put_indexed(&self, n: &str, b: &[u8], i: u32) -> Result<(), VaultError> {
+            (**self).put_indexed(n, b, i)
+        }
+        fn index_of(&self, n: &str) -> Result<Option<u32>, VaultError> {
+            (**self).index_of(n)
+        }
+        fn rename(&self, from: &str, to: &str) -> Result<(), VaultError> {
+            (**self).rename(from, to)
+        }
     }
 
     #[test]
@@ -638,8 +728,8 @@ mod tests {
         );
     }
 
-    /// The index of the key kept is read with no unlock — a sealed item, no passphrase — follows a
-    /// rotation, is #0 for an item kept before the index list, and is gone with the key.
+    /// The index of the key kept is read with no unlock — a sealed item, no passphrase — from the
+    /// item, follows a rotation, and is gone with the key. No list beside the item is written.
     #[test]
     fn the_master_index_needs_no_unlock_and_goes_with_the_key() {
         let dir = tempfile::tempdir().unwrap();
@@ -657,9 +747,13 @@ mod tests {
         flow.store_master("QmScid", 1, Secret::new([5u8; 32]))
             .unwrap();
         assert_eq!(locked.master_index("QmScid").unwrap(), Some(1));
-        // An item from before the list: master #0.
-        vault.pending.forget_master_index("QmScid").unwrap();
-        assert_eq!(locked.master_index("QmScid").unwrap(), Some(0));
+        assert_eq!(
+            std::fs::read_dir(dir.path())
+                .unwrap()
+                .map(|e| e.unwrap().file_name().into_string().unwrap())
+                .collect::<Vec<_>>(),
+            vec!["QmScid.bin".to_string()]
+        );
         locked.forget_master("QmScid").unwrap();
         locked.forget_master("QmScid").unwrap();
         assert!(!vault.holds("QmScid").unwrap());
@@ -667,6 +761,196 @@ mod tests {
         assert_eq!(
             flow.unlock("QmScid", MasterUse::Link, 0).err(),
             Some(VaultError::NotFound)
+        );
+    }
+
+    /// An item the vault cannot vouch for answers `None`, never a guess: a keychain item kept
+    /// without its index attribute (before this build), a sealed blob that is not one.
+    #[test]
+    fn an_item_that_does_not_say_its_index_answers_none() {
+        let keychain = Arc::new(MemoryStore::as_kind(StoreKind::Keychain));
+        let vault = DesktopVault::new(Box::new(keychain.clone()), PendingIncepts::memory());
+        let item = CustodyItem {
+            scid: "QmScid".into(),
+            index: 2,
+            master: Zeroizing::new([4u8; 32]),
+        };
+        keychain
+            .put(&item_name("QmScid"), &item.to_bytes())
+            .unwrap();
+        let flow = vault.unlocking(None);
+        assert!(vault.holds("QmScid").unwrap());
+        assert_eq!(flow.master_index("QmScid").unwrap(), None);
+        // The key itself still unlocks, at the index sealed inside it.
+        assert_eq!(
+            flow.unlock("QmScid", MasterUse::Link, 0)
+                .unwrap()
+                .signer(0)
+                .unwrap()
+                .index(),
+            2
+        );
+
+        let sealed = Arc::new(MemoryStore::new());
+        let vault = DesktopVault::new(Box::new(sealed.clone()), PendingIncepts::memory());
+        sealed
+            .put(&item_name("QmScid"), b"not a sealed item")
+            .unwrap();
+        assert_eq!(vault.master_index("QmScid").unwrap(), None);
+    }
+
+    /// Stage, promote and discard on one store: a staged key is not what unlock gives and leaves
+    /// the kept one as it is; promote moves it over the kept one with no passphrase; discard
+    /// forgets only the index named; forgetting the master key forgets a staged one too.
+    fn stage_promote_discard(vault: &DesktopVault, passphrase: Option<&str>) {
+        let flow = vault.unlocking(passphrase.map(|p| Secret::new(p.to_string())));
+        let locked = vault.unlocking(None);
+        flow.store_master("QmScid", 0, Secret::new([4u8; 32]))
+            .unwrap();
+        assert_eq!(locked.staged_index("QmScid").unwrap(), None);
+
+        flow.stage_master("QmScid", 1, Secret::new([5u8; 32]))
+            .unwrap();
+        assert_eq!(locked.staged_index("QmScid").unwrap(), Some(1));
+        assert_eq!(locked.master_index("QmScid").unwrap(), Some(0));
+        let kept = flow.unlock("QmScid", MasterUse::Link, 0).unwrap();
+        assert_eq!(kept.signer(0).unwrap().index(), 0);
+        drop(kept);
+        // Staging again replaces the staged key, whatever its index.
+        flow.stage_master("QmScid", 2, Secret::new([6u8; 32]))
+            .unwrap();
+        assert_eq!(locked.staged_index("QmScid").unwrap(), Some(2));
+        // Discarding another index leaves it; promoting another index is NotFound.
+        locked.discard_staged("QmScid", 1).unwrap();
+        assert_eq!(locked.staged_index("QmScid").unwrap(), Some(2));
+        assert_eq!(
+            locked.promote_master("QmScid", 1),
+            Err(VaultError::NotFound)
+        );
+
+        // The promote needs no passphrase.
+        locked.promote_master("QmScid", 2).unwrap();
+        assert_eq!(locked.staged_index("QmScid").unwrap(), None);
+        assert_eq!(locked.master_index("QmScid").unwrap(), Some(2));
+        let promoted = flow.unlock("QmScid", MasterUse::Link, 0).unwrap();
+        assert_eq!(
+            ad4m_identity_core::build::Signer::key(promoted.signer(0).unwrap()),
+            ed25519_signing_key_multikey([6u8; 32])
+        );
+        drop(promoted);
+        assert_eq!(
+            locked.promote_master("QmScid", 2),
+            Err(VaultError::NotFound)
+        );
+
+        // A rotation that did not land: discarded, the kept key untouched.
+        flow.stage_master("QmScid", 3, Secret::new([7u8; 32]))
+            .unwrap();
+        locked.discard_staged("QmScid", 3).unwrap();
+        locked.discard_staged("QmScid", 3).unwrap();
+        assert_eq!(locked.staged_index("QmScid").unwrap(), None);
+        assert_eq!(locked.master_index("QmScid").unwrap(), Some(2));
+
+        // Removing the master key from this computer leaves no staged copy either.
+        flow.stage_master("QmScid", 3, Secret::new([7u8; 32]))
+            .unwrap();
+        locked.forget_master("QmScid").unwrap();
+        assert_eq!(locked.staged_index("QmScid").unwrap(), None);
+        assert_eq!(locked.master_index("QmScid").unwrap(), None);
+    }
+
+    #[test]
+    fn a_rotation_stages_and_promotes_in_a_sealed_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = DesktopVault::with_kdf(
+            Box::new(crate::store::FileStore::new(dir.path())),
+            PendingIncepts::memory(),
+            CHEAP,
+        );
+        stage_promote_discard(&vault, Some("a passphrase of some length"));
+        // Staging with no passphrase seals nothing.
+        assert_eq!(
+            vault
+                .unlocking(None)
+                .stage_master("QmScid", 1, Secret::new([5u8; 32])),
+            Err(VaultError::Cancelled)
+        );
+    }
+
+    #[test]
+    fn a_rotation_stages_and_promotes_in_the_keychain() {
+        let vault = DesktopVault::new(
+            Box::new(MemoryStore::as_kind(StoreKind::Keychain)),
+            PendingIncepts::memory(),
+        );
+        stage_promote_discard(&vault, None);
+    }
+
+    #[test]
+    fn a_rotation_stages_and_promotes_in_a_sealed_platform_store() {
+        let vault = DesktopVault::with_kdf(
+            Box::new(MemoryStore::new()),
+            PendingIncepts::memory(),
+            CHEAP,
+        );
+        stage_promote_discard(&vault, Some("a passphrase of some length"));
+    }
+
+    /// A key kept in the file while the platform store is up: its staged key goes to the file
+    /// too, sealed, and is promoted there; nothing lands in the platform store.
+    #[test]
+    fn a_staged_key_rests_beside_the_kept_one() {
+        use crate::store::FileStore;
+        let dir = tempfile::tempdir().unwrap();
+        let custody = dir.path().join("custody");
+        sealed_in_file(&custody, "QmScid", [4u8; 32], "a passphrase of length");
+        let platform = Arc::new(MemoryStore::as_kind(StoreKind::Keychain));
+        let vault = placed(&custody, Some(platform.clone()));
+        let flow = vault.unlocking(pass("a passphrase of length"));
+        flow.stage_master("QmScid", 1, Secret::new([5u8; 32]))
+            .unwrap();
+        assert!(FileStore::new(&custody)
+            .contains(&staged_name("QmScid"))
+            .unwrap());
+        assert!(platform.all_bytes().is_empty());
+        assert_eq!(vault.staged_index("QmScid").unwrap(), Some(1));
+        vault.unlocking(None).promote_master("QmScid", 1).unwrap();
+        assert_eq!(vault.master_index("QmScid").unwrap(), Some(1));
+        assert!(platform.all_bytes().is_empty());
+    }
+
+    /// Data's review test (we#431), adapted to the contract: `store_master` once wrote the item,
+    /// then the index in a list beside it; when that second write failed, the item held master
+    /// #1 while `master_index` answered #0, and the client's `refresh_master` forgot the only
+    /// copy of the current key. The index now lives with the item, so after a write that the
+    /// lists' folder refuses `master_index` names the key `unlock` gives, or says it cannot tell
+    /// (`None`): never the replaced index.
+    #[test]
+    fn a_failed_index_write_leaves_the_item_ahead_of_the_index() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let lists = dir.path().join("lists");
+        std::fs::create_dir_all(&lists).unwrap();
+        let items = Arc::new(MemoryStore::as_kind(StoreKind::Keychain));
+        let vault =
+            DesktopVault::with_kdf(Box::new(items.clone()), PendingIncepts::file(&lists), CHEAP);
+        let flow = vault.unlocking(None);
+        flow.store_master("QmScid", 0, Secret::new([4u8; 32]))
+            .unwrap();
+        assert_eq!(flow.master_index("QmScid").unwrap(), Some(0));
+
+        // The lists' folder cannot be written to (disk full, permissions, a crash between two
+        // writes) while the rotation's key is kept.
+        std::fs::set_permissions(&lists, std::fs::Permissions::from_mode(0o555)).unwrap();
+        let _ = flow.store_master("QmScid", 1, Secret::new([5u8; 32]));
+        std::fs::set_permissions(&lists, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let unlocked = flow.unlock("QmScid", MasterUse::Link, 0).unwrap();
+        let given = unlocked.signer(0).unwrap().index();
+        let index = flow.master_index("QmScid").unwrap();
+        assert!(
+            index.is_none() || index == Some(given),
+            "master_index answers {index:?} while unlock gives master #{given}"
         );
     }
 

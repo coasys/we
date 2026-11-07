@@ -6,10 +6,12 @@ import { describe, expect, it } from 'vitest';
 
 // The policy as `vite.js` writes it into the built page.
 import policy from '../csp.txt?raw';
+import css from './identity.css?raw';
 import indexSource from './index.ts?raw';
 import {
   heading,
   isLast,
+  refusedField,
   remaining,
   type RevokeTarget,
   type Screen,
@@ -191,6 +193,64 @@ describe('the identity window', () => {
     }).lead;
     expect(devices).toContain('Tick each one you lost');
     expect(devices).toContain('Your record could not be read.');
+  });
+
+  it('says the key is replaced even when this computer could not keep it, and offers to try again', () => {
+    const notKept: Screen = {
+      screen: 'master-not-kept',
+      index: 2,
+      revoked: ['d2'],
+      reason: 'The unlock was cancelled.',
+      note: null,
+    };
+    const { title, lead } = heading(notKept);
+    expect(title).toBe('Your master key is replaced, but this computer could not keep the new key');
+    expect(lead).toContain('Master key #2 is now your master key');
+    expect(lead).toContain('The unlock was cancelled.');
+    expect(lead).toContain('Revoked in the same step: d2.');
+    expect(lead).toContain('Type your 12 words again');
+    const notLinked: Screen = {
+      screen: 'restore-not-linked',
+      did: 'did:scid:coasys:1:Qm',
+      revoked: ['d1'],
+      reason: 'Where it keeps keys answered: locked.',
+    };
+    expect(heading(notLinked).title).toBe('Your identity is restored, but this computer is not linked yet');
+    expect(heading(notLinked).lead).toContain('Locked out: d1.');
+    expect(heading(notLinked).lead).toContain('Where it keeps keys answered: locked.');
+    // After a publish, never "Nothing changed".
+    for (const screen of [notKept, notLinked]) {
+      expect(`${heading(screen).title} ${heading(screen).lead}`).not.toMatch(/nothing (was )?changed/i);
+      // Not a last screen: Done would end the step as done, and closing would not cancel the wait.
+      expect(isLast(screen), screen.screen).toBe(false);
+    }
+    // Each offers its try-again, and Close cancels the step that waits for it.
+    expect(windowSource).toMatch(
+      /case 'master-not-kept':[\s\S]*?step\(\{ kind: 'try-again' \}\)[\s\S]*?button\('Close', cancel\)/,
+    );
+    expect(windowSource).toMatch(
+      /case 'restore-not-linked':[\s\S]*?step\(\{ kind: 'try-again' \}\)[\s\S]*?button\('Close', cancel\)/,
+    );
+  });
+
+  it('marks only the refused word field invalid, with a token value, and draws it', () => {
+    expect(Array.from({ length: 12 }, (_, i) => refusedField(3, i))).toEqual(
+      Array.from({ length: 12 }, (_, i) => i === 2),
+    );
+    expect(Array.from({ length: 12 }, (_, i) => refusedField(null, i)).some(Boolean)).toBe(false);
+    // `aria-invalid` is set to "true" or removed, never toggled empty; focus and style read "true".
+    expect(windowSource).not.toMatch(/toggleAttribute\('aria-invalid'/);
+    expect(windowSource).toContain("input.setAttribute('aria-invalid', 'true')");
+    expect(windowSource).toContain("input.removeAttribute('aria-invalid')");
+    expect(windowSource).toContain(`root.querySelector<HTMLInputElement>('input[aria-invalid="true"]')`);
+    expect(css).toMatch(
+      /input\[aria-invalid='true'\] \{[^}]*border-color: var\(--danger\)[^}]*outline: 2px solid var\(--danger\)/,
+    );
+  });
+
+  it('fits three word fields to a row however narrow the window', () => {
+    expect(css).toMatch(/\.words \{[^}]*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
+    expect(css).toMatch(/\.word input \{[^}]*min-width: 0;[^}]*width: 100%;/);
   });
 
   it('never draws the 12 words on a screen after the words entry', () => {

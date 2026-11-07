@@ -40,6 +40,7 @@ use ad4m_ldk::identity::DeviceRequestBody;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::sync::{broadcast, mpsc, oneshot};
+use zeroize::Zeroizing;
 
 use crate::seal::{self, PassphraseProblem};
 use crate::vault::{DesktopVault, Unlocking};
@@ -252,6 +253,25 @@ pub enum Screen {
         revoked: Vec<String>,
         note: Option<String>,
     },
+    /// The master key WAS replaced (`rotate` published: master `index` is current, and every
+    /// copy of the one before it stopped working), but this computer could not keep the new one
+    /// (`reason`). Not a last screen: [`StepInput::TryAgain`] asks for the 12 words again and
+    /// replaces the master key once more, with a key this computer keeps. `note`: what else did
+    /// not happen yet.
+    MasterNotKept {
+        index: u32,
+        revoked: Vec<String>,
+        reason: String,
+        note: Option<String>,
+    },
+    /// A restore's rotation is published (the identity `did` is restored and `revoked` are locked
+    /// out), but this computer is not linked to it yet (`reason`). Not a last screen:
+    /// [`StepInput::TryAgain`] links it again, without the words.
+    RestoreNotLinked {
+        did: String,
+        revoked: Vec<String>,
+        reason: String,
+    },
     /// The identity is back on this computer, which signs as `key_id` and keeps the new master.
     Restored {
         did: String,
@@ -307,22 +327,62 @@ pub enum StepOutcome {
     Failed,
 }
 
+/// A secret the identity window typed (a word, the 12 words, a passphrase), as a [`StepInput`]
+/// carries it: wiped when it is dropped, so an input that is refused, cancelled or never read is
+/// wiped too. [`TypedSecret::take`] moves the text into the `Secret` a flow holds, without a copy.
+pub struct TypedSecret(Zeroizing<String>);
+
+impl TypedSecret {
+    /// The text, moved out: the caller wipes it (a `Secret` does).
+    pub fn take(mut self) -> String {
+        std::mem::take(&mut *self.0)
+    }
+
+    pub fn expose(&self) -> &str {
+        &self.0
+    }
+
+    /// Moved into the `Secret` a flow takes.
+    pub fn into_secret(self) -> Secret<String> {
+        Secret::new(self.take())
+    }
+}
+
+impl From<String> for TypedSecret {
+    fn from(text: String) -> Self {
+        TypedSecret(Zeroizing::new(text))
+    }
+}
+
+impl From<&str> for TypedSecret {
+    fn from(text: &str) -> Self {
+        TypedSecret::from(text.to_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for TypedSecret {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        String::deserialize(deserializer).map(TypedSecret::from)
+    }
+}
+
 /// One input from the identity window.
 ///
-/// Words and passphrases arrive as plain `String`s: they have already crossed the window's DOM, the
-/// host's IPC and the sidecar's JSON line, and serde has made its own copies on the way, none of which
-/// this crate can wipe. Each is moved into a `Secret` as soon as it is read, and that copy is wiped
-/// when the step ends; the earlier ones are only as short-lived as their owners make them.
+/// Words and passphrases arrive as [`TypedSecret`]s, wiped when dropped, whether the step reads them,
+/// refuses them or is cancelled first. The copies before them are not this crate's to wipe: the
+/// window's fields, the host's IPC message, the JSON line (which the sidecar reads into a buffer it
+/// wipes, `sidecar::serve`), and what serde buffers to find `kind` and to unescape a string that
+/// has escapes (the 12 words never do). See `crates/custody/README.md`.
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum StepInput {
     WordsWritten,
     Words {
-        answers: [String; 2],
+        answers: [TypedSecret; 2],
     },
     Passphrase {
-        passphrase: String,
-        confirm: Option<String>,
+        passphrase: TypedSecret,
+        confirm: Option<TypedSecret>,
     },
     /// Wait for the new device to claim the offer (resolves with `Match`).
     WaitClaim,
@@ -348,7 +408,7 @@ pub enum StepInput {
     WaitJoin,
     /// Yes to the request, with the passphrase where the computer needs one.
     Answer {
-        passphrase: Option<String>,
+        passphrase: Option<TypedSecret>,
     },
     /// The device's new name.
     Name {
@@ -357,13 +417,13 @@ pub enum StepInput {
     /// Revoke, with the passphrase where the computer needs one; `rotate`: also replace the
     /// master key, which asks for the 12 words next.
     Revoke {
-        passphrase: Option<String>,
+        passphrase: Option<TypedSecret>,
         #[serde(default)]
         rotate: bool,
     },
     /// The 12 words, as typed: one string, the words separated by spaces.
     TwelveWords {
-        words: String,
+        words: TypedSecret,
     },
     /// The devices to lock out of a restore (key ids of `RestoreDevices`), and this computer's
     /// name.
@@ -377,6 +437,9 @@ pub enum StepInput {
     Remove,
     /// Forget the identity on `PendingRefused`, which can never be published.
     Discard,
+    /// On `MasterNotKept` (type the 12 words again) or `RestoreNotLinked` (link this computer
+    /// again).
+    TryAgain,
 }
 
 impl std::fmt::Debug for StepInput {
@@ -398,6 +461,7 @@ impl std::fmt::Debug for StepInput {
             StepInput::LockOut { .. } => "lock-out",
             StepInput::Remove => "remove",
             StepInput::Discard => "discard",
+            StepInput::TryAgain => "try-again",
         };
         f.write_str(name)
     }
@@ -430,7 +494,9 @@ pub struct CustodyPublic {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct HoldsMaster {
-    pub index: u32,
+    /// The index the kept item carries (`Vault::master_index`); `None` when it does not say
+    /// (an item kept before the index was kept with it).
+    pub index: Option<u32>,
 }
 
 /// One device of the private record: its name and whether it holds the master key (`false`,
@@ -899,13 +965,13 @@ async fn public_state_on<R: ExecutorRpc>(
                 None
             }
         });
-    // The index of the key held, from the public list kept beside the vault (no unlock).
+    // The index of the key held, from the item itself (no unlock); unknown for an item that does
+    // not carry it.
     let holds_master = sealed.map(|_| HoldsMaster {
         index: did
             .as_deref()
             .and_then(ad4m_identity_core::scid_of)
-            .and_then(|scid| vault.master_index(scid).ok().flatten())
-            .unwrap_or(0),
+            .and_then(|scid| vault.master_index(scid).ok().flatten()),
     });
     // The unlock of the key reported as held; with none held, the unlock a new one would get.
     let unlock = if sealed.unwrap_or_else(|| vault.needs_passphrase()) {
@@ -958,28 +1024,48 @@ async fn refresh_stale<R: ExecutorRpc>(
     let Some(scid) = ad4m_identity_core::scid_of(did) else {
         return;
     };
-    let Ok(Some(kept)) = vault.master_index(scid) else {
-        return;
-    };
-    let current = match executor.events(did).await {
-        Ok(events) => match ad4m_identity_core::fold(&events) {
-            Ok(chain) => chain.state().masters.len().saturating_sub(1),
-            Err(e) => return log::warn!("custody: the key log does not fold: {e}"),
-        },
-        Err(e) => return log::warn!("custody: the key log cannot be read now: {e}"),
-    };
-    if kept as usize >= current || sealed_waits {
-        return;
+    // A key a rotation here staged and did not promote (cut off between its publish and the
+    // promote) is finished first, whatever the kept index says: `refresh_master` promotes it when
+    // the log names it, and discards it when the log does not.
+    let staged = vault.staged_index(scid).ok().flatten();
+    let kept = vault.master_index(scid).ok().flatten();
+    if staged.is_none() {
+        // Nothing to bring forward without a kept index that is known: an unknown one is never
+        // taken for a replaced key.
+        let Some(kept) = kept else {
+            return;
+        };
+        let current = match executor.events(did).await {
+            Ok(events) => match ad4m_identity_core::fold(&events) {
+                Ok(chain) => chain.state().masters.len().saturating_sub(1),
+                Err(e) => return log::warn!("custody: the key log does not fold: {e}"),
+            },
+            Err(e) => return log::warn!("custody: the key log cannot be read now: {e}"),
+        };
+        if kept as usize >= current || sealed_waits {
+            return;
+        }
     }
+    let kept = kept.map_or_else(|| "unknown".to_string(), |k| format!("#{k}"));
     match refresh_master(executor, &vault.unlocking(None), did, &RANDOM).await {
         Ok(Refreshed::Current) => {}
+        Ok(Refreshed::Promoted { index, record }) => {
+            log::info!("custody: kept master #{index}, which a rotation here had staged");
+            if let Err(e) = record {
+                log::warn!("custody: the record does not yet say this computer holds it: {e}");
+            }
+        }
         Ok(Refreshed::Taken(taken)) => {
-            log::info!("custody: took master #{} in place of #{kept}", taken.index)
+            log::info!("custody: took master #{} in place of {kept}", taken.index)
         }
         Ok(Refreshed::Asked(id)) => log::info!(
-            "custody: forgot the replaced master #{kept}, and asked for the current one ({id})"
+            "custody: forgot the replaced master {kept}, and asked for the current one ({id})"
         ),
-        Err(e) => log::warn!("custody: the replaced master #{kept} was not refreshed: {e}"),
+        // The vault cannot tell which master it keeps, or keeps none: nothing forgotten.
+        Ok(Refreshed::Unknown) => {
+            log::debug!("custody: the kept master's index is unknown; nothing refreshed")
+        }
+        Err(e) => log::warn!("custody: the master key kept here was not refreshed: {e}"),
     }
 }
 
@@ -1195,10 +1281,9 @@ async fn create_on<R: ExecutorRpc>(
                 Err(e) => return answer(reply, Ok(failed(&e))),
             },
             StepInput::Words { answers } if positions != [0, 0] => {
-                // Moved, not copied, into secrets that wipe themselves when this step ends.
+                // Each answer wipes itself when this step ends, read or refused.
                 let [first, second] = answers;
-                let answers = (Secret::new(first), Secret::new(second));
-                match flow.confirm([answers.0.expose(), answers.1.expose()]) {
+                match flow.confirm([first.expose(), second.expose()]) {
                     Ok(()) => break,
                     Err(ClientError::WrongWords) => answer(
                         reply,
@@ -1228,7 +1313,9 @@ async fn create_on<R: ExecutorRpc>(
 
     // incept, the executor's co-signature, the vault keeps master #0 and the incept, publish.
     let unlocking = vault.unlocking(passphrase);
-    let screen = match flow.finish(executor, &unlocking, &RANDOM).await {
+    // The record lists this computer from the start, as the one that holds master #0.
+    let this = this_computer(None, true, Some(0));
+    let screen = match flow.finish(executor, &unlocking, this, &RANDOM).await {
         Ok(created) => {
             if let Some(Err(e)) = &created.record {
                 log::warn!("custody: the record does not list this computer yet: {e}");
@@ -1356,7 +1443,7 @@ async fn run_link(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, 
                 answer(reply, Err(CustodyError::WrongInput));
                 continue;
             };
-            unlocking = vault.unlocking(Some(Secret::new(p)));
+            unlocking = vault.unlocking(Some(p.into_secret()));
         }
         match LinkFlow::open(
             &executor,
@@ -1494,6 +1581,7 @@ async fn follow_link<R: ExecutorRpc>(
                     address: None,
                     runs_executor: true,
                     holds_master: Holds::No,
+                    master_index: None,
                     operator: None,
                 };
                 let linked = match flow.confirm(&claim, entry, keep_master && app).await {
@@ -1502,7 +1590,8 @@ async fn follow_link<R: ExecutorRpc>(
                 };
                 let mut notes = Vec::new();
                 if let (false, Some(own)) = (own_listed, own_key) {
-                    let own_entry = this_computer(given_name(this_name), true);
+                    let own_entry =
+                        this_computer(given_name(this_name), true, kept_index(vault, did));
                     let change = Change::Device {
                         key_id: own.to_string(),
                         entry: own_entry,
@@ -1543,8 +1632,9 @@ fn given_name(name: Option<String>) -> Option<String> {
     name.map(|n| n.trim().to_string()).filter(|n| !n.is_empty())
 }
 
-/// This computer's entry in the record: the desktop app, holding the master key or not.
-fn this_computer(name: Option<String>, holds: bool) -> DeviceEntry {
+/// This computer's entry in the record: the desktop app, holding the master key or not, with the
+/// index of the one it keeps when its item says (`None`: unknown, or none held).
+fn this_computer(name: Option<String>, holds: bool, index: Option<u32>) -> DeviceEntry {
     DeviceEntry {
         name: name.unwrap_or_else(|| "This computer".into()),
         kind: DeviceKind::DesktopApp,
@@ -1552,8 +1642,14 @@ fn this_computer(name: Option<String>, holds: bool) -> DeviceEntry {
         address: None,
         runs_executor: true,
         holds_master: if holds { Holds::Yes } else { Holds::No },
+        master_index: if holds { index } else { None },
         operator: None,
     }
+}
+
+/// The index the vault's master item for `did` carries, when it carries one.
+fn kept_index(vault: &DesktopVault, did: &str) -> Option<u32> {
+    ad4m_identity_core::scid_of(did).and_then(|scid| vault.master_index(scid).ok().flatten())
 }
 
 /// Pushes again what the retry list keeps for `did`, with `unlocking`. Failures stay on the list
@@ -1630,7 +1726,7 @@ async fn run_scan(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, 
                 answer(reply, Err(CustodyError::WrongInput));
                 continue;
             };
-            unlocking = vault.unlocking(Some(Secret::new(p)));
+            unlocking = vault.unlocking(Some(p.into_secret()));
         }
         match LinkFlow::scan(
             &executor,
@@ -1946,9 +2042,12 @@ async fn new_passphrase(
                 passphrase: p,
                 confirm,
             } => {
-                let p = Secret::new(p);
-                let confirm = Secret::new(confirm.unwrap_or_default());
-                match seal::check_new(p.expose(), confirm.expose()) {
+                let p = p.into_secret();
+                let confirm = confirm
+                    .as_ref()
+                    .map(TypedSecret::expose)
+                    .unwrap_or_default();
+                match seal::check_new(p.expose(), confirm) {
                     Ok(()) => return Some(p),
                     Err(problem) => answer(
                         reply,
@@ -2041,7 +2140,7 @@ async fn take_master_on<R: ExecutorRpc>(
                 answer(reply, Err(CustodyError::WrongInput));
                 continue;
             };
-            unlocking = vault.unlocking(Some(Secret::new(p)));
+            unlocking = vault.unlocking(Some(p.into_secret()));
         }
         let screen = match take_master(executor, &unlocking, &RANDOM).await {
             Ok(Some(taken)) => Screen::MasterTaken {
@@ -2247,12 +2346,25 @@ async fn answer_on<R: ExecutorRpc>(
             answer(reply, Err(CustodyError::WrongInput));
             continue;
         };
-        let unlocking = vault.unlocking(passphrase.map(Secret::new));
+        let unlocking = vault.unlocking(passphrase.map(TypedSecret::into_secret));
         let answered_screen = |answered: Answered| {
-            let note = match &answered {
+            let note = match answered {
                 Answered::MasterSent(sent) => handed_over(&[], &sent.record),
                 Answered::Revoked(revoked) => handed_over(&[], &revoked.record),
-                Answered::Rotated(rotated) => handed_over(&rotated.pushes, &rotated.record),
+                Answered::Rotated { rotated, deleted } => {
+                    // The rotation is published: a request left in the box is a note.
+                    let left = deleted.err().map(|e| {
+                        log::warn!("custody: the answered request was not deleted: {e}");
+                        "The request is answered, but it was not taken out of your request \
+                         box: it may still show there."
+                            .to_string()
+                    });
+                    if rotated.kept.is_err() {
+                        let answered = format!("The request from {device} is answered.");
+                        return replaced(rotated, joined(Some(answered), left));
+                    }
+                    joined(handed_over(&rotated.pushes, &rotated.record), left)
+                }
             };
             Screen::RequestAnswered {
                 kind,
@@ -2262,8 +2374,11 @@ async fn answer_on<R: ExecutorRpc>(
         };
         match requests::answer(executor, &unlocking, &did, &request, &CLOCK, &RANDOM).await {
             Ok(answered) => {
-                retry_quietly(executor, &unlocking, &did).await;
-                return answer(reply, Ok(answered_screen(answered)));
+                let screen = answered_screen(answered);
+                return after_rotation(
+                    executor, vault, address, rx, reply, &unlocking, &did, screen,
+                )
+                .await;
             }
             // The request also asks to replace the master key: the words sign that rotation.
             // The passphrase seals the new key where the old one rests, so it is checked first.
@@ -2293,8 +2408,10 @@ async fn answer_on<R: ExecutorRpc>(
                         Err(e) => break failed(&e),
                     }
                 };
-                retry_quietly(executor, &unlocking, &did).await;
-                return answer(reply, Ok(screen));
+                return after_rotation(
+                    executor, vault, address, rx, reply, &unlocking, &did, screen,
+                )
+                .await;
             }
             Err(ClientError::Vault(VaultError::Cancelled)) if needs => answer(
                 reply,
@@ -2394,7 +2511,7 @@ async fn rename_on<R: ExecutorRpc>(
                 .is_some_and(|scid| matches!(vault.holds(scid), Ok(true)));
             Change::Device {
                 key_id: key_id.clone(),
-                entry: this_computer(Some(name.clone()), holds),
+                entry: this_computer(Some(name.clone()), holds, kept_index(vault, &did)),
             }
         } else {
             Change::Device {
@@ -2406,6 +2523,7 @@ async fn rename_on<R: ExecutorRpc>(
                     address: None,
                     runs_executor: true,
                     holds_master: Holds::No,
+                    master_index: None,
                     operator: None,
                 },
             }
@@ -2535,7 +2653,7 @@ async fn revoke_on<R: ExecutorRpc>(
             answer(reply, Err(CustodyError::WrongInput));
             continue;
         };
-        let unlocking = vault.unlocking(passphrase.map(Secret::new));
+        let unlocking = vault.unlocking(passphrase.map(TypedSecret::into_secret));
         if rotate {
             // The words sign the rotation; the passphrase seals the new key where the old one
             // rests, so it is checked before any word is asked.
@@ -2561,15 +2679,17 @@ async fn revoke_on<R: ExecutorRpc>(
                 )
                 .await
                 {
-                    Ok(rotated) => break replaced(rotated),
+                    Ok(rotated) => break replaced(rotated, None),
                     Err(ClientError::NotTheseWords(_)) => {
                         error = Some((NOT_THESE_WORDS.into(), None))
                     }
                     Err(e) => break failed(&e),
                 }
             };
-            retry_quietly(executor, &unlocking, &did).await;
-            return answer(reply, Ok(screen));
+            return after_rotation(
+                executor, vault, address, rx, reply, &unlocking, &did, screen,
+            )
+            .await;
         }
         match revoke(
             executor,
@@ -2637,7 +2757,7 @@ async fn ask_words(
         );
         let typed = loop {
             match next_input(vault, address, rx, reply).await? {
-                StepInput::TwelveWords { words } => break Secret::new(words),
+                StepInput::TwelveWords { words } => break words.into_secret(),
                 _ => answer(reply, Err(CustodyError::WrongInput)),
             }
         };
@@ -2648,16 +2768,152 @@ async fn ask_words(
     }
 }
 
-/// The last screen of a rotation, saying what did not happen yet.
-fn replaced(rotated: Rotated) -> Screen {
-    Screen::MasterReplaced {
-        index: rotated.index,
-        revoked: rotated
-            .revoked
-            .iter()
-            .map(|k| k.as_str().to_string())
-            .collect(),
-        note: handed_over(&rotated.pushes, &rotated.record),
+/// The last screen of a rotation that was published, saying what did not happen yet (`extra`
+/// first). When this computer could not keep the new key, [`Screen::MasterNotKept`]: the rotation
+/// stands either way, so neither screen says nothing changed.
+fn replaced(rotated: Rotated, extra: Option<String>) -> Screen {
+    let revoked: Vec<String> = rotated
+        .revoked
+        .iter()
+        .map(|k| k.as_str().to_string())
+        .collect();
+    let note = joined(extra, handed_over(&rotated.pushes, &rotated.record));
+    match rotated.kept {
+        Ok(()) => Screen::MasterReplaced {
+            index: rotated.index,
+            revoked,
+            note,
+        },
+        Err(e) => {
+            log::warn!(
+                "custody: master #{} is current, and this computer did not keep it: {e}",
+                rotated.index
+            );
+            Screen::MasterNotKept {
+                index: rotated.index,
+                revoked,
+                reason: after_publish(&e),
+                note,
+            }
+        }
+    }
+}
+
+/// Two notes as one, either or both absent.
+fn joined(first: Option<String>, second: Option<String>) -> Option<String> {
+    match (first, second) {
+        (Some(a), Some(b)) => Some(format!("{a} {b}")),
+        (a, b) => a.or(b),
+    }
+}
+
+/// Why a part of a step after its publish did not happen, in words a person reads. Never says that
+/// nothing changed, as [`failed`] does for a step that stopped before its publish: the publish
+/// stands.
+fn after_publish(e: &ClientError) -> String {
+    match e {
+        e if names_no_store(e) => {
+            "This network has no identity store this computer can use.".into()
+        }
+        ClientError::Vault(VaultError::Cancelled) => "The unlock was cancelled.".into(),
+        ClientError::Vault(VaultError::NotFound) => {
+            "The new master key was no longer where this computer set it aside.".into()
+        }
+        ClientError::Vault(VaultError::Unavailable(why)) => {
+            format!("Where it keeps keys answered: {why}")
+        }
+        ClientError::LogBusy => "Your key log kept changing on another device.".into(),
+        ClientError::OfferEnded(state) => {
+            format!("Linking this computer ended ({state}) before it was confirmed.")
+        }
+        ClientError::NotAKeeper(_) => "That device cannot keep the master key.".into(),
+        ClientError::Poster(why) => format!("The request does not check out ({why})."),
+        ClientError::NotTheseWords(_) => {
+            "These words do not make your identity's master key.".into()
+        }
+        e => match failed(e) {
+            Screen::Failed { message } => message,
+            _ => unreachable!("failed() answers Failed"),
+        },
+    }
+}
+
+/// Asks for the 12 words (unless `first` holds them) and replaces the master key with them,
+/// asking again for words that are not the identity's. The screen it ends on; `None` when the
+/// window cancels.
+#[allow(clippy::too_many_arguments)]
+async fn rotate_with_words<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    vault: &DesktopVault,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+    unlocking: &Unlocking<'_>,
+    did: &str,
+    mut first: Option<Words>,
+) -> Option<Result<Screen, ClientError>> {
+    let mut error = None;
+    loop {
+        let words = match first.take() {
+            Some(words) => words,
+            None => {
+                ask_words(vault, address, rx, reply, "replace", error.take())
+                    .await?
+                    .1
+            }
+        };
+        match rotate(executor, unlocking, did, &words, &[], &CLOCK, &RANDOM).await {
+            Ok(rotated) => return Some(Ok(replaced(rotated, None))),
+            Err(ClientError::NotTheseWords(_)) => error = Some((NOT_THESE_WORDS.into(), None)),
+            Err(e) => return Some(Err(e)),
+        }
+    }
+}
+
+/// Answers the screen a published rotation ended on, after the retry list is pushed again. On
+/// [`Screen::MasterNotKept`] the step stays open: [`StepInput::TryAgain`] asks for the 12 words
+/// and replaces the master key once more, with a key this computer keeps. A second attempt that
+/// fails shows `MasterNotKept` again, with why: the first rotation stands, so the step never says
+/// that nothing changed.
+#[allow(clippy::too_many_arguments)]
+async fn after_rotation<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    vault: &DesktopVault,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+    unlocking: &Unlocking<'_>,
+    did: &str,
+    mut screen: Screen,
+) {
+    loop {
+        retry_quietly(executor, unlocking, did).await;
+        let Screen::MasterNotKept { index, .. } = screen else {
+            return answer(reply, Ok(screen));
+        };
+        answer(reply, Ok(screen));
+        loop {
+            match next_input(vault, address, rx, reply).await {
+                None => return,
+                Some(StepInput::TryAgain) => break,
+                Some(_) => answer(reply, Err(CustodyError::WrongInput)),
+            }
+        }
+        screen = match rotate_with_words(executor, vault, address, rx, reply, unlocking, did, None)
+            .await
+        {
+            None => return,
+            Some(Ok(next)) => next,
+            Some(Err(e)) => {
+                log::warn!("custody: replacing master #{index} again did not work: {e}");
+                Screen::MasterNotKept {
+                    index,
+                    revoked: Vec::new(),
+                    reason: after_publish(&e),
+                    note: None,
+                }
+            }
+        };
     }
 }
 
@@ -2734,7 +2990,7 @@ async fn unlocking_to_keep<'v>(
                     answer(reply, Err(CustodyError::WrongInput));
                     continue;
                 };
-                let unlocking = vault.unlocking(Some(Secret::new(passphrase)));
+                let unlocking = vault.unlocking(Some(passphrase.into_secret()));
                 if opens(&unlocking, did) {
                     return Some(Ok(unlocking));
                 }
@@ -2786,25 +3042,30 @@ async fn replace_master_on<R: ExecutorRpc>(
         Some(Err(screen)) => return answer(reply, Ok(screen)),
         Some(Ok(unlocking)) => unlocking,
     };
-    let mut first = Some(words);
     drop(typed);
-    let mut error = None;
-    let screen = loop {
-        let words = match first.take() {
-            Some(words) => words,
-            None => match ask_words(vault, address, rx, reply, "replace", error.take()).await {
-                Some((_, words)) => words,
-                None => return,
-            },
-        };
-        match rotate(executor, &unlocking, &did, &words, &[], &CLOCK, &RANDOM).await {
-            Ok(rotated) => break replaced(rotated),
-            Err(ClientError::NotTheseWords(_)) => error = Some((NOT_THESE_WORDS.into(), None)),
-            Err(e) => break failed(&e),
+    let screen = match rotate_with_words(
+        executor,
+        vault,
+        address,
+        rx,
+        reply,
+        &unlocking,
+        &did,
+        Some(words),
+    )
+    .await
+    {
+        None => return,
+        Some(Ok(screen)) => screen,
+        Some(Err(e)) => {
+            retry_quietly(executor, &unlocking, &did).await;
+            return answer(reply, Ok(failed(&e)));
         }
     };
-    retry_quietly(executor, &unlocking, &did).await;
-    answer(reply, Ok(screen));
+    after_rotation(
+        executor, vault, address, rx, reply, &unlocking, &did, screen,
+    )
+    .await
 }
 
 async fn run_restore(
@@ -2853,7 +3114,7 @@ async fn restore_on<R: ExecutorRpc>(
         passphrase = Some(p);
     }
     let unlocking = vault.unlocking(passphrase);
-    let flow = loop {
+    let mut flow = loop {
         match RestoreFlow::start(executor, &unlocking, typed.expose(), &CLOCK, &RANDOM).await {
             Ok(flow) => break flow,
             Err(ClientError::NotTheseWords(_)) => {
@@ -2927,30 +3188,62 @@ async fn restore_on<R: ExecutorRpc>(
             _ => answer(reply, Err(CustodyError::WrongInput)),
         }
     };
-    let entry = this_computer(given_name(name), true);
+    // The vault's item carries the index; the record's comes from the hand-over that keeps it.
+    let entry = this_computer(given_name(name), true, None);
     let name = entry.name.clone();
     let lock_out: Vec<ad4m_identity_core::KeyId> = lock_out
         .iter()
         .map(|k| ad4m_identity_core::KeyId::from(k.as_str()))
         .collect();
-    let screen = match flow.finish(&lock_out, entry).await {
-        Ok(restored) => {
-            retry_quietly(executor, &unlocking, &did).await;
-            Screen::Restored {
-                note: handed_over(&restored.pushes, &restored.record),
-                did: restored.did,
-                name,
-                key_id: restored.key_id.as_str().to_string(),
-                revoked: restored
-                    .revoked
-                    .iter()
-                    .map(|k| k.as_str().to_string())
-                    .collect(),
+    let restored = match flow.finish(&lock_out, entry.clone()).await {
+        Ok(restored) => restored,
+        Err(e) => return answer(reply, Ok(failed(&e))),
+    };
+    // Published from here: the identity is restored and the lock-out stands, whatever follows.
+    let revoked: Vec<String> = restored
+        .revoked
+        .iter()
+        .map(|k| k.as_str().to_string())
+        .collect();
+    let mut enrolled = restored.enrolled;
+    loop {
+        match enrolled {
+            Ok(enrolled) => {
+                retry_quietly(executor, &unlocking, &did).await;
+                return answer(
+                    reply,
+                    Ok(Screen::Restored {
+                        note: handed_over(&enrolled.pushes, &enrolled.record),
+                        did: restored.did,
+                        name,
+                        key_id: enrolled.key_id.as_str().to_string(),
+                        revoked,
+                    }),
+                );
+            }
+            Err(e) => {
+                log::warn!("custody: restored, and this computer is not linked yet: {e}");
+                answer(
+                    reply,
+                    Ok(Screen::RestoreNotLinked {
+                        did: did.clone(),
+                        revoked: revoked.clone(),
+                        reason: after_publish(&e),
+                    }),
+                );
             }
         }
-        Err(e) => failed(&e),
-    };
-    answer(reply, Ok(screen));
+        // The same flow links this computer again: it holds the words, which are not asked
+        // again, and refuses a second rotation.
+        loop {
+            match next_input(vault, address, rx, reply).await {
+                None => return,
+                Some(StepInput::TryAgain) => break,
+                Some(_) => answer(reply, Err(CustodyError::WrongInput)),
+            }
+        }
+        enrolled = flow.enrol(entry.clone()).await;
+    }
 }
 
 // ─── remove the master key from this computer ────────────────────────────────────
@@ -3191,7 +3484,12 @@ mod tests {
         executor.rpc().refuse_publish.set(true);
         let vault = open_vault(dir.path());
         let failed_create = confirmed(21)
-            .finish(&executor, &vault.unlocking(pass()), &RANDOM)
+            .finish(
+                &executor,
+                &vault.unlocking(pass()),
+                this_computer(None, true, Some(0)),
+                &RANDOM,
+            )
             .await;
         assert!(
             matches!(&failed_create, Err(ClientError::Rpc(e)) if e.code == 503),
@@ -3208,7 +3506,12 @@ mod tests {
 
         // Other words are refused while it is pending, in words a person reads.
         let other = confirmed(22)
-            .finish(&executor, &vault.unlocking(pass()), &RANDOM)
+            .finish(
+                &executor,
+                &vault.unlocking(pass()),
+                this_computer(None, true, Some(0)),
+                &RANDOM,
+            )
             .await;
         let Err(e @ ClientError::CreatePending(did)) = &other else {
             panic!("{other:?}");
@@ -3247,7 +3550,12 @@ mod tests {
         let executor = ViaExecutor::new(FakeExecutor::new());
         let vault = open_vault(dir.path());
         let created = confirmed(23)
-            .finish(&executor, &vault.unlocking(pass()), &RANDOM)
+            .finish(
+                &executor,
+                &vault.unlocking(pass()),
+                this_computer(None, true, Some(0)),
+                &RANDOM,
+            )
             .await
             .unwrap();
         assert!(vault.pending_incepts().unwrap().is_empty());
@@ -3277,7 +3585,7 @@ mod tests {
         assert_eq!(screen["positions"][1], 11);
         let public = serde_json::to_value(CustodyPublic {
             did: Some("did:scid:coasys:1:Qm".into()),
-            holds_master: Some(HoldsMaster { index: 0 }),
+            holds_master: Some(HoldsMaster { index: Some(0) }),
             unlock: "passphrase",
             blocked: Some(NO_STORE),
             devices: vec![DeviceName {
@@ -3579,7 +3887,12 @@ mod tests {
         let vault = open_vault(dir.path());
         executor.rpc().refuse_publish.set(true);
         let _ = confirmed(31)
-            .finish(&executor, &vault.unlocking(pass()), &RANDOM)
+            .finish(
+                &executor,
+                &vault.unlocking(pass()),
+                this_computer(None, true, Some(0)),
+                &RANDOM,
+            )
             .await;
         let scid = vault.pending_incepts().unwrap()[0].scid.clone();
 
@@ -3600,7 +3913,12 @@ mod tests {
         *executor.rpc().refuse_for_good.borrow_mut() =
             Some((409, "conflict: the store's head is seq 2 (h)".into()));
         let _ = confirmed(32)
-            .finish(&executor, &vault.unlocking(pass()), &RANDOM)
+            .finish(
+                &executor,
+                &vault.unlocking(pass()),
+                this_computer(None, true, Some(0)),
+                &RANDOM,
+            )
             .await;
         let scid = vault.pending_incepts().unwrap()[0].scid.clone();
         let did = did_of(&scid);
@@ -3636,7 +3954,12 @@ mod tests {
         *executor.rpc().refuse_for_good.borrow_mut() =
             Some((409, "key-taken: z6Mk sits in a log".into()));
         let _ = confirmed(33)
-            .finish(&executor, &vault.unlocking(pass()), &RANDOM)
+            .finish(
+                &executor,
+                &vault.unlocking(pass()),
+                this_computer(None, true, Some(0)),
+                &RANDOM,
+            )
             .await;
 
         // Cancelled on the refusal screen: the incept is still kept.
@@ -3754,8 +4077,8 @@ mod tests {
             panic!("expected the confirm screen");
         };
         let answers = [
-            words[positions[0] - 1].clone(),
-            words[positions[1] - 1].clone(),
+            words[positions[0] - 1].clone().into(),
+            words[positions[1] - 1].clone().into(),
         ];
         let next = window.step(StepInput::Words { answers }).await;
         assert!(matches!(next, Screen::SetPassphrase { .. }), "{next:?}");
@@ -4160,6 +4483,7 @@ mod tests {
             address: None,
             runs_executor: true,
             holds_master: Holds::No,
+            master_index: None,
             operator: None,
         }
     }
@@ -4767,7 +5091,7 @@ mod tests {
                     shown.push(
                         window
                             .step(StepInput::TwelveWords {
-                                words: words.clone(),
+                                words: words.clone().into(),
                             })
                             .await,
                     );
@@ -4777,7 +5101,7 @@ mod tests {
                 shown.push(
                     window
                         .step(StepInput::TwelveWords {
-                            words: phrase.clone(),
+                            words: phrase.clone().into(),
                         })
                         .await,
                 );
@@ -4822,6 +5146,252 @@ mod tests {
         shows_no_word(&screens, &phrase, &["zzzq"]);
     }
 
+    /// A store that refuses its next rename, as a keychain that refuses an update: the vault
+    /// cannot promote the key a rotation staged, once.
+    struct RefusesRename {
+        items: crate::store::MemoryStore,
+        refuse: std::sync::atomic::AtomicBool,
+    }
+
+    impl RefusesRename {
+        fn once() -> DesktopVault {
+            DesktopVault::new(
+                Box::new(RefusesRename {
+                    items: crate::store::MemoryStore::as_kind(crate::store::StoreKind::Keychain),
+                    refuse: std::sync::atomic::AtomicBool::new(true),
+                }),
+                PendingIncepts::memory(),
+            )
+        }
+    }
+
+    impl crate::store::SecretStore for RefusesRename {
+        fn kind(&self) -> crate::store::StoreKind {
+            self.items.kind()
+        }
+        fn kind_of(&self, name: &str) -> Result<crate::store::StoreKind, VaultError> {
+            self.items.kind_of(name)
+        }
+        fn put(&self, name: &str, bytes: &[u8]) -> Result<(), VaultError> {
+            self.items.put(name, bytes)
+        }
+        fn get(&self, name: &str) -> Result<Option<Vec<u8>>, VaultError> {
+            self.items.get(name)
+        }
+        fn contains(&self, name: &str) -> Result<bool, VaultError> {
+            self.items.contains(name)
+        }
+        fn delete(&self, name: &str) -> Result<(), VaultError> {
+            self.items.delete(name)
+        }
+        fn put_indexed(&self, name: &str, bytes: &[u8], index: u32) -> Result<(), VaultError> {
+            self.items.put_indexed(name, bytes, index)
+        }
+        fn index_of(&self, name: &str) -> Result<Option<u32>, VaultError> {
+            self.items.index_of(name)
+        }
+        fn rename(&self, from: &str, to: &str) -> Result<(), VaultError> {
+            if self.refuse.swap(false, std::sync::atomic::Ordering::SeqCst) {
+                return Err(VaultError::Unavailable(
+                    "the keychain refused the update".into(),
+                ));
+            }
+            self.items.rename(from, to)
+        }
+    }
+
+    /// No string of `screens` says that nothing changed: each follows a published rotation.
+    fn says_nothing_changed(screens: &[Screen]) -> Option<String> {
+        let mut strings = Vec::new();
+        for screen in screens {
+            strings_of(&serde_json::to_value(screen).unwrap(), &mut strings);
+        }
+        strings
+            .into_iter()
+            .find(|s| s.contains("Nothing") || s.contains("nothing changed"))
+    }
+
+    /// The log `events` serves, as `executor_of` answers it.
+    fn serve_log(executor: &ViaExecutor<FakeExecutor>, events: &[Event]) {
+        executor.rpc().answer(
+            "identity.log",
+            json!({ "did": did_of(&events[0].scid), "events": events, "head": null, "fork": null }),
+        );
+    }
+
+    #[tokio::test]
+    async fn a_rotation_this_computer_could_not_keep_says_the_key_was_replaced_and_tries_again() {
+        let (events, _) = crate::keylog::tests::log_with_d2(true);
+        let scid = events[0].scid.clone();
+        let executor = executor_of(&events);
+        let vault = RefusesRename::once();
+        keep_master(&vault, &scid, 0);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let phrase = phrase_of(41);
+        let ex = &executor;
+        let log = events.clone();
+        let ((), screens) = tokio::join!(
+            replace_master_on(&executor, &vault, &address, &mut rx, &mut reply),
+            async {
+                let mut shown = vec![first.await.unwrap().unwrap()];
+                shown.push(
+                    window
+                        .step(StepInput::TwelveWords {
+                            words: phrase.clone().into(),
+                        })
+                        .await,
+                );
+                // The store serves the rotation that landed.
+                let mut log = log.clone();
+                log.extend(published(ex));
+                serve_log(ex, &log);
+                shown.push(window.step(StepInput::TryAgain).await);
+                shown.push(
+                    window
+                        .step(StepInput::TwelveWords {
+                            words: phrase.clone().into(),
+                        })
+                        .await,
+                );
+                shown
+            }
+        );
+        assert!(
+            matches!(&screens[1], Screen::MasterNotKept { index: 1, reason, .. }
+                if reason.contains("the keychain refused the update")),
+            "{:?}",
+            screens[1]
+        );
+        assert!(
+            matches!(
+                &screens[2],
+                Screen::EnterWords {
+                    purpose: "replace",
+                    error: None,
+                    ..
+                }
+            ),
+            "{:?}",
+            screens[2]
+        );
+        assert!(
+            matches!(&screens[3], Screen::MasterReplaced { index: 2, .. }),
+            "{:?}",
+            screens[3]
+        );
+        assert_eq!(says_nothing_changed(&screens[1..]), None);
+        // Two rotations landed; this computer keeps the second, and nothing is left staged.
+        let mut log = events.clone();
+        log.extend(published(&executor));
+        assert_eq!(log.len(), 4);
+        ad4m_identity_core::fold(&log).unwrap();
+        assert_eq!(vault.master_index(&scid).unwrap(), Some(2));
+        assert_eq!(vault.staged_index(&scid).unwrap(), None);
+        shows_no_word(&screens, &phrase, &[]);
+    }
+
+    #[tokio::test]
+    async fn a_restore_whose_enrolment_failed_is_restored_and_links_this_computer_on_try_again() {
+        let (events, _) = crate::keylog::tests::log_with_d2(true);
+        let scid = events[0].scid.clone();
+        let did = did_of(&scid);
+        // The executor whose device key is d1's: a computer the identity listed before.
+        let executor = ViaExecutor::new(FakeExecutor {
+            device: KeySigner::new(&[2u8; 32], 0),
+            ..FakeExecutor::new()
+        });
+        serve_log(&executor, &events);
+        for method in ["identity.record", "identity.takeMaster"] {
+            executor.rpc().answer(method, Value::Null);
+        }
+        for method in ["identity.inbox", "identity.requests"] {
+            executor.rpc().answer(method, json!([]));
+        }
+        executor.rpc().answer(
+            "identity.keyOwner",
+            json!({ "did": did, "keyId": "m0", "added": 0, "revoked": null }),
+        );
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let phrase = phrase_of(41);
+        let ex = &executor;
+        let log = events.clone();
+        let ((), screens) = tokio::join!(
+            restore_on(&executor, &vault, &address, &mut rx, &mut reply),
+            async {
+                let mut shown = vec![first.await.unwrap().unwrap()];
+                shown.push(
+                    window
+                        .step(StepInput::TwelveWords {
+                            words: phrase.clone().into(),
+                        })
+                        .await,
+                );
+                // The log still served is the one before the rotation, so the enrolment
+                // after it fails.
+                shown.push(
+                    window
+                        .step(StepInput::LockOut {
+                            key_ids: vec!["d2".into()],
+                            name: Some("Desk".into()),
+                        })
+                        .await,
+                );
+                let mut log = log.clone();
+                log.extend(published(ex));
+                serve_log(ex, &log);
+                shown.push(window.step(StepInput::TryAgain).await);
+                shown
+            }
+        );
+        assert!(
+            matches!(&screens[1], Screen::RestoreDevices { .. }),
+            "{:?}",
+            screens[1]
+        );
+        assert!(
+            matches!(&screens[2], Screen::RestoreNotLinked { did: d, revoked, .. }
+                if d == &did && revoked == &["d2".to_string()]),
+            "{:?}",
+            screens[2]
+        );
+        assert!(
+            matches!(&screens[3], Screen::Restored { key_id, name, revoked, .. }
+                if key_id == "d1" && name == "Desk" && revoked == &["d2".to_string()]),
+            "{:?}",
+            screens[3]
+        );
+        assert_eq!(says_nothing_changed(&screens[2..]), None);
+        // One rotation: "Try again" published nothing and asked for no words; the vault keeps
+        // the key the rotation staged.
+        assert_eq!(executor.rpc().publishes.get(), 1);
+        assert_eq!(vault.master_index(&scid).unwrap(), Some(1));
+        assert_eq!(vault.staged_index(&scid).unwrap(), None);
+        shows_no_word(&screens, &phrase, &[]);
+    }
+
+    #[test]
+    fn what_fails_after_a_publish_never_says_nothing_changed() {
+        let errors = [
+            ClientError::Vault(VaultError::Cancelled),
+            ClientError::Vault(VaultError::NotFound),
+            ClientError::Vault(VaultError::Unavailable("locked".into())),
+            ClientError::LogBusy,
+            ClientError::OfferEnded("expired".into()),
+            ClientError::NotAKeeper("d2".into()),
+            ClientError::Poster("bad".into()),
+            ClientError::NotTheseWords("m1".into()),
+            ClientError::Rpc(RpcError {
+                code: 503,
+                message: "no-store-keys".into(),
+            }),
+        ];
+        for e in &errors {
+            let reason = after_publish(e);
+            assert!(!reason.contains("Nothing"), "{e:?}: {reason}");
+        }
+    }
+
     #[tokio::test]
     async fn a_revoke_that_also_replaces_the_master_key_leaves_no_holder_to_warn_about() {
         let (events, _) = crate::keylog::tests::log_with_d2(true);
@@ -4853,7 +5423,7 @@ mod tests {
                 shown.push(
                     window
                         .step(StepInput::TwelveWords {
-                            words: phrase.clone(),
+                            words: phrase.clone().into(),
                         })
                         .await,
                 );
@@ -4965,12 +5535,18 @@ mod tests {
                 shown.push(
                     window
                         .step(StepInput::TwelveWords {
-                            words: phrase.clone(),
+                            words: phrase.clone().into(),
                         })
                         .await,
                 );
                 ex.rpc().answer("identity.keyOwner", owner);
-                shown.push(window.step(StepInput::TwelveWords { words: phrase }).await);
+                shown.push(
+                    window
+                        .step(StepInput::TwelveWords {
+                            words: phrase.into(),
+                        })
+                        .await,
+                );
                 // The window closes on the device list.
                 shown
             }
@@ -5095,7 +5671,7 @@ mod tests {
         let vault = memory_vault(crate::store::StoreKind::Keychain);
         keep_master(&vault, &scid, 1);
         let public = public_state_on(Some(&executor), &vault).await;
-        assert_eq!(public.holds_master, Some(HoldsMaster { index: 1 }));
+        assert_eq!(public.holds_master, Some(HoldsMaster { index: Some(1) }));
         assert!(executor.rpc().called("identity.postRequest").is_empty());
         // A log read behind the kept key never makes this computer forget it.
         let (behind, _) = crate::keylog::tests::log_with_d2(true);
