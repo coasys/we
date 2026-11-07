@@ -151,11 +151,13 @@ export function createFeed(deps: FeedDeps) {
       });
       if (same()) {
         drawnParts = result.parts;
-        setGroupedAs(used);
         // Marked with the suggestions as they are now, which may have settled while it ran.
         setRows(markPending(result.rows, new Set(unconfirmed())));
         setHasMore(result.hasMore);
         setLoaded(true);
+        // Last: this wakes the regroup effect at once, and a person who landed since the rows were
+        // grouped (a cached answer lands in a microtask) must find them drawn, not be drawn over.
+        setGroupedAs(used);
       }
     } catch (error) {
       if (error instanceof FeedReadStopped) {
