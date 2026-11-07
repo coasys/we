@@ -365,15 +365,17 @@ export async function openKeySession(
     }
   }
 
-  // The server refused the token: it ended the grant. Ask it once more which way.
+  // The server refused the token: it ended the grant. Ask it once more which way. The probe dials
+  // and signs for `origin`, as the session did: the address as typed may carry a path or a case
+  // the server would refuse as its audience, which would read a revoked device as merely ended.
   client.onAuthFailed(() => {
     if (finished) return;
     void (async () => {
       try {
-        const probe = await loginOnce(signer, address, connect, app, now);
+        const probe = await loginOnce(signer, origin, connect, app, now);
         // It lets this computer in still, so the session merely ended. The probe's own grant is
         // not kept: the app starts over to use a new one.
-        const probeClient = connect(address, () => probe.token);
+        const probeClient = connect(origin, () => probe.token);
         await probeClient.agent.logout().catch(() => false);
         probeClient.close();
         end('ended');

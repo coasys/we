@@ -322,6 +322,29 @@ describe('a key session on a server', () => {
     expect(timers.pending.size).toBe(0);
   });
 
+  it('asks which way with the origin, not the address as typed, so a revoked device reads as removed', async () => {
+    // The session was opened with an address the person typed, with a path and upper case; the
+    // server knows only the origin as its audience. The probe after a refused token must dial and
+    // sign for that origin, as the login did, or the server's `audience` refusal hides the `key` one.
+    const server = fakeServer({ origin: 'https://home.example' });
+    const timers = fakeTimers();
+    const session = await openKeySession(fakeSigner('z6MkDevice'), 'HTTPS://Home.Example:443/x', {
+      connect: server.connect,
+      now: server.now,
+      setTimer: timers.setTimer,
+      clearTimer: timers.clearTimer,
+    });
+    const ended = vi.fn();
+    session.onEnded(ended);
+
+    server.revoke('z6MkDevice');
+    await flush();
+    await flush();
+
+    expect(ended).toHaveBeenCalledWith('revoked');
+    expect(server.clients.map((client) => client.closed)).toEqual([true, true, true]);
+  });
+
   it('reads a session ended from elsewhere as ended, and leaves no grant of its own asking', async () => {
     const server = fakeServer();
     const session = await open(server);
