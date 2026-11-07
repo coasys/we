@@ -15,10 +15,23 @@ const IDENTITY_CSP = policy.trim();
 
 describe('the identity window', () => {
   it('says what a revocation does, and promises nothing about earlier signatures', () => {
-    const lead = heading({ screen: 'revoke-confirm', keyId: 'd2', passphrase: false, error: null }).lead;
+    const confirm = { screen: 'revoke-confirm' as const, keyId: 'd2', passphrase: false, error: null };
+    const lead = heading({ ...confirm, holdsMaster: false }).lead;
     expect(lead).toContain('when they next read your key log');
     expect(lead).toContain('can also stop counting as yours');
     expect(lead).not.toContain('stays valid');
+  });
+
+  it('tells before revoking a device that keeps the master key that its copy stays valid', () => {
+    const lead = heading({
+      screen: 'revoke-confirm',
+      keyId: 'd2',
+      holdsMaster: true,
+      passphrase: false,
+      error: null,
+    }).lead;
+    expect(lead).toContain('Its copy of the master key stays valid');
+    expect(lead).toContain('replace your master key');
   });
 
   it('asks for the two words the custody service chose', () => {
@@ -33,8 +46,55 @@ describe('the identity window', () => {
   });
 
   it('names the device on the approve card when it gave a hint', () => {
-    expect(heading({ screen: 'match', code: 'R7K Q2M', hint: 'server b' }).title).toBe('Add server b?');
-    expect(heading({ screen: 'match', code: 'R7K Q2M', hint: null }).title).toBe('Add this device?');
+    const match = { screen: 'match' as const, code: 'R7K Q2M', canKeep: false, ownName: false };
+    expect(heading({ ...match, hint: 'server b' }).title).toBe('Add server b?');
+    expect(heading({ ...match, hint: null }).title).toBe('Add this device?');
+  });
+
+  it('asks the holder by name whether to send the master key, and the revoke request names each device', () => {
+    const request = {
+      screen: 'request' as const,
+      id: 'r1',
+      keyId: 'd2',
+      fingerprint: 'AbCd 1234',
+      code: 'R7K Q2M',
+      passphrase: false,
+      error: null,
+    };
+    const send = heading({ ...request, kind: 'send-master', device: 'Phone', devices: [] });
+    // The key log's key, not the name any device can write, says who asks.
+    expect(send.title).toBe('Device d2 (key AbCd 1234) asks for the master key — send it?');
+    expect(send.lead).toContain('Phone');
+    expect(send.lead).toContain('R7K Q2M');
+    expect(send.lead).toContain('add and remove your devices');
+    const revoke = heading({ ...request, kind: 'confirm-revoke', device: 'Laptop', devices: ['Old desktop', 'd4'] });
+    expect(revoke.title).toBe('Laptop asks to revoke Old desktop, d4');
+  });
+
+  it('says on a linked device what it can and cannot do, and what is still on its way', () => {
+    expect(heading({ screen: 'joined', did: 'did:scid:coasys:1:Qm', keyId: 'd2' }).lead).toContain(
+      'does not hold your master key',
+    );
+    const linked = heading({ screen: 'linked', seq: 3, masterSent: true, note: 'Its name is not saved yet.' }).lead;
+    expect(linked).toContain('entry #3');
+    expect(linked).toContain('The master key waits for it');
+    expect(linked).toContain('Its name is not saved yet.');
+    expect(heading({ screen: 'linked', seq: 3, masterSent: false, note: null }).lead).toBe(
+      'Your key log records it as entry #3.',
+    );
+  });
+
+  it('titles the device steps as the Devices page names them', () => {
+    expect(heading({ screen: 'enter-code', error: null }).title).toBe('Scan or paste a code');
+    expect(heading({ screen: 'device-code', code: 'coasys:device:1:x', qrSvg: '', expires: 0 }).title).toBe(
+      'Show my code',
+    );
+    const asked = heading({ screen: 'asked', keyId: 'd2', fingerprint: 'AbCd 1234', code: 'R7K Q2M' }).lead;
+    expect(asked).toContain('Take the master key');
+    // The holder's card shows the same key and code.
+    expect(asked).toContain('d2 (key AbCd 1234)');
+    expect(asked).toContain('R7K Q2M');
+    expect(heading({ screen: 'renamed', keyId: 'd2', name: 'Laptop' }).title).toBe('Named Laptop');
   });
 
   it('says what the words do today, and promises no restore or replacement this app cannot run', () => {
@@ -59,6 +119,23 @@ describe('the identity window', () => {
     expect(isLast({ screen: 'revoked', keyId: 'd2', seq: 2 })).toBe(true);
     expect(isLast({ screen: 'show-words', words: [] })).toBe(false);
     expect(isLast({ screen: 'offer', link: '', qrSvg: '', expires: 0 })).toBe(false);
+    for (const last of [
+      { screen: 'joined' as const, did: 'did:scid:coasys:1:Qm', keyId: 'd2' },
+      { screen: 'master-taken' as const, did: 'did:scid:coasys:1:Qm', note: null },
+      { screen: 'request-answered' as const, kind: 'send-master' as const, device: 'Phone', note: null },
+      { screen: 'asked' as const, keyId: 'd2', fingerprint: 'AbCd 1234', code: 'R7K Q2M' },
+      { screen: 'renamed' as const, keyId: 'd2', name: 'Laptop' },
+    ]) {
+      expect(isLast(last), last.screen).toBe(true);
+    }
+    // The waits draw a screen and ask for the next; the person ends them only by cancelling.
+    for (const waiting of [
+      { screen: 'code-sent' as const, expires: 0 },
+      { screen: 'device-code' as const, code: '', qrSvg: '', expires: 0 },
+      { screen: 'device-match' as const, code: '', did: '' },
+    ]) {
+      expect(isLast(waiting), waiting.screen).toBe(false);
+    }
   });
 
   it('names no app: the host titles the window, so a WE build and a Coasys build say their own name', () => {

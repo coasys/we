@@ -10,20 +10,32 @@
 //! whole through a temp file so a crash leaves the previous list. The file is removed when the list
 //! empties.
 //!
+//! Beside it, the same way, the **retry list of master-key pushes** (`<dir>/pending-pushes.json`):
+//! a master key this computer is putting into another device's inbox (the person chose "Keep the
+//! master key on this device" while linking it, or said yes to its request) is listed here before
+//! the put and forgotten once the store takes it, so a push the app did not see through is tried
+//! again at the next start and unlock (`flows::master::retry_pushes`). Each entry is an identity and
+//! a device key id: no secret — every try seals the master key current then.
+//!
 //! The folder is shared by every desktop app and build on this computer, and two can run at once (a
 //! WE build and a white-labelled one each hold their own single-instance lock). So each read and
 //! each read-modify-write holds an advisory lock on `<dir>/pending-incepts.lock` for its length,
 //! across processes — the in-process mutex alone let two services each write back a list without
-//! the other's incept.
+//! the other's incept. Both lists take that one lock.
 
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use ad4m_identity_client::VaultError;
+use ad4m_identity_client::{PendingPush, VaultError};
 use ad4m_identity_core::Event;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 
 /// The file's name inside the custody folder.
 pub const FILE_NAME: &str = "pending-incepts.json";
+
+/// The retry list's file inside the custody folder.
+pub const PUSHES_FILE_NAME: &str = "pending-pushes.json";
 
 /// The lock every process holds while it reads or changes the file.
 const LOCK_NAME: &str = "pending-incepts.lock";
@@ -45,12 +57,12 @@ fn lock_folder(dir: &std::path::Path, exclusive: bool) -> Result<std::fs::File, 
     Ok(file)
 }
 
-/// Where the pending incepts are kept.
+/// Where the pending incepts, and the retry list of master-key pushes, are kept.
 pub enum PendingIncepts {
-    /// `<dir>/pending-incepts.json`: what the app uses.
+    /// `<dir>/pending-incepts.json` and `<dir>/pending-pushes.json`: what the app uses.
     File { dir: PathBuf, lock: Mutex<()> },
     /// Kept only as long as the value (tests).
-    Memory(Mutex<Vec<Event>>),
+    Memory(Mutex<(Vec<Event>, Vec<PendingPush>)>),
 }
 
 fn unavailable(why: impl std::fmt::Display) -> VaultError {
@@ -67,65 +79,114 @@ impl PendingIncepts {
     }
 
     pub fn memory() -> Self {
-        PendingIncepts::Memory(Mutex::new(Vec::new()))
+        PendingIncepts::Memory(Mutex::new((Vec::new(), Vec::new())))
     }
 
     /// The kept incepts.
     pub fn list(&self) -> Result<Vec<Event>, VaultError> {
-        match self {
-            PendingIncepts::File { dir, lock } => {
-                let _held = lock.lock().map_err(|_| unavailable("lock poisoned"))?;
-                let _shared = lock_folder(dir, false)?;
-                read(dir)
-            }
-            PendingIncepts::Memory(events) => Ok(events
-                .lock()
-                .map_err(|_| unavailable("lock poisoned"))?
-                .clone()),
-        }
+        self.read_one(FILE_NAME, |m| m.0.clone())
     }
 
     /// Keeps `incept`, replacing a kept incept of the same identity.
     pub fn keep(&self, incept: &Event) -> Result<(), VaultError> {
-        self.change(|events| {
-            events.retain(|e| e.scid != incept.scid);
-            events.push(incept.clone());
-        })
+        self.change(
+            FILE_NAME,
+            |m| &mut m.0,
+            |events: &mut Vec<Event>| {
+                events.retain(|e| e.scid != incept.scid);
+                events.push(incept.clone());
+            },
+        )
     }
 
     /// Forgets the incept of `scid`; nothing to do when none is kept.
     pub fn forget(&self, scid: &str) -> Result<(), VaultError> {
-        self.change(|events| events.retain(|e| e.scid != scid))
+        self.change(
+            FILE_NAME,
+            |m| &mut m.0,
+            |events: &mut Vec<Event>| events.retain(|e| e.scid != scid),
+        )
     }
 
-    fn change(&self, edit: impl FnOnce(&mut Vec<Event>)) -> Result<(), VaultError> {
+    /// The master-key pushes kept and not yet confirmed sent.
+    pub fn pushes(&self) -> Result<Vec<PendingPush>, VaultError> {
+        self.read_one(PUSHES_FILE_NAME, |m| m.1.clone())
+    }
+
+    /// Keeps `push` on the retry list; keeping one already listed is no change.
+    pub fn keep_push(&self, push: &PendingPush) -> Result<(), VaultError> {
+        self.change(
+            PUSHES_FILE_NAME,
+            |m| &mut m.1,
+            |pushes: &mut Vec<PendingPush>| {
+                if !pushes.contains(push) {
+                    pushes.push(push.clone());
+                }
+            },
+        )
+    }
+
+    /// Forgets `push`; nothing to do when it is not listed.
+    pub fn push_done(&self, push: &PendingPush) -> Result<(), VaultError> {
+        self.change(
+            PUSHES_FILE_NAME,
+            |m| &mut m.1,
+            |pushes: &mut Vec<PendingPush>| pushes.retain(|p| p != push),
+        )
+    }
+
+    fn read_one<T: DeserializeOwned>(
+        &self,
+        file: &str,
+        memory: impl FnOnce(&(Vec<Event>, Vec<PendingPush>)) -> Vec<T>,
+    ) -> Result<Vec<T>, VaultError> {
+        match self {
+            PendingIncepts::File { dir, lock } => {
+                let _held = lock.lock().map_err(|_| unavailable("lock poisoned"))?;
+                let _shared = lock_folder(dir, false)?;
+                read(dir, file)
+            }
+            PendingIncepts::Memory(lists) => Ok(memory(
+                &*lists.lock().map_err(|_| unavailable("lock poisoned"))?,
+            )),
+        }
+    }
+
+    fn change<T: Serialize + DeserializeOwned>(
+        &self,
+        file: &str,
+        memory: impl FnOnce(&mut (Vec<Event>, Vec<PendingPush>)) -> &mut Vec<T>,
+        edit: impl FnOnce(&mut Vec<T>),
+    ) -> Result<(), VaultError> {
         match self {
             PendingIncepts::File { dir, lock } => {
                 let _held = lock.lock().map_err(|_| unavailable("lock poisoned"))?;
                 let _exclusive = lock_folder(dir, true)?;
-                let mut events = read(dir)?;
-                edit(&mut events);
-                write(dir, &events)
+                let mut items = read(dir, file)?;
+                edit(&mut items);
+                write(dir, file, &items)
             }
-            PendingIncepts::Memory(events) => {
-                edit(&mut *events.lock().map_err(|_| unavailable("lock poisoned"))?);
+            PendingIncepts::Memory(lists) => {
+                edit(memory(
+                    &mut *lists.lock().map_err(|_| unavailable("lock poisoned"))?,
+                ));
                 Ok(())
             }
         }
     }
 }
 
-fn read(dir: &std::path::Path) -> Result<Vec<Event>, VaultError> {
-    match std::fs::read(dir.join(FILE_NAME)) {
+fn read<T: DeserializeOwned>(dir: &std::path::Path, file: &str) -> Result<Vec<T>, VaultError> {
+    match std::fs::read(dir.join(file)) {
         Ok(bytes) => serde_json::from_slice(&bytes).map_err(unavailable),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
         Err(e) => Err(unavailable(e)),
     }
 }
 
-fn write(dir: &std::path::Path, events: &[Event]) -> Result<(), VaultError> {
+fn write<T: Serialize>(dir: &std::path::Path, file: &str, events: &[T]) -> Result<(), VaultError> {
     use std::io::Write;
-    let path = dir.join(FILE_NAME);
+    let path = dir.join(file);
     if events.is_empty() {
         return match std::fs::remove_file(&path) {
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(unavailable(e)),
@@ -223,5 +284,41 @@ mod tests {
         let text = String::from_utf8(bytes.clone()).unwrap();
         assert!(!bytes.windows(32).any(|w| w == master.to_bytes()));
         assert!(!text.contains(&bs58::encode(master.to_bytes()).into_string()));
+    }
+
+    #[test]
+    fn the_retry_list_keeps_each_push_once_beside_the_incepts() {
+        let dir = tempfile::tempdir().unwrap();
+        let push = |key_id: &str| PendingPush {
+            scid: "QmA".into(),
+            key_id: key_id.into(),
+        };
+        let pending = PendingIncepts::file(dir.path());
+        pending.keep(&incept(4)).unwrap();
+        pending.keep_push(&push("d2")).unwrap();
+        pending.keep_push(&push("d3")).unwrap();
+        // Kept again before its put passed: still once.
+        pending.keep_push(&push("d2")).unwrap();
+        drop(pending);
+
+        let reopened = PendingIncepts::file(dir.path());
+        assert_eq!(reopened.pushes().unwrap(), vec![push("d2"), push("d3")]);
+        // The two lists are apart: forgetting a push leaves the incept, and the other way round.
+        reopened.push_done(&push("d2")).unwrap();
+        reopened.forget(&incept(4).scid).unwrap();
+        assert_eq!(reopened.pushes().unwrap(), vec![push("d3")]);
+        reopened.push_done(&push("d3")).unwrap();
+        reopened.push_done(&push("d3")).unwrap();
+        assert!(PendingIncepts::file(dir.path())
+            .pushes()
+            .unwrap()
+            .is_empty());
+        assert!(!dir.path().join(PUSHES_FILE_NAME).exists());
+
+        let memory = PendingIncepts::memory();
+        memory.keep_push(&push("d2")).unwrap();
+        memory.keep_push(&push("d2")).unwrap();
+        assert_eq!(memory.pushes().unwrap(), vec![push("d2")]);
+        assert!(memory.list().unwrap().is_empty());
     }
 }

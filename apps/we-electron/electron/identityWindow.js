@@ -50,9 +50,13 @@ export function identityFile(url, dir) {
 
 /** The steps the main window may ask for, as `we_custody::IdentityStep` reads them. */
 function isIdentityStep(step) {
-  if (step?.kind === 'create' || step?.kind === 'add-device') return true;
-  return step?.kind === 'revoke' && typeof step.keyId === 'string';
+  if (PLAIN_STEPS.has(step?.kind)) return true;
+  if (step?.kind === 'answer-request') return typeof step.id === 'string';
+  return (step?.kind === 'revoke' || step?.kind === 'rename') && typeof step.keyId === 'string';
 }
+
+/** The steps that name nothing but their kind. */
+const PLAIN_STEPS = new Set(['create', 'add-device', 'scan-device', 'show-code', 'take-master', 'ask-master']);
 
 /**
  * `custody()` is the running sidecar's client, or null; it changes when the executor restarts.

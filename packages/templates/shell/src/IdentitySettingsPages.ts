@@ -276,9 +276,36 @@ const deviceRow: SchemaNode = listRow(
   { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: [{ $: 'device.subtitle' }] },
   [
     {
+      type: '$if',
+      props: {
+        condition: { $: "device.master != ''" },
+        then: {
+          type: 'we-badge',
+          props: { tone: { $: "device.holdsMaster == 'yes' ? 'accent' : 'warning'" }, size: 'sm' },
+          children: [{ $: 'device.master' }],
+        },
+      },
+    },
+    {
       type: 'we-badge',
       props: { tone: { $: "device.revoked ? 'danger' : 'success'" }, size: 'sm' },
       children: [{ $: 'device.status' }],
+    },
+    {
+      type: '$if',
+      props: {
+        condition: { $: '!device.revoked && deviceStore.canManage' },
+        then: {
+          type: 'we-button',
+          props: {
+            variant: 'ghost',
+            size: 'sm',
+            disabled: { $: 'identityStore.busy' },
+            onClick: { $invoke: 'deviceStore.rename', args: [{ $: 'device.keyId' }] },
+          },
+          children: ['Rename'],
+        },
+      },
     },
     {
       type: '$if',
@@ -320,25 +347,131 @@ export const deviceList: SchemaNode = {
   },
 };
 
-/** "Add a device", where this computer can sign one in. */
+/** A button that opens a step in the identity window, idle while one runs. */
+const stepButton = (label: string, invoke: string, variant = 'solid', args: unknown[] = []): SchemaNode => ({
+  type: 'we-button',
+  props: {
+    variant,
+    size: 'sm',
+    loading: { $: 'identityStore.busy' },
+    disabled: { $: 'identityStore.busy' },
+    onClick: { $invoke: invoke, ...(args.length ? { args } : {}) },
+  },
+  children: [label],
+});
+
+/**
+ * Linking, where this computer can sign a device in: by the code a device shows, or a server by a
+ * link this computer gives it.
+ */
 export const addDeviceButton: SchemaNode = {
   type: '$if',
   props: {
     condition: { $: 'deviceStore.canManage' },
     then: {
-      type: 'we-button',
-      props: {
-        variant: 'solid',
-        loading: { $: 'identityStore.busy' },
-        disabled: { $: 'identityStore.busy' },
-        onClick: { $invoke: 'deviceStore.addDevice' },
-      },
-      children: ['Add a device'],
+      type: 'Row',
+      props: { gap: '200', wrap: true },
+      children: [
+        stepButton('Scan or paste a code', 'deviceStore.scanDevice'),
+        stepButton('Add a server by link', 'deviceStore.addDevice', 'soft'),
+      ],
     },
   },
 };
 
+/** A card with an icon, a title, a sentence and its buttons. */
+const stepCard = (icon: string, title: string, text: string, buttons: SchemaNode[]): SchemaNode => ({
+  type: 'Card',
+  props: { bg: 'surface', gap: '300' },
+  children: [
+    {
+      type: 'Row',
+      props: { gap: '300', ay: 'center' },
+      children: [
+        { type: 'we-icon', props: { name: icon, color: 'accent-text' } },
+        { type: 'we-text', props: { fontWeight: 'semibold' }, children: [title] },
+      ],
+    },
+    { type: 'we-text', props: { variant: 'body', color: 'text-muted' }, children: [text] },
+    { type: 'Row', props: { gap: '200', wrap: true }, children: buttons },
+  ],
+});
+
+const when = (condition: string, then: SchemaNode): SchemaNode => ({
+  type: '$if',
+  props: { condition: { $: condition }, then },
+});
+
+/**
+ * What this computer can do about the master key and joining an identity: show its code to join
+ * one, take the master key sent here, or ask a device that keeps it.
+ */
+export const masterKeyCards: SchemaNode[] = [
+  when(
+    'deviceStore.canShowCode',
+    stepCard(
+      'qr-code',
+      'Join your identity from another device',
+      'Show this computer’s code, then add it from a device of your identity with “Scan or paste a code”.',
+      [stepButton('Show my code', 'deviceStore.showCode')],
+    ),
+  ),
+  when(
+    'deviceStore.masterWaiting',
+    stepCard(
+      'key',
+      'Your master key was sent here',
+      'Take it, and this computer can add and remove your devices too.',
+      [stepButton('Take the master key', 'deviceStore.takeMaster')],
+    ),
+  ),
+  when(
+    'deviceStore.canAskMaster',
+    stepCard(
+      'key',
+      'This computer does not keep your master key',
+      'Ask for it, then send it from a device that keeps it. Its Devices page shows your request.',
+      [stepButton('Ask for the master key', 'deviceStore.askMaster', 'soft')],
+    ),
+  ),
+];
+
+const requestRow: SchemaNode = listRow(
+  {
+    type: 'Row',
+    props: {
+      width: '40px',
+      height: '40px',
+      r: 'full',
+      bg: 'surface-sunken',
+      ax: 'center',
+      ay: 'center',
+      flexShrink: '0',
+    },
+    children: [{ type: 'we-icon', props: { name: { $: "request.kind == 'send-master' ? 'key' : 'prohibit'" } } }],
+  },
+  { type: 'we-text', children: [{ $: 'request.title' }] },
+  { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: [{ $: 'request.detail' }] },
+  [stepButton('Answer', 'deviceStore.answerRequest', 'solid', [{ $: 'request.id' }])],
+);
+
+/** What your other devices asked, while this computer keeps the master key. */
+export const requestList: SchemaNode = when('count(deviceStore.requests)', {
+  type: 'Column',
+  props: { gap: '200' },
+  children: [
+    { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Waiting for your answer'] },
+    {
+      type: 'Column',
+      props: { bg: 'surface', r: 'surface', border: '1px solid border', overflow: 'hidden' },
+      children: [
+        { type: '$each', props: { items: { $: 'deviceStore.requests' }, as: 'request' }, children: [requestRow] },
+      ],
+    },
+  ],
+});
+
 export const deviceListFootnote: SchemaNode = footnote(
   'lock',
-  'Your public key log lists keys, not names. A revoked key stops speaking for you from that event on.',
+  'Your public key log lists keys, not names: the names are in a record only your devices read. A revoked key stops speaking for you from that event on.',
 );

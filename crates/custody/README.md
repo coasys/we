@@ -127,6 +127,45 @@ key log, a different log under its identifier, an event it calls invalid) is sho
 when the person next makes an identity, with "Discard it" to forget it. Discarding forgets the
 incept only; the master key stays where it rests.
 
+## Devices and the master key
+
+The steps the main window may open (`IdentityStep`) besides `create` and `revoke`:
+
+| Step             | Where                          | What it does                                                                                         |
+| ---------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| `add-device`     | a computer with the master key | gives a server an offer link (QR and text), then the match code, then signs the `add`                |
+| `scan-device`    | a computer with the master key | "Scan or paste a code": takes the `coasys:device:1:…` code a new device shows and sends it the offer |
+| `show-code`      | a computer of no identity yet  | "Show my code": its device code as a QR code and a copyable link, until a holder links it            |
+| `take-master`    | a linked device                | "Take the master key": keeps the master key another device sent here                                 |
+| `ask-master`     | a linked device                | "Ask for the master key": posts a `send-master` request for a holder to answer                       |
+| `answer-request` | a computer with the master key | answers another device's `send-master` or `confirm-revoke` request, on the person's yes              |
+| `rename`         | a computer with the master key | names a device in the identity's private record                                                      |
+
+On the match screen of a link the person names the new device, names this computer too when the
+private record does not list it yet, and — for a device that may keep it (a desktop app, not a
+server) — chooses "Keep the master key on this device". The `add` is published first; the device's
+entry in the private record and, if chosen, the master key sealed to the device's inbox follow it.
+What did not happen yet is said on the last screen (`Linked.note`):
+
+- **The master key** a device was given waits in `<custody dir>/pending-pushes.json` until the store
+  took it. The list is retried each time a link or an answer unlocks this computer's master key, and
+  when `publicState` finds the key held in a store that unlocks itself.
+- **The private record** (names, kinds, who keeps the master key) is written after each link,
+  revoke, rename and answer; the client merges a write that raced another device's. A write that
+  fails is said on the last screen and not retried: the device shows by its key id until it is
+  named, and `rename` writes its whole entry when the record lacks one.
+
+On the device, a master key waiting in its inbox is taken by `publicState` without asking where the
+store unlocks itself (the macOS keychain): the key is then behind the OS unlock like any other, and
+the device marks itself a holder in the private record. A sealed store (a passphrase file, the Linux
+Secret Service) needs the passphrase, so there the person takes it with `take-master`, which asks
+for one, or a new one when this computer keeps no master key yet.
+
+`publicState` carries what the Devices page draws: `devices` (the private record's names, kinds and
+`holdsMaster`: `true`, `false` or `"offered"`), `requests` (what other devices asked, never their
+signed parts) and `masterWaiting`. Saying no to a request is closing the window: the request waits
+until it expires.
+
 ## Testing
 
 ```sh

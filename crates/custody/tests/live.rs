@@ -281,7 +281,9 @@ async fn make_link_and_revoke_through_the_custody_service() {
         eprintln!("skipped: set CUSTODY_LIVE=1 (see the header of tests/live.rs)");
         return;
     }
-    assert!(cfg!(feature = "cheap-kdf"), "run with --features cheap-kdf");
+    if !cfg!(feature = "cheap-kdf") {
+        panic!("run with --features cheap-kdf");
+    }
     let repo = ad4m_repo();
     let js = repo.join("tests/js");
     let agent_language =
@@ -338,7 +340,7 @@ async fn make_link_and_revoke_through_the_custody_service() {
         vault,
         ExecutorAddress {
             url: a.url(),
-            admin_credential: Arc::from(credential),
+            credential: Arc::from(credential),
         },
     );
     let mut shown = Shown::default();
@@ -479,13 +481,37 @@ async fn make_link_and_revoke_through_the_custody_service() {
         .trim()
         .to_string();
     let matched = shown.record(&waiting.await.unwrap().unwrap());
-    let Screen::Match { code, hint } = matched else {
+    let Screen::Match {
+        code,
+        hint,
+        can_keep,
+        own_name,
+    } = matched
+    else {
         panic!("no match: {matched:?}")
     };
     assert_eq!(code, b_code, "both sides show the same code");
     assert_eq!(hint.as_deref(), Some("server b"));
-    let linked = shown.record(&custody.step(StepInput::Confirm).await.unwrap());
-    assert!(matches!(linked, Screen::Linked { seq: 1 }), "{linked:?}");
+    // A node offer: the server may not keep the master key. The first link names this computer.
+    assert!(!can_keep);
+    assert!(own_name);
+    let confirm = StepInput::Confirm {
+        name: None,
+        keep_master: false,
+        this_name: Some("Node A".into()),
+    };
+    let linked = shown.record(&custody.step(confirm).await.unwrap());
+    assert!(
+        matches!(
+            linked,
+            Screen::Linked {
+                seq: 1,
+                master_sent: false,
+                note: None
+            }
+        ),
+        "{linked:?}"
+    );
     claim.wait_for(60, |l| l.starts_with(&format!("Joined {did} as d2")));
     let b_status = b.call("identity.status", json!({})).await;
     assert_eq!(

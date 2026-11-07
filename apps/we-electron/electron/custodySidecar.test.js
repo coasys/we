@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 import { custodyClient, custodySpawn, startCustody, superviseCustody } from './custodySidecar.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const CREDENTIAL = 'the-admin-credential';
+const CREDENTIAL = 'the-custody-credential';
 
 describe('custodySpawn', () => {
   it('passes the credential in the environment and never as an argument', () => {
@@ -19,12 +19,13 @@ describe('custodySpawn', () => {
       binary: '/opt/we/we-custody',
       executorPort: 12001,
       credential: CREDENTIAL,
-      baseEnv: { HOME: '/home/someone' },
+      baseEnv: { HOME: '/home/someone', AD4M_ADMIN_CREDENTIAL: 'the-admin-credential' },
     });
     expect(command).toBe('/opt/we/we-custody');
     expect(args).toEqual(['--executor-port', '12001']);
     expect(args.join(' ')).not.toContain(CREDENTIAL);
-    expect(env).toEqual({ HOME: '/home/someone', AD4M_ADMIN_CREDENTIAL: CREDENTIAL });
+    // The custody credential only: an admin credential in the parent's environment is not passed on.
+    expect(env).toEqual({ HOME: '/home/someone', AD4M_CUSTODY_CREDENTIAL: CREDENTIAL });
   });
 
   it('refuses to start without a credential', () => {
@@ -80,7 +81,12 @@ describe('startCustody', () => {
       log: () => {},
     });
     const answer = await custody.call('publicState');
-    expect(answer).toEqual({ method: 'publicState', argv: ['--executor-port', '12001'], credential: CREDENTIAL });
+    expect(answer).toEqual({
+      method: 'publicState',
+      argv: ['--executor-port', '12001'],
+      credential: CREDENTIAL,
+      admin: null,
+    });
     await expect(custody.call('fail')).rejects.toThrow('it failed');
     await custody.stop();
     await expect(custody.call('publicState')).rejects.toThrow('the custody service stopped');

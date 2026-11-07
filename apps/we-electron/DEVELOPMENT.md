@@ -138,6 +138,11 @@ with the Tauri app, which links the same crate.
   ended) and read public custody state (`identity-public-state`). One identity window at a time:
   asking again focuses it and starts nothing; closing it mid-step cancels the step. `ipcSender.js`
   answers each channel for its own window only. No word, passphrase or key reaches the main window.
+- **The steps** it may open are the custody service's (`crates/custody/README.md`, "Devices and the
+  master key"): make the identity, add a server by link, scan or paste a new device's code, show
+  this computer's code, take or ask for the master key, answer another device's request, name a
+  device, revoke one. `identityWindow.js` refuses any other step, and a step that names a device or
+  a request without one.
 
 The network names the identity store, not WE: the executor's bootstrap seed carries it, and the
 mainnet seed's store serves the app with no configuration. To use another store, set it in the

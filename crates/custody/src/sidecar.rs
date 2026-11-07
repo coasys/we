@@ -18,8 +18,9 @@
 //! `cancel` and `publicState` are answered. When stdin closes the open step is cancelled and the
 //! process exits, so it never outlives its host.
 //!
-//! The admin credential comes from the environment (`AD4M_ADMIN_CREDENTIAL`, as the executor reads
-//! it), never from an argument, which every user of the computer can read through `ps`. No error
+//! The custody credential comes from the environment (`AD4M_CUSTODY_CREDENTIAL`, as the executor
+//! reads it for its `--custody-channel`; distinct from the admin credential the main window holds,
+//! which the custody channel refuses), never from an argument, which every user of the computer can read through `ps`. No error
 //! here repeats what a request carried: a malformed step input could hold a passphrase.
 
 use std::path::PathBuf;
@@ -39,8 +40,8 @@ use crate::service::{
 use crate::store::system_store;
 use crate::{DesktopVault, PendingIncepts};
 
-/// The variable the admin credential arrives in.
-pub const CREDENTIAL_VAR: &str = "AD4M_ADMIN_CREDENTIAL";
+/// The variable the custody credential arrives in.
+pub const CREDENTIAL_VAR: &str = "AD4M_CUSTODY_CREDENTIAL";
 
 /// How long a closing sidecar waits to send answers already on their way.
 const DRAIN: Duration = Duration::from_secs(5);
@@ -89,7 +90,7 @@ impl Config {
         Ok(Config {
             executor: ExecutorAddress {
                 url: format!("http://127.0.0.1:{port}"),
-                admin_credential: Arc::from(credential.as_str()),
+                credential: Arc::from(credential.as_str()),
             },
             custody_dir,
         })
@@ -263,7 +264,7 @@ mod tests {
             DesktopVault::new(Box::new(MemoryStore::new()), PendingIncepts::memory()),
             ExecutorAddress {
                 url: "http://127.0.0.1:9".into(),
-                admin_credential: Arc::from("x"),
+                credential: Arc::from("x"),
             },
         )
     }
@@ -380,11 +381,32 @@ mod tests {
         )
         .unwrap();
         assert_eq!(config.executor.url, "http://127.0.0.1:12001");
-        assert_eq!(&*config.executor.admin_credential, "the-credential");
+        assert_eq!(&*config.executor.credential, "the-credential");
         assert!(!format!("{config:?}").contains("store.example"));
         assert_eq!(config.custody_dir, PathBuf::from("/tmp/custody"));
         // The credential never shows in a debug print either.
         assert!(!format!("{config:?}").contains("the-credential"));
+    }
+
+    /// The executor's `--custody-channel` admits only its own credential, never the admin one the
+    /// main window holds: custody connects with that one, and the admin credential alone is refused.
+    #[test]
+    fn custody_connects_with_the_custody_credential_not_the_admin_one() {
+        let config = Config::parse(
+            args(&["--executor-port", "1"]),
+            env(&[
+                ("AD4M_CUSTODY_CREDENTIAL", "the-custody-credential"),
+                ("AD4M_ADMIN_CREDENTIAL", "the-admin-credential"),
+            ]),
+        )
+        .unwrap();
+        assert_eq!(&*config.executor.credential, "the-custody-credential");
+        let refused = Config::parse(
+            args(&["--executor-port", "1"]),
+            env(&[("AD4M_ADMIN_CREDENTIAL", "the-admin-credential")]),
+        )
+        .unwrap_err();
+        assert_eq!(refused, "AD4M_CUSTODY_CREDENTIAL is not set");
     }
 
     #[test]

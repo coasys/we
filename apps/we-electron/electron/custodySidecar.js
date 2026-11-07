@@ -7,24 +7,28 @@
  * or `{id, error}` on its stdout, in the order they finish. It exits when its stdin closes, so it
  * never outlives this process.
  *
- * The admin credential reaches it in its environment, never on its command line, which every user
- * of the computer can read through `ps`.
+ * The custody credential (the one the executor's `--custody-channel` admits, distinct from the admin
+ * credential the window gets) reaches it in its environment, never on its command line, which every
+ * user of the computer can read through `ps`. The admin credential does not reach it at all.
  */
 import { spawn } from 'child_process';
 import { createInterface } from 'readline';
 
 import { stopProcess } from './executorProcess.js';
-import { executorSpawnEnv } from './ipcSender.js';
 
 /** How long a closing sidecar has to exit on its own before it is killed. */
 const EXIT_GRACE_MS = 3_000;
 
 /** The command, arguments and environment of one sidecar start. */
 export function custodySpawn({ binary, executorPort, credential, baseEnv }) {
+  if (!credential) throw new Error('[we] the custody sidecar needs the custody credential');
+  // The admin credential is the renderer's: the sidecar never gets it.
+  const env = { ...baseEnv };
+  delete env.AD4M_ADMIN_CREDENTIAL;
   return {
     command: binary,
     args: ['--executor-port', String(executorPort)],
-    env: executorSpawnEnv(baseEnv, credential),
+    env: { ...env, AD4M_CUSTODY_CREDENTIAL: credential },
   };
 }
 

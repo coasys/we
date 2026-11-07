@@ -52,12 +52,18 @@ export function handleFromWindow(ipcMain, getWindow, isAppUrl, channel, handler)
 }
 
 /**
- * The executor's environment for one start: the admin credential in `AD4M_ADMIN_CREDENTIAL`, never
+ * The executor's environment for one start: the admin credential in `AD4M_ADMIN_CREDENTIAL`, and
+ * the custody credential, when given, in `AD4M_CUSTODY_CREDENTIAL` (`--custody-channel` admits only
+ * that one), never
  * on its command line. An argument is readable by every user of the computer through `ps`, and the
  * executor's own help says so; an environment is readable only by the same user (and root), the
  * boundary the credential is meant to have.
  */
-export function executorSpawnEnv(baseEnv, credential) {
+export function executorSpawnEnv(baseEnv, credential, custodyCredential) {
   if (!credential) throw new Error('[we] the executor needs an admin credential');
-  return { ...baseEnv, AD4M_ADMIN_CREDENTIAL: credential };
+  if (custodyCredential === undefined) return { ...baseEnv, AD4M_ADMIN_CREDENTIAL: credential };
+  if (!custodyCredential || custodyCredential === credential) {
+    throw new Error('[we] the custody channel needs a credential of its own');
+  }
+  return { ...baseEnv, AD4M_ADMIN_CREDENTIAL: credential, AD4M_CUSTODY_CREDENTIAL: custodyCredential };
 }

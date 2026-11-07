@@ -161,7 +161,65 @@ describe('the AD4M identity port with a custody service', () => {
     expect(await port.change!({ kind: 'revoke', keyId: 'd2' })).toBe('done');
     expect(host.open).toHaveBeenCalledWith({ kind: 'revoke', keyId: 'd2' });
     // An empty reason is no reason: nothing blocks the change.
-    expect(await port.custody!()).toEqual({ did: DID, holdsMaster: true, unlock: 'os', blocked: null });
+    expect(await port.custody!()).toEqual({
+      did: DID,
+      holdsMaster: true,
+      unlock: 'os',
+      blocked: null,
+      devices: [],
+      revokedHolders: [],
+      requests: [],
+      masterWaiting: false,
+    });
+  });
+
+  it('reads the private record’s names, the waiting requests and a master key waiting here', async () => {
+    const port = createAd4mIdentityPort(
+      client({ status: {} }),
+      custody({
+        devices: [
+          { keyId: 'd1', name: 'Desktop', kind: 'desktop-app', holdsMaster: true },
+          { keyId: 'd2', name: 'Laptop', kind: 'desktop-app', holdsMaster: 'offered' },
+          { keyId: 'd3', name: 'Box', kind: 'server', holdsMaster: false },
+        ],
+        requests: [
+          { id: 'r1', kind: 'send-master', by: 'd2', keyIds: [], expires: 99 },
+          { id: 'r2', kind: 'confirm-revoke', by: 'd2', keyIds: ['d3'], expires: 99 },
+          // A kind this app cannot answer is left for one that can.
+          { id: 'r3', kind: 'rotate-everything', by: 'd2', keyIds: [], expires: 99 },
+        ],
+        revokedHolders: ['d4'],
+        masterWaiting: true,
+      }),
+    );
+    const view = await port.custody!();
+    expect(view.devices.map((d) => [d.name, d.kind, d.holdsMaster])).toEqual([
+      ['Desktop', 'desktop-app', 'yes'],
+      ['Laptop', 'desktop-app', 'offered'],
+      ['Box', 'server', 'no'],
+    ]);
+    expect(view.requests).toEqual([
+      { id: 'r1', kind: 'send-master', by: 'd2', keyIds: [], expires: 99 },
+      { id: 'r2', kind: 'confirm-revoke', by: 'd2', keyIds: ['d3'], expires: 99 },
+    ]);
+    expect(view.masterWaiting).toBe(true);
+    expect(view.revokedHolders).toEqual(['d4']);
+  });
+
+  it('opens each device step in the custody service as asked', async () => {
+    const host = custody();
+    const port = createAd4mIdentityPort(client({ status: {} }), host);
+    for (const change of [
+      { kind: 'scan-device' },
+      { kind: 'show-code' },
+      { kind: 'take-master' },
+      { kind: 'ask-master' },
+      { kind: 'answer-request', id: 'r1' },
+      { kind: 'rename', keyId: 'd2' },
+    ] as const) {
+      await port.change!(change);
+      expect(host.open).toHaveBeenLastCalledWith(change);
+    }
   });
 
   it('says why changes are blocked', async () => {

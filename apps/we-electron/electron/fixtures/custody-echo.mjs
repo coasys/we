@@ -9,6 +9,11 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     process.stdout.write(`${JSON.stringify({ id, error: 'it failed' })}\n`);
     return;
   }
-  const result = { method, argv: process.argv.slice(2), credential: process.env.AD4M_ADMIN_CREDENTIAL ?? null };
+  const result = {
+    method,
+    argv: process.argv.slice(2),
+    credential: process.env.AD4M_CUSTODY_CREDENTIAL ?? null,
+    admin: process.env.AD4M_ADMIN_CREDENTIAL ?? null,
+  };
   process.stdout.write(`${JSON.stringify({ id, result })}\n`);
 });

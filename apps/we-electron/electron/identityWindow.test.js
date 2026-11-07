@@ -202,10 +202,37 @@ describe('the identity window', () => {
 
   it('refuses a step it does not know, before any window opens', async () => {
     const { identity, windows } = setup();
-    for (const step of [undefined, { kind: 'export-key' }, { kind: 'revoke' }, { kind: 'revoke', keyId: 2 }]) {
+    for (const step of [
+      undefined,
+      { kind: 'export-key' },
+      { kind: 'revoke' },
+      { kind: 'revoke', keyId: 2 },
+      { kind: 'rename' },
+      { kind: 'answer-request' },
+      { kind: 'answer-request', id: 7 },
+    ]) {
       await expect(identity.open(step)).rejects.toThrow('not an identity step');
     }
     expect(windows).toHaveLength(0);
+  });
+
+  it('runs each device step the custody service knows', async () => {
+    for (const step of [
+      { kind: 'scan-device' },
+      { kind: 'show-code' },
+      { kind: 'take-master' },
+      { kind: 'ask-master' },
+      { kind: 'answer-request', id: 'r1' },
+      { kind: 'rename', keyId: 'd2' },
+    ]) {
+      const { identity, calls, windows } = setup({ start: READY });
+      const outcome = identity.open(step);
+      expect(await identity.start()).toEqual(READY.screen);
+      await identity.finish();
+      await expect(outcome).resolves.toBe('done');
+      expect(calls).toEqual([['start', { step }]]);
+      expect(windows).toHaveLength(1);
+    }
   });
 
   it('starts nothing when no step was asked for', async () => {
