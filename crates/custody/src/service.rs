@@ -3277,11 +3277,13 @@ async fn remove_master_on<R: ExecutorRpc>(
         Ok(did) => did,
         Err(screen) => return answer(reply, Ok(screen)),
     };
-    let held = ad4m_identity_core::scid_of(&did).map(|scid| vault.holds(scid));
-    match held {
-        Some(Ok(true)) => {}
-        Some(Err(e)) => return answer(reply, Ok(failed(&ClientError::Vault(e)))),
-        _ => return answer(reply, Ok(failed(&ClientError::Vault(VaultError::NotFound)))),
+    let Some(scid) = ad4m_identity_core::scid_of(&did) else {
+        return answer(reply, Ok(failed(&ClientError::Vault(VaultError::NotFound))));
+    };
+    match vault.holds(scid) {
+        Ok(true) => {}
+        Err(e) => return answer(reply, Ok(failed(&ClientError::Vault(e)))),
+        Ok(false) => return answer(reply, Ok(failed(&ClientError::Vault(VaultError::NotFound)))),
     }
     answer(reply, Ok(Screen::RemoveMaster { error: None }));
     loop {
@@ -3293,7 +3295,13 @@ async fn remove_master_on<R: ExecutorRpc>(
             continue;
         };
         let screen = match remove_master(executor, &vault.unlocking(None), &did, &RANDOM).await {
-            Ok(_) => Screen::MasterRemoved,
+            Ok(_) => {
+                // The client forgot the kept key; a logout leaves no staged copy here either.
+                if let Err(e) = vault.remove_every_copy(scid) {
+                    log::warn!("custody: a staged master key was not removed: {e}");
+                }
+                Screen::MasterRemoved
+            }
             Err(e) => failed(&e),
         };
         return answer(reply, Ok(screen));
