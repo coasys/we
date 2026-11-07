@@ -103,6 +103,17 @@ impl DesktopVault {
         }
     }
 
+    /// Removes the master key of `scid` from this computer: the kept key and any staged one, so no
+    /// copy is left in either slot. For a logout (`remove_master`), after the record no longer
+    /// lists this computer as holding it. A refresh that forgets a replaced kept key uses
+    /// [`Vault::forget_master`] instead, which leaves a staged key for the rotation that staged
+    /// it. Needs no unlock.
+    pub fn remove_every_copy(&self, scid: &str) -> Result<(), VaultError> {
+        log::info!("custody: remove every copy of a master key");
+        self.store.delete(&item_name(scid))?;
+        self.store.delete(&staged_name(scid))
+    }
+
     /// Whether an item for `scid` is held, without an unlock (no prompt, no passphrase): the store is
     /// asked whether the item exists, and the item itself is never read.
     pub fn holds(&self, scid: &str) -> Result<bool, VaultError> {
@@ -293,13 +304,13 @@ impl Vault for Unlocking<'_> {
         self.vault.store.delete(&staged_name(scid))
     }
 
-    /// Forgets the kept key and any staged one: removing the master key from this computer
-    /// leaves no copy in either slot. (The client discards or promotes a staged key before it
-    /// forgets a replaced one, so nothing it still needs is staged here.)
+    /// Forgets the kept key only. A staged key stays: a refresh forgets a kept key the log has
+    /// replaced while a rotation's stage ahead of the log (this app's, or another app's on this
+    /// computer) may still be waiting for its publish, and `promote_master` needs it then. The
+    /// logout, which removes every copy, is [`DesktopVault::remove_every_copy`].
     fn forget_master(&self, scid: &str) -> Result<(), VaultError> {
         log::info!("custody: forget a master key");
-        self.vault.store.delete(&item_name(scid))?;
-        self.vault.store.delete(&staged_name(scid))
+        self.vault.store.delete(&item_name(scid))
     }
 
     fn unlock(&self, scid: &str, why: MasterUse, now: u64) -> Result<Unlocked, VaultError> {
@@ -839,6 +850,88 @@ mod tests {
         assert_eq!(vault.master_index("QmScid").unwrap(), None);
     }
 
+    /// The state the concurrent-rebuild test on #1667 builds: this app keeps #0, another app's
+    /// rotation to #1 landed, and this app's rebuild staged #2, whose publish is still on its
+    /// way. Another app's refresh (`refresh_master`) leaves the stage ahead of the log alone, then
+    /// finds the kept #0 behind the log with no key in its inbox and forgets it. Forgetting the
+    /// obsolete kept key must leave the staged #2 where it is: when the publish lands, this app
+    /// promotes it. Removing the master key from this computer (a logout) is the step that takes
+    /// every copy, the staged one included.
+    fn forgetting_the_obsolete_kept_key_leaves_a_stage_ahead_of_the_log(
+        this_app: &DesktopVault,
+        other_app: &DesktopVault,
+        passphrase: Option<&str>,
+    ) {
+        let ours = StageToken([0xa; 16]);
+        let flow = this_app.unlocking(passphrase.map(|p| Secret::new(p.to_string())));
+        flow.stage_master("QmScid", 2, Secret::new([6u8; 32]), &ours)
+            .unwrap();
+        assert_eq!(this_app.master_index("QmScid").unwrap(), Some(0));
+        assert_eq!(other_app.staged_index("QmScid").unwrap(), Some(2));
+
+        // The other app's refresh with the log at #1: nothing for a stage ahead of the log, then
+        // the kept #0 is behind the log and no key waits in its inbox.
+        other_app.unlocking(None).forget_master("QmScid").unwrap();
+        assert_eq!(other_app.master_index("QmScid").unwrap(), None);
+        assert_eq!(
+            this_app.staged_index("QmScid").unwrap(),
+            Some(2),
+            "the stage ahead of the log survives a refresh that forgets the kept key"
+        );
+
+        // This app's publish lands; its promote finds the key.
+        this_app
+            .unlocking(None)
+            .promote_master("QmScid", 2)
+            .unwrap();
+        assert_eq!(this_app.master_index("QmScid").unwrap(), Some(2));
+        assert_eq!(this_app.staged_index("QmScid").unwrap(), None);
+        assert_eq!(
+            flow.unlock("QmScid", MasterUse::Link, 0)
+                .unwrap()
+                .signer(0)
+                .unwrap()
+                .index(),
+            2
+        );
+
+        // A logout takes every copy: the kept key and whatever is staged.
+        flow.stage_master("QmScid", 3, Secret::new([7u8; 32]), &ours)
+            .unwrap();
+        this_app.remove_every_copy("QmScid").unwrap();
+        assert_eq!(this_app.master_index("QmScid").unwrap(), None);
+        assert_eq!(this_app.staged_index("QmScid").unwrap(), None);
+        assert!(!this_app.holds("QmScid").unwrap());
+    }
+
+    #[test]
+    fn forgetting_the_obsolete_kept_key_leaves_a_stage_ahead_of_the_log_in_a_sealed_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let custody = dir.path().join("custody");
+        sealed_in_file(&custody, "QmScid", [4u8; 32], "a passphrase of length");
+        let this_app = placed(&custody, None);
+        let other_app = placed(&custody, None);
+        forgetting_the_obsolete_kept_key_leaves_a_stage_ahead_of_the_log(
+            &this_app,
+            &other_app,
+            Some("a passphrase of length"),
+        );
+    }
+
+    #[test]
+    fn forgetting_the_obsolete_kept_key_leaves_a_stage_ahead_of_the_log_in_the_keychain() {
+        let keychain = Arc::new(MemoryStore::as_kind(StoreKind::Keychain));
+        let this_app = DesktopVault::new(Box::new(keychain.clone()), PendingIncepts::memory());
+        let other_app = DesktopVault::new(Box::new(keychain.clone()), PendingIncepts::memory());
+        this_app
+            .unlocking(None)
+            .store_master("QmScid", 0, Secret::new([4u8; 32]))
+            .unwrap();
+        forgetting_the_obsolete_kept_key_leaves_a_stage_ahead_of_the_log(
+            &this_app, &other_app, None,
+        );
+    }
+
     /// Data's review test (we#431, r2), adapted to the contract with stage tokens. Two handles on
     /// one custody folder, as two desktop apps on one computer have (`host.rs`): what one
     /// stages, the other reads. The other's discard naming its own token (a rotation of its own
@@ -1117,10 +1210,14 @@ mod tests {
         locked.discard_staged("QmScid", 3, None).unwrap();
         assert_eq!(locked.staged_index("QmScid").unwrap(), None);
 
-        // Removing the master key from this computer leaves no staged copy either.
+        // A refresh forgetting a replaced kept key leaves a staged one (a rotation's publish may
+        // be on its way); removing the master key from this computer takes both.
         flow.stage_master("QmScid", 3, Secret::new([7u8; 32]), &ours)
             .unwrap();
         locked.forget_master("QmScid").unwrap();
+        assert_eq!(locked.staged_index("QmScid").unwrap(), Some(3));
+        assert_eq!(locked.master_index("QmScid").unwrap(), None);
+        vault.remove_every_copy("QmScid").unwrap();
         assert_eq!(locked.staged_index("QmScid").unwrap(), None);
         assert_eq!(locked.master_index("QmScid").unwrap(), None);
     }
