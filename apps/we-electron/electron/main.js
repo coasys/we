@@ -447,6 +447,8 @@ async function startExecutorOnce({ samePort }) {
       if (outcome.action === 'refused' || outcome.action === 'busy' || outcome.action === 'give-up') {
         showExecutorStopped(outcome.action, tail.lines(), configFile, ad4mDataPath);
       }
+      // Gone for good: the sidecar would only keep restarting against a dead port.
+      if (outcome.action !== 'stopped' && outcome.action !== 'leave') void stopCustody();
       // Notify the renderer so it shows in DevTools even in packaged builds.
       //
       // `mainWindow?.` only guards against null, not against a *destroyed* window: on quit the
@@ -498,7 +500,7 @@ function showExecutorStopped(action, lines, configFile, dataPath) {
     startRefusal(code, lines, configFile, dataPath) ??
     `It keeps stopping, so the app does not start it again. Quit and start the app to try again.${
       lines.length ? `\n\n${lines.slice(-8).join('\n')}` : ''
-    }${executorLog ? `\n\nThe log: ${executorLog.path}` : ''}`;
+    }\n\nThe executor's log: ${join(dataPath, 'logs', 'executor-0.log')}`;
   const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
   void dialog.showMessageBox(parent, { type: 'error', message: 'The AD4M executor stopped', detail });
 }
