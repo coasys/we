@@ -12,8 +12,7 @@
  * Startup used to find and stop any executor whose command line named this data folder, then delete
  * the lair socket and the RocksDB LOCK files under it. That was for an executor an older build left
  * running after the app died. Now one cannot outlive the app: `--watch-stdin` stops it when the pipe
- * closes, which the OS does when the app dies, and `AD4M_EXIT_WITH_PARENT` does the same for an
- * executor that predates the flag. And the deletions are not needed for a dead executor — lair
+ * closes, which the OS does when the app dies. And the deletions are not needed for a dead executor — lair
  * removes its own stale socket, and RocksDB locks the LOCK file rather than relying on its absence —
  * while for a live one they broke the executor that exit 79 now protects.
  *
@@ -27,19 +26,19 @@
 /**
  * The environment the executor is started with.
  *
- * `AD4M_EXIT_WITH_PARENT`: the executor shuts down once this app's process is gone, however it
- * ended. It runs detached, in its own session, so a terminal's Ctrl+C or hangup never reaches it.
- * `--watch-stdin` (see {@link executorArgs}) does the same through the pipe this app holds; the
- * variable stays for an executor that predates the flag. An inherited value wins, so
- * `AD4M_EXIT_WITH_PARENT=false` keeps the executor running past the app, to attach a debugger to it
- * or read its state after a crash.
+ * This app's own, passed through unchanged: nothing here ties the executor's life to the app. That
+ * is `--watch-stdin` (see {@link executorArgs}) — the executor shuts down when the pipe this app
+ * holds closes, which the OS does however the app ended. It runs detached, in its own session, so a
+ * terminal's Ctrl+C or hangup never reaches it. No variable keeps it running past the app: to attach
+ * a debugger, or read its state after a crash, start the executor yourself from a terminal and point
+ * the app at it.
  *
  * Log levels are not here: they are `log_config` in the executor's config file
  * ({@link initialExecutorConfig}). An inherited `RUST_LOG` still reaches the executor and wins over
  * the file — someone who exported one before launching is debugging something specific.
  */
 export function executorEnv(env = process.env) {
-  return { AD4M_EXIT_WITH_PARENT: 'true', ...env };
+  return { ...env };
 }
 
 /**

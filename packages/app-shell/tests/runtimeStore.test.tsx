@@ -45,6 +45,7 @@ vi.mock('../src/frameworks/solid/providers/PlatformProvider', () => ({
 }));
 
 import {
+  executorConfigRows,
   parsePeerInfos,
   type RuntimeStore,
   RuntimeStoreProvider,
@@ -361,12 +362,12 @@ describe('a backend that keeps its own config file', () => {
 
     await vi.waitFor(() => expect(store.executorConfigRows()).toHaveLength(6));
     const row = (key: string) => store.executorConfigRows().find((r) => r.key === key);
-    expect(row('auto_permit_cap_requests')).toMatchObject({ kind: 'boolean', checked: true, editable: true });
+    expect(row('auto_permit_cap_requests')).toMatchObject({ kind: 'boolean', choice: 'on', editable: true });
     expect(row('port')).toMatchObject({ kind: 'number', editable: false });
     expect(row('port')?.note).toMatch(/at each start/);
 
-    await store.setExecutorConfigValue('auto_permit_cap_requests', false);
-    expect(row('auto_permit_cap_requests')).toMatchObject({ checked: false });
+    await store.setExecutorConfigValue('auto_permit_cap_requests', 'off');
+    expect(row('auto_permit_cap_requests')).toMatchObject({ choice: 'off' });
     // A row no control is offered for is not written.
     await store.setExecutorConfigValue('port', 12345);
     expect(row('port')?.value).toBe('');
@@ -392,6 +393,40 @@ describe('a backend that keeps its own config file', () => {
     await store.setExecutorConfigValue('hc_admin_port', '');
     expect(calls.at(-1)).toBe('set:{}:hc_admin_port');
     expect(row('hc_admin_port')).toMatchObject({ kind: 'number', value: '', editable: true });
+  });
+
+  // The file holds no default, so a true/false key it leaves alone is neither on nor off.
+  it('offers Default, On and Off for a true/false key, and Default unsets it', async () => {
+    const { runtime, host, calls } = configBackend();
+    executorHost = host;
+    activeShellView = 'settings';
+    ports = { runtime };
+    const store = mount();
+
+    await vi.waitFor(() => expect(store.executorConfigRows()).toHaveLength(6));
+    const row = (key: string) => store.executorConfigRows().find((r) => r.key === key);
+    expect(row('mcp_enabled')).toMatchObject({ kind: 'boolean', choice: 'off', editable: true });
+
+    await store.setExecutorConfigValue('mcp_enabled', 'on');
+    expect(calls.at(-1)).toBe('set:{"mcp_enabled":true}:');
+    expect(row('mcp_enabled')).toMatchObject({ choice: 'on' });
+
+    await store.setExecutorConfigValue('mcp_enabled', 'default');
+    expect(calls.at(-1)).toBe('set:{}:mcp_enabled');
+    expect(row('mcp_enabled')).toMatchObject({ choice: 'default' });
+  });
+
+  it('shows a null value as unset', () => {
+    const rows = executorConfigRows({
+      file: '/tmp/executor-config.json',
+      restartPending: false,
+      entries: [
+        { key: 'mcp_port', kind: 'number', value: null, writableFrom: 'anywhere', pinned: false },
+        { key: 'localhost', kind: 'boolean', value: null, writableFrom: 'this-machine', pinned: false },
+      ],
+    });
+    expect(rows[0]).toMatchObject({ value: '' });
+    expect(rows[1]).toMatchObject({ choice: 'default' });
   });
 
   it('says which key the backend refused, and why', async () => {

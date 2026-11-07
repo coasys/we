@@ -654,9 +654,16 @@ export const executorSettings: SchemaNode = {
                       props: {
                         condition: { $: "row.editable && row.kind == 'boolean'" },
                         then: {
-                          type: 'we-switch',
+                          // Three ways, not a switch: "Default" leaves the key to the executor, whose
+                          // own default may be either (`localhost` is on).
+                          type: 'we-select',
                           props: {
-                            checked: { $: 'row.checked' },
+                            value: { $: 'row.choice' },
+                            options: [
+                              { label: 'Default', value: 'default' },
+                              { label: 'On', value: 'on' },
+                              { label: 'Off', value: 'off' },
+                            ],
                             onChange: {
                               $invoke: 'runtimeStore.setExecutorConfigValue',
                               args: [{ $: 'row.key' }, { $: 'event.detail' }],

@@ -99,7 +99,7 @@ export const storeEntries: StoreEntry[] = [
       mcpPort: { type: 'number' },
       executorRestartPending: { type: 'boolean' },
       executorConfigFile: { type: 'string' },
-      executorConfigRows: { type: 'array', properties: ['id', 'key', 'value', 'kind', 'checked', 'editable', 'note'] },
+      executorConfigRows: { type: 'array', properties: ['id', 'key', 'value', 'kind', 'choice', 'editable', 'note'] },
       executorLogTail: { type: 'string' },
       canRestartExecutor: { type: 'boolean' },
       canBackUp: { type: 'boolean' },

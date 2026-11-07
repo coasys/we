@@ -2762,10 +2762,7 @@ export const contextData: ContextData = {
         mcpPort: { type: 'number' },
         executorRestartPending: { type: 'boolean' },
         executorConfigFile: { type: 'string' },
-        executorConfigRows: {
-          type: 'array',
-          properties: ['id', 'key', 'value', 'kind', 'checked', 'editable', 'note'],
-        },
+        executorConfigRows: { type: 'array', properties: ['id', 'key', 'value', 'kind', 'choice', 'editable', 'note'] },
         executorLogTail: { type: 'string' },
         canRestartExecutor: { type: 'boolean' },
         pendingConsent: { type: 'object', properties: ['kind', 'title', 'message', 'app', 'peerId'] },

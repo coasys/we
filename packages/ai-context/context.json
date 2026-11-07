@@ -7076,7 +7076,7 @@
         },
         "executorConfigRows": {
           "type": "array",
-          "properties": ["id", "key", "value", "kind", "checked", "editable", "note"]
+          "properties": ["id", "key", "value", "kind", "choice", "editable", "note"]
         },
         "executorLogTail": {
           "type": "string"

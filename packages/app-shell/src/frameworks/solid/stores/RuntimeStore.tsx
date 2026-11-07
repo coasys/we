@@ -256,8 +256,8 @@ export interface ExecutorConfigRow {
   key: string;
   value: string;
   kind: 'boolean' | 'number' | 'text' | 'fixed';
-  /** The value as a boolean, for a switch. */
-  checked: boolean;
+  /** A true/false key's choice: `default` while the file leaves it to the executor. */
+  choice: 'default' | 'on' | 'off';
   editable: boolean;
   note: string;
 }
@@ -271,8 +271,9 @@ export function executorConfigRows(config: ExecutorConfig | null): ExecutorConfi
   return (config?.entries ?? []).map((entry) => {
     const { value } = entry;
     const kind: ExecutorConfigRow['kind'] = entry.kind === 'object' ? 'fixed' : entry.kind;
+    // Every field is optional in the executor's file, so `null` is unset too.
     const shown =
-      value === undefined
+      value == null
         ? kind === 'fixed'
           ? 'Default'
           : ''
@@ -286,7 +287,7 @@ export function executorConfigRows(config: ExecutorConfig | null): ExecutorConfi
       key: entry.key,
       value: shown,
       kind,
-      checked: value === true,
+      choice: value == null ? 'default' : value === true ? 'on' : 'off',
       editable: !entry.pinned && kind !== 'fixed',
       note: entry.pinned
         ? 'Set by the app at each start'
@@ -626,9 +627,10 @@ export function RuntimeStoreProvider(props: ParentProps) {
     const row = configRows().find((r) => r.key === key);
     if (!row?.editable) return;
     const raw: unknown = value && typeof value === 'object' && 'detail' in value ? value.detail : value;
-    if (raw === '' || raw === null || raw === undefined) return writeExecutorConfig({}, [key]);
+    // Empty, or a true/false key back on Default: the file leaves it to the executor.
+    if (raw === '' || raw == null || raw === 'default') return writeExecutorConfig({}, [key]);
     const text = typeof raw === 'string' ? raw.trim() : typeof raw === 'number' ? `${raw}` : '';
-    const coerced = row.kind === 'boolean' ? raw === true : row.kind === 'number' ? Number(raw) : text;
+    const coerced = row.kind === 'boolean' ? raw === true || raw === 'on' : row.kind === 'number' ? Number(raw) : text;
     if (row.kind === 'number' && !Number.isFinite(coerced)) {
       setError(`${key}: a number is required`);
       return;

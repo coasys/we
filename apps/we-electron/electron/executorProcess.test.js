@@ -207,17 +207,13 @@ describe('outputTail', () => {
 });
 
 describe('executorEnv', () => {
-  it('tells the executor to end with this app, however the app ends', () => {
-    expect(executorEnv({ PATH: '/bin' })).toEqual({ PATH: '/bin', AD4M_EXIT_WITH_PARENT: 'true' });
+  // Nothing the executor reads: `--watch-stdin` is what ends it with this app, not a variable.
+  it('adds nothing to the inherited environment', () => {
+    expect(executorEnv({ PATH: '/bin' })).toEqual({ PATH: '/bin' });
   });
 
   it('passes an inherited RUST_LOG through', () => {
     expect(executorEnv({ RUST_LOG: 'trace' }).RUST_LOG).toBe('trace');
-  });
-
-  // To attach a debugger to the executor, or read its state after the app crashed.
-  it('leaves an inherited AD4M_EXIT_WITH_PARENT alone', () => {
-    expect(executorEnv({ AD4M_EXIT_WITH_PARENT: 'false' }).AD4M_EXIT_WITH_PARENT).toBe('false');
   });
 });
 
