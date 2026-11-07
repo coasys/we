@@ -66,7 +66,7 @@ function fakeServer(
     if (!challenges.delete(statement.challenge)) throw new FakeRpcError(403, 'challenge');
     if (statement.executor !== SERVER) throw new FakeRpcError(403, 'audience');
     // The executor half of the relay fix (ad4m#1617): a statement for another origin is refused.
-    if ((statement as { audience?: string }).audience !== origin) throw new FakeRpcError(403, 'audience');
+    if (statement.audience !== origin) throw new FakeRpcError(403, 'audience');
     if (revokedKeys.has(statement.key)) throw new FakeRpcError(403, 'key');
     if (options.notKnown) throw new FakeRpcError(403, 'not-known');
   };

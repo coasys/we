@@ -33,15 +33,12 @@ import {
 } from '@coasys/ad4m';
 
 /**
- * A `coasys:session` statement naming its audience: the origin this side dialled, which the server
- * refuses unless it is its own — so a server that relays another's challenge cannot spend the
- * signature there. Delete once `@coasys/ad4m` ships `audience` on `UnsignedKeyStatement`.
+ * This computer's executor, which holds the device key and signs. A statement names its `audience`:
+ * the origin this side dialled, which the server refuses unless it is its own — so a server that
+ * relays another's challenge cannot spend the signature there.
  */
-export type SessionStatementWithAudience = UnsignedKeyStatement & { audience: string };
-
-/** This computer's executor, which holds the device key and signs. */
 export interface KeySessionSigner {
-  agent: { signSessionStatement(statement: SessionStatementWithAudience): Promise<SignedKeyStatement> };
+  agent: { signSessionStatement(statement: UnsignedKeyStatement): Promise<SignedKeyStatement> };
 }
 
 /** The slice of an SDK client on the server that a key session uses. */
