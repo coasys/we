@@ -79,7 +79,7 @@ describe('refreshing a space', () => {
     const r = fakeShapeRegistry();
     await installSpaceSdna(r.proxy);
     // The stored Space shape from an older build: one property fewer.
-    const older = r.registry.get('Space')!;
+    const older = r.registry.get(targetOf(Space))!;
     older.properties = older.properties.slice(1);
 
     expect(await refreshSpaceSdna(r.proxy)).toEqual(['Space']);
@@ -96,20 +96,18 @@ describe('isEntityRegistered', () => {
     expect(await isEntityRegistered(r.proxy, Space)).toBe(true);
   });
 
-  it('asks the registry for the one class name', async () => {
+  it('asks the registry for the one class, by its target class', async () => {
     const r = fakeShapeRegistry();
 
     await isEntityRegistered(r.proxy, Space);
 
-    expect(r.calls.shapes).toEqual([['Space']]);
+    expect(r.calls.shapes).toEqual([[targetOf(Space)]]);
   });
 
-  it("is false when another app's class holds the name", async () => {
+  it("is false when only another app's class has the name", async () => {
     // Two apps can each have a class called Space. Only WE's target class answers yes.
     const r = fakeShapeRegistry();
-    const theirs = SHACLShape.fromJSON((Space.generateSHACL() as { shape: SHACLShape }).shape.toJSON());
-    theirs.targetClass = 'other-app://Space';
-    r.registry.set('Space', theirs);
+    r.registry.set('other-app://Space', theirs('Space'));
 
     expect(await isEntityRegistered(r.proxy, Space)).toBe(false);
   });
@@ -137,11 +135,17 @@ describe('classNameOf', () => {
   });
 });
 
-/** A shape another app registered under `name`, so a WE class of that name is refused. */
+/** A shape another app registered for a class called `name`: `other-app://<name>`, with its own shape URI. */
 function theirs(name: string): SHACLShape {
   const shape = SHACLShape.fromJSON((Space.generateSHACL() as { shape: SHACLShape }).shape.toJSON());
   shape.targetClass = `other-app://${name}`;
+  shape.nodeShapeUri = `other-app://${name}Shape`;
   return shape;
+}
+
+/** A model's target class: what the registry is keyed by. */
+function targetOf(model: unknown): string {
+  return shapeOf(model).targetClass!;
 }
 
 /** One module's compiled classes, one per entity name. */
@@ -158,26 +162,47 @@ const moduleOf = (moduleId: string, ...entities: string[]) =>
     ),
   );
 
-describe('the fake refuses a call the way the executor does', () => {
+/** A class of another app's, `other-app://<name>`, that holds the shape URI `shapeUri`. */
+function holding(name: string, shapeUri: string): SHACLShape {
+  const shape = theirs(name);
+  shape.nodeShapeUri = shapeUri;
+  return shape;
+}
+
+describe('the fake registers a call the way the executor does', () => {
+  it('registers a class beside another class of the same name', async () => {
+    const r = fakeShapeRegistry();
+    const fine = moduleOf('m', 'Fine').map(shapeOf);
+    await r.perspective.registerShapes([theirs('Fine')]);
+
+    await r.perspective.registerShapes(fine);
+
+    expect([...r.registry.keys()].sort()).toEqual([fine[0].targetClass, 'other-app://Fine'].sort());
+    // Asked by name, both answer; asked by target class, only the one.
+    expect((await r.perspective.shapes(['Fine'])).map((s) => s.shape.targetClass)).toHaveLength(2);
+    expect((await r.perspective.shapes(['other-app://Fine'])).map((s) => s.shape.targetClass)).toEqual([
+      'other-app://Fine',
+    ]);
+  });
+
   it('writes nothing from a call one of whose shapes is refused', async () => {
     const r = fakeShapeRegistry();
-    r.registry.set('Clash', theirs('Clash'));
+    const [fine, clash] = moduleOf('m', 'Fine', 'Clash').map(shapeOf);
+    r.registry.set('other-app://Clash', holding('Clash', clash.nodeShapeUri));
 
-    await expect(r.perspective.registerShapes(moduleOf('m', 'Fine', 'Clash').map(shapeOf))).rejects.toThrow(
-      /already used by other-app:\/\/Clash/,
+    await expect(r.perspective.registerShapes([fine, clash])).rejects.toThrow(
+      /already belongs to class 'other-app:\/\/Clash'/,
     );
 
-    expect([...r.registry.keys()]).toEqual(['Clash']);
+    expect([...r.registry.keys()]).toEqual(['other-app://Clash']);
     expect(r.calls.written).toEqual([]);
   });
 
-  it('refuses two shapes of one name in one call', async () => {
+  it('refuses two shapes for one target class in one call', async () => {
     const r = fakeShapeRegistry();
-    const other = theirs('Fine');
+    const fine = moduleOf('m', 'Fine').map(shapeOf);
 
-    await expect(r.perspective.registerShapes([...moduleOf('m', 'Fine').map(shapeOf), other])).rejects.toThrow(
-      /two shapes for one class/,
-    );
+    await expect(r.perspective.registerShapes([...fine, ...fine])).rejects.toThrow(/Two shapes for one class/);
     expect(r.registry.size).toBe(0);
   });
 
@@ -188,59 +213,84 @@ describe('the fake refuses a call the way the executor does', () => {
     'ProcessingClaim',
     'InterpretationRun',
     'InterpretationOverlay',
-  ])('refuses an app class named %s, and takes the executor’s own', async (name) => {
+  ])('registers an app class named %s beside the executor’s own', async (name) => {
+    // No name is reserved: the executor's class is `ad4m://<name>`, and an app's has its own IRI.
     const r = fakeShapeRegistry();
-
-    await expect(r.perspective.registerShapes(moduleOf('m', name).map(shapeOf))).rejects.toThrow(/reserved/);
-    expect(r.registry.size).toBe(0);
-
     const own = theirs(name);
     own.targetClass = `ad4m://${name}`;
+    own.nodeShapeUri = `ad4m://${name}Shape`;
     await r.perspective.registerShapes([own]);
-    expect([...r.registry.keys()]).toEqual([name]);
+
+    const app = moduleOf('m', name).map(shapeOf);
+    await r.perspective.registerShapes(app);
+
+    expect([...r.registry.keys()].sort()).toEqual([`ad4m://${name}`, app[0].targetClass].sort());
+  });
+});
+
+describe('a class of the same name as one of WE’s', () => {
+  it("does not stop WE's space models from registering", async () => {
+    const r = fakeShapeRegistry();
+    for (const name of ['Topic', 'Space', 'TaskBlock']) r.registry.set(`other-app://${name}`, theirs(name));
+
+    await installSpaceSdna(r.proxy);
+
+    expect(await isEntityRegistered(r.proxy, Space)).toBe(true);
+    expect(r.registry.get('other-app://Space')!.targetClass).toBe('other-app://Space');
+  });
+
+  it("finds each of WE's classes by its IRI, and only WE's", async () => {
+    const r = fakeShapeRegistry();
+    for (const name of spaceNames()) r.registry.set(`other-app://${name}`, theirs(name));
+
+    await installSpaceSdna(r.proxy);
+
+    for (const model of SPACE_MODELS.filter((m) => !Object.prototype.hasOwnProperty.call(m, 'builtinUri'))) {
+      const iri = targetOf(model);
+      expect((await r.perspective.shapes([iri])).map((s) => s.shape.targetClass)).toEqual([iri]);
+      expect(await isEntityRegistered(r.proxy, model as never)).toBe(true);
+    }
   });
 });
 
 describe('a refused registration', () => {
   it("of the space's models writes none of them, and says why", async () => {
     const r = fakeShapeRegistry();
-    r.registry.set('Space', theirs('Space'));
+    r.registry.set('other-app://Space', holding('Space', shapeOf(Space).nodeShapeUri));
 
-    await expect(installSpaceSdna(r.proxy)).rejects.toThrow(/class name Space is already used by other-app:\/\/Space/);
+    await expect(installSpaceSdna(r.proxy)).rejects.toThrow(/already belongs to class 'other-app:\/\/Space'/);
 
-    expect([...r.registry.keys()]).toEqual(['Space']);
-    expect(r.registry.get('Space')!.targetClass).toBe('other-app://Space');
+    expect([...r.registry.keys()]).toEqual(['other-app://Space']);
   });
 
   it('of one module leaves every other module registered, and names the module refused', async () => {
     const r = fakeShapeRegistry();
-    r.registry.set('Clash', theirs('Clash'));
+    const clashing = moduleOf('clashing', 'Beta', 'Clash');
+    r.registry.set('other-app://Clash', holding('Clash', shapeOf(clashing[1]).nodeShapeUri));
+    const first = moduleOf('first', 'Alpha');
+    const last = moduleOf('last', 'Gamma');
 
-    const refusal = await installModuleSdna(r.proxy, [
-      ...moduleOf('first', 'Alpha'),
-      ...moduleOf('clashing', 'Beta', 'Clash'),
-      ...moduleOf('last', 'Gamma'),
-    ]).catch((error: unknown) => error);
+    const refusal = await installModuleSdna(r.proxy, [...first, ...clashing, ...last]).catch((error: unknown) => error);
 
     expect(refusal).toBeInstanceOf(ModuleSchemasRefused);
     expect((refusal as ModuleSchemasRefused).refused).toEqual([
-      { moduleId: 'clashing', reason: expect.stringContaining('already used by other-app://Clash') },
+      { moduleId: 'clashing', reason: expect.stringContaining("already belongs to class 'other-app://Clash'") },
     ]);
     expect((refusal as ModuleSchemasRefused).message).toContain('clashing');
     // One call per module; the refused module wrote nothing, not even its unclashing class.
     expect(r.calls.registerShapes).toEqual([['Alpha'], ['Beta', 'Clash'], ['Gamma']]);
-    expect([...r.registry.keys()].sort()).toEqual(['Alpha', 'Clash', 'Gamma']);
+    expect([...r.registry.keys()].sort()).toEqual(['other-app://Clash', targetOf(first[0]), targetOf(last[0])].sort());
   });
 
   it("of a module installed with a space leaves the space's own models in", async () => {
     const r = fakeShapeRegistry();
+    const bad = moduleOf('bad', 'Stolen');
+    r.registry.set('other-app://Stolen', holding('Stolen', shapeOf(bad[0]).nodeShapeUri));
 
-    await expect(installSpaceSdna(r.proxy, moduleOf('bad', 'FlowInstance'))).rejects.toBeInstanceOf(
-      ModuleSchemasRefused,
-    );
+    await expect(installSpaceSdna(r.proxy, bad)).rejects.toBeInstanceOf(ModuleSchemasRefused);
 
     expect(await isEntityRegistered(r.proxy, Space)).toBe(true);
-    expect(r.registry.has('FlowInstance')).toBe(false);
+    expect(r.registry.has(targetOf(bad[0]))).toBe(false);
   });
 });
 

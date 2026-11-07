@@ -128,6 +128,44 @@ export function getEntityTargetClass(m: EntityClass): string | undefined {
   return anyClass.generateSHACL().shape?.targetClass;
 }
 
+const targetClassByModel = new WeakMap<EntityClass, string | null>();
+
+/** {@link getEntityTargetClass}, once per class: a class's shape does not change after it is built. */
+function targetClassOf(m: EntityClass): string | null {
+  if (targetClassByModel.has(m)) return targetClassByModel.get(m)!;
+  let targetClass: string | null = null;
+  try {
+    targetClass = getEntityTargetClass(m) ?? null;
+  } catch {
+    // A class that cannot build its shape has no target class to be found by.
+  }
+  targetClassByModel.set(m, targetClass);
+  return targetClass;
+}
+
+/**
+ * The name a registered class goes by, found by its target class — or `undefined` when no class the
+ * dataset can reach has that target class.
+ *
+ * A backend that addresses classes by target class answers with one: a record read through several
+ * classes says which it was read as by the class's target class, not by the name WE gave it. This is
+ * the way back to the name. The order is {@link getEntityForDataset}'s: a native class first, then
+ * the dataset's own. Two apps can each have a class of one name (`we://Topic` and `flux://Topic`), so
+ * the name a foreign class is registered under is not always its local name — it is whatever
+ * `registerDynamicEntities` was given, and this answers that.
+ */
+export function getEntityNameByTargetClass(targetClass: string, dataset?: unknown): string | undefined {
+  for (const [name, model] of Object.entries(entityRegistry)) {
+    if (targetClassOf(model) === targetClass) return name;
+  }
+  const perspectiveUuid = (dataset as { uuid?: string } | undefined)?.uuid;
+  const dynamic = perspectiveUuid ? perspectiveEntityRegistry.get(perspectiveUuid) : undefined;
+  for (const [name, model] of Object.entries(dynamic ?? {})) {
+    if (targetClassOf(model) === targetClass) return name;
+  }
+  return undefined;
+}
+
 // ─── Transactions ─────────────────────────────────────────────────────────────
 
 /**

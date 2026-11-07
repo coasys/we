@@ -1230,7 +1230,7 @@ export function ShapeStoreProvider(props: ParentProps) {
         manifest: gate.manifest,
       };
       // Adopted as `loadShapes` adopts it on every later visit. A type the backend refuses — a
-      // class name another app's class already holds, say — is a problem to show, like an invalid
+      // shape URI another app's class already holds, say — is a problem to show, like an invalid
       // definition, not an error thrown out of the middle of the set.
       try {
         await adoptShape(shape, dataset);

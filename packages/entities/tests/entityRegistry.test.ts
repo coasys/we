@@ -12,6 +12,7 @@ import {
   type EntityClass,
   getEntity,
   getEntityForDataset,
+  getEntityNameByTargetClass,
   getRegisteredEntityNames,
   registerDynamicEntities,
   registerEntity,
@@ -63,5 +64,42 @@ describe('getEntityForDataset', () => {
 
   it('returns undefined rather than throwing, so callers can fall back', () => {
     expect(getEntityForDataset('Nothing', undefined)).toBeUndefined();
+  });
+});
+
+/** A class whose shape has `targetClass`, as a model's generated shape does. */
+const classOf = (targetClass: string) =>
+  ({ generateSHACL: () => ({ shape: { targetClass } }) }) as unknown as EntityClass;
+
+describe('getEntityNameByTargetClass', () => {
+  it('finds a native class by its target class', () => {
+    registerEntity('Topic', classOf('we://Topic'));
+    expect(getEntityNameByTargetClass('we://Topic')).toBe('Topic');
+    unregisterEntity('Topic');
+  });
+
+  it("tells WE's class and another app's class of the same name apart", () => {
+    // The foreign class is registered under its IRI because WE has a `Topic` of its own.
+    registerEntity('Topic', classOf('we://Topic'));
+    registerDynamicEntities('uuid-topic', { 'flux://Topic': classOf('flux://Topic') });
+    const dataset = { uuid: 'uuid-topic' };
+
+    expect(getEntityNameByTargetClass('we://Topic', dataset)).toBe('Topic');
+    expect(getEntityNameByTargetClass('flux://Topic', dataset)).toBe('flux://Topic');
+    // Another dataset has no Flux class.
+    expect(getEntityNameByTargetClass('flux://Topic', { uuid: 'other' })).toBeUndefined();
+    unregisterEntity('Topic');
+  });
+
+  it('answers the name a foreign class was registered under, before its `Shape` alias', () => {
+    const task = classOf('app://Task');
+    registerDynamicEntities('uuid-task', { Task: task, TaskShape: task });
+    expect(getEntityNameByTargetClass('app://Task', { uuid: 'uuid-task' })).toBe('Task');
+  });
+
+  it('is undefined for a target class nothing registered, and for a class with no shape', () => {
+    registerEntity('Broken', Native);
+    expect(getEntityNameByTargetClass('nowhere://X')).toBeUndefined();
+    unregisterEntity('Broken');
   });
 });

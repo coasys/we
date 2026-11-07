@@ -2402,7 +2402,7 @@ describe('a schema install the backend refuses', () => {
   it('reports a refused module, and the space still opens', async () => {
     seededDatasets = [{ id: 'garden-1', name: 'Garden' }];
     const refusal = new ModuleSchemasRefused([
-      { moduleId: 'clashing', reason: 'class name Clash is already used by other-app://Clash' },
+      { moduleId: 'clashing', reason: 'Shape garden://ClashShape already belongs to class other-app://Clash' },
     ]);
     onPorts = (ports) => {
       ports.schemas.installModules = async () => {
@@ -2431,7 +2431,7 @@ describe('a schema install the backend refuses', () => {
 
   it('reports a refused refresh, and the switch carries on', async () => {
     seededDatasets = [{ id: 'garden-1', name: 'Garden' }];
-    const refusal = new Error('class name Space is already used by other-app://Space');
+    const refusal = new Error('Shape we://SpaceShape already belongs to class other-app://Space');
     let refreshed = 0;
     onPorts = (ports) => {
       ports.schemas.refreshSpace = async () => {
@@ -2469,7 +2469,7 @@ describe('a schema install the backend refuses', () => {
           throw new ModuleSchemasRefused([
             {
               moduleId: 'shape/bundle/garden-app/Clash',
-              reason: 'class name Clash is already used by other-app://Clash',
+              reason: 'Shape garden://ClashShape already belongs to class other-app://Clash',
             },
           ]);
         }
@@ -2487,7 +2487,9 @@ describe('a schema install the backend refuses', () => {
 
     const problems = await stores.shapes.addRecordTypes('garden-app', [type('Plant'), type('Clash')] as never);
 
-    expect(problems).toEqual(['"Clash" could not be added — class name Clash is already used by other-app://Clash']);
+    expect(problems).toEqual([
+      '"Clash" could not be added — Shape garden://ClashShape already belongs to class other-app://Clash',
+    ]);
     expect(await shapes.list(handle)).toEqual([]);
     expect(stores.shapes.spaceShapes()).toEqual([]);
 

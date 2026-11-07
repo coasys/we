@@ -2,6 +2,7 @@ import { type Ad4mModel, LinkQuery, type PerspectiveProxy, SHACLShape } from '@c
 import { ModuleSchemasRefused } from '@we/backend-shared';
 import { getEntityTargetClass } from '@we/entities';
 
+import { classNameOf } from './className';
 import {
   AgentSettings,
   Amendment,
@@ -48,6 +49,8 @@ import {
 } from './entities';
 import { moduleOfModel } from './manifestCompiler';
 
+export { classNameOf };
+
 /**
  * All SDNA models that belong to the we-root system perspective.
  * Centralised here so both AdamStore branches (create vs restore) always
@@ -75,25 +78,11 @@ export const ROOT_MODELS = [
 export const HINTS_CUSTOMIZED_PREDICATE = 'we://interpretation_customized';
 
 /**
- * The name the executor gives the class of a target class: its local name. `shapes(names)` selects
- * by this name, so a lookup by target class asks for it and then checks the target class, because
- * two apps can each have a class with the same local name.
- *
- * The executor's `class_name_of` exactly (`extract_local_name` in ad4m's
- * `rust-executor/src/perspectives/shacl_parser.rs`): what follows the rightmost `#`, `:` or `/`, so
- * `urn:isbn:Book` is `Book` and `ns#a/b` is `b`; `unknown` when that is empty; the whole string when
- * it has none of the three. A name worked out any other way asks `shapes()` for a class it never
- * stored.
+ * The stored shape of the class `targetClass`, as the executor reads it, or `null` when it has none.
+ * Asked by the target class: `shapes()` takes one as well as a name, and a name can be two classes'.
  */
-export function classNameOf(targetClass: string): string {
-  const at = Math.max(targetClass.lastIndexOf('#'), targetClass.lastIndexOf(':'), targetClass.lastIndexOf('/'));
-  const local = at === -1 ? targetClass : targetClass.slice(at + 1);
-  return local === '' ? 'unknown' : local;
-}
-
-/** The stored shape of the class `targetClass`, as the executor reads it, or `null` when it has none. */
 export async function storedShapeOf(p: PerspectiveProxy, targetClass: string): Promise<SHACLShape | null> {
-  const found = await p.shapes([classNameOf(targetClass)]);
+  const found = await p.shapes([targetClass]);
   return found.find((record) => record.shape.targetClass === targetClass)?.shape ?? null;
 }
 
@@ -151,7 +140,7 @@ async function registerModels(p: PerspectiveProxy, models: readonly (typeof Ad4m
   let shapes = declared;
   if (marked.size > 0) {
     const stored = await p.shapes([
-      ...new Set(declared.flatMap((shape) => (shape.targetClass ? [classNameOf(shape.targetClass)] : []))),
+      ...new Set(declared.flatMap((shape) => (shape.targetClass ? [shape.targetClass] : []))),
     ]);
     const tuned = new Map(
       stored
@@ -324,8 +313,9 @@ export async function installSpaceSdna(p: PerspectiveProxy, moduleEntities: read
  * perspective that looks healthy. The executor writes nothing for a shape it already holds.
  *
  * **One `registerShapes` call per module**, and none shared with WE's own models. The executor
- * refuses a whole call — writing nothing from it — when one shape in it is refused: a class name
- * another app's class already holds, two shapes for one name, a reserved name. In one call, a single
+ * refuses a whole call — writing nothing from it — when one shape in it is refused: two shapes for
+ * one target class, or a shape URI another class already holds. (A class whose name another app's
+ * class has is not refused: the executor addresses each by its target class.) In one call, a single
  * module doing that would leave every module, and WE's models, unregistered. Each module is tried,
  * and when some were refused this rejects afterwards with {@link ModuleSchemasRefused} naming them;
  * the others are in. A class not compiled from a module manifest (one written by hand) counts as a
@@ -365,7 +355,8 @@ export async function installModuleSdna(p: PerspectiveProxy, moduleEntities: rea
  * One `registerShapes` call. The executor decides what changed and writes only that; a space whose
  * shapes are current costs the call and writes nothing.
  *
- * Returns the names of the classes it wrote, for logging.
+ * Returns the classes it wrote, for logging: by name from this executor, by target class from one
+ * that answers `written` by IRI.
  */
 export async function refreshSpaceSdna(p: PerspectiveProxy): Promise<string[]> {
   return registerModels(p, SPACE_MODELS);

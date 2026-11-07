@@ -73,7 +73,11 @@ function perspective(agent = 'did:me') {
   const handle = {
     uuid: 'p1',
     on: () => () => {},
-    shapes: async () => ['TaskBlock', 'EventBlock', 'Relationship'].map((name) => ({ name, shape: {}, hash: '' })),
+    // The registry as the executor answers it: by name or by target class.
+    shapes: async (keys?: string[]) =>
+      Object.keys(MODELS)
+        .map((name) => ({ name, shape: { targetClass: targetOf(name) }, hash: '' }))
+        .filter(({ name, shape }) => !keys || keys.includes(name) || keys.includes(shape.targetClass)),
     get: async (query: { source?: string; predicate?: string }) => {
       calls.get += 1;
       // A real read yields the event loop; so does this one, so concurrent callers interleave.

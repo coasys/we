@@ -14,7 +14,7 @@ vi.mock('@we/entities', () => ({
   },
 }));
 
-import { getForeignShacl, readShapeProperties } from './perspectiveHelpers';
+import { buildEntityClasses, buildEntityManifest, getForeignShacl, readShapeProperties } from './perspectiveHelpers';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -62,14 +62,29 @@ describe('getForeignShacl', () => {
     expect(foreign.map((s) => s.name)).toEqual(['Task']);
   });
 
-  it('keeps shapes that share a native name but have a different targetClass', async () => {
-    const perspective = mockPerspective([{ name: 'Message', shape: makeShape('other-app://Message') }]);
+  it('keeps a shape that shares a native name, named by its target class', async () => {
+    // WE has `Message` (flux://Message here). Another app's `Message` is a class of its own, and
+    // under the bare name it would be WE's in the entity registry, so it goes by its IRI.
+    const perspective = mockPerspective([
+      { name: 'Message', shape: makeShape('flux://Message') },
+      { name: 'Message', shape: makeShape('other-app://Message') },
+    ]);
 
     const foreign = await getForeignShacl(perspective);
 
     expect(foreign).toHaveLength(1);
-    expect(foreign[0].name).toBe('Message');
+    expect(foreign[0].name).toBe('other-app://Message');
     expect(foreign[0].shape.targetClass).toBe('other-app://Message');
+  });
+
+  it('names two foreign classes of one name by their target classes', async () => {
+    const perspective = mockPerspective([
+      { name: 'Task', shape: makeShape('a://Task') },
+      { name: 'Task', shape: makeShape('b://Task') },
+      { name: 'Note', shape: makeShape('a://Note') },
+    ]);
+
+    expect((await getForeignShacl(perspective)).map((s) => s.name)).toEqual(['a://Task', 'b://Task', 'Note']);
   });
 
   it("leaves out the executor's own classes", async () => {
@@ -124,5 +139,52 @@ describe('readShapeProperties', () => {
   it('leaves out a class with no properties', async () => {
     const perspective = mockPerspective([{ name: 'Marker', shape: makeShape('app://Marker') }]);
     expect(await readShapeProperties(perspective)).toEqual([]);
+  });
+});
+
+/** A real shape with one named property, as the executor reads one back. */
+async function realShape(targetClass: string, property: { name: string; path: string; class?: string }) {
+  const { SHACLShape: Shape } = await vi.importActual<typeof import('@coasys/ad4m')>('@coasys/ad4m');
+  const shape = new Shape(targetClass);
+  shape.addProperty({
+    name: property.name,
+    path: property.path,
+    ...(property.class ? { class: property.class } : { datatype: 'xsd://string', maxCount: 1 }),
+  } as never);
+  return shape;
+}
+
+describe('a foreign class named by its target class', () => {
+  it('is built as the class of that target class, under the name it was given', async () => {
+    const shape = await realShape('other-app://Message', { name: 'body', path: 'other-app://body' });
+
+    const classes = buildEntityClasses([{ name: 'other-app://Message', shape }]);
+
+    expect(Object.keys(classes)).toEqual(['other-app://Message']);
+    const cls = classes['other-app://Message'] as unknown as { getTargetClass(): string };
+    expect(cls.getTargetClass()).toBe('other-app://Message');
+  });
+
+  it('keeps its own name, and the `Shape` alias, where the name is free', async () => {
+    const shape = await realShape('app://Task', { name: 'title', path: 'app://title' });
+
+    expect(Object.keys(buildEntityClasses([{ name: 'Task', shape }])).sort()).toEqual(['Task', 'TaskShape']);
+  });
+
+  it('is what a relation to it names in the manifest', async () => {
+    const topic = await realShape('other-app://Topic', { name: 'title', path: 'other-app://title' });
+    const post = await realShape('other-app://Post', {
+      name: 'topic',
+      path: 'other-app://topic',
+      class: 'other-app://TopicShape',
+    });
+
+    const entries = buildEntityManifest([
+      { name: 'other-app://Topic', shape: topic },
+      { name: 'Post', shape: post },
+    ]);
+
+    expect(entries.map((e) => e.name)).toEqual(['other-app://Topic', 'Post']);
+    expect(entries[1].properties[0].relatedEntity).toBe('other-app://Topic');
   });
 });

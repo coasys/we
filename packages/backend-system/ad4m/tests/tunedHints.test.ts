@@ -133,8 +133,23 @@ describe('tuned hints through registration', () => {
 
     await installModuleSdna(r.proxy, [TaskBlock]);
 
-    expect(r.calls.shapes.at(-1)).toEqual(['TaskBlock']);
+    expect(r.calls.shapes.at(-1)).toEqual([declared().targetClass]);
     expect(r.calls.written.at(-1)).toEqual([]);
+  });
+
+  it("reads and writes WE's class when another app has a class of the same name", async () => {
+    const r = fakeShapeRegistry();
+    const theirs = SHACLShape.fromJSON(declared().toJSON());
+    theirs.targetClass = 'other-app://TaskBlock';
+    theirs.nodeShapeUri = 'other-app://TaskBlockShape';
+    theirs.interpretationHint = 'theirs';
+    await r.perspective.registerShapes([theirs]);
+    await installSpaceSdna(r.proxy, [TaskBlock]);
+
+    await writeInterpretationHints(r.proxy, 'TaskBlock', { classHint: 'tuned' });
+
+    expect((await readInterpretationHints(r.proxy, 'TaskBlock'))?.classHint).toBe('tuned');
+    expect(r.registry.get('other-app://TaskBlock')!.interpretationHint).toBe('theirs');
   });
 
   it('removes a hint for an empty string', async () => {
