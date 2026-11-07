@@ -77,11 +77,14 @@ function electronApp(env: NodeJS.ProcessEnv, executor: string): { app: string; e
         `run \`AD4M_EXECUTOR=${executor} node scripts/generate-seed-config.cjs\` in ${app}`,
     );
   }
-  const sidecar = join(WE_ROOT, 'crates/custody/target/release/we-custody');
-  // A release sidecar would keep the run's custody items in a keyring or a file of the app's home.
+  // The sidecar the unpackaged app starts is the one of its own checkout (`main.js`, `custodyBinary`),
+  // which is another checkout's when `WE_ELECTRON_APP` names one. A release sidecar would keep the
+  // run's custody items in a keyring or a file of the app's home.
+  const custodyCrate = resolve(app, '../../crates/custody');
+  const sidecar = join(custodyCrate, 'target/release/we-custody');
   if (!existsSync(sidecar) || !readFileSync(sidecar).includes('the harness build: custody items in memory')) {
     throw new Error(
-      `no harness build of the custody sidecar at ${sidecar}: run \`cargo build --release --locked --bin we-custody --features harness\` in crates/custody`,
+      `no harness build of the custody sidecar at ${sidecar}: run \`cargo build --release --locked --bin we-custody --features harness\` in ${custodyCrate}`,
     );
   }
   let electron: string;

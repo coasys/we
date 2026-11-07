@@ -1,10 +1,15 @@
-import { createConnection } from 'node:net';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { type AddressInfo, createConnection, createServer } from 'node:net';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 
 import { describe, expect, it } from 'vitest';
 
+import { assertPortFree } from '../src/drivers/desktop.ts';
 import { xwdToPng } from '../src/drivers/display.ts';
 import { HarnessLink } from '../src/drivers/harnessLink.ts';
+import { resolveCheckout } from '../src/world/checkout.ts';
 import { languageAddress } from '../src/world/local.ts';
 import { Endpoints, hostName, isProduction, NAMES } from '../src/world/names.ts';
 
@@ -114,5 +119,66 @@ describe('the harness link', () => {
     } finally {
       await link.close();
     }
+  });
+});
+
+describe('the checkout', () => {
+  /** Writes each of `files` under `root`, empty, with its folders. */
+  function tree(root: string, files: string[]) {
+    for (const file of files) {
+      mkdirSync(dirname(join(root, file)), { recursive: true });
+      writeFileSync(join(root, file), '');
+    }
+  }
+
+  it('checks the custody sidecar beside the Electron app it runs, not beside this checkout', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'we-acceptance-checkout-'));
+    try {
+      const ad4m = join(dir, 'ad4m');
+      tree(ad4m, [
+        'rust-executor/.keep',
+        'target/release/ad4m-executor',
+        'target/release/identity-store',
+        'tests/js/scripts/centralized-agent-language-hash',
+      ]);
+      // Another checkout's Electron app, named by `WE_ELECTRON_APP`.
+      const other = join(dir, 'other-we');
+      const app = join(other, 'apps/we-electron');
+      tree(app, ['dist/index.html', 'dist/identity/index.html', 'electron/seed-runtime.json']);
+      const executor = join(ad4m, 'target/release/ad4m-executor');
+      writeFileSync(join(app, 'electron/seed-runtime.json'), JSON.stringify({ ad4mExecutorPath: executor }));
+      const env = { AD4M_REPO: ad4m, WE_ELECTRON_APP: app };
+
+      // The unpackaged app starts the sidecar of its own checkout (`main.js`, `custodyBinary`).
+      const sidecar = join(other, 'crates/custody/target/release/we-custody');
+      expect(() => resolveCheckout('electron', env)).toThrow(sidecar);
+
+      // With the harness build there, the check moves on to Electron itself, which this tree has
+      // none of (a global install may still resolve one).
+      tree(other, ['crates/custody/target/release/we-custody']);
+      writeFileSync(sidecar, 'the harness build: custody items in memory');
+      let next: Error | { app: string };
+      try {
+        next = resolveCheckout('electron', env);
+      } catch (error) {
+        next = error as Error;
+      }
+      if (next instanceof Error) expect(next.message).toMatch(/no Electron in/);
+      else expect(next.app).toBe(app);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('the Electron launcher port', () => {
+  it('refuses a launch while another process holds it', async () => {
+    const holder = createServer();
+    holder.listen(0, '127.0.0.1');
+    await new Promise((r) => holder.once('listening', r));
+    const { port } = holder.address() as AddressInfo;
+    await expect(assertPortFree(port)).rejects.toThrow(`port ${port} is held`);
+    await new Promise((r) => holder.close(r));
+    await expect(assertPortFree(port)).resolves.toBeUndefined();
   });
 });

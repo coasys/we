@@ -109,8 +109,10 @@ Linux with Xvfb, `dbus-run-session` and (for `vault: 'os'`) `gnome-keyring`. The
    (cd crates/custody && cargo build --release --locked --bin we-custody --features harness)
    ```
 
-   The run refuses to start when the app names another executor, or the sidecar is not the
-   harness build, and says what to run.
+   The run refuses to start when the app names another executor, or the sidecar beside the app is
+   not the harness build, and says what to run. A launch refuses while another process holds port
+   9080, where the app serves its renderer: beside another WE the app stops in Electron's error box
+   and never answers.
 
 3. The scenarios:
 

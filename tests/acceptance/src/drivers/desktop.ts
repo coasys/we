@@ -19,6 +19,7 @@
  */
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
 
 import { type AppBus, startAppBus, unmountUnder } from '../session.ts';
@@ -55,6 +56,31 @@ export interface LaunchOptions {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * The port the Electron app serves its renderer on (`main.js`, `startAppServer`): fixed, on every
+ * address, and the app listens for no bind error. Beside another WE that holds it, the app stops in
+ * Electron's "A JavaScript error occurred in the main process" box: no window, no script answered,
+ * and the scenario fails minutes later without a word of why.
+ */
+export const ELECTRON_LAUNCHER_PORT = 9080;
+
+/** Throws, naming the port and what to do, when another process holds `port`. */
+export async function assertPortFree(port: number): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const server = createServer();
+    server.once('error', (error: NodeJS.ErrnoException) => {
+      reject(
+        new Error(
+          `port ${port} is held by another process (${error.code}): the Electron app serves its renderer there ` +
+            `and does not start beside it; stop the other WE first`,
+        ),
+      );
+    });
+    // The app's own call shape (`listen(port)`, every address), so the answer is the one it would get.
+    server.listen(port, () => server.close(() => resolve()));
+  });
+}
+
 export class DesktopApp {
   private constructor(
     readonly name: string,
@@ -82,6 +108,8 @@ export class DesktopApp {
     // The executor in the app starts from this world's seed and test languages; `init` is the
     // bootstrap the release build does from its own seed.
     await world.initDataFolder(dataPath);
+    // Before anything else starts: the Electron app cannot say when its port is taken.
+    if (world.checkout.host === 'electron') await assertPortFree(ELECTRON_LAUNCHER_PORT);
 
     const env: NodeJS.ProcessEnv = {
       ...process.env,
