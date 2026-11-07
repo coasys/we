@@ -1658,7 +1658,9 @@ export const settingsTemplate: TemplateSchema = {
                 { type: 'Column', props: { pt: '300', borderTop: '1px solid border' }, children: [logOutAction] },
               ],
             },
-            { type: 'Column', props: { flex: '1', gap: '600' }, children: [{ type: '$routes' }] },
+            // `minWidth: '0'`: a flex child is at least as wide as its widest content, so without it
+            // one long line (an executor log line) widened every settings page past the window.
+            { type: 'Column', props: { flex: '1', gap: '600', minWidth: '0' }, children: [{ type: '$routes' }] },
           ],
         },
       ],

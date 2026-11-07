@@ -105,6 +105,7 @@ export const EXECUTOR_CONFIG_KINDS: Readonly<Record<string, ExecutorConfigEntry[
   mcp_port: 'number',
   multi_user_config: 'object',
   port: 'number',
+  public_origins: 'object',
   run_dapp_server: 'boolean',
   sfu_bind_addr: 'text',
   sfu_public_addr: 'text',
