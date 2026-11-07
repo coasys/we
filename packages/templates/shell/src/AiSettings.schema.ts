@@ -944,7 +944,7 @@ const localActions: SchemaNode = {
   type: '$if',
   props: {
     condition: { $: 'runtimeStore.canConfigureLocalAi' },
-    else: footnote('Ask the operator of this node to set up local AI.'),
+    else: footnote('Set up local AI in the ADAM launcher on this node, or ask its operator.'),
     then: {
       type: 'Row',
       props: { gap: '200', ay: 'center', wrap: true },

@@ -72,7 +72,7 @@ describe('Settings → This device → the operator’s actions', () => {
   it('tells a connection that is not the operator who can set local AI up', () => {
     const lines = placed.filter(
       ({ node, branches }) =>
-        JSON.stringify(node).includes('Ask the operator of this node to set up local AI') &&
+        JSON.stringify(node).includes('Set up local AI in the ADAM launcher on this node, or ask its operator.') &&
         branches.some((b) => b.side === 'else' && b.condition.includes(OPERATOR)),
     );
     expect(lines.length).toBeGreaterThan(0);
