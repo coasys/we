@@ -36,11 +36,21 @@ cli ─ runner ─┬─ local world: identity-store (temp database), executors,
   driver launches gets a session bus of its own inside it, in the app's runtime folder, so what one
   app's bus starts on demand (the desktop portal, a Secret Service) is gone before the next app.
 - **The desktop driver** (`src/drivers/`): starts the desktop app's harness build on the run's X
-  display, with a fresh home and data folder, and waits for it to dial the harness link. A scenario
+  display, with a fresh home and data folder, and waits for it to dial the harness link. The app is
+  the Electron app, the desktop app WE ships, unless the run says `--host tauri`. Both hosts speak
+  one protocol (`apps/we-electron/electron/harness.js`, `apps/we-tauri/src-tauri/src/harness.rs`),
+  so a scenario does not know which it drives; where they differ (Electron names its IPC channels
+  `identity-flow-start` where Tauri says `identity_flow_start`), the driver hides it. Electron runs
+  unpackaged, since a package leaves the harness out, with its built renderer, a user-data folder of
+  its own and `--ozone-platform=x11`, and starts its own executor and custody sidecar as in
+  production. Where Chromium's sandbox cannot start (Ubuntu 24.04 refuses unprivileged user
+  namespaces, and `chrome-sandbox` in `node_modules` is not setuid root), the driver says so and
+  runs the app with `--no-sandbox`; CI makes the helper setuid, so the run there is sandboxed. An
+  app that leaves a process naming its folder running after it stops fails the scenario. A scenario
   then acts in the main window and the identity window as a person: it reads the text on screen,
   presses a control by its words (or by its icon, where it has no words), types into a field by its
   label. The harness build adds no command and no capability to the app; it reaches the windows
-  through WebKitGTK from the app's own process.
+  from the app's own process (Electron's main process, or WebKitGTK in the Tauri app).
 - **The vault**: the app keeps custody items in memory by default (`vault: 'memory'`), so a run
   leaves nothing in a keyring; `vault: 'os'` uses a Secret Service on the app's own bus, from a
   `gnome-keyring-daemon` the driver starts and unlocks. On Linux the person types the passphrase in
@@ -90,36 +100,49 @@ Linux with Xvfb, `dbus-run-session` and (for `vault: 'os'`) `gnome-keyring`. The
    cd tests/js && pnpm run prepare-test-local
    ```
 
-2. The desktop app's harness build, for the Coasys seed, against that checkout:
+2. The Electron app, for the Coasys seed, starting that checkout's executor, and the custody
+   sidecar's harness build (`crates/custody/README.md`):
 
    ```sh
    export AD4M_REPO=<ad4m> WE_SEED=seeds/coasys.seed.json
-   pnpm --filter '@we/app-tauri...' build
-   cd apps/we-tauri/src-tauri && node ../scripts/generate-seed-config.cjs
-   CARGO_TARGET_DIR=$AD4M_REPO/target cargo build --release --features harness,tauri/custom-protocol
+   AD4M_EXECUTOR=$AD4M_REPO/target/release/ad4m-executor pnpm --filter '@we/app-electron...' build
+   (cd crates/custody && cargo build --release --locked --bin we-custody --features harness)
    ```
 
-   `CARGO_TARGET_DIR` is optional; with ad4m's target folder, the executor's crates are not built
-   twice.
+   The run refuses to start when the app names another executor, or the sidecar is not the
+   harness build, and says what to run.
 
 3. The scenarios:
 
    ```sh
-   AD4M_REPO=<ad4m> WE_HARNESS_APP=$AD4M_REPO/target/release/we \
-     pnpm --filter @we/acceptance acceptance [--only make-an-identity]
+   AD4M_REPO=<ad4m> pnpm --filter @we/acceptance acceptance [--only make-an-identity]
    ```
+
+The Tauri app is driven too, so it keeps working. Its harness build, against the same checkout:
+
+```sh
+export AD4M_REPO=<ad4m> WE_SEED=seeds/coasys.seed.json
+pnpm --filter '@we/app-tauri...' build
+cd apps/we-tauri/src-tauri && node ../scripts/generate-seed-config.cjs
+CARGO_TARGET_DIR=$AD4M_REPO/target cargo build --release --features harness,tauri/custom-protocol
+cd - && AD4M_REPO=<ad4m> WE_HARNESS_APP=$AD4M_REPO/target/release/we \
+  pnpm --filter @we/acceptance acceptance --host tauri
+```
+
+`CARGO_TARGET_DIR` is optional; with ad4m's target folder, the executor's crates are not built twice.
 
 `pnpm --filter @we/acceptance explore` starts a world with the app in it and keeps it running, for
 writing a scenario: it reads commands on standard input (`main return h.inventory()`, `text
 identity`, `shot screen.png`, `quit`).
 
-| Variable             | What it names                   | Default                                     |
-| -------------------- | ------------------------------- | ------------------------------------------- |
-| `AD4M_REPO`          | the ad4m checkout               | `../ad4m` beside this repository            |
-| `AD4M_TARGET_DIR`    | where its binaries are          | `$AD4M_REPO/target`                         |
-| `AD4M_EXECUTOR`      | the executor binary             | `$AD4M_TARGET_DIR/release/ad4m-executor`    |
-| `WE_HARNESS_APP`     | the desktop app's harness build | `apps/we-tauri/src-tauri/target/release/we` |
-| `ACCEPTANCE_VERBOSE` | print every process's output    | off                                         |
+| Variable             | What it names                 | Default                                     |
+| -------------------- | ----------------------------- | ------------------------------------------- |
+| `AD4M_REPO`          | the ad4m checkout             | `../ad4m` beside this repository            |
+| `AD4M_TARGET_DIR`    | where its binaries are        | `$AD4M_REPO/target`                         |
+| `AD4M_EXECUTOR`      | the executor binary           | `$AD4M_TARGET_DIR/release/ad4m-executor`    |
+| `WE_ELECTRON_APP`    | the Electron app's folder     | `apps/we-electron`                          |
+| `WE_HARNESS_APP`     | the Tauri app's harness build | `apps/we-tauri/src-tauri/target/release/we` |
+| `ACCEPTANCE_VERBOSE` | print every process's output  | off                                         |
 
 ## Rules for a scenario
 
@@ -141,5 +164,7 @@ identity`, `shot screen.png`, `quit`).
 - A world clock: no scenario that is on moves time.
 - The harness commands that later steps need: deep links, a scanned QR code, a clock offset, a
   signal to the executor.
-- A release guard in CI that fails when a release build holds harness code. Today the code exists
-  only with the `harness` feature (`#[cfg]`), which a release build does not turn on.
+- A release guard in CI that fails when a release build holds harness code. Today the Tauri app
+  and the custody sidecar hold it only with their `harness` feature (`#[cfg]`), which a release
+  build does not turn on; the Electron package leaves `electron/harness.js` out, and the app
+  imports it only when not packaged (`apps/we-electron/electron/harness.test.js`).

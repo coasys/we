@@ -1,5 +1,6 @@
 # The acceptance world (`tests/acceptance/`), every night and on demand: the desktop app's harness
-# build in a local world — an identity store and executors from the ad4m commit WE pins — driven
+# build in a local world (an identity store and executors from the ad4m commit WE pins), once for
+# each desktop host — Electron, the app WE ships, and Tauri, which is kept working — driven
 # through its windows under Xvfb, in a D-Bus session of its own. tests/acceptance/README.md has what
 # runs and how to run it on a computer.
 #
@@ -9,8 +10,10 @@
 # fail the run.
 #
 # It builds all it runs, from the pinned ad4m commit: the executor, the identity store, ad4m's test
-# languages (the identity suite's own inputs) and the desktop app's harness build. That takes most
-# of a run's time; nothing here is cached yet.
+# languages (the identity suite's own inputs) and the desktop app's harness build: for Electron the
+# app unpackaged (a package leaves the harness out) with the custody sidecar's harness build, for
+# Tauri the app built with its `harness` feature. That takes most of a run's time; nothing here is
+# cached yet.
 #
 # Ubuntu 24.04: the executor needs glibc 2.38 or later, and the app the WebKitGTK 4.1 it links.
 name: Acceptance
@@ -34,8 +37,12 @@ concurrency:
 
 jobs:
   local-world:
-    name: Local world
+    name: Local world (${{ matrix.host }})
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        host: [electron, tauri]
     timeout-minutes: 300
     env:
       CARGO_NET_RETRY: '10'
@@ -51,7 +58,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cmake protobuf-compiler libasound2-dev libssl-dev \
             libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev \
-            xvfb dbus gnome-keyring
+            xvfb dbus gnome-keyring libnss3 libgbm1
 
       - uses: ./.github/actions/setup
 
@@ -88,12 +95,41 @@ jobs:
           bash scripts/install-hc-toolchain.sh
           cd tests/js && LOCAL_MODE=true pnpm run prepare-test-local
 
+      # The app starts the executor its generated runtime settings name: this world's.
+      - name: Build the Electron app for the Coasys seed
+        if: matrix.host == 'electron'
+        env:
+          WE_SEED: seeds/coasys.seed.json
+          AD4M_EXECUTOR: ${{ env.AD4M_REPO }}/target/release/ad4m-executor
+        run: pnpm --filter '@we/app-electron...' --workspace-concurrency=1 build
+
+      # Where the unpackaged app finds it. `harness` keeps custody items in memory unless a scenario
+      # asks for the Secret Service; the sidecar a package ships is built without it.
+      - name: Build the custody sidecar's harness build
+        if: matrix.host == 'electron'
+        working-directory: crates/custody
+        run: |
+          rustup toolchain install
+          cargo build --release --locked --bin we-custody --features harness
+
+      # Chromium's sandbox: Ubuntu 24.04 refuses unprivileged user namespaces, so the setuid helper,
+      # as an installed package has it. Without this the driver runs the app unsandboxed.
+      - name: Let Electron's sandbox start
+        if: matrix.host == 'electron'
+        working-directory: apps/we-electron
+        run: |
+          HELPER="$(dirname "$(node -p "require('electron')")")/chrome-sandbox"
+          sudo chown root:root "$HELPER"
+          sudo chmod 4755 "$HELPER"
+
       - name: Build WE for the Coasys seed
+        if: matrix.host == 'tauri'
         env:
           WE_SEED: seeds/coasys.seed.json
         run: pnpm --filter '@we/app-tauri...' --workspace-concurrency=1 build
 
       - name: Build the desktop app's harness build
+        if: matrix.host == 'tauri'
         working-directory: apps/we-tauri/src-tauri
         env:
           WE_SEED: seeds/coasys.seed.json
@@ -120,7 +156,7 @@ jobs:
         env:
           ONLY: ${{ github.event.inputs.only }}
         run: |
-          ARGS=(--out "$RUNNER_TEMP/acceptance")
+          ARGS=(--host "${{ matrix.host }}" --out "$RUNNER_TEMP/acceptance")
           for id in $ONLY; do ARGS+=(--only "$id"); done
           pnpm --filter @we/acceptance acceptance -- "${ARGS[@]}"
 
@@ -128,7 +164,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: acceptance-${{ github.run_id }}
+          name: acceptance-${{ matrix.host }}-${{ github.run_id }}
           path: ${{ runner.temp }}/acceptance
           if-no-files-found: ignore
           retention-days: 14
@@ -141,7 +177,7 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           SUMMARY: ${{ runner.temp }}/acceptance/summary.md
         run: |
-          BODY="$(printf 'The acceptance run failed: %s\n\n' "$RUN_URL"; if [ -f "$SUMMARY" ]; then head -c 60000 "$SUMMARY"; else echo 'It failed before a scenario ran: see the run log.'; fi)"
+          BODY="$(printf 'The acceptance run on %s failed: %s\n\n' '${{ matrix.host }}' "$RUN_URL"; if [ -f "$SUMMARY" ]; then head -c 60000 "$SUMMARY"; else echo 'It failed before a scenario ran: see the run log.'; fi)"
           TITLE='The nightly acceptance run fails'
           NUMBER="$(gh issue list --state open --search "in:title \"$TITLE\"" --json number --jq '.[0].number')"
           if [ -n "$NUMBER" ]; then

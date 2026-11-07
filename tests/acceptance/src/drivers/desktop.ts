@@ -1,11 +1,13 @@
 /**
  * The desktop driver: the desktop app's harness build, started on the run's X display inside the
- * run's D-Bus session, and driven through its harness link.
+ * run's D-Bus session, and driven through its harness link. The app is the Electron app by default
+ * (`apps/we-electron/electron/harness.js`) or the Tauri app (`apps/we-tauri/src-tauri/src/harness.rs`);
+ * both speak the same protocol, and where they differ the driver says so, not the scenario.
  *
  * A scenario reaches the app's windows only as a person would (`press`, `type`, `text`): through
  * the main window and the identity window, which runs every identity step in the custody service.
- * The harness build adds no command and no capability to the app; it reaches the windows through
- * WebKitGTK from the app's own process (`apps/we-tauri/src-tauri/src/harness.rs`).
+ * The harness build adds no command and no capability to the app; it reaches the windows from the
+ * app's own process.
  *
  * The vault (`vault`):
  * - `memory`, the default: the custody service keeps its items in memory, so the run leaves nothing
@@ -16,8 +18,8 @@
  *   shown, so there is nothing for the harness to answer.
  */
 import { spawnSync } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 
 import { type AppBus, startAppBus, unmountUnder } from '../session.ts';
 import type { LocalWorld } from '../world/local.ts';
@@ -89,6 +91,8 @@ export class DesktopApp {
       XDG_CACHE_HOME: join(home, '.cache'),
       XDG_RUNTIME_DIR: runtime,
       DISPLAY: display.name,
+      // The run's X display only: with a Wayland socket named, a toolkit opens on the person's desktop.
+      WAYLAND_DISPLAY: undefined,
       // Xvfb has no GPU: draw in software.
       WEBKIT_DISABLE_DMABUF_RENDERER: '1',
       WEBKIT_DISABLE_COMPOSITING_MODE: '1',
@@ -115,7 +119,8 @@ export class DesktopApp {
     }
 
     const link = await HarnessLink.listen();
-    const proc = world.spawn(`desktop-${options.name}`, world.checkout.app, [], {
+    const { command, args } = appCommand(world, root, env);
+    const proc = world.spawn(`desktop-${options.name}`, command, args, {
       cwd: world.checkout.testsJs,
       env: { ...env, COASYS_HARNESS_URL: link.url, COASYS_HARNESS_TOKEN: link.token },
     });
@@ -145,8 +150,17 @@ export class DesktopApp {
     return this.link.send<T>('eval', { window, js: withHelpers(body) }, timeoutMs);
   }
 
-  /** Waits until a script body answers something truthy, and answers that. */
-  async waitFor<T = unknown>(window: WindowLabel, body: string, timeoutMs: number, what: string): Promise<T> {
+  /**
+   * Waits until a script body answers something truthy, and answers that. With `closes`, a window
+   * that closes before the script answers ends the wait too, answering `undefined`.
+   */
+  async waitFor<T = unknown>(
+    window: WindowLabel,
+    body: string,
+    timeoutMs: number,
+    what: string,
+    closes = false,
+  ): Promise<T> {
     const deadline = Date.now() + timeoutMs;
     let last: unknown;
     while (Date.now() < deadline) {
@@ -156,6 +170,9 @@ export class DesktopApp {
         last = value;
       } catch (error) {
         last = error instanceof Error ? error.message : error;
+        if (closes && String(last).includes(`the window ${window} closed before the script answered`)) {
+          return undefined as T;
+        }
       }
       await sleep(400);
     }
@@ -180,10 +197,13 @@ export class DesktopApp {
     );
   }
 
-  /** Presses the control with these words, once one is on screen and enabled. */
+  /**
+   * Presses the control with these words, once one is on screen and enabled. A press that closes
+   * its window ("Done") can close it before the script answers, which both hosts report: it pressed.
+   */
   async press(window: WindowLabel, words: string, timeoutMs = 30_000): Promise<void> {
     const body = `const [el] = h.controls(${JSON.stringify(words)}); if (!el || el.disabled || el.hasAttribute('disabled')) return false; return h.press(${JSON.stringify(words)});`;
-    await this.waitFor(window, body, timeoutMs, `an enabled "${words}" in the ${window} window`);
+    await this.waitFor(window, body, timeoutMs, `an enabled "${words}" in the ${window} window`, true);
   }
 
   /** Types into the field with these words in its label or placeholder. */
@@ -217,8 +237,13 @@ export class DesktopApp {
     return this.link.send<AppState>('state');
   }
 
-  ipcLog(since = 0): Promise<IpcCall[]> {
-    return this.link.send<IpcCall[]>('ipc.log', { since });
+  /**
+   * The commands the windows invoked. Electron names its channels as Tauri names its commands, with
+   * `-` for `_` (`identity-flow-start`, `identity_flow_start`): the log speaks Tauri's names.
+   */
+  async ipcLog(since = 0): Promise<IpcCall[]> {
+    const calls = await this.link.send<IpcCall[]>('ipc.log', { since });
+    return calls.map((call) => ({ ...call, command: call.command.replaceAll('-', '_') }));
   }
 
   /** Connections to the harness link refused for a wrong token. */
@@ -228,13 +253,106 @@ export class DesktopApp {
 
   async stop(): Promise<void> {
     await this.link.close();
-    await this.proc.stop();
+    // The Electron app quits on SIGTERM, and stops its executor and custody sidecar before it exits.
+    await this.proc.stop(15_000);
     await this.keyring?.stop();
     await this.bus.proc.stop();
     // The portal its bus started mounts `doc` in the app's runtime folder; the world's folder is
     // removed after a pass.
     unmountUnder(this.root);
+    // The Electron app starts its executor and sidecar in process groups of their own, so stopping
+    // its group does not reach them: they must have gone with it.
+    await noneLeftUnder(this.root);
   }
+}
+
+/**
+ * How the host's harness build starts.
+ *
+ * Electron: the app folder, not packaged (a package leaves the harness out), with a user-data folder
+ * of its own, on the run's X display: without `--ozone-platform=x11` it takes Wayland when the
+ * session has it. It starts its own executor and custody sidecar as in production, so no external
+ * executor is named, and it serves its built renderer, not a dev server.
+ */
+function appCommand(world: LocalWorld, root: string, env: NodeJS.ProcessEnv): { command: string; args: string[] } {
+  const { host, app, electron } = world.checkout;
+  if (host === 'tauri') return { command: app, args: [] };
+  for (const name of [
+    'WE_EXTERNAL_AD4M_PORT',
+    'WE_EXTERNAL_AD4M_TOKEN',
+    'VITE_DEV_SERVER_URL',
+    'ELECTRON_RUN_AS_NODE',
+    'ELECTRON_OZONE_PLATFORM_HINT',
+  ]) {
+    delete env[name];
+  }
+  if (!electron) throw new Error('no Electron binary in the checkout');
+  const args = ['--ozone-platform=x11', `--user-data-dir=${join(root, 'electron')}`];
+  if (!chromiumSandboxStarts(electron)) {
+    console.warn(
+      `[desktop] Chromium's sandbox cannot start on this computer (unprivileged user namespaces are refused and ` +
+        `${join(dirname(electron), 'chrome-sandbox')} is not setuid root): the app runs without it`,
+    );
+    args.push('--no-sandbox');
+  }
+  return { command: electron, args: [...args, app] };
+}
+
+/**
+ * Whether Chromium's sandbox can start here: through an unprivileged user namespace, or else the
+ * setuid helper beside Electron. Ubuntu 24.04 refuses the first to unconfined programs; CI makes the
+ * helper setuid root, so the run there is sandboxed as a shipped app is.
+ */
+function chromiumSandboxStarts(electron: string): boolean {
+  try {
+    const helper = statSync(join(dirname(electron), 'chrome-sandbox'));
+    if (helper.uid === 0 && helper.mode & 0o4000) return true;
+  } catch {
+    // No helper: the namespace sandbox or nothing.
+  }
+  const read = (file: string) => {
+    try {
+      return readFileSync(file, 'utf8').trim();
+    } catch {
+      return undefined;
+    }
+  };
+  return (
+    read('/proc/sys/kernel/apparmor_restrict_unprivileged_userns') !== '1' &&
+    read('/proc/sys/kernel/unprivileged_userns_clone') !== '0'
+  );
+}
+
+/** Processes of this user whose command line or environment names `root`. */
+function processesUnder(root: string): string[] {
+  const found: string[] = [];
+  for (const pid of readdirSync('/proc').filter((name) => /^\d+$/.test(name))) {
+    if (Number(pid) === process.pid) continue;
+    try {
+      const cmdline = readFileSync(`/proc/${pid}/cmdline`);
+      if (cmdline.includes(root) || readFileSync(`/proc/${pid}/environ`).includes(root)) {
+        found.push(`${pid} ${cmdline.toString().replaceAll('\0', ' ').trim().slice(0, 160)}`);
+      }
+    } catch {
+      // Gone, or another user's.
+    }
+  }
+  return found;
+}
+
+/** Waits for every process that names `root` to exit; kills and names those still running after 10 s. */
+async function noneLeftUnder(root: string): Promise<void> {
+  for (let i = 0; i < 50 && processesUnder(root).length; i++) await sleep(200);
+  const left = processesUnder(root);
+  if (!left.length) return;
+  for (const line of left) {
+    try {
+      process.kill(Number(line.split(' ')[0]), 'SIGKILL');
+    } catch {
+      // Gone since.
+    }
+  }
+  throw new Error(`still running after the app stopped: ${left.join('; ')}`);
 }
 
 /** A Secret Service on the app's own D-Bus session, unlocked as a login would unlock it. */

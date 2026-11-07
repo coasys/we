@@ -60,6 +60,12 @@ protocol.registerSchemesAsPrivileged([{ scheme: IDENTITY_SCHEME, privileges: { s
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+/*
+  The acceptance world's driver (`harness.js`): only in a run that is not packaged and names a
+  harness link. A package does not hold the file (`electron-builder.config.js`) and never looks for it.
+*/
+const harness = !app.isPackaged && process.env.COASYS_HARNESS_URL ? await import('./harness.js') : null;
+
 let mainWindow;
 let ad4mPort = null;
 let ad4mToken = null;
@@ -382,8 +388,8 @@ async function startExecutor() {
         ad4mDataPath,
         '--run-dapp-server',
         'false', // We don't need the built-in dapp server
-        '--connect-holochain',
-        'true', // Enable holochain connection
+        // Enable holochain connection; the acceptance world runs without it unless it asks.
+        ...(harness ? harness.holochainArgs() : ['--connect-holochain', 'true']),
         ...(executorSettings.mcpEnabled
           ? ['--enable-mcp', 'true', '--mcp-port', executorSettings.mcpPort.toString()]
           : []),
@@ -514,6 +520,14 @@ async function stopCustody() {
 }
 
 const identity = createIdentity({ custody, openWindow: openIdentityWindow });
+
+// Before any IPC handler is registered: the harness keeps which window invoked which channel.
+harness?.startHarness({
+  app,
+  ipcMain,
+  windows: () => ({ main: mainWindow, identity: identity.window() }),
+  custodyState: () => identity.publicState(),
+});
 
 /**
  * The identity window's session: in memory, its own, so it shares no storage, cookies or

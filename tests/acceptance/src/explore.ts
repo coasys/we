@@ -9,7 +9,8 @@
  * - `shot <file.png>`: a screenshot of the display.
  * - `quit`: stops the app and the world.
  *
- * It runs in a D-Bus session of its own, as the scenarios do.
+ * It runs in a D-Bus session of its own, as the scenarios do, with the Electron app unless
+ * `--host tauri`; `--os-vault` keeps custody items in the session's Secret Service.
  */
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -24,7 +25,9 @@ import { LocalWorld } from './world/local.ts';
 async function main() {
   if (!(await inSession())) return;
   const vault = (process.argv.includes('--os-vault') ? 'os' : 'memory') as Vault;
-  const world = await LocalWorld.start(resolveCheckout());
+  const host = process.argv.includes('--host') ? process.argv[process.argv.indexOf('--host') + 1] : 'electron';
+  if (host !== 'electron' && host !== 'tauri') throw new Error('--host is one of electron, tauri');
+  const world = await LocalWorld.start(resolveCheckout(host));
   const display = await Display.start(join(world.dir, 'display'), world.logs);
   console.log(`world ${world.dir} · display ${display.name} · store ${world.storeUrl}`);
   try {

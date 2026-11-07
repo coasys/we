@@ -1,7 +1,7 @@
 /**
- * `pnpm --filter @we/acceptance acceptance [--only <id>…] [--list] [--out <dir>]`
+ * `pnpm --filter @we/acceptance acceptance [--host electron|tauri] [--only <id>…] [--list] [--out <dir>]`
  *
- * Runs the registered scenarios in local worlds and writes the report to `results/<time>/`. It runs
+ * Runs the registered scenarios against one desktop app, Electron unless `--host tauri`, in local worlds and writes the report to `results/<time>/`. It runs
  * itself in a D-Bus session of its own (`session.ts`) and starts its own X display. Exits 1 when a
  * scenario failed, 0 otherwise: a pending scenario is reported and does not fail the run.
  */
@@ -10,25 +10,30 @@ import { join } from 'node:path';
 import { runScenarios } from './runner.ts';
 import { SCENARIOS } from './scenarios/index.ts';
 import { inSession } from './session.ts';
-import { pinnedAd4mCommit, resolveCheckout, WE_ROOT } from './world/checkout.ts';
+import { type Host, HOSTS, pinnedAd4mCommit, resolveCheckout, WE_ROOT } from './world/checkout.ts';
 
 function args(argv: string[]) {
   const only: string[] = [];
   let list = false;
+  let host: Host = 'electron';
   let out = join(WE_ROOT, 'tests/acceptance/results', new Date().toISOString().replace(/[:.]/g, '-'));
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--only') only.push(argv[++i]);
     else if (a === '--list') list = true;
-    else if (a === '--out') out = argv[++i];
+    else if (a === '--host') {
+      const named = argv[++i];
+      if (!HOSTS.includes(named as Host)) throw new Error(`--host is one of ${HOSTS.join(', ')}`);
+      host = named as Host;
+    } else if (a === '--out') out = argv[++i];
     else if (a === '--') continue;
     else throw new Error(`unknown argument ${a}`);
   }
-  return { only, list, out };
+  return { only, list, out, host };
 }
 
 async function main() {
-  const { only, list, out } = args(process.argv.slice(2));
+  const { only, list, out, host } = args(process.argv.slice(2));
   if (list) {
     for (const s of SCENARIOS) {
       const state = s.state.state === 'pending' ? `pending: ${s.state.reason}` : 'on';
@@ -41,10 +46,10 @@ async function main() {
   const chosen = only.length ? SCENARIOS.filter((s) => only.includes(s.meta.id)) : SCENARIOS;
   if (!(await inSession())) return;
 
-  const checkout = resolveCheckout();
+  const checkout = resolveCheckout(host);
   const pinned = pinnedAd4mCommit();
   console.log(`ad4m ${checkout.ad4mCommit} (WE pins ${pinned ?? 'unknown'}) from ${checkout.ad4m}`);
-  console.log(`app ${checkout.app}`);
+  console.log(`app ${checkout.host} ${checkout.app}`);
   console.log(`report ${out}`);
   const summary = await runScenarios(chosen, {
     checkout,

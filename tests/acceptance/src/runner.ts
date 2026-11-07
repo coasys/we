@@ -125,7 +125,16 @@ async function runOne(scenario: Scenario, options: RunOptions): Promise<Scenario
         : `the scenario stopped before its steps finished: ${error instanceof Error ? error.message : String(error)}`;
   }
 
-  for (const app of apps) await app.stop().catch((e) => notes.push(`stopping ${app.name}: ${e}`));
+  for (const app of apps) {
+    try {
+      await app.stop();
+    } catch (error) {
+      // An app that leaves a process behind fails the scenario, as the world does.
+      const message = error instanceof Error ? error.message : String(error);
+      notes.push(`stopping ${app.name}: ${message}`);
+      failure ??= `the app ${app.name} did not stop cleanly: ${message}`;
+    }
+  }
   if (world) {
     try {
       await world.stop();
