@@ -105,6 +105,33 @@ Linux and macOS only. On Windows the app starts without identity: the preload ex
 shell treats it as an app that keeps no master key, as it does the web. On macOS the sidecar is a separate executable, so a signed build
 needs the keychain entitlement on it too; an unsigned one keeps keys in the sealed file.
 
+## The acceptance world
+
+`tests/acceptance/` drives this app as a person does, in a local world (an identity store and
+executors from an ad4m checkout), under Xvfb in a D-Bus session of its own. Electron is the host it
+drives by default; how to run it, for either host, is in `tests/acceptance/README.md`.
+
+It drives the app through `electron/harness.js`, which speaks the same protocol as the Tauri app's
+harness feature: it dials the link named by `COASYS_HARNESS_URL` (loopback only), runs scripts in the
+`main` and `identity` windows, reports the windows and the custody state, and logs which window
+invoked which IPC channel, never the arguments. It adds no IPC channel and nothing to a preload, and
+starts the executor without Holochain unless `COASYS_HARNESS_HOLOCHAIN=on`.
+
+It is never in a shipped app: `electron-builder.config.js` leaves the file out of the package, and
+`main.js` imports it only when the app is not packaged and a link is named (`harness.test.js` checks
+both). So the run starts the app unpackaged — `electron apps/we-electron`, with the release renderer
+bundle (`dist/`, built by `pnpm build`, no dev server) and the custody sidecar's harness build where
+the unpackaged app finds it:
+
+```bash
+AD4M_EXECUTOR=<ad4m>/target/release/ad4m-executor pnpm --filter '@we/app-electron...' build
+(cd ../../crates/custody && cargo build --release --locked --bin we-custody --features harness)
+```
+
+`AD4M_EXECUTOR` names the executor the world runs, which the app then starts as it does in
+production. A later `pnpm electron:dev` or `pnpm electron:build` rebuilds the sidecar without the
+feature.
+
 ## Optional: Embedding External Apps (e.g., Flux)
 
 The Electron launcher can embed external apps via iframe. Here's how to set up Flux as an example:

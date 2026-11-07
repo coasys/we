@@ -347,6 +347,10 @@ jobs:
       - name: Test
         run: cargo test --locked
 
+      # The acceptance world's sidecar: its memory vault is only in this build.
+      - name: Test the harness build
+        run: cargo test --locked --features harness
+
       - name: Test against a real Secret Service
         if: runner.os == 'Linux'
         run: |

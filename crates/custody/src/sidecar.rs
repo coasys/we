@@ -51,6 +51,31 @@ pub struct Config {
     pub executor: ExecutorAddress,
     /// Where the master keys and pending incepts live: [`custody_dir`] unless `--custody-dir`.
     pub custody_dir: PathBuf,
+    /// Where custody items rest: see [`Vault`].
+    pub vault: Vault,
+}
+
+/// Where custody items rest.
+///
+/// A release build has one answer: this computer's store ([`system_store`]). The acceptance world's
+/// build (cargo feature `harness`, `tests/acceptance/`) keeps them in memory unless
+/// `COASYS_HARNESS_VAULT=os`, as the Tauri app's harness build does, so a run leaves nothing in a
+/// keyring. Without the feature the variable is not read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Vault {
+    Memory,
+    System,
+}
+
+impl Vault {
+    fn from_env(env: &impl Fn(&str) -> Option<String>) -> Vault {
+        #[cfg(feature = "harness")]
+        if env("COASYS_HARNESS_VAULT").as_deref() != Some("os") {
+            return Vault::Memory;
+        }
+        let _ = env;
+        Vault::System
+    }
 }
 
 impl Config {
@@ -92,16 +117,21 @@ impl Config {
                 admin_credential: Arc::from(credential.as_str()),
             },
             custody_dir,
+            vault: Vault::from_env(&env),
         })
     }
 }
 
 /// Starts the custody service and answers stdin on stdout until stdin closes.
 pub fn main(config: Config) -> std::io::Result<()> {
-    let vault = DesktopVault::new(
-        system_store(config.custody_dir.clone()),
-        PendingIncepts::file(config.custody_dir),
-    );
+    let store: Box<dyn crate::store::SecretStore> = match config.vault {
+        Vault::System => system_store(config.custody_dir.clone()),
+        Vault::Memory => {
+            log::info!("the harness build: custody items in memory");
+            Box::new(crate::store::MemoryStore::new())
+        }
+    };
+    let vault = DesktopVault::new(store, PendingIncepts::file(config.custody_dir));
     let custody = spawn(vault, config.executor);
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -416,5 +446,29 @@ mod tests {
             with(&["--executor-port"]).unwrap_err(),
             "--executor-port needs a value"
         );
+    }
+
+    /// A release sidecar keeps custody items in this computer's store, whatever the environment says.
+    #[cfg(not(feature = "harness"))]
+    #[test]
+    fn a_release_sidecar_cannot_be_switched_to_another_vault() {
+        let with = |vars: &'static [(&'static str, &'static str)]| {
+            Config::parse(args(&["--executor-port", "1"]), env(vars)).unwrap()
+        };
+        assert_eq!(with(&[(CREDENTIAL_VAR, "x")]).vault, Vault::System);
+        let asked = with(&[(CREDENTIAL_VAR, "x"), ("COASYS_HARNESS_VAULT", "memory")]);
+        assert_eq!(asked.vault, Vault::System);
+    }
+
+    /// The acceptance world's build: memory unless the run asks for this computer's store.
+    #[cfg(feature = "harness")]
+    #[test]
+    fn the_harness_sidecar_keeps_custody_items_in_memory_unless_asked() {
+        let with = |vars: &'static [(&'static str, &'static str)]| {
+            Config::parse(args(&["--executor-port", "1"]), env(vars)).unwrap()
+        };
+        assert_eq!(with(&[(CREDENTIAL_VAR, "x")]).vault, Vault::Memory);
+        let os = with(&[(CREDENTIAL_VAR, "x"), ("COASYS_HARNESS_VAULT", "os")]);
+        assert_eq!(os.vault, Vault::System);
     }
 }
