@@ -166,6 +166,12 @@ export interface RuntimeAdminPort {
   addPeerInfos?(infos: string[]): Promise<void>;
 
   // ── The backend's own process ─────────────────────────────────────────────────────────
+  /**
+   * Whether the backend this port reaches runs on this machine. `false` for a server this computer
+   * reached by its address: its `this-machine` config keys are read-only from here, and it may
+   * refuse to restart for a caller off its machine. Absent means it runs here.
+   */
+  onThisMachine?: boolean;
   /** Its config file. See {@link ExecutorConfig}. */
   executorConfig?(): Promise<ExecutorConfig>;
   /**

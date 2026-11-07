@@ -449,6 +449,105 @@ describe('a backend that keeps its own config file', () => {
     expect(store.executorLogTail()).toBe('first\nsecond');
     expect(calls).toContain('tail:200');
   });
+
+  describe('on a server reached by its address', () => {
+    /** The same file, on a server: its port says so, and it refuses what only its machine may do. */
+    function serverBackend(restart: 'refused' | 'allowed' = 'refused') {
+      const backend = configBackend();
+      const runtime: NonNullable<BackendPorts['runtime']> = {
+        ...backend.runtime,
+        onThisMachine: false,
+        async setExecutorConfig(set, unset = []) {
+          const machineOnly = Object.keys(set).filter((key) => key === 'hc_admin_port');
+          if (machineOnly.length)
+            return { restartPending: false, refused: [{ key: 'hc_admin_port', reason: 'local-only' }] };
+          return backend.runtime.setExecutorConfig!(set, unset);
+        },
+        async restartExecutor() {
+          backend.calls.push('runtime.restart');
+          if (restart === 'refused') throw new Error('RPC error 403: local-only');
+        },
+      };
+      return { ...backend, runtime };
+    }
+
+    it('works against the server, with no host of its own', async () => {
+      const { runtime, calls } = serverBackend();
+      activeShellView = 'settings';
+      ports = { runtime };
+      const store = mount();
+
+      expect(store.canConfigureExecutor()).toBe(true);
+      expect(store.executorOnServer()).toBe(true);
+      await vi.waitFor(() => expect(store.executorConfigRows()).toHaveLength(6));
+      await store.setMcpEnabled(true);
+      expect(calls).toContain('set:{"mcp_enabled":true}:');
+      expect(store.mcpEnabled()).toBe(true);
+      expect(store.executorRestartPending()).toBe(true);
+      // No database moves: a path would name a file on the server, not here.
+      expect(store.canBackUp()).toBe(false);
+    });
+
+    it('shows what only that computer may change, and does not offer it', async () => {
+      const { runtime, calls } = serverBackend();
+      activeShellView = 'settings';
+      ports = { runtime };
+      const store = mount();
+
+      await vi.waitFor(() => expect(store.executorConfigRows()).toHaveLength(6));
+      const row = (key: string) => store.executorConfigRows().find((r) => r.key === key);
+      expect(row('hc_admin_port')).toMatchObject({ editable: false, note: 'Only from that computer' });
+      expect(row('mcp_port')).toMatchObject({ editable: true, note: '' });
+      await store.setExecutorConfigValue('hc_admin_port', '4000');
+      expect(calls.some((call) => call.includes('hc_admin_port'))).toBe(false);
+    });
+
+    it('hides Restart once the server refuses it as local-only, and never restarts this computer', async () => {
+      const { runtime, host, calls } = serverBackend('refused');
+      // Even with a host present: it starts this computer's executor, not the server's.
+      executorHost = host;
+      ports = { runtime };
+      const store = mount();
+
+      await store.setMcpEnabled(true);
+      expect(store.canRestartExecutor()).toBe(true);
+      await store.restartExecutor();
+      expect(calls).toContain('runtime.restart');
+      expect(calls).not.toContain('host.restart');
+      expect(store.canRestartExecutor()).toBe(false);
+      expect(store.error()).toMatch(/only from that computer/);
+      // The change is still waiting for the server's next start.
+      expect(store.executorRestartPending()).toBe(true);
+    });
+
+    it('restarts the server when it allows it', async () => {
+      const { runtime, calls } = serverBackend('allowed');
+      ports = { runtime };
+      const store = mount();
+
+      await store.setMcpEnabled(true);
+      await store.restartExecutor();
+      expect(calls.at(-1)).toBe('runtime.restart');
+      expect(store.executorRestartPending()).toBe(false);
+      expect(store.canRestartExecutor()).toBe(true);
+      expect(store.error()).toBe('');
+    });
+
+    it('offers no executor settings to an agent of the server', () => {
+      // An agent's port has no config members: the adapter builds them for the operator only.
+      ports = {
+        runtime: {
+          onThisMachine: false,
+          async trustedAgents() {
+            return [];
+          },
+        },
+      };
+      const store = mount();
+      expect(store.canConfigureExecutor()).toBe(false);
+      expect(store.canRestartExecutor()).toBe(false);
+    });
+  });
 });
 
 describe('degrading when the backend administers nothing', () => {

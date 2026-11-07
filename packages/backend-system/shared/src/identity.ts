@@ -107,6 +107,72 @@ export interface IdentityPort {
    * own confirmation. Rejects only when the change could not be started at all.
    */
   change?(change: IdentityChange): Promise<IdentityChangeOutcome>;
+
+  /*
+    Which device serves this session: this computer, or a server the person reached by its address.
+    A server lets this computer in with its device key, so a device the person revokes is let in
+    nowhere any more. Present where the backend can sign that login (`switchDevice`).
+  */
+  /** The devices this account can be served by, and which one serves it now. */
+  serving?(): Promise<ServingView>;
+  /**
+   * Logs in to the server at `address` with this computer's device key, and keeps it in the list
+   * once it lets this computer in. Resolves with why not when it does not; never rejects.
+   */
+  addServer?(address: string): Promise<AddServerOutcome>;
+  /** Forgets a server. Not the one serving this session. */
+  removeServer?(id: string): Promise<void>;
+  /**
+   * Serves this account from the device `id` ({@link THIS_COMPUTER_ID}, or a server's id) from now
+   * on, and starts the app over against it. Ends this session's login on a server it leaves.
+   */
+  serveFrom?(id: string): Promise<void>;
+  /** Called when the server serving this session ends it. Returns its unsubscribe. */
+  onSessionEnded?(listener: (ended: ServingSessionEnded) => void): () => void;
+}
+
+/** The id of this computer among the devices that can serve the account. */
+export const THIS_COMPUTER_ID = 'this-computer';
+
+/** A device that can serve this account. */
+export interface ServingDeviceView {
+  /** {@link THIS_COMPUTER_ID}, or the server's address. */
+  id: string;
+  /** "This computer", or the name the server was saved under (its host). */
+  name: string;
+  /** The server's address; `null` for this computer. */
+  address: string | null;
+  /** It serves this session now. */
+  current: boolean;
+}
+
+export interface ServingView {
+  devices: ServingDeviceView[];
+  /**
+   * What this session is on the server serving it: `operator` runs the server, `agent` is served by
+   * it as one of its agents. `null` on this computer.
+   */
+  role: 'operator' | 'agent' | null;
+  /**
+   * Why the chosen server does not serve this session, in words a person reads: it was chosen, and
+   * this start could not log in there, so this computer serves instead. `null` otherwise.
+   */
+  problem: string | null;
+}
+
+/** How adding a server ended. `reason` is the backend's word for a refusal; `message` says it. */
+export type AddServerOutcome = { ok: true; id: string } | { ok: false; reason: string; message: string };
+
+/**
+ * How a server ended this session: `revoked` when this computer's device key is no longer one of the
+ * person's (the person removed this device), `ended` for anything else (logged out from elsewhere,
+ * expired while the app could not renew it).
+ */
+export interface ServingSessionEnded {
+  reason: 'revoked' | 'ended';
+  /** The server's id. */
+  id: string;
+  name: string;
 }
 
 /** A change to the identity, signed by the master key. */

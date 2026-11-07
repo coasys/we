@@ -1,5 +1,5 @@
 import type { Account, BackendConnector, ScreenSource } from '@we/app-shell/shared';
-import { type Ad4mCustodyHost, createLocalAd4mConnector } from '@we/backend-ad4m';
+import { type Ad4mCustodyHost, type Ad4mServerHost, createLocalAd4mConnector } from '@we/backend-ad4m';
 import weSeed from '@we/seed-file';
 
 // Electron IPC bridge - will be exposed by preload script
@@ -27,6 +27,8 @@ declare global {
       saveFile: (file: { name: string; type: string; bytes: Uint8Array }) => Promise<boolean>;
       // The custody sidecar's window and public state; absent where there is no custody service.
       custody?: Ad4mCustodyHost;
+      // The signed-in account's servers, kept in the account registry. `choose` only records.
+      servers?: Ad4mServerHost;
     };
   }
 }
@@ -49,5 +51,25 @@ export const ad4mConnector: BackendConnector = createLocalAd4mConnector(
       change and answers `open` with how it ended. Absent on Windows, where the identity is read-only.
     */
     custody: window.electron?.custody,
+    servers: serverHost(),
   },
 );
+
+/**
+ * The account's servers, from the main process. Choosing one is recorded there and takes effect by
+ * starting the renderer over: every store holds the session's data, and a reload is the clean slate
+ * switching accounts already relies on (see `accounts-apply` in main.js).
+ */
+function serverHost(): Ad4mServerHost | undefined {
+  const servers = window.electron?.servers;
+  if (!servers) return undefined;
+  return {
+    list: () => servers.list(),
+    add: (server) => servers.add(server),
+    remove: (address) => servers.remove(address),
+    async choose(address) {
+      await servers.choose(address);
+      window.location.reload();
+    },
+  };
+}

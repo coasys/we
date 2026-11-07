@@ -94,6 +94,21 @@ export function uniqueName(base, taken = []) {
 }
 
 /**
+ * A server's address as the registry keeps it: its origin, `http://host:port`. Throws on anything
+ * that is not an http(s) address, so nothing else is ever handed to the renderer as a server.
+ */
+export function serverOrigin(address) {
+  let url;
+  try {
+    url = new URL(String(address));
+  } catch {
+    throw new Error('Not a server address');
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('A server address is http or https');
+  return url.origin;
+}
+
+/**
  * Whether a path holds an AD4M agent, by the markers `init` writes.
  *
  * The guard on deletion: a registry entry is a path, and a path is not proof that anything of
@@ -253,6 +268,16 @@ export function createAccountRegistry({ configDir, defaultPath, defaultName = 'M
     }
   }
 
+  /** Rewrites one account's entry, creating it when the scan found the account but nothing named it. */
+  function updateEntry(path, change) {
+    const state = read();
+    const entry = state.accounts.find((a) => a.path === path) ?? { path, name: '' };
+    const next = change(entry);
+    const listed = state.accounts.some((a) => a.path === path);
+    const accounts = listed ? state.accounts.map((a) => (a.path === path ? next : a)) : [...state.accounts, next];
+    write({ ...state, accounts });
+  }
+
   migrateLegacyLayout();
 
   return {
@@ -408,6 +433,48 @@ export function createAccountRegistry({ configDir, defaultPath, defaultName = 'M
           if (trimmed) delete next.provisional;
           return next;
         }),
+      });
+    },
+
+    /**
+     * The servers the signed-in account can be served by, and the one it is served by (`null`:
+     * this computer). Kept on the account's entry, so each account has its own and the choice
+     * survives a restart. The renderer proves a server lets this computer in before adding it; this
+     * only keeps the list.
+     */
+    servers() {
+      const entry = read().accounts.find((a) => a.path === this.resolveActivePath()) ?? {};
+      const servers = Array.isArray(entry.servers) ? entry.servers : [];
+      return { servers, serving: servers.some((s) => s.address === entry.serving) ? entry.serving : null };
+    },
+
+    addServer({ address, name } = {}) {
+      const origin = serverOrigin(address);
+      const label = typeof name === 'string' && name.trim() ? name.trim() : new URL(origin).host;
+      updateEntry(this.resolveActivePath(), (entry) => {
+        const servers = Array.isArray(entry.servers) ? entry.servers : [];
+        if (servers.some((s) => s.address === origin)) return entry;
+        return { ...entry, servers: [...servers, { address: origin, name: label }] };
+      });
+    },
+
+    removeServer(address) {
+      updateEntry(this.resolveActivePath(), (entry) => {
+        if (entry.serving === address) throw new Error('This server serves this account. Switch away from it first.');
+        return { ...entry, servers: (entry.servers ?? []).filter((s) => s.address !== address) };
+      });
+    },
+
+    /** Serve the account from `address` from the next start; `null` is this computer. */
+    chooseServer(address) {
+      updateEntry(this.resolveActivePath(), (entry) => {
+        if (address === null) {
+          const rest = { ...entry };
+          delete rest.serving;
+          return rest;
+        }
+        if (!(entry.servers ?? []).some((s) => s.address === address)) throw new Error('No such server');
+        return { ...entry, serving: address };
       });
     },
 
