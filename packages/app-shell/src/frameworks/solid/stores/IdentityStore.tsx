@@ -207,6 +207,20 @@ export function IdentityStoreProvider(props: ParentProps) {
     if (ready() && port()) void refresh();
   });
 
+  /*
+    And when the person comes back to the app: what another device did meanwhile (asked for the master
+    key, sent it here, named a device) reaches this computer only by reading again. Not while a
+    change runs, whose own end reads everything.
+  */
+  createEffect(() => {
+    if (!ready() || !port() || typeof window === 'undefined') return;
+    const again = () => {
+      if (!busy()) void refresh();
+    };
+    window.addEventListener('focus', again);
+    onCleanup(() => window.removeEventListener('focus', again));
+  });
+
   createEffect(() => {
     const identity = port();
     if (!identity?.onFork) return;

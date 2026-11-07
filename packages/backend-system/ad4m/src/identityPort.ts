@@ -18,6 +18,7 @@
 import type { Ad4mClient } from '@coasys/ad4m';
 import {
   type DeviceKeyView,
+  type DeviceRequestView,
   type IdentityCapabilities,
   type IdentityChange,
   type IdentityChangeOutcome,
@@ -65,6 +66,10 @@ export interface Ad4mCustodyState {
    * or one it trusts no key for, so it would refuse everything the custody service publishes.
    */
   blocked?: string | null;
+  /** The private record's devices; `holdsMaster` is `false`, `true` or `"offered"`. */
+  devices?: { keyId: string; name: string; kind: string; holdsMaster: boolean | 'offered' }[];
+  requests?: { id: string; kind: string; by: string; keyIds: string[]; expires: number }[];
+  masterWaiting?: boolean;
 }
 
 type Raw = Record<string, unknown>;
@@ -116,11 +121,39 @@ export function readKeyLogEvent(raw: unknown, hash: string | null = null): KeyLo
 }
 
 export function readCustody(value: Ad4mCustodyState): IdentityCustodyView {
+  const devices = (Array.isArray(value.devices) ? value.devices : []).map((item) => {
+    const device = record(item);
+    const holds = device.holdsMaster;
+    return {
+      keyId: text(device.keyId) ?? '',
+      name: text(device.name) ?? '',
+      kind: text(device.kind) ?? '',
+      holdsMaster: holds === true ? ('yes' as const) : holds === 'offered' ? ('offered' as const) : ('no' as const),
+    };
+  });
+  const requests = (Array.isArray(value.requests) ? value.requests : []).flatMap((item): DeviceRequestView[] => {
+    const request = record(item);
+    const kind = request.kind;
+    // A kind this app cannot answer is left for one that can.
+    if (kind !== 'send-master' && kind !== 'confirm-revoke') return [];
+    return [
+      {
+        id: text(request.id) ?? '',
+        kind,
+        by: text(request.by) ?? '',
+        keyIds: Array.isArray(request.keyIds) ? request.keyIds.map(String) : [],
+        expires: count(request.expires) ?? 0,
+      },
+    ];
+  });
   return {
     did: value.did ?? null,
     holdsMaster: !!value.holdsMaster,
     unlock: value.unlock ?? null,
     blocked: value.blocked || null,
+    devices,
+    requests,
+    masterWaiting: value.masterWaiting === true,
   };
 }
 

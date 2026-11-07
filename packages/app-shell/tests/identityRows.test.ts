@@ -1,7 +1,7 @@
 /** The key log and device list in Settings' words. */
 import { describe, expect, it } from 'vitest';
 
-import { deviceRows, keyLogRows, shortDid, shortHash } from '../src/shared/identityRows';
+import { deviceRows, keyLogRows, requestRows, shortDid, shortHash } from '../src/shared/identityRows';
 
 describe('keyLogRows', () => {
   const events = [
@@ -47,6 +47,49 @@ describe('deviceRows', () => {
     ]);
     expect(rows[1].subtitle).toBe('d3 · added at #3');
     expect(rows.map((r) => r.icon)).toEqual(['laptop', 'key', 'key']);
+  });
+
+  it('names each device as the private record does, and says which keep the master key', () => {
+    const rows = deviceRows(
+      [
+        { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, revokedSeq: null },
+        { keyId: 'd2', sign: 'z', thisDevice: false, addedSeq: 1, revokedSeq: null },
+        { keyId: 'd3', sign: 'z', thisDevice: false, addedSeq: 2, revokedSeq: null },
+        { keyId: 'd4', sign: 'z', thisDevice: false, addedSeq: 3, revokedSeq: 4 },
+      ],
+      [
+        { keyId: 'd1', name: 'Desktop', kind: 'desktop-app', holdsMaster: 'yes' },
+        { keyId: 'd2', name: 'Box', kind: 'server', holdsMaster: 'no' },
+        { keyId: 'd3', name: 'Laptop', kind: 'desktop-app', holdsMaster: 'offered' },
+        // A revoked key keeps nothing, whatever the record last said.
+        { keyId: 'd4', name: 'Old', kind: 'desktop-app', holdsMaster: 'yes' },
+      ],
+    );
+    expect(rows.map((r) => [r.label, r.icon, r.master])).toEqual([
+      ['Desktop', 'laptop', 'Holds the master key'],
+      ['Box', 'hard-drives', ''],
+      ['Laptop', 'laptop', 'Master key offered, not yet taken'],
+      ['Old', 'laptop', ''],
+    ]);
+    expect(rows[0].subtitle).toBe('This computer · d1 · added at #0');
+  });
+});
+
+describe('requestRows', () => {
+  it('names the device that asked, and each device a revoke would remove', () => {
+    const names = [{ keyId: 'd2', name: 'Laptop', kind: 'desktop-app', holdsMaster: 'no' as const }];
+    const rows = requestRows(
+      [
+        { id: 'r1', kind: 'send-master', by: 'd2', keyIds: [], expires: 9 },
+        { id: 'r2', kind: 'confirm-revoke', by: 'd2', keyIds: ['d1', 'd3'], expires: 9 },
+      ],
+      names,
+      'd1',
+    );
+    expect(rows.map((r) => r.title)).toEqual([
+      'Laptop asks for the master key',
+      'Laptop asks to revoke This computer, d3',
+    ]);
   });
 });
 

@@ -6,12 +6,12 @@
  * the words were made from (`op`, `keys`, the seqs), so a template that wants to say it differently
  * can, without parsing a sentence.
  *
- * There is no private record of the person's devices yet, so a device has no name and no kind: the
- * log lists keys. This
- * computer's own key is named "This computer"; every other one by its id in the log (`d2`), which is
- * what the person sees in the log too.
+ * The log lists keys, not names. The names, the kinds and who keeps the master key are in the
+ * identity's private record, which only its devices read (`IdentityCustodyView.devices`). A key the
+ * record does not name is "This computer" when it is this computer's, otherwise its id in the log
+ * (`d2`), which is what the person sees in the log too.
  */
-import type { DeviceKeyView, KeyLogEvent } from '@we/backend-shared';
+import type { DeviceKeyView, DeviceNameView, DeviceRequestView, KeyLogEvent } from '@we/backend-shared';
 
 /** One row of Security → Key log. */
 export interface KeyLogRow {
@@ -53,6 +53,22 @@ export interface DeviceRow {
   status: string;
   /** Whether a revoke may be offered: a valid key that is not this computer's. */
   canRevoke: boolean;
+  /** The name the private record gives it, or empty. */
+  name: string;
+  /** Whether it keeps the master key: yes, no, or sent and not yet taken. */
+  holdsMaster: 'yes' | 'no' | 'offered';
+  /** "Holds the master key", "Master key offered, not yet taken", or empty. */
+  master: string;
+}
+
+/** One request of another device, waiting for an answer. */
+export interface RequestRow {
+  id: string;
+  kind: DeviceRequestView['kind'];
+  /** "Laptop asks for the master key", "Laptop asks to revoke d3". */
+  title: string;
+  /** What answering yes does. */
+  detail: string;
 }
 
 export const THIS_COMPUTER = 'This computer';
@@ -122,7 +138,25 @@ export function keyLogRows(events: KeyLogEvent[], thisKeyId: string | null): Key
 }
 
 /** The device list: valid keys first, this computer at the top, then in the order they were added. */
-export function deviceRows(devices: DeviceKeyView[]): DeviceRow[] {
+const DEVICE_ICONS: Record<string, string> = {
+  'desktop-app': 'laptop',
+  'phone-app': 'device-mobile',
+  browser: 'browser',
+  server: 'hard-drives',
+  'community-host': 'hard-drives',
+  bot: 'robot',
+};
+
+const MASTER_WORDS = { yes: 'Holds the master key', offered: 'Master key offered, not yet taken', no: '' } as const;
+
+/** What the private record calls `keyId`, or how the log alone would name it. */
+export function deviceName(keyId: string, names: DeviceNameView[], thisKeyId: string | null = null): string {
+  const named = names.find((n) => n.keyId === keyId)?.name;
+  if (named) return named;
+  return keyId === thisKeyId ? THIS_COMPUTER : keyId;
+}
+
+export function deviceRows(devices: DeviceKeyView[], names: DeviceNameView[] = []): DeviceRow[] {
   return devices
     .slice()
     .sort(
@@ -133,18 +167,54 @@ export function deviceRows(devices: DeviceKeyView[]): DeviceRow[] {
     )
     .map((device) => {
       const revoked = device.revokedSeq !== null;
+      const record = names.find((n) => n.keyId === device.keyId);
+      const name = record?.name ?? '';
+      const holdsMaster = revoked ? 'no' : (record?.holdsMaster ?? 'no');
+      const fallback = device.thisDevice ? THIS_COMPUTER : `Device ${device.keyId}`;
       return {
         keyId: device.keyId,
         addedSeq: device.addedSeq,
         revokedSeq: device.revokedSeq,
-        label: device.thisDevice ? THIS_COMPUTER : `Device ${device.keyId}`,
-        subtitle: `${device.keyId} · added at #${device.addedSeq}`,
-        // What kind of device a key is on will come with a private record of devices, not made yet.
-        icon: device.thisDevice ? 'laptop' : 'key',
+        label: name || fallback,
+        subtitle: [
+          ...(name && device.thisDevice ? [THIS_COMPUTER] : []),
+          device.keyId,
+          `added at #${device.addedSeq}`,
+        ].join(' · '),
+        icon: (record && DEVICE_ICONS[record.kind]) || (device.thisDevice ? 'laptop' : 'key'),
         thisDevice: device.thisDevice,
         revoked,
         status: revoked ? `Revoked at #${device.revokedSeq}` : 'Valid',
         canRevoke: !revoked && !device.thisDevice,
+        name,
+        holdsMaster,
+        master: MASTER_WORDS[holdsMaster],
       };
     });
+}
+
+/** The requests of other devices, each named by the device that asked. */
+export function requestRows(
+  requests: DeviceRequestView[],
+  names: DeviceNameView[],
+  thisKeyId: string | null = null,
+): RequestRow[] {
+  return requests.map((request) => {
+    const device = deviceName(request.by, names, thisKeyId);
+    if (request.kind === 'send-master') {
+      return {
+        id: request.id,
+        kind: request.kind,
+        title: `${device} asks for the master key`,
+        detail: 'With it, that device can add and remove your devices too.',
+      };
+    }
+    const keys = request.keyIds.map((k) => deviceName(k, names, thisKeyId)).join(', ');
+    return {
+      id: request.id,
+      kind: request.kind,
+      title: `${device} asks to revoke ${keys}`,
+      detail: 'Each revoked device stops acting as you.',
+    };
+  });
 }
