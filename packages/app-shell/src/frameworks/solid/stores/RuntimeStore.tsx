@@ -78,10 +78,16 @@ export interface RuntimeStore {
   /** The AI models can be changed, not just listed. False for a guest on somebody else's node. */
   canConfigureAi: Accessor<boolean>;
   /**
-   * This host starts the backend, so how it starts it can be changed. False on web, where the app
-   * connects to an executor someone else started.
+   * How the backend starts can be changed: this host starts it, or it is a server this person
+   * operates and reached by its address. False on web, where the app connects to an executor someone
+   * else started, and on a server where this person is only an agent.
    */
   canConfigureExecutor: Accessor<boolean>;
+  /**
+   * The backend is a server reached by its address, not one this computer runs. The executor
+   * settings are that server's, and what only its own machine may change is shown and not offered.
+   */
+  executorOnServer: Accessor<boolean>;
 
   // ── State ────────────────────────────────────────────────────────────────────
   /**
@@ -182,7 +188,10 @@ export interface RuntimeStore {
   executorConfigRows: Accessor<ExecutorConfigRow[]>;
   /** The newest lines of this run's backend log, oldest first, one string. Empty until loaded. */
   executorLogTail: Accessor<string>;
-  /** Restart can be offered: the host starts the backend. */
+  /**
+   * Restart can be offered: the host starts the backend, or the server has not refused it. A server
+   * restarts only from its own machine by default, and once it has said so Restart is not offered.
+   */
   canRestartExecutor: Accessor<boolean>;
   /** The consent request awaiting a decision, if any. Schemas render a modal on this. */
   pendingConsent: Accessor<ConsentRequest | null>;
@@ -266,11 +275,15 @@ export interface ExecutorConfigRow {
  * What the config file holds, as the rows the settings page draws. A row's control comes from the
  * key's type, not its value, so a key the file leaves to its default — or one just cleared — keeps
  * its control, empty, and can be set.
+ *
+ * `onThisMachine` false is a server reached by its address: a key only its own machine may write
+ * (paths, listeners, ports) is shown, and not offered.
  */
-export function executorConfigRows(config: ExecutorConfig | null): ExecutorConfigRow[] {
+export function executorConfigRows(config: ExecutorConfig | null, onThisMachine = true): ExecutorConfigRow[] {
   return (config?.entries ?? []).map((entry) => {
     const { value } = entry;
     const kind: ExecutorConfigRow['kind'] = entry.kind === 'object' ? 'fixed' : entry.kind;
+    const machineOnly = entry.writableFrom === 'this-machine';
     // Every field is optional in the executor's file, so `null` is unset too.
     const shown =
       value == null
@@ -288,11 +301,13 @@ export function executorConfigRows(config: ExecutorConfig | null): ExecutorConfi
       value: shown,
       kind,
       choice: value == null ? 'default' : value === true ? 'on' : 'off',
-      editable: !entry.pinned && kind !== 'fixed',
+      editable: !entry.pinned && kind !== 'fixed' && (onThisMachine || !machineOnly),
       note: entry.pinned
         ? 'Set by the app at each start'
-        : entry.writableFrom === 'this-machine'
-          ? 'Only from this computer'
+        : machineOnly
+          ? onThisMachine
+            ? 'Only from this computer'
+            : 'Only from that computer'
           : '',
     };
   });
@@ -324,7 +339,6 @@ export function RuntimeStoreProvider(props: ParentProps) {
   const [backupStatus, setBackupStatus] = createSignal('');
   const [executorConfig, setExecutorConfig] = createSignal<ExecutorConfig | null>(null);
   const [executorLogTail, setExecutorLogTail] = createSignal('');
-  const configRows = createMemo(() => executorConfigRows(executorConfig()));
   const executorConfigFile = createMemo(() => executorConfig()?.file ?? '');
 
   // A queue, not a single slot: two apps can ask at once, and dropping the second would leave it
@@ -353,14 +367,25 @@ export function RuntimeStoreProvider(props: ParentProps) {
   const canDiscoverAiModels = createMemo(() => !!modelAdmin()?.discover);
 
   const executorHost = () => platform.executor;
-  const canConfigureExecutor = createMemo(() => !!executorHost());
+  /**
+   * The backend serving this session is a server reached by its address, not the executor the host
+   * starts: its settings are the server's, reached through the port alone, and the host's own
+   * controls (its restart, its settings, its file picker) are about the wrong executor.
+   */
+  const onServer = createMemo(() => runtime()?.onThisMachine === false);
+  /** The server said it restarts only from its own machine, so Restart is no longer offered. */
+  const [restartRefused, setRestartRefused] = createSignal(false);
+  const configRows = createMemo(() => executorConfigRows(executorConfig(), !onServer()));
+  const canConfigureExecutor = createMemo(() => (onServer() ? !!runtime()?.executorConfig : !!executorHost()));
   /**
    * Whether the backend keeps its settings in its own config file, written through the port. Where
    * it does, MCP and log levels are that file's keys; where the host keeps them instead (Tauri), they
    * go through the host.
    */
-  const configInFile = () => !executorHost()?.setSettings && !!runtime()?.setExecutorConfig;
-  const canRestartExecutor = createMemo(() => !!executorHost());
+  const configInFile = () => onServer() || (!executorHost()?.setSettings && !!runtime()?.setExecutorConfig);
+  const canRestartExecutor = createMemo(() =>
+    onServer() ? !!runtime()?.restartExecutor && !restartRefused() : !!executorHost(),
+  );
   // Both halves are needed: the backend writes the file, the host is what can name one. Neither is
   // any use alone, which is why this is one flag rather than two.
   const canBackUp = createMemo(() => !!runtime()?.exportDatabase && !!executorHost()?.chooseFile);
@@ -644,6 +669,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
   }
 
   async function loadExecutorSettings(): Promise<void> {
+    if (onServer()) return loadExecutorConfig();
     const host = executorHost();
     if (!host) return;
     if (configInFile()) return loadExecutorConfig();
@@ -660,7 +686,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
 
   async function writeExecutorSettings(update: Partial<ExecutorSettings>): Promise<void> {
     const host = executorHost();
-    if (!host) return;
+    if (!host && !onServer()) return;
     if (configInFile()) {
       const set: Record<string, unknown> = {};
       const unset: string[] = [];
@@ -672,7 +698,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
       }
       return writeExecutorConfig(set, unset);
     }
-    if (!host.setSettings) return;
+    if (!host?.setSettings) return;
     const setSettings = host.setSettings.bind(host);
     const applied = await run('writeExecutorSettings', () => setSettings(update));
     if (!applied.ok || !applied.value) return;
@@ -738,10 +764,21 @@ export function RuntimeStoreProvider(props: ParentProps) {
    * it over itself.
    */
   async function restartExecutor(): Promise<void> {
+    const port = runtime();
+    // A server restarts through its own supervisor, if it lets this caller ask; never through the
+    // host, which would restart this computer's executor instead.
+    if (onServer()) {
+      const done = await run('restartExecutor', () => port?.restartExecutor?.());
+      if (done.ok) setExecutorRestartPending(false);
+      else if (/local-only/.test(error())) {
+        setRestartRefused(true);
+        setError('That server restarts only from that computer. The change waits for its next start.');
+      }
+      return;
+    }
     const host = executorHost();
     if (!host) return;
     setExecutorRestartPending(false);
-    const port = runtime();
     if (configInFile() && port?.restartExecutor) {
       await run('restartExecutor', () => port.restartExecutor?.());
       return;
@@ -1010,6 +1047,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
     canManageAi,
     canConfigureAi,
     canConfigureExecutor,
+    executorOnServer: onServer,
 
     unsupportedCapabilities,
     canBackUp,

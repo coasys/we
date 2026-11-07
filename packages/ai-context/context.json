@@ -6427,11 +6427,46 @@
         },
         "error": {
           "type": "string"
+        },
+        "canSwitch": {
+          "type": "boolean"
+        },
+        "servers": {
+          "type": "array",
+          "properties": ["id", "name", "subtitle", "icon", "current", "canRemove"]
+        },
+        "servingRole": {
+          "type": "string"
+        },
+        "servingProblem": {
+          "type": "string"
+        },
+        "sessionEnded": {
+          "type": "object",
+          "properties": ["reason", "id", "name", "message"]
+        },
+        "serverAddress": {
+          "type": "string"
+        },
+        "serverError": {
+          "type": "string"
+        },
+        "serverBusy": {
+          "type": "boolean"
         }
       },
-      "actions": ["refresh", "addDevice", "revoke"],
-      "ambient": ["refresh"],
-      "needsArgs": ["revoke"]
+      "actions": [
+        "refresh",
+        "addDevice",
+        "revoke",
+        "setServerAddress",
+        "refreshServers",
+        "addServer",
+        "serveFrom",
+        "removeServer"
+      ],
+      "ambient": ["refresh", "setServerAddress", "refreshServers"],
+      "needsArgs": ["revoke", "setServerAddress", "serveFrom", "removeServer"]
     },
     {
       "name": "editorStore",
@@ -6941,6 +6976,9 @@
           "type": "boolean"
         },
         "canConfigureExecutor": {
+          "type": "boolean"
+        },
+        "executorOnServer": {
           "type": "boolean"
         },
         "unsupportedCapabilities": {

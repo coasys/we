@@ -400,4 +400,21 @@ describe("the executor's own process", () => {
     expect(port.executorConfig).toBeUndefined();
     expect(port.restartExecutor).toBeUndefined();
   });
+
+  it('is offered to the operator of a server reached by its address, without the database moves', async () => {
+    const { client, runtime } = processClient();
+    const port = createAd4mRuntimeAdmin(client, { onThisMachine: false });
+    expect(port.onThisMachine).toBe(false);
+    expect(port.executorConfig).toBeTypeOf('function');
+    // A path on the server's disk is nothing this computer can name.
+    expect(port.exportDatabase).toBeUndefined();
+    expect(port.importDatabase).toBeUndefined();
+    // The server says what it refuses from off its machine; the port passes the refusal on.
+    runtime.restart.mockRejectedValueOnce(Object.assign(new Error('RPC error 403: local-only'), { status: 403 }));
+    await expect(port.restartExecutor!()).rejects.toThrow(/local-only/);
+  });
+
+  it('says nothing of where it runs for a node on this machine', () => {
+    expect(createAd4mRuntimeAdmin(processClient().client).onThisMachine).toBeUndefined();
+  });
 });

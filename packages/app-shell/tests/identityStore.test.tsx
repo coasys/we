@@ -10,8 +10,11 @@ import type {
   IdentityCustodyView,
   IdentityPort,
   KeyLogView,
+  ServingSessionEnded,
+  ServingView,
 } from '@we/backend-shared';
 import { NO_IDENTITY_CAPABILITIES } from '@we/backend-shared';
+import { toastService } from '@we/components/solid';
 import { createSignal } from 'solid-js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -28,6 +31,7 @@ vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
       keyLog: true,
       devices: true,
       linkDevice: !!ports()?.identity?.change,
+      switchDevice: !!ports()?.identity?.serving,
     }),
   }),
 }));
@@ -440,5 +444,163 @@ describe('deviceStore', () => {
     await flush();
     await deviceStore.addDevice();
     expect(c.changes).toEqual([{ kind: 'add-device' }]);
+  });
+});
+
+describe('which device serves you', () => {
+  /** A backend that can log in to servers: they are whatever the test lists, and refuse what it says. */
+  function servingBackend(refuse: Record<string, { reason: string; message: string }> = {}) {
+    const b = backend({ did: DID, events: [incept], devices: [devices[1]] });
+    const calls: string[] = [];
+    let servers: { id: string; name: string }[] = [];
+    let current = 'this-computer';
+    let end: ((ended: ServingSessionEnded) => void) | null = null;
+    const view = (): ServingView => ({
+      devices: [
+        { id: 'this-computer', name: 'This computer', address: null, current: current === 'this-computer' },
+        ...servers.map((s) => ({ id: s.id, name: s.name, address: s.id, current: current === s.id })),
+      ],
+      role: current === 'this-computer' ? null : 'operator',
+      problem: null,
+    });
+    const port: IdentityPort = {
+      ...b.port,
+      serving: async () => view(),
+      async addServer(address) {
+        calls.push(`add:${address}`);
+        if (refuse[address]) return { ok: false, ...refuse[address] };
+        servers = [...servers, { id: address, name: new URL(address).host }];
+        return { ok: true, id: address };
+      },
+      async removeServer(id) {
+        calls.push(`remove:${id}`);
+        servers = servers.filter((s) => s.id !== id);
+      },
+      async serveFrom(id) {
+        calls.push(`serve:${id}`);
+        current = id;
+      },
+      onSessionEnded(listener) {
+        end = listener;
+        return () => {
+          end = null;
+        };
+      },
+    };
+    return {
+      port,
+      calls,
+      end: (ended: ServingSessionEnded) => end?.(ended),
+      serveHere: (id: string) => (current = id),
+    };
+  }
+
+  it('is not offered where the backend cannot log in to a server', async () => {
+    setPorts({ identity: backend({ did: DID, events: [incept], devices }).port });
+    const { devices: deviceStore } = mount();
+    await flush();
+    expect(deviceStore.canSwitch()).toBe(false);
+    expect(deviceStore.servers()).toEqual([]);
+  });
+
+  it('lists this computer, adds a server by its address and switches to it', async () => {
+    const s = servingBackend();
+    setPorts({ identity: s.port });
+    const { devices: deviceStore } = mount();
+    await flush();
+    expect(deviceStore.canSwitch()).toBe(true);
+    expect(deviceStore.servers()).toEqual([
+      {
+        id: 'this-computer',
+        name: 'This computer',
+        subtitle: 'Runs here',
+        icon: 'desktop',
+        current: true,
+        canRemove: false,
+      },
+    ]);
+
+    deviceStore.setServerAddress('  https://server.example:12000 ');
+    const outcome = await deviceStore.addServer();
+    expect(outcome).toEqual({ ok: true, id: 'https://server.example:12000' });
+    expect(s.calls).toEqual(['add:https://server.example:12000']);
+    expect(deviceStore.serverAddress()).toBe('');
+    expect(deviceStore.servers()[1]).toMatchObject({
+      name: 'server.example:12000',
+      subtitle: 'https://server.example:12000',
+      icon: 'cloud',
+      current: false,
+      canRemove: true,
+    });
+
+    await deviceStore.serveFrom('https://server.example:12000');
+    expect(s.calls.at(-1)).toBe('serve:https://server.example:12000');
+  });
+
+  it('says why a server would not let this computer in, and lists nothing', async () => {
+    const s = servingBackend({
+      'https://other.example': { reason: 'not-known', message: 'That server does not know you.' },
+    });
+    setPorts({ identity: s.port });
+    const { devices: deviceStore } = mount();
+    await flush();
+    deviceStore.setServerAddress('https://other.example');
+    expect(await deviceStore.addServer()).toMatchObject({ ok: false, reason: 'not-known' });
+    expect(deviceStore.serverError()).toBe('That server does not know you.');
+    expect(deviceStore.servers()).toHaveLength(1);
+    // The address stays, to be corrected.
+    expect(deviceStore.serverAddress()).toBe('https://other.example');
+  });
+
+  it('marks the server serving now, its role, and forgets another', async () => {
+    const s = servingBackend();
+    setPorts({ identity: s.port });
+    const { devices: deviceStore } = mount();
+    await flush();
+    for (const address of ['https://a.example', 'https://b.example']) {
+      deviceStore.setServerAddress(address);
+      await deviceStore.addServer();
+    }
+    s.serveHere('https://a.example');
+    await deviceStore.refreshServers();
+    expect(deviceStore.servingRole()).toBe('operator');
+    expect(deviceStore.servers().map((r) => [r.id, r.current, r.canRemove])).toEqual([
+      ['this-computer', false, false],
+      ['https://a.example', true, false],
+      ['https://b.example', false, true],
+    ]);
+
+    await deviceStore.removeServer('https://b.example');
+    expect(deviceStore.servers()).toHaveLength(2);
+  });
+
+  it('says a revoked device was removed, wherever the person is, and goes back to this computer', async () => {
+    const s = servingBackend();
+    setPorts({ identity: s.port });
+    const { devices: deviceStore } = mount();
+    await flush();
+
+    s.end({ reason: 'revoked', id: 'https://a.example', name: 'a.example' });
+    expect(deviceStore.sessionEnded()).toMatchObject({
+      reason: 'revoked',
+      message: 'This device was removed from your identity, so a.example no longer lets it in.',
+    });
+    const toast = toastService.toasts().find((t) => t.message === deviceStore.sessionEnded()?.message);
+    expect(toast).toMatchObject({ tone: 'danger', duration: 0, action: { label: 'Back to this computer' } });
+
+    toast?.action?.run();
+    await flush();
+    expect(s.calls.at(-1)).toBe('serve:this-computer');
+    toastService.remove(toast!.id);
+  });
+
+  it('says an ended session in plain words', async () => {
+    const s = servingBackend();
+    setPorts({ identity: s.port });
+    const { devices: deviceStore } = mount();
+    await flush();
+    s.end({ reason: 'ended', id: 'https://a.example', name: 'a.example' });
+    expect(deviceStore.sessionEnded()?.message).toBe('Your session on a.example ended.');
+    for (const t of toastService.toasts()) toastService.remove(t.id);
   });
 });
