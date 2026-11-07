@@ -336,3 +336,68 @@ describe('consent requests', () => {
     expect(handlers.size).toBe(0);
   });
 });
+
+describe("the executor's own process", () => {
+  function processClient() {
+    const runtime = {
+      config: vi.fn(async () => ({
+        file: '/data/executor-config.json',
+        restartPending: false,
+        values: { mcp_enabled: true, log_config: { holochain: 'warn' } },
+        keys: [
+          { key: 'mcp_enabled', class: 'restart' },
+          { key: 'log_config', class: 'restart', pinned: 'config' },
+          { key: 'port', class: 'machine' },
+          { key: 'a_key_this_build_does_not_know', class: 'machine' },
+        ],
+      })),
+      setConfig: vi.fn(async () => ({ restartPending: true, refused: [{ key: 'port', reason: 'pinned-by-config' }] })),
+      restart: vi.fn(async () => true),
+      logTail: vi.fn(async () => ({ lines: ['one', 'two'] })),
+    };
+    return { client: stubClient({ runtime }), runtime };
+  }
+
+  it('reads the config file as entries, by who may write them and whether a flag pins them', async () => {
+    const port = createAd4mRuntimeAdmin(processClient().client);
+    expect(await port.executorConfig!()).toEqual({
+      file: '/data/executor-config.json',
+      restartPending: false,
+      entries: [
+        { key: 'mcp_enabled', kind: 'boolean', value: true, writableFrom: 'anywhere', pinned: false },
+        { key: 'log_config', kind: 'object', value: { holochain: 'warn' }, writableFrom: 'anywhere', pinned: true },
+        // Not in the file: its type comes from the key, so it can still be set.
+        { key: 'port', kind: 'number', value: undefined, writableFrom: 'this-machine', pinned: false },
+        // A key without a known type is only shown.
+        {
+          key: 'a_key_this_build_does_not_know',
+          kind: 'object',
+          value: undefined,
+          writableFrom: 'this-machine',
+          pinned: false,
+        },
+      ],
+    });
+  });
+
+  it('writes, restarts and reads the log through the run contract', async () => {
+    const { client, runtime } = processClient();
+    const port = createAd4mRuntimeAdmin(client);
+
+    expect(await port.setExecutorConfig!({ mcp_enabled: false }, ['mcp_port'])).toEqual({
+      restartPending: true,
+      refused: [{ key: 'port', reason: 'pinned-by-config' }],
+    });
+    expect(runtime.setConfig).toHaveBeenCalledWith({ mcp_enabled: false }, ['mcp_port']);
+    await port.restartExecutor!();
+    expect(runtime.restart).toHaveBeenCalled();
+    expect(await port.executorLogTail!(2)).toEqual(['one', 'two']);
+    expect(runtime.logTail).toHaveBeenCalledWith(2);
+  });
+
+  it('is not offered to a guest', () => {
+    const port = createAd4mRuntimeAdmin(processClient().client, { administersNode: false });
+    expect(port.executorConfig).toBeUndefined();
+    expect(port.restartExecutor).toBeUndefined();
+  });
+});

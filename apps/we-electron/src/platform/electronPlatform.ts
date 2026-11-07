@@ -22,10 +22,10 @@ export const electronPlatform = createDesktopPlatform({
     remove: (id) => window.electron.removeAccount(id),
     applySelection: () => window.electron.applyAccountSelection(),
   },
-  // The executor is a child process here, so restarting it leaves the window in place.
+  // The executor is a child process here, so restarting it leaves the window in place. Its settings
+  // are its own config file, which the settings page writes through `runtime.setConfig`, so the
+  // host keeps none.
   executor: {
-    getSettings: () => window.electron.getExecutorSettings(),
-    setSettings: (settings) => window.electron.setExecutorSettings(settings),
     restart: () => window.electron.restartExecutor(),
     chooseFile: (options) => window.electron.chooseFile(options),
   },

@@ -6,14 +6,16 @@ import {
   dialog,
   ipcMain,
   Menu,
+  nativeImage,
   net as electronNet,
   protocol,
   session as electronSession,
   shell,
+  Tray,
 } from 'electron';
 import contextMenu from 'electron-context-menu';
 import express from 'express';
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import http from 'http';
 import net from 'net';
 import { homedir } from 'os';
@@ -26,10 +28,14 @@ import { startCustody, superviseCustody } from './custodySidecar.js';
 import { openExecutorLog } from './executorLog.js';
 import {
   afterExecutorExit,
+  crashBackoff,
+  executorArgs,
   executorEnv,
-  restartBudget,
-  stopExecutorsFor,
-  stopProcess,
+  EXIT,
+  initialExecutorConfig,
+  outputTail,
+  startWithPortRetry,
+  stopChild,
   waitUntilReady,
 } from './executorProcess.js';
 import { createIdentity, IDENTITY_PAGE, IDENTITY_SCHEME, identityFile, isIdentityPage } from './identityWindow.js';
@@ -44,6 +50,7 @@ import {
   trustedOrigins,
 } from './navigationPolicy.js';
 import { setupSeedServers } from './seed-servers.js';
+import { closeHides, createTray, trayHostPresent } from './tray.js';
 
 // Enable right-click context menu with inspect element in dev mode
 contextMenu({
@@ -66,8 +73,8 @@ let ad4mToken = null;
 let executorProcess = null;
 /** Set while an account switch is tearing the executor down on purpose. */
 let switchingAccount = false;
-/** Whether an executor that exited on its own may be started again now. See `restartBudget`. */
-const mayRestartExecutor = restartBudget();
+/** How long to wait before starting again an executor that crashed. See `crashBackoff`. */
+const executorBackoff = crashBackoff();
 /** The current run's log in the account's data directory (see `executorLog.js`), or null. */
 let executorLog = null;
 
@@ -144,11 +151,10 @@ const seedProductName = (() => {
 if (seedProductName && !app.isPackaged) app.setName(seedProductName);
 
 /*
-  One instance per app. A second launch would start its own executor on the same data path, which
-  stops the first one's (`stopExecutorsFor`) and deletes the locks under it; the first then starts
-  its executor again and stops the second's, and so on. The lock is per `userData` directory, and a
-  seed product runs under its own name (above) and so its own directory: different products still
-  run side by side. Taken before the registry and any executor work, and a refused launch exits at
+  One instance per app. A second launch would start its own executor on the data path the first
+  one's holds, which refuses to start (exit 79): a second window over a dead backend. The lock is
+  per `userData` directory, and a seed product runs under its own name (above) and so its own
+  directory: different products still run side by side. Taken before the registry and any executor work, and a refused launch exits at
   once: `app.quit()` would let the rest of this module run, and the registry migrates account
   directories when it is created.
 */
@@ -156,11 +162,10 @@ const singleInstance = app.requestSingleInstanceLock();
 if (!singleInstance) {
   process.exit(0);
 } else {
+  // A second launch opens this one's window, hidden to the tray or not.
   app.on('second-instance', () => {
     if (!mainWindow || mainWindow.isDestroyed()) return;
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.show();
-    mainWindow.focus();
+    openMainWindow();
   });
 }
 
@@ -292,14 +297,46 @@ async function waitForGraphQL(port, proc) {
   );
 }
 
-// Start the AD4M executor
-async function startExecutor() {
-  try {
-    // Find a free port for GraphQL
-    ad4mPort = await findFreePort(12000, 13000);
+/**
+ * Start the AD4M executor, supervised by its run contract (`executorProcess.js`, `EXIT`).
+ *
+ * `samePort` starts it again with the same arguments — port and credential included — which is
+ * what `runtime.restart` (exit 75) asks for. Otherwise it gets a free port and a new credential.
+ *
+ * The first start, before the window exists, tries another port when its executor exits 80 (the
+ * port was taken between choosing it and binding it), up to three times; after that the exit
+ * handler owns every recovery (`startWithPortRetry`). One that exits 78 or 79 throws, with the
+ * executor's last lines as the reason.
+ */
+function startExecutor({ samePort = false } = {}) {
+  return startWithPortRetry(startExecutorOnce, { samePort, appUp: () => Boolean(mainWindow) });
+}
 
-    // Generate credential token
-    ad4mToken = uuidv4();
+/** The config file `--config` names, in the account's data folder. See `ensureExecutorConfig`. */
+const executorConfigFile = (dataPath) => join(dataPath, 'executor-config.json');
+
+/**
+ * Create the executor's config file the first time this app starts an executor on a data folder,
+ * from what an older build kept in the account registry (`initialExecutorConfig`). An existing file
+ * is the person's and is never rewritten here; the executor writes it (`runtime.setConfig`).
+ */
+function ensureExecutorConfig(dataPath) {
+  const file = executorConfigFile(dataPath);
+  if (existsSync(file)) return file;
+  mkdirSync(dataPath, { recursive: true });
+  writeFileSync(file, `${JSON.stringify(initialExecutorConfig(accounts.executorSettings()), null, 2)}\n`, {
+    mode: 0o600,
+  });
+  console.log('[main] Created the executor config file:', file);
+  return file;
+}
+
+async function startExecutorOnce({ samePort }) {
+  try {
+    if (!samePort || !ad4mPort) {
+      ad4mPort = await findFreePort(12000, 13000);
+      ad4mToken = uuidv4();
+    }
 
     // Get AD4M data directory
     const ad4mDataPath = resolveAd4mDataPath();
@@ -313,44 +350,9 @@ async function startExecutor() {
     const log = executorLog;
     if (log) console.log('[main] Executor log:', log.path);
 
-    // Stop an executor still running on this data path (one a previous run left behind, e.g. after
-    // Ctrl+C or a crash) and wait for it to exit. Only that one: other executors on the machine are
-    // not ours. It must be gone before the lair socket / LOCK cleanups below, or it re-acquires them.
-    await stopExecutorsFor(ad4mDataPath, (line) => {
-      console.log(line);
-      log?.write(`${line}\n`);
-    });
-
-    // Clean up stale lair-keystore socket file — if a previous run crashed without
-    // killing child processes, this socket stays on disk and causes lair-keystore
-    // to fail on the next agent.unlock(), which crashes the executor.
-    const keychainSocketPath = join(ad4mDataPath, 'ad4m', 'h', 'c', 'ks', 'socket');
-    if (existsSync(keychainSocketPath)) {
-      console.log('[main] Removing stale lair-keystore socket:', keychainSocketPath);
-      try {
-        rmSync(keychainSocketPath);
-      } catch (e) {
-        console.warn('[main] Could not remove socket:', e.message);
-      }
-    }
-
-    // Clean up stale RocksDB LOCK files left by a detached executor that survived
-    // a Ctrl+C / forced quit. Without this, the next launch panics with
-    // "Resource temporarily unavailable" on every perspective's SPARQL store.
-    const perspectivesDir = join(ad4mDataPath, 'perspectives');
-    if (existsSync(perspectivesDir)) {
-      try {
-        for (const uuid of readdirSync(perspectivesDir)) {
-          const lockFile = join(perspectivesDir, uuid, 'sparql_store', 'LOCK');
-          if (existsSync(lockFile)) {
-            console.log('[main] Removing stale SPARQL LOCK:', lockFile);
-            rmSync(lockFile);
-          }
-        }
-      } catch (e) {
-        console.warn('[main] Could not clean SPARQL LOCK files:', e.message);
-      }
-    }
+    // Nothing else running on this data folder is stopped, and nothing under it is deleted: an
+    // executor someone else runs there keeps it, and this one refuses to start (exit 79). See the
+    // head of `executorProcess.js`.
 
     console.log('Starting AD4M executor...');
     console.log('Port:', ad4mPort);
@@ -364,34 +366,18 @@ async function startExecutor() {
     console.log('Executor path:', executorPath);
 
     ensureDataPathInitialised(executorPath, ad4mDataPath, log);
+    const configFile = ensureExecutorConfig(ad4mDataPath);
 
-    // Settings the executor reads once, at startup. Off unless asked for: MCP opens a port that
-    // serves this agent's data to anything local that speaks the protocol.
-    const executorSettings = accounts.executorSettings();
-
-    // Start the executor process
+    // stdin is a pipe this process holds open and never writes: with `--watch-stdin true` the
+    // executor stops when it closes, which `stopExecutorProcess` does, and the OS does if this
+    // process dies. Its output is still captured: Holochain and language output reach stdout.
     executorProcess = spawn(
       executorPath,
-      [
-        'run', // The 'run' subcommand
-        '--port',
-        ad4mPort.toString(),
-        // The admin credential is in the environment (`executorSpawnEnv`), not here: an argument
-        // is visible to every user of the computer through `ps`.
-        '--app-data-path',
-        ad4mDataPath,
-        '--run-dapp-server',
-        'false', // We don't need the built-in dapp server
-        '--connect-holochain',
-        'true', // Enable holochain connection
-        ...(executorSettings.mcpEnabled
-          ? ['--enable-mcp', 'true', '--mcp-port', executorSettings.mcpPort.toString()]
-          : []),
-      ],
+      executorArgs({ port: ad4mPort, dataPath: ad4mDataPath, configFile, logDir: join(ad4mDataPath, 'logs') }),
       {
         detached: true, // Create a new process group so we can kill the entire tree
-        stdio: ['ignore', 'pipe', 'pipe'], // Capture stdout/stderr instead of inherit
-        env: executorSpawnEnv(executorEnv(executorSettings.logLevels), ad4mToken),
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: executorSpawnEnv(executorEnv(), ad4mToken),
       },
     );
 
@@ -399,22 +385,28 @@ async function startExecutor() {
     // and is required for process.kill(-pid) group-kill to work.
     executorProcess.unref();
     const startedAt = Date.now();
-    // Also unref the stdio streams — without this, the piped stdout/stderr keep
-    // Electron's event loop alive after the executor is killed, causing a second
-    // Ctrl+C to be needed to return to the terminal prompt.
+    // Also unref the stdio streams — without this, the pipes keep Electron's event loop alive
+    // after the executor is killed, causing a second Ctrl+C to be needed to return to the prompt.
+    executorProcess.stdin?.unref?.();
     executorProcess.stdout?.unref();
     executorProcess.stderr?.unref();
+    // A write to a pipe whose reader is gone; nothing is written, so only the close can fail.
+    executorProcess.stdin?.on('error', () => {});
 
+    // The last lines it printed: the reason a refused start (78, 79) gives is on stderr.
+    const tail = outputTail(20);
     // Forward executor output to the console (which also prevents EPIPE errors) and to this run's
     // log. `log`, not `executorLog`: after a restart the latter is the next run's file.
     executorProcess.stdout?.on('data', (data) => {
       process.stdout.write(data);
       log?.write(data);
+      tail.push(data);
     });
 
     executorProcess.stderr?.on('data', (data) => {
       process.stderr.write(data);
       log?.write(data);
+      tail.push(data);
     });
 
     executorProcess.on('error', (err) => {
@@ -423,29 +415,40 @@ async function startExecutor() {
 
     const proc = executorProcess;
     executorProcess.on('exit', (code, signal) => {
-      // `stopExecutor` clears `executorProcess` before it signals, so an executor this app stopped
-      // (quit, account switch, settings) is no longer the current one. The current one exiting
-      // is a crash or an outside kill, also while a restart waits for it to start: start it again
-      // and reload, which hands the renderer the new port and credential and takes it through
-      // unlock, as an account switch does.
-      // Not before the window exists: the first start is still waiting on this executor and fails
-      // on its own, as it does on dev.
+      // `stopExecutor` clears `executorProcess` before it stops it, so an executor this app stopped
+      // (quit, account switch, settings) is no longer the current one. Not before the window
+      // exists: the first start is still waiting on this executor and reads its code itself.
       const outcome = afterExecutorExit(
-        { current: executorProcess === proc, quitting: executorStoppedForQuit, appUp: Boolean(mainWindow), startedAt },
-        mayRestartExecutor,
+        {
+          current: executorProcess === proc,
+          quitting: executorStoppedForQuit,
+          appUp: Boolean(mainWindow),
+          startedAt,
+          code,
+          signal,
+        },
+        executorBackoff,
       );
       // Stopped on purpose for a restart or an account switch: expected, nothing to report.
-      if (outcome === 'stopped' && switchingAccount) return;
+      if (outcome.action === 'stopped' && switchingAccount) return;
 
       const msg = `[main] Executor exited — code: ${code}, signal: ${signal}`;
       console.log(msg);
-      if (outcome !== 'stopped') executorProcess = null;
-      if (outcome === 'restart') {
-        console.log('[main] Starting the executor again');
-        void restartExecutorAndReload();
+      if (outcome.action !== 'stopped' && outcome.action !== 'leave') executorProcess = null;
+      if (outcome.action === 'restart') {
+        console.log(
+          outcome.samePort
+            ? '[main] The executor asked to be restarted; starting it again with the same arguments'
+            : `[main] Starting the executor again in ${outcome.delayMs} ms`,
+        );
+        void restartExecutorAndReload({ samePort: outcome.samePort, delayMs: outcome.delayMs });
         return;
       }
-      if (outcome === 'give-up') console.error('[main] The executor keeps exiting; not starting it again');
+      if (outcome.action === 'refused' || outcome.action === 'busy' || outcome.action === 'give-up') {
+        showExecutorStopped(outcome.action, tail.lines(), configFile, ad4mDataPath);
+      }
+      // Gone for good: the sidecar would only keep restarting against a dead port.
+      if (outcome.action !== 'stopped' && outcome.action !== 'leave') void stopCustody();
       // Notify the renderer so it shows in DevTools even in packaged builds.
       //
       // `mainWindow?.` only guards against null, not against a *destroyed* window: on quit the
@@ -459,7 +462,14 @@ async function startExecutor() {
     console.log('AD4M executor process started, waiting for GraphQL server...');
 
     // Wait for the GraphQL server to be fully ready (not just TCP port open)
-    await waitForGraphQL(ad4mPort, proc);
+    try {
+      await waitForGraphQL(ad4mPort, proc);
+    } catch (err) {
+      const reason = startRefusal(proc.exitCode, tail.lines(), configFile, ad4mDataPath);
+      if (reason) throw Object.assign(new Error(reason), { exitCode: proc.exitCode });
+      if (proc.exitCode === EXIT.PORT_TAKEN) err.exitCode = EXIT.PORT_TAKEN;
+      throw err;
+    }
 
     console.log('AD4M executor ready');
     startCustodyFor(ad4mPort, ad4mToken);
@@ -467,6 +477,32 @@ async function startExecutor() {
     console.error('Error starting executor:', error);
     throw error;
   }
+}
+
+/**
+ * Why the executor refused to start, in words for the person, or null when it did not refuse:
+ * exit 78 (its config file or a flag) and 79 (another executor holds the data folder). Restarting
+ * does not help either, so the app says so rather than trying again.
+ */
+function startRefusal(code, lines, configFile, dataPath) {
+  const last = lines.length ? `\n\n${lines.slice(-8).join('\n')}` : '';
+  if (code === EXIT.CONFIG_REFUSED)
+    return `The executor refused its settings. Fix the config file and start the app again:\n${configFile}${last}`;
+  if (code === EXIT.DATA_FOLDER_BUSY)
+    return `Another AD4M executor is using this data folder:\n${dataPath}\n\nQuit the app that runs it (the ADAM launcher, another copy of this app), then start this one again.${last}`;
+  return null;
+}
+
+/** Tell the person the executor stopped and will not be started again, and why. */
+function showExecutorStopped(action, lines, configFile, dataPath) {
+  const code = { refused: EXIT.CONFIG_REFUSED, busy: EXIT.DATA_FOLDER_BUSY }[action];
+  const detail =
+    startRefusal(code, lines, configFile, dataPath) ??
+    `It keeps stopping, so the app does not start it again. Quit and start the app to try again.${
+      lines.length ? `\n\n${lines.slice(-8).join('\n')}` : ''
+    }\n\nThe executor's log: ${join(dataPath, 'logs', 'executor-0.log')}`;
+  const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
+  void dialog.showMessageBox(parent, { type: 'error', message: 'The AD4M executor stopped', detail });
 }
 
 /** The renderer bundle: copied beside the app when packaged, built into `dist` otherwise. */
@@ -690,6 +726,8 @@ function createWindow() {
       webSecurity: true,
     },
   });
+
+  hideOnClose(mainWindow);
 
   // Show window only when content is ready
   mainWindow.once('ready-to-show', () => {
@@ -965,15 +1003,14 @@ handle('accounts-remove', (_event, id) => accounts.remove(id));
  */
 handle('accounts-apply', () => restartExecutorAndReload());
 
-handle('executor-settings-get', () => accounts.executorSettings());
-handle('executor-settings-set', (_event, settings) => accounts.setExecutorSettings(settings));
 /**
- * Restart the executor so changed settings take effect.
+ * Start the executor over, with a new port and credential, and reload the window.
  *
- * The same act as applying an account selection — the executor reads its arguments once, at
- * startup, whether what changed is the data path or an MCP port. Sharing the implementation is not
- * a shortcut: two functions that both mean "start the executor over" would drift, and the second
- * one to be written would be the one that forgets to repaint the window.
+ * The same act as applying an account selection. The settings page restarts the executor through
+ * `runtime.restart` instead (exit 75: the same arguments); this one remains for a host restart the
+ * executor cannot be asked for. Sharing the implementation is not a shortcut: two functions that
+ * both mean "start the executor over" would drift, and the second one to be written would be the
+ * one that forgets to repaint the window.
  */
 handle('executor-restart', () => restartExecutorAndReload());
 
@@ -1036,28 +1073,34 @@ handle('executor-choose-file', async (_event, { save, defaultName } = {}) => {
 let restartChain = Promise.resolve();
 /** Restarts waiting in `restartChain` behind the one running. */
 let restartsQueued = 0;
-function restartExecutorAndReload() {
+function restartExecutorAndReload({ samePort = false, delayMs = 0 } = {}) {
   restartsQueued += 1;
   restartChain = restartChain
     .catch(() => {})
-    .then(() => {
+    .then(async () => {
+      // The crash backoff waits here, inside the chain, so a start failing meanwhile sees this
+      // restart queued and leaves the reload to it.
+      if (delayMs) await new Promise((resolve) => setTimeout(resolve, delayMs));
       restartsQueued -= 1;
-      return restartExecutorAndReloadOnce();
+      // Quit while it waited: nothing to start.
+      if (executorStoppedForQuit) return;
+      return restartExecutorAndReloadOnce({ samePort });
     });
   return restartChain;
 }
 
-async function restartExecutorAndReloadOnce() {
+async function restartExecutorAndReloadOnce({ samePort = false } = {}) {
   switchingAccount = true;
   let started = false;
   try {
     await stopExecutor();
     // startExecutor picks up the new path, waits for GraphQL, and refreshes port/token — which the
     // reloaded renderer asks for again over IPC, so it never sees the old credentials.
-    await startExecutor();
+    await startExecutor({ samePort });
     started = true;
   } catch (err) {
     console.error('[main] Could not start the executor for the selected account:', err);
+    // A refused start (78, 79) has already said why in a dialog, from the exit handler.
     // Fall through to the reload anyway: the renderer's boot will surface a connection failure,
     // which is a screen the user can act on. Leaving them on a spinner is not.
   } finally {
@@ -1205,13 +1248,11 @@ app.whenReady().then(async () => {
 
   // Then create the window
   installApplicationMenu();
+  installTray();
   createWindow();
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
-    }
-  });
+  // macOS: a click on the Dock icon opens the window, hidden or not.
+  app.on('activate', () => openMainWindow());
 });
 
 /**
@@ -1253,39 +1294,89 @@ function installApplicationMenu() {
 // Stop the executor and the custody sidecar beside it.
 const stopExecutor = () => Promise.all([stopCustody(), stopExecutorProcess()]);
 
-// Stop the executor and wait for it to exit: SIGTERM lets it shut the Holochain conductor down
-// cleanly; SIGKILL to its process group (spawned detached) only if it does not exit in time.
-// A second call while a stop is in progress waits for that same stop.
+// Stop the executor and wait for it to exit: closing its stdin (`--watch-stdin true`) lets it shut
+// the Holochain conductor down and exit 0; SIGTERM, then SIGKILL to its process group (spawned
+// detached), only if it does not exit in time. A second call while a stop is in progress waits for
+// that same stop.
 let executorStopping = Promise.resolve();
 function stopExecutorProcess() {
   const proc = executorProcess;
   executorProcess = null;
   if (!proc || proc.exitCode !== null || proc.signalCode !== null) return executorStopping;
   executorStopping = (async () => {
-    if (process.platform === 'win32') {
-      proc.kill();
-      return;
-    }
-    const how = await stopProcess(proc.pid);
+    const how = await stopChild(proc, {
+      fallback: process.platform === 'win32' ? async () => (proc.kill(), 'killed') : undefined,
+    });
     console.log(`[main] Executor stopped (${how})`);
   })();
   return executorStopping;
 }
 
-// Stop the executor before Electron quits (covers Cmd+Q, app.quit(), etc.). Quitting waits for it:
-// the first before-quit is held, the executor stopped, then the quit resumes.
+/** Set once the app has begun to quit: a window closing then closes rather than hiding. */
+let appQuitting = false;
+
+// Stop the executor before Electron quits (covers Cmd+Q, the tray's Quit, app.quit(), etc.).
+// Quitting waits for it: the first before-quit is held, the executor stopped, then the quit resumes.
 let executorStoppedForQuit = false;
 app.on('before-quit', (event) => {
+  appQuitting = true;
   if (process.env.WE_EXTERNAL_AD4M_PORT || executorStoppedForQuit) return;
   event.preventDefault();
   executorStoppedForQuit = true;
   stopExecutor().finally(() => app.quit());
 });
 
-app.on('window-all-closed', () => {
-  if (!process.env.WE_EXTERNAL_AD4M_PORT) void stopExecutor();
+// Reached only when a window closed rather than hiding (no tray icon to reopen it from), or on quit.
+app.on('window-all-closed', () => app.quit());
 
-  if (process.platform !== 'darwin') {
-    app.quit();
+// ── The tray icon, and closing the window (see `tray.js`) ────────────────────
+let tray = null;
+
+/** Show the main window again, and the app in the Dock on macOS. */
+function openMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createWindow();
+    return;
   }
-});
+  if (process.platform === 'darwin') void app.dock?.show();
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+/**
+ * Closing the main window hides it while the tray icon can bring it back: the app and its executor
+ * keep running. On macOS the app also leaves the Dock until the window is opened again, unless the
+ * identity window is showing.
+ */
+function hideOnClose(window) {
+  window.on('close', (event) => {
+    if (!closeHides({ quitting: appQuitting, trayUp: tray !== null, hostPresent: trayHostPresent() })) {
+      if (!appQuitting) console.log('[tray] No tray host to reopen the window from; closing it quits the app');
+      return;
+    }
+    event.preventDefault();
+    window.hide();
+    if (process.platform === 'darwin' && !identity.window()?.isVisible?.()) app.dock?.hide();
+  });
+}
+
+function installTray() {
+  if (process.platform === 'linux' && !trayHostPresent()) {
+    console.warn(
+      '[tray] No tray host (org.kde.StatusNotifierWatcher) on the session bus now: no icon shows, and closing the window quits the app',
+    );
+  }
+  tray = createTray({
+    Tray,
+    Menu,
+    // The window icon, at menu-bar size where the OS draws it as given (macOS, Windows).
+    icon:
+      process.platform === 'linux'
+        ? windowIcon()
+        : nativeImage.createFromPath(windowIcon()).resize({ width: 16, height: 16 }),
+    name: app.getName(),
+    onOpen: openMainWindow,
+    onQuit: () => app.quit(),
+  });
+}

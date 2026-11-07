@@ -17,8 +17,8 @@
  * no path to give it. The launcher's own publish form asks the user to type the path, and its
  * buttons are wired to the install handler, so it has never published anything.
  */
-import { type Ad4mClient, type Apps, capSentence } from '@coasys/ad4m';
-import type { AuthorizedApp, RuntimeAdminPort } from '@we/backend-shared';
+import { type Ad4mClient, type Apps, capSentence, type RuntimeConfig } from '@coasys/ad4m';
+import type { AuthorizedApp, ExecutorConfig, ExecutorConfigEntry, RuntimeAdminPort } from '@we/backend-shared';
 
 import type { Ad4mCapability } from './capabilities';
 import { missingExecutorMethods, onMissingMethod } from './missingMethods';
@@ -82,6 +82,61 @@ function readRequestedAuth(addon: string): {
     appUrl: text('appUrl') ?? '',
     appIconPath: text('appIconPath'),
     capabilities: Array.isArray(capabilities) ? (capabilities as unknown[]) : [],
+  };
+}
+
+/**
+ * The type of each key `runtime.config` lists, from ad4m's `ExecutorConfigFile`
+ * (`rust-executor/src/config_file.rs`). `runtime.config` gives the file's values and each key's
+ * class but no type, and a key the file leaves to its default has no value to tell it by — without
+ * this it could not be set at all. `runtimeConfig.live.ts` checks every key a real executor lists
+ * is here, so a new key fails that check rather than quietly becoming read-only.
+ */
+export const EXECUTOR_CONFIG_KINDS: Readonly<Record<string, ExecutorConfigEntry['kind']>> = {
+  app_data_path: 'text',
+  auto_permit_cap_requests: 'boolean',
+  hc_admin_port: 'number',
+  hc_app_port: 'number',
+  identity: 'object',
+  localhost: 'boolean',
+  log_config: 'object',
+  log_dir: 'text',
+  mcp_enabled: 'boolean',
+  mcp_port: 'number',
+  multi_user_config: 'object',
+  port: 'number',
+  run_dapp_server: 'boolean',
+  sfu_bind_addr: 'text',
+  sfu_public_addr: 'text',
+  sfu_stun_server: 'text',
+  sfu_udp_port: 'number',
+};
+
+/** A key's type: from {@link EXECUTOR_CONFIG_KINDS}, else from its value, else `object` (shown only). */
+function configKind(key: string, value: unknown): ExecutorConfigEntry['kind'] {
+  const known = EXECUTOR_CONFIG_KINDS[key];
+  if (known) return known;
+  if (typeof value === 'boolean') return 'boolean';
+  if (typeof value === 'number') return 'number';
+  return typeof value === 'string' ? 'text' : 'object';
+}
+
+/**
+ * `runtime.config` in the contract's shape: each key the executor writes, with its type and the
+ * file's value. `machine` keys are the executor's "only on this machine"; `pinned` is a flag or an
+ * `AD4M_*` variable of this start overriding the file.
+ */
+export function toExecutorConfig(config: RuntimeConfig): ExecutorConfig {
+  return {
+    file: config.file,
+    restartPending: config.restartPending,
+    entries: config.keys.map((info) => ({
+      key: info.key,
+      kind: configKind(info.key, config.values[info.key]),
+      value: config.values[info.key],
+      writableFrom: info.class === 'machine' ? 'this-machine' : 'anywhere',
+      pinned: info.pinned !== undefined,
+    })),
   };
 }
 
@@ -325,6 +380,28 @@ export function createAd4mRuntimeAdmin(backendClient: unknown, options: Ad4mRunt
 
     async addPeerInfos(infos) {
       await client.runtime.hcAddAgentInfos(infos);
+    },
+
+    // ── The executor's own process (its run contract; operator only) ───────────────────
+    async executorConfig() {
+      return toExecutorConfig(await client.runtime.config());
+    },
+
+    async setExecutorConfig(set, unset) {
+      const result = await client.runtime.setConfig(set, unset);
+      return {
+        restartPending: result.restartPending,
+        refused: result.refused.map(({ key, reason, detail }) => ({ key, reason, ...(detail ? { detail } : {}) })),
+      };
+    },
+
+    /** `runtime.restart`: answers, then exits 75, and the app supervising it starts it again. */
+    async restartExecutor() {
+      await client.runtime.restart();
+    },
+
+    async executorLogTail(lines) {
+      return (await client.runtime.logTail(lines)).lines;
     },
   };
 

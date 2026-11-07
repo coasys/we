@@ -130,9 +130,6 @@ export function holdsLauncherState(path) {
 /** The launcher's default, so an agent used by both is reachable on the same port. */
 const DEFAULT_MCP_PORT = 3001;
 
-/** The levels the executor's logger accepts. Anything else is refused rather than written. */
-const LOG_LEVELS = ['error', 'warn', 'info', 'debug', 'trace'];
-
 export function createAccountRegistry({ configDir, defaultPath, defaultName = 'Main' }) {
   /** Accounts WE creates, and the registry, both inside the container. */
   const managedRoot = join(defaultPath, CONTAINER_DIR);
@@ -415,12 +412,10 @@ export function createAccountRegistry({ configDir, defaultPath, defaultName = 'M
     },
 
     /**
-     * Settings that describe how the *executor* is started, rather than which account it runs as.
-     *
-     * They live in the account registry because that is the one file this host owns and reads
-     * before spawning anything — and because they are, like the selected account, arguments to a
-     * process that has not started yet. Defaults match the launcher's, so an agent moved between
-     * the two behaves the same.
+     * The MCP and log settings an older build of this app kept here, before the executor had a
+     * config file. Read once per data folder, to seed that file (`initialExecutorConfig`); the
+     * settings page now writes the file itself, through `runtime.setConfig`. Defaults match the
+     * launcher's, so an agent moved between the two behaves the same.
      */
     executorSettings() {
       const stored = read().executor ?? {};
@@ -432,31 +427,6 @@ export function createAccountRegistry({ configDir, defaultPath, defaultName = 'M
         // screen, and they would never move again.
         logLevels: { ...(stored.logLevels ?? {}) },
       };
-    },
-
-    setExecutorSettings({ mcpEnabled, mcpPort, logLevels } = {}) {
-      const current = this.executorSettings();
-      const port = Number(mcpPort);
-      // A port outside the usable range would be written, then refused by the executor at the next
-      // start — which is a restart later, and nowhere near the field that caused it.
-      if (mcpPort !== undefined && (!Number.isInteger(port) || port < 1024 || port > 65535)) {
-        throw new Error('Choose a port between 1024 and 65535');
-      }
-      if (logLevels !== undefined) {
-        for (const [crate, level] of Object.entries(logLevels)) {
-          // An unknown level is dropped by the executor's own parser, so a typo would look accepted
-          // here and silently do nothing there.
-          if (!LOG_LEVELS.includes(level)) throw new Error(`"${level}" is not a log level`);
-          if (!crate.trim()) throw new Error('A crate name is required');
-        }
-      }
-      const next = {
-        mcpEnabled: mcpEnabled === undefined ? current.mcpEnabled : mcpEnabled === true,
-        mcpPort: mcpPort === undefined ? current.mcpPort : port,
-        logLevels: logLevels === undefined ? current.logLevels : logLevels,
-      };
-      write({ ...read(), executor: next });
-      return next;
     },
 
     select(id) {
