@@ -244,6 +244,8 @@ export function IdentityStoreProvider(props: ParentProps) {
     }
     setLastOutcome(outcome);
     await refresh();
+    // A device added or removed changes which authors are this person's (`me.dids`).
+    if (outcome === 'done') void session.refreshMe();
     // After the read, which clears `error` when it succeeds: why the change failed outlives it.
     if (reason) setError(reason);
     return outcome;

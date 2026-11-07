@@ -308,6 +308,37 @@ describe('the writes', () => {
     expect(table.map((r) => r.kind).sort()).toEqual(['not-going', 'reviewer']);
   });
 
+  it('replaces an answer my other computer gave, so I keep one answer, not one per device', async () => {
+    const LAPTOP = 'did:key:my-laptop';
+    const mine = () =>
+      createInvolvementActions({
+        dataset: () => ({}),
+        me: () => ME,
+        mine: () => [ME, LAPTOP, 'did:scid:test:me'],
+        types: () => types,
+        notify: (message) => notices.push(message),
+      });
+    await Fake.create({}, { agent: LAPTOP, kind: 'maybe', node: ['e1'] });
+    await Fake.create({}, { agent: ANA, kind: 'maybe', node: ['e1'] });
+    await mine().respond('e1', 'going');
+    expect(table.map((r) => [r.agent, r.kind])).toEqual([
+      [ANA, 'maybe'],
+      [ME, 'going'],
+    ]);
+    // Withdrawing takes it off whichever of my computers gave it; Ana's stays.
+    await Fake.create({}, { agent: LAPTOP, kind: 'not-going', node: ['e1'] });
+    await mine().respond('e1', '');
+    expect(table.map((r) => [r.agent, r.kind])).toEqual([[ANA, 'maybe']]);
+    // And an answer is mine to give from either computer, but still nobody else's.
+    await mine().setInvolvement('e1', LAPTOP, 'going', true);
+    expect(table.map((r) => [r.agent, r.kind])).toEqual([
+      [ANA, 'maybe'],
+      [ME, 'going'],
+    ]);
+    await mine().setInvolvement('e1', ANA, 'going', true);
+    expect(notices).toHaveLength(1);
+  });
+
   it('refuses an assignment given as an answer, and a kind the space does not have', async () => {
     await actions().respond('e1', 'assignee');
     await actions().setInvolvement('t1', ANA, 'shepherd', true);
@@ -393,6 +424,82 @@ describe('the people on a card, as faces and as a picker', () => {
       me: ME,
     }) as { items?: { label: string; checked: boolean }[] }[];
     expect(entries[1].items![0]).toMatchObject({ label: 'Zed (left)', checked: true });
+  });
+});
+
+describe('one person across their computers', () => {
+  const types = SEEDED_INVOLVEMENT_TYPES;
+  const PERSON = 'did:scid:test:me';
+  const LAPTOP = 'did:key:my-laptop';
+  const ROBIN = 'did:scid:test:robin';
+  const ROBIN_PHONE = 'did:key:robin-phone';
+  const ROBIN_DESK = 'did:key:robin-desk';
+  const MY_DIDS = [ME, LAPTOP, PERSON];
+  // One entry per person, as `spaceStore.members` and `profileStore.profiles` now hold them.
+  const people = [
+    { did: PERSON, name: 'Me', devices: [ME, LAPTOP] },
+    { did: ROBIN, name: 'Robin', devices: [ROBIN_PHONE, ROBIN_DESK] },
+    { did: ANA, name: 'Ana' },
+  ];
+
+  it('folds holders to their person, keeps the key that holds, and leads with me from any computer', () => {
+    const rows = [
+      { node: 't1', agent: ROBIN_PHONE, kind: 'assignee' },
+      { node: 't1', agent: ROBIN_DESK, kind: 'reviewer' },
+      { node: 't1', agent: LAPTOP, kind: 'watcher' },
+      { node: 'e1', agent: LAPTOP, kind: 'going' },
+    ];
+    const view = involvement({ rows, types, me: MY_DIDS, profiles: people });
+    expect(view.byNode.t1.dids).toEqual([ROBIN, PERSON]);
+    expect(view.byNode.t1.people.map((p) => [p.did, p.person])).toEqual(
+      expect.arrayContaining([
+        [ROBIN_PHONE, ROBIN],
+        [ROBIN_DESK, ROBIN],
+        [LAPTOP, PERSON],
+      ]),
+    );
+    expect(view.byNode.t1.people).toHaveLength(3);
+    expect(view.dids).toEqual([PERSON, ROBIN]);
+    // My laptop's answer is my answer here on the desktop.
+    expect(view.answers).toEqual({ e1: 'going' });
+    // Without profiles each key stands for itself, as before.
+    expect(involvement({ rows, types, me: ME }).byNode.t1.dids).toEqual([ROBIN_PHONE, ROBIN_DESK, LAPTOP]);
+  });
+
+  it('ticks me when my laptop holds a part, unticks through the key that holds it, and offers no "Assign to me"', () => {
+    const rows = [{ node: 't1', agent: LAPTOP, kind: 'assignee' }];
+    const entries = involvementMenu({ node: 't1', entity: 'TaskBlock', rows, types, members: people, me: MY_DIDS }) as {
+      id: string;
+      label?: string;
+      items?: { id: string; label: string; checked: boolean }[];
+    }[];
+    expect(entries.some((e) => e.label === 'Assign to me')).toBe(false);
+    const assigned = entries.find((e) => e.id === 'assignee')!;
+    expect(assigned.items![0]).toMatchObject({ id: LAPTOP, label: 'Me (you)', checked: true });
+    // One row per person: Robin once, written as one of Robin's keys; Ana as herself.
+    expect(assigned.items!.filter((i) => i.label === 'Robin')).toEqual([
+      expect.objectContaining({ id: ROBIN_PHONE, checked: false }),
+    ]);
+    expect(assigned.items!.find((i) => i.label === 'Ana')).toMatchObject({ id: ANA, checked: false });
+  });
+
+  it('assigns me as this computer when none of mine holds it', () => {
+    const entries = involvementMenu({
+      node: 't1',
+      entity: 'TaskBlock',
+      rows: [],
+      types,
+      members: people,
+      me: MY_DIDS,
+    }) as {
+      id: string;
+      label?: string;
+      items?: { id: string; label: string }[];
+    }[];
+    expect(entries[0]).toMatchObject({ id: ME, label: 'Assign to me' });
+    expect(entries.find((e) => e.id === 'assignee')!.items!.find((i) => i.label === 'Me (you)')).toMatchObject({
+      id: ME,
+    });
   });
 });
 

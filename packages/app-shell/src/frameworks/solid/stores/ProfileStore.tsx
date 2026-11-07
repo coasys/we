@@ -19,17 +19,24 @@ import {
   createSignal,
   onCleanup,
   ParentProps,
+  untrack,
   useContext,
 } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 
+import { onePerPerson, profileAsPerson } from '../../../shared/personProfile';
 import { credential } from '../credential';
 import { useAccountStore } from './AccountStore';
 import { useSessionStore } from './SessionStore';
 
 export interface ProfileStore {
   // State
-  /** Cache of all fetched profiles (own + peers). */
+  /**
+   * Everybody whose profile has been fetched (own + peers), **one entry per person**: a person who
+   * writes from two computers is one entry whose `did` is the person and whose `devices` are the keys
+   * seen for them. A record names a device as its author, so find its author with
+   * `p.did == author || author in p.devices` — or, from code, `profileFor(author)`.
+   */
   profiles: Accessor<AgentProfileSummary[]>;
   /**
    * One agent's profile, as a read that depends on **that agent only**.
@@ -44,6 +51,13 @@ export interface ProfileStore {
    * Carries the same assembled `name` as `profiles()` — one decoration point, as below.
    */
   profileFor: (did: string) => AgentProfileSummary | undefined;
+  /**
+   * The person a DID speaks for: for a device key that a person's key log lists, that person's
+   * `did:scid`; for anything else, the DID itself. Reactive per DID, and asks the backend the first
+   * time a key is read. `profileFor` already answers an author as their person (with `device` kept),
+   * so this is for code that groups or compares authors without drawing them.
+   */
+  personOf: (did: string) => string;
   /** The current user's own profile, derived from the cache. */
   ownProfile: Accessor<AgentProfileSummary | undefined>;
   /**
@@ -154,7 +168,7 @@ export function ProfileStoreProvider(props: ParentProps) {
    * derived field reaches every list of people in the app, and no template has to spell a name out
    * of its parts again.
    */
-  const profiles = createMemo<AgentProfileSummary[]>(() =>
+  const cached = createMemo<AgentProfileSummary[]>(() =>
     rawProfiles().map((profile) => ({ ...profile, name: displayName(profile) })),
   );
 
@@ -174,16 +188,73 @@ export function ProfileStoreProvider(props: ParentProps) {
    * has to be woken when it lands.
    *
    * `createComputed` rather than `createEffect` so the index is up to date within the same reactive
-   * pass that changed `profiles()` — a row reading it in an effect would otherwise see the previous
+   * pass that changed the cache — a row reading it in an effect would otherwise see the previous
    * answer for a tick.
    */
   const [profileIndex, setProfileIndex] = createStore<Record<string, AgentProfileSummary>>({});
   createComputed(() => {
     const next: Record<string, AgentProfileSummary> = {};
-    for (const profile of profiles()) if (profile.did) next[profile.did] = profile;
+    for (const profile of cached()) if (profile.did) next[profile.did] = profile;
     setProfileIndex(reconcile(next));
   });
-  const profileFor = (did: string): AgentProfileSummary | undefined => (did ? profileIndex[did] : undefined);
+  /**
+   * Which person each device key speaks for, where it speaks for one other than itself.
+   *
+   * A store for the same reason as the index: a row about one author depends on that author's key
+   * alone. Filled from the backend's `PersonPort` the first time an author is read or fetched; a key
+   * nobody lists never appears here, and reads as its own person.
+   */
+  const [personByKey, setPersonByKey] = createStore<Record<string, string>>({});
+  const personAsked = new Set<string>();
+
+  function resolvePerson(did: string): void {
+    if (!did.startsWith('did:key:') || personAsked.has(did)) return;
+    const persons = session.backendPorts()?.persons;
+    if (!persons) return;
+    personAsked.add(did);
+    persons
+      .personOf(did)
+      .then((person) => {
+        if (!person || person === did) return;
+        setPersonByKey(did, person);
+        void fetchProfile(person);
+      })
+      .catch((err) => console.warn(`ProfileStore: could not resolve who ${did} speaks for`, err));
+  }
+
+  /** The person a DID speaks for: a device's person once known, anything else itself. */
+  const personOf = (did: string): string => {
+    if (!did) return '';
+    // My own devices are known from the session before any backend answers, so this agent is one
+    // person in every list from the first frame.
+    const me = session.me();
+    if (me?.person && did !== me.person && me.dids?.includes(did)) return me.person;
+    return personByKey[did] ?? did;
+  };
+
+  const profileFor = (did: string): AgentProfileSummary | undefined => {
+    if (!did) return undefined;
+    resolvePerson(did);
+    const person = personOf(did);
+    if (person === did) return profileIndex[did];
+    // My own person is drawn from this device's profile: it is the one edited here, so it is
+    // never behind what the person just saved.
+    const me = session.me();
+    const myDid = me?.did;
+    const byPerson = myDid && me?.person === person ? profileIndex[myDid] : profileIndex[person];
+    return profileAsPerson(did, person, byPerson, profileIndex[did]);
+  };
+
+  /**
+   * The cache as a list of people — see `ProfileStore.profiles`. The cache itself stays keyed by
+   * whatever DID was fetched, which is what `profileFor` and every write path read.
+   */
+  const profiles = createMemo<AgentProfileSummary[]>(() =>
+    onePerPerson(
+      cached().map((profile) => profile.did),
+      profileFor,
+    ),
+  );
 
   // In-flight deduplication for fetchProfile — prevents concurrent fetches for the same DID
   const inflightFetches = new Map<string, Promise<void>>();
@@ -217,7 +288,7 @@ export function ProfileStoreProvider(props: ParentProps) {
 
   const ownProfile = createMemo(() => {
     const myDid = session.me()?.did;
-    return myDid ? profiles().find((a) => a.did === myDid) : undefined;
+    return myDid ? profileIndex[myDid] : undefined;
   });
 
   const ownProfileLoaded = createMemo(() => {
@@ -255,8 +326,9 @@ export function ProfileStoreProvider(props: ParentProps) {
    */
   async function fetchProfile(did: string): Promise<void> {
     const cleanedDid = did.replace('did://', '');
-    const cached = profiles().find((a) => a.did === cleanedDid);
-    if (cached && !isProfileEmpty(cached)) {
+    resolvePerson(cleanedDid);
+    const known = untrack(() => profileIndex[cleanedDid]);
+    if (known && !isProfileEmpty(known)) {
       // Already answered — by an earlier fetch or by a local write. Marking it here as well as in
       // the settle path is what keeps `ownProfileLoaded` true across the re-calls this no-ops on.
       markFetched(cleanedDid);
@@ -376,7 +448,7 @@ export function ProfileStoreProvider(props: ParentProps) {
     const profilePort = session.backendPorts()?.profiles;
     if (!myDid || !profilePort) return;
 
-    const existingLoc = profiles().find((a) => a.did === myDid)?.location;
+    const existingLoc = profileIndex[myDid]?.location;
     const lat = update.latitude ?? existingLoc?.latitude;
     const lng = update.longitude ?? existingLoc?.longitude;
     if (lat == null || lng == null) return;
@@ -560,7 +632,7 @@ export function ProfileStoreProvider(props: ParentProps) {
    * person glyph for everyone — its own comment said as much, and said it would stay that way until
    * an identities port existed. This is that port.
    *
-   * `get` reads `profiles()` inside the call, so a module reading it in a derived value re-runs when
+   * `get` reads `profileFor` inside the call, so a module reading it in a derived value re-runs when
    * a profile lands. The name is assembled here rather than in each module, because how a host makes
    * a display name out of the fields it holds is the host's business.
    */
@@ -593,7 +665,12 @@ export function ProfileStoreProvider(props: ParentProps) {
           // decorated — so a module and a template can no longer disagree about someone's name. That
           // includes the placeholder for an agent with no name at all: a call tile and a byline should
           // not differ on what an unnamed peer is called, and `displayName` is where that is decided.
-          return { name: profile.name, avatar: profile.avatar, ...(profile.kind ? { kind: profile.kind } : {}) };
+          return {
+            name: profile.name,
+            avatar: profile.avatar,
+            ...(profile.kind ? { kind: profile.kind } : {}),
+            ...(profile.device ? { person: profile.did } : {}),
+          };
         },
         fetch: (agentId) => void fetchProfile(agentId),
       },
@@ -603,6 +680,7 @@ export function ProfileStoreProvider(props: ParentProps) {
   const store: ProfileStore = {
     profiles,
     profileFor,
+    personOf,
     ownProfile,
     ownProfileLoaded,
     needsName,

@@ -104,6 +104,11 @@ export interface FeedWindowOptions {
    * {@link FeedReadStopped}.
    */
   stopped?: () => boolean;
+  /**
+   * The person an author speaks for (`ModuleIdentity.person`), so what one person made from two
+   * computers is one activity row rather than two. Each author is their own person without it.
+   */
+  personOf?: (author: string) => string;
 }
 
 /** What {@link readFeedWindow} rejects with when `stopped` says its answer is no longer wanted. */
@@ -169,12 +174,13 @@ export function groupActivity(
   records: { row: Row; entity: string }[],
   titles: ReadonlyMap<string, string>,
   pending: ReadonlySet<string> = new Set(),
+  personOf: (author: string) => string = (author) => author,
 ): FeedActivity[] {
   const sorted = [...records].sort((a, b) => timeOf(a.row) - timeOf(b.row));
   const groups: { key: string; last: number; rows: { row: Row; entity: string }[] }[] = [];
   for (const record of sorted) {
     const origin = idOf(record.row.extractedFrom);
-    const key = origin ? `from:${origin}` : `by:${text(record.row.author)}`;
+    const key = origin ? `from:${origin}` : `by:${personOf(text(record.row.author))}`;
     const at = timeOf(record.row);
     const open = groups.find((g) => g.key === key && at - g.last <= ACTIVITY_GROUP_MS);
     if (open) {
@@ -298,7 +304,7 @@ export async function readFeedWindow(
     );
   }
 
-  const activity = groupActivity(extracted.flat(), titles, options.pending);
+  const activity = groupActivity(extracted.flat(), titles, options.pending, options.personOf);
   const merged: FeedRow[] = [...lines, ...activity].sort((a, b) => (before(timeOf(a), timeOf(b)) ? -1 : 1));
   const hasMore = merged.length > shown || filled || reachedCalls < calls.length || calls.length >= CALL_WINDOW;
   return { rows: merged.slice(0, shown), hasMore };

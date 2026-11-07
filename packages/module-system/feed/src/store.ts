@@ -44,6 +44,7 @@ export function createFeedStore(deps: ModuleStoreDeps) {
     spaceRoot: deps.spaceRoot,
     records,
     interpretation,
+    identities: deps.identities,
     write: (collection, text, marks) =>
       writeMessage({ id: collection, relation: 'children', entity: 'CollectionBlock' }, text, marks),
   });

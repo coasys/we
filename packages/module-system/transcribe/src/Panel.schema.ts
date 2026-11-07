@@ -2480,7 +2480,7 @@ const amendmentCard: SchemaNode = {
             {
               type: 'we-text',
               props: { variant: 'footnote', color: 'text-muted', truncate: true },
-              children: [{ $: "`kept by ${decider.did == me.did ? 'you' : decider.name}`" }],
+              children: [{ $: "`kept by ${amendment.author in me.dids ? 'you' : decider.name}`" }],
             },
           ],
         },

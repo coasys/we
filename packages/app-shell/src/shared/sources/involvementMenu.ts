@@ -29,7 +29,17 @@
  *
  * Holders who have left the space are still listed, from their cached profile where there is one,
  * so a card never ticks somebody the menu cannot untick.
+ *
+ * ## One row per person
+ *
+ * `members` and `profiles` are one entry per person (`did` the person, `devices` the keys seen for
+ * them), while an involvement names whichever key wrote it. A holder is found by any of those DIDs,
+ * so somebody who took the work on their laptop is ticked on their one row, and the row's `id` is
+ * the DID the involvement holds — what unticking has to remove. A row nobody holds offers the
+ * member's first device key, the same kind of DID a record's author is; "Assign to me" offers this
+ * device. `me` is `me.dids`, so the viewer is the viewer from any of their computers.
  */
+import { byAnyDid, selfDids } from '../personProfile';
 import {
   involvement,
   type InvolvementKindInput,
@@ -40,6 +50,8 @@ import {
 
 interface Member {
   did: string;
+  /** The device keys this person was seen under — see `AgentProfileSummary.devices`. */
+  devices?: string[];
   name?: string;
   avatar?: string;
 }
@@ -62,8 +74,8 @@ export interface InvolvementMenuOptions {
   members?: Member[] | null;
   /** `profileStore.profiles`, for somebody who holds a part and is no longer a member. */
   profiles?: Member[] | null;
-  /** The viewer's DID. */
-  me?: string | null;
+  /** The viewer: `me.dids` (this device first), or one DID. */
+  me?: string | readonly string[] | null;
   /** A name somebody said for who should do it — `TaskBlock.assignee`. See above. */
   said?: string | null;
   pending?: readonly PendingInvolvement[] | null;
@@ -74,7 +86,9 @@ const asRows = <T>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]
 export function involvementMenu(options: InvolvementMenuOptions | null | undefined): unknown[] {
   const node = options?.node ?? '';
   const entity = options?.entity ?? '';
-  const me = options?.me ?? '';
+  const self = selfDids(options?.me);
+  // This device: what "Assign to me" writes, as every other write from here is signed by it.
+  const me = [...self][0] ?? '';
   if (!node) return [];
 
   const kinds = asRows<Kind>(options?.types).filter(
@@ -92,24 +106,36 @@ export function involvementMenu(options: InvolvementMenuOptions | null | undefin
   }).byNode[node];
   const holdersOf = (slug: string) => (on?.people ?? []).filter((p) => p.kind === slug).map((p) => p.did);
 
-  const members = new Map<string, Member>();
-  for (const member of asRows<Member>(options?.members)) if (member?.did) members.set(member.did, member);
-  const profiles = new Map(asRows<Member>(options?.profiles).map((p) => [p.did, p]));
+  const memberRows = asRows<Member>(options?.members).filter((member) => member?.did);
+  const memberByDid = byAnyDid<Member>(memberRows);
+  const profileByDid = byAnyDid<Member>(options?.profiles);
+  const members = new Map<string, Member>(memberRows.map((member) => [member.did, member]));
   // Somebody holding a part who has since left is still somebody the menu has to be able to untick.
   for (const person of on?.people ?? []) {
-    if (!members.has(person.did)) members.set(person.did, profiles.get(person.did) ?? { did: person.did });
+    if (memberByDid.has(person.did)) continue;
+    const known = profileByDid.get(person.did) ?? { did: person.did };
+    if (!members.has(known.did)) members.set(known.did, known);
+    memberByDid.set(person.did, members.get(known.did)!);
   }
+  const rowOf = (did: string) => memberByDid.get(did);
+  const didsOf = (member: Member) => [member.did, ...(member.devices ?? [])];
+  const isMe = (member: Member) => didsOf(member).some((did) => self.has(did));
+  const writeAs = (member: Member) => member.devices?.[0] ?? member.did;
 
   const nameOf = (member: Member) => member.name || `${member.did.slice(0, 16)}…`;
   const byName = [...members.values()].sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
 
   const groups = kinds.map((kind) => {
-    const holders = holdersOf(kind.slug);
-    const held = new Set(holders);
+    // Each holding row's member, with the DID it is held under — one row per person.
+    const heldAs = new Map<Member, string>();
+    for (const did of holdersOf(kind.slug)) {
+      const member = rowOf(did);
+      if (member && !heldAs.has(member)) heldAs.set(member, did);
+    }
     const ordered = [
-      ...holders.map((did) => members.get(did)!).filter(Boolean),
-      ...byName.filter((m) => !held.has(m.did) && m.did === me),
-      ...byName.filter((m) => !held.has(m.did) && m.did !== me),
+      ...heldAs.keys(),
+      ...byName.filter((m) => !heldAs.has(m) && isMe(m)),
+      ...byName.filter((m) => !heldAs.has(m) && !isMe(m)),
     ];
     const tone = TONE_BY_SEMANTIC[kind.semantic ?? ''] ?? '';
     return {
@@ -120,18 +146,19 @@ export function involvementMenu(options: InvolvementMenuOptions | null | undefin
       collapsed: false,
       items: ordered.map((member) => ({
         type: 'toggle',
-        id: member.did,
+        id: heldAs.get(member) ?? (isMe(member) ? me : writeAs(member)),
         kind: kind.slug,
-        label: member.did === me ? `${nameOf(member)} (you)` : nameOf(member),
-        checked: held.has(member.did),
+        label: isMe(member) ? `${nameOf(member)} (you)` : nameOf(member),
+        checked: heldAs.has(member),
         avatar: { image: member.avatar ?? '', hash: member.did, tone },
       })),
     };
   });
 
   const doing = kinds.find((kind) => kind.semantic === 'responsible');
+  const amMember = memberRows.some(isMe);
   const takeIt =
-    doing && me && members.has(me) && !holdersOf(doing.slug).includes(me)
+    doing && me && amMember && !holdersOf(doing.slug).some((did) => self.has(did))
       ? [{ id: me, kind: doing.slug, label: 'Assign to me', icon: 'user-circle-plus' }]
       : [];
 
@@ -143,10 +170,10 @@ export function involvementMenu(options: InvolvementMenuOptions | null | undefin
       })
     : [];
   const suggestion =
-    doing && named.length === 1 && named[0].did !== me && holdersOf(doing.slug).length === 0
+    doing && named.length === 1 && !isMe(named[0]) && holdersOf(doing.slug).length === 0
       ? [
           {
-            id: named[0].did,
+            id: writeAs(named[0]),
             kind: doing.slug,
             label: `Assign ${nameOf(named[0])} — named in the conversation`,
             avatar: { image: named[0].avatar ?? '', hash: named[0].did, tone: '' },

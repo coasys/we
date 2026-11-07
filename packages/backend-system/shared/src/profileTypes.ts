@@ -28,6 +28,22 @@ export interface AgentProfileSummary {
    * that declares nothing is drawn as anyone is. `person` is for a verified source, should one come.
    */
   kind?: 'bot' | 'person';
+  /**
+   * The device key this profile was asked for, when `did` is the person it speaks for.
+   *
+   * A record's `author` is the device that signed it; a person who writes from two computers is
+   * two device keys and one person (`did:scid:…`). The host answers an author with the person's
+   * profile, so both computers' posts carry one name and one face, and keeps the device here for
+   * anything that needs to know which computer signed. Absent when the author is its own person.
+   */
+  device?: string;
+  /**
+   * Every device key seen for this person, on a list that holds one entry per person
+   * (`profileStore.profiles`, `spaceStore.members`). A record names a device as its author, so a
+   * template finding that author's entry matches `p.did == author || author in p.devices`. Absent
+   * when the entry is its own person and nothing else.
+   */
+  devices?: string[];
   avatar?: string; // resolved data URI
   coverImage?: string; // resolved data URI
   location?: {

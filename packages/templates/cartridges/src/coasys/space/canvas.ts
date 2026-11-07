@@ -13,6 +13,7 @@ import {
   newNoteModal,
   newThingChooser,
   PLACED_CARD_STYLE,
+  profileOf,
   recordFormModal,
   SUGGESTION_STYLES,
   vocabularyMap,
@@ -165,7 +166,7 @@ const CRUMBS: Crumb[] = [
     label: {
       $: [
         `(${CALL}) ? (first(local.focusCall).title ? first(local.focusCall).title : 'A call')`,
-        `: (${PERSON}) ? (profileStore.profiles.find(p, p.did == (${PERSON})).name ?? 'A person')`,
+        `: (${PERSON}) ? (${profileOf(`(${PERSON})`)}.name ?? 'A person')`,
         `: workflowStore.open.label`,
       ].join(' '),
     },

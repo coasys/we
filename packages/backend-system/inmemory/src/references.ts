@@ -5,7 +5,7 @@
  * that holds a value is a scan of the tables whose entity declares that relation. Fine for a reference
  * implementation; what a real store answers with one indexed lookup.
  */
-import type { DatasetHandle, EntityManifest, ReferencePort } from '@we/backend-shared';
+import type { DatasetHandle, EntityManifest, ReferencePort, Referrer } from '@we/backend-shared';
 
 type Row = Record<string, unknown>;
 
@@ -17,7 +17,7 @@ export function createInMemoryReferencePort(manifest: EntityManifest): Reference
     // eslint-disable-next-line @typescript-eslint/require-await -- the scan is synchronous, but a bad handle or row must reject as the port promises, not throw.
     referrers: async (dataset: DatasetHandle, relation, target: string, opts) => {
       const tables = (dataset as { tables?: Record<string, Row[]> }).tables ?? {};
-      const found: { id: string; author: string; at: string }[] = [];
+      const found: Referrer[] = [];
       for (const [entity, schema] of Object.entries(manifest.entities)) {
         if (relation.entity && relation.entity !== entity) continue;
         const spec = schema.relations[relation.relation];

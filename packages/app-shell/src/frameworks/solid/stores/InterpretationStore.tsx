@@ -402,7 +402,9 @@ export function InterpretationStoreProvider(props: ParentProps) {
   const startedAt = new Map<string, number>();
 
   const activity = createMemo<InterpretationActivityView[]>(() => {
-    const me = session.me()?.did;
+    // Every DID that is this agent: a pass started on my other computer is mine too.
+    const me = session.me();
+    const myDids = me?.dids ?? (me?.did ? [me.did] : []);
     const at = now();
     const hidden = new Set(dismissed());
 
@@ -411,8 +413,8 @@ export function InterpretationStoreProvider(props: ParentProps) {
       .map((row) => {
         if (!startedAt.has(row.passId)) startedAt.set(row.passId, row.at);
         const running = !isSettled(row.phase);
-        const mine = row.mine || (!!me && row.runner === me);
-        const profile = row.runner ? profileStore.profiles().find((p) => p.did === row.runner) : undefined;
+        const mine = row.mine || (!!row.runner && myDids.includes(row.runner));
+        const profile = row.runner ? profileStore.profileFor(row.runner) : undefined;
         // `displayName` rather than the concatenation this used to inline — the same rule as every
         // byline, so one person is not "Anonymous" on their post and something else in this bar.
         // 'Someone' survives as the fallback for a *missing* profile, which is a different fact

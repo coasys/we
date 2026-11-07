@@ -38,6 +38,8 @@ export interface FeedDeps {
   spaceRoot: ModuleStoreDeps['spaceRoot'];
   records: RecordsKernel | undefined;
   interpretation: InterpretationKernel | undefined;
+  /** Who wrote what — read here for the person a device key writes as, so activity groups by person. */
+  identities?: ModuleStoreDeps['identities'];
   /** Write a message — the store's own, so typed lines and feed messages are written one way. */
   write: (collection: string, text: string, marks?: string) => Promise<string | null>;
 }
@@ -126,6 +128,7 @@ export function createFeed(deps: FeedDeps) {
         activityTypes,
         pending: new Set(unconfirmed()),
         stopped: () => !same() || !looking(),
+        personOf: (author) => deps.identities?.get(author)?.person ?? author,
       });
       if (same()) {
         // Marked with the suggestions as they are now, which may have settled while it ran.

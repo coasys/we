@@ -229,7 +229,7 @@ export const TREE_VOICE_SUMMARY: SchemaProp = { $setLocal: 'voiceSummary', value
 
 /** The voices as the list draws them — see the `voices` host function. */
 const VOICES =
-  'voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did })';
+  'voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.dids })';
 
 /** One of them, by the DID a row of the list is keyed on. */
 const VOICE = `(find(${VOICES}, { did: voiceDid }))`;

@@ -293,5 +293,27 @@ export interface ReferencePort {
     relation: { relation: string; entity?: string },
     target: string,
     opts?: { limit?: number },
-  ): Promise<{ id: string; author: string; at: string }[]>;
+  ): Promise<Referrer[]>;
+}
+
+/**
+ * Why a reference is shown with its author unconfirmed.
+ *
+ * - `cantCheck`: the key that signed it belongs to a person whose key log this backend cannot read
+ *   yet, so it cannot say the key was allowed to speak for them.
+ * - `flagged`: the key spoke for its person when it signed, but the reference reached the space
+ *   after that device was removed.
+ *
+ * A reference whose author holds is not marked; one whose signature or key is refused is not shown.
+ */
+export type AuthorVerdict = 'cantCheck' | 'flagged';
+
+/** One record holding a value: who made the reference, when, and whether the author is confirmed. */
+export interface Referrer {
+  id: string;
+  /** The key that signed the reference — the device; see `PersonPort` for the person. */
+  author: string;
+  at: string;
+  /** Present only when the author is not confirmed; see {@link AuthorVerdict}. */
+  verdict?: AuthorVerdict;
 }

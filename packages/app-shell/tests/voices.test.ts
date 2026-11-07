@@ -25,6 +25,15 @@ describe('voices', () => {
     ]);
   });
 
+  it("names a voice through its person entry, and counts my other computer's voice as mine", () => {
+    const persons = [
+      { did: 'did:scid:ana', name: 'Ana', avatar: 'ana.png', devices: ['did:key:ana', 'did:key:ana-laptop'] },
+    ];
+    const rows = voices({ summary, profiles: persons, me: ['did:key:ana-laptop', 'did:key:ana', 'did:scid:ana'] });
+    expect(rows[0]).toMatchObject({ name: 'Ana', mine: true });
+    expect(rows.filter((row) => row.mine)).toHaveLength(1);
+  });
+
   it('says nobody has a share when every voice is at nothing, rather than dividing by it', () => {
     const rows = voices({ summary, param: 'did:key:ana=0,did:key:ben=0,pretend:1=0' });
     expect(rows.every((row) => row.share === 0)).toBe(true);

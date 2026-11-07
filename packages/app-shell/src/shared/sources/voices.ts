@@ -9,6 +9,8 @@
  */
 import { parseWeights } from '@we/graph-expanders';
 
+import { byAnyDid, selfDids } from '../personProfile';
+
 interface ProfileRow {
   did?: string;
   name?: string;
@@ -45,7 +47,8 @@ const shortDid = (did: string) => (did.length > 16 ? `${did.slice(0, 12)}…${di
 /**
  * The voices from a seed's summary, each with its face, its weight from the address and its share of
  * the say. Options: summary (what `onSeedSummary` reported), param (the address form), profiles
- * (profileStore.profiles), me (me.did).
+ * (profileStore.profiles — one entry per person, found by any of its device keys), me (me.dids, or
+ * me.did).
  */
 export function voices(options: unknown): VoiceView[] {
   const { summary, param, profiles, me } = (options ?? {}) as {
@@ -55,11 +58,8 @@ export function voices(options: unknown): VoiceView[] {
     me?: unknown;
   };
   const rows = Array.isArray(summary?.voices) ? (summary.voices as VoiceRow[]) : [];
-  const byDid = new Map(
-    (Array.isArray(profiles) ? (profiles as ProfileRow[]) : []).flatMap((profile) =>
-      profile?.did ? [[profile.did, profile] as const] : [],
-    ),
-  );
+  const byDid = byAnyDid<ProfileRow & { devices?: unknown }>(profiles);
+  const self = selfDids(me);
   const weights = parseWeights(param);
   const listed = rows
     .filter((row) => typeof row.author === 'string' && row.author)
@@ -75,7 +75,7 @@ export function voices(options: unknown): VoiceView[] {
         mean: Number(row.mean) || 0,
         weight: Math.round((weights.get(did) ?? 1) * 100),
         share: 0,
-        mine: did === me,
+        mine: self.has(did),
         pretend,
       };
     });

@@ -4101,7 +4101,7 @@
                                                           },
                                                           "children": [
                                                             {
-                                                              "$": "row.extractedFrom || row.id in first(local.inspectedCall).extracted ? `Extracted from the conversation · run by ${author.name} · ` : generatedRun({ record: row }) ? `Written by AI · run by ${author.name} · ` : `Added by ${author.did == me.did ? 'you' : author.name} · `"
+                                                              "$": "row.extractedFrom || row.id in first(local.inspectedCall).extracted ? `Extracted from the conversation · run by ${author.name} · ` : generatedRun({ record: row }) ? `Written by AI · run by ${author.name} · ` : `Added by ${author.did == me.person ? 'you' : author.name} · `"
                                                             },
                                                             {
                                                               "type": "we-timestamp",
@@ -4913,7 +4913,7 @@
                                                     "searchable": true,
                                                     "searchPlaceholder": "Find a member",
                                                     "items": {
-                                                      "$": "involvementMenu({ node: row.id, entity: routeStore.params.cardType, rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did, said: row.assignee })"
+                                                      "$": "involvementMenu({ node: row.id, entity: routeStore.params.cardType, rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.dids, said: row.assignee })"
                                                     },
                                                     "onSelect": {
                                                       "$invoke": "spaceStore.setInvolvement",
@@ -4947,7 +4947,7 @@
                                                       "props": { "size": "xs", "variant": "solid" },
                                                       "children": [
                                                         {
-                                                          "$": "count(involvement({ rows: local.involvements, types: spaceStore.involvementTypes, me: me.did }).byNode[row.id].people)"
+                                                          "$": "count(involvement({ rows: local.involvements, types: spaceStore.involvementTypes, profiles: profileStore.profiles, me: me.dids }).byNode[row.id].people)"
                                                         }
                                                       ]
                                                     },
@@ -4979,7 +4979,7 @@
                                                   "type": "$each",
                                                   "props": {
                                                     "items": {
-                                                      "$": "spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo)).filter(k, count(involvement({ rows: local.involvements, types: spaceStore.involvementTypes, me: me.did }).byNode[row.id].people.filter(p, p.kind == k.slug)))"
+                                                      "$": "spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo)).filter(k, count(involvement({ rows: local.involvements, types: spaceStore.involvementTypes, profiles: profileStore.profiles, me: me.dids }).byNode[row.id].people.filter(p, p.kind == k.slug)))"
                                                     },
                                                     "as": "part"
                                                   },
@@ -5000,7 +5000,7 @@
                                                           "type": "$each",
                                                           "props": {
                                                             "items": {
-                                                              "$": "involvement({ rows: local.involvements, types: spaceStore.involvementTypes, me: me.did }).byNode[row.id].people.filter(p, p.kind == part.slug)"
+                                                              "$": "involvement({ rows: local.involvements, types: spaceStore.involvementTypes, profiles: profileStore.profiles, me: me.dids }).byNode[row.id].people.filter(p, p.kind == part.slug)"
                                                             },
                                                             "as": "holder"
                                                           },
@@ -5018,7 +5018,7 @@
                                                                   "props": {
                                                                     "size": "xs",
                                                                     "avatars": {
-                                                                      "$": "[{ image: find(profileStore.profiles, { did: holder.did }).avatar, hash: holder.did, tone: holder.tone }]"
+                                                                      "$": "[{ image: profileStore.profiles.find(who, who.did == holder.person || holder.person in who.devices).avatar, hash: holder.person, tone: holder.tone }]"
                                                                     }
                                                                   }
                                                                 },
@@ -5030,7 +5030,7 @@
                                                                     "minWidth": "0",
                                                                     "truncate": true,
                                                                     "text": {
-                                                                      "$": "holder.did == me.did ? find(profileStore.profiles, { did: holder.did }).name + ' (you)' : find(profileStore.profiles, { did: holder.did }).name"
+                                                                      "$": "holder.person in me.dids ? profileStore.profiles.find(who, who.did == holder.person || holder.person in who.devices).name + ' (you)' : profileStore.profiles.find(who, who.did == holder.person || holder.person in who.devices).name"
                                                                     }
                                                                   }
                                                                 },
@@ -5038,7 +5038,7 @@
                                                                   "type": "$if",
                                                                   "props": {
                                                                     "condition": {
-                                                                      "$": "!holder.reflexive || holder.did == me.did"
+                                                                      "$": "!holder.reflexive || holder.did in me.dids"
                                                                     },
                                                                     "then": {
                                                                       "type": "we-tooltip",
@@ -5104,7 +5104,7 @@
                                                   "type": "$if",
                                                   "props": {
                                                     "condition": {
-                                                      "$": "!count(involvement({ rows: local.involvements, types: spaceStore.involvementTypes, me: me.did }).byNode[row.id].people)"
+                                                      "$": "!count(involvement({ rows: local.involvements, types: spaceStore.involvementTypes, profiles: profileStore.profiles, me: me.dids }).byNode[row.id].people)"
                                                     },
                                                     "then": {
                                                       "type": "we-text",
@@ -6245,13 +6245,13 @@
                                                               "type": "$if",
                                                               "props": {
                                                                 "condition": {
-                                                                  "$": "reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total != 1"
+                                                                  "$": "reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total != 1"
                                                                 },
                                                                 "then": {
                                                                   "type": "$if",
                                                                   "props": {
                                                                     "condition": {
-                                                                      "$": "count(reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).people)"
+                                                                      "$": "count(reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).people)"
                                                                     },
                                                                     "then": {
                                                                       "type": "we-button",
@@ -6281,7 +6281,7 @@
                                                                               "type": "AvatarStack",
                                                                               "props": {
                                                                                 "avatars": {
-                                                                                  "$": "reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).people.map(p, { image: p.avatar, hash: p.did })"
+                                                                                  "$": "reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).people.map(p, { image: p.avatar, hash: p.did })"
                                                                                 },
                                                                                 "max": 4,
                                                                                 "size": "xs"
@@ -6297,7 +6297,7 @@
                                                                               },
                                                                               "children": [
                                                                                 {
-                                                                                  "$": "`${reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total} ${plural(reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total, 'person', 'people')}`"
+                                                                                  "$": "`${reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total} ${plural(reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total, 'person', 'people')}`"
                                                                                 }
                                                                               ]
                                                                             },
@@ -6322,7 +6322,7 @@
                                                               "type": "$if",
                                                               "props": {
                                                                 "condition": {
-                                                                  "$": "reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total == 1 || sig.id in local.expandedReactors"
+                                                                  "$": "reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total == 1 || sig.id in local.expandedReactors"
                                                                 },
                                                                 "enterTransition": [
                                                                   { "type": "reveal", "duration": 200 },
@@ -6332,7 +6332,7 @@
                                                                   "type": "$if",
                                                                   "props": {
                                                                     "condition": {
-                                                                      "$": "count(reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).people)"
+                                                                      "$": "count(reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).people)"
                                                                     },
                                                                     "then": {
                                                                       "type": "Column",
@@ -6346,7 +6346,7 @@
                                                                           "type": "$each",
                                                                           "props": {
                                                                             "items": {
-                                                                              "$": "filter(reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).people, {}, 8)"
+                                                                              "$": "filter(reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).people, {}, 8)"
                                                                             },
                                                                             "as": "sigWho"
                                                                           },
@@ -6435,7 +6435,7 @@
                                                                           "type": "$if",
                                                                           "props": {
                                                                             "condition": {
-                                                                              "$": "reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total > 8"
+                                                                              "$": "reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total > 8"
                                                                             },
                                                                             "then": {
                                                                               "type": "we-button",
@@ -6456,7 +6456,7 @@
                                                                                   "props": { "fontSize": "100" },
                                                                                   "children": [
                                                                                     {
-                                                                                      "$": "`${reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total - 8} more…`"
+                                                                                      "$": "`${reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total - 8} more…`"
                                                                                     }
                                                                                   ]
                                                                                 }
@@ -6476,7 +6476,7 @@
                                                                               },
                                                                               "children": [
                                                                                 {
-                                                                                  "$": "`${reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).unresolved} more whose name has not loaded yet`"
+                                                                                  "$": "`${reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).unresolved} more whose name has not loaded yet`"
                                                                                 }
                                                                               ]
                                                                             }
@@ -6741,13 +6741,13 @@
                                                                       "type": "$if",
                                                                       "props": {
                                                                         "condition": {
-                                                                          "$": "reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total != 1"
+                                                                          "$": "reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total != 1"
                                                                         },
                                                                         "then": {
                                                                           "type": "$if",
                                                                           "props": {
                                                                             "condition": {
-                                                                              "$": "count(reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).people)"
+                                                                              "$": "count(reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).people)"
                                                                             },
                                                                             "then": {
                                                                               "type": "we-button",
@@ -6777,7 +6777,7 @@
                                                                                       "type": "AvatarStack",
                                                                                       "props": {
                                                                                         "avatars": {
-                                                                                          "$": "reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).people.map(p, { image: p.avatar, hash: p.did })"
+                                                                                          "$": "reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).people.map(p, { image: p.avatar, hash: p.did })"
                                                                                         },
                                                                                         "max": 4,
                                                                                         "size": "xs"
@@ -6793,7 +6793,7 @@
                                                                                       },
                                                                                       "children": [
                                                                                         {
-                                                                                          "$": "`${reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total} ${plural(reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total, 'person', 'people')}`"
+                                                                                          "$": "`${reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total} ${plural(reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total, 'person', 'people')}`"
                                                                                         }
                                                                                       ]
                                                                                     },
@@ -6818,7 +6818,7 @@
                                                                       "type": "$if",
                                                                       "props": {
                                                                         "condition": {
-                                                                          "$": "reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total == 1 || sig.id in local.expandedReactors || trim(local.reactorSearch) != ''"
+                                                                          "$": "reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total == 1 || sig.id in local.expandedReactors || trim(local.reactorSearch) != ''"
                                                                         },
                                                                         "enterTransition": [
                                                                           { "type": "reveal", "duration": 200 },
@@ -6828,7 +6828,7 @@
                                                                           "type": "$if",
                                                                           "props": {
                                                                             "condition": {
-                                                                              "$": "count(reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).people)"
+                                                                              "$": "count(reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).people)"
                                                                             },
                                                                             "then": {
                                                                               "type": "Column",
@@ -6842,7 +6842,7 @@
                                                                                   "type": "$each",
                                                                                   "props": {
                                                                                     "items": {
-                                                                                      "$": "reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did, search: local.reactorSearch }).people"
+                                                                                      "$": "reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids, search: local.reactorSearch }).people"
                                                                                     },
                                                                                     "as": "sigWho"
                                                                                   },
@@ -6935,7 +6935,7 @@
                                                                                   "type": "$if",
                                                                                   "props": {
                                                                                     "condition": {
-                                                                                      "$": "trim(local.reactorSearch) && reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did, search: local.reactorSearch }).unresolved"
+                                                                                      "$": "trim(local.reactorSearch) && reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids, search: local.reactorSearch }).unresolved"
                                                                                     },
                                                                                     "then": {
                                                                                       "type": "we-text",
@@ -6945,7 +6945,7 @@
                                                                                       },
                                                                                       "children": [
                                                                                         {
-                                                                                          "$": "`${reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did, search: local.reactorSearch }).unresolved} more whose name has not loaded yet`"
+                                                                                          "$": "`${reactors({ signals: reactions({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), record: row.id, type: sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids, search: local.reactorSearch }).unresolved} more whose name has not loaded yet`"
                                                                                         }
                                                                                       ]
                                                                                     }
@@ -7713,7 +7713,7 @@
                                                                       "type": "$if",
                                                                       "props": {
                                                                         "condition": {
-                                                                          "$": "focused.author == me.did"
+                                                                          "$": "focused.author in me.dids"
                                                                         },
                                                                         "then": {
                                                                           "type": "Row",
@@ -8012,7 +8012,7 @@
                                                                                                                           "type": "$if",
                                                                                                                           "props": {
                                                                                                                             "condition": {
-                                                                                                                              "$": "count(reactors({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).people)"
+                                                                                                                              "$": "count(reactors({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).people)"
                                                                                                                             },
                                                                                                                             "then": {
                                                                                                                               "type": "Column",
@@ -8026,7 +8026,7 @@
                                                                                                                                   "type": "$each",
                                                                                                                                   "props": {
                                                                                                                                     "items": {
-                                                                                                                                      "$": "filter(reactors({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).people, {}, 5)"
+                                                                                                                                      "$": "filter(reactors({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).people, {}, 5)"
                                                                                                                                     },
                                                                                                                                     "as": "focusedSigFace"
                                                                                                                                   },
@@ -8118,7 +8118,7 @@
                                                                                                                                   "type": "$if",
                                                                                                                                   "props": {
                                                                                                                                     "condition": {
-                                                                                                                                      "$": "reactors({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total > 5"
+                                                                                                                                      "$": "reactors({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total > 5"
                                                                                                                                     },
                                                                                                                                     "then": {
                                                                                                                                       "type": "we-text",
@@ -8127,7 +8127,7 @@
                                                                                                                                       },
                                                                                                                                       "children": [
                                                                                                                                         {
-                                                                                                                                          "$": "`${reactors({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total - 5} more…`"
+                                                                                                                                          "$": "`${reactors({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total - 5} more…`"
                                                                                                                                         }
                                                                                                                                       ]
                                                                                                                                     }
@@ -8151,7 +8151,7 @@
                                                                                                                       "$": "signalTally({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), type: focusedSig })"
                                                                                                                     },
                                                                                                                     "mine": {
-                                                                                                                      "$": "count(filter(reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), { author: me.did }))"
+                                                                                                                      "$": "count(filter(reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), { author: me.dids }))"
                                                                                                                     },
                                                                                                                     "size": "xs",
                                                                                                                     "label": {
@@ -8167,7 +8167,7 @@
                                                                                                                           "$": "focusedSig.id"
                                                                                                                         },
                                                                                                                         {
-                                                                                                                          "$": "count(filter(reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), { author: me.did })) ? 0 : focusedSig.rangeMax"
+                                                                                                                          "$": "count(filter(reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), { author: me.dids })) ? 0 : focusedSig.rangeMax"
                                                                                                                         }
                                                                                                                       ]
                                                                                                                     }
@@ -8263,7 +8263,7 @@
                                                                                                                                   "type": "$if",
                                                                                                                                   "props": {
                                                                                                                                     "condition": {
-                                                                                                                                      "$": "count(reactors({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).people)"
+                                                                                                                                      "$": "count(reactors({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).people)"
                                                                                                                                     },
                                                                                                                                     "then": {
                                                                                                                                       "type": "Column",
@@ -8277,7 +8277,7 @@
                                                                                                                                           "type": "$each",
                                                                                                                                           "props": {
                                                                                                                                             "items": {
-                                                                                                                                              "$": "filter(reactors({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).people, {}, 5)"
+                                                                                                                                              "$": "filter(reactors({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).people, {}, 5)"
                                                                                                                                             },
                                                                                                                                             "as": "focusedSigFace"
                                                                                                                                           },
@@ -8369,7 +8369,7 @@
                                                                                                                                           "type": "$if",
                                                                                                                                           "props": {
                                                                                                                                             "condition": {
-                                                                                                                                              "$": "reactors({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total > 5"
+                                                                                                                                              "$": "reactors({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total > 5"
                                                                                                                                             },
                                                                                                                                             "then": {
                                                                                                                                               "type": "we-text",
@@ -8378,7 +8378,7 @@
                                                                                                                                               },
                                                                                                                                               "children": [
                                                                                                                                                 {
-                                                                                                                                                  "$": "`${reactors({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total - 5} more…`"
+                                                                                                                                                  "$": "`${reactors({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total - 5} more…`"
                                                                                                                                                 }
                                                                                                                                               ]
                                                                                                                                             }
@@ -8402,7 +8402,7 @@
                                                                                                                               "$": "signalTally({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), type: focusedSig })"
                                                                                                                             },
                                                                                                                             "mine": {
-                                                                                                                              "$": "count(filter(reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), { author: me.did }))"
+                                                                                                                              "$": "count(filter(reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), { author: me.dids }))"
                                                                                                                             },
                                                                                                                             "size": "xs",
                                                                                                                             "label": {
@@ -8818,13 +8818,13 @@
                                                                                                                       "type": "$if",
                                                                                                                       "props": {
                                                                                                                         "condition": {
-                                                                                                                          "$": "reactors({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total != 1"
+                                                                                                                          "$": "reactors({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total != 1"
                                                                                                                         },
                                                                                                                         "then": {
                                                                                                                           "type": "$if",
                                                                                                                           "props": {
                                                                                                                             "condition": {
-                                                                                                                              "$": "count(reactors({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).people)"
+                                                                                                                              "$": "count(reactors({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).people)"
                                                                                                                             },
                                                                                                                             "then": {
                                                                                                                               "type": "we-button",
@@ -8858,7 +8858,7 @@
                                                                                                                                       "type": "AvatarStack",
                                                                                                                                       "props": {
                                                                                                                                         "avatars": {
-                                                                                                                                          "$": "reactors({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).people.map(p, { image: p.avatar, hash: p.did })"
+                                                                                                                                          "$": "reactors({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).people.map(p, { image: p.avatar, hash: p.did })"
                                                                                                                                         },
                                                                                                                                         "max": 4,
                                                                                                                                         "size": "xs"
@@ -8874,7 +8874,7 @@
                                                                                                                                       },
                                                                                                                                       "children": [
                                                                                                                                         {
-                                                                                                                                          "$": "`${reactors({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total} ${plural(reactors({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total, 'person', 'people')}`"
+                                                                                                                                          "$": "`${reactors({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total} ${plural(reactors({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total, 'person', 'people')}`"
                                                                                                                                         }
                                                                                                                                       ]
                                                                                                                                     },
@@ -8899,7 +8899,7 @@
                                                                                                                       "type": "$if",
                                                                                                                       "props": {
                                                                                                                         "condition": {
-                                                                                                                          "$": "reactors({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total == 1 || focusedSig.id in local.expandedReactors || trim(local.reactorSearch) != ''"
+                                                                                                                          "$": "reactors({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total == 1 || focusedSig.id in local.expandedReactors || trim(local.reactorSearch) != ''"
                                                                                                                         },
                                                                                                                         "enterTransition": [
                                                                                                                           {
@@ -8915,7 +8915,7 @@
                                                                                                                           "type": "$if",
                                                                                                                           "props": {
                                                                                                                             "condition": {
-                                                                                                                              "$": "count(reactors({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).people)"
+                                                                                                                              "$": "count(reactors({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).people)"
                                                                                                                             },
                                                                                                                             "then": {
                                                                                                                               "type": "Column",
@@ -8929,7 +8929,7 @@
                                                                                                                                   "type": "$each",
                                                                                                                                   "props": {
                                                                                                                                     "items": {
-                                                                                                                                      "$": "reactors({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), profiles: profileStore.profiles, me: me.did, search: local.reactorSearch }).people"
+                                                                                                                                      "$": "reactors({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids, search: local.reactorSearch }).people"
                                                                                                                                     },
                                                                                                                                     "as": "focusedSigWho"
                                                                                                                                   },
@@ -9022,7 +9022,7 @@
                                                                                                                                   "type": "$if",
                                                                                                                                   "props": {
                                                                                                                                     "condition": {
-                                                                                                                                      "$": "trim(local.reactorSearch) && reactors({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), profiles: profileStore.profiles, me: me.did, search: local.reactorSearch }).unresolved"
+                                                                                                                                      "$": "trim(local.reactorSearch) && reactors({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids, search: local.reactorSearch }).unresolved"
                                                                                                                                     },
                                                                                                                                     "then": {
                                                                                                                                       "type": "we-text",
@@ -9032,7 +9032,7 @@
                                                                                                                                       },
                                                                                                                                       "children": [
                                                                                                                                         {
-                                                                                                                                          "$": "`${reactors({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), profiles: profileStore.profiles, me: me.did, search: local.reactorSearch }).unresolved} more whose name has not loaded yet`"
+                                                                                                                                          "$": "`${reactors({ signals: reactions({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), record: focused.id, type: focusedSig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids, search: local.reactorSearch }).unresolved} more whose name has not loaded yet`"
                                                                                                                                         }
                                                                                                                                       ]
                                                                                                                                     }
@@ -10160,7 +10160,7 @@
                                                                               "type": "$if",
                                                                               "props": {
                                                                                 "condition": {
-                                                                                  "$": "reply.author == me.did"
+                                                                                  "$": "reply.author in me.dids"
                                                                                 },
                                                                                 "then": {
                                                                                   "type": "Row",
@@ -10536,7 +10536,7 @@
                                                                                                                                   "type": "$if",
                                                                                                                                   "props": {
                                                                                                                                     "condition": {
-                                                                                                                                      "$": "count(reactors({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).people)"
+                                                                                                                                      "$": "count(reactors({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).people)"
                                                                                                                                     },
                                                                                                                                     "then": {
                                                                                                                                       "type": "Column",
@@ -10550,7 +10550,7 @@
                                                                                                                                           "type": "$each",
                                                                                                                                           "props": {
                                                                                                                                             "items": {
-                                                                                                                                              "$": "filter(reactors({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).people, {}, 5)"
+                                                                                                                                              "$": "filter(reactors({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).people, {}, 5)"
                                                                                                                                             },
                                                                                                                                             "as": "replySigFace"
                                                                                                                                           },
@@ -10642,7 +10642,7 @@
                                                                                                                                           "type": "$if",
                                                                                                                                           "props": {
                                                                                                                                             "condition": {
-                                                                                                                                              "$": "reactors({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total > 5"
+                                                                                                                                              "$": "reactors({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total > 5"
                                                                                                                                             },
                                                                                                                                             "then": {
                                                                                                                                               "type": "we-text",
@@ -10651,7 +10651,7 @@
                                                                                                                                               },
                                                                                                                                               "children": [
                                                                                                                                                 {
-                                                                                                                                                  "$": "`${reactors({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total - 5} more…`"
+                                                                                                                                                  "$": "`${reactors({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total - 5} more…`"
                                                                                                                                                 }
                                                                                                                                               ]
                                                                                                                                             }
@@ -10675,7 +10675,7 @@
                                                                                                                               "$": "signalTally({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), type: replySig })"
                                                                                                                             },
                                                                                                                             "mine": {
-                                                                                                                              "$": "count(filter(reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), { author: me.did }))"
+                                                                                                                              "$": "count(filter(reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), { author: me.dids }))"
                                                                                                                             },
                                                                                                                             "size": "xs",
                                                                                                                             "label": {
@@ -10691,7 +10691,7 @@
                                                                                                                                   "$": "replySig.id"
                                                                                                                                 },
                                                                                                                                 {
-                                                                                                                                  "$": "count(filter(reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), { author: me.did })) ? 0 : replySig.rangeMax"
+                                                                                                                                  "$": "count(filter(reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), { author: me.dids })) ? 0 : replySig.rangeMax"
                                                                                                                                 }
                                                                                                                               ]
                                                                                                                             }
@@ -10787,7 +10787,7 @@
                                                                                                                                           "type": "$if",
                                                                                                                                           "props": {
                                                                                                                                             "condition": {
-                                                                                                                                              "$": "count(reactors({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).people)"
+                                                                                                                                              "$": "count(reactors({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).people)"
                                                                                                                                             },
                                                                                                                                             "then": {
                                                                                                                                               "type": "Column",
@@ -10801,7 +10801,7 @@
                                                                                                                                                   "type": "$each",
                                                                                                                                                   "props": {
                                                                                                                                                     "items": {
-                                                                                                                                                      "$": "filter(reactors({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).people, {}, 5)"
+                                                                                                                                                      "$": "filter(reactors({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).people, {}, 5)"
                                                                                                                                                     },
                                                                                                                                                     "as": "replySigFace"
                                                                                                                                                   },
@@ -10893,7 +10893,7 @@
                                                                                                                                                   "type": "$if",
                                                                                                                                                   "props": {
                                                                                                                                                     "condition": {
-                                                                                                                                                      "$": "reactors({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total > 5"
+                                                                                                                                                      "$": "reactors({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total > 5"
                                                                                                                                                     },
                                                                                                                                                     "then": {
                                                                                                                                                       "type": "we-text",
@@ -10902,7 +10902,7 @@
                                                                                                                                                       },
                                                                                                                                                       "children": [
                                                                                                                                                         {
-                                                                                                                                                          "$": "`${reactors({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total - 5} more…`"
+                                                                                                                                                          "$": "`${reactors({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total - 5} more…`"
                                                                                                                                                         }
                                                                                                                                                       ]
                                                                                                                                                     }
@@ -10926,7 +10926,7 @@
                                                                                                                                       "$": "signalTally({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), type: replySig })"
                                                                                                                                     },
                                                                                                                                     "mine": {
-                                                                                                                                      "$": "count(filter(reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), { author: me.did }))"
+                                                                                                                                      "$": "count(filter(reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), { author: me.dids }))"
                                                                                                                                     },
                                                                                                                                     "size": "xs",
                                                                                                                                     "label": {
@@ -11342,13 +11342,13 @@
                                                                                                                               "type": "$if",
                                                                                                                               "props": {
                                                                                                                                 "condition": {
-                                                                                                                                  "$": "reactors({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total != 1"
+                                                                                                                                  "$": "reactors({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total != 1"
                                                                                                                                 },
                                                                                                                                 "then": {
                                                                                                                                   "type": "$if",
                                                                                                                                   "props": {
                                                                                                                                     "condition": {
-                                                                                                                                      "$": "count(reactors({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).people)"
+                                                                                                                                      "$": "count(reactors({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).people)"
                                                                                                                                     },
                                                                                                                                     "then": {
                                                                                                                                       "type": "we-button",
@@ -11382,7 +11382,7 @@
                                                                                                                                               "type": "AvatarStack",
                                                                                                                                               "props": {
                                                                                                                                                 "avatars": {
-                                                                                                                                                  "$": "reactors({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).people.map(p, { image: p.avatar, hash: p.did })"
+                                                                                                                                                  "$": "reactors({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).people.map(p, { image: p.avatar, hash: p.did })"
                                                                                                                                                 },
                                                                                                                                                 "max": 4,
                                                                                                                                                 "size": "xs"
@@ -11398,7 +11398,7 @@
                                                                                                                                               },
                                                                                                                                               "children": [
                                                                                                                                                 {
-                                                                                                                                                  "$": "`${reactors({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total} ${plural(reactors({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total, 'person', 'people')}`"
+                                                                                                                                                  "$": "`${reactors({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total} ${plural(reactors({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total, 'person', 'people')}`"
                                                                                                                                                 }
                                                                                                                                               ]
                                                                                                                                             },
@@ -11423,7 +11423,7 @@
                                                                                                                               "type": "$if",
                                                                                                                               "props": {
                                                                                                                                 "condition": {
-                                                                                                                                  "$": "reactors({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total == 1 || replySig.id in local.expandedReactors || trim(local.reactorSearch) != ''"
+                                                                                                                                  "$": "reactors({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total == 1 || replySig.id in local.expandedReactors || trim(local.reactorSearch) != ''"
                                                                                                                                 },
                                                                                                                                 "enterTransition": [
                                                                                                                                   {
@@ -11439,7 +11439,7 @@
                                                                                                                                   "type": "$if",
                                                                                                                                   "props": {
                                                                                                                                     "condition": {
-                                                                                                                                      "$": "count(reactors({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).people)"
+                                                                                                                                      "$": "count(reactors({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).people)"
                                                                                                                                     },
                                                                                                                                     "then": {
                                                                                                                                       "type": "Column",
@@ -11453,7 +11453,7 @@
                                                                                                                                           "type": "$each",
                                                                                                                                           "props": {
                                                                                                                                             "items": {
-                                                                                                                                              "$": "reactors({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), profiles: profileStore.profiles, me: me.did, search: local.reactorSearch }).people"
+                                                                                                                                              "$": "reactors({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids, search: local.reactorSearch }).people"
                                                                                                                                             },
                                                                                                                                             "as": "replySigWho"
                                                                                                                                           },
@@ -11546,7 +11546,7 @@
                                                                                                                                           "type": "$if",
                                                                                                                                           "props": {
                                                                                                                                             "condition": {
-                                                                                                                                              "$": "trim(local.reactorSearch) && reactors({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), profiles: profileStore.profiles, me: me.did, search: local.reactorSearch }).unresolved"
+                                                                                                                                              "$": "trim(local.reactorSearch) && reactors({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids, search: local.reactorSearch }).unresolved"
                                                                                                                                             },
                                                                                                                                             "then": {
                                                                                                                                               "type": "we-text",
@@ -11556,7 +11556,7 @@
                                                                                                                                               },
                                                                                                                                               "children": [
                                                                                                                                                 {
-                                                                                                                                                  "$": "`${reactors({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), profiles: profileStore.profiles, me: me.did, search: local.reactorSearch }).unresolved} more whose name has not loaded yet`"
+                                                                                                                                                  "$": "`${reactors({ signals: reactions({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), record: reply.id, type: replySig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids, search: local.reactorSearch }).unresolved} more whose name has not loaded yet`"
                                                                                                                                                 }
                                                                                                                                               ]
                                                                                                                                             }
@@ -12793,7 +12793,7 @@
                                                                                                                       "type": "$if",
                                                                                                                       "props": {
                                                                                                                         "condition": {
-                                                                                                                          "$": "reply2.author == me.did"
+                                                                                                                          "$": "reply2.author in me.dids"
                                                                                                                         },
                                                                                                                         "then": {
                                                                                                                           "type": "Row",
@@ -13176,7 +13176,7 @@
                                                                                                                                                                           "type": "$if",
                                                                                                                                                                           "props": {
                                                                                                                                                                             "condition": {
-                                                                                                                                                                              "$": "count(reactors({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).people)"
+                                                                                                                                                                              "$": "count(reactors({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).people)"
                                                                                                                                                                             },
                                                                                                                                                                             "then": {
                                                                                                                                                                               "type": "Column",
@@ -13190,7 +13190,7 @@
                                                                                                                                                                                   "type": "$each",
                                                                                                                                                                                   "props": {
                                                                                                                                                                                     "items": {
-                                                                                                                                                                                      "$": "filter(reactors({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).people, {}, 5)"
+                                                                                                                                                                                      "$": "filter(reactors({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).people, {}, 5)"
                                                                                                                                                                                     },
                                                                                                                                                                                     "as": "reply2SigFace"
                                                                                                                                                                                   },
@@ -13282,7 +13282,7 @@
                                                                                                                                                                                   "type": "$if",
                                                                                                                                                                                   "props": {
                                                                                                                                                                                     "condition": {
-                                                                                                                                                                                      "$": "reactors({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total > 5"
+                                                                                                                                                                                      "$": "reactors({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total > 5"
                                                                                                                                                                                     },
                                                                                                                                                                                     "then": {
                                                                                                                                                                                       "type": "we-text",
@@ -13291,7 +13291,7 @@
                                                                                                                                                                                       },
                                                                                                                                                                                       "children": [
                                                                                                                                                                                         {
-                                                                                                                                                                                          "$": "`${reactors({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total - 5} more…`"
+                                                                                                                                                                                          "$": "`${reactors({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total - 5} more…`"
                                                                                                                                                                                         }
                                                                                                                                                                                       ]
                                                                                                                                                                                     }
@@ -13315,7 +13315,7 @@
                                                                                                                                                                       "$": "signalTally({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), type: reply2Sig })"
                                                                                                                                                                     },
                                                                                                                                                                     "mine": {
-                                                                                                                                                                      "$": "count(filter(reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), { author: me.did }))"
+                                                                                                                                                                      "$": "count(filter(reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), { author: me.dids }))"
                                                                                                                                                                     },
                                                                                                                                                                     "size": "xs",
                                                                                                                                                                     "label": {
@@ -13331,7 +13331,7 @@
                                                                                                                                                                           "$": "reply2Sig.id"
                                                                                                                                                                         },
                                                                                                                                                                         {
-                                                                                                                                                                          "$": "count(filter(reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), { author: me.did })) ? 0 : reply2Sig.rangeMax"
+                                                                                                                                                                          "$": "count(filter(reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), { author: me.dids })) ? 0 : reply2Sig.rangeMax"
                                                                                                                                                                         }
                                                                                                                                                                       ]
                                                                                                                                                                     }
@@ -13427,7 +13427,7 @@
                                                                                                                                                                                   "type": "$if",
                                                                                                                                                                                   "props": {
                                                                                                                                                                                     "condition": {
-                                                                                                                                                                                      "$": "count(reactors({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).people)"
+                                                                                                                                                                                      "$": "count(reactors({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).people)"
                                                                                                                                                                                     },
                                                                                                                                                                                     "then": {
                                                                                                                                                                                       "type": "Column",
@@ -13441,7 +13441,7 @@
                                                                                                                                                                                           "type": "$each",
                                                                                                                                                                                           "props": {
                                                                                                                                                                                             "items": {
-                                                                                                                                                                                              "$": "filter(reactors({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).people, {}, 5)"
+                                                                                                                                                                                              "$": "filter(reactors({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).people, {}, 5)"
                                                                                                                                                                                             },
                                                                                                                                                                                             "as": "reply2SigFace"
                                                                                                                                                                                           },
@@ -13533,7 +13533,7 @@
                                                                                                                                                                                           "type": "$if",
                                                                                                                                                                                           "props": {
                                                                                                                                                                                             "condition": {
-                                                                                                                                                                                              "$": "reactors({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total > 5"
+                                                                                                                                                                                              "$": "reactors({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total > 5"
                                                                                                                                                                                             },
                                                                                                                                                                                             "then": {
                                                                                                                                                                                               "type": "we-text",
@@ -13542,7 +13542,7 @@
                                                                                                                                                                                               },
                                                                                                                                                                                               "children": [
                                                                                                                                                                                                 {
-                                                                                                                                                                                                  "$": "`${reactors({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total - 5} more…`"
+                                                                                                                                                                                                  "$": "`${reactors({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total - 5} more…`"
                                                                                                                                                                                                 }
                                                                                                                                                                                               ]
                                                                                                                                                                                             }
@@ -13566,7 +13566,7 @@
                                                                                                                                                                               "$": "signalTally({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), type: reply2Sig })"
                                                                                                                                                                             },
                                                                                                                                                                             "mine": {
-                                                                                                                                                                              "$": "count(filter(reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), { author: me.did }))"
+                                                                                                                                                                              "$": "count(filter(reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), { author: me.dids }))"
                                                                                                                                                                             },
                                                                                                                                                                             "size": "xs",
                                                                                                                                                                             "label": {
@@ -13982,13 +13982,13 @@
                                                                                                                                                                       "type": "$if",
                                                                                                                                                                       "props": {
                                                                                                                                                                         "condition": {
-                                                                                                                                                                          "$": "reactors({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total != 1"
+                                                                                                                                                                          "$": "reactors({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total != 1"
                                                                                                                                                                         },
                                                                                                                                                                         "then": {
                                                                                                                                                                           "type": "$if",
                                                                                                                                                                           "props": {
                                                                                                                                                                             "condition": {
-                                                                                                                                                                              "$": "count(reactors({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).people)"
+                                                                                                                                                                              "$": "count(reactors({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).people)"
                                                                                                                                                                             },
                                                                                                                                                                             "then": {
                                                                                                                                                                               "type": "we-button",
@@ -14022,7 +14022,7 @@
                                                                                                                                                                                       "type": "AvatarStack",
                                                                                                                                                                                       "props": {
                                                                                                                                                                                         "avatars": {
-                                                                                                                                                                                          "$": "reactors({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).people.map(p, { image: p.avatar, hash: p.did })"
+                                                                                                                                                                                          "$": "reactors({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).people.map(p, { image: p.avatar, hash: p.did })"
                                                                                                                                                                                         },
                                                                                                                                                                                         "max": 4,
                                                                                                                                                                                         "size": "xs"
@@ -14038,7 +14038,7 @@
                                                                                                                                                                                       },
                                                                                                                                                                                       "children": [
                                                                                                                                                                                         {
-                                                                                                                                                                                          "$": "`${reactors({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total} ${plural(reactors({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total, 'person', 'people')}`"
+                                                                                                                                                                                          "$": "`${reactors({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total} ${plural(reactors({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total, 'person', 'people')}`"
                                                                                                                                                                                         }
                                                                                                                                                                                       ]
                                                                                                                                                                                     },
@@ -14063,7 +14063,7 @@
                                                                                                                                                                       "type": "$if",
                                                                                                                                                                       "props": {
                                                                                                                                                                         "condition": {
-                                                                                                                                                                          "$": "reactors({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total == 1 || reply2Sig.id in local.expandedReactors || trim(local.reactorSearch) != ''"
+                                                                                                                                                                          "$": "reactors({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total == 1 || reply2Sig.id in local.expandedReactors || trim(local.reactorSearch) != ''"
                                                                                                                                                                         },
                                                                                                                                                                         "enterTransition": [
                                                                                                                                                                           {
@@ -14079,7 +14079,7 @@
                                                                                                                                                                           "type": "$if",
                                                                                                                                                                           "props": {
                                                                                                                                                                             "condition": {
-                                                                                                                                                                              "$": "count(reactors({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).people)"
+                                                                                                                                                                              "$": "count(reactors({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).people)"
                                                                                                                                                                             },
                                                                                                                                                                             "then": {
                                                                                                                                                                               "type": "Column",
@@ -14093,7 +14093,7 @@
                                                                                                                                                                                   "type": "$each",
                                                                                                                                                                                   "props": {
                                                                                                                                                                                     "items": {
-                                                                                                                                                                                      "$": "reactors({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did, search: local.reactorSearch }).people"
+                                                                                                                                                                                      "$": "reactors({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids, search: local.reactorSearch }).people"
                                                                                                                                                                                     },
                                                                                                                                                                                     "as": "reply2SigWho"
                                                                                                                                                                                   },
@@ -14186,7 +14186,7 @@
                                                                                                                                                                                   "type": "$if",
                                                                                                                                                                                   "props": {
                                                                                                                                                                                     "condition": {
-                                                                                                                                                                                      "$": "trim(local.reactorSearch) && reactors({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did, search: local.reactorSearch }).unresolved"
+                                                                                                                                                                                      "$": "trim(local.reactorSearch) && reactors({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids, search: local.reactorSearch }).unresolved"
                                                                                                                                                                                     },
                                                                                                                                                                                     "then": {
                                                                                                                                                                                       "type": "we-text",
@@ -14196,7 +14196,7 @@
                                                                                                                                                                                       },
                                                                                                                                                                                       "children": [
                                                                                                                                                                                         {
-                                                                                                                                                                                          "$": "`${reactors({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did, search: local.reactorSearch }).unresolved} more whose name has not loaded yet`"
+                                                                                                                                                                                          "$": "`${reactors({ signals: reactions({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), record: reply2.id, type: reply2Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids, search: local.reactorSearch }).unresolved} more whose name has not loaded yet`"
                                                                                                                                                                                         }
                                                                                                                                                                                       ]
                                                                                                                                                                                     }
@@ -15437,7 +15437,7 @@
                                                                                                                                                               "type": "$if",
                                                                                                                                                               "props": {
                                                                                                                                                                 "condition": {
-                                                                                                                                                                  "$": "reply3.author == me.did"
+                                                                                                                                                                  "$": "reply3.author in me.dids"
                                                                                                                                                                 },
                                                                                                                                                                 "then": {
                                                                                                                                                                   "type": "Row",
@@ -15820,7 +15820,7 @@
                                                                                                                                                                                                                   "type": "$if",
                                                                                                                                                                                                                   "props": {
                                                                                                                                                                                                                     "condition": {
-                                                                                                                                                                                                                      "$": "count(reactors({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).people)"
+                                                                                                                                                                                                                      "$": "count(reactors({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).people)"
                                                                                                                                                                                                                     },
                                                                                                                                                                                                                     "then": {
                                                                                                                                                                                                                       "type": "Column",
@@ -15834,7 +15834,7 @@
                                                                                                                                                                                                                           "type": "$each",
                                                                                                                                                                                                                           "props": {
                                                                                                                                                                                                                             "items": {
-                                                                                                                                                                                                                              "$": "filter(reactors({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).people, {}, 5)"
+                                                                                                                                                                                                                              "$": "filter(reactors({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).people, {}, 5)"
                                                                                                                                                                                                                             },
                                                                                                                                                                                                                             "as": "reply3SigFace"
                                                                                                                                                                                                                           },
@@ -15926,7 +15926,7 @@
                                                                                                                                                                                                                           "type": "$if",
                                                                                                                                                                                                                           "props": {
                                                                                                                                                                                                                             "condition": {
-                                                                                                                                                                                                                              "$": "reactors({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total > 5"
+                                                                                                                                                                                                                              "$": "reactors({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total > 5"
                                                                                                                                                                                                                             },
                                                                                                                                                                                                                             "then": {
                                                                                                                                                                                                                               "type": "we-text",
@@ -15935,7 +15935,7 @@
                                                                                                                                                                                                                               },
                                                                                                                                                                                                                               "children": [
                                                                                                                                                                                                                                 {
-                                                                                                                                                                                                                                  "$": "`${reactors({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total - 5} more…`"
+                                                                                                                                                                                                                                  "$": "`${reactors({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total - 5} more…`"
                                                                                                                                                                                                                                 }
                                                                                                                                                                                                                               ]
                                                                                                                                                                                                                             }
@@ -15959,7 +15959,7 @@
                                                                                                                                                                                                               "$": "signalTally({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), type: reply3Sig })"
                                                                                                                                                                                                             },
                                                                                                                                                                                                             "mine": {
-                                                                                                                                                                                                              "$": "count(filter(reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), { author: me.did }))"
+                                                                                                                                                                                                              "$": "count(filter(reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), { author: me.dids }))"
                                                                                                                                                                                                             },
                                                                                                                                                                                                             "size": "xs",
                                                                                                                                                                                                             "label": {
@@ -15975,7 +15975,7 @@
                                                                                                                                                                                                                   "$": "reply3Sig.id"
                                                                                                                                                                                                                 },
                                                                                                                                                                                                                 {
-                                                                                                                                                                                                                  "$": "count(filter(reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), { author: me.did })) ? 0 : reply3Sig.rangeMax"
+                                                                                                                                                                                                                  "$": "count(filter(reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), { author: me.dids })) ? 0 : reply3Sig.rangeMax"
                                                                                                                                                                                                                 }
                                                                                                                                                                                                               ]
                                                                                                                                                                                                             }
@@ -16071,7 +16071,7 @@
                                                                                                                                                                                                                           "type": "$if",
                                                                                                                                                                                                                           "props": {
                                                                                                                                                                                                                             "condition": {
-                                                                                                                                                                                                                              "$": "count(reactors({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).people)"
+                                                                                                                                                                                                                              "$": "count(reactors({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).people)"
                                                                                                                                                                                                                             },
                                                                                                                                                                                                                             "then": {
                                                                                                                                                                                                                               "type": "Column",
@@ -16085,7 +16085,7 @@
                                                                                                                                                                                                                                   "type": "$each",
                                                                                                                                                                                                                                   "props": {
                                                                                                                                                                                                                                     "items": {
-                                                                                                                                                                                                                                      "$": "filter(reactors({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).people, {}, 5)"
+                                                                                                                                                                                                                                      "$": "filter(reactors({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).people, {}, 5)"
                                                                                                                                                                                                                                     },
                                                                                                                                                                                                                                     "as": "reply3SigFace"
                                                                                                                                                                                                                                   },
@@ -16177,7 +16177,7 @@
                                                                                                                                                                                                                                   "type": "$if",
                                                                                                                                                                                                                                   "props": {
                                                                                                                                                                                                                                     "condition": {
-                                                                                                                                                                                                                                      "$": "reactors({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total > 5"
+                                                                                                                                                                                                                                      "$": "reactors({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total > 5"
                                                                                                                                                                                                                                     },
                                                                                                                                                                                                                                     "then": {
                                                                                                                                                                                                                                       "type": "we-text",
@@ -16186,7 +16186,7 @@
                                                                                                                                                                                                                                       },
                                                                                                                                                                                                                                       "children": [
                                                                                                                                                                                                                                         {
-                                                                                                                                                                                                                                          "$": "`${reactors({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total - 5} more…`"
+                                                                                                                                                                                                                                          "$": "`${reactors({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total - 5} more…`"
                                                                                                                                                                                                                                         }
                                                                                                                                                                                                                                       ]
                                                                                                                                                                                                                                     }
@@ -16210,7 +16210,7 @@
                                                                                                                                                                                                                       "$": "signalTally({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), type: reply3Sig })"
                                                                                                                                                                                                                     },
                                                                                                                                                                                                                     "mine": {
-                                                                                                                                                                                                                      "$": "count(filter(reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), { author: me.did }))"
+                                                                                                                                                                                                                      "$": "count(filter(reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), { author: me.dids }))"
                                                                                                                                                                                                                     },
                                                                                                                                                                                                                     "size": "xs",
                                                                                                                                                                                                                     "label": {
@@ -16626,13 +16626,13 @@
                                                                                                                                                                                                               "type": "$if",
                                                                                                                                                                                                               "props": {
                                                                                                                                                                                                                 "condition": {
-                                                                                                                                                                                                                  "$": "reactors({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total != 1"
+                                                                                                                                                                                                                  "$": "reactors({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total != 1"
                                                                                                                                                                                                                 },
                                                                                                                                                                                                                 "then": {
                                                                                                                                                                                                                   "type": "$if",
                                                                                                                                                                                                                   "props": {
                                                                                                                                                                                                                     "condition": {
-                                                                                                                                                                                                                      "$": "count(reactors({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).people)"
+                                                                                                                                                                                                                      "$": "count(reactors({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).people)"
                                                                                                                                                                                                                     },
                                                                                                                                                                                                                     "then": {
                                                                                                                                                                                                                       "type": "we-button",
@@ -16666,7 +16666,7 @@
                                                                                                                                                                                                                               "type": "AvatarStack",
                                                                                                                                                                                                                               "props": {
                                                                                                                                                                                                                                 "avatars": {
-                                                                                                                                                                                                                                  "$": "reactors({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).people.map(p, { image: p.avatar, hash: p.did })"
+                                                                                                                                                                                                                                  "$": "reactors({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).people.map(p, { image: p.avatar, hash: p.did })"
                                                                                                                                                                                                                                 },
                                                                                                                                                                                                                                 "max": 4,
                                                                                                                                                                                                                                 "size": "xs"
@@ -16682,7 +16682,7 @@
                                                                                                                                                                                                                               },
                                                                                                                                                                                                                               "children": [
                                                                                                                                                                                                                                 {
-                                                                                                                                                                                                                                  "$": "`${reactors({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total} ${plural(reactors({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total, 'person', 'people')}`"
+                                                                                                                                                                                                                                  "$": "`${reactors({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total} ${plural(reactors({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total, 'person', 'people')}`"
                                                                                                                                                                                                                                 }
                                                                                                                                                                                                                               ]
                                                                                                                                                                                                                             },
@@ -16707,7 +16707,7 @@
                                                                                                                                                                                                               "type": "$if",
                                                                                                                                                                                                               "props": {
                                                                                                                                                                                                                 "condition": {
-                                                                                                                                                                                                                  "$": "reactors({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).total == 1 || reply3Sig.id in local.expandedReactors || trim(local.reactorSearch) != ''"
+                                                                                                                                                                                                                  "$": "reactors({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).total == 1 || reply3Sig.id in local.expandedReactors || trim(local.reactorSearch) != ''"
                                                                                                                                                                                                                 },
                                                                                                                                                                                                                 "enterTransition": [
                                                                                                                                                                                                                   {
@@ -16723,7 +16723,7 @@
                                                                                                                                                                                                                   "type": "$if",
                                                                                                                                                                                                                   "props": {
                                                                                                                                                                                                                     "condition": {
-                                                                                                                                                                                                                      "$": "count(reactors({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did }).people)"
+                                                                                                                                                                                                                      "$": "count(reactors({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids }).people)"
                                                                                                                                                                                                                     },
                                                                                                                                                                                                                     "then": {
                                                                                                                                                                                                                       "type": "Column",
@@ -16737,7 +16737,7 @@
                                                                                                                                                                                                                           "type": "$each",
                                                                                                                                                                                                                           "props": {
                                                                                                                                                                                                                             "items": {
-                                                                                                                                                                                                                              "$": "reactors({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did, search: local.reactorSearch }).people"
+                                                                                                                                                                                                                              "$": "reactors({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids, search: local.reactorSearch }).people"
                                                                                                                                                                                                                             },
                                                                                                                                                                                                                             "as": "reply3SigWho"
                                                                                                                                                                                                                           },
@@ -16830,7 +16830,7 @@
                                                                                                                                                                                                                           "type": "$if",
                                                                                                                                                                                                                           "props": {
                                                                                                                                                                                                                             "condition": {
-                                                                                                                                                                                                                              "$": "trim(local.reactorSearch) && reactors({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did, search: local.reactorSearch }).unresolved"
+                                                                                                                                                                                                                              "$": "trim(local.reactorSearch) && reactors({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids, search: local.reactorSearch }).unresolved"
                                                                                                                                                                                                                             },
                                                                                                                                                                                                                             "then": {
                                                                                                                                                                                                                               "type": "we-text",
@@ -16840,7 +16840,7 @@
                                                                                                                                                                                                                               },
                                                                                                                                                                                                                               "children": [
                                                                                                                                                                                                                                 {
-                                                                                                                                                                                                                                  "$": "`${reactors({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.did, search: local.reactorSearch }).unresolved} more whose name has not loaded yet`"
+                                                                                                                                                                                                                                  "$": "`${reactors({ signals: reactions({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), record: reply3.id, type: reply3Sig.id, me: me.did }), profiles: profileStore.profiles, me: me.dids, search: local.reactorSearch }).unresolved} more whose name has not loaded yet`"
                                                                                                                                                                                                                                 }
                                                                                                                                                                                                                               ]
                                                                                                                                                                                                                             }
@@ -19183,7 +19183,7 @@
                                       },
                                       "children": [
                                         {
-                                          "$": "((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? (first(local.focusCall).title ? first(local.focusCall).title : 'A call') : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? (profileStore.profiles.find(p, p.did == ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '')).name ?? 'A person') : workflowStore.open.label"
+                                          "$": "((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? (first(local.focusCall).title ? first(local.focusCall).title : 'A call') : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? (profileStore.profiles.find(who, who.did == ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') in who.devices).name ?? 'A person') : workflowStore.open.label"
                                         }
                                       ]
                                     },
@@ -19207,7 +19207,7 @@
                                           },
                                           "children": [
                                             {
-                                              "$": "((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? (first(local.focusCall).title ? first(local.focusCall).title : 'A call') : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? (profileStore.profiles.find(p, p.did == ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '')).name ?? 'A person') : workflowStore.open.label"
+                                              "$": "((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? (first(local.focusCall).title ? first(local.focusCall).title : 'A call') : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? (profileStore.profiles.find(who, who.did == ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') in who.devices).name ?? 'A person') : workflowStore.open.label"
                                             }
                                           ]
                                         },
@@ -27452,7 +27452,7 @@
                     {
                       "type": "$if",
                       "props": {
-                        "condition": { "$": "person.did == me.did" },
+                        "condition": { "$": "person.did in me.dids" },
                         "then": {
                           "type": "we-button",
                           "props": {

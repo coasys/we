@@ -27,6 +27,8 @@
  *
  * Total, like every function an expression can call.
  */
+import { byAnyDid, selfDids } from '../personProfile';
+
 export interface Reactor {
   did: string;
   /** The display name, or empty while the profile is still arriving. */
@@ -57,12 +59,13 @@ export function reactors(options: unknown): ReactorsView {
     search?: unknown;
   };
   const rows = Array.isArray(signals) ? signals : [];
-  const cache = Array.isArray(profiles) ? (profiles as ProfileRow[]) : [];
-  const mine = typeof me === 'string' ? me : '';
+  // `me.dids` (every computer this person writes from) or `me.did` (this one): a reaction given from
+  // my other device is still mine.
+  const mine = selfDids(me);
   const needle = typeof search === 'string' ? search.trim().toLowerCase() : '';
 
-  const byDid = new Map<string, ProfileRow>();
-  for (const row of cache) if (typeof row?.did === 'string') byDid.set(row.did, row);
+  // One entry per person, found by the device key a signal names as well as by the person.
+  const byDid = byAnyDid<ProfileRow & { devices?: unknown }>(profiles);
 
   const all: Reactor[] = [];
   for (const row of rows as { author?: unknown; value?: unknown }[]) {
@@ -73,7 +76,7 @@ export function reactors(options: unknown): ReactorsView {
       name: typeof profile?.name === 'string' ? profile.name : '',
       avatar: typeof profile?.avatar === 'string' ? profile.avatar : '',
       value: typeof row.value === 'number' ? row.value : 0,
-      mine: row.author === mine,
+      mine: mine.has(row.author),
     });
   }
 

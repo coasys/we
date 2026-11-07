@@ -31,6 +31,7 @@
 import type { InvolvementSemantic } from '@we/entities';
 
 import { relationId } from '../involvements';
+import { byAnyDid, selfDids } from '../personProfile';
 
 export interface InvolvementRowInput {
   id?: string;
@@ -60,8 +61,19 @@ export interface InvolvementOptions {
   rows?: InvolvementRowInput[] | null;
   /** `spaceStore.involvementTypes` — withdrawn kinds included, since somebody may still hold one. */
   types?: InvolvementKindInput[] | null;
-  /** The viewer's DID, for `answers`, and to lead `dids` when they are in it. */
-  me?: string | null;
+  /**
+   * The viewer, for `answers`, and to lead `dids` when they are in it: `me.dids` (every device key
+   * and the person, so an answer given from my other computer is mine) or one DID.
+   */
+  me?: string | readonly string[] | null;
+  /**
+   * `profileStore.profiles` (or `spaceStore.members`) — one entry per person, carrying the device
+   * keys seen for them. Given, an involvement held by any of a person's keys counts as the person in
+   * every `dids` list and in each `PersonOn.person`, so somebody on two computers is one face and one
+   * filter chip. `people[].did`, `pairs` and the per-semantic lists keep the key each involvement was
+   * written under: that is what unticking removes and what a workflow judges.
+   */
+  profiles?: unknown;
   /**
    * Only these records count towards `dids` — the people on a board's cards, or a month's events.
    * `byNode` still answers for every record. Omit for everyone on anything.
@@ -72,7 +84,10 @@ export interface InvolvementOptions {
 
 /** One person's part in one record, resolved against the vocabulary. */
 export interface PersonOn {
+  /** The DID the involvement was written under — a device key, usually. */
   did: string;
+  /** The person that DID speaks for, given `profiles`; else `did`. What a face is looked up by. */
+  person: string;
   kind: string;
   name: string;
   semantic: string;
@@ -103,7 +118,7 @@ export const TONE_BY_SEMANTIC: Record<string, string> = { reviewing: 'warning' }
 
 export interface NodeInvolvement {
   people: PersonOn[];
-  /** Everyone on it who has not declined — what a people filter matches. */
+  /** Everyone on it who has not declined, as persons given `profiles` — what a people filter matches. */
   dids: string[];
   responsible: string[];
   reviewing: string[];
@@ -168,7 +183,12 @@ export function involvement(options: InvolvementOptions | null | undefined): Inv
     asRows<InvolvementRowInput>(options?.rows).filter((r) => r && typeof r === 'object'),
     options?.pending,
   );
-  const me = options?.me ?? '';
+  const self = selfDids(options?.me);
+  const known = byAnyDid<{ did?: unknown; devices?: unknown }>(options?.profiles);
+  const personOf = (did: string) => {
+    const person = known.get(did)?.did;
+    return typeof person === 'string' && person ? person : did;
+  };
   const counted = Array.isArray(options?.nodes) ? new Set(options.nodes) : null;
 
   const byNode: Record<string, NodeInvolvement> = {};
@@ -199,8 +219,10 @@ export function involvement(options: InvolvementOptions | null | undefined): Inv
     const semantic = (SEMANTIC_KEYS as readonly string[]).includes(type?.semantic ?? '')
       ? (type!.semantic as InvolvementSemantic)
       : 'responsible';
+    const person = personOf(did);
     entry.people.push({
       did,
+      person,
       kind,
       name: type?.name || kind,
       semantic,
@@ -211,13 +233,13 @@ export function involvement(options: InvolvementOptions | null | undefined): Inv
     });
     if (!entry[semantic].includes(did)) entry[semantic].push(did);
     if (semantic !== 'declined') {
-      if (!entry.dids.includes(did)) entry.dids.push(did);
-      if ((!counted || counted.has(node)) && !seenEveryone.has(did)) {
-        seenEveryone.add(did);
-        everyone.push(did);
+      if (!entry.dids.includes(person)) entry.dids.push(person);
+      if ((!counted || counted.has(node)) && !seenEveryone.has(person)) {
+        seenEveryone.add(person);
+        everyone.push(person);
       }
     }
-    if (did === me && type?.reflexive) answers[node] = kind;
+    if (self.has(did) && type?.reflexive) answers[node] = kind;
   }
 
   // People in reading order within each record — who is doing it before who is coming — so a stack
@@ -225,7 +247,7 @@ export function involvement(options: InvolvementOptions | null | undefined): Inv
   const rank = (semantic: string) => SEMANTIC_KEYS.indexOf(semantic as InvolvementSemantic);
   for (const entry of Object.values(byNode)) entry.people.sort((a, b) => rank(a.semantic) - rank(b.semantic));
 
-  const mine = everyone.indexOf(me);
-  if (mine > 0) everyone.unshift(...everyone.splice(mine, 1));
-  return { byNode, answers, dids: everyone };
+  // Every DID that is the viewer leads, in the order they appeared.
+  const ordered = [...everyone.filter((did) => self.has(did)), ...everyone.filter((did) => !self.has(did))];
+  return { byNode, answers, dids: ordered };
 }

@@ -165,14 +165,14 @@ export const postsList: SchemaNode = {
                       type: '$if',
                       props: {
                         condition: {
-                          $: "count(presenceStore.online.filter(p, p.did != me.did && p.activities.exists(a, a.type == 'edit' && a.nodeId == post.id)))",
+                          $: "count(presenceStore.online.filter(p, !(p.did in me.dids) && p.activities.exists(a, a.type == 'edit' && a.nodeId == post.id)))",
                         },
                         then: {
                           type: 'we-badge',
                           props: { tone: 'warning', size: 'sm' },
                           children: [
                             {
-                              $: "`${presenceStore.online.filter(p, p.did != me.did && p.activities.exists(a, a.type == 'edit' && a.nodeId == post.id)).map(p, p.name).join(', ')} editing`",
+                              $: "`${presenceStore.online.filter(p, !(p.did in me.dids) && p.activities.exists(a, a.type == 'edit' && a.nodeId == post.id)).map(p, p.name).join(', ')} editing`",
                             },
                           ],
                         },
@@ -189,7 +189,7 @@ export const postsList: SchemaNode = {
                         {
                           type: '$if',
                           props: {
-                            condition: { $: 'post.author == me.did' },
+                            condition: { $: 'post.author in me.dids' },
                             then: {
                               type: 'Row',
                               props: { gap: '100' },
