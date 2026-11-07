@@ -340,7 +340,7 @@ async fn make_link_and_revoke_through_the_custody_service() {
         vault,
         ExecutorAddress {
             url: a.url(),
-            admin_credential: Arc::from(credential),
+            credential: Arc::from(credential),
         },
     );
     let mut shown = Shown::default();

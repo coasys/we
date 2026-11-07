@@ -57,7 +57,10 @@ export interface DeviceRow {
   name: string;
   /** Whether it keeps the master key: yes, no, or sent and not yet taken. */
   holdsMaster: 'yes' | 'no' | 'offered';
-  /** "Holds the master key", "Master key offered, not yet taken", or empty. */
+  /**
+   * "Holds the master key", "Master key offered, not yet taken", or empty; for a revoked device that
+   * took (or the key log let take) the master key, a warning that its copy is still valid.
+   */
   master: string;
 }
 
@@ -149,6 +152,16 @@ const DEVICE_ICONS: Record<string, string> = {
 
 const MASTER_WORDS = { yes: 'Holds the master key', offered: 'Master key offered, not yet taken', no: '' } as const;
 
+/**
+ * A revoked device's copy of the master key: a revoke does not replace the master key, so the copy
+ * stays valid. Known from the record when it still lists the device; else the key log says the
+ * device was let keep the master key (`IdentityCustodyView.revokedHolders`), not that it took it.
+ */
+const REVOKED_MASTER_WORDS = {
+  held: 'Still holds a valid master key — replace your master key',
+  may: 'May still hold a valid master key — replace your master key',
+} as const;
+
 /** What the private record calls `keyId`, or how the log alone would name it. */
 export function deviceName(keyId: string, names: DeviceNameView[], thisKeyId: string | null = null): string {
   const named = names.find((n) => n.keyId === keyId)?.name;
@@ -156,7 +169,11 @@ export function deviceName(keyId: string, names: DeviceNameView[], thisKeyId: st
   return keyId === thisKeyId ? THIS_COMPUTER : keyId;
 }
 
-export function deviceRows(devices: DeviceKeyView[], names: DeviceNameView[] = []): DeviceRow[] {
+export function deviceRows(
+  devices: DeviceKeyView[],
+  names: DeviceNameView[] = [],
+  revokedHolders: string[] = [],
+): DeviceRow[] {
   return devices
     .slice()
     .sort(
@@ -169,7 +186,17 @@ export function deviceRows(devices: DeviceKeyView[], names: DeviceNameView[] = [
       const revoked = device.revokedSeq !== null;
       const record = names.find((n) => n.keyId === device.keyId);
       const name = record?.name ?? '';
-      const holdsMaster = revoked ? 'no' : (record?.holdsMaster ?? 'no');
+      const listed = record?.holdsMaster ?? 'no';
+      // A revoked key keeps nothing it can use as a device; a copy of the master key it took stays
+      // valid, and its row says so in a warning (`holdsMaster` is `no`, so the badge's tone warns).
+      const holdsMaster = revoked ? 'no' : listed;
+      const revokedMaster = !revoked
+        ? ''
+        : listed !== 'no'
+          ? REVOKED_MASTER_WORDS.held
+          : revokedHolders.includes(device.keyId)
+            ? REVOKED_MASTER_WORDS.may
+            : '';
       const fallback = device.thisDevice ? THIS_COMPUTER : `Device ${device.keyId}`;
       return {
         keyId: device.keyId,
@@ -188,7 +215,7 @@ export function deviceRows(devices: DeviceKeyView[], names: DeviceNameView[] = [
         canRevoke: !revoked && !device.thisDevice,
         name,
         holdsMaster,
-        master: MASTER_WORDS[holdsMaster],
+        master: revokedMaster || MASTER_WORDS[holdsMaster],
       };
     });
 }

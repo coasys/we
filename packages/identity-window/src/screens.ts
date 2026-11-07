@@ -26,16 +26,22 @@ export type Screen =
       screen: 'request';
       id: string;
       kind: RequestKind;
+      /** The record's name of the device that asks: any device can write it. */
       device: string;
+      /** Who asks, as the key log says: its key id, its signing key's fingerprint, and a code
+       *  from the request and that key, which the asking device shows too. */
+      keyId: string;
+      fingerprint: string;
+      code: string;
       devices: string[];
       passphrase: boolean;
       error: string | null;
     }
   | { screen: 'request-answered'; kind: RequestKind; device: string; note: string | null }
-  | { screen: 'asked' }
+  | { screen: 'asked'; keyId: string; fingerprint: string; code: string }
   | { screen: 'rename'; keyId: string; name: string; error: string | null }
   | { screen: 'renamed'; keyId: string; name: string }
-  | { screen: 'revoke-confirm'; keyId: string; passphrase: boolean; error: string | null }
+  | { screen: 'revoke-confirm'; keyId: string; holdsMaster: boolean; passphrase: boolean; error: string | null }
   | { screen: 'revoked'; keyId: string; seq: number }
   | { screen: 'pending-refused'; did: string; message: string }
   | { screen: 'failed'; message: string };
@@ -149,8 +155,8 @@ export function heading(screen: Screen): { title: string; lead: string } {
     case 'request':
       return screen.kind === 'send-master'
         ? {
-            title: `${screen.device} asks for the master key — send it?`,
-            lead: `With it, ${screen.device} can add and remove your devices too. Send it only if you asked for it there.`,
+            title: `Device ${screen.keyId} (key ${screen.fingerprint}) asks for the master key — send it?`,
+            lead: `Your record calls it ${screen.device}. Check that the device shows the code ${screen.code} and the same key. With the master key, it can add and remove your devices too. Send it only if you asked for it there.`,
           }
         : {
             title: `${screen.device} asks to revoke ${screen.devices.join(', ')}`,
@@ -174,7 +180,7 @@ export function heading(screen: Screen): { title: string; lead: string } {
     case 'asked':
       return {
         title: 'Asked for the master key',
-        lead: 'A device that holds it shows your request. When you send it from there, choose “Take the master key” here.',
+        lead: `A device that holds it shows your request, from ${screen.keyId} (key ${screen.fingerprint}) with the code ${screen.code}. Check both match there. When you send it from there, choose “Take the master key” here.`,
       };
     case 'rename':
       return { title: 'Name this device', lead: 'The name is for you. Only your own devices read it.' };
@@ -183,7 +189,14 @@ export function heading(screen: Screen): { title: string; lead: string } {
     case 'revoke-confirm':
       return {
         title: `Revoke the key ${screen.keyId}?`,
-        lead: 'Do this for a device you lost or no longer use. Your key log records that its key no longer acts as you, and the key can never be added back. Other computers apply this when they next read your key log, so one that is offline can accept the key for a while. Some things it signed before can also stop counting as yours.',
+        lead: [
+          'Do this for a device you lost or no longer use. Your key log records that its key no longer acts as you, and the key can never be added back. Other computers apply this when they next read your key log, so one that is offline can accept the key for a while. Some things it signed before can also stop counting as yours.',
+          ...(screen.holdsMaster
+            ? [
+                'It keeps a copy of your master key, or has one waiting. Its copy of the master key stays valid after the revoke: replace your master key to stop it from adding and removing your devices.',
+              ]
+            : []),
+        ].join(' '),
       };
     case 'revoked':
       return { title: `${screen.keyId} revoked`, lead: `Your key log records it as entry #${screen.seq}.` };

@@ -11,7 +11,7 @@ fn public_state() -> serde_json::Value {
     let mut child = Command::new(env!("CARGO_BIN_EXE_we-custody"))
         .args(["--executor-port", "9", "--custody-dir"])
         .arg(custody_dir.path())
-        .env("AD4M_ADMIN_CREDENTIAL", "the-credential")
+        .env("AD4M_CUSTODY_CREDENTIAL", "the-credential")
         // Keeps the test off this session's Secret Service: the store falls back to the folder.
         .env("DBUS_SESSION_BUS_ADDRESS", "unix:path=/nonexistent")
         // The executor's settings, which custody never reads: it asks the executor.
@@ -53,7 +53,7 @@ fn the_sidecar_answers_on_stdout_and_exits_when_stdin_closes() {
 fn the_sidecar_refuses_to_start_without_a_credential() {
     let status = Command::new(env!("CARGO_BIN_EXE_we-custody"))
         .args(["--executor-port", "9", "--custody-dir", "/nonexistent"])
-        .env_remove("AD4M_ADMIN_CREDENTIAL")
+        .env_remove("AD4M_CUSTODY_CREDENTIAL")
         .stdin(Stdio::null())
         .stderr(Stdio::null())
         .status()

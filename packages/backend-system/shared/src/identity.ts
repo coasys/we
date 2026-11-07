@@ -151,6 +151,12 @@ export interface IdentityCustodyView {
    * the first one is named, and where the record cannot be read now.
    */
   devices: DeviceNameView[];
+  /**
+   * The revoked keys that may still hold a valid master key, as the key log says: it let them keep
+   * the master key, and none has replaced it since. A revoke leaves a copy of the master key valid,
+   * and the private record drops a revoked key's entry, so only the log keeps this.
+   */
+  revokedHolders: string[];
   /** What other devices asked and is waiting for an answer from a device that keeps the master key. */
   requests: DeviceRequestView[];
   /** A master key another device sent waits for this computer to take it. */

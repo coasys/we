@@ -215,7 +215,7 @@ pub fn run() {
         ),
         we_custody::ExecutorAddress {
             url: format!("http://127.0.0.1:{graphql_port}"),
-            admin_credential: std::sync::Arc::from(req_credential.as_str()),
+            credential: std::sync::Arc::from(req_credential.as_str()),
         },
     );
 

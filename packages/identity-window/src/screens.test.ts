@@ -15,10 +15,23 @@ const IDENTITY_CSP = policy.trim();
 
 describe('the identity window', () => {
   it('says what a revocation does, and promises nothing about earlier signatures', () => {
-    const lead = heading({ screen: 'revoke-confirm', keyId: 'd2', passphrase: false, error: null }).lead;
+    const confirm = { screen: 'revoke-confirm' as const, keyId: 'd2', passphrase: false, error: null };
+    const lead = heading({ ...confirm, holdsMaster: false }).lead;
     expect(lead).toContain('when they next read your key log');
     expect(lead).toContain('can also stop counting as yours');
     expect(lead).not.toContain('stays valid');
+  });
+
+  it('tells before revoking a device that keeps the master key that its copy stays valid', () => {
+    const lead = heading({
+      screen: 'revoke-confirm',
+      keyId: 'd2',
+      holdsMaster: true,
+      passphrase: false,
+      error: null,
+    }).lead;
+    expect(lead).toContain('Its copy of the master key stays valid');
+    expect(lead).toContain('replace your master key');
   });
 
   it('asks for the two words the custody service chose', () => {
@@ -39,9 +52,20 @@ describe('the identity window', () => {
   });
 
   it('asks the holder by name whether to send the master key, and the revoke request names each device', () => {
-    const request = { screen: 'request' as const, id: 'r1', passphrase: false, error: null };
+    const request = {
+      screen: 'request' as const,
+      id: 'r1',
+      keyId: 'd2',
+      fingerprint: 'AbCd 1234',
+      code: 'R7K Q2M',
+      passphrase: false,
+      error: null,
+    };
     const send = heading({ ...request, kind: 'send-master', device: 'Phone', devices: [] });
-    expect(send.title).toBe('Phone asks for the master key — send it?');
+    // The key log's key, not the name any device can write, says who asks.
+    expect(send.title).toBe('Device d2 (key AbCd 1234) asks for the master key — send it?');
+    expect(send.lead).toContain('Phone');
+    expect(send.lead).toContain('R7K Q2M');
     expect(send.lead).toContain('add and remove your devices');
     const revoke = heading({ ...request, kind: 'confirm-revoke', device: 'Laptop', devices: ['Old desktop', 'd4'] });
     expect(revoke.title).toBe('Laptop asks to revoke Old desktop, d4');
@@ -65,7 +89,11 @@ describe('the identity window', () => {
     expect(heading({ screen: 'device-code', code: 'coasys:device:1:x', qrSvg: '', expires: 0 }).title).toBe(
       'Show my code',
     );
-    expect(heading({ screen: 'asked' }).lead).toContain('Take the master key');
+    const asked = heading({ screen: 'asked', keyId: 'd2', fingerprint: 'AbCd 1234', code: 'R7K Q2M' }).lead;
+    expect(asked).toContain('Take the master key');
+    // The holder's card shows the same key and code.
+    expect(asked).toContain('d2 (key AbCd 1234)');
+    expect(asked).toContain('R7K Q2M');
     expect(heading({ screen: 'renamed', keyId: 'd2', name: 'Laptop' }).title).toBe('Named Laptop');
   });
 
@@ -95,7 +123,7 @@ describe('the identity window', () => {
       { screen: 'joined' as const, did: 'did:scid:coasys:1:Qm', keyId: 'd2' },
       { screen: 'master-taken' as const, did: 'did:scid:coasys:1:Qm', note: null },
       { screen: 'request-answered' as const, kind: 'send-master' as const, device: 'Phone', note: null },
-      { screen: 'asked' as const },
+      { screen: 'asked' as const, keyId: 'd2', fingerprint: 'AbCd 1234', code: 'R7K Q2M' },
       { screen: 'renamed' as const, keyId: 'd2', name: 'Laptop' },
     ]) {
       expect(isLast(last), last.screen).toBe(true);

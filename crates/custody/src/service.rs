@@ -143,11 +143,19 @@ pub enum Screen {
     },
     /// This computer keeps the master key of `did` now.
     MasterTaken { did: String, note: Option<String> },
-    /// A request of another device, before the person answers it. `device`: the poster's name;
-    /// `devices`: for `confirm-revoke`, the names of the keys it asks to revoke.
+    /// A request of another device, before the person answers it. Who asks comes from the key
+    /// log, not the record any device can write: `key_id`, the poster's key; `fingerprint`, its
+    /// signing key as the log lists it ([`crate::keylog::fingerprint`]); `code`, the request's
+    /// code (the match code of the request id and that key), which the asking device shows too.
+    /// `device`: the name the record gives it, secondary; `devices`: for `confirm-revoke`, the
+    /// names of the keys it asks to revoke.
     Request {
         id: String,
         kind: &'static str,
+        #[serde(rename = "keyId")]
+        key_id: String,
+        fingerprint: String,
+        code: String,
         device: String,
         devices: Vec<String>,
         passphrase: bool,
@@ -159,8 +167,14 @@ pub enum Screen {
         device: String,
         note: Option<String>,
     },
-    /// The request for the master key is posted.
-    Asked,
+    /// The request for the master key is posted: this device's key, its fingerprint and the
+    /// request's code, as the device that answers shows them.
+    Asked {
+        #[serde(rename = "keyId")]
+        key_id: String,
+        fingerprint: String,
+        code: String,
+    },
     /// Name a device.
     Rename {
         #[serde(rename = "keyId")]
@@ -177,6 +191,10 @@ pub enum Screen {
     RevokeConfirm {
         #[serde(rename = "keyId")]
         key_id: String,
+        /// The device keeps a copy of the master key (or one waits for it), so the revoke leaves
+        /// that copy valid until the master key is replaced.
+        #[serde(rename = "holdsMaster")]
+        holds_master: bool,
         passphrase: bool,
         error: Option<String>,
     },
@@ -203,7 +221,7 @@ impl Screen {
             | Screen::Joined { .. }
             | Screen::MasterTaken { .. }
             | Screen::RequestAnswered { .. }
-            | Screen::Asked
+            | Screen::Asked { .. }
             | Screen::Renamed { .. } => Some(StepOutcome::Done),
             Screen::Failed { .. } => Some(StepOutcome::Failed),
             _ => None,
@@ -310,6 +328,10 @@ pub struct CustodyPublic {
     /// The devices the private record names, by key id. Empty before the first record write, or
     /// when the record cannot be read now.
     pub devices: Vec<DeviceName>,
+    /// The revoked keys that may still hold a valid master key, from the key log
+    /// ([`crate::keylog::revoked_holders`]): the record drops a key's entry when it is revoked, and a
+    /// revoke does not replace the master key. Empty when the log cannot be read now.
+    pub revoked_holders: Vec<String>,
     /// The requests of other devices waiting in the identity's box.
     pub requests: Vec<RequestView>,
     /// A master key waits in this computer's inbox ("Take the master key").
@@ -352,7 +374,9 @@ pub struct RequestView {
 pub struct ExecutorAddress {
     /// `http://127.0.0.1:<port>`
     pub url: String,
-    pub admin_credential: Arc<str>,
+    /// The credential custody calls the executor with: the custody credential where the executor
+    /// runs `--custody-channel` (the sidecar's), else the admin credential (Tauri, no custody channel).
+    pub credential: Arc<str>,
 }
 
 impl std::fmt::Debug for ExecutorAddress {
@@ -436,7 +460,7 @@ pub fn spawn(vault: DesktopVault, executor: ExecutorAddress) -> CustodyHandle {
 type Rx = mpsc::UnboundedReceiver<Request>;
 
 async fn connect(address: &ExecutorAddress) -> Result<ViaExecutor<WsRpcClient>, String> {
-    WsRpcClient::connect(&address.url, &address.admin_credential)
+    WsRpcClient::connect(&address.url, &address.credential)
         .await
         .map(ViaExecutor::new)
         .map_err(|_| {
@@ -667,6 +691,7 @@ async fn public_state_on<R: ExecutorRpc>(
     let mut master_waiting = false;
     let mut devices = Vec::new();
     let mut requests = Vec::new();
+    let mut revoked_holders = Vec::new();
     if let (Some(executor), Some(did)) = (executor, did.as_deref()) {
         master_waiting = master_waits(executor).await;
         // Where the operating system unlocks a new item, the master key waiting is taken as the
@@ -702,6 +727,13 @@ async fn public_state_on<R: ExecutorRpc>(
                 Vec::new()
             }
         };
+        revoked_holders = match executor.events(did).await {
+            Ok(events) => crate::keylog::revoked_holders(&events),
+            Err(e) => {
+                log::warn!("custody: the key log cannot be read now: {e}");
+                Vec::new()
+            }
+        };
         requests = waiting_requests(executor).await;
     }
     // Whether this identity's key is held here and, if so, whether it is sealed.
@@ -733,6 +765,7 @@ async fn public_state_on<R: ExecutorRpc>(
         unlock,
         blocked,
         devices,
+        revoked_holders,
         requests,
         master_waiting,
     }
@@ -1848,23 +1881,30 @@ async fn ask_master_on<R: ExecutorRpc>(executor: &ViaExecutor<R>, vault: &Deskto
         Ok(status) => status,
         Err(e) => return failed(&ClientError::Rpc(e)),
     };
-    let (Some(did), Some(_)) = (status.did, status.key_id) else {
+    let (Some(did), Some(key_id)) = (status.did, status.key_id) else {
         return Screen::Failed {
             message: "This computer is not linked to an identity yet.".into(),
         };
     };
-    if let Some(scid) = ad4m_identity_core::scid_of(&did) {
-        if matches!(vault.holds(scid), Ok(true)) {
-            return Screen::Failed {
-                message: "This computer already keeps your master key.".into(),
-            };
-        }
+    let Some(scid) = ad4m_identity_core::scid_of(&did) else {
+        return Screen::Failed {
+            message: "This computer is not linked to an identity yet.".into(),
+        };
+    };
+    if matches!(vault.holds(scid), Ok(true)) {
+        return Screen::Failed {
+            message: "This computer already keeps your master key.".into(),
+        };
     }
     match executor
         .post_request(&DeviceRequestBody::SendMaster {}, None)
         .await
     {
-        Ok(_) => Screen::Asked,
+        Ok(id) => Screen::Asked {
+            key_id,
+            fingerprint: crate::keylog::fingerprint(&status.device_key),
+            code: ad4m_identity_core::link::match_code(scid, &id, &status.device_key),
+        },
         Err(e) => failed(&ClientError::Rpc(e)),
     }
 }
@@ -1937,10 +1977,41 @@ async fn answer_on<R: ExecutorRpc>(
             key_ids.iter().map(|k| name_of(k)).collect(),
         ),
     };
+    // Who asks, from the log: the poster's signing key and, for the master key, whether its
+    // claim said it may keep it. The record's name and kind are any linked device's to write.
+    let logged = match executor.events(&did).await {
+        Ok(events) => crate::keylog::device(&events, &request.by),
+        Err(e) => return answer(reply, Ok(failed(&ClientError::Rpc(e)))),
+    };
+    let (Some(logged), Some(scid)) = (logged, ad4m_identity_core::scid_of(&did)) else {
+        return answer(
+            reply,
+            Ok(Screen::Failed {
+                message: "The device that asks is not in your key log.".into(),
+            }),
+        );
+    };
+    let fingerprint = crate::keylog::fingerprint(&logged.sign);
+    if kind == "send-master" && !logged.may_keep_master {
+        return answer(
+            reply,
+            Ok(Screen::Failed {
+                message: format!(
+                    "Device {} (key {fingerprint}) joined as a device that does not keep the \
+                     master key, so it cannot be sent to it.",
+                    request.by
+                ),
+            }),
+        );
+    }
+    let code = ad4m_identity_core::link::match_code(scid, &request.id, &logged.sign);
     let device = name_of(&request.by);
     let card = |error: Option<String>| Screen::Request {
         id: id.clone(),
         kind,
+        key_id: request.by.clone(),
+        fingerprint: fingerprint.clone(),
+        code: code.clone(),
         device: device.clone(),
         devices: devices.clone(),
         passphrase: needs,
@@ -2021,6 +2092,19 @@ async fn rename_on<R: ExecutorRpc>(
         Ok(holder) => holder,
         Err(screen) => return answer(reply, Ok(screen)),
     };
+    // A device without the master key names only itself: the record is written with any
+    // linked device's key, so naming another device is the master key holder's to do.
+    let holds =
+        ad4m_identity_core::scid_of(&did).is_some_and(|scid| matches!(vault.holds(scid), Ok(true)));
+    if !holds && own_key.as_deref() != Some(key_id.as_str()) {
+        return answer(
+            reply,
+            Ok(Screen::Failed {
+                message: "Only a device that keeps your master key can rename another device."
+                    .into(),
+            }),
+        );
+    }
     let listed = match record::read(executor, &did).await {
         Ok(opened) => opened.and_then(|o| o.record.devices.get(&key_id).cloned()),
         Err(e) => return answer(reply, Ok(failed(&e))),
@@ -2173,10 +2257,12 @@ async fn run_revoke(
         Ok(needs) => needs,
         Err(e) => return answer(reply, Ok(failed(&e))),
     };
+    let holds_master = keeps_master(&executor, &did, &key_id).await;
     answer(
         reply,
         Ok(Screen::RevokeConfirm {
             key_id: key_id.clone(),
+            holds_master,
             passphrase: needs,
             error: None,
         }),
@@ -2216,12 +2302,36 @@ async fn run_revoke(
                 reply,
                 Ok(Screen::RevokeConfirm {
                     key_id: key_id.clone(),
+                    holds_master,
                     passphrase: true,
                     error: Some("That passphrase does not open your master key.".into()),
                 }),
             ),
             Err(e) => return answer(reply, Ok(failed(&e))),
         }
+    }
+}
+
+/// Whether device `key_id` keeps a copy of the master key, or has one waiting: as the private record
+/// says, and where the record does not list it or cannot be read, as the key log allows
+/// ([`crate::keylog::device`]), so a confirmation never leaves out a copy that may exist.
+async fn keeps_master<R: ExecutorRpc>(executor: &ViaExecutor<R>, did: &str, key_id: &str) -> bool {
+    let listed = match record::read(executor, did).await {
+        Ok(opened) => opened.and_then(|o| o.record.devices.get(key_id).map(|e| e.holds_master)),
+        Err(e) => {
+            log::warn!("custody: the record cannot be read now: {e}");
+            None
+        }
+    };
+    match listed {
+        Some(holds) => !matches!(holds, Holds::No),
+        None => match executor.events(did).await {
+            Ok(events) => crate::keylog::device(&events, key_id).is_some_and(|d| d.may_keep_master),
+            Err(e) => {
+                log::warn!("custody: the key log cannot be read now: {e}");
+                true
+            }
+        },
     }
 }
 
@@ -2486,6 +2596,7 @@ mod tests {
                 kind: DeviceKind::DesktopApp,
                 holds_master: Holds::Offered,
             }],
+            revoked_holders: vec!["d3".into()],
             requests: vec![RequestView {
                 id: "r1".into(),
                 kind: "send-master".into(),
@@ -2502,6 +2613,7 @@ mod tests {
         assert_eq!(public["requests"][0]["kind"], "send-master");
         assert_eq!(public["requests"][0]["keyIds"], json!([]));
         assert_eq!(public["masterWaiting"], true);
+        assert_eq!(public["revokedHolders"], json!(["d3"]));
         assert_eq!(public["holdsMaster"]["index"], 0);
         assert_eq!(public["blocked"], NO_STORE);
         let screen = serde_json::to_value(Screen::PendingRefused {
@@ -2551,7 +2663,11 @@ mod tests {
                 device: "Phone".into(),
                 note: None,
             },
-            Screen::Asked,
+            Screen::Asked {
+                key_id: "d2".into(),
+                fingerprint: "ABCD EFGH".into(),
+                code: "R7K Q2M".into(),
+            },
             Screen::Renamed {
                 key_id: "d2".into(),
                 name: "Desk".into(),
@@ -2667,7 +2783,7 @@ mod tests {
             vault,
             ExecutorAddress {
                 url: "http://127.0.0.1:9".into(),
-                admin_credential: Arc::from("x"),
+                credential: Arc::from("x"),
             },
         );
         assert_eq!(
@@ -2923,7 +3039,7 @@ mod tests {
     {
         let address = ExecutorAddress {
             url: "http://127.0.0.1:9".into(),
-            admin_credential: Arc::from("x"),
+            credential: Arc::from("x"),
         };
         let (tx, mut rx) = mpsc::unbounded_channel();
         let (first_tx, first_rx) = oneshot::channel();
@@ -2970,7 +3086,7 @@ mod tests {
         let (first_tx, first_rx) = oneshot::channel();
         let address = ExecutorAddress {
             url: "http://127.0.0.1:9".into(),
-            admin_credential: Arc::from("x"),
+            credential: Arc::from("x"),
         };
         (address, rx, Some(first_tx), Window { tx }, first_rx)
     }
@@ -3168,7 +3284,22 @@ mod tests {
             .answer("identity.postRequest", json!({ "id": "r1" }));
         let vault = memory_vault(crate::store::StoreKind::Keychain);
         let screen = ask_master_on(&executor, &vault).await;
-        assert!(matches!(screen, Screen::Asked), "{screen:?}");
+        // The asking screen shows this device's key and the request's code, as the card does.
+        let key = Signer::key(&executor.rpc().device);
+        let Screen::Asked {
+            key_id,
+            fingerprint,
+            code,
+        } = &screen
+        else {
+            panic!("{screen:?}");
+        };
+        assert_eq!(key_id, "d1");
+        assert_eq!(*fingerprint, crate::keylog::fingerprint(key.as_str()));
+        assert_eq!(
+            *code,
+            ad4m_identity_core::link::match_code(LINKED_SCID, "r1", key.as_str())
+        );
         assert_eq!(
             executor.rpc().called("identity.postRequest"),
             vec![json!({ "body": { "kind": "send-master" } })]
@@ -3199,6 +3330,154 @@ mod tests {
         let screen = first.await.unwrap().unwrap();
         assert!(
             matches!(&screen, Screen::Failed { message } if message.contains("no longer waiting")),
+            "{screen:?}"
+        );
+    }
+
+    /// The card names who asks from the key log, whatever the record says: with no record entry
+    /// (no name, no kind; a renamed one is no different) the poster still shows its own key id,
+    /// fingerprint and the request's code. Whether it may get the master key is its claim's, in
+    /// the log, never the record's kind: the same key that joined saying no is refused.
+    #[tokio::test]
+    async fn a_request_card_shows_the_key_logs_device_whatever_the_record_says() {
+        for may_keep in [true, false] {
+            let (events, d2) = crate::keylog::tests::log_with_d2(may_keep);
+            let scid = events[0].scid.clone();
+            let executor = ViaExecutor::new(FakeExecutor::new());
+            *executor.rpc().held.borrow_mut() = Some(scid.clone());
+            let events: Vec<Value> = events
+                .iter()
+                .map(|e| serde_json::to_value(e).unwrap())
+                .collect();
+            executor.rpc().answer(
+                "identity.log",
+                json!({ "did": did_of(&scid), "events": events, "head": null, "fork": null }),
+            );
+            executor.rpc().answer(
+                "identity.requests",
+                json!([{
+                    "id": "r1", "body": { "kind": "send-master" },
+                    "by": "d2", "created": 0, "expires": 99,
+                    "signed": { "req": {
+                        "did": did_of(&scid), "store": "did:key:zStore", "keyId": "d2",
+                        "kelSeq": 1, "kelHash": "h", "method": "POST", "path": "/requests",
+                        "bodyHash": "b", "nonce": "n", "expires": 99,
+                    }, "sig": "s" },
+                }]),
+            );
+            let vault = memory_vault(crate::store::StoreKind::Keychain);
+            let (address, mut rx, mut reply, window, first) = opened();
+            // No answer comes: the step ends after its first screen.
+            drop(window);
+            answer_on(
+                &executor,
+                &vault,
+                &address,
+                &mut rx,
+                &mut reply,
+                "r1".into(),
+            )
+            .await;
+            let screen = first.await.unwrap().unwrap();
+            let key = Signer::key(&d2);
+            if may_keep {
+                let Screen::Request {
+                    key_id,
+                    fingerprint,
+                    code,
+                    device,
+                    ..
+                } = &screen
+                else {
+                    panic!("{screen:?}");
+                };
+                assert_eq!(key_id, "d2");
+                assert_eq!(*fingerprint, crate::keylog::fingerprint(key.as_str()));
+                assert_eq!(
+                    *code,
+                    ad4m_identity_core::link::match_code(&scid, "r1", key.as_str())
+                );
+                assert_eq!(device, "Device d2");
+            } else {
+                assert!(
+                    matches!(&screen, Screen::Failed { message }
+                        if message.contains("does not keep the master key")),
+                    "{screen:?}"
+                );
+            }
+        }
+    }
+
+    /// Where the record cannot say, the revoke confirmation takes from the key log whether the
+    /// device may keep a copy of the master key; with no log either, it warns.
+    #[tokio::test]
+    async fn a_revoke_confirmation_knows_a_device_that_may_keep_the_master_key() {
+        for may_keep in [true, false] {
+            let (events, _) = crate::keylog::tests::log_with_d2(may_keep);
+            let scid = events[0].scid.clone();
+            let executor = ViaExecutor::new(FakeExecutor::new());
+            let events: Vec<Value> = events
+                .iter()
+                .map(|e| serde_json::to_value(e).unwrap())
+                .collect();
+            executor.rpc().answer(
+                "identity.log",
+                json!({ "did": did_of(&scid), "events": events, "head": null, "fork": null }),
+            );
+            assert_eq!(
+                keeps_master(&executor, &did_of(&scid), "d2").await,
+                may_keep
+            );
+        }
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        assert!(keeps_master(&executor, "did:scid:coasys:1:Qm", "d2").await);
+        let confirm = serde_json::to_value(Screen::RevokeConfirm {
+            key_id: "d2".into(),
+            holds_master: true,
+            passphrase: false,
+            error: None,
+        })
+        .unwrap();
+        assert_eq!(confirm["holdsMaster"], true);
+    }
+
+    /// A device without the master key names only itself; naming another device is refused.
+    #[tokio::test]
+    async fn a_device_without_the_master_key_renames_only_itself() {
+        let executor = linked_executor();
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        drop(window);
+        rename_on(
+            &executor,
+            &vault,
+            &address,
+            &mut rx,
+            &mut reply,
+            "d2".into(),
+        )
+        .await;
+        let screen = first.await.unwrap().unwrap();
+        assert!(
+            matches!(&screen, Screen::Failed { message } if message.contains("Only a device that keeps")),
+            "{screen:?}"
+        );
+
+        // Its own key (`d1`): not refused for that.
+        let (address, mut rx, mut reply, window, first) = opened();
+        drop(window);
+        rename_on(
+            &executor,
+            &vault,
+            &address,
+            &mut rx,
+            &mut reply,
+            "d1".into(),
+        )
+        .await;
+        let screen = first.await.unwrap().unwrap();
+        assert!(
+            !matches!(&screen, Screen::Failed { message } if message.contains("Only a device that keeps")),
             "{screen:?}"
         );
     }
@@ -3335,6 +3614,9 @@ mod tests {
         let screen = serde_json::to_value(Screen::Request {
             id: "r1".into(),
             kind: "send-master",
+            key_id: "d2".into(),
+            fingerprint: "ABCD EFGH".into(),
+            code: "R7K Q2M".into(),
             device: "Phone".into(),
             devices: vec![],
             passphrase: true,
@@ -3343,6 +3625,10 @@ mod tests {
         .unwrap();
         assert_eq!(screen["screen"], "request");
         assert_eq!(screen["kind"], "send-master");
+        assert_eq!(
+            (&screen["keyId"], &screen["fingerprint"], &screen["code"]),
+            (&json!("d2"), &json!("ABCD EFGH"), &json!("R7K Q2M"))
+        );
         let screen = serde_json::to_value(Screen::DeviceCode {
             code: "c".into(),
             qr_svg: "<svg/>".into(),

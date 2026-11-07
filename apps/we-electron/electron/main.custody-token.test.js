@@ -1,11 +1,12 @@
 /**
  * The custody channel's credential, driven through `main.js` as in `main.supervisor.test.js`.
  *
- * The custody sidecar reaches the executor's custody channel with the admin credential: the one
- * `main.js` makes for the executor, passes to the sidecar in its environment, and answers the main
- * window's `get-token` with. This test shows that it is one credential, so whatever runs in the main
- * renderer presents the same credential to the executor as the sidecar does, and passes the same
- * custody guard (`identity.takeMaster`, `identity.claimOffer` with `canKeepMaster`).
+ * The custody sidecar reaches the executor's custody channel with a credential of its own: `main.js`
+ * makes it at each start beside the admin credential, passes it to the executor
+ * (`AD4M_CUSTODY_CREDENTIAL`) and to the sidecar only. The main window's `get-token` answers the
+ * admin credential, which the executor's custody guard (`identity::custody::admit`) refuses, so
+ * nothing running in the main renderer can call `identity.takeMaster` or `identity.claimOffer` with
+ * `canKeepMaster`.
  *
  * The sidecar is a fake `we-custody` beside the fake executor: it records its arguments and
  * environment and answers nothing.
@@ -171,7 +172,7 @@ process.stdin.on('end', () => process.exit(0));
 `;
 
 describe.skipIf(process.platform === 'win32' || !existsSync(join(here, 'seed-csp.json')))(
-  'the credential the custody sidecar gets is the one the main window gets',
+  'the credential the custody sidecar gets is not the one the main window gets',
   () => {
     beforeAll(async () => {
       state.root = mkdtempSync(join(tmpdir(), 'we-custody-token-'));
@@ -208,21 +209,22 @@ describe.skipIf(process.platform === 'win32' || !existsSync(join(here, 'seed-csp
       rmSync(state.root, { recursive: true, force: true });
     });
 
-    it('starts the sidecar against the executor with the admin credential in its environment', async () => {
+    it('starts the sidecar against the executor with the custody credential, and only it, in its environment', async () => {
       const custody = JSON.parse(readFileSync(custodyFile(), 'utf8'));
       const port = await invoke('get-port');
       expect(custody.argv).toEqual(['--executor-port', String(port)]);
-      expect(custody.env.AD4M_ADMIN_CREDENTIAL).toMatch(/^[0-9a-f-]{36}$/);
+      expect(custody.env.AD4M_CUSTODY_CREDENTIAL).toMatch(/^[0-9a-f-]{36}$/);
+      expect(custody.env.AD4M_ADMIN_CREDENTIAL).toBeUndefined();
     });
 
-    it('answers get-token with that same credential, so the renderer passes the custody guard too', async () => {
+    it('answers get-token with the admin credential, never the custody credential', async () => {
       const custody = JSON.parse(readFileSync(custodyFile(), 'utf8'));
       const token = await invoke('get-token');
-      // Today this is one credential. The custody channel of ad4m (`identity::custody::admit`)
-      // admits "the admin credential on a loopback listener", so the main renderer, with this
-      // token, can call `identity.takeMaster` and take a master key waiting in this computer's
-      // inbox. The renderer should get a credential that `admit` does not accept.
-      expect(token).toBe(custody.env.AD4M_ADMIN_CREDENTIAL);
+      // The custody channel of ad4m (`identity::custody::admit`) admits only the custody credential
+      // on a loopback listener, so the main renderer, with this token, cannot call
+      // `identity.takeMaster` and take a master key waiting in this computer's inbox.
+      expect(token).toMatch(/^[0-9a-f-]{36}$/);
+      expect(token).not.toBe(custody.env.AD4M_CUSTODY_CREDENTIAL);
     });
   },
 );

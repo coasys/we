@@ -99,6 +99,7 @@ const NO_CUSTODY: IdentityCustodyView = {
   unlock: 'passphrase',
   blocked: null,
   devices: [],
+  revokedHolders: [],
   requests: [],
   masterWaiting: false,
 };

@@ -145,6 +145,14 @@ function errorLine(error: string | null): Child[] {
   return error ? [el('p', { className: 'error', textContent: error })] : [];
 }
 
+/** Who asks, as both devices show it: the request's code, and the asking key from the key log. */
+function whoAsks(screen: { keyId: string; fingerprint: string; code: string }): Child[] {
+  return [
+    el('div', { className: 'code', textContent: screen.code }),
+    el('p', { className: 'note', textContent: `${screen.keyId} · key ${screen.fingerprint}` }),
+  ];
+}
+
 function body(screen: Screen): Child[] {
   switch (screen.screen) {
     case 'show-words': {
@@ -291,6 +299,7 @@ function body(screen: Screen): Child[] {
       const yes =
         screen.kind === 'send-master' ? button('Send it', go, 'primary') : button('Revoke them', go, 'danger');
       return [
+        ...whoAsks(screen),
         ...(screen.kind === 'confirm-revoke'
           ? [el('ul', {}, ...screen.devices.map((d) => el('li', { textContent: d })))]
           : []),
@@ -336,10 +345,11 @@ function body(screen: Screen): Child[] {
     case 'joined':
     case 'master-taken':
       return [el('div', { className: 'link', textContent: screen.did })];
+    case 'asked':
+      return whoAsks(screen);
     case 'linked':
     case 'revoked':
     case 'request-answered':
-    case 'asked':
     case 'renamed':
     case 'failed':
       return [];

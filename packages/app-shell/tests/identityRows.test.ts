@@ -3,6 +3,10 @@ import { describe, expect, it } from 'vitest';
 
 import { deviceRows, keyLogRows, requestRows, shortDid, shortHash } from '../src/shared/identityRows';
 
+const REVOKED_HOLDER = 'Still holds a valid master key — replace your master key';
+/** Where only the key log speaks: it let the device keep the master key, and the record is gone. */
+const REVOKED_MAY_HOLD = 'May still hold a valid master key — replace your master key';
+
 describe('keyLogRows', () => {
   const events = [
     { seq: 0, op: 'incept', hash: 'QmZkAAAAAAAAAAAA7rWd', added: [{ id: 'd1', sign: 'z' }], revoked: [] },
@@ -61,7 +65,7 @@ describe('deviceRows', () => {
         { keyId: 'd1', name: 'Desktop', kind: 'desktop-app', holdsMaster: 'yes' },
         { keyId: 'd2', name: 'Box', kind: 'server', holdsMaster: 'no' },
         { keyId: 'd3', name: 'Laptop', kind: 'desktop-app', holdsMaster: 'offered' },
-        // A revoked key keeps nothing, whatever the record last said.
+        // A revoke leaves its copy of the master key valid: the row still says so.
         { keyId: 'd4', name: 'Old', kind: 'desktop-app', holdsMaster: 'yes' },
       ],
     );
@@ -69,9 +73,38 @@ describe('deviceRows', () => {
       ['Desktop', 'laptop', 'Holds the master key'],
       ['Box', 'hard-drives', ''],
       ['Laptop', 'laptop', 'Master key offered, not yet taken'],
-      ['Old', 'laptop', ''],
+      ['Old', 'laptop', REVOKED_HOLDER],
     ]);
     expect(rows[0].subtitle).toBe('This computer · d1 · added at #0');
+    // Not a master key it keeps: a warning.
+    expect(rows[3].holdsMaster).toBe('no');
+  });
+
+  it('keeps warning of a device revoked after it was handed the master key', () => {
+    const keys = [
+      { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, revokedSeq: null },
+      { keyId: 'd2', sign: 'z', thisDevice: false, addedSeq: 1, revokedSeq: null },
+    ];
+    const handedOver = deviceRows(keys, [
+      { keyId: 'd1', name: 'Desktop', kind: 'desktop-app', holdsMaster: 'yes' },
+      { keyId: 'd2', name: 'Laptop', kind: 'desktop-app', holdsMaster: 'yes' },
+    ]);
+    expect(handedOver[1].master).toBe('Holds the master key');
+
+    // The revoke: the record's write drops d2's entry, and the key log says d2 may still hold it.
+    const revoked = deviceRows(
+      [keys[0], { ...keys[1], revokedSeq: 2 }],
+      [{ keyId: 'd1', name: 'Desktop', kind: 'desktop-app', holdsMaster: 'yes' }],
+      ['d2'],
+    );
+    expect(revoked.map((r) => [r.label, r.status, r.master])).toEqual([
+      ['Desktop', 'Valid', 'Holds the master key'],
+      ['Device d2', 'Revoked at #2', REVOKED_MAY_HOLD],
+    ]);
+
+    // A revoked device the log never let keep the master key carries no warning.
+    const server = deviceRows([keys[0], { ...keys[1], revokedSeq: 2 }], [], []);
+    expect(server[1].master).toBe('');
   });
 });
 

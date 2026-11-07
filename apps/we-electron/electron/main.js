@@ -70,6 +70,9 @@ const __dirname = dirname(__filename);
 let mainWindow;
 let ad4mPort = null;
 let ad4mToken = null;
+// The custody channel's own credential: the executor and the custody sidecar get it, the window
+// never does (`get-token` hands it `ad4mToken`). The executor's `--custody-channel` admits only it.
+let custodyToken = null;
 let executorProcess = null;
 /** Set while an account switch is tearing the executor down on purpose. */
 let switchingAccount = false;
@@ -336,6 +339,7 @@ async function startExecutorOnce({ samePort }) {
     if (!samePort || !ad4mPort) {
       ad4mPort = await findFreePort(12000, 13000);
       ad4mToken = uuidv4();
+      custodyToken = uuidv4();
     }
 
     // Get AD4M data directory
@@ -377,7 +381,7 @@ async function startExecutorOnce({ samePort }) {
       {
         detached: true, // Create a new process group so we can kill the entire tree
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: executorSpawnEnv(executorEnv(), ad4mToken),
+        env: executorSpawnEnv(executorEnv(), ad4mToken, custodyToken),
       },
     );
 
@@ -472,7 +476,7 @@ async function startExecutorOnce({ samePort }) {
     }
 
     console.log('AD4M executor ready');
-    startCustodyFor(ad4mPort, ad4mToken);
+    startCustodyFor(ad4mPort, custodyToken);
   } catch (error) {
     console.error('Error starting executor:', error);
     throw error;
@@ -523,7 +527,7 @@ const custodyBinary = () =>
     ? join(process.resourcesPath, 'we-custody')
     : join(__dirname, '..', '..', '..', 'crates', 'custody', 'target', 'release', 'we-custody');
 
-/** Starts the sidecar against the executor on `port`, whose admin credential is `credential`. */
+/** Starts the sidecar against the executor on `port`, whose custody credential is `credential`. */
 function startCustodyFor(port, credential) {
   if (process.platform === 'win32') return;
   const binary = custodyBinary();
@@ -1229,7 +1233,10 @@ app.whenReady().then(async () => {
     ad4mPort = Number(process.env.WE_EXTERNAL_AD4M_PORT);
     ad4mToken = process.env.WE_EXTERNAL_AD4M_TOKEN;
     console.log('[main] External executor mode — port:', ad4mPort);
-    startCustodyFor(ad4mPort, ad4mToken);
+    // An external executor's custody channel has its own credential; without one, identity is off.
+    custodyToken = process.env.WE_EXTERNAL_AD4M_CUSTODY_CREDENTIAL || null;
+    if (custodyToken) startCustodyFor(ad4mPort, custodyToken);
+    else console.error('[main] No WE_EXTERNAL_AD4M_CUSTODY_CREDENTIAL — identity is off');
   } else {
     try {
       await startExecutor();

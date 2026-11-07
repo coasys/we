@@ -146,6 +146,16 @@ describe('the executor’s start', () => {
     expect(() => executorSpawnEnv({}, '')).toThrow();
   });
 
+  it('carries a custody credential of its own beside the admin one', () => {
+    expect(executorSpawnEnv({ PATH: '/bin' }, 'admin', 'custody')).toEqual({
+      PATH: '/bin',
+      AD4M_ADMIN_CREDENTIAL: 'admin',
+      AD4M_CUSTODY_CREDENTIAL: 'custody',
+    });
+    expect(() => executorSpawnEnv({}, 'admin', '')).toThrow();
+    expect(() => executorSpawnEnv({}, 'same', 'same')).toThrow();
+  });
+
   it('main.js puts no credential on the command line and registers no unchecked handler', () => {
     const main = readFileSync(join(here, 'main.js'), 'utf8');
     expect(main).not.toMatch(/['"]--admin-credential['"]/);

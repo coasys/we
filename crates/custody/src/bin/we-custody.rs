@@ -1,7 +1,7 @@
 //! The custody service as a sidecar process: see `we_custody::sidecar`.
 //!
-//! `we-custody --executor-port <port> [--custody-dir <dir>]`, with the executor's admin credential in
-//! `AD4M_ADMIN_CREDENTIAL`. Exits 0 when stdin closes, 2 on a bad configuration.
+//! `we-custody --executor-port <port> [--custody-dir <dir>]`, with the executor's custody credential in
+//! `AD4M_CUSTODY_CREDENTIAL`. Exits 0 when stdin closes, 2 on a bad configuration.
 
 use std::process::ExitCode;
 

@@ -123,7 +123,7 @@ export function DeviceStoreProvider(props: ParentProps) {
   }
 
   const names = () => identity.custody()?.devices ?? [];
-  const rows = createMemo(() => deviceRows(raw(), names()));
+  const rows = createMemo(() => deviceRows(raw(), names(), identity.custody()?.revokedHolders ?? []));
   const linking = () => session.identityCapabilities().linkDevice && identity.canChange();
   const canManage = () => linking() && !!identity.did() && !!identity.custody()?.holdsMaster;
   const masterWaiting = () => !!identity.custody()?.masterWaiting;

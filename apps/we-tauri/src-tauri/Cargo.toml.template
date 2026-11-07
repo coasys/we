@@ -88,3 +88,4 @@ sqlx-sqlite = { git = "https://github.com/coasys/sqlx.git", branch = "sqlite-lib
 ad4m-identity-client = { path = "{{AD4M_CLIENT_PATH}}/../ad4m-identity-client" }
 ad4m-identity-core = { path = "{{AD4M_CLIENT_PATH}}/../ad4m-identity-core" }
 ad4m-client = { path = "{{AD4M_CLIENT_PATH}}" }
+ad4m-ldk = { path = "{{AD4M_CLIENT_PATH}}/../ad4m-ldk/rust" }

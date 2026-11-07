@@ -18,6 +18,7 @@
 //! `tests/boundary.rs` keeps it so.
 
 pub mod host;
+pub mod keylog;
 pub mod pending;
 pub mod seal;
 pub mod service;
