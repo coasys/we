@@ -17,7 +17,66 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use ad4m_identity_client::VaultError;
+use ad4m_identity_client::{StageToken, VaultError};
+
+/// What an item kept as it is ([`StoreKind::unlocks_itself`]) carries beside its bytes as public
+/// attributes, written in the same store operation as the bytes: its master index, and for a
+/// staged key the token of the flow that staged it. Neither is secret; both are read with no
+/// unlock. A sealed item carries the same in its own authenticated header
+/// ([`crate::seal::sealed_index`], [`crate::seal::sealed_owner`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ItemTag {
+    pub index: u32,
+    pub owner: Option<StageToken>,
+}
+
+/// The prefix of the comment a keychain item kept with its [`ItemTag`] carries.
+#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
+const INDEX_COMMENT: &str = "coasys-master-index:";
+/// Between the index and the owner token in that comment.
+#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
+const OWNER_COMMENT: &str = ";owner:";
+
+/// The keychain comment (`kSecAttrComment`) that carries `tag`: `coasys-master-index:<n>`, and
+/// `;owner:<32 hex digits>` after it for a staged key. One attribute, so it is written in the
+/// same `SecItemAdd` as the key.
+#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
+fn tag_comment(tag: &ItemTag) -> String {
+    let mut comment = format!("{INDEX_COMMENT}{}", tag.index);
+    if let Some(owner) = tag.owner {
+        comment.push_str(OWNER_COMMENT);
+        for byte in owner.0 {
+            comment.push_str(&format!("{byte:02x}"));
+        }
+    }
+    comment
+}
+
+/// The [`ItemTag`] a keychain comment carries. `None` when it carries no index (an item kept
+/// before the index was); an owner that does not read as a token is no owner, so the key is
+/// one only a discard naming no owner forgets.
+#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
+fn comment_tag(comment: &str) -> Option<ItemTag> {
+    let rest = comment.strip_prefix(INDEX_COMMENT)?;
+    let (index, owner) = match rest.split_once(OWNER_COMMENT) {
+        Some((index, owner)) => (index, Some(owner)),
+        None => (rest, None),
+    };
+    let owner = owner.and_then(|hex| {
+        let mut token = [0u8; 16];
+        if hex.len() != 32 || !hex.is_ascii() {
+            return None;
+        }
+        for (at, byte) in token.iter_mut().enumerate() {
+            *byte = u8::from_str_radix(&hex[2 * at..2 * at + 2], 16).ok()?;
+        }
+        Some(StageToken(token))
+    });
+    Some(ItemTag {
+        index: index.parse().ok()?,
+        owner,
+    })
+}
 
 /// Which kind of store holds an item, and so how the person unlocks it. Asked per item
 /// ([`SecretStore::kind_of`]): two identities on one computer can rest in different kinds.
@@ -60,19 +119,19 @@ pub trait SecretStore: Send + Sync {
     fn reachable(&self) -> bool {
         true
     }
-    /// [`put`](SecretStore::put), with `index` kept as a public attribute of the item, written in
+    /// [`put`](SecretStore::put), with `tag` kept as public attributes of the item, written in
     /// the same operation as the bytes, for a store that keeps its items as they are
-    /// ([`StoreKind::unlocks_itself`]): what [`index_of`](SecretStore::index_of) reads back with
-    /// no unlock. A sealed item carries its index in its own authenticated header
+    /// ([`StoreKind::unlocks_itself`]): what [`tag_of`](SecretStore::tag_of) reads back with
+    /// no unlock. A sealed item carries its tag in its own authenticated header
     /// ([`crate::seal::sealed_index`]), so a store that only keeps sealed items keeps the bytes.
-    fn put_indexed(&self, name: &str, bytes: &[u8], index: u32) -> Result<(), VaultError> {
-        let _ = index;
+    fn put_tagged(&self, name: &str, bytes: &[u8], tag: &ItemTag) -> Result<(), VaultError> {
+        let _ = tag;
         self.put(name, bytes)
     }
-    /// The index attribute [`put_indexed`](SecretStore::put_indexed) kept with the item `name`,
-    /// read without the item's bytes (no unlock, no prompt). `None` when the item is absent, or
-    /// was kept without one, or the store keeps none.
-    fn index_of(&self, name: &str) -> Result<Option<u32>, VaultError> {
+    /// The tag [`put_tagged`](SecretStore::put_tagged) kept with the item `name`, read without
+    /// the item's bytes (no unlock, no prompt). `None` when the item is absent, or was kept
+    /// without one, or the store keeps none.
+    fn tag_of(&self, name: &str) -> Result<Option<ItemTag>, VaultError> {
         let _ = name;
         Ok(None)
     }
@@ -82,8 +141,8 @@ pub trait SecretStore: Send + Sync {
     /// keychain, whose read prompts) does so.
     fn rename(&self, from: &str, to: &str) -> Result<(), VaultError> {
         let bytes = zeroize::Zeroizing::new(self.get(from)?.ok_or(VaultError::NotFound)?);
-        match self.index_of(from)? {
-            Some(index) => self.put_indexed(to, &bytes, index)?,
+        match self.tag_of(from)? {
+            Some(tag) => self.put_tagged(to, &bytes, &tag)?,
             None => self.put(to, &bytes)?,
         }
         self.delete(from)
@@ -202,7 +261,7 @@ impl SecretStore for FileStore {
 // ─── Memory (tests) ─────────────────────────────────────────────────────────────
 
 /// An item's bytes and the index attribute kept with them.
-type MemoryItem = (Vec<u8>, Option<u32>);
+type MemoryItem = (Vec<u8>, Option<ItemTag>);
 
 #[derive(Default)]
 pub struct MemoryStore {
@@ -246,20 +305,20 @@ impl SecretStore for MemoryStore {
             .insert(name.into(), (bytes.to_vec(), None));
         Ok(())
     }
-    fn put_indexed(&self, name: &str, bytes: &[u8], index: u32) -> Result<(), VaultError> {
+    fn put_tagged(&self, name: &str, bytes: &[u8], tag: &ItemTag) -> Result<(), VaultError> {
         self.items
             .lock()
             .map_err(|_| VaultError::Unavailable("poisoned".into()))?
-            .insert(name.into(), (bytes.to_vec(), Some(index)));
+            .insert(name.into(), (bytes.to_vec(), Some(*tag)));
         Ok(())
     }
-    fn index_of(&self, name: &str) -> Result<Option<u32>, VaultError> {
+    fn tag_of(&self, name: &str) -> Result<Option<ItemTag>, VaultError> {
         Ok(self
             .items
             .lock()
             .map_err(|_| VaultError::Unavailable("poisoned".into()))?
             .get(name)
-            .and_then(|(_, index)| *index))
+            .and_then(|(_, tag)| *tag))
     }
     fn get(&self, name: &str) -> Result<Option<Vec<u8>>, VaultError> {
         Ok(self
@@ -493,8 +552,6 @@ mod keychain_store {
     pub struct KeychainStore;
 
     const SERVICE: &str = "org.coasys.app";
-    /// The comment an item kept with its master index carries: `coasys-master-index:<n>`.
-    const INDEX_COMMENT: &str = "coasys-master-index:";
 
     const ERR_SEC_USER_CANCELED: i32 = -128;
     const ERR_SEC_ITEM_NOT_FOUND: i32 = -25300;
@@ -540,24 +597,21 @@ mod keychain_store {
             set_generic_password_options(bytes, options).map_err(unavailable)
         }
 
-        /// The index as the item's comment (`kSecAttrComment`), added in the same `SecItemAdd`
-        /// as the bytes: an attribute, so it is read with no prompt ([`index_of`]), and only
-        /// this app's access group can write it.
-        fn put_indexed(&self, name: &str, bytes: &[u8], index: u32) -> Result<(), VaultError> {
+        /// The tag as the item's comment (`kSecAttrComment`, [`tag_comment`]), added in the same
+        /// `SecItemAdd` as the bytes: an attribute, so it is read with no prompt ([`tag_of`]),
+        /// and only this app's access group can write it.
+        fn put_tagged(&self, name: &str, bytes: &[u8], tag: &ItemTag) -> Result<(), VaultError> {
             self.delete(name)?;
             let mut options = item(name);
             options.set_access_control_options(AccessControlOptions::USER_PRESENCE);
-            options.set_comment(&format!("{INDEX_COMMENT}{index}"));
+            options.set_comment(&tag_comment(tag));
             set_generic_password_options(bytes, options).map_err(unavailable)
         }
 
-        fn index_of(&self, name: &str) -> Result<Option<u32>, VaultError> {
+        fn tag_of(&self, name: &str) -> Result<Option<ItemTag>, VaultError> {
             let (status, comment) = probe(name);
             match status {
-                0 => Ok(comment
-                    .as_deref()
-                    .and_then(|c| c.strip_prefix(INDEX_COMMENT))
-                    .and_then(|n| n.parse().ok())),
+                0 => Ok(comment.as_deref().and_then(comment_tag)),
                 // Kept, but even its attributes need the person: it cannot tell.
                 ERR_SEC_INTERACTION_NOT_ALLOWED | ERR_SEC_ITEM_NOT_FOUND => Ok(None),
                 code => Err(unavailable(Error::from_code(code))),
@@ -841,13 +895,13 @@ impl SecretStore for PlacedStore {
         }
     }
 
-    fn put_indexed(&self, name: &str, bytes: &[u8], index: u32) -> Result<(), VaultError> {
-        self.side(name)?.put_indexed(name, bytes, index)
+    fn put_tagged(&self, name: &str, bytes: &[u8], tag: &ItemTag) -> Result<(), VaultError> {
+        self.side(name)?.put_tagged(name, bytes, tag)
     }
 
-    fn index_of(&self, name: &str) -> Result<Option<u32>, VaultError> {
+    fn tag_of(&self, name: &str) -> Result<Option<ItemTag>, VaultError> {
         match self.holder(name)? {
-            Some(side) => side.index_of(name),
+            Some(side) => side.tag_of(name),
             None => Ok(None),
         }
     }
@@ -867,8 +921,8 @@ impl SecretStore for PlacedStore {
             ));
         }
         let bytes = zeroize::Zeroizing::new(from_side.get(from)?.ok_or(VaultError::NotFound)?);
-        match from_side.index_of(from)? {
-            Some(index) => to_side.put_indexed(to, &bytes, index)?,
+        match from_side.tag_of(from)? {
+            Some(tag) => to_side.put_tagged(to, &bytes, &tag)?,
             None => to_side.put(to, &bytes)?,
         }
         from_side.delete(from)
@@ -985,15 +1039,15 @@ impl SecretStore for Reconnecting {
         self.mark(name)
     }
 
-    fn put_indexed(&self, name: &str, bytes: &[u8], index: u32) -> Result<(), VaultError> {
+    fn put_tagged(&self, name: &str, bytes: &[u8], tag: &ItemTag) -> Result<(), VaultError> {
         let connected = self.reach()?;
-        self.on(&connected, |store| store.put_indexed(name, bytes, index))?;
+        self.on(&connected, |store| store.put_tagged(name, bytes, tag))?;
         self.mark(name)
     }
 
-    fn index_of(&self, name: &str) -> Result<Option<u32>, VaultError> {
+    fn tag_of(&self, name: &str) -> Result<Option<ItemTag>, VaultError> {
         match self.reach() {
-            Ok(connected) => self.on(&connected, |store| store.index_of(name)),
+            Ok(connected) => self.on(&connected, |store| store.tag_of(name)),
             Err(why) => self.unreached(name, why, None),
         }
     }
@@ -1161,6 +1215,40 @@ mod tests {
         assert!(!store.contains(&item_name("QmOther")).unwrap());
         store.delete(&name).unwrap();
         assert!(!store.contains(&name).unwrap());
+    }
+
+    /// The keychain keeps an item's tag in its comment: the index alone for a kept key, and the
+    /// staging flow's token after it for a staged one. A comment written before tokens were
+    /// kept reads as a tag with no owner; an owner that does not read as a token is none.
+    #[test]
+    fn the_keychain_comment_carries_the_index_and_the_owner() {
+        let kept = ItemTag {
+            index: 3,
+            owner: None,
+        };
+        assert_eq!(tag_comment(&kept), "coasys-master-index:3");
+        assert_eq!(comment_tag(&tag_comment(&kept)), Some(kept));
+        let mut token = [0u8; 16];
+        token[0] = 0xab;
+        token[15] = 0x01;
+        let staged = ItemTag {
+            index: 4,
+            owner: Some(StageToken(token)),
+        };
+        assert_eq!(
+            tag_comment(&staged),
+            "coasys-master-index:4;owner:ab000000000000000000000000000001"
+        );
+        assert_eq!(comment_tag(&tag_comment(&staged)), Some(staged));
+        assert_eq!(
+            comment_tag("coasys-master-index:4;owner:not-a-token"),
+            Some(ItemTag {
+                index: 4,
+                owner: None
+            })
+        );
+        assert_eq!(comment_tag("coasys-master-index:x;owner:"), None);
+        assert_eq!(comment_tag("another app's comment"), None);
     }
 
     /// One keyring behind a connection that can be down: every connect reaches the same items.

@@ -1024,9 +1024,11 @@ async fn refresh_stale<R: ExecutorRpc>(
     let Some(scid) = ad4m_identity_core::scid_of(did) else {
         return;
     };
-    // A key a rotation here staged and did not promote (cut off between its publish and the
-    // promote) is finished first, whatever the kept index says: `refresh_master` promotes it when
-    // the log names it, and discards it when the log does not.
+    // A key a rotation staged and did not promote (cut off between its publish and the promote,
+    // or with its publish still on its way, here or in another app sharing this folder) is
+    // handed to `refresh_master` first, whatever the kept index says: it promotes the key when
+    // the log's current index is the staged one, leaves it while the staged index is ahead of
+    // the log, and discards it only once the log is past it. Nothing here discards a staged key.
     let staged = vault.staged_index(scid).ok().flatten();
     let kept = vault.master_index(scid).ok().flatten();
     if staged.is_none() {
@@ -5184,11 +5186,16 @@ mod tests {
         fn delete(&self, name: &str) -> Result<(), VaultError> {
             self.items.delete(name)
         }
-        fn put_indexed(&self, name: &str, bytes: &[u8], index: u32) -> Result<(), VaultError> {
-            self.items.put_indexed(name, bytes, index)
+        fn put_tagged(
+            &self,
+            name: &str,
+            bytes: &[u8],
+            tag: &crate::store::ItemTag,
+        ) -> Result<(), VaultError> {
+            self.items.put_tagged(name, bytes, tag)
         }
-        fn index_of(&self, name: &str) -> Result<Option<u32>, VaultError> {
-            self.items.index_of(name)
+        fn tag_of(&self, name: &str) -> Result<Option<crate::store::ItemTag>, VaultError> {
+            self.items.tag_of(name)
         }
         fn rename(&self, from: &str, to: &str) -> Result<(), VaultError> {
             if self.refuse.swap(false, std::sync::atomic::Ordering::SeqCst) {

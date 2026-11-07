@@ -13,19 +13,23 @@
 //! always in the store the kept one is in, sealed as it is. Each item carries its master index
 //! where it can be read with no unlock and cannot be changed apart from the key: a sealed item in
 //! its header, under the AEAD tag; a keychain item as an attribute written in the same `SecItemAdd`.
+//! A staged item carries the staging flow's [`StageToken`] the same way ([`ItemTag`]), so a flow's
+//! discard forgets only the key it staged, never one another app sharing this folder staged since.
 //!
 //! Beside the master keys the vault keeps the incept of an identity `create` made here until its
 //! publish is confirmed, and the retry list of master-key pushes to other devices
 //! ([`PendingIncepts`]): public data, so in files rather than the secret store.
 
 use ad4m_identity_client::vault::KeySigner;
-use ad4m_identity_client::{MasterUse, PendingPush, Secret, Unlocked, Vault, VaultError};
+use ad4m_identity_client::{
+    MasterUse, PendingPush, Secret, StageToken, Unlocked, Vault, VaultError,
+};
 use ad4m_identity_core::Event;
 use zeroize::Zeroizing;
 
 use crate::pending::PendingIncepts;
 use crate::seal::{self, CustodyItem, Kdf};
-use crate::store::{item_name, staged_name, SecretStore};
+use crate::store::{item_name, staged_name, ItemTag, SecretStore};
 
 pub struct DesktopVault {
     store: Box<dyn SecretStore>,
@@ -123,18 +127,28 @@ impl DesktopVault {
 
     /// The index the item `name` carries, with no unlock.
     fn index_at(&self, name: &str) -> Result<Option<u32>, VaultError> {
+        Ok(self.tag_at(name)?.map(|tag| tag.index))
+    }
+
+    /// The index and the staging token the item `name` carries, read together from the item
+    /// with no unlock: a keychain item's attribute ([`SecretStore::tag_of`]), a sealed item's
+    /// header ([`seal::sealed_index`], [`seal::sealed_owner`]). `None` when no item is kept or it
+    /// does not say its index.
+    fn tag_at(&self, name: &str) -> Result<Option<ItemTag>, VaultError> {
         if !self.store.contains(name)? {
             return Ok(None);
         }
         if self.store.kind_of(name)?.unlocks_itself() {
-            return self.store.index_of(name);
+            return self.store.tag_of(name);
         }
         // A sealed blob: its bytes are no secret without the passphrase.
-        Ok(self
-            .store
-            .get(name)?
-            .as_deref()
-            .and_then(seal::sealed_index))
+        let Some(blob) = self.store.get(name)? else {
+            return Ok(None);
+        };
+        Ok(seal::sealed_index(&blob).map(|index| ItemTag {
+            index,
+            owner: seal::sealed_owner(&blob),
+        }))
     }
 
     fn read(
@@ -156,11 +170,12 @@ impl DesktopVault {
     }
 
     /// Writes `item` under `name` (its kept slot or its staged one), in one store operation that
-    /// carries its index with it.
+    /// carries its index with it, and `owner`, the staging flow's token, for a staged key.
     fn write(
         &self,
         name: &str,
         item: &CustodyItem,
+        owner: Option<&StageToken>,
         passphrase: Option<&str>,
     ) -> Result<(), VaultError> {
         log::info!("custody: write");
@@ -168,11 +183,18 @@ impl DesktopVault {
         // goes) keeps it.
         if self.store.kind_of(name)?.unlocks_itself() {
             let bytes = item.to_bytes();
-            self.store.put_indexed(name, &bytes, item.index)
+            let tag = ItemTag {
+                index: item.index,
+                owner: owner.copied(),
+            };
+            self.store.put_tagged(name, &bytes, &tag)
         } else {
             let passphrase = passphrase.ok_or(VaultError::Cancelled)?;
-            // The index is in the sealed header, under the tag.
-            let bytes = seal::seal(item, passphrase, self.kdf, &os_random)?;
+            // The index (and the owner) are in the sealed header, under the tag.
+            let bytes = match owner {
+                Some(owner) => seal::seal_staged(item, owner, passphrase, self.kdf, &os_random)?,
+                None => seal::seal(item, passphrase, self.kdf, &os_random)?,
+            };
             self.store.put(name, &bytes)
         }
     }
@@ -202,7 +224,8 @@ impl Vault for Unlocking<'_> {
             index,
             master: Zeroizing::new(*secret.expose()),
         };
-        self.vault.write(&item_name(scid), &item, self.passphrase())
+        self.vault
+            .write(&item_name(scid), &item, None, self.passphrase())
     }
 
     fn master_index(&self, scid: &str) -> Result<Option<u32>, VaultError> {
@@ -210,13 +233,17 @@ impl Vault for Unlocking<'_> {
     }
 
     /// The staged slot (`coasys.identity.staged/<scid>`), in the store the kept item is in and
-    /// sealed as it is, under this flow's passphrase. The store's put is durable when it answers
-    /// (a file is synced before its rename; the keychain and the Secret Service commit the item).
+    /// sealed as it is, under this flow's passphrase. `owner` goes with it as the index does: in
+    /// a sealed item's header under the tag, in a keychain item's comment written in the same
+    /// `SecItemAdd`. Replaces whatever was staged, whoever staged it. The store's put is durable
+    /// when it answers (a file is synced before its rename; the keychain and the Secret Service
+    /// commit the item).
     fn stage_master(
         &self,
         scid: &str,
         index: u32,
         secret: Secret<[u8; 32]>,
+        owner: &StageToken,
     ) -> Result<(), VaultError> {
         log::info!("custody: stage a master key");
         let item = CustodyItem {
@@ -225,7 +252,7 @@ impl Vault for Unlocking<'_> {
             master: Zeroizing::new(*secret.expose()),
         };
         self.vault
-            .write(&staged_name(scid), &item, self.passphrase())
+            .write(&staged_name(scid), &item, Some(owner), self.passphrase())
     }
 
     fn staged_index(&self, scid: &str) -> Result<Option<u32>, VaultError> {
@@ -245,8 +272,21 @@ impl Vault for Unlocking<'_> {
             .rename(&staged_name(scid), &item_name(scid))
     }
 
-    fn discard_staged(&self, scid: &str, index: u32) -> Result<(), VaultError> {
-        if self.vault.staged_index(scid)? != Some(index) {
+    /// Forgets the staged key only when it is staged at `index` and, with `owner` given, was
+    /// staged with that token: a flow discarding its own key never takes one another app on this
+    /// computer staged since. With no `owner` (a refresh discarding a key behind the log) any
+    /// owner's goes. A staged item with no token it can read (staged before tokens were kept)
+    /// matches only no `owner`. Anything else is left, with no error.
+    fn discard_staged(
+        &self,
+        scid: &str,
+        index: u32,
+        owner: Option<&StageToken>,
+    ) -> Result<(), VaultError> {
+        let ours = self.vault.tag_at(&staged_name(scid))?.is_some_and(|tag| {
+            tag.index == index && owner.is_none_or(|owner| tag.owner.as_ref() == Some(owner))
+        });
+        if !ours {
             return Ok(());
         }
         log::info!("custody: discard a staged master key");
@@ -590,11 +630,11 @@ mod tests {
         fn delete(&self, n: &str) -> Result<(), VaultError> {
             (**self).delete(n)
         }
-        fn put_indexed(&self, n: &str, b: &[u8], i: u32) -> Result<(), VaultError> {
-            (**self).put_indexed(n, b, i)
+        fn put_tagged(&self, n: &str, b: &[u8], t: &ItemTag) -> Result<(), VaultError> {
+            (**self).put_tagged(n, b, t)
         }
-        fn index_of(&self, n: &str) -> Result<Option<u32>, VaultError> {
-            (**self).index_of(n)
+        fn tag_of(&self, n: &str) -> Result<Option<ItemTag>, VaultError> {
+            (**self).tag_of(n)
         }
         fn rename(&self, from: &str, to: &str) -> Result<(), VaultError> {
             (**self).rename(from, to)
@@ -799,36 +839,257 @@ mod tests {
         assert_eq!(vault.master_index("QmScid").unwrap(), None);
     }
 
+    /// Data's review test (we#431, r2), adapted to the contract with stage tokens. Two handles on
+    /// one custody folder, as two desktop apps on one computer have (`host.rs`): what one
+    /// stages, the other reads. The other's discard naming its own token (a rotation of its own
+    /// that was refused) leaves this app's key; only a discard naming no owner (a refresh whose
+    /// log is already past the staged index) takes another app's. This app's promote after its
+    /// publish lands works, or finds the key already promoted by the other app, which the client
+    /// counts as kept because the vault keeps that index.
+    fn two_handles_share_the_staged_slot(
+        this_app: &DesktopVault,
+        other_app: &DesktopVault,
+        passphrase: Option<&str>,
+    ) {
+        let (ours, theirs) = (StageToken([0xa; 16]), StageToken([0xb; 16]));
+        let flow = this_app.unlocking(passphrase.map(|p| Secret::new(p.to_string())));
+        let other = other_app.unlocking(None);
+
+        flow.stage_master("QmScid", 1, Secret::new([5u8; 32]), &ours)
+            .unwrap();
+        assert_eq!(other_app.staged_index("QmScid").unwrap(), Some(1));
+        // The other app's own rotation, refused, discards with its own token: ours stays.
+        other.discard_staged("QmScid", 1, Some(&theirs)).unwrap();
+        assert_eq!(other_app.staged_index("QmScid").unwrap(), Some(1));
+        // Its refresh with the log still at #0 leaves a key staged ahead of the log: the
+        // client calls nothing here. Our publish lands; our promote finds the key.
+        this_app
+            .unlocking(None)
+            .promote_master("QmScid", 1)
+            .unwrap();
+        assert_eq!(this_app.master_index("QmScid").unwrap(), Some(1));
+        assert_eq!(other_app.master_index("QmScid").unwrap(), Some(1));
+
+        // The other app's refresh reads the log at #2 first and promotes our key: our promote
+        // finds nothing staged, and the vault keeps #2, which the client counts as kept.
+        flow.stage_master("QmScid", 2, Secret::new([6u8; 32]), &ours)
+            .unwrap();
+        other.promote_master("QmScid", 2).unwrap();
+        assert_eq!(
+            this_app.unlocking(None).promote_master("QmScid", 2),
+            Err(VaultError::NotFound)
+        );
+        assert_eq!(this_app.master_index("QmScid").unwrap(), Some(2));
+        assert_eq!(
+            flow.unlock("QmScid", MasterUse::Link, 0)
+                .unwrap()
+                .signer(0)
+                .unwrap()
+                .index(),
+            2
+        );
+
+        // A refresh whose log is past the staged index discards it whoever staged it.
+        flow.stage_master("QmScid", 3, Secret::new([7u8; 32]), &ours)
+            .unwrap();
+        other.discard_staged("QmScid", 3, None).unwrap();
+        assert_eq!(this_app.staged_index("QmScid").unwrap(), None);
+        assert_eq!(
+            this_app.unlocking(None).promote_master("QmScid", 3),
+            Err(VaultError::NotFound)
+        );
+        // The vault does not keep #3: the client stores the key again from the words.
+        assert_eq!(this_app.master_index("QmScid").unwrap(), Some(2));
+
+        // A stage replaces another app's stage; then the first app's discard of its own key is
+        // a no-op, and the stage left is the second app's.
+        flow.stage_master("QmScid", 3, Secret::new([7u8; 32]), &ours)
+            .unwrap();
+        other_app
+            .unlocking(passphrase.map(|p| Secret::new(p.to_string())))
+            .stage_master("QmScid", 3, Secret::new([8u8; 32]), &theirs)
+            .unwrap();
+        this_app
+            .unlocking(None)
+            .discard_staged("QmScid", 3, Some(&ours))
+            .unwrap();
+        assert_eq!(this_app.staged_index("QmScid").unwrap(), Some(3));
+        other.discard_staged("QmScid", 3, Some(&theirs)).unwrap();
+        assert_eq!(this_app.staged_index("QmScid").unwrap(), None);
+        assert_eq!(this_app.master_index("QmScid").unwrap(), Some(2));
+    }
+
+    #[test]
+    fn a_second_handle_on_the_same_folder_sees_and_deletes_a_staged_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let custody = dir.path().join("custody");
+        sealed_in_file(&custody, "QmScid", [4u8; 32], "a passphrase of length");
+        let this_app = placed(&custody, None);
+        let other_app = placed(&custody, None);
+        two_handles_share_the_staged_slot(&this_app, &other_app, Some("a passphrase of length"));
+    }
+
+    /// The same over one keychain, where the token is an attribute of the item.
+    #[test]
+    fn a_second_handle_on_the_same_keychain_sees_and_deletes_a_staged_key() {
+        let keychain = Arc::new(MemoryStore::as_kind(StoreKind::Keychain));
+        let this_app = DesktopVault::new(Box::new(keychain.clone()), PendingIncepts::memory());
+        let other_app = DesktopVault::new(Box::new(keychain.clone()), PendingIncepts::memory());
+        this_app
+            .unlocking(None)
+            .store_master("QmScid", 0, Secret::new([4u8; 32]))
+            .unwrap();
+        two_handles_share_the_staged_slot(&this_app, &other_app, None);
+    }
+
+    /// The token is kept with the staged item and authenticated as its index is: a sealed
+    /// item's header token or index, edited, leaves an item that does not open, and an edited
+    /// token makes the discard of the flow that staged it leave the key.
+    #[test]
+    fn a_staged_token_is_kept_with_the_key_and_cannot_be_edited() {
+        use crate::store::FileStore;
+        let dir = tempfile::tempdir().unwrap();
+        let custody = dir.path().join("custody");
+        sealed_in_file(&custody, "QmScid", [4u8; 32], "a passphrase of length");
+        let vault = placed(&custody, None);
+        let flow = vault.unlocking(pass("a passphrase of length"));
+        let ours = StageToken([0xa; 16]);
+        flow.stage_master("QmScid", 1, Secret::new([5u8; 32]), &ours)
+            .unwrap();
+        let file = FileStore::new(&custody);
+        let blob = file.get(&staged_name("QmScid")).unwrap().unwrap();
+        assert_eq!(seal::sealed_owner(&blob), Some(ours));
+        assert_eq!(seal::sealed_index(&blob), Some(1));
+
+        // The token in the file, edited to another app's: the flow's own discard leaves it, and
+        // the key, promoted by index, does not open.
+        let at = blob.windows(16).position(|w| w == ours.0).unwrap();
+        let mut edited = blob.clone();
+        edited[at..at + 16].copy_from_slice(&[0xb; 16]);
+        file.put(&staged_name("QmScid"), &edited).unwrap();
+        flow.discard_staged("QmScid", 1, Some(&ours)).unwrap();
+        assert_eq!(vault.staged_index("QmScid").unwrap(), Some(1));
+        flow.promote_master("QmScid", 1).unwrap();
+        assert_eq!(
+            flow.unlock("QmScid", MasterUse::Link, 0).err(),
+            Some(VaultError::Cancelled)
+        );
+
+        // The index edited: read as the new index, and it does not open either.
+        flow.store_master("QmScid", 1, Secret::new([5u8; 32]))
+            .unwrap();
+        flow.stage_master("QmScid", 2, Secret::new([6u8; 32]), &ours)
+            .unwrap();
+        let mut moved = file.get(&staged_name("QmScid")).unwrap().unwrap();
+        let index_at = at - 4;
+        assert_eq!(moved[index_at..at], 2u32.to_le_bytes());
+        moved[index_at..at].copy_from_slice(&5u32.to_le_bytes());
+        file.put(&staged_name("QmScid"), &moved).unwrap();
+        assert_eq!(vault.staged_index("QmScid").unwrap(), Some(5));
+        flow.discard_staged("QmScid", 2, Some(&ours)).unwrap();
+        assert_eq!(vault.staged_index("QmScid").unwrap(), Some(5));
+        flow.promote_master("QmScid", 5).unwrap();
+        assert!(flow.unlock("QmScid", MasterUse::Link, 0).is_err());
+    }
+
+    /// A key staged before tokens were kept (a `/2` sealed item, a keychain item whose comment
+    /// names only its index) has no owner: a flow's discard naming its token leaves it, and only
+    /// a discard naming no owner (a refresh behind the log) forgets it.
+    #[test]
+    fn a_key_staged_without_a_token_is_discarded_only_without_an_owner() {
+        let ours = StageToken([0xa; 16]);
+        let item = CustodyItem {
+            scid: "QmScid".into(),
+            index: 1,
+            master: Zeroizing::new([5u8; 32]),
+        };
+
+        let sealed = Arc::new(MemoryStore::new());
+        let vault =
+            DesktopVault::with_kdf(Box::new(sealed.clone()), PendingIncepts::memory(), CHEAP);
+        let blob = seal::seal(&item, "a passphrase of length", CHEAP, &os_random).unwrap();
+        sealed.put(&staged_name("QmScid"), &blob).unwrap();
+
+        let keychain = Arc::new(MemoryStore::as_kind(StoreKind::Keychain));
+        let unsealed = DesktopVault::new(Box::new(keychain.clone()), PendingIncepts::memory());
+        let tag = ItemTag {
+            index: 1,
+            owner: None,
+        };
+        keychain
+            .put_tagged(&staged_name("QmScid"), &item.to_bytes(), &tag)
+            .unwrap();
+
+        for vault in [&vault, &unsealed] {
+            let locked = vault.unlocking(None);
+            assert_eq!(locked.staged_index("QmScid").unwrap(), Some(1));
+            locked.discard_staged("QmScid", 1, Some(&ours)).unwrap();
+            assert_eq!(locked.staged_index("QmScid").unwrap(), Some(1));
+            locked.discard_staged("QmScid", 1, None).unwrap();
+            assert_eq!(locked.staged_index("QmScid").unwrap(), None);
+        }
+    }
+
+    /// A keychain stage keeps its token in the same write as the key, and a promote keeps the
+    /// item's attributes with it (by index; the token then names nothing).
+    #[test]
+    fn a_keychain_stage_keeps_its_token_as_an_attribute() {
+        let keychain = Arc::new(MemoryStore::as_kind(StoreKind::Keychain));
+        let vault = DesktopVault::new(Box::new(keychain.clone()), PendingIncepts::memory());
+        let ours = StageToken([0xa; 16]);
+        vault
+            .unlocking(None)
+            .stage_master("QmScid", 1, Secret::new([5u8; 32]), &ours)
+            .unwrap();
+        assert_eq!(
+            keychain.tag_of(&staged_name("QmScid")).unwrap(),
+            Some(ItemTag {
+                index: 1,
+                owner: Some(ours)
+            })
+        );
+        vault.unlocking(None).promote_master("QmScid", 1).unwrap();
+        assert_eq!(vault.master_index("QmScid").unwrap(), Some(1));
+        assert_eq!(keychain.tag_of(&staged_name("QmScid")).unwrap(), None);
+    }
+
     /// Stage, promote and discard on one store: a staged key is not what unlock gives and leaves
     /// the kept one as it is; promote moves it over the kept one with no passphrase; discard
-    /// forgets only the index named; forgetting the master key forgets a staged one too.
+    /// forgets only the index named, and with an owner only that owner's key; forgetting the
+    /// master key forgets a staged one too.
     fn stage_promote_discard(vault: &DesktopVault, passphrase: Option<&str>) {
+        let (ours, theirs) = (StageToken([1u8; 16]), StageToken([2u8; 16]));
         let flow = vault.unlocking(passphrase.map(|p| Secret::new(p.to_string())));
         let locked = vault.unlocking(None);
         flow.store_master("QmScid", 0, Secret::new([4u8; 32]))
             .unwrap();
         assert_eq!(locked.staged_index("QmScid").unwrap(), None);
+        // Nothing staged: a discard is no error.
+        locked.discard_staged("QmScid", 1, None).unwrap();
 
-        flow.stage_master("QmScid", 1, Secret::new([5u8; 32]))
+        flow.stage_master("QmScid", 1, Secret::new([5u8; 32]), &ours)
             .unwrap();
         assert_eq!(locked.staged_index("QmScid").unwrap(), Some(1));
         assert_eq!(locked.master_index("QmScid").unwrap(), Some(0));
         let kept = flow.unlock("QmScid", MasterUse::Link, 0).unwrap();
         assert_eq!(kept.signer(0).unwrap().index(), 0);
         drop(kept);
-        // Staging again replaces the staged key, whatever its index.
-        flow.stage_master("QmScid", 2, Secret::new([6u8; 32]))
+        // Staging again replaces the staged key, whatever its index and whoever staged it.
+        flow.stage_master("QmScid", 2, Secret::new([6u8; 32]), &theirs)
             .unwrap();
         assert_eq!(locked.staged_index("QmScid").unwrap(), Some(2));
-        // Discarding another index leaves it; promoting another index is NotFound.
-        locked.discard_staged("QmScid", 1).unwrap();
+        // Discarding another index leaves it, with or without an owner; so does discarding
+        // its index with another owner's token. Promoting another index is NotFound.
+        locked.discard_staged("QmScid", 1, None).unwrap();
+        locked.discard_staged("QmScid", 1, Some(&theirs)).unwrap();
+        locked.discard_staged("QmScid", 2, Some(&ours)).unwrap();
         assert_eq!(locked.staged_index("QmScid").unwrap(), Some(2));
         assert_eq!(
             locked.promote_master("QmScid", 1),
             Err(VaultError::NotFound)
         );
 
-        // The promote needs no passphrase.
+        // The promote needs no passphrase, and no owner: it goes by index.
         locked.promote_master("QmScid", 2).unwrap();
         assert_eq!(locked.staged_index("QmScid").unwrap(), None);
         assert_eq!(locked.master_index("QmScid").unwrap(), Some(2));
@@ -843,16 +1104,21 @@ mod tests {
             Err(VaultError::NotFound)
         );
 
-        // A rotation that did not land: discarded, the kept key untouched.
-        flow.stage_master("QmScid", 3, Secret::new([7u8; 32]))
+        // A rotation that did not land: its flow discards its own key, the kept key untouched.
+        flow.stage_master("QmScid", 3, Secret::new([7u8; 32]), &ours)
             .unwrap();
-        locked.discard_staged("QmScid", 3).unwrap();
-        locked.discard_staged("QmScid", 3).unwrap();
+        locked.discard_staged("QmScid", 3, Some(&ours)).unwrap();
+        locked.discard_staged("QmScid", 3, Some(&ours)).unwrap();
         assert_eq!(locked.staged_index("QmScid").unwrap(), None);
         assert_eq!(locked.master_index("QmScid").unwrap(), Some(2));
+        // A refresh discarding one behind the log names no owner, and takes anyone's.
+        flow.stage_master("QmScid", 3, Secret::new([7u8; 32]), &theirs)
+            .unwrap();
+        locked.discard_staged("QmScid", 3, None).unwrap();
+        assert_eq!(locked.staged_index("QmScid").unwrap(), None);
 
         // Removing the master key from this computer leaves no staged copy either.
-        flow.stage_master("QmScid", 3, Secret::new([7u8; 32]))
+        flow.stage_master("QmScid", 3, Secret::new([7u8; 32]), &ours)
             .unwrap();
         locked.forget_master("QmScid").unwrap();
         assert_eq!(locked.staged_index("QmScid").unwrap(), None);
@@ -870,9 +1136,12 @@ mod tests {
         stage_promote_discard(&vault, Some("a passphrase of some length"));
         // Staging with no passphrase seals nothing.
         assert_eq!(
-            vault
-                .unlocking(None)
-                .stage_master("QmScid", 1, Secret::new([5u8; 32])),
+            vault.unlocking(None).stage_master(
+                "QmScid",
+                1,
+                Secret::new([5u8; 32]),
+                &StageToken([1u8; 16])
+            ),
             Err(VaultError::Cancelled)
         );
     }
@@ -907,7 +1176,7 @@ mod tests {
         let platform = Arc::new(MemoryStore::as_kind(StoreKind::Keychain));
         let vault = placed(&custody, Some(platform.clone()));
         let flow = vault.unlocking(pass("a passphrase of length"));
-        flow.stage_master("QmScid", 1, Secret::new([5u8; 32]))
+        flow.stage_master("QmScid", 1, Secret::new([5u8; 32]), &StageToken([1u8; 16]))
             .unwrap();
         assert!(FileStore::new(&custody)
             .contains(&staged_name("QmScid"))

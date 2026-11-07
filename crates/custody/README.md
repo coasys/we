@@ -73,8 +73,8 @@ A request line is at most 64 KiB (`MAX_LINE`); a longer one is answered `"line t
 
 **What is wiped, and what is not.** The master key, the seed and the words are held in `Secret`s and
 `Zeroizing` buffers inside this crate, wiped when the step that made them ends. A word or a passphrase
-the person types reaches the sidecar in a request line, and from there every copy this process makes
-is wiped: the line is read into a buffer allocated once and wiped (`sidecar::Lines`), its params are
+the person types reaches the sidecar in a request line, and from there the copies this crate makes
+are wiped (the exceptions are listed below): the line is read into a buffer allocated once and wiped (`sidecar::Lines`), its params are
 read from the line's own text with no intermediate JSON value, and the step input holds each secret
 in a `TypedSecret`, which wipes itself when dropped — when the step reads it, refuses it, is
 cancelled before reading it, or the input is malformed. `tests/step_input_wipe.rs` replaces the
@@ -202,13 +202,23 @@ index was stored with the key answers `null`, and the log decides. `publicState`
 beside the kept one (`coasys.identity.staged/<scid>`; `<scid>.staged.bin` in the folder), in the
 same store and sealed the same way. Once the `rotate` is published, the staged key is promoted over
 the kept one in one store operation: a rename of the file, one `SecItemUpdate`, or a copy and a
-delete in the Secret Service. If the publish is refused, the staged key is discarded.
+delete in the Secret Service. If the publish is refused, the staged key is discarded — only the one
+that rotation staged. Each stage carries the staging flow's token beside its index, authenticated the
+same way: in a sealed item's header (`coasys-custody/3`), or after the index in the keychain comment
+(`coasys-master-index:<n>;owner:<hex>`). A rotation's discard names its token and leaves a key
+another app staged since. A newer stage replaces any staged key, whoever staged it. A key staged
+before tokens were kept has none, and only a read whose log is past it discards it.
 
 Promoting can fail after the publish, for example when the keychain refuses the update or the unlock
 is cancelled. The key **was** replaced all the same. The window says so ("This computer could not
 keep the new key", `master-not-kept`), and "Type my 12 words again" rotates once more and keeps that
 key. A staged key left by a failed promote is promoted the next time `publicState` reads the key log
-and finds its index current.
+and finds its index current. Every app on the computer shares this folder, so a read may meet a
+rotation in flight: a staged index ahead of the log is left alone until its publish lands, and only
+a staged index behind the log is discarded. Promotion is tied to the master index, which the words
+make deterministic. The staged key is not checked against the log's commitment, and reading a
+sealed item's index while locked does not check its tag: that guards against a split write, not
+against tampering.
 
 Restore works the same way: the rotation is published first. If adding this computer fails after
 that, the window says the identity is restored but this computer is not linked yet
