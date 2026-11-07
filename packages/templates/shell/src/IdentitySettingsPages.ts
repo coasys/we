@@ -431,7 +431,7 @@ export const addServerForm: SchemaNode = {
             flex: '1',
             minWidth: '0',
             label: 'Server address',
-            placeholder: 'https://my-server.example',
+            placeholder: 'https://my-server.example:12000',
             value: { $: 'deviceStore.serverAddress' },
             onInput: { $invoke: 'deviceStore.setServerAddress', args: [{ $: 'event.detail' }] },
           },
@@ -446,6 +446,13 @@ export const addServerForm: SchemaNode = {
           },
           children: ['Add a server'],
         },
+      ],
+    },
+    {
+      type: 'we-text',
+      props: { variant: 'footnote', color: 'text-muted' },
+      children: [
+        'Its https:// address — your session travels over it. Plain http:// is only for a server on this computer.',
       ],
     },
     {

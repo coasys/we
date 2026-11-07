@@ -32,9 +32,16 @@ import {
   type UnsignedKeyStatement,
 } from '@coasys/ad4m';
 
+/**
+ * A `coasys:session` statement naming its audience: the origin this side dialled, which the server
+ * refuses unless it is its own — so a server that relays another's challenge cannot spend the
+ * signature there. Delete once `@coasys/ad4m` ships `audience` on `UnsignedKeyStatement`.
+ */
+export type SessionStatementWithAudience = UnsignedKeyStatement & { audience: string };
+
 /** This computer's executor, which holds the device key and signs. */
 export interface KeySessionSigner {
-  agent: { signSessionStatement(statement: UnsignedKeyStatement): Promise<SignedKeyStatement> };
+  agent: { signSessionStatement(statement: SessionStatementWithAudience): Promise<SignedKeyStatement> };
 }
 
 /** The slice of an SDK client on the server that a key session uses. */
@@ -144,7 +151,7 @@ export function refusalReason(error: unknown): string {
 }
 
 /** What a refusal means, in words a person reads. */
-export function describeRefusal(reason: string): string {
+export function describeRefusal(reason: string, origin?: string): string {
   switch (reason) {
     case 'key':
       return 'That server no longer accepts this device: it was removed from your identity.';
@@ -152,13 +159,17 @@ export function describeRefusal(reason: string): string {
       return 'That server does not know you: you do not run it, and none of its agents is yours.';
     case 'store-unavailable':
       return 'That server cannot check your keys right now: it cannot reach the identity store. Try again later.';
-    case 'challenge':
     case 'audience':
+      // The server accepts a login only for an origin it is configured as (`--public-origin`).
+      return `That server does not list ${origin ?? 'this address'} as its address. Its operator sets it with --public-origin.`;
+    case 'challenge':
       return 'That server and this computer disagree about the time, or the login took too long. Try again.';
     case 'signature':
       return 'That server could not check this computer’s signature.';
     case 'local-only':
       return 'This computer’s data layer would not sign the login.';
+    case 'insecure':
+      return 'That address is plain http:// to another computer, so your session would travel unencrypted. Use its https:// address.';
     case 'unreachable':
       return 'Could not reach that server. Check the address, and that it is running.';
     default:
@@ -199,30 +210,50 @@ export const connectAd4mRemote: ConnectRemote = (address, token) =>
   token ? new Ad4mClient(address, token(), { webSocketImpl: tokenSocket(token) }) : new Ad4mClient(address);
 
 /**
- * `host:port`, `http://host:port/` and `https://host` all name a server; WE keeps the origin, which
- * is what the SDK dials. Throws on anything that is not an http(s) address.
+ * `host:port`, `https://host:port/` and `http://localhost:port` all name a server; WE keeps the
+ * origin, which is what the SDK dials and what a statement names as its audience. An address with no
+ * scheme is `https://`. Throws on anything that is not an http(s) address, and on plain `http://` to
+ * anything but this computer: the session token travels in the socket's URL, so over `ws://` it and
+ * every later call would cross the network unencrypted.
  */
 export function normalizeServerAddress(address: string): string {
   const trimmed = address.trim();
-  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
   let parsed: URL;
   try {
     parsed = new URL(withScheme);
   } catch {
-    throw new KeySessionError('address', 'That is not a server address. Try one like 192.168.1.20:12000.');
+    throw new KeySessionError('address', 'That is not a server address. Try one like https://my-server.example:12000.');
   }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    throw new KeySessionError('address', 'A server address starts with http:// or https://.');
+    throw new KeySessionError('address', 'A server address starts with https://.');
+  }
+  if (parsed.protocol === 'http:' && !isLoopbackHost(parsed.hostname)) {
+    throw new KeySessionError(
+      'insecure',
+      `${parsed.host} would be reached without encryption (http://), and your session with it would travel in the clear. Use its https:// address.`,
+    );
   }
   return parsed.origin;
 }
 
+/** `localhost`, 127.0.0.0/8 and ::1: the addresses that never leave this computer. */
+export function isLoopbackHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  if (host === 'localhost' || host === '::1') return true;
+  return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
+}
+
 const unixNow = () => Math.floor(Date.now() / 1000);
 
-/** One login: a challenge from the server, the statement signed here, the token from the server. */
+/**
+ * One login: a challenge from the server, the statement signed here, the token from the server.
+ * `audience` is the origin WE dialled — never anything the server said about itself.
+ */
 async function login(
   signer: KeySessionSigner,
   remote: KeySessionRemote,
+  audience: string,
   app: KeySessionApp,
   now: () => number,
 ): Promise<KeySessionResult> {
@@ -231,6 +262,7 @@ async function login(
     v: 1,
     purpose: 'login',
     executor: challenge.executor,
+    audience,
     challenge: challenge.challenge,
     client: { kind: 'native' },
     issuedAt: now(),
@@ -248,10 +280,10 @@ async function loginOnce(
 ): Promise<KeySessionResult> {
   const anonymous = connect(address);
   try {
-    return await login(signer, anonymous, app, now);
+    return await login(signer, anonymous, address, app, now);
   } catch (error) {
     const reason = refusalReason(error);
-    throw new KeySessionError(reason, describeRefusal(reason));
+    throw new KeySessionError(reason, describeRefusal(reason, address));
   } finally {
     anonymous.close();
   }
@@ -271,13 +303,15 @@ export async function openKeySession(
   const setTimer = options.setTimer ?? ((run, ms) => setTimeout(run, ms));
   const clearTimer = options.clearTimer ?? ((timer) => clearTimeout(timer as ReturnType<typeof setTimeout>));
 
-  const opened = await loginOnce(signer, address, connect, app, now);
+  // Before anything is signed or dialled: the origin is what the statements name as their audience.
+  const origin = normalizeServerAddress(address);
+  const opened = await loginOnce(signer, origin, connect, app, now);
   let token = opened.token;
   let expiresAt = opened.expiresAt;
   // The expiry is by the server's clock, read here by ours. They agree closely enough: the server
   // refuses a statement whose `issuedAt` is far from its own time, so a login that worked means
   // the two clocks are within that skew, and the renewal margin is several times larger.
-  const client = connect(address, () => token);
+  const client = connect(origin, () => token);
 
   const listeners = new Set<(reason: 'revoked' | 'ended') => void>();
   let timer: unknown = null;
@@ -308,6 +342,7 @@ export async function openKeySession(
         v: 1,
         purpose: 'renew',
         executor: challenge.executor,
+        audience: origin,
         challenge: challenge.challenge,
         client: { kind: 'native' },
         grant: opened.grantId,
@@ -351,7 +386,7 @@ export async function openKeySession(
   schedule(expiresAt - now() - margin);
 
   return {
-    address,
+    address: origin,
     role: opened.role === 'operator' ? 'operator' : 'agent',
     did: opened.did,
     scid: opened.scid,
@@ -385,8 +420,9 @@ export async function tryKeyLogin(
   options: Pick<KeySessionOptions, 'app' | 'connect' | 'now'> = {},
 ): Promise<KeySessionRole> {
   const connect = options.connect ?? connectAd4mRemote;
-  const opened = await loginOnce(signer, address, connect, options.app ?? WE_KEY_SESSION_APP, options.now ?? unixNow);
-  const session = connect(address, () => opened.token);
+  const origin = normalizeServerAddress(address);
+  const opened = await loginOnce(signer, origin, connect, options.app ?? WE_KEY_SESSION_APP, options.now ?? unixNow);
+  const session = connect(origin, () => opened.token);
   await session.agent.logout().catch(() => false);
   session.close();
   return opened.role === 'operator' ? 'operator' : 'agent';

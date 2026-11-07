@@ -82,7 +82,7 @@ export interface Ad4mCustodyState {
 /**
  * The servers this account can be served by, as the host keeps them: a desktop host keeps them in
  * its account registry, beside the account, so the choice survives a restart and is the account's
- * own. Addresses are origins (`http://host:port`), as {@link normalizeServerAddress} makes them.
+ * own. Addresses are origins (`https://host:port`), as {@link normalizeServerAddress} makes them.
  */
 export interface Ad4mServerHost {
   list(): Promise<{ servers: { address: string; name: string }[]; serving: string | null }>;

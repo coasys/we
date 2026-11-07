@@ -94,8 +94,10 @@ export function uniqueName(base, taken = []) {
 }
 
 /**
- * A server's address as the registry keeps it: its origin, `http://host:port`. Throws on anything
- * that is not an http(s) address, so nothing else is ever handed to the renderer as a server.
+ * A server's address as the registry keeps it: its origin, `https://host:port`. Throws on anything
+ * that is not an http(s) address, so nothing else is ever handed to the renderer as a server, and on
+ * plain `http://` to anything but this computer: the session token travels in the socket's URL, so
+ * over `ws://` it would cross the network unencrypted.
  */
 export function serverOrigin(address) {
   let url;
@@ -105,7 +107,29 @@ export function serverOrigin(address) {
     throw new Error('Not a server address');
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('A server address is http or https');
+  if (!isEncryptedOrLocal(url)) {
+    throw new Error(`${url.host} is plain http:// to another computer. Use its https:// address.`);
+  }
   return url.origin;
+}
+
+/**
+ * Whether a server address may be dialled: https, or http to this computer (localhost, 127.0.0.0/8,
+ * ::1). An entry stored before this rule existed is kept, so it can be removed, but never served from.
+ */
+export function isEncryptedOrLocal(url) {
+  if (url.protocol === 'https:') return true;
+  if (url.protocol !== 'http:') return false;
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  return host === 'localhost' || host === '::1' || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
+}
+
+function diallable(address) {
+  try {
+    return isEncryptedOrLocal(new URL(String(address)));
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -460,8 +484,14 @@ export function createAccountRegistry({ configDir, defaultPath, defaultName = 'M
 
     removeServer(address) {
       updateEntry(this.resolveActivePath(), (entry) => {
-        if (entry.serving === address) throw new Error('This server serves this account. Switch away from it first.');
-        return { ...entry, servers: (entry.servers ?? []).filter((s) => s.address !== address) };
+        // A stored entry that may not be dialled serves nobody (the app stays on this computer), so
+        // it can be removed even while it is the one chosen.
+        if (entry.serving === address && diallable(address)) {
+          throw new Error('This server serves this account. Switch away from it first.');
+        }
+        const rest = { ...entry, servers: (entry.servers ?? []).filter((s) => s.address !== address) };
+        if (rest.serving === address) delete rest.serving;
+        return rest;
       });
     },
 
@@ -474,6 +504,9 @@ export function createAccountRegistry({ configDir, defaultPath, defaultName = 'M
           return rest;
         }
         if (!(entry.servers ?? []).some((s) => s.address === address)) throw new Error('No such server');
+        if (!diallable(address)) {
+          throw new Error('That server is plain http:// to another computer. Add its https:// address.');
+        }
         return { ...entry, serving: address };
       });
     },

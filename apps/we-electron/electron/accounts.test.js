@@ -473,7 +473,7 @@ describe('the registry file shared with the tauri host', () => {
 });
 
 describe('servers — which device serves the account', () => {
-  const HOME = 'http://192.168.1.20:12000';
+  const HOME = 'https://192.168.1.20:12000';
 
   it('keeps each account its own list, and its choice, across a restart', () => {
     registry.addServer({ address: `${HOME}/`, name: 'home' });
@@ -511,6 +511,42 @@ describe('servers — which device serves the account', () => {
     registry.chooseServer(null);
     registry.removeServer(HOME);
     expect(registry.servers().servers).toEqual([]);
+  });
+
+  it('refuses plain http to another computer, and keeps it for this one', () => {
+    for (const address of [
+      'http://192.168.1.20:12000',
+      'http://my-server.example:12000',
+      'http://localhost.evil.example',
+    ]) {
+      expect(() => registry.addServer({ address })).toThrow(/https:\/\//);
+    }
+    registry.addServer({ address: 'http://127.0.0.1:12100/' });
+    registry.addServer({ address: 'http://[::1]:12100' });
+    registry.addServer({ address: 'http://localhost:12100' });
+    expect(registry.servers().servers.map((s) => s.address)).toEqual([
+      'http://127.0.0.1:12100',
+      'http://[::1]:12100',
+      'http://localhost:12100',
+    ]);
+  });
+
+  it('never serves from a stored plain-http entry, and lets it be removed while chosen', () => {
+    const old = 'http://192.168.1.20:12000';
+    registry.addServer({ address: HOME });
+    registry.chooseServer(HOME);
+    // An entry written before the rule, as an older build stored it.
+    const file = join(defaultPath, 'we-accounts', 'registry.json');
+    const state = JSON.parse(readFileSync(file, 'utf8'));
+    state.accounts = state.accounts.map((a) => ({ ...a, servers: [{ address: old, name: 'old' }], serving: old }));
+    writeFileSync(file, JSON.stringify(state), 'utf8');
+    registry = createAccountRegistry({ configDir, defaultPath });
+
+    // Still listed and still chosen, so the renderer can say why it is not dialled.
+    expect(registry.servers()).toEqual({ servers: [{ address: old, name: 'old' }], serving: old });
+    expect(() => registry.chooseServer(old)).toThrow(/https:\/\//);
+    registry.removeServer(old);
+    expect(registry.servers()).toEqual({ servers: [], serving: null });
   });
 
   it('keeps the account’s name and picture when its servers change', () => {

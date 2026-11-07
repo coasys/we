@@ -48,7 +48,10 @@ function fakeSigner(key = 'z6MkDevice') {
 }
 
 /** A server whose operator is SCID, unless `role` says otherwise. */
-function fakeServer(options: { role?: 'operator' | 'tenant'; down?: boolean; notKnown?: boolean } = {}) {
+function fakeServer(
+  options: { role?: 'operator' | 'tenant'; down?: boolean; notKnown?: boolean; origin?: string } = {},
+) {
+  const origin = options.origin ?? ADDRESS;
   let clock = Math.floor(Date.now() / 1000);
   let nextChallenge = 0;
   let nextToken = 0;
@@ -62,6 +65,8 @@ function fakeServer(options: { role?: 'operator' | 'tenant'; down?: boolean; not
   const check = ({ statement }: SignedKeyStatement) => {
     if (!challenges.delete(statement.challenge)) throw new FakeRpcError(403, 'challenge');
     if (statement.executor !== SERVER) throw new FakeRpcError(403, 'audience');
+    // The executor half of the relay fix (ad4m#1617): a statement for another origin is refused.
+    if ((statement as { audience?: string }).audience !== origin) throw new FakeRpcError(403, 'audience');
     if (revokedKeys.has(statement.key)) throw new FakeRpcError(403, 'key');
     if (options.notKnown) throw new FakeRpcError(403, 'not-known');
   };
@@ -72,7 +77,7 @@ function fakeServer(options: { role?: 'operator' | 'tenant'; down?: boolean; not
   };
 
   const connect = (address: string, token?: () => string): KeySessionRemote => {
-    expect(address).toBe(ADDRESS);
+    expect(address).toBe(origin);
     const state = { token: token ?? null, closed: false, authFailed: [] as ((r: string) => void)[] };
     clients.push(state);
     const live = () => {
@@ -203,6 +208,7 @@ describe('a key session on a server', () => {
         v: 1,
         purpose: 'login',
         executor: SERVER,
+        audience: ADDRESS,
         challenge: 'ch-1',
         client: { kind: 'native' },
         issuedAt: server.now(),
@@ -233,7 +239,13 @@ describe('a key session on a server', () => {
     server.advance(3300);
     await timers.fire();
 
-    expect(signer.signed[1]).toMatchObject({ purpose: 'renew', grant, executor: SERVER, challenge: 'ch-2' });
+    expect(signer.signed[1]).toMatchObject({
+      purpose: 'renew',
+      grant,
+      executor: SERVER,
+      audience: ADDRESS,
+      challenge: 'ch-2',
+    });
     expect(session.token()).toBe('token-2');
     expect(session.expiresAt()).toBe(server.now() + 3600);
     expect(server.clients[1].token?.()).toBe('token-2');
@@ -353,6 +365,117 @@ describe('a key session on a server', () => {
     expect((error as KeySessionError).reason).toBe('unreachable');
   });
 
+  it('names the origin it dialled as the audience, whatever executor the server’s challenge names', async () => {
+    // A server relaying the person's real server's challenge and DID: the statement still names
+    // the origin this computer dialled, so the real server refuses it as not addressed to it.
+    const RELAY = 'https://relay.example:8443';
+    const signer = fakeSigner();
+    const dialled: string[] = [];
+    const relay = (address: string): KeySessionRemote => {
+      dialled.push(address);
+      return {
+        agent: {
+          sessionChallenge: async () => ({ challenge: 'ch-real', executor: SERVER, expiresAt: 0 }),
+          loginWithKey: async () => {
+            throw new FakeRpcError(403, 'audience');
+          },
+          renewSession: async () => ({ token: '', expiresAt: 0 }),
+          logout: async () => true,
+        },
+        onAuthFailed: () => () => {},
+        close: () => {},
+      };
+    };
+
+    const error = await tryKeyLogin(signer, 'HTTPS://Relay.Example:8443/api', { connect: relay }).catch(
+      (e: unknown) => e,
+    );
+    expect((error as KeySessionError).reason).toBe('audience');
+    expect(dialled).toEqual([RELAY]);
+    expect(signer.signed).toEqual([expect.objectContaining({ executor: SERVER, audience: RELAY })]);
+  });
+
+  it('gives a server that relays a login to the person’s real server no token there', async () => {
+    // The attacker's server answers with the real server's challenge (and so its DID), and hands
+    // the signed statement on: the statement names the attacker's origin, which the real refuses.
+    const EVIL = 'https://evil.example';
+    const real = fakeServer();
+    const signer = fakeSigner();
+    const relay = (address: string): KeySessionRemote => {
+      expect(address).toBe(EVIL);
+      const onward = real.connect(ADDRESS);
+      return { ...onward, close: () => {} };
+    };
+
+    const error = await tryKeyLogin(signer, EVIL, { connect: relay }).catch((e: unknown) => e);
+    expect((error as KeySessionError).reason).toBe('audience');
+    expect((error as KeySessionError).message).toBe(
+      'That server does not list https://evil.example as its address. Its operator sets it with --public-origin.',
+    );
+    expect(signer.signed).toEqual([expect.objectContaining({ executor: SERVER, audience: EVIL })]);
+    expect(real.tokens.size).toBe(0);
+    expect(real.grants.size).toBe(0);
+  });
+
+  it('gives a server that relays a renewal to the person’s real server no token there', async () => {
+    const EVIL = 'https://evil.example';
+    const real = fakeServer();
+    const own = fakeServer({ origin: EVIL });
+    // The attacker holds a session of its own on the real server, to pass the renewal through.
+    const attacker = await openKeySession(fakeSigner('z6MkAttacker'), ADDRESS, {
+      connect: real.connect,
+      now: real.now,
+      setTimer: () => 0,
+      clearTimer: () => {},
+    });
+    const onward = real.connect(ADDRESS, () => attacker.token());
+    const issued = real.tokens.size;
+
+    // It lets this computer in itself, then relays the real server's challenge at renewal.
+    let relaying = false;
+    const relay = (address: string, token?: () => string): KeySessionRemote => {
+      const mine = own.connect(address, token);
+      return {
+        ...mine,
+        agent: {
+          ...mine.agent,
+          sessionChallenge: () => (relaying ? onward.agent.sessionChallenge() : mine.agent.sessionChallenge()),
+          renewSession: (proof) => (relaying ? onward.agent.renewSession(proof) : mine.agent.renewSession(proof)),
+        },
+      };
+    };
+    const signer = fakeSigner();
+    const timers = fakeTimers();
+    const session = await openKeySession(signer, EVIL, {
+      connect: relay,
+      now: own.now,
+      setTimer: timers.setTimer,
+      clearTimer: timers.clearTimer,
+    });
+
+    relaying = true;
+    await timers.fire();
+
+    expect(signer.signed.at(-1)).toMatchObject({ purpose: 'renew', executor: SERVER, audience: EVIL });
+    expect(real.tokens.size).toBe(issued);
+    expect(session.token()).toBe('token-1');
+    await session.close();
+    await attacker.close();
+  });
+
+  it('refuses plain http to another computer before anything is signed or dialled', async () => {
+    const signer = fakeSigner();
+    const connect = vi.fn();
+    for (const address of ['http://192.168.1.20:12000', 'http://my-server.example:12000']) {
+      const error = await openKeySession(signer, address, { connect }).catch((e: unknown) => e);
+      expect((error as KeySessionError).reason).toBe('insecure');
+      const tried = await tryKeyLogin(signer, address, { connect }).catch((e: unknown) => e);
+      expect((tried as KeySessionError).reason).toBe('insecure');
+    }
+    expect(signer.agent.signSessionStatement).not.toHaveBeenCalled();
+    expect(connect).not.toHaveBeenCalled();
+  });
+
   it('tries a login and logs straight out', async () => {
     const server = fakeServer();
     const role = await tryKeyLogin(fakeSigner(), ADDRESS, { connect: server.connect, now: server.now });
@@ -379,8 +502,10 @@ describe('reading a refusal', () => {
 });
 
 describe('a server’s address', () => {
-  it('keeps the origin, adding http:// when none is given', () => {
-    expect(normalizeServerAddress('192.168.1.20:12000')).toBe('http://192.168.1.20:12000');
+  it('keeps the origin, adding https:// when none is given', () => {
+    expect(normalizeServerAddress('192.168.1.20:12000')).toBe('https://192.168.1.20:12000');
+    expect(normalizeServerAddress('my-server.example:12000')).toBe('https://my-server.example:12000');
+    expect(normalizeServerAddress('https://Home.Example:443/x')).toBe('https://home.example');
     expect(normalizeServerAddress(' https://home.example/ ')).toBe('https://home.example');
     expect(normalizeServerAddress('http://localhost:12100/api/v1')).toBe('http://localhost:12100');
   });
@@ -388,6 +513,24 @@ describe('a server’s address', () => {
   it('refuses what is not an http address', () => {
     expect(() => normalizeServerAddress('ftp://x')).toThrow(KeySessionError);
     expect(() => normalizeServerAddress('http://')).toThrow(KeySessionError);
+  });
+
+  it('allows plain http only to this computer', () => {
+    expect(normalizeServerAddress('http://127.0.0.1:12100')).toBe('http://127.0.0.1:12100');
+    expect(normalizeServerAddress('http://127.8.9.10:1')).toBe('http://127.8.9.10:1');
+    expect(normalizeServerAddress('http://[::1]:12100')).toBe('http://[::1]:12100');
+    expect(normalizeServerAddress('http://LOCALHOST:12100')).toBe('http://localhost:12100');
+    for (const address of [
+      'http://192.168.1.20:12000',
+      'http://my-server.example:12000',
+      'http://localhost.evil.example',
+      'http://127.0.0.1.evil.example',
+      'http://[::2]:1',
+    ]) {
+      expect(() => normalizeServerAddress(address)).toThrow(
+        expect.objectContaining({ reason: 'insecure', message: expect.stringMatching(/https:\/\//) }),
+      );
+    }
   });
 });
 
@@ -482,7 +625,7 @@ describe('choosing which device serves the account (the identity port)', () => {
       connect: server.connect,
     });
 
-    expect(await port.addServer!('127.0.0.1:12100')).toEqual({ ok: true, id: ADDRESS });
+    expect(await port.addServer!('http://127.0.0.1:12100/')).toEqual({ ok: true, id: ADDRESS });
     // The login that proved it was logged straight out.
     expect(server.grants.size).toBe(0);
     expect(host.add).toHaveBeenCalledWith({ address: ADDRESS, name: '127.0.0.1:12100' });
@@ -511,6 +654,10 @@ describe('choosing which device serves the account (the identity port)', () => {
     expect(outcome).toMatchObject({ ok: false, reason: 'not-known' });
     expect((outcome as { message: string }).message).toMatch(/does not know you/);
     expect(await port.addServer!('ftp://nope')).toMatchObject({ ok: false, reason: 'address' });
+    const insecure = await port.addServer!('http://my-server.example:12000');
+    expect(insecure).toMatchObject({ ok: false, reason: 'insecure' });
+    expect((insecure as { message: string }).message).toMatch(/https:\/\//);
+    expect(local.agent.signSessionStatement).toHaveBeenCalledTimes(1);
     expect(host.add).not.toHaveBeenCalled();
   });
 
@@ -636,6 +783,29 @@ describe('the desktop connector, with a server chosen', () => {
     const view = await result.ports.identity!.serving!();
     expect(view.devices.find((d) => d.current)?.id).toBe(THIS_COMPUTER_ID);
     expect(view.problem).toMatch(/^home is not serving you: .*does not know you/);
+  });
+
+  it('does not dial a stored plain-http server on another computer, and says why', async () => {
+    const stored = 'http://192.168.1.20:12000';
+    const local = fakeLocal();
+    const connectRemote = vi.fn();
+    const host = fakeHost([{ address: stored, name: 'old' }], stored);
+    const result = await createLocalAd4mConnector(async () => ({ port: 12000, token: 'admin' }), {
+      startupDelayMs: 0,
+      servers: host,
+      connectRemote,
+      connectLocal: async () => ({ client: local }),
+    }).initialize(ctx);
+
+    expect(result.client).toBe(local);
+    expect(connectRemote).not.toHaveBeenCalled();
+    expect(local.agent.signSessionStatement).not.toHaveBeenCalled();
+    const view = await result.ports.identity!.serving!();
+    expect(view.devices.find((d) => d.current)?.id).toBe(THIS_COMPUTER_ID);
+    expect(view.problem).toMatch(/^old is not serving you: .*https:\/\//);
+    // It stays listed, so it can be removed (and added again as https).
+    await result.ports.identity!.removeServer!(stored);
+    expect(host.state.servers).toEqual([]);
   });
 
   it('stays on this computer when none is chosen', async () => {
