@@ -45,8 +45,10 @@ type Overlay = { base: string; kind: 'create' | 'update'; inferred: [string, unk
  *
  * The shapes are served as the executor answers the property query — name node, property shape,
  * path — so this exercises the same code a community's own model goes down rather than the
- * compiled-in registry. There is no `getShacl` and no `getAllShacl`: in the SDK the app runs, both
- * read shapes one at a time, and a mock that answered them would let that come back unnoticed.
+ * compiled-in registry. There is no `getShacl` and no `getAllShacl`: `getAllShacl` reads every
+ * named shape in one call and skips one it cannot decode, but either way a shape comes back with
+ * every link it has, where this path needs a few of each — and a mock that answered them would let
+ * a full read come back unnoticed.
  */
 function perspectiveWith(
   overlays: Overlay[],

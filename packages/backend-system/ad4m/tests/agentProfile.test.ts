@@ -11,7 +11,7 @@
  * tiles, member lists — and the launcher's format missed on both source and predicate at once, so
  * its users read as a completely blank profile rather than a partly-parsed one.
  */
-import { Literal } from '@coasys/ad4m';
+import { Literal, RpcError } from '@coasys/ad4m';
 import { describe, expect, it } from 'vitest';
 
 import { getProfile } from '../src/agentHelpers';
@@ -187,6 +187,36 @@ describe('getProfile — nothing published', () => {
       },
     });
     expect(profile).toEqual({ did: DID, firstName: '', lastName: '', handle: '', bio: '' });
+  });
+});
+
+describe('getProfile — a picture that cannot be read', () => {
+  /*
+    `expression.get` answers `null` for a missing expression or an unloaded language, and rejects
+    with an `RpcError` only when the lookup itself fails. A read that fails leaves the profile it
+    decorates standing without the picture: a peer's avatar being unreachable is not a reason to
+    show them nameless.
+  */
+  it('keeps the name when the avatar read fails', async () => {
+    const profile = await getProfile(DID, {
+      agent: {
+        byDID: async () => ({
+          perspective: {
+            links: [
+              link('we://profile', 'we://handle', Literal.from('james').toUrl()),
+              link('we://profile', 'we://profile_image', 'QmFileStorage://unreadable'),
+            ],
+          },
+        }),
+      },
+      expression: {
+        get: async () => {
+          throw new RpcError(500, 'Failed to get expression QmFileStorage://unreadable: storage unavailable');
+        },
+      },
+    });
+    expect(profile.handle).toBe('james');
+    expect(profile.avatar).toBeUndefined();
   });
 });
 

@@ -648,11 +648,11 @@ The \`PerspectiveProxy\` the app holds comes from the SDK copy bundled inside \`
 not from the \`@coasys/ad4m\` this repo pins. An SDK fix reaches the app only when ad4m-connect
 republishes, so measure performance work against that copy, not the workspace one.
 
-In that copy, \`getAllShacl()\` reads every shape one at a time — \`getShaclNames()\`, then \`getShacl()\`
-per shape at 3 + P calls for P properties — and it rejects outright when one shape carries a
-property transform a newer SDK encoded. For a question about many shapes, ask the executor
-once with SPARQL, and read a shape in full only when the answer needs it: \`readShapeProperties\` and
-\`getForeignShacl\` in \`perspectiveHelpers.ts\` show how.
+In that copy, \`getAllShacl(options?: { names })\` reads every shape — or the named ones — in one call,
+and skips a shape it cannot decode rather than rejecting. It still carries every link of every shape
+it returns. For a question about a few links of many shapes, ask the executor once with SPARQL, and
+read a shape in full only when the answer needs it: \`readShapeProperties\` and \`getForeignShacl\` in
+\`perspectiveHelpers.ts\` show how.
 
 ---
 
