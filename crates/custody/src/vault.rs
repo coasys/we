@@ -303,8 +303,7 @@ impl DesktopVault {
     /// It never stays put over a change, which is what a forget at an epoch relies on; moving
     /// over no change only ever keeps a key.
     pub fn custody_epoch(&self, scid: &str) -> Result<u64, VaultError> {
-        let folder = self.pending.exclusive()?;
-        folder.epoch(scid, self.custody_held(scid)?)
+        self.pending.exclusive()?.epoch(scid)
     }
 
     /// Makes `scid`'s custody epoch readable again after it was lost (the epochs' file gone
@@ -315,11 +314,6 @@ impl DesktopVault {
     pub fn recover_custody_epoch(&self, scid: &str) -> Result<u64, VaultError> {
         log::info!("custody: recover a lost custody epoch");
         self.pending.exclusive()?.recover_epoch(scid)
-    }
-
-    /// Whether a key of `scid` is here, kept or staged: then its custody epoch must be too.
-    fn custody_held(&self, scid: &str) -> Result<bool, VaultError> {
-        Ok(self.store.contains(&item_name(scid))? || self.store.contains(&staged_name(scid))?)
     }
 
     /// The compare-and-delete behind [`Vault::forget_master`] (`unchanged` is "still this
@@ -342,7 +336,7 @@ impl DesktopVault {
         }
         log::info!("custody: forget a master key");
         // The epoch moves before the item does ([`DesktopVault::custody_epoch`]).
-        folder.bump_epoch(scid, true)?;
+        folder.bump_epoch(scid)?;
         self.store.delete(&item_name(scid))?;
         Ok(Forgot::Forgot)
     }
@@ -393,8 +387,7 @@ impl Vault for Unlocking<'_> {
         // Every store bumps it, a same-index re-store too: a forget that read the epoch before
         // a duplicate delivery must not delete what that delivery just wrote. Before the put
         // ([`DesktopVault::custody_epoch`]).
-        let held = self.vault.custody_held(scid)?;
-        folder.bump_epoch(scid, held)?;
+        folder.bump_epoch(scid)?;
         self.vault.put(&name, &prepared)?;
         Ok(Stored::Stored)
     }
@@ -428,10 +421,14 @@ impl Vault for Unlocking<'_> {
             .prepare(&name, &item, Some(owner), self.passphrase())?;
         // Under the lock, so it never lands between another app's check of the staged slot and
         // its promote or discard.
-        let _folder = self.vault.pending.exclusive()?;
+        let mut folder = self.vault.pending.exclusive()?;
         let prepared = self
             .vault
             .ready(&name, prepared, &item, Some(owner), self.passphrase())?;
+        // The identity's epoch entry, made before its first staged key is written (an entry
+        // there is left as it is): the promote that follows bumps it, and an entry missing then
+        // is one this folder made and lost, never one it did not make yet.
+        folder.establish_epoch(scid)?;
         self.vault.put(&name, &prepared)
     }
 
@@ -457,8 +454,8 @@ impl Vault for Unlocking<'_> {
             }
         }
         log::info!("custody: promote a staged master key");
-        // Before the move ([`DesktopVault::custody_epoch`]). The staged key is here.
-        folder.bump_epoch(scid, true)?;
+        // Before the move ([`DesktopVault::custody_epoch`]).
+        folder.bump_epoch(scid)?;
         self.vault
             .store
             .rename(&staged_name(scid), &item_name(scid))?;
@@ -514,7 +511,7 @@ impl Vault for Unlocking<'_> {
     /// moved it, so it is left and named ([`Forgot::Kept`]).
     fn forget_master_at(&self, scid: &str, epoch: u64) -> Result<Forgot, VaultError> {
         self.vault
-            .forget_kept(scid, |folder, _| Ok(folder.epoch(scid, true)? == epoch))
+            .forget_kept(scid, |folder, _| Ok(folder.epoch(scid)? == epoch))
     }
 
     fn unlock(&self, scid: &str, why: MasterUse, now: u64) -> Result<Unlocked, VaultError> {
@@ -1046,7 +1043,11 @@ mod tests {
         .unwrap();
         assert_eq!(
             metadata,
-            serde_json::json!({ "version": 1, "written": [crate::pending::EPOCHS_FILE_NAME] })
+            serde_json::json!({
+                "version": 1,
+                "written": [crate::pending::EPOCHS_FILE_NAME],
+                "entries": { (crate::pending::EPOCHS_FILE_NAME): ["QmScid"] },
+            })
         );
         assert_eq!(locked.forget_master("QmScid", 1).unwrap(), Forgot::Forgot);
         // None kept: forgotten already.
@@ -2445,6 +2446,109 @@ mod tests {
             "{stored:?}"
         );
         assert_eq!(vault.custody_epoch("QmScid").unwrap(), u64::MAX);
+    }
+
+    /// The key `scid` keeps here signs as `master`: the key is usable, not only listed.
+    fn signs_as(vault: &DesktopVault, scid: &str, master: [u8; 32]) {
+        let unlocked = vault
+            .unlocking(pass("a passphrase of length"))
+            .unlock(scid, MasterUse::Link, 10)
+            .unwrap();
+        assert_eq!(
+            ad4m_identity_core::build::Signer::key(unlocked.signer(10).unwrap()),
+            ed25519_signing_key_multikey(master)
+        );
+    }
+
+    /// Lal's review of we#431 at 0d4501589: a second identity restored into a folder that
+    /// already counts an epoch (stage, then promote) is an ordinary restore, not a lost epoch.
+    /// The stage makes the identity's entry; the promote moves it.
+    #[test]
+    fn a_second_identity_restored_into_a_counting_folder_is_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = file_vault(dir.path());
+        let flow = vault.unlocking(pass("a passphrase of length"));
+        flow.store_master("QmA", 0, Secret::new([5u8; 32])).unwrap();
+        flow.stage_master("QmB", 0, Secret::new([6u8; 32]), &StageToken([1; 16]))
+            .unwrap();
+        let staged = vault.custody_epoch("QmB").unwrap();
+        assert_ne!(staged, 0);
+        // A store of another identity between the stage and the promote, and a reopening.
+        flow.store_master("QmA", 1, Secret::new([7u8; 32])).unwrap();
+        drop(flow);
+        drop(vault);
+        let vault = file_vault(dir.path());
+        let flow = vault.unlocking(pass("a passphrase of length"));
+        assert_eq!(vault.custody_epoch("QmB").unwrap(), staged);
+        assert_eq!(flow.promote_master("QmB", 0).unwrap(), Stored::Stored);
+        assert_eq!(vault.custody_epoch("QmB").unwrap(), staged + 1);
+        signs_as(&vault, "QmB", [6u8; 32]);
+        signs_as(&vault, "QmA", [7u8; 32]);
+        // A stage over an entry there already does not move it.
+        flow.stage_master("QmB", 1, Secret::new([8u8; 32]), &StageToken([2; 16]))
+            .unwrap();
+        assert_eq!(vault.custody_epoch("QmB").unwrap(), staged + 1);
+    }
+
+    /// Two identities staged before either is kept, promoted and stored in turn.
+    #[test]
+    fn two_identities_staged_first_are_each_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = file_vault(dir.path());
+        let flow = vault.unlocking(pass("a passphrase of length"));
+        flow.stage_master("QmA", 0, Secret::new([5u8; 32]), &StageToken([1; 16]))
+            .unwrap();
+        flow.stage_master("QmB", 0, Secret::new([6u8; 32]), &StageToken([2; 16]))
+            .unwrap();
+        assert_eq!(flow.promote_master("QmB", 0).unwrap(), Stored::Stored);
+        flow.store_master("QmA", 0, Secret::new([5u8; 32])).unwrap();
+        assert_eq!(flow.promote_master("QmA", 0).unwrap(), Stored::Stored);
+        signs_as(&vault, "QmA", [5u8; 32]);
+        signs_as(&vault, "QmB", [6u8; 32]);
+        let read = vault.custody_epoch("QmB").unwrap();
+        assert_eq!(flow.forget_master_at("QmB", read).unwrap(), Forgot::Forgot);
+    }
+
+    /// A folder a build before epochs kept two identities in: whichever is changed first, the
+    /// other is a never-counted identity, not a lost one, and every flow on it works.
+    #[test]
+    fn a_folder_from_before_epochs_with_two_identities_migrates_in_either_order() {
+        for first in ["QmA", "QmB"] {
+            let dir = tempfile::tempdir().unwrap();
+            let vault = file_vault(dir.path());
+            let flow = vault.unlocking(pass("a passphrase of length"));
+            flow.store_master("QmA", 0, Secret::new([5u8; 32])).unwrap();
+            flow.store_master("QmB", 0, Secret::new([6u8; 32])).unwrap();
+            // As the build before epochs left the folder: the keys, no epochs and no notes.
+            for file in [
+                crate::pending::EPOCHS_FILE_NAME,
+                crate::pending::METADATA_FILE_NAME,
+            ] {
+                std::fs::remove_file(dir.path().join(file)).unwrap();
+            }
+            let second = if first == "QmA" { "QmB" } else { "QmA" };
+            let master = |scid: &str| if scid == "QmA" { [5u8; 32] } else { [6u8; 32] };
+            flow.store_master(first, 0, Secret::new(master(first)))
+                .unwrap();
+            // The other: read, staged, promoted and removed at its epoch.
+            assert_eq!(vault.custody_epoch(second).unwrap(), 0);
+            flow.stage_master(second, 1, Secret::new([9u8; 32]), &StageToken([3; 16]))
+                .unwrap();
+            assert_eq!(flow.promote_master(second, 1).unwrap(), Stored::Stored);
+            signs_as(&vault, second, [9u8; 32]);
+            signs_as(&vault, first, master(first));
+            let read = vault.custody_epoch(second).unwrap();
+            assert_eq!(flow.forget_master_at(second, read).unwrap(), Forgot::Forgot);
+            // An entry made, then lost, is still an error.
+            drop_epoch_entry(dir.path(), first);
+            assert!(vault.custody_epoch(first).is_err());
+            assert!(flow
+                .store_master(first, 0, Secret::new(master(first)))
+                .is_err());
+            assert!(flow
+                .stage_master(first, 1, Secret::new([4u8; 32]), &StageToken([4; 16]))
+                .is_err());
+        }
     }
 
     /// A keychain whose reach the test controls: `reachable` answers `up`, and its first call

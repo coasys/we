@@ -33,8 +33,11 @@
 //! neither file is ever removed once written, an identity's entry in it never leaves (a forgotten
 //! key's epoch stays, a reset mark is kept as a reset), and the folder notes each of them in
 //! `<dir>/custody-metadata.json` before it is first written. A noted file that is gone has been
-//! lost, not never written: reading it is an error, never an empty start. An epoch entry missing
-//! for an identity whose key (kept or staged) is here is the same loss, one entry at a time.
+//! lost, not never written: reading it is an error, never an empty start. The metadata notes each
+//! identity too, before its entry in either file is first written, so an entry missing for a
+//! noted identity is the same loss, one entry at a time, while an identity never noted simply
+//! has none yet (a second identity first staged into a folder that counts another's epoch, an
+//! identity kept by a build before epochs were): its entry is made with its first stage or change.
 //!
 //! The folder is shared by every desktop app and build on this computer, and two can run at once (a
 //! WE build and a white-labelled one each hold their own single-instance lock). So each read and
@@ -47,6 +50,7 @@
 //!
 //! [`Vault::record_seen`]: ad4m_identity_client::Vault::record_seen
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -77,6 +81,13 @@ struct Metadata {
     version: u32,
     /// The files written in this folder that must exist from then on.
     written: Vec<String>,
+    /// Per file of [`written`](Self::written), the identities an entry was made for in it,
+    /// noted before the entry is written: an entry missing for one of them has been lost; one
+    /// missing for an identity never noted was never made. Absent in metadata written before
+    /// identities were noted (an identity whose entry is in the file is found there all the
+    /// same, and is noted with the file's next change).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    entries: BTreeMap<String, Vec<String>>,
 }
 
 /// The format of [`METADATA_FILE_NAME`] and of the epochs' file.
@@ -166,13 +177,32 @@ impl EpochsFile {
     }
 }
 
-/// A file that must not go missing, as read.
+/// A file that must not go missing, as read, with the identities noted as having an entry in it
+/// ([`Metadata::entries`]).
 enum Noted<T> {
-    Read(T),
+    Read(T, Vec<String>),
     /// Never written in this folder.
     Never,
     /// Written, and gone.
-    Lost,
+    Lost(Vec<String>),
+}
+
+/// The custody epochs as read under the lock, and the identities noted as having one.
+#[derive(Default)]
+struct Counted {
+    epochs: Vec<Epoch>,
+    noted: Vec<String>,
+}
+
+impl Counted {
+    /// `scid`'s entry; `None` when none was ever made for it. One made and gone is an error.
+    fn find(&self, scid: &str) -> Result<Option<&Epoch>, VaultError> {
+        match self.epochs.iter().find(|e| e.scid == scid) {
+            Some(epoch) => Ok(Some(epoch)),
+            None if self.noted.iter().any(|s| s == scid) => Err(lost_epoch(scid)),
+            None => Ok(None),
+        }
+    }
 }
 
 /// The lists a memory store keeps (tests).
@@ -195,76 +225,94 @@ pub struct Exclusive<'a> {
 }
 
 impl Exclusive<'_> {
-    /// `scid`'s custody epoch: 0 before its kept key first changed here. `held` is whether a
-    /// key of `scid` (kept or staged) is in the store: then an entry missing from the epochs
-    /// this folder counts is lost, and an error, as is a file of epochs that has gone. Only a
-    /// folder that never counted one (its keys kept by a build before epochs were) answers 0
-    /// for a key it holds.
-    pub fn epoch(&self, scid: &str, held: bool) -> Result<u64, VaultError> {
-        match self.epochs(false)? {
-            Some(epochs) => match epochs.iter().find(|e| e.scid == scid) {
-                Some(epoch) => Ok(epoch.value()),
-                None if held => Err(lost_epoch(scid)),
-                None => Ok(0),
-            },
-            None => Ok(0),
-        }
+    /// `scid`'s custody epoch: 0 while no entry was ever made for it here (no key of it kept or
+    /// staged yet, or kept only by a build before epochs were). An entry this folder made and
+    /// has lost is an error, never 0, as is a file of epochs that has gone: the folder notes each
+    /// identity before its entry is first written ([`Metadata::entries`]), so a missing entry is
+    /// told apart from one never made.
+    pub fn epoch(&self, scid: &str) -> Result<u64, VaultError> {
+        Ok(self.epochs(false)?.find(scid)?.map_or(0, Epoch::value))
     }
 
-    /// The kept key of `scid` changed: its epoch goes up by one. Answers the new epoch. `held`
-    /// and a lost entry or file as for [`epoch`](Self::epoch): an error, the epoch not counted
-    /// again from nothing. A count at its last value is an error too, never a wrap.
-    pub fn bump_epoch(&mut self, scid: &str, held: bool) -> Result<u64, VaultError> {
-        let counted = self.epochs(false)?;
-        let counting = counted.is_some();
-        let mut epochs = counted.unwrap_or_default();
-        let value = match epochs.iter_mut().find(|e| e.scid == scid) {
+    /// The kept key of `scid` changed: its epoch goes up by one, or, when no entry was ever made
+    /// for it, starts in a fresh incarnation. Answers the new epoch. A lost entry or file as for
+    /// [`epoch`](Self::epoch): an error, the epoch not counted again from nothing. A count at
+    /// its last value is an error too, never a wrap.
+    pub fn bump_epoch(&mut self, scid: &str) -> Result<u64, VaultError> {
+        let mut counted = self.epochs(false)?;
+        counted.find(scid)?;
+        let value = match counted.epochs.iter_mut().find(|e| e.scid == scid) {
             Some(epoch) => {
                 epoch.count = epoch.count.checked_add(1).ok_or_else(|| {
                     unavailable("this identity's custody epoch is at its last value")
                 })?;
                 epoch.value()
             }
-            None if held && counting => return Err(lost_epoch(scid)),
             None => {
                 let epoch = Epoch::fresh(scid);
                 let value = epoch.value();
-                epochs.push(epoch);
+                counted.epochs.push(epoch);
                 value
             }
         };
-        self.keep_epochs(epochs)?;
+        self.keep_epochs(counted.epochs)?;
         Ok(value)
     }
 
-    /// The way back from a lost epoch ([`epoch`](Self::epoch)), taken on purpose: when `scid`
-    /// has no entry (or the whole file is lost), a new one is made in a fresh incarnation,
-    /// which no epoch read before the loss can match. An entry that is there is left as it is.
-    /// Answers `scid`'s epoch.
-    pub fn recover_epoch(&mut self, scid: &str) -> Result<u64, VaultError> {
-        let mut epochs = self.epochs(true)?.unwrap_or_default();
-        if let Some(epoch) = epochs.iter().find(|e| e.scid == scid) {
+    /// Makes `scid`'s entry when none was ever made, in a fresh incarnation; one that is there
+    /// is left as it is (a stage does not change the kept key). Taken before a key of `scid` is
+    /// first staged, so the promote that follows finds the entry it bumps. A lost entry or file
+    /// is an error, as for [`epoch`](Self::epoch). Answers the epoch.
+    pub fn establish_epoch(&mut self, scid: &str) -> Result<u64, VaultError> {
+        let mut counted = self.epochs(false)?;
+        if let Some(epoch) = counted.find(scid)? {
             return Ok(epoch.value());
         }
         let epoch = Epoch::fresh(scid);
         let value = epoch.value();
-        epochs.push(epoch);
-        self.keep_epochs(epochs)?;
+        counted.epochs.push(epoch);
+        self.keep_epochs(counted.epochs)?;
         Ok(value)
     }
 
-    /// The epochs counted in this folder; `None` when it never counted one. A lost file is an
-    /// error, or, `recovering`, no epochs at all.
-    fn epochs(&self, recovering: bool) -> Result<Option<Vec<Epoch>>, VaultError> {
+    /// The way back from a lost epoch ([`epoch`](Self::epoch)), taken on purpose: when `scid`
+    /// has no entry (or the whole file is lost), a new one is made in a fresh incarnation, so an
+    /// epoch read before the loss matches it only by a 1 in 2³² draw. An entry that is there is
+    /// left as it is, and so is every other identity's: one whose entry went with a lost file
+    /// stays lost until it is recovered too. Answers `scid`'s epoch.
+    pub fn recover_epoch(&mut self, scid: &str) -> Result<u64, VaultError> {
+        let mut counted = self.epochs(true)?;
+        if let Some(epoch) = counted.epochs.iter().find(|e| e.scid == scid) {
+            return Ok(epoch.value());
+        }
+        let epoch = Epoch::fresh(scid);
+        let value = epoch.value();
+        counted.epochs.push(epoch);
+        self.keep_epochs(counted.epochs)?;
+        Ok(value)
+    }
+
+    /// The epochs counted in this folder (none when it never counted one) and the identities
+    /// noted as having one. A lost file is an error, or, `recovering`, no epochs at all.
+    fn epochs(&self, recovering: bool) -> Result<Counted, VaultError> {
         match (&self.lists, self.dir) {
-            (Some(lists), _) => Ok((!lists.epochs.is_empty()).then(|| lists.epochs.clone())),
+            (Some(lists), _) => Ok(Counted {
+                epochs: lists.epochs.clone(),
+                noted: lists.epochs.iter().map(|e| e.scid.clone()).collect(),
+            }),
             (None, Some(dir)) => match read_noted::<EpochsFile>(dir, EPOCHS_FILE_NAME)? {
-                Noted::Read(file) => file.epochs().map(Some),
-                Noted::Never => Ok(None),
-                Noted::Lost if recovering => Ok(Some(Vec::new())),
-                Noted::Lost => Err(lost_file(EPOCHS_FILE_NAME)),
+                Noted::Read(file, noted) => Ok(Counted {
+                    epochs: file.epochs()?,
+                    noted,
+                }),
+                Noted::Never => Ok(Counted::default()),
+                Noted::Lost(noted) if recovering => Ok(Counted {
+                    epochs: Vec::new(),
+                    noted,
+                }),
+                Noted::Lost(_) => Err(lost_file(EPOCHS_FILE_NAME)),
             },
-            (None, None) => Ok(None),
+            (None, None) => Ok(Counted::default()),
         }
     }
 
@@ -274,30 +322,44 @@ impl Exclusive<'_> {
                 lists.epochs = epochs;
                 Ok(())
             }
-            (None, Some(dir)) => write_noted(
-                dir,
-                EPOCHS_FILE_NAME,
-                &Epochs {
-                    version: FORMAT,
-                    epochs,
-                },
-            ),
+            (None, Some(dir)) => {
+                let scids: Vec<String> = epochs.iter().map(|e| e.scid.clone()).collect();
+                write_noted(
+                    dir,
+                    EPOCHS_FILE_NAME,
+                    &scids,
+                    &Epochs {
+                        version: FORMAT,
+                        epochs,
+                    },
+                )
+            }
             (None, None) => Err(unavailable("no custody folder")),
         }
     }
 }
 
+/// Whether `error` is a custody epoch this folder lost ([`Exclusive::epoch`]): the one a
+/// person recovers from with their words ([`crate::vault::DesktopVault::recover_custody_epoch`]).
+pub fn is_lost_epoch(error: &VaultError) -> bool {
+    matches!(error, VaultError::Unavailable(why)
+        if why.contains(LOST_EPOCH) || why.contains(&format!("{EPOCHS_FILE_NAME} {LOST_FILE}")))
+}
+
+/// What a lost epoch's error says, and [`is_lost_epoch`] looks for.
+const LOST_EPOCH: &str = "custody epoch was made in this custody folder and is gone";
+
+/// What a lost file's error says after its name.
+const LOST_FILE: &str = "was written in this custody folder and is gone";
+
 fn lost_epoch(scid: &str) -> VaultError {
     unavailable(format!(
-        "the custody epoch of {scid} is missing while its master key is kept here; it was lost, \
-         and is not counted again from nothing"
+        "{scid}'s {LOST_EPOCH}; it is not counted again from nothing"
     ))
 }
 
 fn lost_file(file: &str) -> VaultError {
-    unavailable(format!(
-        "{file} was written in this custody folder and is gone; it is not started again empty"
-    ))
+    unavailable(format!("{file} {LOST_FILE}; it is not started again empty"))
 }
 
 /// The lock every process holds while it reads or changes the file.
@@ -506,23 +568,24 @@ impl PendingIncepts {
 
     /// [`change`](Self::change) for a file that must not go missing ([`read_noted`]): a lost one
     /// is an error, and the file is kept even when the list empties.
-    fn change_noted<T: Serialize + DeserializeOwned, R>(
+    fn change_noted<R>(
         &self,
         file: &str,
-        memory: impl FnOnce(&mut Lists) -> &mut Vec<T>,
-        edit: impl FnOnce(&mut Vec<T>) -> R,
+        memory: impl FnOnce(&mut Lists) -> &mut Vec<Seen>,
+        edit: impl FnOnce(&mut Vec<Seen>) -> R,
     ) -> Result<R, VaultError> {
         match self {
             PendingIncepts::File { dir, lock } => {
                 let _held = lock.lock().map_err(|_| unavailable("lock poisoned"))?;
                 let _exclusive = lock_folder(dir, true)?;
                 let mut items = match read_noted(dir, file)? {
-                    Noted::Read(items) => items,
+                    Noted::Read(items, _) => items,
                     Noted::Never => Vec::new(),
-                    Noted::Lost => return Err(lost_file(file)),
+                    Noted::Lost(_) => return Err(lost_file(file)),
                 };
                 let answer = edit(&mut items);
-                write_noted(dir, file, &items)?;
+                let scids: Vec<String> = items.iter().map(|s| s.scid.clone()).collect();
+                write_noted(dir, file, &scids, &items)?;
                 Ok(answer)
             }
             PendingIncepts::Memory(lists) => Ok(edit(memory(
@@ -533,18 +596,22 @@ impl PendingIncepts {
 }
 
 /// `file`, one that must not go missing once written: [`Noted::Lost`] when the folder's
-/// metadata says it was written and it is not there. Read under the folder's lock.
+/// metadata says it was written and it is not there. With it, the identities the metadata notes
+/// as having an entry in it. Read under the folder's lock; metadata that cannot be read is an
+/// error either way.
 fn read_noted<T: DeserializeOwned>(
     dir: &std::path::Path,
     file: &str,
 ) -> Result<Noted<T>, VaultError> {
+    let noted = metadata(dir)?;
+    let entries = noted.entries.get(file).cloned().unwrap_or_default();
     match std::fs::read(dir.join(file)) {
         Ok(bytes) => serde_json::from_slice(&bytes)
-            .map(Noted::Read)
+            .map(|value| Noted::Read(value, entries))
             .map_err(unavailable),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            if metadata(dir)?.written.iter().any(|f| f == file) {
-                Ok(Noted::Lost)
+            if noted.written.iter().any(|f| f == file) {
+                Ok(Noted::Lost(entries))
             } else {
                 Ok(Noted::Never)
             }
@@ -553,18 +620,31 @@ fn read_noted<T: DeserializeOwned>(
     }
 }
 
-/// Writes `file`, one that must not go missing, noting it in the folder's metadata first: noted
-/// and durable before the file is, so it is never there unnoted (the metadata a file that predates
-/// it never had is written with its next change).
+/// Writes `file`, one that must not go missing, holding entries for `scids`, noting the file and
+/// each identity in the folder's metadata first: noted and durable before the file is, so neither
+/// the file nor an entry in it is ever there unnoted (the metadata a file that predates it never
+/// had is written with its next change). A noted identity is never dropped from the metadata.
 fn write_noted<T: Serialize + ?Sized>(
     dir: &std::path::Path,
     file: &str,
+    scids: &[String],
     value: &T,
 ) -> Result<(), VaultError> {
     let mut noted = metadata(dir)?;
+    let mut changed = false;
     if !noted.written.iter().any(|f| f == file) {
-        noted.version = FORMAT;
         noted.written.push(file.to_string());
+        changed = true;
+    }
+    let entries = noted.entries.entry(file.to_string()).or_default();
+    for scid in scids {
+        if !entries.contains(scid) {
+            entries.push(scid.clone());
+            changed = true;
+        }
+    }
+    if changed {
+        noted.version = FORMAT;
         write_bytes(
             dir,
             METADATA_FILE_NAME,
