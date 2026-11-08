@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { DeviceKeyPlugin, SignedSessionStatement } from './deviceKey';
 import { RENEW_BEFORE_MS } from './keySession';
+import { unusedPlugin } from './unusedPlugin.testing';
 
 const CONNECT_VERSION = '0.13.1-staging.6';
 const key = (name: string) => `${CONNECT_VERSION}/${name}`;
@@ -124,6 +125,7 @@ vi.mock('@we/seed-file', () => ({ default: { ad4m: {} } }));
 
 function plugin(): DeviceKeyPlugin {
   return {
+    ...unusedPlugin(),
     status: async () => ({
       keys: { sign: 'z6MkPhone', enc: 'z6LSPhone', didKey: 'did:key:z6MkPhone' },
       identity: { scid: 'QmIdentity', did: 'did:scid:coasys:1:QmIdentity', seq: 3 },
@@ -299,6 +301,85 @@ describe('createDeviceKeyConnector', () => {
     // What WE's ports dial with from here on is the client they were handed: it must carry the
     // new token, or the first reconnect after the old one expires is refused.
     expect((result.client as { token?: string }).token).toBe('token-2');
+  });
+});
+
+describe('a phone in no identity yet', () => {
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', new MemoryStorage());
+    vi.stubGlobal('sessionStorage', new MemoryStorage());
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  const unjoined = (pending: boolean) => (): DeviceKeyPlugin => ({
+    ...plugin(),
+    status: async () => ({
+      keys: pending ? { sign: 'z6MkPhone', enc: 'z6LSPhone', didKey: 'did:key:z6MkPhone' } : null,
+      identity: null,
+      pending: pending ? { did: 'did:scid:coasys:1:Qm', offerId: 'o1', store: 'https://s', matchCode: 'K2P' } : null,
+      protection: 'none',
+    }),
+  });
+
+  it('is sent to the identity page to join, and comes back where it was', async () => {
+    const { createDeviceKeyConnector } = await import('./deviceKeyConnector');
+    for (const pending of [false, true]) {
+      const nav = { here: () => '/', assign: vi.fn() };
+      const ordinary = { initialize: vi.fn(async () => ({}) as never) };
+      const connector = createDeviceKeyConnector(ordinary, {
+        plugin: unjoined(pending),
+        keyHost: () => null,
+        joinDeclined: () => false,
+        nav,
+      });
+      let booted = false;
+      void connector.initialize(ctx).then(() => (booted = true));
+      await vi.waitFor(() => expect(nav.assign).toHaveBeenCalledTimes(1));
+      expect(nav.assign).toHaveBeenCalledWith('/mobile/identity.html?join=&back=%2F');
+      // The page is left: nothing boots behind it.
+      expect(booted).toBe(false);
+      expect(ordinary.initialize).not.toHaveBeenCalled();
+    }
+  });
+
+  it('boots to the ordinary sign-in once the person said “Not now”, or where the plugin does not answer', async () => {
+    const { createDeviceKeyConnector } = await import('./deviceKeyConnector');
+    const { JOIN_DECLINED_KEY } = await import('./keyHost');
+    localStorage.setItem(JOIN_DECLINED_KEY, '1');
+    const nav = { here: () => '/', assign: vi.fn() };
+    const ordinary = { initialize: vi.fn(async () => ({ client: 'fallback' }) as never) };
+    // The default reads the note the join page left.
+    const declined = createDeviceKeyConnector(ordinary, { plugin: unjoined(false), keyHost: () => null, nav });
+    expect((await declined.initialize(ctx)).client).toBe('fallback');
+
+    const silent = createDeviceKeyConnector(ordinary, {
+      plugin: () => ({
+        ...plugin(),
+        status: async () => {
+          throw new Error('bridge gone');
+        },
+      }),
+      keyHost: () => null,
+      joinDeclined: () => false,
+      nav,
+    });
+    expect((await silent.initialize(ctx)).client).toBe('fallback');
+    expect(nav.assign).not.toHaveBeenCalled();
+  });
+
+  it('hands Settings the phone’s custody service once signed in', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const { createDeviceKeyConnector } = await import('./deviceKeyConnector');
+    const connector = createDeviceKeyConnector(fallback, { plugin, keyHost: () => 'https://b.example' });
+    const result = await connector.initialize(ctx);
+    const options = (result.ports as unknown as { options: { custody?: { takesWords?: boolean } } }).options;
+    expect(options.custody?.takesWords).toBe(false);
+    await result.disconnect!();
   });
 });
 

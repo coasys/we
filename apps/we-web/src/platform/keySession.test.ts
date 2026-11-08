@@ -17,6 +17,7 @@ import {
   type RenewalClock,
   RETRY_MS,
 } from './keySession';
+import { unusedPlugin } from './unusedPlugin.testing';
 
 const URL_ = 'http://127.0.0.1:12600';
 const EXECUTOR = 'did:key:z6MkExecutor';
@@ -25,6 +26,7 @@ const SCID = 'did:scid:coasys:1:QmIdentity';
 function fakePlugin(overrides: Partial<DeviceKeyPlugin> = {}) {
   const signed: SessionSignRequest[] = [];
   const plugin: DeviceKeyPlugin = {
+    ...unusedPlugin(),
     status: async () => ({
       keys: { sign: 'z6MkPhone', enc: 'z6LSPhone', didKey: 'did:key:z6MkPhone' },
       identity: { scid: 'QmIdentity', did: SCID, seq: 3 },

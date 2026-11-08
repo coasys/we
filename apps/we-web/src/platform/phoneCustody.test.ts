@@ -1,0 +1,173 @@
+/**
+ * The phone's custody service as Settings reads it: the plugin's answers in the custody service's
+ * shape, and a change that leaves for the identity page.
+ */
+import { describe, expect, it, vi } from 'vitest';
+
+import type { DeviceKeyPlugin, DeviceRequestView, PhoneDeviceView, PhoneIdentityView } from './deviceKey';
+import { identityPageUrl, phoneCustodyHost } from './phoneCustody';
+
+const DID = 'did:scid:coasys:1:QmIdentity';
+
+const status = (over: Partial<PhoneIdentityView> = {}): PhoneIdentityView => ({
+  did: DID,
+  keyId: 'd2',
+  fingerprint: 'AbCd 1234',
+  revoked: null,
+  masterIndex: null,
+  protection: 'tee',
+  store: 'https://store.example',
+  head: 3,
+  biometrics: true,
+  ...over,
+});
+
+const device = (over: Partial<PhoneDeviceView>): PhoneDeviceView => ({
+  keyId: 'd1',
+  fingerprint: 'x',
+  name: 'Laptop',
+  kind: 'desktop-app',
+  addedSeq: 0,
+  revokedSeq: null,
+  thisDevice: false,
+  holdsMaster: 'no',
+  masterIndex: null,
+  mayKeepMaster: true,
+  bot: false,
+  ...over,
+});
+
+const request = (over: Partial<DeviceRequestView>): DeviceRequestView => ({
+  id: 'r1',
+  kind: 'send-master',
+  by: 'd3',
+  device: 'Tablet',
+  fingerprint: 'y',
+  code: 'K2P 9QX',
+  targets: [],
+  targetKeys: [],
+  rotate: false,
+  expires: 1_800_000_000,
+  problem: null,
+  ...over,
+});
+
+function plugin(answers: {
+  status?: PhoneIdentityView | Error;
+  devices?: PhoneDeviceView[];
+  requests?: DeviceRequestView[];
+  waiting?: boolean | Error;
+}) {
+  const p = {
+    identityStatus: vi.fn(async () => {
+      if (answers.status instanceof Error) throw answers.status;
+      return answers.status ?? status();
+    }),
+    devices: vi.fn(async () => ({ devices: answers.devices ?? [] })),
+    requests: vi.fn(async () => ({ requests: answers.requests ?? [] })),
+    masterWaiting: vi.fn(async () => {
+      if (answers.waiting instanceof Error) throw answers.waiting;
+      return { waiting: answers.waiting ?? false };
+    }),
+  };
+  return p as typeof p & DeviceKeyPlugin;
+}
+
+const refusal = (code: string, message = code) => Object.assign(new Error(message), { code });
+
+describe('the phone custody host', () => {
+  it('takes no words', () => {
+    expect(phoneCustodyHost(plugin({})).takesWords).toBe(false);
+  });
+
+  it('reads the devices, who keeps the master key, and the requests the phone can answer', async () => {
+    const host = phoneCustodyHost(
+      plugin({
+        status: status({ masterIndex: 0 }),
+        devices: [
+          device({ keyId: 'd1', name: 'Laptop', holdsMaster: 'offered' }),
+          device({ keyId: 'd2', name: 'Phone', kind: null, holdsMaster: 'yes', thisDevice: true }),
+          device({ keyId: 'd3', name: 'Tablet', holdsMaster: 'no' }),
+          // Revoked, and the log let it keep the master key: a holder still out there.
+          device({ keyId: 'd4', name: 'Old', holdsMaster: 'yes', revokedSeq: 5, mayKeepMaster: true }),
+          device({ keyId: 'd5', name: 'Gone', revokedSeq: 6, mayKeepMaster: false }),
+        ],
+        requests: [
+          request({ id: 'r1' }),
+          request({ id: 'r2', kind: 'confirm-revoke', targets: ['Tablet'], targetKeys: ['d3'] }),
+          request({ id: 'r3', problem: 'It asks for a rotation, which needs the 12 words.' }),
+        ],
+      }),
+    );
+    expect(await host.publicState()).toEqual({
+      did: DID,
+      holdsMaster: { index: 0 },
+      unlock: 'os',
+      devices: [
+        { keyId: 'd1', name: 'Laptop', kind: 'desktop-app', holdsMaster: 'offered' },
+        { keyId: 'd2', name: 'Phone', kind: '', holdsMaster: true },
+        { keyId: 'd3', name: 'Tablet', kind: 'desktop-app', holdsMaster: false },
+      ],
+      requests: [
+        { id: 'r1', kind: 'send-master', by: 'd3', keyIds: [], expires: 1_800_000_000 },
+        { id: 'r2', kind: 'confirm-revoke', by: 'd3', keyIds: ['d3'], expires: 1_800_000_000 },
+      ],
+      revokedHolders: ['d4'],
+      masterWaiting: false,
+    });
+  });
+
+  it('says a master key waits only where the phone does not keep one, and offers none it cannot see', async () => {
+    const waits = plugin({ waiting: true });
+    expect(await phoneCustodyHost(waits).publicState()).toMatchObject({ holdsMaster: null, masterWaiting: true });
+
+    const holds = plugin({ status: status({ masterIndex: 1 }), waiting: true });
+    expect(await phoneCustodyHost(holds).publicState()).toMatchObject({ masterWaiting: false });
+    expect(holds.masterWaiting).not.toHaveBeenCalled();
+
+    const unread = plugin({ waiting: new Error('store-unavailable') });
+    expect(await phoneCustodyHost(unread).publicState()).toMatchObject({ masterWaiting: false });
+  });
+
+  it('is in no identity before the phone joins one', async () => {
+    for (const code of ['NoIdentity', 'NoKeys']) {
+      expect(await phoneCustodyHost(plugin({ status: refusal(code) })).publicState()).toEqual({
+        did: null,
+        holdsMaster: null,
+        unlock: null,
+      });
+    }
+  });
+
+  it('blocks changes on a phone that cannot reach its store, or was removed', async () => {
+    const offline = await phoneCustodyHost(plugin({ status: refusal('Rpc', 'store-unavailable') })).publicState();
+    expect(offline.blocked).toMatch(/cannot reach your identity store: store-unavailable/);
+
+    const removed = plugin({ status: status({ revoked: 7 }) });
+    const state = await phoneCustodyHost(removed).publicState();
+    expect(state.blocked).toMatch(/removed from your identity/);
+    expect(state.did).toBe(DID);
+    expect(removed.devices).not.toHaveBeenCalled();
+  });
+
+  it('runs a change on the identity page, coming back to where Settings was', async () => {
+    const nav = { here: () => '/settings/identity?tab=devices', assign: vi.fn() };
+    const host = phoneCustodyHost(plugin({}), nav);
+    let ended = false;
+    void host.open({ kind: 'revoke', keyId: 'd3' }).then(() => (ended = true));
+    await Promise.resolve();
+    // The page leaves; the change never ends here.
+    expect(ended).toBe(false);
+    const url = new URL(nav.assign.mock.calls[0][0], 'https://localhost');
+    expect(url.pathname).toBe('/mobile/identity.html');
+    expect(JSON.parse(url.searchParams.get('change')!)).toEqual({ kind: 'revoke', keyId: 'd3' });
+    expect(url.searchParams.get('back')).toBe('/settings/identity?tab=devices');
+  });
+
+  it('addresses the join page', () => {
+    const url = new URL(identityPageUrl('join', '/'), 'https://localhost');
+    expect(url.searchParams.has('join')).toBe(true);
+    expect(url.searchParams.has('change')).toBe(false);
+    expect(url.searchParams.get('back')).toBe('/');
+  });
+});

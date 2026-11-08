@@ -28,8 +28,9 @@ import { capabilitiesFromToken, createAd4mBackendPorts } from '@we/backend-ad4m'
 import weSeed from '@we/seed-file';
 
 import { type DeviceKeyPlugin, deviceKeyPlugin } from './deviceKey';
-import { readKeyHost, rememberKeyHost } from './keyHost';
+import { joinDeclined, readKeyHost, rememberKeyHost } from './keyHost';
 import { keepRenewed, type KeySessionApp, loginWithDeviceKey } from './keySession';
+import { browserNav, identityPageUrl, type PageNav, phoneCustodyHost } from './phoneCustody';
 
 const CAPABILITIES = [{ with: { domain: '*', pointers: ['*'] }, can: ['*'] }];
 
@@ -73,6 +74,10 @@ export interface DeviceKeyConnectorDeps {
   waitToRetry?: (ms: number) => Promise<void>;
   /** The time, Unix ms; the tests pass their own. */
   now?: () => number;
+  /** Whether the person said "Not now" to joining. By default, the phone's note ({@link joinDeclined}). */
+  joinDeclined?: () => boolean;
+  /** Where the page is and how it leaves for the identity page; the tests pass their own. */
+  nav?: PageNav;
 }
 
 const defaultDeps: DeviceKeyConnectorDeps = { plugin: () => deviceKeyPlugin(), keyHost: () => readKeyHost() };
@@ -290,6 +295,21 @@ export async function keyLoginTarget(
   }
 }
 
+/**
+ * Whether this boot sends the person to the phone's identity page to join an identity: the plugin
+ * is here, the phone is in no identity yet (or a claim of it is waiting), and they have not said
+ * "Not now". A plugin that does not answer is no reason to leave.
+ */
+export async function offersJoin(plugin: DeviceKeyPlugin, declined: () => boolean = joinDeclined): Promise<boolean> {
+  if (declined()) return false;
+  try {
+    return !(await plugin.status()).identity;
+  } catch (error) {
+    console.error('[WE] The DeviceKey plugin did not answer:', error);
+    return false;
+  }
+}
+
 export function createDeviceKeyConnector(
   fallback: BackendConnector,
   deps: DeviceKeyConnectorDeps = defaultDeps,
@@ -299,6 +319,13 @@ export function createDeviceKeyConnector(
       if ((deps.skipKeyLogin ?? takeEndedTooSoon)()) {
         console.warn('[WE] The last key session ended as soon as it opened; showing the connect screen.');
         return fallback.initialize(ctx);
+      }
+      const phone = deps.plugin();
+      if (phone && (await offersJoin(phone, deps.joinDeclined))) {
+        const nav = deps.nav ?? browserNav;
+        nav.assign(identityPageUrl('join', nav.here()));
+        // The page is left; WE boots again when the identity page sends the person back.
+        return new Promise<BackendInitResult>(() => {});
       }
       const target = await keyLoginTarget(deps);
       if (!target) return fallback.initialize(ctx);
@@ -384,6 +411,9 @@ export function createDeviceKeyConnector(
           capabilities: capabilitiesFromToken(core.token),
           linkServerUrl: (weSeed.ad4m as { linkServerUrl?: string }).linkServerUrl,
           connection: () => (core.baseUrl ? { url: core.baseUrl, token: core.token } : null),
+          // The master key, the devices and their requests: the phone keeps the key behind its
+          // biometric, and runs each change on its identity page.
+          custody: phoneCustodyHost(plugin, deps.nav ?? browserNav),
         }),
         // Ends the session here and forgets the executor, so the next boot asks rather than
         // logging straight back in. The device key stays this phone's.
