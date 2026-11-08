@@ -253,7 +253,7 @@ export async function loginUntilReached<T>(
 /**
  * Hands a renewed token to the live client, where the client can take one.
  *
- * `Ad4mClient.setToken` (ad4m after the pinned dc5964ba4) uses the token for every later call and
+ * `Ad4mClient.setToken` (ad4m after the pinned cd97f2ac2) uses the token for every later call and
  * the next connection. The pinned client has no such method and keeps the token it was built
  * with, so here this answers `false` and the renewal reaches only `core.token` (and what reads it:
  * the ports' `connection()`, an embedded app). Once WE pins an ad4m with `setToken`, this guard

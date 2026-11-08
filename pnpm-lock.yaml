@@ -5,8 +5,8 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  '@coasys/ad4m': https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@d6594e7dd8b498d217f08ca220ebd3dfc0b60d04
-  '@coasys/ad4m-connect': https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@d6594e7dd8b498d217f08ca220ebd3dfc0b60d04
+  '@coasys/ad4m': https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@cd97f2ac278501e2901b1420463bba302c99dce3
+  '@coasys/ad4m-connect': https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@cd97f2ac278501e2901b1420463bba302c99dce3
   prettier: 3.9.10
   '@xmldom/xmldom': '>=0.9.12'
   plist: '>=3.1.1'
@@ -254,8 +254,8 @@ importers:
         version: 14.0.3
     devDependencies:
       '@coasys/ad4m':
-        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@d6594e7dd8b498d217f08ca220ebd3dfc0b60d04
-        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@d6594e7dd8b498d217f08ca220ebd3dfc0b60d04
+        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@cd97f2ac278501e2901b1420463bba302c99dce3
+        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@cd97f2ac278501e2901b1420463bba302c99dce3
       '@types/node':
         specifier: ^26.6.6
         version: 26.6.6
@@ -406,8 +406,8 @@ importers:
   apps/we-tauri:
     dependencies:
       '@coasys/ad4m':
-        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@d6594e7dd8b498d217f08ca220ebd3dfc0b60d04
-        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@d6594e7dd8b498d217f08ca220ebd3dfc0b60d04
+        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@cd97f2ac278501e2901b1420463bba302c99dce3
+        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@cd97f2ac278501e2901b1420463bba302c99dce3
       '@tauri-apps/api':
         specifier: 2.12.4
         version: 2.12.4
@@ -467,11 +467,11 @@ importers:
   apps/we-web:
     dependencies:
       '@coasys/ad4m':
-        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@d6594e7dd8b498d217f08ca220ebd3dfc0b60d04
-        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@d6594e7dd8b498d217f08ca220ebd3dfc0b60d04
+        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@cd97f2ac278501e2901b1420463bba302c99dce3
+        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@cd97f2ac278501e2901b1420463bba302c99dce3
       '@coasys/ad4m-connect':
-        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@d6594e7dd8b498d217f08ca220ebd3dfc0b60d04
-        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@d6594e7dd8b498d217f08ca220ebd3dfc0b60d04
+        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@cd97f2ac278501e2901b1420463bba302c99dce3
+        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@cd97f2ac278501e2901b1420463bba302c99dce3
       '@we/app-shell':
         specifier: workspace:*
         version: link:../../packages/app-shell
@@ -629,8 +629,8 @@ importers:
   packages/app-shell:
     dependencies:
       '@coasys/ad4m':
-        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@d6594e7dd8b498d217f08ca220ebd3dfc0b60d04
-        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@d6594e7dd8b498d217f08ca220ebd3dfc0b60d04
+        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@cd97f2ac278501e2901b1420463bba302c99dce3
+        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@cd97f2ac278501e2901b1420463bba302c99dce3
       '@solidjs/router':
         specifier: ^0.16.3
         version: 0.16.3(solid-js@1.9.18)
@@ -828,8 +828,8 @@ importers:
   packages/backend-system/ad4m:
     dependencies:
       '@coasys/ad4m':
-        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@d6594e7dd8b498d217f08ca220ebd3dfc0b60d04
-        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@d6594e7dd8b498d217f08ca220ebd3dfc0b60d04
+        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@cd97f2ac278501e2901b1420463bba302c99dce3
+        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@cd97f2ac278501e2901b1420463bba302c99dce3
       '@we/backend-shared':
         specifier: workspace:*
         version: link:../shared
@@ -1701,8 +1701,8 @@ importers:
   packages/module-system/flux:
     dependencies:
       '@coasys/ad4m':
-        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@d6594e7dd8b498d217f08ca220ebd3dfc0b60d04
-        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@d6594e7dd8b498d217f08ca220ebd3dfc0b60d04
+        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@cd97f2ac278501e2901b1420463bba302c99dce3
+        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@cd97f2ac278501e2901b1420463bba302c99dce3
     devDependencies:
       '@we/cli':
         specifier: workspace:*
@@ -2571,12 +2571,12 @@ packages:
     resolution: {integrity: sha512-ui0Rp2FR9H8QKsoR9iID/JZZbC7V8Kc6djewuFn7zXPlWa/cb4/vZ8ogIrRneZHFxh0vBrieYDaLeNn346bcEw==}
     engines: {node: '>=22.0.0'}
 
-  '@coasys/ad4m-connect@https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@d6594e7dd8b498d217f08ca220ebd3dfc0b60d04':
-    resolution: {integrity: sha512-q5DEGvXLkOzaLYczC6cVEIOszCMWa/oQcl03DIusx8G1c4wCoDaQyp56skynU4WJgGhnimuNKBFe7WGj9YNIDA==, tarball: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@d6594e7dd8b498d217f08ca220ebd3dfc0b60d04}
+  '@coasys/ad4m-connect@https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@cd97f2ac278501e2901b1420463bba302c99dce3':
+    resolution: {integrity: sha512-l0aSfbZcRgRZPgnefsMphT9J021A4NNoAtABnfJaqkINZiQ0xzW9n8qFugqyXcSArEz22/orE6kL3Kz8HS4kxw==, tarball: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@cd97f2ac278501e2901b1420463bba302c99dce3}
     version: 0.13.1-staging.6
 
-  '@coasys/ad4m@https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@d6594e7dd8b498d217f08ca220ebd3dfc0b60d04':
-    resolution: {integrity: sha512-O3euLTnbK8lySzJBToK6Cpq0tyJE2J4bjapLDJYMMp2/A+Mqzr8ywXjFyLkf5SogN5w06HmdLMgPLh36TMMqZA==, tarball: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@d6594e7dd8b498d217f08ca220ebd3dfc0b60d04}
+  '@coasys/ad4m@https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@cd97f2ac278501e2901b1420463bba302c99dce3':
+    resolution: {integrity: sha512-O3euLTnbK8lySzJBToK6Cpq0tyJE2J4bjapLDJYMMp2/A+Mqzr8ywXjFyLkf5SogN5w06HmdLMgPLh36TMMqZA==, tarball: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@cd97f2ac278501e2901b1420463bba302c99dce3}
     version: 0.13.1-staging.6
     engines: {node: '>=22'}
 
@@ -7408,14 +7408,14 @@ snapshots:
       '@cesium/engine': 26.4.0
       nosleep.js: 0.12.0
 
-  '@coasys/ad4m-connect@https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@d6594e7dd8b498d217f08ca220ebd3dfc0b60d04':
+  '@coasys/ad4m-connect@https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@cd97f2ac278501e2901b1420463bba302c99dce3':
     dependencies:
       '@undecaf/barcode-detector-polyfill': 0.9.23
       '@undecaf/zbar-wasm': 0.9.16
       auto-bind: 5.0.1
       lit: 2.8.0
 
-  '@coasys/ad4m@https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@d6594e7dd8b498d217f08ca220ebd3dfc0b60d04':
+  '@coasys/ad4m@https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@cd97f2ac278501e2901b1420463bba302c99dce3':
     dependencies:
       '@holochain/client': 0.16.0
       base64-js: 1.5.1

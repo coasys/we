@@ -3,9 +3,9 @@
  * token the client WE keeps on dials with after a renewal.
  *
  * `@coasys/ad4m` and `@coasys/ad4m-connect/core` are replaced by small doubles that keep the
- * two facts under test true to the pinned sources (dc5964ba4): `Ad4mClient` takes its token at
+ * two facts under test true to the pinned sources (cd97f2ac2): `Ad4mClient` takes its token at
  * construction and has no way to change it (`core/src/apiClient.ts:140-148`, `:205`: every dial
- * uses that token; `:175`: "a new token needs a new client"); `Ad4mConnect`'s constructor restores
+ * uses that token; `:176`: "a new token needs a new client"); `Ad4mConnect`'s constructor restores
  * the stored `ad4m-token` (`connect/src/core.ts:104`), `connect()` builds the client from
  * `this.token` and writes `ad4m-url` (`:197`, `:213`), and `disconnect()` removes the stored token
  * (`:345-346`). Storage keys are prefixed with the connect package's version (`connect/src/utils.ts`).
