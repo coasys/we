@@ -235,6 +235,14 @@ impl DesktopVault {
     /// changed in this custody folder. Read under the folder's lock, so it is never read between
     /// a write of the kept key and its bump; reads no item, so no unlock and no passphrase. A
     /// file of epochs that cannot be read is an error, never 0.
+    ///
+    /// Every change of the kept item (a store, a promote, a forget) bumps the epoch *before* it
+    /// touches the item, under the same lock. A store can make a change and still answer an
+    /// error (the Secret Service committing an item after its D-Bus call timed out, a crash
+    /// between the write and the answer); bumped first, the epoch has moved whenever the item
+    /// may have, so a forget at an epoch read before never deletes what that write left. The
+    /// cost is the other way round and safe: a write that fails after the bump has moved the
+    /// epoch over no change, and a forget at the epoch read before it keeps the key.
     pub fn custody_epoch(&self, scid: &str) -> Result<u64, VaultError> {
         self.pending.exclusive()?.epoch(scid)
     }
@@ -258,8 +266,9 @@ impl DesktopVault {
             return Ok(Forgot::Kept(kept));
         }
         log::info!("custody: forget a master key");
-        self.store.delete(&item_name(scid))?;
+        // The epoch moves before the item does ([`DesktopVault::custody_epoch`]).
         folder.bump_epoch(scid)?;
+        self.store.delete(&item_name(scid))?;
         Ok(Forgot::Forgot)
     }
 }
@@ -300,10 +309,11 @@ impl Vault for Unlocking<'_> {
                 return Ok(Stored::AlreadyNewer { kept });
             }
         }
-        self.vault.put(&name, &prepared)?;
         // Every store bumps it, a same-index re-store too: a forget that read the epoch before
-        // a duplicate delivery must not delete what that delivery just wrote.
+        // a duplicate delivery must not delete what that delivery just wrote. Before the put
+        // ([`DesktopVault::custody_epoch`]).
         folder.bump_epoch(scid)?;
+        self.vault.put(&name, &prepared)?;
         Ok(Stored::Stored)
     }
 
@@ -362,10 +372,11 @@ impl Vault for Unlocking<'_> {
             }
         }
         log::info!("custody: promote a staged master key");
+        // Before the move ([`DesktopVault::custody_epoch`]).
+        folder.bump_epoch(scid)?;
         self.vault
             .store
             .rename(&staged_name(scid), &item_name(scid))?;
-        folder.bump_epoch(scid)?;
         Ok(Stored::Stored)
     }
 
@@ -1503,6 +1514,103 @@ mod tests {
             ed25519_signing_key_multikey([5u8; 32])
         );
         assert_eq!(vault.custody_epoch("QmScid").unwrap(), after_store + 1);
+    }
+
+    /// A keychain whose writes land and then answer an error, while `lose` is set: the Secret
+    /// Service committing an item after its D-Bus call timed out, a crash between a write and
+    /// its answer.
+    struct AnswerLost {
+        items: MemoryStore,
+        lose: std::sync::atomic::AtomicBool,
+    }
+
+    impl AnswerLost {
+        fn answer(&self, done: Result<(), VaultError>) -> Result<(), VaultError> {
+            done?;
+            if self.lose.load(std::sync::atomic::Ordering::SeqCst) {
+                return Err(VaultError::Unavailable("the answer was lost".into()));
+            }
+            Ok(())
+        }
+    }
+
+    impl SecretStore for AnswerLost {
+        fn kind(&self) -> StoreKind {
+            self.items.kind()
+        }
+        fn kind_of(&self, n: &str) -> Result<StoreKind, VaultError> {
+            self.items.kind_of(n)
+        }
+        fn put(&self, n: &str, b: &[u8]) -> Result<(), VaultError> {
+            self.answer(self.items.put(n, b))
+        }
+        fn put_tagged(&self, n: &str, b: &[u8], tag: &ItemTag) -> Result<(), VaultError> {
+            self.answer(self.items.put_tagged(n, b, tag))
+        }
+        fn tag_of(&self, n: &str) -> Result<Option<ItemTag>, VaultError> {
+            self.items.tag_of(n)
+        }
+        fn get(&self, n: &str) -> Result<Option<Vec<u8>>, VaultError> {
+            self.items.get(n)
+        }
+        fn contains(&self, n: &str) -> Result<bool, VaultError> {
+            self.items.contains(n)
+        }
+        fn delete(&self, n: &str) -> Result<(), VaultError> {
+            self.answer(self.items.delete(n))
+        }
+        fn rename(&self, from: &str, to: &str) -> Result<(), VaultError> {
+            self.answer(self.items.rename(from, to))
+        }
+    }
+
+    /// A store or a promote that changed the kept key and then answered an error has moved the
+    /// custody epoch all the same, since the epoch moves before the item: a removal that read
+    /// the epoch before it keeps the key that write left. (Bumped after the write, the error
+    /// returned first and the removal deleted it.)
+    #[test]
+    fn a_write_that_landed_and_answered_an_error_has_moved_the_epoch() {
+        use std::sync::atomic::Ordering::SeqCst;
+        let store = Arc::new(AnswerLost {
+            items: MemoryStore::as_kind(StoreKind::Keychain),
+            lose: std::sync::atomic::AtomicBool::new(false),
+        });
+        let vault = DesktopVault::new(Box::new(store.clone()), PendingIncepts::memory());
+        let flow = vault.unlocking(None);
+        flow.store_master("QmScid", 0, Secret::new([4u8; 32]))
+            .unwrap();
+
+        // A duplicate delivery whose answer is lost.
+        let read = flow.custody_epoch("QmScid").unwrap();
+        store.lose.store(true, SeqCst);
+        assert!(flow
+            .store_master("QmScid", 0, Secret::new([4u8; 32]))
+            .is_err());
+        store.lose.store(false, SeqCst);
+        assert_eq!(
+            flow.forget_master_at("QmScid", read).unwrap(),
+            Forgot::Kept(0)
+        );
+        assert_eq!(
+            unlocked_key(&vault, None),
+            ed25519_signing_key_multikey([4u8; 32])
+        );
+
+        // A promote whose answer is lost.
+        flow.stage_master("QmScid", 1, Secret::new([5u8; 32]), &StageToken([3; 16]))
+            .unwrap();
+        let read = flow.custody_epoch("QmScid").unwrap();
+        store.lose.store(true, SeqCst);
+        assert!(flow.promote_master("QmScid", 1).is_err());
+        store.lose.store(false, SeqCst);
+        assert_eq!(
+            flow.forget_master_at("QmScid", read).unwrap(),
+            Forgot::Kept(1)
+        );
+        assert_eq!(
+            unlocked_key(&vault, None),
+            ed25519_signing_key_multikey([5u8; 32])
+        );
     }
 
     /// An item the vault cannot vouch for answers `None`, never a guess: a keychain item kept
